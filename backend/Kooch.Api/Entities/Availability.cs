@@ -8,7 +8,9 @@ public class Availability : BaseEntity
     public decimal? OriginalPrice { get; set; }
     public int AvailableCount { get; set; }
     public bool IsClosed { get; set; }
+    public AvailabilityStatus Status { get; set; } = AvailabilityStatus.Available;
     public int? MinNightsOverride { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public RoomType RoomType { get; set; } = null!;
 }

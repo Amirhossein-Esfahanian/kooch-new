@@ -7,6 +7,11 @@ namespace Kooch.Api.Data;
 public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<Permission> Permissions => Set<Permission>();
+    public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
+    public DbSet<UserPropertyAccess> UserPropertyAccesses => Set<UserPropertyAccess>();
+    public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
+    public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<RoomType> RoomTypes => Set<RoomType>();
     public DbSet<Room> Rooms => Set<Room>();
@@ -37,6 +42,9 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureUsers(modelBuilder);
+        ConfigurePermissions(modelBuilder);
+        ConfigureUserPropertyAccesses(modelBuilder);
+        ConfigureNotifications(modelBuilder);
         ConfigureProperties(modelBuilder);
         ConfigureDestinationsAndSeo(modelBuilder);
         ConfigureRoomTypes(modelBuilder);
@@ -71,6 +79,15 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             }
         }
 
+        foreach (var entry in ChangeTracker.Entries<User>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            if (entry.Entity.Role == UserRole.SuperAdmin)
+            {
+                entry.Entity.CanBeRestricted = false;
+            }
+        }
+
         return await base.SaveChangesAsync(cancellationToken);
     }
 
@@ -83,7 +100,106 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(user => user.Email).HasMaxLength(320).IsRequired();
             entity.Property(user => user.PasswordHash).HasMaxLength(500).IsRequired();
             entity.Property(user => user.PhoneNumber).HasMaxLength(30);
+            entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
             entity.HasIndex(user => user.Email).IsUnique();
+            entity.HasOne(user => user.ParentUser)
+                .WithMany(user => user.Children)
+                .HasForeignKey(user => user.ParentUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigurePermissions(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Permission>(entity =>
+        {
+            entity.Property(permission => permission.Name).HasMaxLength(150).IsRequired();
+            entity.Property(permission => permission.Description).HasMaxLength(1000);
+            entity.HasAlternateKey(permission => permission.Key);
+        });
+
+        modelBuilder.Entity<UserPermission>(entity =>
+        {
+            entity.HasIndex(permission => new
+            {
+                permission.UserId,
+                permission.PermissionKey,
+                permission.PropertyId
+            }).IsUnique().HasFilter(null);
+            entity.HasOne(permission => permission.User)
+                .WithMany(user => user.UserPermissions)
+                .HasForeignKey(permission => permission.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(permission => permission.Permission)
+                .WithMany(permission => permission.UserPermissions)
+                .HasForeignKey(permission => permission.PermissionKey)
+                .HasPrincipalKey(permission => permission.Key)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(permission => permission.Property)
+                .WithMany(property => property.UserPermissions)
+                .HasForeignKey(permission => permission.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureNotifications(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<NotificationSubscription>(entity =>
+        {
+            entity.Property(subscription => subscription.IsEnabled).HasDefaultValue(true);
+            entity.HasIndex(subscription => new
+            {
+                subscription.UserId,
+                subscription.PropertyId,
+                subscription.EventType,
+                subscription.Channel
+            }).IsUnique().HasFilter(null);
+            entity.HasOne(subscription => subscription.User)
+                .WithMany(user => user.NotificationSubscriptions)
+                .HasForeignKey(subscription => subscription.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(subscription => subscription.Property)
+                .WithMany(property => property.NotificationSubscriptions)
+                .HasForeignKey(subscription => subscription.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<NotificationLog>(entity =>
+        {
+            entity.Property(log => log.Recipient).HasMaxLength(500).IsRequired();
+            entity.Property(log => log.Message).HasMaxLength(4000).IsRequired();
+            entity.Property(log => log.ErrorMessage).HasMaxLength(4000);
+            entity.HasIndex(log => log.Status);
+            entity.HasIndex(log => log.SentAtUtc);
+            entity.HasOne(log => log.User)
+                .WithMany(user => user.NotificationLogs)
+                .HasForeignKey(log => log.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(log => log.Property)
+                .WithMany(property => property.NotificationLogs)
+                .HasForeignKey(log => log.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(log => log.Reservation)
+                .WithMany(reservation => reservation.NotificationLogs)
+                .HasForeignKey(log => log.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureUserPropertyAccesses(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<UserPropertyAccess>(entity =>
+        {
+            entity.Property(access => access.IsActive).HasDefaultValue(true);
+            entity.HasIndex(access => new { access.UserId, access.PropertyId }).IsUnique();
+            entity.HasOne(access => access.User)
+                .WithMany(user => user.UserPropertyAccesses)
+                .HasForeignKey(access => access.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(access => access.Property)
+                .WithMany(property => property.UserPropertyAccesses)
+                .HasForeignKey(access => access.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 
@@ -253,7 +369,14 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(availability => availability.Price).HasPrecision(18, 2);
             entity.Property(availability => availability.OriginalPrice).HasPrecision(18, 2);
+            entity.Property(availability => availability.RowVersion).IsRowVersion();
             entity.HasIndex(availability => new { availability.RoomTypeId, availability.Date }).IsUnique();
+            entity.HasIndex(availability => new
+            {
+                availability.RoomTypeId,
+                availability.Date,
+                availability.Status
+            });
             entity.HasOne(availability => availability.RoomType)
                 .WithMany(roomType => roomType.Availability)
                 .HasForeignKey(availability => availability.RoomTypeId)
@@ -273,6 +396,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(reservation => reservation.FinalAmount).HasPrecision(18, 2);
             entity.Property(reservation => reservation.Currency).HasMaxLength(3).IsRequired();
             entity.Property(reservation => reservation.GuestNote).HasMaxLength(2000);
+            entity.Property(reservation => reservation.RowVersion).IsRowVersion();
             entity.HasIndex(reservation => new
             {
                 reservation.PropertyId,
@@ -283,10 +407,12 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             {
                 reservation.RoomTypeId,
                 reservation.CheckInDate,
-                reservation.CheckOutDate
+                reservation.CheckOutDate,
+                reservation.Status
             });
             entity.HasIndex(reservation => reservation.ClientId);
             entity.HasIndex(reservation => reservation.Status);
+            entity.HasIndex(reservation => new { reservation.Status, reservation.HoldUntilUtc });
             entity.HasOne(reservation => reservation.Client)
                 .WithMany(user => user.Reservations)
                 .HasForeignKey(reservation => reservation.ClientId)

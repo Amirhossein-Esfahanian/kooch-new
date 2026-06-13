@@ -21,6 +21,12 @@ public class Reservation : BaseEntity
     public ReservationStatus Status { get; set; }
     public ReservationSource Source { get; set; }
     public string? GuestNote { get; set; }
+    public DateTime? HoldUntilUtc { get; set; }
+    public DateTime? PaidAtUtc { get; set; }
+    public DateTime? ConfirmedAtUtc { get; set; }
+    public DateTime? CancelledAtUtc { get; set; }
+    public DateTime? ExpiredAtUtc { get; set; }
+    public byte[] RowVersion { get; set; } = [];
 
     public User Client { get; set; } = null!;
     public Property Property { get; set; } = null!;
@@ -29,4 +35,5 @@ public class Reservation : BaseEntity
     public RatePlan? RatePlan { get; set; }
     public ICollection<Payment> Payments { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
+    public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
 }

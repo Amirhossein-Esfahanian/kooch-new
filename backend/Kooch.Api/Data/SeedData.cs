@@ -12,6 +12,7 @@ public static class SeedData
     public static async Task InitializeAsync(KoochDbContext dbContext)
     {
         await SeedAdminAsync(dbContext);
+        await SeedPermissionsAsync(dbContext);
         await SeedDestinationAsync(dbContext);
         await SeedTravelPurposesAsync(dbContext);
         await SeedAmenitiesAsync(dbContext);
@@ -23,8 +24,14 @@ public static class SeedData
 
     private static async Task SeedAdminAsync(KoochDbContext dbContext)
     {
-        if (await dbContext.Users.IgnoreQueryFilters().AnyAsync(user => user.Email == AdminEmail))
+        var existingAdmin = await dbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(user => user.Email == AdminEmail);
+
+        if (existingAdmin is not null)
         {
+            existingAdmin.Role = UserRole.SuperAdmin;
+            existingAdmin.CanManageUsers = true;
+            existingAdmin.CanBeRestricted = false;
             return;
         }
 
@@ -33,12 +40,31 @@ public static class SeedData
             FirstName = "Kooch",
             LastName = "Admin",
             Email = AdminEmail,
-            Role = UserRole.Admin,
-            IsActive = true
+            Role = UserRole.SuperAdmin,
+            IsActive = true,
+            CanManageUsers = true,
+            CanBeRestricted = false
         };
 
         admin.PasswordHash = new PasswordHasher<User>().HashPassword(admin, InitialAdminPassword);
         dbContext.Users.Add(admin);
+    }
+
+    private static async Task SeedPermissionsAsync(KoochDbContext dbContext)
+    {
+        var existingKeys = await dbContext.Permissions.IgnoreQueryFilters()
+            .Select(permission => permission.Key)
+            .ToListAsync();
+
+        var permissions = Enum.GetValues<PermissionKey>()
+            .Where(key => !existingKeys.Contains(key))
+            .Select(key => new Permission
+            {
+                Key = key,
+                Name = key.ToString()
+            });
+
+        dbContext.Permissions.AddRange(permissions);
     }
 
     private static async Task SeedDestinationAsync(KoochDbContext dbContext)

@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260613065959_AddPermissionsNotificationsAndReservationHold")]
+    partial class AddPermissionsNotificationsAndReservationHold
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -125,12 +128,6 @@ namespace Kooch.Api.Migrations
 
                     b.Property<int>("RoomTypeId")
                         .HasColumnType("int");
-
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
 
                     b.Property<int>("Status")
                         .HasColumnType("int");
@@ -1290,12 +1287,6 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("RoomTypeId")
                         .HasColumnType("int");
 
-                    b.Property<byte[]>("RowVersion")
-                        .IsConcurrencyToken()
-                        .IsRequired()
-                        .ValueGeneratedOnAddOrUpdate()
-                        .HasColumnType("rowversion");
-
                     b.Property<decimal>("ServiceFeeAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -2021,83 +2012,6 @@ namespace Kooch.Api.Migrations
                     b.ToTable("UserPermissions");
                 });
 
-            modelBuilder.Entity("Kooch.Api.Entities.UserPropertyAccess", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("CanManageAvailability")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageNotifications")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManagePayments")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManagePricing")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageProperty")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageReservations")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageReviews")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageRooms")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanViewReports")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("DeletedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("DeletedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("PropertyId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("PropertyId");
-
-                    b.HasIndex("UserId", "PropertyId")
-                        .IsUnique();
-
-                    b.ToTable("UserPropertyAccesses");
-                });
-
             modelBuilder.Entity("Kooch.Api.Entities.Availability", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.RoomType", "RoomType")
@@ -2535,25 +2449,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("Kooch.Api.Entities.UserPropertyAccess", b =>
-                {
-                    b.HasOne("Kooch.Api.Entities.Property", "Property")
-                        .WithMany("UserPropertyAccesses")
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("Kooch.Api.Entities.User", "User")
-                        .WithMany("UserPropertyAccesses")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Property");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Kooch.Api.Entities.Amenity", b =>
                 {
                     b.Navigation("PropertyAmenities");
@@ -2622,8 +2517,6 @@ namespace Kooch.Api.Migrations
 
                     b.Navigation("UserPermissions");
 
-                    b.Navigation("UserPropertyAccesses");
-
                     b.Navigation("Warnings");
                 });
 
@@ -2687,8 +2580,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("Reviews");
 
                     b.Navigation("UserPermissions");
-
-                    b.Navigation("UserPropertyAccesses");
                 });
 #pragma warning restore 612, 618
         }
