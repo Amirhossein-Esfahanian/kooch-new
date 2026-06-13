@@ -20,6 +20,7 @@ public class RoomType : BaseEntity
     public ICollection<RoomTypeBed> BedConfigurations { get; set; } = [];
     public ICollection<Availability> Availability { get; set; } = [];
     public ICollection<RoomTypeImage> Images { get; set; } = [];
+    public ICollection<PropertyImage> PropertyImages { get; set; } = [];
     public ICollection<RoomTypeAmenity> RoomTypeAmenities { get; set; } = [];
     public ICollection<RatePlan> RatePlans { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];

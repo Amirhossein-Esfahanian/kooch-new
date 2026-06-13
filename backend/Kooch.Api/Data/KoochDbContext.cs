@@ -332,6 +332,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<Room>(entity =>
         {
             entity.Property(room => room.Name).HasMaxLength(100).IsRequired();
+            entity.Property(room => room.Description).HasMaxLength(3000);
+            entity.Property(room => room.Notes).HasMaxLength(2000);
             entity.HasIndex(room => new { room.RoomTypeId, room.Name }).IsUnique();
             entity.HasOne(room => room.RoomType)
                 .WithMany(roomType => roomType.Rooms)
@@ -511,8 +513,18 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(image => image.Url).HasMaxLength(2000).IsRequired();
             entity.Property(image => image.AltText).HasMaxLength(300);
+            entity.Property(image => image.Caption).HasMaxLength(500);
+            entity.Property(image => image.Tag).HasMaxLength(100);
+            entity.Property(image => image.IsGallery).HasDefaultValue(true);
+            entity.HasIndex(image => new { image.PropertyId, image.Tag });
+            entity.HasIndex(image => image.RoomTypeId);
+            entity.HasIndex(image => image.RoomId);
             entity.HasOne(image => image.Property).WithMany(property => property.Images)
                 .HasForeignKey(image => image.PropertyId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(image => image.RoomType).WithMany(roomType => roomType.PropertyImages)
+                .HasForeignKey(image => image.RoomTypeId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(image => image.Room).WithMany(room => room.PropertyImages)
+                .HasForeignKey(image => image.RoomId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<RoomTypeImage>(entity =>
