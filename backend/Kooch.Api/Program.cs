@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Entities;
+using Kooch.Api.Filters;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -30,6 +31,10 @@ if (jwtOptions.Key.Length < 32 ||
 builder.Services.Configure<JwtOptions>(jwtSection);
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IPermissionService, PermissionService>();
+builder.Services.AddScoped<IPropertyAccessService, PropertyAccessService>();
+builder.Services.AddScoped<IPropertyService, PropertyService>();
+builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
+builder.Services.AddScoped<IRoomService, RoomService>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
@@ -63,7 +68,7 @@ builder.Services.AddAuthorization(options =>
             UserRole.OwnerAssistant.ToString()));
 });
 
-builder.Services.AddControllers()
+builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
 builder.Services.AddEndpointsApiExplorer();

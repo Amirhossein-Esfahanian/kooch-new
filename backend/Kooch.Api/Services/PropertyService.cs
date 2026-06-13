@@ -1,0 +1,280 @@
+using Kooch.Api.Data;
+using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Entities;
+using Microsoft.EntityFrameworkCore;
+
+namespace Kooch.Api.Services;
+
+public class PropertyService(
+    KoochDbContext dbContext,
+    IPropertyAccessService propertyAccessService,
+    IPermissionService permissionService) : IPropertyService
+{
+    public async Task<PropertyResponse> CreatePropertyAsync(
+        int userId,
+        UserRole role,
+        CreatePropertyRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (role is not UserRole.Owner and not UserRole.SuperAdmin)
+        {
+            throw new UnauthorizedAccessException("Only owners and SuperAdmin can create properties.");
+        }
+
+        var ownerId = role == UserRole.SuperAdmin ? request.OwnerId ?? userId : userId;
+        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
+                user.Id == ownerId && user.IsActive &&
+                (user.Role == UserRole.Owner || user.Role == UserRole.SuperAdmin), cancellationToken))
+        {
+            throw new ArgumentException("The selected owner is invalid.");
+        }
+
+        await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        var slug = NormalizeSlug(request.Slug);
+        await EnsureUniqueSlugAsync(slug, null, cancellationToken);
+
+        var property = new Property
+        {
+            OwnerId = ownerId,
+            DestinationId = request.DestinationId,
+            Name = request.Name.Trim(),
+            Slug = slug,
+            Description = request.Description.Trim(),
+            SeoTitle = CleanOptional(request.SeoTitle),
+            SeoDescription = CleanOptional(request.SeoDescription),
+            Address = request.Address.Trim(),
+            City = request.City.Trim(),
+            Country = request.Country.Trim(),
+            Latitude = request.Latitude,
+            Longitude = request.Longitude,
+            Type = request.Type,
+            InventoryMode = request.InventoryMode,
+            CheckInTime = request.CheckInTime,
+            CheckOutTime = request.CheckOutTime,
+            Status = role == UserRole.SuperAdmin
+                ? request.Status ?? PropertyStatus.PendingReview
+                : PropertyStatus.PendingReview
+        };
+
+        dbContext.Properties.Add(property);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(property.Id, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdatePropertyAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetEntityAsync(propertyId, cancellationToken);
+        if (!await propertyAccessService.CanManagePropertyAsync(userId, role, propertyId, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot manage this property.");
+        }
+
+        await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        var slug = NormalizeSlug(request.Slug);
+        await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
+
+        property.DestinationId = request.DestinationId;
+        property.Name = request.Name.Trim();
+        property.Slug = slug;
+        property.Description = request.Description.Trim();
+        property.SeoTitle = CleanOptional(request.SeoTitle);
+        property.SeoDescription = CleanOptional(request.SeoDescription);
+        property.Address = request.Address.Trim();
+        property.City = request.City.Trim();
+        property.Country = request.Country.Trim();
+        property.Latitude = request.Latitude;
+        property.Longitude = request.Longitude;
+        property.Type = request.Type;
+        property.InventoryMode = request.InventoryMode;
+        property.CheckInTime = request.CheckInTime;
+        property.CheckOutTime = request.CheckOutTime;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(property.Id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PropertyResponse>> GetMyPropertiesAsync(
+        int userId,
+        UserRole role,
+        CancellationToken cancellationToken = default)
+    {
+        var query = dbContext.Properties.AsNoTracking();
+
+        query = role switch
+        {
+            UserRole.SuperAdmin => query,
+            UserRole.Owner => query.Where(property => property.OwnerId == userId),
+            UserRole.OwnerAssistant => query.Where(property => property.UserPropertyAccesses
+                .Any(access => access.UserId == userId && access.IsActive)),
+            UserRole.AdminAssistant => await HasGlobalManagePermissionAsync(userId, cancellationToken)
+                ? query
+                : query.Where(property => property.UserPermissions.Any(permission =>
+                    permission.UserId == userId &&
+                    permission.PermissionKey == PermissionKey.ManageProperties &&
+                    permission.IsAllowed)),
+            _ => query.Where(property => false)
+        };
+
+        return await Project(query.OrderBy(property => property.Name)).ToListAsync(cancellationToken);
+    }
+
+    public async Task<PropertyResponse> GetPropertyByIdAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await dbContext.Properties.AsNoTracking().AnyAsync(property => property.Id == propertyId, cancellationToken))
+        {
+            throw new KeyNotFoundException("Property not found.");
+        }
+
+        if (!await propertyAccessService.CanViewAsync(userId, role, propertyId, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot access this property.");
+        }
+
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PropertyResponse>> GetAllForAdminAsync(
+        int userId,
+        UserRole role,
+        CancellationToken cancellationToken = default)
+    {
+        var allowed = role == UserRole.SuperAdmin ||
+                      role == UserRole.AdminAssistant &&
+                      await HasGlobalManagePermissionAsync(userId, cancellationToken);
+        if (!allowed)
+        {
+            throw new UnauthorizedAccessException("ManageProperties permission is required.");
+        }
+
+        return await Project(dbContext.Properties.AsNoTracking().OrderBy(property => property.Name))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<PropertyResponse>> GetPublicPropertiesAsync(
+        CancellationToken cancellationToken = default)
+    {
+        return await Project(dbContext.Properties.AsNoTracking()
+                .Where(property => property.Status == PropertyStatus.Approved)
+                .OrderBy(property => property.Name))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<PropertyResponse?> GetPublicPropertyBySlugAsync(
+        string slug,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedSlug = NormalizeSlug(slug);
+        return await Project(dbContext.Properties.AsNoTracking()
+                .Where(property => property.Status == PropertyStatus.Approved && property.Slug == normalizedSlug))
+            .SingleOrDefaultAsync(cancellationToken);
+    }
+
+    public Task<PropertyResponse> ApprovePropertyAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default) =>
+        SetStatusAsync(userId, role, propertyId, PropertyStatus.Approved, cancellationToken);
+
+    public Task<PropertyResponse> RejectPropertyAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default) =>
+        SetStatusAsync(userId, role, propertyId, PropertyStatus.Rejected, cancellationToken);
+
+    public Task<PropertyResponse> SuspendPropertyAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default) =>
+        SetStatusAsync(userId, role, propertyId, PropertyStatus.Suspended, cancellationToken);
+
+    private async Task<PropertyResponse> SetStatusAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        PropertyStatus status,
+        CancellationToken cancellationToken)
+    {
+        var allowed = role == UserRole.SuperAdmin ||
+                      role == UserRole.AdminAssistant &&
+                      await permissionService.HasPermissionAsync(
+                          userId, PermissionKey.ManageProperties, propertyId, cancellationToken);
+        if (!allowed)
+        {
+            throw new UnauthorizedAccessException("You cannot review this property.");
+        }
+
+        var property = await GetEntityAsync(propertyId, cancellationToken);
+        property.Status = status;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    private async Task<Property> GetEntityAsync(int propertyId, CancellationToken cancellationToken) =>
+        await dbContext.Properties.SingleOrDefaultAsync(property => property.Id == propertyId, cancellationToken)
+        ?? throw new KeyNotFoundException("Property not found.");
+
+    private async Task<PropertyResponse> LoadResponseAsync(int propertyId, CancellationToken cancellationToken) =>
+        await Project(dbContext.Properties.AsNoTracking().Where(property => property.Id == propertyId))
+            .SingleAsync(cancellationToken);
+
+    private async Task<bool> HasGlobalManagePermissionAsync(int userId, CancellationToken cancellationToken) =>
+        await permissionService.HasPermissionAsync(userId, PermissionKey.ManageProperties, null, cancellationToken);
+
+    private async Task ValidateDestinationAsync(int destinationId, CancellationToken cancellationToken)
+    {
+        if (!await dbContext.Destinations.AsNoTracking()
+                .AnyAsync(destination => destination.Id == destinationId, cancellationToken))
+        {
+            throw new ArgumentException("Destination not found.");
+        }
+    }
+
+    private async Task EnsureUniqueSlugAsync(string slug, int? propertyId, CancellationToken cancellationToken)
+    {
+        if (await dbContext.Properties.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(property => property.Slug == slug && property.Id != propertyId, cancellationToken))
+        {
+            throw new InvalidOperationException("A property with this slug already exists.");
+        }
+    }
+
+    private static IQueryable<PropertyResponse> Project(IQueryable<Property> query) =>
+        query.Select(property => new PropertyResponse
+        {
+            Id = property.Id,
+            OwnerId = property.OwnerId,
+            OwnerName = (property.Owner.FirstName + " " + property.Owner.LastName).Trim(),
+            DestinationId = property.DestinationId,
+            DestinationName = property.Destination.Name,
+            Name = property.Name,
+            Slug = property.Slug,
+            Description = property.Description,
+            SeoTitle = property.SeoTitle,
+            SeoDescription = property.SeoDescription,
+            Address = property.Address,
+            City = property.City,
+            Country = property.Country,
+            Latitude = property.Latitude,
+            Longitude = property.Longitude,
+            Status = property.Status,
+            Type = property.Type,
+            InventoryMode = property.InventoryMode,
+            CheckInTime = property.CheckInTime,
+            CheckOutTime = property.CheckOutTime
+        });
+
+    private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant();
+    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+}
