@@ -1,13 +1,12 @@
 using Kooch.Api.Entities;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Data;
 
 public static class SeedData
 {
-    private const string AdminEmail = "admin@kooch.ir";
-    private const string InitialAdminPassword = "Admin@123456";
+    private const string AdminEmail = "admin@kooch.local";
+    private const string InitialAdminPassword = "Admin@12345";
 
     public static async Task InitializeAsync(KoochDbContext dbContext)
     {
@@ -30,8 +29,13 @@ public static class SeedData
         if (existingAdmin is not null)
         {
             existingAdmin.Role = UserRole.SuperAdmin;
+            existingAdmin.IsActive = true;
             existingAdmin.CanManageUsers = true;
             existingAdmin.CanBeRestricted = false;
+            if (!existingAdmin.PasswordHash.StartsWith("$2", StringComparison.Ordinal))
+            {
+                existingAdmin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(InitialAdminPassword);
+            }
             return;
         }
 
@@ -46,7 +50,7 @@ public static class SeedData
             CanBeRestricted = false
         };
 
-        admin.PasswordHash = new PasswordHasher<User>().HashPassword(admin, InitialAdminPassword);
+        admin.PasswordHash = BCrypt.Net.BCrypt.HashPassword(InitialAdminPassword);
         dbContext.Users.Add(admin);
     }
 

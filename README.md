@@ -28,3 +28,22 @@ dotnet restore
 dotnet run
 ```
 
+Swagger is available in development at the `/swagger` path shown by the backend launch URL.
+
+### Authentication
+
+The development seed creates this SuperAdmin account:
+
+```text
+Email: admin@kooch.local
+Password: Admin@12345
+```
+
+Use `POST /api/auth/login` with the credentials above, copy the returned `token`, then select
+**Authorize** in Swagger and enter the token. `GET /api/auth/me` can be used to verify it.
+
+Public registration is available at `POST /api/auth/register`. The role defaults to `Client`;
+only `Client` and `Owner` are accepted through public registration.
+
+JWT values are configured under `Jwt` in `backend/Kooch.Api/appsettings.json`. Override the
+development signing key in deployed environments, for example with `Jwt__Key`.
