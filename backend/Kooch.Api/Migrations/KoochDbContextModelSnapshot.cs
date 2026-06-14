@@ -30,6 +30,9 @@ namespace Kooch.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
+                    b.Property<int>("AmenityCategoryId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -66,6 +69,9 @@ namespace Kooch.Api.Migrations
                         .HasMaxLength(170)
                         .HasColumnType("nvarchar(170)");
 
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -77,7 +83,68 @@ namespace Kooch.Api.Migrations
                     b.HasIndex("Slug")
                         .IsUnique();
 
+                    b.HasIndex("AmenityCategoryId", "SortOrder");
+
                     b.ToTable("Amenities");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.AmenityCategory", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Icon")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(170)
+                        .HasColumnType("nvarchar(170)");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("AmenityCategories");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Availability", b =>
@@ -254,6 +321,71 @@ namespace Kooch.Api.Migrations
                     b.ToTable("CancellationPolicies");
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.DefaultNearbyPlace", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("DestinationId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal?>("Latitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<decimal?>("Longitude")
+                        .HasPrecision(9, 6)
+                        .HasColumnType("decimal(9,6)");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationId", "Title")
+                        .IsUnique();
+
+                    b.ToTable("DefaultNearbyPlaces");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.Destination", b =>
                 {
                     b.Property<int>("Id")
@@ -377,9 +509,8 @@ namespace Kooch.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<string>("Category")
-                        .HasMaxLength(100)
-                        .HasColumnType("nvarchar(100)");
+                    b.Property<int>("Category")
+                        .HasColumnType("int");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -393,12 +524,26 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("DeletedByUserId")
                         .HasColumnType("int");
 
-                    b.Property<decimal>("DistanceKm")
-                        .HasPrecision(8, 2)
-                        .HasColumnType("decimal(8,2)");
+                    b.Property<string>("Description")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int?>("DistanceInMeters")
+                        .HasColumnType("int");
 
                     b.Property<int?>("DrivingMinutes")
                         .HasColumnType("int");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(true);
+
+                    b.Property<bool>("IsCustom")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("bit");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
@@ -411,13 +556,13 @@ namespace Kooch.Api.Migrations
                         .HasPrecision(9, 6)
                         .HasColumnType("decimal(9,6)");
 
-                    b.Property<string>("Name")
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
-
-                    b.Property<int>("PropertyId")
-                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -430,7 +575,9 @@ namespace Kooch.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("PropertyId");
+                    b.HasIndex("PropertyId", "Category");
+
+                    b.HasIndex("PropertyId", "Title");
 
                     b.ToTable("NearbyPlaces");
                 });
@@ -805,11 +952,21 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("DestinationId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("FloorsCount")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("HasElevator")
+                        .HasColumnType("bit");
+
                     b.Property<int>("InventoryMode")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
+
+                    b.Property<decimal?>("LandAreaM2")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
 
                     b.Property<decimal?>("Latitude")
                         .HasPrecision(9, 6)
@@ -840,8 +997,15 @@ namespace Kooch.Api.Migrations
                         .HasMaxLength(220)
                         .HasColumnType("nvarchar(220)");
 
+                    b.Property<int?>("StairCount")
+                        .HasColumnType("int");
+
                     b.Property<int>("Status")
                         .HasColumnType("int");
+
+                    b.Property<decimal?>("TotalAreaM2")
+                        .HasPrecision(12, 2)
+                        .HasColumnType("decimal(12,2)");
 
                     b.Property<int>("Type")
                         .HasColumnType("int");
@@ -907,6 +1071,61 @@ namespace Kooch.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("PropertyAmenities");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.PropertyDescriptionSection", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SectionType")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "SectionType", "SortOrder");
+
+                    b.ToTable("PropertyDescriptionSections");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.PropertyHighlight", b =>
@@ -2141,6 +2360,17 @@ namespace Kooch.Api.Migrations
                     b.ToTable("UserPropertyAccesses");
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.Amenity", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.AmenityCategory", "AmenityCategory")
+                        .WithMany("Amenities")
+                        .HasForeignKey("AmenityCategoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("AmenityCategory");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.Availability", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.RoomType", "RoomType")
@@ -2161,6 +2391,17 @@ namespace Kooch.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.DefaultNearbyPlace", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.Destination", "Destination")
+                        .WithMany("DefaultNearbyPlaces")
+                        .HasForeignKey("DestinationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Destination");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Destination", b =>
@@ -2288,6 +2529,17 @@ namespace Kooch.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Amenity");
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.PropertyDescriptionSection", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.Property", "Property")
+                        .WithMany("DescriptionSections")
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
 
                     b.Navigation("Property");
                 });
@@ -2618,6 +2870,11 @@ namespace Kooch.Api.Migrations
                     b.Navigation("RoomTypeAmenities");
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.AmenityCategory", b =>
+                {
+                    b.Navigation("Amenities");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.BedType", b =>
                 {
                     b.Navigation("RoomTypeBeds");
@@ -2631,6 +2888,8 @@ namespace Kooch.Api.Migrations
             modelBuilder.Entity("Kooch.Api.Entities.Destination", b =>
                 {
                     b.Navigation("Children");
+
+                    b.Navigation("DefaultNearbyPlaces");
 
                     b.Navigation("Properties");
 
@@ -2650,6 +2909,8 @@ namespace Kooch.Api.Migrations
             modelBuilder.Entity("Kooch.Api.Entities.Property", b =>
                 {
                     b.Navigation("CancellationPolicies");
+
+                    b.Navigation("DescriptionSections");
 
                     b.Navigation("Highlights");
 

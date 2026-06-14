@@ -66,3 +66,55 @@ Use Swagger to test the property workflow:
 
 Owner endpoints enforce property ownership. Owner assistants require active property access with
 the relevant management flags, and admin assistants require `ManageProperties` permission.
+
+### Simple owner frontend
+
+Start the backend on `http://localhost:5081`, then start the frontend:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Open `http://localhost:3000/owner/login` and log in with an Owner account. The temporary UI stores
+the JWT in browser localStorage. Use `/owner/properties` to list properties, create one at
+`/owner/properties/new`, then open its manage page to edit property details, add room types, and add
+named rooms.
+
+The UI hides technical property fields. It generates slugs from names, uses Iran as the country,
+and resolves Kashan to the seeded destination (falling back to destination ID `1` for other cities
+until city lookup is implemented). Owner and status values continue to come from backend defaults.
+
+For `NamedRooms`, use **Add named room** for unique rooms such as Shah-Abbasi or Toranj; each gets
+inventory `1` automatically. For `TypeBasedInventory`, use **Add room type**, enter the total
+inventory, and do not create individual room records. The Next.js development server proxies
+`/api/backend/*` to the backend API at `http://localhost:5081`.
+
+### Amenity categories
+
+The backend seeds amenity categories and example amenities during startup. The read APIs are:
+
+- `GET /api/amenity-categories`
+- `GET /api/amenities`
+
+Open `http://localhost:3000/owner/amenities` to view the amenity catalog grouped by category. This
+page is currently read-only; assigning amenities to a property or room type will be added separately.
+
+### Owner availability management
+
+Owners can manage daily room-type availability from the property management page. Select a room
+type, choose an inclusive start and end date, then enter the price, optional original price,
+available count, status, and optional minimum-night override. Existing rows for the selected range
+appear below the form.
+
+The same workflow is available through Swagger:
+
+1. Log in as the property owner and authorize Swagger with the JWT.
+2. Create a property and at least one room type if needed.
+3. Use `POST /api/owner/room-types/{roomTypeId}/availability` to create or update every date in a
+   range.
+4. Use `GET /api/owner/room-types/{roomTypeId}/availability?from=YYYY-MM-DD&to=YYYY-MM-DD` to verify
+   the rows.
+
+Owners can update only room types belonging to their properties. Owner assistants require active
+property access with `CanManageAvailability`; SuperAdmin can manage every property.

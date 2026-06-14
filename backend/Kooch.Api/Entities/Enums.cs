@@ -40,3 +40,11 @@ public enum NotificationEventType
 public enum NotificationChannel { Sms, Email, InApp, WhatsApp, Telegram }
 public enum NotificationStatus { Pending, Sent, Failed }
 public enum AvailabilityStatus { Available, Unavailable, OnRequest }
+public enum NearbyPlaceCategory { Attraction, Transport, Landmark, Market, Other }
+public enum PropertyDescriptionSectionType
+{
+    PropertyIntroduction,
+    CommonAreas,
+    SharedAmenities,
+    ImportantNotes
+}

@@ -42,4 +42,20 @@ public class UpdatePropertyRequest
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal? TotalAreaM2 { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal? LandAreaM2 { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int? FloorsCount { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int? StairCount { get; set; }
+
+    public bool HasElevator { get; set; }
+
+    
 }

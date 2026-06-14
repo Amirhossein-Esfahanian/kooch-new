@@ -93,6 +93,12 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.TotalAreaM2 = request.TotalAreaM2;
+        property.LandAreaM2 = request.LandAreaM2;
+        property.FloorsCount = request.FloorsCount;
+        property.StairCount = request.StairCount;
+        property.HasElevator = request.HasElevator;
+        
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
@@ -272,7 +278,13 @@ public class PropertyService(
             Type = property.Type,
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
-            CheckOutTime = property.CheckOutTime
+            CheckOutTime = property.CheckOutTime,
+            TotalAreaM2 = property.TotalAreaM2,
+            LandAreaM2 = property.LandAreaM2,
+            FloorsCount = property.FloorsCount,
+            StairCount = property.StairCount,
+            HasElevator = property.HasElevator,
+            
         });
 
     private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant();

@@ -19,6 +19,12 @@ public class Property : BaseEntity
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public decimal? TotalAreaM2 { get; set; }
+    public decimal? LandAreaM2 { get; set; }
+    public int? FloorsCount { get; set; }
+    public int? StairCount { get; set; }
+    public bool HasElevator { get; set; }
+    
 
     public User Owner { get; set; } = null!;
     public Destination Destination { get; set; } = null!;
@@ -39,4 +45,5 @@ public class Property : BaseEntity
     public ICollection<UserPropertyAccess> UserPropertyAccesses { get; set; } = [];
     public ICollection<NotificationSubscription> NotificationSubscriptions { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
+    public ICollection<PropertyDescriptionSection> DescriptionSections { get; set; } = [];
 }

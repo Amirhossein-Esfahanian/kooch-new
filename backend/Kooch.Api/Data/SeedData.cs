@@ -13,7 +13,11 @@ public static class SeedData
         await SeedAdminAsync(dbContext);
         await SeedPermissionsAsync(dbContext);
         await SeedDestinationAsync(dbContext);
+        await dbContext.SaveChangesAsync();
+        await SeedDefaultNearbyPlacesAsync(dbContext);
         await SeedTravelPurposesAsync(dbContext);
+        await SeedAmenityCategoriesAsync(dbContext);
+        await dbContext.SaveChangesAsync();
         await SeedAmenitiesAsync(dbContext);
         await SeedBedTypesAsync(dbContext);
         await SeedMealPlansAsync(dbContext);
@@ -107,28 +111,152 @@ public static class SeedData
         dbContext.TravelPurposes.AddRange(items.Where(item => !existingSlugs.Contains(item.Slug)));
     }
 
-    private static async Task SeedAmenitiesAsync(KoochDbContext dbContext)
+    private static async Task SeedDefaultNearbyPlacesAsync(KoochDbContext dbContext)
+    {
+        var destinationId = await dbContext.Destinations
+            .Where(destination => destination.Slug == "kashan")
+            .Select(destination => (int?)destination.Id)
+            .SingleOrDefaultAsync();
+
+        if (destinationId is null)
+        {
+            return;
+        }
+
+        var items = new[]
+        {
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kashan Railway Station", Category = NearbyPlaceCategory.Transport },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kashan Bus Terminal", Category = NearbyPlaceCategory.Transport },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Fin Garden", Category = NearbyPlaceCategory.Attraction },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kashan Bazaar", Category = NearbyPlaceCategory.Market },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Tabatabaei House", Category = NearbyPlaceCategory.Attraction },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Borujerdi House", Category = NearbyPlaceCategory.Attraction },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kamal-ol-Molk Square", Category = NearbyPlaceCategory.Landmark }
+        };
+
+        var existingTitles = await dbContext.DefaultNearbyPlaces.IgnoreQueryFilters()
+            .Where(place => place.DestinationId == destinationId.Value)
+            .Select(place => place.Title)
+            .ToListAsync();
+
+        dbContext.DefaultNearbyPlaces.AddRange(items.Where(item => !existingTitles.Contains(item.Title)));
+    }
+
+    private static async Task SeedAmenityCategoriesAsync(KoochDbContext dbContext)
     {
         var items = new[]
         {
-            new Amenity { Name = "Wi-Fi", Slug = "wifi", Description = "Wireless internet access.", Icon = "wifi", Scope = AmenityScope.Both },
-            new Amenity { Name = "Parking", Slug = "parking", Description = "On-site or nearby parking.", Icon = "parking", Scope = AmenityScope.Property },
-            new Amenity { Name = "Air Conditioning", Slug = "air-conditioning", Description = "Air-conditioned rooms.", Icon = "snowflake", Scope = AmenityScope.RoomType },
-            new Amenity { Name = "Heating", Slug = "heating", Description = "Room heating is available.", Icon = "temperature-high", Scope = AmenityScope.RoomType },
-            new Amenity { Name = "Private Bathroom", Slug = "private-bathroom", Description = "A private bathroom for the room.", Icon = "bath", Scope = AmenityScope.RoomType },
-            new Amenity { Name = "Breakfast", Slug = "breakfast", Description = "Breakfast service is available.", Icon = "utensils", Scope = AmenityScope.Property },
-            new Amenity { Name = "Restaurant", Slug = "restaurant", Description = "On-site restaurant or dining service.", Icon = "restaurant", Scope = AmenityScope.Property },
-            new Amenity { Name = "24-hour Reception", Slug = "24-hour-reception", Description = "Reception service available around the clock.", Icon = "clock", Scope = AmenityScope.Property },
-            new Amenity { Name = "Television", Slug = "television", Description = "Television in the room.", Icon = "tv", Scope = AmenityScope.RoomType },
-            new Amenity { Name = "Refrigerator", Slug = "refrigerator", Description = "In-room refrigerator.", Icon = "refrigerator", Scope = AmenityScope.RoomType }
+            new AmenityCategory { Name = "Base Services", Slug = "base-services", SortOrder = 10, Icon = "utilities" },
+            new AmenityCategory { Name = "Health & Bathroom", Slug = "health-bathroom", SortOrder = 20, Icon = "bath" },
+            new AmenityCategory { Name = "Kitchen", Slug = "kitchen", SortOrder = 30, Icon = "kitchen" },
+            new AmenityCategory { Name = "Comfort & Welfare", Slug = "comfort-welfare", SortOrder = 40, Icon = "sofa" },
+            new AmenityCategory { Name = "Entertainment", Slug = "entertainment", SortOrder = 50, Icon = "gamepad" },
+            new AmenityCategory { Name = "Safety", Slug = "safety", SortOrder = 60, Icon = "shield" },
+            new AmenityCategory { Name = "Environment", Slug = "environment", SortOrder = 70, Icon = "garden" },
+            new AmenityCategory { Name = "Exclusive Features", Slug = "exclusive-features", SortOrder = 80, Icon = "star" }
         };
 
-        var existingSlugs = await dbContext.Amenities.IgnoreQueryFilters()
-            .Select(item => item.Slug)
-            .ToListAsync();
+        var existing = await dbContext.AmenityCategories.IgnoreQueryFilters().ToListAsync();
+        foreach (var item in items)
+        {
+            var category = existing.SingleOrDefault(category => category.Slug == item.Slug);
+            if (category is null)
+            {
+                dbContext.AmenityCategories.Add(item);
+                continue;
+            }
 
-        dbContext.Amenities.AddRange(items.Where(item => !existingSlugs.Contains(item.Slug)));
+            category.Name = item.Name;
+            category.SortOrder = item.SortOrder;
+            category.Icon = item.Icon;
+            category.IsActive = true;
+            category.IsDeleted = false;
+            category.DeletedAtUtc = null;
+            category.DeletedByUserId = null;
+        }
     }
+
+    private static async Task SeedAmenitiesAsync(KoochDbContext dbContext)
+    {
+        var categories = await dbContext.AmenityCategories
+            .ToDictionaryAsync(category => category.Slug, category => category.Id);
+
+        var items = new[]
+        {
+            AmenitySeed("Water", "water", "base-services", 10, AmenityScope.Property),
+            AmenitySeed("Electricity", "electricity", "base-services", 20, AmenityScope.Property),
+            AmenitySeed("Gas", "gas", "base-services", 30, AmenityScope.Property),
+            AmenitySeed("Mobile Coverage", "mobile-coverage", "base-services", 40, AmenityScope.Property),
+            AmenitySeed("WiFi", "wifi", "base-services", 50, AmenityScope.Both, "Wireless internet access."),
+            AmenitySeed("Private Bathroom", "private-bathroom", "health-bathroom", 10, AmenityScope.RoomType),
+            AmenitySeed("Shared Bathroom", "shared-bathroom", "health-bathroom", 20, AmenityScope.RoomType),
+            AmenitySeed("Shower", "shower", "health-bathroom", 30, AmenityScope.RoomType),
+            AmenitySeed("Western Toilet", "western-toilet", "health-bathroom", 40, AmenityScope.Both),
+            AmenitySeed("Iranian Toilet", "iranian-toilet", "health-bathroom", 50, AmenityScope.Both),
+            AmenitySeed("Refrigerator", "refrigerator", "kitchen", 10, AmenityScope.Both),
+            AmenitySeed("Stove", "stove", "kitchen", 20, AmenityScope.Both),
+            AmenitySeed("Microwave", "microwave", "kitchen", 30, AmenityScope.Both),
+            AmenitySeed("Cooking Utensils", "cooking-utensils", "kitchen", 40, AmenityScope.Both),
+            AmenitySeed("Air Conditioner", "air-conditioner", "comfort-welfare", 10, AmenityScope.RoomType),
+            AmenitySeed("Heater", "heater", "comfort-welfare", 20, AmenityScope.RoomType),
+            AmenitySeed("Furniture", "furniture", "comfort-welfare", 30, AmenityScope.Both),
+            AmenitySeed("TV", "tv", "comfort-welfare", 40, AmenityScope.RoomType),
+            AmenitySeed("Game Console", "game-console", "entertainment", 10, AmenityScope.RoomType),
+            AmenitySeed("Board Games", "board-games", "entertainment", 20, AmenityScope.Both),
+            AmenitySeed("Fire Extinguisher", "fire-extinguisher", "safety", 10, AmenityScope.Both),
+            AmenitySeed("First Aid Kit", "first-aid-kit", "safety", 20, AmenityScope.Both),
+            AmenitySeed("Garden", "garden", "environment", 10, AmenityScope.Property),
+            AmenitySeed("Courtyard", "courtyard", "environment", 20, AmenityScope.Property),
+            AmenitySeed("Rooftop", "rooftop", "environment", 30, AmenityScope.Property),
+            AmenitySeed("Traditional Architecture", "traditional-architecture", "exclusive-features", 10, AmenityScope.Property),
+            AmenitySeed("Historic Building", "historic-building", "exclusive-features", 20, AmenityScope.Property)
+        };
+
+        var existing = await dbContext.Amenities.IgnoreQueryFilters().ToListAsync();
+        foreach (var item in items)
+        {
+            var amenity = existing.SingleOrDefault(existingAmenity => existingAmenity.Slug == item.Slug);
+            if (amenity is null)
+            {
+                dbContext.Amenities.Add(new Amenity
+                {
+                    AmenityCategoryId = categories[item.CategorySlug],
+                    Name = item.Name,
+                    Slug = item.Slug,
+                    Description = item.Description,
+                    Scope = item.Scope,
+                    SortOrder = item.SortOrder
+                });
+                continue;
+            }
+
+            amenity.AmenityCategoryId = categories[item.CategorySlug];
+            amenity.Name = item.Name;
+            amenity.Description = item.Description ?? amenity.Description;
+            amenity.Scope = item.Scope;
+            amenity.SortOrder = item.SortOrder;
+            amenity.IsDeleted = false;
+            amenity.DeletedAtUtc = null;
+            amenity.DeletedByUserId = null;
+        }
+    }
+
+    private static AmenitySeedItem AmenitySeed(
+        string name,
+        string slug,
+        string categorySlug,
+        int sortOrder,
+        AmenityScope scope,
+        string? description = null) =>
+        new(name, slug, categorySlug, sortOrder, scope, description);
+
+    private sealed record AmenitySeedItem(
+        string Name,
+        string Slug,
+        string CategorySlug,
+        int SortOrder,
+        AmenityScope Scope,
+        string? Description);
 
     private static async Task SeedBedTypesAsync(KoochDbContext dbContext)
     {

@@ -20,6 +20,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
+    public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
     public DbSet<PropertyAmenity> PropertyAmenities => Set<PropertyAmenity>();
     public DbSet<RoomTypeAmenity> RoomTypeAmenities => Set<RoomTypeAmenity>();
     public DbSet<PropertyImage> PropertyImages => Set<PropertyImage>();
@@ -27,6 +28,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<TravelPurpose> TravelPurposes => Set<TravelPurpose>();
     public DbSet<PropertyTravelPurpose> PropertyTravelPurposes => Set<PropertyTravelPurpose>();
     public DbSet<NearbyPlace> NearbyPlaces => Set<NearbyPlace>();
+    public DbSet<DefaultNearbyPlace> DefaultNearbyPlaces => Set<DefaultNearbyPlace>();
+    public DbSet<PropertyDescriptionSection> PropertyDescriptionSections => Set<PropertyDescriptionSection>();
     public DbSet<CancellationPolicy> CancellationPolicies => Set<CancellationPolicy>();
     public DbSet<StayRule> StayRules => Set<StayRule>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
@@ -46,6 +49,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureUserPropertyAccesses(modelBuilder);
         ConfigureNotifications(modelBuilder);
         ConfigureProperties(modelBuilder);
+        ConfigurePropertyDescriptionSections(modelBuilder);
         ConfigureDestinationsAndSeo(modelBuilder);
         ConfigureRoomTypes(modelBuilder);
         ConfigureBeds(modelBuilder);
@@ -217,6 +221,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(property => property.Country).HasMaxLength(100).IsRequired();
             entity.Property(property => property.Latitude).HasPrecision(9, 6);
             entity.Property(property => property.Longitude).HasPrecision(9, 6);
+            entity.Property(property => property.TotalAreaM2).HasPrecision(12, 2);
+            entity.Property(property => property.LandAreaM2).HasPrecision(12, 2);
             entity.HasIndex(property => property.Slug).IsUnique();
             entity.HasOne(property => property.Owner)
                 .WithMany(user => user.OwnedProperties)
@@ -253,14 +259,30 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
         modelBuilder.Entity<NearbyPlace>(entity =>
         {
-            entity.Property(place => place.Name).HasMaxLength(200).IsRequired();
-            entity.Property(place => place.Category).HasMaxLength(100);
-            entity.Property(place => place.DistanceKm).HasPrecision(8, 2);
+            entity.Property(place => place.Title).HasMaxLength(200).IsRequired();
+            entity.Property(place => place.Description).HasMaxLength(1000);
             entity.Property(place => place.Latitude).HasPrecision(9, 6);
             entity.Property(place => place.Longitude).HasPrecision(9, 6);
+            entity.Property(place => place.IsActive).HasDefaultValue(true);
+            entity.HasIndex(place => new { place.PropertyId, place.Category });
+            entity.HasIndex(place => new { place.PropertyId, place.Title });
             entity.HasOne(place => place.Property)
                 .WithMany(property => property.NearbyPlaces)
                 .HasForeignKey(place => place.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigurePropertyDescriptionSections(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PropertyDescriptionSection>(entity =>
+        {
+            entity.Property(section => section.Title).HasMaxLength(200).IsRequired();
+            entity.Property(section => section.Content).HasMaxLength(4000).IsRequired();
+            entity.HasIndex(section => new { section.PropertyId, section.SectionType, section.SortOrder });
+            entity.HasOne(section => section.Property)
+                .WithMany(property => property.DescriptionSections)
+                .HasForeignKey(section => section.PropertyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }
@@ -278,6 +300,20 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(destination => destination.ParentDestination)
                 .WithMany(destination => destination.Children)
                 .HasForeignKey(destination => destination.ParentDestinationId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<DefaultNearbyPlace>(entity =>
+        {
+            entity.Property(place => place.Title).HasMaxLength(200).IsRequired();
+            entity.Property(place => place.Description).HasMaxLength(1000);
+            entity.Property(place => place.Latitude).HasPrecision(9, 6);
+            entity.Property(place => place.Longitude).HasPrecision(9, 6);
+            entity.Property(place => place.IsActive).HasDefaultValue(true);
+            entity.HasIndex(place => new { place.DestinationId, place.Title }).IsUnique();
+            entity.HasOne(place => place.Destination)
+                .WithMany(destination => destination.DefaultNearbyPlaces)
+                .HasForeignKey(place => place.DestinationId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 
@@ -479,6 +515,15 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private static void ConfigureAmenities(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AmenityCategory>(entity =>
+        {
+            entity.Property(category => category.Name).HasMaxLength(150).IsRequired();
+            entity.Property(category => category.Slug).HasMaxLength(170).IsRequired();
+            entity.Property(category => category.Icon).HasMaxLength(100);
+            entity.Property(category => category.IsActive).HasDefaultValue(true);
+            entity.HasIndex(category => category.Slug).IsUnique();
+        });
+
         modelBuilder.Entity<Amenity>(entity =>
         {
             entity.Property(amenity => amenity.Name).HasMaxLength(150).IsRequired();
@@ -486,6 +531,11 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(amenity => amenity.Description).HasMaxLength(1000);
             entity.Property(amenity => amenity.Icon).HasMaxLength(100);
             entity.HasIndex(amenity => amenity.Slug).IsUnique();
+            entity.HasIndex(amenity => new { amenity.AmenityCategoryId, amenity.SortOrder });
+            entity.HasOne(amenity => amenity.AmenityCategory)
+                .WithMany(category => category.Amenities)
+                .HasForeignKey(amenity => amenity.AmenityCategoryId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<PropertyAmenity>(entity =>

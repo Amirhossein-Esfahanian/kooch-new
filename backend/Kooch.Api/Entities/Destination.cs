@@ -13,4 +13,5 @@ public class Destination : BaseEntity
     public SeoMetadata? SeoMetadata { get; set; }
     public ICollection<Destination> Children { get; set; } = [];
     public ICollection<Property> Properties { get; set; } = [];
+    public ICollection<DefaultNearbyPlace> DefaultNearbyPlaces { get; set; } = [];
 }

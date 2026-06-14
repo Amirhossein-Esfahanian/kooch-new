@@ -8,7 +8,9 @@ namespace Kooch.Api.Controllers;
 [ApiController]
 [OwnerAuthorize]
 [Route("api/owner/properties")]
-public class OwnerPropertiesController(IPropertyService propertyService) : AuthenticatedControllerBase
+public class OwnerPropertiesController(
+    IPropertyService propertyService,
+    IPropertyCompletionService propertyCompletionService) : AuthenticatedControllerBase
 {
     [HttpPost]
     [ProducesResponseType<PropertyResponse>(StatusCodes.Status201Created)]
@@ -48,5 +50,16 @@ public class OwnerPropertiesController(IPropertyService propertyService) : Authe
         var user = GetCurrentUser();
         return Ok(await propertyService.UpdatePropertyAsync(
             user.UserId, user.Role, id, request, cancellationToken));
+    }
+
+    [HttpGet("{id:int}/completion")]
+    [ProducesResponseType<PropertyCompletionResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyCompletionResponse>> GetCompletion(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyCompletionService.GetAsync(
+            user.UserId, user.Role, id, cancellationToken));
     }
 }

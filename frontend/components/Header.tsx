@@ -8,6 +8,9 @@ export function Header() {
           kooch<span className="text-coral">.</span>
         </Link>
         <nav className="flex items-center gap-2 sm:gap-6" aria-label="Main navigation">
+          <Link href="/owner/properties" className="rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-sand/70">
+            Owner tools
+          </Link>
           <Link href="/stays" className="rounded-full px-4 py-2 text-sm font-semibold transition hover:bg-sand/70">
             Explore stays
           </Link>
@@ -19,4 +22,3 @@ export function Header() {
     </header>
   );
 }
-

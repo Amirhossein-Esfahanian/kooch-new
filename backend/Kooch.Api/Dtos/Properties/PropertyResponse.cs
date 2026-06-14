@@ -24,4 +24,10 @@ public class PropertyResponse
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public decimal? TotalAreaM2 { get; set; }
+    public decimal? LandAreaM2 { get; set; }
+    public int? FloorsCount { get; set; }
+    public int? StairCount { get; set; }
+    public bool HasElevator { get; set; }
+    
 }
