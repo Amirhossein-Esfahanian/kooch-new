@@ -15,6 +15,7 @@ import {
   PropertyDescriptionSectionResponse,
   PropertyDescriptionSectionType,
   PropertyFormValues,
+  PropertyImageResponse,
   PropertyResponse,
   RoomResponse,
   RoomTypeResponse,
@@ -39,6 +40,18 @@ interface AvailabilityFormValues {
   availableCount: number;
   status: AvailabilityStatus;
   minNightsOverride: string;
+}
+
+interface ImageFormValues {
+  url: string;
+  altText: string;
+  caption: string;
+  tag: string;
+  roomTypeId: string;
+  roomId: string;
+  sortOrder: number;
+  isCover: boolean;
+  isGallery: boolean;
 }
 
 type PropertyTab =
@@ -95,6 +108,18 @@ const initialAvailability: AvailabilityFormValues = {
   minNightsOverride: "",
 };
 
+const initialImage: ImageFormValues = {
+  url: "",
+  altText: "",
+  caption: "",
+  tag: "",
+  roomTypeId: "",
+  roomId: "",
+  sortOrder: 0,
+  isCover: false,
+  isGallery: true,
+};
+
 const inputClass = "w-full rounded-lg border border-ink/20 bg-white px-3 py-2";
 
 function propertyToForm(property: PropertyResponse): PropertyFormValues {
@@ -130,6 +155,9 @@ export default function ManagePropertyPage() {
     AvailabilityResponse[]
   >([]);
   const [availabilityLoading, setAvailabilityLoading] = useState(false);
+  const [images, setImages] = useState<PropertyImageResponse[]>([]);
+  const [imageForm, setImageForm] = useState(initialImage);
+  const [imageLoading, setImageLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<PropertyTab>("Overview");
   const [completion, setCompletion] =
     useState<PropertyCompletionResponse | null>(null);
@@ -177,6 +205,7 @@ export default function ManagePropertyPage() {
       roomTypeResult,
       completionResult,
       descriptionResult,
+      imageResult,
     ] = await Promise.all([
       apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`),
       apiRequest<RoomTypeResponse[]>(
@@ -188,12 +217,14 @@ export default function ManagePropertyPage() {
       apiRequest<PropertyDescriptionSectionResponse[]>(
         `/owner/properties/${propertyId}/descriptions`,
       ),
+      apiRequest<PropertyImageResponse[]>(`/owner/properties/${propertyId}/images`),
     ]);
     setProperty(propertyResult);
     setPropertyValues(propertyToForm(propertyResult));
     setRoomTypes(roomTypeResult);
     setCompletion(completionResult);
     setDescriptionSections(descriptionResult);
+    setImages(imageResult);
     setDescriptionDrafts((current) => ({
       ...current,
       ...Object.fromEntries(
@@ -467,6 +498,50 @@ export default function ManagePropertyPage() {
     }
   }
 
+  async function addImage(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setMessage("");
+    setImageLoading(true);
+    try {
+      await apiRequest<PropertyImageResponse>(`/owner/properties/${propertyId}/images`, {
+        method: "POST",
+        body: JSON.stringify({
+          ...imageForm,
+          altText: imageForm.altText || null,
+          caption: imageForm.caption || null,
+          tag: imageForm.tag || null,
+          roomTypeId: imageForm.roomTypeId ? Number(imageForm.roomTypeId) : null,
+          roomId: imageForm.roomId ? Number(imageForm.roomId) : null,
+        }),
+      });
+      setImages(await apiRequest<PropertyImageResponse[]>(`/owner/properties/${propertyId}/images`));
+      setCompletion(await apiRequest<PropertyCompletionResponse>(`/owner/properties/${propertyId}/completion`));
+      setImageForm(initialImage);
+      setMessage("Image added.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not add image.");
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
+  async function deleteImage(imageId: number) {
+    setError("");
+    setMessage("");
+    setImageLoading(true);
+    try {
+      await apiRequest<void>(`/owner/property-images/${imageId}`, { method: "DELETE" });
+      setImages((current) => current.filter((image) => image.id !== imageId));
+      setCompletion(await apiRequest<PropertyCompletionResponse>(`/owner/properties/${propertyId}/completion`));
+      setMessage("Image deleted.");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Could not delete image.");
+    } finally {
+      setImageLoading(false);
+    }
+  }
+
   const namedMode = property?.inventoryMode === "NamedRooms";
 
   return (
@@ -720,13 +795,28 @@ export default function ManagePropertyPage() {
             />
           )}
           {activeTab === "Images" && (
-            <StatusPanel
-              complete={
-                completion?.completedSections.includes("images") ?? false
-              }
-              title="Images"
-              text="Image upload and URL management will appear here when the owner image API is added."
-            />
+            <section className="grid gap-5">
+              <div><h2 className="text-2xl font-bold">Property images</h2><p className="mt-1 text-sm text-ink/60">Add public image URLs and optionally associate them with a room type or named room.</p></div>
+              <form className="grid gap-4 rounded-xl border border-ink/10 bg-white p-5 shadow-sm" onSubmit={addImage}>
+                <label className="grid gap-1 text-sm font-semibold">Image URL<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, url: event.target.value })} required type="url" value={imageForm.url} /></label>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-semibold">Tag<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, tag: event.target.value })} placeholder="exterior, room, bathroom" value={imageForm.tag} /></label>
+                  <label className="grid gap-1 text-sm font-semibold">Alt text<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, altText: event.target.value })} value={imageForm.altText} /></label>
+                </div>
+                <label className="grid gap-1 text-sm font-semibold">Caption<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, caption: event.target.value })} value={imageForm.caption} /></label>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className="grid gap-1 text-sm font-semibold">Room type<select className={inputClass} onChange={(event) => setImageForm({ ...imageForm, roomTypeId: event.target.value, roomId: "" })} value={imageForm.roomTypeId}><option value="">General property image</option>{roomTypes.map((roomType) => <option key={roomType.id} value={roomType.id}>{roomType.name}</option>)}</select></label>
+                  <label className="grid gap-1 text-sm font-semibold">Named room<select className={inputClass} disabled={!imageForm.roomTypeId} onChange={(event) => setImageForm({ ...imageForm, roomId: event.target.value })} value={imageForm.roomId}><option value="">No named room</option>{(rooms[Number(imageForm.roomTypeId)] ?? []).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+                  <label className="grid gap-1 text-sm font-semibold">Sort order<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, sortOrder: Number(event.target.value) })} type="number" value={imageForm.sortOrder} /></label>
+                </div>
+                <div className="flex flex-wrap gap-5"><label className="flex items-center gap-2 text-sm font-semibold"><input checked={imageForm.isCover} onChange={(event) => setImageForm({ ...imageForm, isCover: event.target.checked })} type="checkbox" />Cover image</label><label className="flex items-center gap-2 text-sm font-semibold"><input checked={imageForm.isGallery} onChange={(event) => setImageForm({ ...imageForm, isGallery: event.target.checked })} type="checkbox" />Show in gallery</label></div>
+                <button className="rounded-lg bg-ink px-4 py-3 font-bold text-white disabled:opacity-50" disabled={imageLoading} type="submit">{imageLoading ? "Saving..." : "Add image"}</button>
+              </form>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {images.map((image) => <article className="overflow-hidden rounded-xl border border-ink/10 bg-white shadow-sm" key={image.id}><img alt={image.altText ?? image.caption ?? "Property image"} className="aspect-[4/3] w-full object-cover" src={image.url} /><div className="p-4"><div className="flex items-center justify-between gap-2"><strong>{image.tag || "Property image"}</strong>{image.isCover && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-bold text-green-700">Cover</span>}</div>{image.caption && <p className="mt-2 text-sm text-ink/60">{image.caption}</p>}<button className="mt-4 text-sm font-bold text-red-700 disabled:opacity-50" disabled={imageLoading} onClick={() => deleteImage(image.id)} type="button">Delete</button></div></article>)}
+                {images.length === 0 && <p className="rounded-xl border border-dashed border-ink/20 p-6 text-center sm:col-span-2 lg:col-span-3">No property images yet.</p>}
+              </div>
+            </section>
           )}
 
           {activeTab === "Rooms" && (

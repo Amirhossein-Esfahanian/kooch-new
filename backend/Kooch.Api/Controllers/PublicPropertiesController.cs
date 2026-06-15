@@ -11,14 +11,14 @@ namespace Kooch.Api.Controllers;
 public class PublicPropertiesController(IPropertyService propertyService) : ControllerBase
 {
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<PropertyResponse>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<PropertyResponse>>> Get(CancellationToken cancellationToken) =>
+    [ProducesResponseType<IReadOnlyList<PublicPropertyResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<PublicPropertyResponse>>> Get(CancellationToken cancellationToken) =>
         Ok(await propertyService.GetPublicPropertiesAsync(cancellationToken));
 
     [HttpGet("{slug}")]
-    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType<PublicPropertyResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<PropertyResponse>> GetBySlug(
+    public async Task<ActionResult<PublicPropertyResponse>> GetBySlug(
         string slug,
         CancellationToken cancellationToken)
     {

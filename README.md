@@ -118,3 +118,49 @@ The same workflow is available through Swagger:
 
 Owners can update only room types belonging to their properties. Owner assistants require active
 property access with `CanManageAvailability`; SuperAdmin can manage every property.
+
+### Public demo flow
+
+1. Start the backend:
+
+   ```bash
+   cd backend/Kooch.Api
+   dotnet run
+   ```
+
+2. Start the frontend in another terminal:
+
+   ```bash
+   cd frontend
+   npm run dev
+   ```
+
+3. Open `http://localhost:3000`. The landing page loads approved properties from
+   `GET /api/properties`. A completely empty property database is seeded with simple Kashan demo
+   properties, room types, named rooms, prices, and images.
+4. Open a property card to visit `/properties/{slug}` and inspect room types, inventory mode,
+   named rooms, and current or fallback base prices.
+5. To test the owner/admin workflow, log in through `/owner/login`. The development SuperAdmin is
+   `admin@kooch.local` with password `Admin@12345`. Create or edit a property as an owner, then use
+   Swagger as SuperAdmin to approve it with `PUT /api/admin/properties/{id}/approve`.
+6. Refresh the landing page and open the newly approved property.
+
+Only `Approved` properties are returned publicly. When a room type has no future availability
+price, the public API uses its `BasePrice` as the displayed fallback.
+
+### MVP property publishing test
+
+1. Open `/owner/login` and log in as `admin@kooch.local` with `Admin@12345`, or use an Owner
+   account for property entry.
+2. Create a property from `/owner/properties/new` and complete its basic information.
+3. Open the property management page and add named rooms or room-type inventory from the
+   **Rooms** tab.
+4. Open the **Images** tab, add image URLs, and mark one image as the cover.
+5. Log in as SuperAdmin or an AdminAssistant with `ManageProperties`, then open
+   `/admin/properties` and approve the property.
+6. Open `/` and verify that the approved property appears with its cover image and starting price.
+7. Open the property card to view `/properties/{slug}`, including its gallery, amenities and nearby
+   places when assigned, room types, named rooms, and current or fallback prices.
+
+The admin page also supports rejecting and suspending properties. Owner image deletion is soft;
+deleted records remain in the database but no longer appear in owner or public queries.

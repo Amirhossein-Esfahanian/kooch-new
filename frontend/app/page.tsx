@@ -1,40 +1,46 @@
+"use client";
+
 import Link from "next/link";
-import { HeroSection } from "@/components/HeroSection";
-import { StayCard } from "@/components/StayCard";
-import { stays } from "@/lib/stays";
+import { useEffect, useState } from "react";
+import { fetchPublicApi, formatPrice, PublicProperty } from "@/lib/public-properties";
 
 export default function HomePage() {
+  const [properties, setProperties] = useState<PublicProperty[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    fetchPublicApi<PublicProperty[]>("/properties")
+      .then(setProperties)
+      .catch((caught: Error) => setError(caught.message))
+      .finally(() => setLoading(false));
+  }, []);
+
   return (
-    <>
-      <HeroSection />
-      <section id="featured" className="bg-white/45 px-5 py-20 sm:px-8 sm:py-24">
-        <div className="mx-auto max-w-7xl">
-          <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-            <div>
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-coral">Handpicked places</p>
-              <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Stays we love right now</h2>
-            </div>
-            <Link href="/stays" className="text-sm font-bold text-moss underline decoration-moss/30 underline-offset-8 hover:decoration-moss">
-              View every stay
-            </Link>
-          </div>
-          <div className="mt-10 grid gap-7 md:grid-cols-2 lg:grid-cols-3">
-            {stays.slice(0, 3).map((stay) => <StayCard key={stay.slug} stay={stay} />)}
-          </div>
+    <div className="px-5 py-12 sm:px-8 sm:py-16">
+      <div className="mx-auto max-w-6xl">
+        <p className="text-sm font-bold uppercase tracking-widest text-coral">Kooch stays</p>
+        <h1 className="mt-3 text-4xl font-black tracking-tight sm:text-5xl">Approved properties</h1>
+        <p className="mt-4 max-w-2xl text-ink/65">A simple live view of properties currently approved for public listing.</p>
+
+        {loading && <p className="mt-10 rounded-xl border border-ink/10 bg-white p-6">Loading properties...</p>}
+        {error && <p className="mt-10 rounded-xl bg-red-50 p-6 text-red-700">{error}</p>}
+        {!loading && !error && properties.length === 0 && <p className="mt-10 rounded-xl border border-dashed border-ink/20 p-8 text-center">No approved properties are available yet.</p>}
+
+        <div className="mt-10 grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {properties.map((property) => (
+            <article className="overflow-hidden rounded-2xl border border-ink/10 bg-white shadow-sm" key={property.id}>
+              {property.coverImageUrl ? <img alt={property.name} className="aspect-[4/3] w-full object-cover" src={property.coverImageUrl} /> : <div className="grid aspect-[4/3] place-items-center bg-ink/5 text-sm text-ink/45">No image</div>}
+              <div className="p-5">
+                <p className="text-sm font-semibold text-ink/55">{property.city} · {property.propertyType.replace(/([A-Z])/g, " $1").trim()}</p>
+                <h2 className="mt-1 text-xl font-black">{property.name}</h2>
+                <p className="mt-3 font-bold text-moss">From {formatPrice(property.startingPrice)}</p>
+                <Link className="mt-5 block rounded-lg bg-ink px-4 py-3 text-center text-sm font-bold text-white" href={`/properties/${property.slug}`}>View property</Link>
+              </div>
+            </article>
+          ))}
         </div>
-      </section>
-      <section className="px-5 py-20 sm:px-8 sm:py-28">
-        <div className="mx-auto grid max-w-7xl gap-8 rounded-[2.5rem] bg-moss px-7 py-12 text-cream sm:px-12 lg:grid-cols-[1fr_auto] lg:items-center lg:px-16">
-          <div>
-            <p className="text-xs font-bold uppercase tracking-[0.25em] text-cream/55">Travel with intention</p>
-            <h2 className="mt-4 max-w-2xl text-3xl font-black tracking-tight sm:text-4xl">Less searching. More looking forward to it.</h2>
-          </div>
-          <Link href="/stays" className="w-fit rounded-full bg-cream px-6 py-3 text-sm font-bold text-ink transition hover:bg-white">
-            Find your stay
-          </Link>
-        </div>
-      </section>
-    </>
+      </div>
+    </div>
   );
 }
-

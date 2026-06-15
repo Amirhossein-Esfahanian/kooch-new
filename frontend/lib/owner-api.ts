@@ -57,6 +57,20 @@ export interface RoomResponse {
   isActive: boolean;
 }
 
+export interface PropertyImageResponse {
+  id: number;
+  propertyId: number;
+  roomTypeId: number | null;
+  roomId: number | null;
+  url: string;
+  altText: string | null;
+  caption: string | null;
+  tag: string | null;
+  sortOrder: number;
+  isCover: boolean;
+  isGallery: boolean;
+}
+
 export type AvailabilityStatus = "Available" | "Unavailable" | "OnRequest";
 
 export interface AvailabilityResponse {

@@ -23,6 +23,8 @@ public static class SeedData
         await SeedMealPlansAsync(dbContext);
 
         await dbContext.SaveChangesAsync();
+        await SeedDemoPropertiesAsync(dbContext);
+        await dbContext.SaveChangesAsync();
     }
 
     private static async Task SeedAdminAsync(KoochDbContext dbContext)
@@ -292,5 +294,138 @@ public static class SeedData
             .ToListAsync();
 
         dbContext.MealPlans.AddRange(items.Where(item => !existingSlugs.Contains(item.Slug)));
+    }
+
+    private static async Task SeedDemoPropertiesAsync(KoochDbContext dbContext)
+    {
+        if (await dbContext.Properties.IgnoreQueryFilters().AnyAsync())
+        {
+            return;
+        }
+
+        var ownerId = await dbContext.Users
+            .Where(user => user.Email == AdminEmail)
+            .Select(user => user.Id)
+            .SingleAsync();
+        var destinationId = await dbContext.Destinations
+            .Where(destination => destination.Slug == "kashan")
+            .Select(destination => destination.Id)
+            .SingleAsync();
+
+        var courtyardHouse = new Property
+        {
+            OwnerId = ownerId,
+            DestinationId = destinationId,
+            Name = "Kashan Courtyard House",
+            Slug = "kashan-courtyard-house",
+            Description = "A simple traditional stay around a quiet central courtyard in Kashan.",
+            Address = "Historic Center, Kashan",
+            City = "Kashan",
+            Country = "Iran",
+            Status = PropertyStatus.Approved,
+            Type = PropertyType.TraditionalHouse,
+            InventoryMode = InventoryMode.NamedRooms,
+            CheckInTime = new TimeOnly(14, 0),
+            CheckOutTime = new TimeOnly(11, 0)
+        };
+        var gardenHotel = new Property
+        {
+            OwnerId = ownerId,
+            DestinationId = destinationId,
+            Name = "Fin Garden Boutique Stay",
+            Slug = "fin-garden-boutique-stay",
+            Description = "A small Kashan stay with straightforward room-type inventory for demo purposes.",
+            Address = "Fin Road, Kashan",
+            City = "Kashan",
+            Country = "Iran",
+            Status = PropertyStatus.Approved,
+            Type = PropertyType.BoutiqueHotel,
+            InventoryMode = InventoryMode.TypeBasedInventory,
+            CheckInTime = new TimeOnly(14, 0),
+            CheckOutTime = new TimeOnly(11, 0)
+        };
+
+        dbContext.Properties.AddRange(courtyardHouse, gardenHotel);
+        await dbContext.SaveChangesAsync();
+
+        var shahAbbasi = new RoomType
+        {
+            PropertyId = courtyardHouse.Id,
+            Name = "Shah Abbasi",
+            Slug = "shah-abbasi",
+            Description = "A unique named room facing the courtyard.",
+            MaxAdults = 2,
+            MaxChildren = 1,
+            TotalInventory = 1,
+            InventoryMode = InventoryMode.NamedRooms,
+            BasePrice = 3200000m
+        };
+        var toranj = new RoomType
+        {
+            PropertyId = courtyardHouse.Id,
+            Name = "Toranj",
+            Slug = "toranj",
+            Description = "A compact traditional named room.",
+            MaxAdults = 2,
+            MaxChildren = 0,
+            TotalInventory = 1,
+            InventoryMode = InventoryMode.NamedRooms,
+            BasePrice = 2800000m
+        };
+        var doubleRoom = new RoomType
+        {
+            PropertyId = gardenHotel.Id,
+            Name = "Double Room",
+            Slug = "double-room",
+            Description = "A standard double room sold from shared type inventory.",
+            MaxAdults = 2,
+            MaxChildren = 1,
+            TotalInventory = 4,
+            InventoryMode = InventoryMode.TypeBasedInventory,
+            BasePrice = 2400000m
+        };
+
+        dbContext.RoomTypes.AddRange(shahAbbasi, toranj, doubleRoom);
+        await dbContext.SaveChangesAsync();
+
+        dbContext.Rooms.AddRange(
+            new Room { RoomTypeId = shahAbbasi.Id, Name = "Shah Abbasi", Description = "Courtyard-facing named room." },
+            new Room { RoomTypeId = toranj.Id, Name = "Toranj", Description = "Traditional named room." });
+        dbContext.PropertyImages.AddRange(
+            new PropertyImage
+            {
+                PropertyId = courtyardHouse.Id,
+                Url = "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1400&q=80",
+                AltText = "Traditional courtyard house",
+                IsCover = true,
+                IsGallery = true,
+                SortOrder = 1
+            },
+            new PropertyImage
+            {
+                PropertyId = courtyardHouse.Id,
+                Url = "https://images.unsplash.com/photo-1600566753190-17f0baa2a6c3?auto=format&fit=crop&w=1400&q=80",
+                AltText = "Traditional room interior",
+                IsGallery = true,
+                SortOrder = 2
+            },
+            new PropertyImage
+            {
+                PropertyId = gardenHotel.Id,
+                Url = "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1400&q=80",
+                AltText = "Boutique hotel exterior",
+                IsCover = true,
+                IsGallery = true,
+                SortOrder = 1
+            });
+        dbContext.Availabilities.Add(new Availability
+        {
+            RoomTypeId = shahAbbasi.Id,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow.Date),
+            Price = 3000000m,
+            OriginalPrice = 3200000m,
+            AvailableCount = 1,
+            Status = AvailabilityStatus.Available
+        });
     }
 }

@@ -165,21 +165,21 @@ public class PropertyService(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<PropertyResponse>> GetPublicPropertiesAsync(
+    public async Task<IReadOnlyList<PublicPropertyResponse>> GetPublicPropertiesAsync(
         CancellationToken cancellationToken = default)
     {
-        return await Project(dbContext.Properties.AsNoTracking()
+        return await ProjectPublic(dbContext.Properties.AsNoTracking()
                 .Where(property => property.Status == PropertyStatus.Approved)
                 .OrderBy(property => property.Name))
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<PropertyResponse?> GetPublicPropertyBySlugAsync(
+    public async Task<PublicPropertyResponse?> GetPublicPropertyBySlugAsync(
         string slug,
         CancellationToken cancellationToken = default)
     {
         var normalizedSlug = NormalizeSlug(slug);
-        return await Project(dbContext.Properties.AsNoTracking()
+        return await ProjectPublic(dbContext.Properties.AsNoTracking()
                 .Where(property => property.Status == PropertyStatus.Approved && property.Slug == normalizedSlug))
             .SingleOrDefaultAsync(cancellationToken);
     }
@@ -286,6 +286,104 @@ public class PropertyService(
             HasElevator = property.HasElevator,
             
         });
+
+    private static IQueryable<PublicPropertyResponse> ProjectPublic(IQueryable<Property> query)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        return query.Select(property => new PublicPropertyResponse
+        {
+            Id = property.Id,
+            Name = property.Name,
+            Slug = property.Slug,
+            City = property.City,
+            Address = property.Address,
+            Description = property.Description,
+            Status = property.Status,
+            PropertyType = property.Type,
+            InventoryMode = property.InventoryMode,
+            CoverImageUrl = property.Images
+                .OrderByDescending(image => image.IsCover)
+                .ThenBy(image => image.SortOrder)
+                .Select(image => image.Url)
+                .FirstOrDefault(),
+            StartingPrice = property.RoomTypes
+                .Where(roomType => roomType.IsActive)
+                .Select(roomType => roomType.Availability
+                    .Where(availability => availability.Date >= today &&
+                                           availability.Status != AvailabilityStatus.Unavailable)
+                    .OrderBy(availability => availability.Date)
+                    .Select(availability => (decimal?)availability.Price)
+                    .FirstOrDefault() ?? roomType.BasePrice)
+                .Where(price => price != null)
+                .Min(),
+            ImageUrls = property.Images
+                .Where(image => image.IsGallery || image.IsCover)
+                .OrderByDescending(image => image.IsCover)
+                .ThenBy(image => image.SortOrder)
+                .Select(image => image.Url)
+                .ToList(),
+            Amenities = property.PropertyAmenities
+                .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
+                .ThenBy(join => join.Amenity.SortOrder)
+                .Select(join => new PublicAmenityResponse
+                {
+                    Id = join.AmenityId,
+                    Name = join.Amenity.Name,
+                    Category = join.Amenity.AmenityCategory.Name
+                })
+                .ToList(),
+            NearbyPlaces = property.NearbyPlaces
+                .Where(place => place.IsActive)
+                .OrderBy(place => place.Category)
+                .ThenBy(place => place.Title)
+                .Select(place => new PublicNearbyPlaceResponse
+                {
+                    Id = place.Id,
+                    Title = place.Title,
+                    Category = place.Category,
+                    DistanceInMeters = place.DistanceInMeters,
+                    WalkingMinutes = place.WalkingMinutes,
+                    DrivingMinutes = place.DrivingMinutes,
+                    Description = place.Description
+                })
+                .ToList(),
+            RoomTypes = property.RoomTypes
+                .Where(roomType => roomType.IsActive)
+                .OrderBy(roomType => roomType.Name)
+                .Select(roomType => new PublicRoomTypeResponse
+                {
+                    Id = roomType.Id,
+                    Name = roomType.Name,
+                    Description = roomType.Description,
+                    BasePrice = roomType.BasePrice,
+                    AvailabilityPrice = roomType.Availability
+                        .Where(availability => availability.Date >= today &&
+                                               availability.Status != AvailabilityStatus.Unavailable)
+                        .OrderBy(availability => availability.Date)
+                        .Select(availability => (decimal?)availability.Price)
+                        .FirstOrDefault(),
+                    DisplayPrice = roomType.Availability
+                        .Where(availability => availability.Date >= today &&
+                                               availability.Status != AvailabilityStatus.Unavailable)
+                        .OrderBy(availability => availability.Date)
+                        .Select(availability => (decimal?)availability.Price)
+                        .FirstOrDefault() ?? roomType.BasePrice,
+                    InventoryMode = roomType.InventoryMode,
+                    TotalInventory = roomType.TotalInventory,
+                    NamedRooms = roomType.Rooms
+                        .Where(room => room.IsActive)
+                        .OrderBy(room => room.Name)
+                        .Select(room => new PublicRoomResponse
+                        {
+                            Id = room.Id,
+                            Name = room.Name,
+                            Description = room.Description
+                        })
+                        .ToList()
+                })
+                .ToList()
+        });
+    }
 
     private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant();
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
