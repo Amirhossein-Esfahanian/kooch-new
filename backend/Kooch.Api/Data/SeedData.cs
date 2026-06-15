@@ -269,7 +269,8 @@ public static class SeedData
             new BedType { Name = "Queen Bed", Slug = "queen-bed" },
             new BedType { Name = "King Bed", Slug = "king-bed" },
             new BedType { Name = "Twin Beds", Slug = "twin-beds" },
-            new BedType { Name = "Sofa Bed", Slug = "sofa-bed" }
+            new BedType { Name = "Sofa Bed", Slug = "sofa-bed" },
+            new BedType { Name = "Traditional Floor Bedding", Slug = "traditional-floor-bedding" }
         };
 
         var existingSlugs = await dbContext.BedTypes.IgnoreQueryFilters()

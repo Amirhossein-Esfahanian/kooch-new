@@ -11,10 +11,13 @@ public class UpdatePropertyRequest
     [Required, MaxLength(200)]
     public string Name { get; set; } = string.Empty;
 
-    [Required, MaxLength(220)]
-    public string Slug { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? EnglishName { get; set; }
 
-    [Required, MaxLength(4000)]
+    [MaxLength(220)]
+    public string? Slug { get; set; }
+
+    [MaxLength(4000)]
     public string Description { get; set; } = string.Empty;
 
     [MaxLength(200)]

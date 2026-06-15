@@ -30,7 +30,8 @@ public class PropertyService(
         }
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
-        var slug = NormalizeSlug(request.Slug);
+        var englishName = CleanOptional(request.EnglishName);
+        var slug = EnglishSlugGenerator.Create(englishName, "property");
         await EnsureUniqueSlugAsync(slug, null, cancellationToken);
 
         var property = new Property
@@ -38,6 +39,7 @@ public class PropertyService(
             OwnerId = ownerId,
             DestinationId = request.DestinationId,
             Name = request.Name.Trim(),
+            EnglishName = englishName,
             Slug = slug,
             Description = request.Description.Trim(),
             SeoTitle = CleanOptional(request.SeoTitle),
@@ -75,11 +77,15 @@ public class PropertyService(
         }
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
-        var slug = NormalizeSlug(request.Slug);
+        var englishName = request.EnglishName is null
+            ? property.EnglishName
+            : CleanOptional(request.EnglishName);
+        var slug = EnglishSlugGenerator.Create(englishName, "property", property.Slug);
         await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
 
         property.DestinationId = request.DestinationId;
         property.Name = request.Name.Trim();
+        property.EnglishName = englishName;
         property.Slug = slug;
         property.Description = request.Description.Trim();
         property.SeoTitle = CleanOptional(request.SeoTitle);
@@ -178,7 +184,7 @@ public class PropertyService(
         string slug,
         CancellationToken cancellationToken = default)
     {
-        var normalizedSlug = NormalizeSlug(slug);
+        var normalizedSlug = EnglishSlugGenerator.NormalizeLookup(slug);
         return await ProjectPublic(dbContext.Properties.AsNoTracking()
                 .Where(property => property.Status == PropertyStatus.Approved && property.Slug == normalizedSlug))
             .SingleOrDefaultAsync(cancellationToken);
@@ -265,6 +271,7 @@ public class PropertyService(
             DestinationId = property.DestinationId,
             DestinationName = property.Destination.Name,
             Name = property.Name,
+            EnglishName = property.EnglishName,
             Slug = property.Slug,
             Description = property.Description,
             SeoTitle = property.SeoTitle,
@@ -294,13 +301,23 @@ public class PropertyService(
         {
             Id = property.Id,
             Name = property.Name,
+            EnglishName = property.EnglishName,
             Slug = property.Slug,
             City = property.City,
+            Country = property.Country,
             Address = property.Address,
             Description = property.Description,
             Status = property.Status,
             PropertyType = property.Type,
             InventoryMode = property.InventoryMode,
+            CheckInTime = property.CheckInTime,
+            CheckOutTime = property.CheckOutTime,
+            Latitude = property.Latitude,
+            Longitude = property.Longitude,
+            IsInstantBooking = property.RoomTypes.Any(roomType => roomType.Availability.Any(
+                availability => availability.Date >= today &&
+                                availability.Status == AvailabilityStatus.Available &&
+                                availability.AvailableCount > 0)),
             CoverImageUrl = property.Images
                 .OrderByDescending(image => image.IsCover)
                 .ThenBy(image => image.SortOrder)
@@ -316,11 +333,29 @@ public class PropertyService(
                     .FirstOrDefault() ?? roomType.BasePrice)
                 .Where(price => price != null)
                 .Min(),
-            ImageUrls = property.Images
+            Images = property.Images
                 .Where(image => image.IsGallery || image.IsCover)
                 .OrderByDescending(image => image.IsCover)
                 .ThenBy(image => image.SortOrder)
-                .Select(image => image.Url)
+                .Select(image => new PublicImageResponse
+                {
+                    Id = image.Id,
+                    Url = image.Url,
+                    AltText = image.AltText,
+                    Caption = image.Caption,
+                    Tag = image.Tag,
+                    IsCover = image.IsCover
+                })
+                .ToList(),
+            DescriptionSections = property.DescriptionSections
+                .OrderBy(section => section.SortOrder)
+                .Select(section => new PublicDescriptionSectionResponse
+                {
+                    SectionType = section.SectionType,
+                    Title = section.Title,
+                    Content = section.Content,
+                    SortOrder = section.SortOrder
+                })
                 .ToList(),
             Amenities = property.PropertyAmenities
                 .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
@@ -354,6 +389,7 @@ public class PropertyService(
                 {
                     Id = roomType.Id,
                     Name = roomType.Name,
+                    EnglishName = roomType.EnglishName,
                     Description = roomType.Description,
                     BasePrice = roomType.BasePrice,
                     AvailabilityPrice = roomType.Availability
@@ -370,6 +406,33 @@ public class PropertyService(
                         .FirstOrDefault() ?? roomType.BasePrice,
                     InventoryMode = roomType.InventoryMode,
                     TotalInventory = roomType.TotalInventory,
+                    MaxAdults = roomType.MaxAdults,
+                    MaxChildren = roomType.MaxChildren,
+                    BedInformation = roomType.BedConfigurations
+                        .OrderBy(configuration => configuration.BedType.Name)
+                        .Select(configuration => configuration.Quantity + " x " + configuration.BedType.Name)
+                        .ToList(),
+                    Images = roomType.PropertyImages
+                        .OrderBy(image => image.SortOrder)
+                        .Select(image => new PublicImageResponse
+                        {
+                            Id = image.Id,
+                            Url = image.Url,
+                            AltText = image.AltText,
+                            Caption = image.Caption,
+                            Tag = image.Tag,
+                            IsCover = image.IsCover
+                        })
+                        .ToList(),
+                    Amenities = roomType.RoomTypeAmenities
+                        .OrderBy(join => join.Amenity.SortOrder)
+                        .Select(join => new PublicAmenityResponse
+                        {
+                            Id = join.AmenityId,
+                            Name = join.Amenity.Name,
+                            Category = join.Amenity.AmenityCategory.Name
+                        })
+                        .ToList(),
                     NamedRooms = roomType.Rooms
                         .Where(room => room.IsActive)
                         .OrderBy(room => room.Name)
@@ -377,7 +440,25 @@ public class PropertyService(
                         {
                             Id = room.Id,
                             Name = room.Name,
-                            Description = room.Description
+                            EnglishName = room.EnglishName,
+                            Description = room.Description,
+                            Notes = room.Notes,
+                            FloorNumber = room.FloorNumber,
+                            StairCount = room.StairCount,
+                            HasWindow = room.HasWindow,
+                            HasPrivateBathroom = room.HasPrivateBathroom,
+                            Images = room.PropertyImages
+                                .OrderBy(image => image.SortOrder)
+                                .Select(image => new PublicImageResponse
+                                {
+                                    Id = image.Id,
+                                    Url = image.Url,
+                                    AltText = image.AltText,
+                                    Caption = image.Caption,
+                                    Tag = image.Tag,
+                                    IsCover = image.IsCover
+                                })
+                                .ToList()
                         })
                         .ToList()
                 })
@@ -385,6 +466,5 @@ public class PropertyService(
         });
     }
 
-    private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant();
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

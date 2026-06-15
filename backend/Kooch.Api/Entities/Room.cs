@@ -4,6 +4,7 @@ public class Room : BaseEntity
 {
     public int RoomTypeId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
     public string? Description { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }

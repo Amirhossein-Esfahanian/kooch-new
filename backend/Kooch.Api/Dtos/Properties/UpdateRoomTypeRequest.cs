@@ -8,8 +8,11 @@ public class UpdateRoomTypeRequest
     [Required, MaxLength(150)]
     public string Name { get; set; } = string.Empty;
 
-    [Required, MaxLength(170)]
-    public string Slug { get; set; } = string.Empty;
+    [MaxLength(150)]
+    public string? EnglishName { get; set; }
+
+    [MaxLength(170)]
+    public string? Slug { get; set; }
 
     [Required, MaxLength(3000)]
     public string Description { get; set; } = string.Empty;
@@ -29,4 +32,6 @@ public class UpdateRoomTypeRequest
     public decimal? BasePrice { get; set; }
 
     public bool IsActive { get; set; } = true;
+
+    public IReadOnlyCollection<RoomTypeBedRequest> BedConfigurations { get; set; } = [];
 }

@@ -164,3 +164,14 @@ price, the public API uses its `BasePrice` as the displayed fallback.
 
 The admin page also supports rejecting and suspending properties. Owner image deletion is soft;
 deleted records remain in the database but no longer appear in owner or public queries.
+
+### Public property search
+
+1. Open `/` and enter a city, dates, and guest count in the landing-page search form.
+2. Search navigates to `/properties` with query parameters such as
+   `/properties?city=Kashan&checkIn=2026-06-24&checkOut=2026-06-25&adults=2`.
+3. The results page currently shows every approved property. Search dates and sidebar filters are
+   visual preparation for later availability filtering.
+4. Use the left filter panel on desktop or **Show filters** on mobile to preview property type,
+   amenity, booking type, nearby-place, and price controls.
+5. Select **View property** to open `/properties/{slug}`.

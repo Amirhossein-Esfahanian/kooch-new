@@ -13,7 +13,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="fa" dir="rtl">
       <body className="min-h-screen antialiased">
         <div className="flex min-h-screen flex-col">
           <Header />
@@ -24,4 +24,3 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     </html>
   );
 }
-

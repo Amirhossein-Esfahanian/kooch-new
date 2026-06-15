@@ -34,6 +34,13 @@ public class RoomService(
         {
             RoomTypeId = roomTypeId,
             Name = name,
+            EnglishName = CleanOptional(request.EnglishName),
+            Description = CleanOptional(request.Description),
+            Notes = CleanOptional(request.Notes),
+            FloorNumber = request.FloorNumber,
+            StairCount = request.StairCount,
+            HasWindow = request.HasWindow,
+            HasPrivateBathroom = request.HasPrivateBathroom,
             IsActive = true
         };
 
@@ -62,6 +69,13 @@ public class RoomService(
                 Id = room.Id,
                 RoomTypeId = room.RoomTypeId,
                 Name = room.Name,
+                EnglishName = room.EnglishName,
+                Description = room.Description,
+                Notes = room.Notes,
+                FloorNumber = room.FloorNumber,
+                StairCount = room.StairCount,
+                HasWindow = room.HasWindow,
+                HasPrivateBathroom = room.HasPrivateBathroom,
                 IsActive = room.IsActive
             })
             .ToListAsync(cancellationToken);
@@ -77,6 +91,15 @@ public class RoomService(
         Id = room.Id,
         RoomTypeId = room.RoomTypeId,
         Name = room.Name,
+        EnglishName = room.EnglishName,
+        Description = room.Description,
+        Notes = room.Notes,
+        FloorNumber = room.FloorNumber,
+        StairCount = room.StairCount,
+        HasWindow = room.HasWindow,
+        HasPrivateBathroom = room.HasPrivateBathroom,
         IsActive = room.IsActive
     };
+
+    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

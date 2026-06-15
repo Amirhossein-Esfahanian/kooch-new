@@ -2,25 +2,21 @@ import Link from "next/link";
 
 export function Footer() {
   return (
-    <footer id="footer" className="bg-ink text-cream">
-      <div className="mx-auto grid max-w-7xl gap-10 px-5 py-12 sm:px-8 md:grid-cols-2 md:items-end">
+    <footer id="footer" className="border-t border-slate-200 bg-white text-slate-700">
+      <div className="mx-auto flex max-w-7xl flex-col gap-6 px-5 py-10 sm:px-8 md:flex-row md:items-center md:justify-between">
         <div>
-          <Link href="/" className="text-2xl font-black tracking-tight">
-            kooch<span className="text-coral">.</span>
-          </Link>
-          <p className="mt-4 max-w-md text-sm leading-6 text-cream/65">
-            A simple place to discover characterful stays and plan a little time away.
-          </p>
+          <Link href="/" className="text-2xl font-black tracking-tight text-blue-700">کوچ</Link>
+          <p className="mt-2 text-sm text-slate-500">اقامتگاه‌های سنتی و میزبانی محلی در کاشان</p>
         </div>
-        <div className="flex gap-6 text-sm font-semibold md:justify-end">
-          <Link href="/">Home</Link>
-          <Link href="/stays">Stays</Link>
+        <div className="flex flex-wrap gap-6 text-sm font-semibold">
+          <a href="#footer">درباره ما</a>
+          <a href="mailto:hello@kooch.local">تماس</a>
+          <Link href="/owner/properties/new">میزبان شوید</Link>
         </div>
       </div>
-      <div className="border-t border-cream/10 px-5 py-5 text-center text-xs text-cream/45">
-        &copy; {new Date().getFullYear()} Kooch. Built for the journey ahead.
+      <div className="border-t border-slate-100 px-5 py-4 text-center text-xs text-slate-400">
+        &copy; {new Date().getFullYear()} کوچ
       </div>
     </footer>
   );
 }
-

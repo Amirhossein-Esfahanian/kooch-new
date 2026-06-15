@@ -6,16 +6,24 @@ public class PublicPropertyResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
     public string Slug { get; set; } = string.Empty;
     public string City { get; set; } = string.Empty;
+    public string Country { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? CoverImageUrl { get; set; }
     public PropertyStatus Status { get; set; }
     public PropertyType PropertyType { get; set; }
     public InventoryMode InventoryMode { get; set; }
+    public TimeOnly? CheckInTime { get; set; }
+    public TimeOnly? CheckOutTime { get; set; }
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
+    public bool IsInstantBooking { get; set; }
     public decimal? StartingPrice { get; set; }
-    public IReadOnlyList<string> ImageUrls { get; set; } = [];
+    public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
+    public IReadOnlyList<PublicDescriptionSectionResponse> DescriptionSections { get; set; } = [];
     public IReadOnlyList<PublicAmenityResponse> Amenities { get; set; } = [];
     public IReadOnlyList<PublicNearbyPlaceResponse> NearbyPlaces { get; set; } = [];
     public IReadOnlyList<PublicRoomTypeResponse> RoomTypes { get; set; } = [];
@@ -25,12 +33,18 @@ public class PublicRoomTypeResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
     public string Description { get; set; } = string.Empty;
     public decimal? BasePrice { get; set; }
     public decimal? AvailabilityPrice { get; set; }
     public decimal? DisplayPrice { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public int TotalInventory { get; set; }
+    public int MaxAdults { get; set; }
+    public int MaxChildren { get; set; }
+    public IReadOnlyList<string> BedInformation { get; set; } = [];
+    public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
+    public IReadOnlyList<PublicAmenityResponse> Amenities { get; set; } = [];
     public IReadOnlyList<PublicRoomResponse> NamedRooms { get; set; } = [];
 }
 
@@ -38,7 +52,32 @@ public class PublicRoomResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
     public string? Description { get; set; }
+    public string? Notes { get; set; }
+    public int? FloorNumber { get; set; }
+    public int? StairCount { get; set; }
+    public bool? HasWindow { get; set; }
+    public bool? HasPrivateBathroom { get; set; }
+    public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
+}
+
+public class PublicImageResponse
+{
+    public int Id { get; set; }
+    public string Url { get; set; } = string.Empty;
+    public string? AltText { get; set; }
+    public string? Caption { get; set; }
+    public string? Tag { get; set; }
+    public bool IsCover { get; set; }
+}
+
+public class PublicDescriptionSectionResponse
+{
+    public PropertyDescriptionSectionType SectionType { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Content { get; set; } = string.Empty;
+    public int SortOrder { get; set; }
 }
 
 public class PublicAmenityResponse

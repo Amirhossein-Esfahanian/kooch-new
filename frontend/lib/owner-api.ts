@@ -19,6 +19,7 @@ export interface PropertyResponse {
   destinationId: number;
   destinationName: string;
   name: string;
+  englishName: string | null;
   slug: string;
   description: string;
   address: string;
@@ -40,6 +41,7 @@ export interface RoomTypeResponse {
   id: number;
   propertyId: number;
   name: string;
+  englishName: string | null;
   slug: string;
   description: string;
   maxAdults: number;
@@ -48,12 +50,71 @@ export interface RoomTypeResponse {
   inventoryMode: InventoryMode;
   basePrice: number | null;
   isActive: boolean;
+  bedConfigurations: RoomTypeBedResponse[];
+}
+
+export interface BedTypeResponse {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export function bedTypeLabel(slug: string, fallback: string) {
+  const labels: Record<string, string> = {
+    "single-bed": "تخت یک‌نفره",
+    "double-bed": "تخت دابل",
+    "queen-bed": "تخت کویین",
+    "king-bed": "تخت کینگ",
+    "twin-beds": "تخت تویین",
+    "sofa-bed": "مبل تخت‌خواب‌شو",
+    "traditional-floor-bedding": "رختخواب سنتی",
+  };
+  return labels[slug] ?? fallback;
+}
+
+export interface RoomTypeBedResponse {
+  bedTypeId: number;
+  bedTypeName: string;
+  bedTypeSlug: string;
+  quantity: number;
 }
 
 export interface RoomResponse {
   id: number;
   roomTypeId: number;
   name: string;
+  englishName: string | null;
+  description: string | null;
+  notes: string | null;
+  floorNumber: number | null;
+  stairCount: number | null;
+  hasWindow: boolean | null;
+  hasPrivateBathroom: boolean | null;
+  isActive: boolean;
+}
+
+export interface PropertyAmenityResponse {
+  amenityId: number;
+  name: string;
+  amenityCategoryId: number;
+  categoryName: string;
+}
+
+export type NearbyPlaceCategory = "Attraction" | "Transport" | "Landmark" | "Market" | "Other";
+
+export interface NearbyPlaceResponse {
+  id: number;
+  propertyId: number;
+  title: string;
+  category: NearbyPlaceCategory;
+  distanceInMeters: number | null;
+  walkingMinutes: number | null;
+  drivingMinutes: number | null;
+  description: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  isDefault: boolean;
+  isCustom: boolean;
   isActive: boolean;
 }
 
@@ -131,6 +192,7 @@ export interface AmenityResponse {
 
 export interface PropertyFormValues {
   name: string;
+  englishName: string;
   description: string;
   address: string;
   city: string;
@@ -216,7 +278,6 @@ export function toPropertyPayload(
   return {
     ...values,
     destinationId: destinationId ?? resolveDestinationId(values.city),
-    slug: createSlug(values.name),
     country: "Iran",
     checkInTime: values.checkInTime || null,
     checkOutTime: values.checkOutTime || null,

@@ -3,34 +3,69 @@ export type PublicInventoryMode = "NamedRooms" | "TypeBasedInventory";
 export interface PublicRoom {
   id: number;
   name: string;
+  englishName: string | null;
   description: string | null;
+  notes: string | null;
+  floorNumber: number | null;
+  stairCount: number | null;
+  hasWindow: boolean | null;
+  hasPrivateBathroom: boolean | null;
+  images: PublicImage[];
+}
+
+export interface PublicImage {
+  id: number;
+  url: string;
+  altText: string | null;
+  caption: string | null;
+  tag: string | null;
+  isCover: boolean;
 }
 
 export interface PublicRoomType {
   id: number;
   name: string;
+  englishName: string | null;
   description: string;
   basePrice: number | null;
   availabilityPrice: number | null;
   displayPrice: number | null;
   inventoryMode: PublicInventoryMode;
   totalInventory: number;
+  maxAdults: number;
+  maxChildren: number;
+  bedInformation: string[];
+  images: PublicImage[];
+  amenities: { id: number; name: string; category: string }[];
   namedRooms: PublicRoom[];
 }
 
 export interface PublicProperty {
   id: number;
   name: string;
+  englishName: string | null;
   slug: string;
   city: string;
+  country: string;
   address: string;
   description: string;
   coverImageUrl: string | null;
   status: "Approved";
   propertyType: string;
   inventoryMode: PublicInventoryMode;
+  checkInTime: string | null;
+  checkOutTime: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  isInstantBooking: boolean;
   startingPrice: number | null;
-  imageUrls: string[];
+  images: PublicImage[];
+  descriptionSections: {
+    sectionType: "PropertyIntroduction" | "CommonAreas" | "SharedAmenities" | "ImportantNotes";
+    title: string;
+    content: string;
+    sortOrder: number;
+  }[];
   amenities: { id: number; name: string; category: string }[];
   nearbyPlaces: {
     id: number;
@@ -53,5 +88,5 @@ export async function fetchPublicApi<T>(path: string): Promise<T> {
 }
 
 export function formatPrice(price: number | null) {
-  return price === null ? "Price unavailable" : `${new Intl.NumberFormat("en-US").format(price)} / night`;
+  return price === null ? "قیمت ثبت نشده" : `${new Intl.NumberFormat("fa-IR").format(price)} تومان / شب`;
 }

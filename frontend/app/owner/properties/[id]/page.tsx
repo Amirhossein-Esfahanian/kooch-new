@@ -8,7 +8,7 @@ import {
   AvailabilityResponse,
   AvailabilityStatus,
   apiRequest,
-  createSlug,
+  BedTypeResponse,
   getToken,
   InventoryMode,
   PropertyCompletionResponse,
@@ -24,11 +24,18 @@ import {
 
 interface AccommodationFormValues {
   name: string;
+  englishName: string;
   description: string;
   maxAdults: number;
   maxChildren: number;
   totalInventory: number;
   basePrice: string;
+  bedConfigurations: { bedTypeId: number; quantity: number }[];
+  notes: string;
+  floorNumber: number | null;
+  stairCount: number | null;
+  hasWindow: boolean | null;
+  hasPrivateBathroom: boolean | null;
 }
 
 interface AvailabilityFormValues {
@@ -90,11 +97,18 @@ function dateFromToday(days: number) {
 
 const emptyAccommodation: AccommodationFormValues = {
   name: "",
+  englishName: "",
   description: "",
   maxAdults: 2,
   maxChildren: 0,
   totalInventory: 1,
   basePrice: "",
+  bedConfigurations: [],
+  notes: "",
+  floorNumber: null,
+  stairCount: null,
+  hasWindow: null,
+  hasPrivateBathroom: null,
 };
 
 const initialAvailability: AvailabilityFormValues = {
@@ -125,6 +139,7 @@ const inputClass = "w-full rounded-lg border border-ink/20 bg-white px-3 py-2";
 function propertyToForm(property: PropertyResponse): PropertyFormValues {
   return {
     name: property.name,
+    englishName: property.englishName ?? "",
     description: property.description,
     address: property.address,
     city: property.city,
@@ -150,6 +165,8 @@ export default function ManagePropertyPage() {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [rooms, setRooms] = useState<Record<number, RoomResponse[]>>({});
   const [accommodation, setAccommodation] = useState(emptyAccommodation);
+  const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
+  const [editingRoomTypeId, setEditingRoomTypeId] = useState<number | null>(null);
   const [availability, setAvailability] = useState(initialAvailability);
   const [availabilityRows, setAvailabilityRows] = useState<
     AvailabilityResponse[]
@@ -206,6 +223,7 @@ export default function ManagePropertyPage() {
       completionResult,
       descriptionResult,
       imageResult,
+      bedTypeResult,
     ] = await Promise.all([
       apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`),
       apiRequest<RoomTypeResponse[]>(
@@ -218,6 +236,7 @@ export default function ManagePropertyPage() {
         `/owner/properties/${propertyId}/descriptions`,
       ),
       apiRequest<PropertyImageResponse[]>(`/owner/properties/${propertyId}/images`),
+      apiRequest<BedTypeResponse[]>("/bed-types"),
     ]);
     setProperty(propertyResult);
     setPropertyValues(propertyToForm(propertyResult));
@@ -225,6 +244,7 @@ export default function ManagePropertyPage() {
     setCompletion(completionResult);
     setDescriptionSections(descriptionResult);
     setImages(imageResult);
+    setBedTypes(bedTypeResult);
     setDescriptionDrafts((current) => ({
       ...current,
       ...Object.fromEntries(
@@ -334,12 +354,12 @@ export default function ManagePropertyPage() {
     try {
       const namedMode = property.inventoryMode === "NamedRooms";
       const roomType = await apiRequest<RoomTypeResponse>(
-        `/owner/properties/${propertyId}/room-types`,
+        editingRoomTypeId ? `/owner/room-types/${editingRoomTypeId}` : `/owner/properties/${propertyId}/room-types`,
         {
-          method: "POST",
+          method: editingRoomTypeId ? "PUT" : "POST",
           body: JSON.stringify({
             name: accommodation.name,
-            slug: createSlug(accommodation.name),
+            englishName: accommodation.englishName,
             description:
               accommodation.description ||
               `${accommodation.name} at ${property.name}`,
@@ -351,23 +371,26 @@ export default function ManagePropertyPage() {
               accommodation.basePrice === ""
                 ? null
                 : Number(accommodation.basePrice),
+            isActive: true,
+            bedConfigurations: accommodation.bedConfigurations,
           }),
         },
       );
 
-      if (namedMode) {
+      if (namedMode && !editingRoomTypeId) {
         await apiRequest<RoomResponse>(
           `/owner/room-types/${roomType.id}/rooms`,
           {
             method: "POST",
-            body: JSON.stringify({ name: accommodation.name }),
+            body: JSON.stringify({ name: accommodation.name, englishName: accommodation.englishName, description: accommodation.description || null, notes: accommodation.notes || null, floorNumber: accommodation.floorNumber, stairCount: accommodation.stairCount, hasWindow: accommodation.hasWindow, hasPrivateBathroom: accommodation.hasPrivateBathroom }),
           },
         );
       }
 
       setAccommodation(emptyAccommodation);
+      setEditingRoomTypeId(null);
       await load();
-      setMessage(namedMode ? "Named room added." : "Room type added.");
+      setMessage(editingRoomTypeId ? "نوع اتاق ویرایش شد." : namedMode ? "اتاق نام‌دار افزوده شد." : "نوع اتاق افزوده شد.");
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -822,7 +845,7 @@ export default function ManagePropertyPage() {
           {activeTab === "Rooms" && (
             <section>
               <h2 className="mb-1 text-2xl font-bold">
-                {namedMode ? "Add named room" : "Add room type"}
+                {editingRoomTypeId ? "ویرایش نوع اتاق" : namedMode ? "افزودن اتاق نام‌دار" : "افزودن نوع اتاق"}
               </h2>
               <p className="mb-3 text-sm text-ink/60">
                 {namedMode
@@ -834,7 +857,7 @@ export default function ManagePropertyPage() {
                 onSubmit={addAccommodation}
               >
                 <label className="grid gap-1 text-sm font-semibold">
-                  {namedMode ? "Room name" : "Room type name"}
+                  {namedMode ? "نام فارسی اتاق" : "نام فارسی نوع اتاق"}
                   <input
                     className={inputClass}
                     onChange={(event) =>
@@ -848,7 +871,11 @@ export default function ManagePropertyPage() {
                   />
                 </label>
                 <label className="grid gap-1 text-sm font-semibold">
-                  Description
+                  {namedMode ? "نام انگلیسی اتاق" : "نام انگلیسی نوع اتاق"}
+                  <input className={inputClass} dir="ltr" onChange={(event) => setAccommodation({ ...accommodation, englishName: event.target.value })} required value={accommodation.englishName} />
+                </label>
+                <label className="grid gap-1 text-sm font-semibold">
+                  توضیحات
                   <textarea
                     className={inputClass}
                     onChange={(event) =>
@@ -861,6 +888,7 @@ export default function ManagePropertyPage() {
                     value={accommodation.description}
                   />
                 </label>
+                {namedMode && <div className="grid gap-4 sm:grid-cols-2"><label className="grid gap-1 text-sm font-semibold">یادداشت کوتاه<input className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, notes: event.target.value })} placeholder="ورودی اتاق ۱۸ پله رو به پایین دارد" value={accommodation.notes} /></label><label className="grid gap-1 text-sm font-semibold">طبقه<input className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, floorNumber: event.target.value === "" ? null : Number(event.target.value) })} type="number" value={accommodation.floorNumber ?? ""} /></label><label className="grid gap-1 text-sm font-semibold">تعداد پله<input className={inputClass} min="0" onChange={(event) => setAccommodation({ ...accommodation, stairCount: event.target.value === "" ? null : Number(event.target.value) })} type="number" value={accommodation.stairCount ?? ""} /></label><label className="grid gap-1 text-sm font-semibold">پنجره<select className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, hasWindow: event.target.value === "" ? null : event.target.value === "true" })} value={accommodation.hasWindow == null ? "" : String(accommodation.hasWindow)}><option value="">نامشخص</option><option value="true">دارد</option><option value="false">ندارد</option></select></label><label className="grid gap-1 text-sm font-semibold">سرویس بهداشتی اختصاصی<select className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, hasPrivateBathroom: event.target.value === "" ? null : event.target.value === "true" })} value={accommodation.hasPrivateBathroom == null ? "" : String(accommodation.hasPrivateBathroom)}><option value="">نامشخص</option><option value="true">دارد</option><option value="false">ندارد</option></select></label></div>}
                 <div
                   className={`grid gap-4 ${namedMode ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}
                 >
@@ -931,11 +959,16 @@ export default function ManagePropertyPage() {
                     />
                   </label>
                 </div>
+                <div className="grid gap-3 rounded-lg border border-ink/10 p-4">
+                  <strong>ترکیب تخت‌ها</strong>
+                  {accommodation.bedConfigurations.map((bed, index) => <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]" key={index}><select className={inputClass} onChange={(event) => { const beds = [...accommodation.bedConfigurations]; beds[index] = { ...bed, bedTypeId: Number(event.target.value) }; setAccommodation({ ...accommodation, bedConfigurations: beds }); }} value={bed.bedTypeId}><option value={0}>نوع تخت</option>{bedTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><input className={inputClass} min="1" onChange={(event) => { const beds = [...accommodation.bedConfigurations]; beds[index] = { ...bed, quantity: Number(event.target.value) }; setAccommodation({ ...accommodation, bedConfigurations: beds }); }} type="number" value={bed.quantity} /><button className="text-sm font-bold text-red-700" onClick={() => setAccommodation({ ...accommodation, bedConfigurations: accommodation.bedConfigurations.filter((_, candidate) => candidate !== index) })} type="button">حذف</button></div>)}
+                  <button className="justify-self-start rounded-lg border border-ink/20 px-3 py-2 text-sm font-bold" onClick={() => setAccommodation({ ...accommodation, bedConfigurations: [...accommodation.bedConfigurations, { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 }] })} type="button">افزودن تخت</button>
+                </div>
                 <button
                   className="rounded-lg bg-ink px-4 py-3 font-bold text-white"
                   type="submit"
                 >
-                  {namedMode ? "Add named room" : "Add room type"}
+                  {editingRoomTypeId ? "ذخیره تغییرات" : namedMode ? "افزودن اتاق" : "افزودن نوع اتاق"}
                 </button>
               </form>
             </section>
@@ -944,12 +977,12 @@ export default function ManagePropertyPage() {
           {activeTab === "Rooms" && (
             <section>
               <h2 className="mb-3 text-2xl font-bold">
-                {namedMode ? "Named rooms" : "Room types"}
+                {namedMode ? "اتاق‌های نام‌دار" : "انواع اتاق"}
               </h2>
               <div className="grid gap-4">
                 {roomTypes.length === 0 && (
                   <p className="rounded-xl border border-dashed border-ink/20 p-6 text-center">
-                    {namedMode ? "No named rooms yet." : "No room types yet."}
+                    {namedMode ? "هنوز اتاقی ثبت نشده است." : "هنوز نوع اتاقی ثبت نشده است."}
                   </p>
                 )}
                 {roomTypes.map((roomType) => (
@@ -971,10 +1004,10 @@ export default function ManagePropertyPage() {
                           {roomType.basePrice !== null &&
                             ` · base price ${roomType.basePrice}`}
                         </p>
+                        {roomType.bedConfigurations.length > 0 && <p className="mt-2 text-sm text-ink/60">{roomType.bedConfigurations.map((bed) => `${bed.quantity} × ${bed.bedTypeName}`).join(" | ")}</p>}
+                        {namedMode && rooms[roomType.id]?.[0] && <p className="mt-2 text-sm text-ink/60">{[rooms[roomType.id][0].notes, rooms[roomType.id][0].floorNumber != null ? `طبقه ${rooms[roomType.id][0].floorNumber}` : "", rooms[roomType.id][0].stairCount != null ? `${rooms[roomType.id][0].stairCount} پله` : "", rooms[roomType.id][0].hasPrivateBathroom == null ? "" : rooms[roomType.id][0].hasPrivateBathroom ? "سرویس اختصاصی" : "سرویس مشترک", rooms[roomType.id][0].hasWindow == null ? "" : rooms[roomType.id][0].hasWindow ? "دارای پنجره" : "بدون پنجره"].filter(Boolean).join(" | ")}</p>}
                       </div>
-                      <span className="text-sm font-semibold">
-                        {roomType.isActive ? "Active" : "Inactive"}
-                      </span>
+                      <div className="flex gap-2"><span className="text-sm font-semibold">{roomType.isActive ? "فعال" : "غیرفعال"}</span>{!namedMode && <button className="text-sm font-bold text-blue-700" onClick={() => { setEditingRoomTypeId(roomType.id); setAccommodation({ name: roomType.name, englishName: roomType.englishName ?? "", description: roomType.description, maxAdults: roomType.maxAdults, maxChildren: roomType.maxChildren, totalInventory: roomType.totalInventory, basePrice: roomType.basePrice?.toString() ?? "", bedConfigurations: roomType.bedConfigurations.map((bed) => ({ bedTypeId: bed.bedTypeId, quantity: bed.quantity })), notes: "", floorNumber: null, stairCount: null, hasWindow: null, hasPrivateBathroom: null }); }} type="button">ویرایش</button>}</div>
                     </div>
                   </article>
                 ))}

@@ -36,6 +36,8 @@ builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService>();
 builder.Services.AddScoped<IPropertyDescriptionService, PropertyDescriptionService>();
 builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();
+builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
+builder.Services.AddScoped<INearbyPlaceService, NearbyPlaceService>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
 builder.Services.AddScoped<IRoomService, RoomService>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();

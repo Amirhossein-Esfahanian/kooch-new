@@ -212,6 +212,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<Property>(entity =>
         {
             entity.Property(property => property.Name).HasMaxLength(200).IsRequired();
+            entity.Property(property => property.EnglishName).HasMaxLength(200);
             entity.Property(property => property.Slug).HasMaxLength(220).IsRequired();
             entity.Property(property => property.Description).HasMaxLength(4000);
             entity.Property(property => property.SeoTitle).HasMaxLength(200);
@@ -350,6 +351,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<RoomType>(entity =>
         {
             entity.Property(roomType => roomType.Name).HasMaxLength(150).IsRequired();
+            entity.Property(roomType => roomType.EnglishName).HasMaxLength(150);
             entity.Property(roomType => roomType.Slug).HasMaxLength(170).IsRequired();
             entity.Property(roomType => roomType.Description).HasMaxLength(3000);
             entity.Property(roomType => roomType.SeoTitle).HasMaxLength(200);
@@ -368,6 +370,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<Room>(entity =>
         {
             entity.Property(room => room.Name).HasMaxLength(100).IsRequired();
+            entity.Property(room => room.EnglishName).HasMaxLength(100);
             entity.Property(room => room.Description).HasMaxLength(3000);
             entity.Property(room => room.Notes).HasMaxLength(2000);
             entity.HasIndex(room => new { room.RoomTypeId, room.Name }).IsUnique();

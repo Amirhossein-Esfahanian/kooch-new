@@ -19,13 +19,16 @@ public class RoomTypeService(
         await EnsurePropertyExistsAsync(propertyId, cancellationToken);
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
 
-        var slug = NormalizeSlug(request.Slug);
+        var englishName = CleanOptional(request.EnglishName);
+        var slug = EnglishSlugGenerator.Create(englishName, "room-type");
         await EnsureUniqueSlugAsync(propertyId, slug, null, cancellationToken);
+        var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
 
         var roomType = new RoomType
         {
             PropertyId = propertyId,
             Name = request.Name.Trim(),
+            EnglishName = englishName,
             Slug = slug,
             Description = request.Description.Trim(),
             MaxAdults = request.MaxAdults,
@@ -33,12 +36,17 @@ public class RoomTypeService(
             TotalInventory = request.TotalInventory,
             InventoryMode = request.InventoryMode,
             BasePrice = request.BasePrice,
-            IsActive = true
+            IsActive = true,
+            BedConfigurations = beds.Select(bed => new RoomTypeBed
+            {
+                BedTypeId = bed.Key,
+                Quantity = bed.Value
+            }).ToList()
         };
 
         dbContext.RoomTypes.Add(roomType);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Map(roomType);
+        return await LoadResponseAsync(roomType.Id, cancellationToken);
     }
 
     public async Task<RoomTypeResponse> UpdateRoomTypeAsync(
@@ -53,10 +61,15 @@ public class RoomTypeService(
             ?? throw new KeyNotFoundException("Room type not found.");
 
         await EnsureCanManageAsync(userId, role, roomType.PropertyId, cancellationToken);
-        var slug = NormalizeSlug(request.Slug);
+        var englishName = request.EnglishName is null
+            ? roomType.EnglishName
+            : CleanOptional(request.EnglishName);
+        var slug = EnglishSlugGenerator.Create(englishName, "room-type", roomType.Slug);
         await EnsureUniqueSlugAsync(roomType.PropertyId, slug, roomTypeId, cancellationToken);
+        var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
 
         roomType.Name = request.Name.Trim();
+        roomType.EnglishName = englishName;
         roomType.Slug = slug;
         roomType.Description = request.Description.Trim();
         roomType.MaxAdults = request.MaxAdults;
@@ -66,8 +79,19 @@ public class RoomTypeService(
         roomType.BasePrice = request.BasePrice;
         roomType.IsActive = request.IsActive;
 
+        var existingBeds = await dbContext.RoomTypeBeds
+            .Where(configuration => configuration.RoomTypeId == roomTypeId)
+            .ToListAsync(cancellationToken);
+        dbContext.RoomTypeBeds.RemoveRange(existingBeds);
+        dbContext.RoomTypeBeds.AddRange(beds.Select(bed => new RoomTypeBed
+        {
+            RoomTypeId = roomTypeId,
+            BedTypeId = bed.Key,
+            Quantity = bed.Value
+        }));
+
         await dbContext.SaveChangesAsync(cancellationToken);
-        return Map(roomType);
+        return await LoadResponseAsync(roomType.Id, cancellationToken);
     }
 
     public async Task<IReadOnlyList<RoomTypeResponse>> GetRoomTypesByPropertyAsync(
@@ -90,6 +114,7 @@ public class RoomTypeService(
                 Id = roomType.Id,
                 PropertyId = roomType.PropertyId,
                 Name = roomType.Name,
+                EnglishName = roomType.EnglishName,
                 Slug = roomType.Slug,
                 Description = roomType.Description,
                 MaxAdults = roomType.MaxAdults,
@@ -97,7 +122,17 @@ public class RoomTypeService(
                 TotalInventory = roomType.TotalInventory,
                 InventoryMode = roomType.InventoryMode,
                 BasePrice = roomType.BasePrice,
-                IsActive = roomType.IsActive
+                IsActive = roomType.IsActive,
+                BedConfigurations = roomType.BedConfigurations
+                    .OrderBy(configuration => configuration.BedType.Name)
+                    .Select(configuration => new RoomTypeBedResponse
+                    {
+                        BedTypeId = configuration.BedTypeId,
+                        BedTypeName = configuration.BedType.Name,
+                        BedTypeSlug = configuration.BedType.Slug,
+                        Quantity = configuration.Quantity
+                    })
+                    .ToList()
             })
             .ToListAsync(cancellationToken);
     }
@@ -144,20 +179,57 @@ public class RoomTypeService(
         }
     }
 
-    private static RoomTypeResponse Map(RoomType roomType) => new()
-    {
-        Id = roomType.Id,
-        PropertyId = roomType.PropertyId,
-        Name = roomType.Name,
-        Slug = roomType.Slug,
-        Description = roomType.Description,
-        MaxAdults = roomType.MaxAdults,
-        MaxChildren = roomType.MaxChildren,
-        TotalInventory = roomType.TotalInventory,
-        InventoryMode = roomType.InventoryMode,
-        BasePrice = roomType.BasePrice,
-        IsActive = roomType.IsActive
-    };
+    private async Task<RoomTypeResponse> LoadResponseAsync(int roomTypeId, CancellationToken cancellationToken) =>
+        await dbContext.RoomTypes.AsNoTracking()
+            .Where(roomType => roomType.Id == roomTypeId)
+            .Select(roomType => new RoomTypeResponse
+            {
+                Id = roomType.Id,
+                PropertyId = roomType.PropertyId,
+                Name = roomType.Name,
+                EnglishName = roomType.EnglishName,
+                Slug = roomType.Slug,
+                Description = roomType.Description,
+                MaxAdults = roomType.MaxAdults,
+                MaxChildren = roomType.MaxChildren,
+                TotalInventory = roomType.TotalInventory,
+                InventoryMode = roomType.InventoryMode,
+                BasePrice = roomType.BasePrice,
+                IsActive = roomType.IsActive,
+                BedConfigurations = roomType.BedConfigurations
+                    .OrderBy(configuration => configuration.BedType.Name)
+                    .Select(configuration => new RoomTypeBedResponse
+                    {
+                        BedTypeId = configuration.BedTypeId,
+                        BedTypeName = configuration.BedType.Name,
+                        BedTypeSlug = configuration.BedType.Slug,
+                        Quantity = configuration.Quantity
+                    })
+                    .ToList()
+            })
+            .SingleAsync(cancellationToken);
 
-    private static string NormalizeSlug(string slug) => slug.Trim().ToLowerInvariant();
+    private async Task<Dictionary<int, int>> ValidateBedsAsync(
+        IReadOnlyCollection<RoomTypeBedRequest> requestedBeds,
+        CancellationToken cancellationToken)
+    {
+        if (requestedBeds.Any(bed => bed.BedTypeId <= 0 || bed.Quantity <= 0))
+        {
+            throw new ArgumentException("Bed type and quantity must be positive.");
+        }
+
+        var beds = requestedBeds
+            .GroupBy(bed => bed.BedTypeId)
+            .ToDictionary(group => group.Key, group => group.Sum(bed => bed.Quantity));
+        var validCount = await dbContext.BedTypes.AsNoTracking()
+            .CountAsync(bedType => beds.Keys.Contains(bedType.Id), cancellationToken);
+        if (validCount != beds.Count)
+        {
+            throw new ArgumentException("One or more bed types are invalid.");
+        }
+
+        return beds;
+    }
+
+    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

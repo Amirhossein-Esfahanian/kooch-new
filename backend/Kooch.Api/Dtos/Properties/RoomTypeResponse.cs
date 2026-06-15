@@ -7,6 +7,7 @@ public class RoomTypeResponse
     public int Id { get; set; }
     public int PropertyId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
     public string Slug { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public int MaxAdults { get; set; }
@@ -15,4 +16,5 @@ public class RoomTypeResponse
     public InventoryMode InventoryMode { get; set; }
     public decimal? BasePrice { get; set; }
     public bool IsActive { get; set; }
+    public IReadOnlyList<RoomTypeBedResponse> BedConfigurations { get; set; } = [];
 }

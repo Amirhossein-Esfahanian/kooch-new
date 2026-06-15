@@ -5,5 +5,12 @@ public class RoomResponse
     public int Id { get; set; }
     public int RoomTypeId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
+    public string? Description { get; set; }
+    public string? Notes { get; set; }
+    public int? FloorNumber { get; set; }
+    public int? StairCount { get; set; }
+    public bool? HasWindow { get; set; }
+    public bool? HasPrivateBathroom { get; set; }
     public bool IsActive { get; set; }
 }
