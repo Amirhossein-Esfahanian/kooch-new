@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
+import { DateRangePicker } from "@/components/DateRangePicker";
 import { fetchPublicApi, formatPrice, PublicProperty } from "@/lib/public-properties";
 
 type ResultProperty = Pick<PublicProperty, "id" | "name" | "slug" | "city" | "address" | "description" | "coverImageUrl" | "startingPrice" | "propertyType" | "roomTypes">;
 
 const sampleProperties: ResultProperty[] = [
-  { id: -1, name: "Kashan Courtyard House", slug: "kashan-courtyard-house", city: "Kashan", address: "Historic Center, Kashan", description: "A peaceful traditional house with unique rooms around a central courtyard.", coverImageUrl: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80", startingPrice: 3000000, propertyType: "TraditionalHouse", roomTypes: [] },
-  { id: -2, name: "Fin Garden Boutique Stay", slug: "fin-garden-boutique-stay", city: "Kashan", address: "Fin Road, Kashan", description: "A simple boutique stay close to Kashan's gardens and historic houses.", coverImageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80", startingPrice: 2400000, propertyType: "BoutiqueHotel", roomTypes: [] },
-  { id: -3, name: "Desert Road Guesthouse", slug: "desert-road-guesthouse", city: "Kashan", address: "Aran and Bidgol Road, Kashan", description: "A comfortable local guesthouse for quiet evenings and nearby desert trips.", coverImageUrl: "https://images.unsplash.com/photo-1542718610-a1d656d1884c?auto=format&fit=crop&w=1200&q=80", startingPrice: 2100000, propertyType: "EcoLodge", roomTypes: [] },
+  { id: -1, name: "خانه حیاط‌دار کاشان", slug: "kashan-courtyard-house", city: "کاشان", address: "بافت تاریخی کاشان", description: "خانه‌ای آرام با اتاق‌های سنتی دور یک حیاط مرکزی.", coverImageUrl: "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80", startingPrice: 3000000, propertyType: "TraditionalHouse", roomTypes: [] },
+  { id: -2, name: "اقامت بوتیک باغ فین", slug: "fin-garden-boutique-stay", city: "کاشان", address: "جاده فین، کاشان", description: "اقامتگاهی ساده و تمیز نزدیک باغ فین و دیدنی‌های تاریخی.", coverImageUrl: "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80", startingPrice: 2400000, propertyType: "BoutiqueHotel", roomTypes: [] },
+  { id: -3, name: "مهمان‌خانه مسیر کویر", slug: "desert-road-guesthouse", city: "کاشان", address: "مسیر آران و بیدگل", description: "اقامتی راحت برای شب‌های آرام و سفر کوتاه به کویر.", coverImageUrl: "https://images.unsplash.com/photo-1542718610-a1d656d1884c?auto=format&fit=crop&w=1200&q=80", startingPrice: 2100000, propertyType: "EcoLodge", roomTypes: [] },
 ];
 
 const filterGroups = [
@@ -20,10 +21,17 @@ const filterGroups = [
   { title: "نزدیک به", items: ["بازار", "باغ فین", "ایستگاه راه‌آهن"] },
 ];
 
+const typeLabels: Record<string, string> = {
+  TraditionalHouse: "خانه سنتی",
+  BoutiqueHotel: "هتل بوتیک",
+  EcoLodge: "بوم‌گردی",
+  Hotel: "هتل",
+  Villa: "ویلا",
+  Apartment: "آپارتمان",
+};
+
 function propertyBadge(type: string) {
-  const labels: Record<string, string> = { TraditionalHouse: "خانه سنتی", BoutiqueHotel: "هتل بوتیک", EcoLodge: "بوم‌گردی", Hotel: "هتل", Villa: "ویلا", Apartment: "آپارتمان" };
-  if (labels[type]) return labels[type];
-  return type.replace(/([A-Z])/g, " $1").trim();
+  return typeLabels[type] ?? type.replace(/([A-Z])/g, " $1").trim();
 }
 
 export default function PropertiesPage() {
@@ -33,7 +41,7 @@ export default function PropertiesPage() {
 function PropertiesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const [city, setCity] = useState(searchParams.get("city") ?? "Kashan");
+  const [city, setCity] = useState(searchParams.get("city") ?? "کاشان");
   const [checkIn, setCheckIn] = useState(searchParams.get("checkIn") ?? "");
   const [checkOut, setCheckOut] = useState(searchParams.get("checkOut") ?? "");
   const [adults, setAdults] = useState(Number(searchParams.get("adults") ?? searchParams.get("guests") ?? 2));
@@ -63,11 +71,22 @@ function PropertiesContent() {
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
       <div className="sticky top-16 z-40 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
-        <form className="mx-auto grid max-w-7xl gap-3 md:grid-cols-[1.3fr_1fr_1fr_0.7fr_auto] md:items-end" onSubmit={search}>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">مقصد یا شهر<input className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-500" onChange={(event) => setCity(event.target.value)} required value={city} /></label>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">ورود<input className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-500" onChange={(event) => setCheckIn(event.target.value)} type="date" value={checkIn} /></label>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">خروج<input className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-500" min={checkIn} onChange={(event) => setCheckOut(event.target.value)} type="date" value={checkOut} /></label>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">مهمان<input className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal outline-none focus:border-blue-500" min="1" onChange={(event) => setAdults(Number(event.target.value))} type="number" value={adults} /></label>
+        <form className="mx-auto grid max-w-7xl gap-3 md:grid-cols-[1.2fr_2fr_0.7fr_auto] md:items-end" onSubmit={search}>
+          <label className="grid gap-1 text-xs font-bold text-slate-600">مقصد یا شهر<input className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" onChange={(event) => setCity(event.target.value)} required value={city} /></label>
+          <div>
+            <DateRangePicker
+              calendarType="jalali"
+              disablePastDates
+              onChange={(nextValue) => {
+                setCheckIn(nextValue.startDate ?? "");
+                setCheckOut(nextValue.endDate ?? "");
+              }}
+              placeholderEnd="تاریخ برگشت"
+              placeholderStart="تاریخ رفت"
+              value={{ startDate: checkIn || null, endDate: checkOut || null }}
+            />
+          </div>
+          <label className="grid gap-1 text-xs font-bold text-slate-600">مهمان<input className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal" min="1" onChange={(event) => setAdults(Number(event.target.value))} type="number" value={adults} /></label>
           <button className="rounded-lg bg-blue-600 px-6 py-2.5 font-bold text-white hover:bg-blue-700" type="submit">جست‌وجو</button>
         </form>
       </div>
@@ -76,20 +95,20 @@ function PropertiesContent() {
         <Link className="text-sm font-bold text-blue-700" href="/">بازگشت به خانه ←</Link>
         <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
           <div><h1 className="text-3xl font-black tracking-tight">اقامتگاه‌های {city || "کاشان"}</h1><p className="mt-2 text-slate-500">خانه‌های سنتی و هتل‌های بوتیک تأییدشده</p></div>
-          <div className="flex items-center gap-3"><span className="text-sm font-semibold text-slate-500">{loading ? "Loading..." : `${properties.length} properties`}</span><button className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold lg:hidden" onClick={() => setFiltersOpen((current) => !current)} type="button">{filtersOpen ? "Hide filters" : "Show filters"}</button></div>
+          <div className="flex items-center gap-3"><span className="text-sm font-semibold text-slate-500">{loading ? "در حال بارگذاری..." : `${properties.length} اقامتگاه`}</span><button className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold lg:hidden" onClick={() => setFiltersOpen((current) => !current)} type="button">{filtersOpen ? "بستن فیلترها" : "نمایش فیلترها"}</button></div>
         </div>
 
-        {usingSamples && <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">No live approved properties were available, so sample cards are shown.</p>}
+        {usingSamples && <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">اقامتگاه تأییدشده‌ای از API دریافت نشد؛ کارت‌های نمونه نمایش داده شده‌اند.</p>}
 
         <div className="mt-7 grid gap-7 lg:grid-cols-[260px_minmax(0,1fr)]">
           <aside className={`${filtersOpen ? "block" : "hidden"} h-fit rounded-xl border border-slate-200 bg-white p-5 lg:block lg:sticky lg:top-40`}>
             <h2 className="text-lg font-black">فیلتر نتایج</h2>
-            <fieldset className="mt-5 border-t border-slate-100 pt-5"><legend className="font-bold">Price range</legend><div className="mt-3 grid grid-cols-2 gap-2"><input aria-label="Minimum price" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Min" type="number" /><input aria-label="Maximum price" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Max" type="number" /></div><p className="mt-2 text-xs text-slate-400">Visual only for now</p></fieldset>
+            <fieldset className="mt-5 border-t border-slate-100 pt-5"><legend className="font-bold">محدوده قیمت</legend><div className="mt-3 grid grid-cols-2 gap-2"><input aria-label="حداقل قیمت" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="حداقل" type="number" /><input aria-label="حداکثر قیمت" className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="حداکثر" type="number" /></div><p className="mt-2 text-xs text-slate-400">فعلاً نمایشی است</p></fieldset>
             {filterGroups.map((group) => <fieldset className="mt-5 border-t border-slate-100 pt-5" key={group.title}><legend className="font-bold">{group.title}</legend><div className="mt-3 grid gap-3">{group.items.map((item) => <label className="flex items-center gap-2 text-sm text-slate-600" key={item}><input className="h-4 w-4 accent-blue-600" type="checkbox" />{item}</label>)}</div></fieldset>)}
           </aside>
 
           <section>
-            {loading ? <PageLoading compact /> : <div className="grid gap-5">{properties.map((property) => <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid md:grid-cols-[260px_minmax(0,1fr)_190px]" key={property.id}><img alt={property.name} className="h-full min-h-52 w-full object-cover" src={property.coverImageUrl ?? sampleProperties[0].coverImageUrl!} /><div className="p-5"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{propertyBadge(property.propertyType)}</span><h2 className="mt-3 text-2xl font-black">{property.name}</h2><p className="mt-1 text-sm font-semibold text-blue-700">{property.city}</p><p className="mt-1 text-sm text-slate-500">{property.address}</p><p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">{property.description}</p>{property.roomTypes.length > 0 && <p className="mt-4 text-xs font-semibold text-slate-500">{property.roomTypes.length} room type{property.roomTypes.length === 1 ? "" : "s"} · Current or base price shown</p>}</div><div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right"><p className="text-xs text-slate-400">Starting from</p><p className="mt-1 text-lg font-black text-blue-700">{formatPrice(property.startingPrice)}</p><Link className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700" href={`/properties/${property.slug}`}>View property</Link></div></article>)}</div>}
+            {loading ? <PageLoading compact /> : <div className="grid gap-5">{properties.map((property) => <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid md:grid-cols-[260px_minmax(0,1fr)_190px]" key={property.id}><img alt={property.name} className="h-full min-h-52 w-full object-cover" src={property.coverImageUrl ?? sampleProperties[0].coverImageUrl!} /><div className="p-5"><span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700">{propertyBadge(property.propertyType)}</span><h2 className="mt-3 text-2xl font-black">{property.name}</h2><p className="mt-1 text-sm font-semibold text-blue-700">{property.city}</p><p className="mt-1 text-sm text-slate-500">{property.address}</p><p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">{property.description}</p>{property.roomTypes.length > 0 && <p className="mt-4 text-xs font-semibold text-slate-500">{property.roomTypes.length} نوع اتاق · قیمت فعلی یا پایه نمایش داده شده است</p>}</div><div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right"><p className="text-xs text-slate-400">قیمت از</p><p className="mt-1 text-lg font-black text-blue-700">{formatPrice(property.startingPrice)}</p><Link className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700" href={`/properties/${property.slug}`}>مشاهده اقامتگاه</Link></div></article>)}</div>}
           </section>
         </div>
       </main>
@@ -98,5 +117,5 @@ function PropertiesContent() {
 }
 
 function PageLoading({ compact = false }: { compact?: boolean }) {
-  return <div className={`${compact ? "" : "min-h-[60vh] bg-slate-50 px-5 py-12 sm:px-8"}`}><div className={`${compact ? "" : "mx-auto max-w-7xl"} rounded-xl border border-slate-200 bg-white p-6 text-slate-500`}>در حال بارگذاری اقامتگاه‌های تأییدشده...</div></div>;
+  return <div className={`${compact ? "" : "min-h-[60vh] bg-slate-50 px-5 py-12 sm:px-8"}`}><div className={`${compact ? "" : "mx-auto max-w-7xl"} rounded-xl border border-slate-200 bg-white p-6 text-slate-500`}>در حال بارگذاری اقامتگاه‌ها...</div></div>;
 }

@@ -23,6 +23,7 @@ public class RoomTypeService(
         var slug = EnglishSlugGenerator.Create(englishName, "room-type");
         await EnsureUniqueSlugAsync(propertyId, slug, null, cancellationToken);
         var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
+        var amenityIds = await ValidateAmenityIdsAsync(request.AmenityIds, cancellationToken);
 
         var roomType = new RoomType
         {
@@ -41,6 +42,10 @@ public class RoomTypeService(
             {
                 BedTypeId = bed.Key,
                 Quantity = bed.Value
+            }).ToList(),
+            RoomTypeAmenities = amenityIds.Select(amenityId => new RoomTypeAmenity
+            {
+                AmenityId = amenityId
             }).ToList()
         };
 
@@ -67,6 +72,7 @@ public class RoomTypeService(
         var slug = EnglishSlugGenerator.Create(englishName, "room-type", roomType.Slug);
         await EnsureUniqueSlugAsync(roomType.PropertyId, slug, roomTypeId, cancellationToken);
         var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
+        var amenityIds = await ValidateAmenityIdsAsync(request.AmenityIds, cancellationToken);
 
         roomType.Name = request.Name.Trim();
         roomType.EnglishName = englishName;
@@ -88,6 +94,16 @@ public class RoomTypeService(
             RoomTypeId = roomTypeId,
             BedTypeId = bed.Key,
             Quantity = bed.Value
+        }));
+
+        var existingAmenities = await dbContext.RoomTypeAmenities
+            .Where(join => join.RoomTypeId == roomTypeId)
+            .ToListAsync(cancellationToken);
+        dbContext.RoomTypeAmenities.RemoveRange(existingAmenities);
+        dbContext.RoomTypeAmenities.AddRange(amenityIds.Select(amenityId => new RoomTypeAmenity
+        {
+            RoomTypeId = roomTypeId,
+            AmenityId = amenityId
         }));
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -131,6 +147,17 @@ public class RoomTypeService(
                         BedTypeName = configuration.BedType.Name,
                         BedTypeSlug = configuration.BedType.Slug,
                         Quantity = configuration.Quantity
+                    })
+                    .ToList(),
+                Amenities = roomType.RoomTypeAmenities
+                    .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
+                    .ThenBy(join => join.Amenity.SortOrder)
+                    .Select(join => new RoomTypeAmenityResponse
+                    {
+                        AmenityId = join.AmenityId,
+                        Name = join.Amenity.Name,
+                        AmenityCategoryId = join.Amenity.AmenityCategoryId,
+                        CategoryName = join.Amenity.AmenityCategory.Name
                     })
                     .ToList()
             })
@@ -205,6 +232,17 @@ public class RoomTypeService(
                         BedTypeSlug = configuration.BedType.Slug,
                         Quantity = configuration.Quantity
                     })
+                    .ToList(),
+                Amenities = roomType.RoomTypeAmenities
+                    .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
+                    .ThenBy(join => join.Amenity.SortOrder)
+                    .Select(join => new RoomTypeAmenityResponse
+                    {
+                        AmenityId = join.AmenityId,
+                        Name = join.Amenity.Name,
+                        AmenityCategoryId = join.Amenity.AmenityCategoryId,
+                        CategoryName = join.Amenity.AmenityCategory.Name
+                    })
                     .ToList()
             })
             .SingleAsync(cancellationToken);
@@ -229,6 +267,21 @@ public class RoomTypeService(
         }
 
         return beds;
+    }
+
+    private async Task<IReadOnlyList<int>> ValidateAmenityIdsAsync(
+        IReadOnlyCollection<int> requestedIds,
+        CancellationToken cancellationToken)
+    {
+        var ids = requestedIds.Where(id => id > 0).Distinct().ToArray();
+        var validCount = await dbContext.Amenities.AsNoTracking()
+            .CountAsync(amenity => ids.Contains(amenity.Id) && amenity.Scope != AmenityScope.Property, cancellationToken);
+        if (validCount != ids.Length)
+        {
+            throw new ArgumentException("One or more amenities are invalid for a room type.");
+        }
+
+        return ids;
     }
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

@@ -127,8 +127,11 @@ public static class SeedData
 
         var items = new[]
         {
-            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kashan Railway Station", Category = NearbyPlaceCategory.Transport },
-            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kashan Bus Terminal", Category = NearbyPlaceCategory.Transport },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Railway Station", Category = NearbyPlaceCategory.Transport },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Bus Terminal", Category = NearbyPlaceCategory.Transport },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Airport", Category = NearbyPlaceCategory.Transport },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "City Center", Category = NearbyPlaceCategory.Landmark },
+            new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Hospital", Category = NearbyPlaceCategory.Other },
             new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Fin Garden", Category = NearbyPlaceCategory.Attraction },
             new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Kashan Bazaar", Category = NearbyPlaceCategory.Market },
             new DefaultNearbyPlace { DestinationId = destinationId.Value, Title = "Tabatabaei House", Category = NearbyPlaceCategory.Attraction },
@@ -419,6 +422,12 @@ public static class SeedData
                 IsGallery = true,
                 SortOrder = 1
             });
+        dbContext.PropertyCommonAreas.AddRange(
+            new PropertyCommonArea { PropertyId = courtyardHouse.Id, Name = "Central Courtyard", SortOrder = 0 },
+            new PropertyCommonArea { PropertyId = courtyardHouse.Id, Name = "Rooftop", SortOrder = 1 });
+        dbContext.PropertyViews.AddRange(
+            new PropertyView { PropertyId = courtyardHouse.Id, ViewType = PropertyViewType.CourtyardView },
+            new PropertyView { PropertyId = gardenHotel.Id, ViewType = PropertyViewType.GardenView });
         dbContext.Availabilities.Add(new Availability
         {
             RoomTypeId = shahAbbasi.Id,

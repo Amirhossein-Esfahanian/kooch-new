@@ -53,6 +53,10 @@ public class PropertyService(
             InventoryMode = request.InventoryMode,
             CheckInTime = request.CheckInTime,
             CheckOutTime = request.CheckOutTime,
+            HasElevator = request.HasElevator,
+            IsWheelchairAccessible = request.IsWheelchairAccessible,
+            HasGroundFloorRoom = request.HasGroundFloorRoom,
+            HasAccessibleBathroom = request.HasAccessibleBathroom,
             Status = role == UserRole.SuperAdmin
                 ? request.Status ?? PropertyStatus.PendingReview
                 : PropertyStatus.PendingReview
@@ -104,7 +108,9 @@ public class PropertyService(
         property.FloorsCount = request.FloorsCount;
         property.StairCount = request.StairCount;
         property.HasElevator = request.HasElevator;
-        
+        property.IsWheelchairAccessible = request.IsWheelchairAccessible;
+        property.HasGroundFloorRoom = request.HasGroundFloorRoom;
+        property.HasAccessibleBathroom = request.HasAccessibleBathroom;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
@@ -291,7 +297,9 @@ public class PropertyService(
             FloorsCount = property.FloorsCount,
             StairCount = property.StairCount,
             HasElevator = property.HasElevator,
-            
+            IsWheelchairAccessible = property.IsWheelchairAccessible,
+            HasGroundFloorRoom = property.HasGroundFloorRoom,
+            HasAccessibleBathroom = property.HasAccessibleBathroom,
         });
 
     private static IQueryable<PublicPropertyResponse> ProjectPublic(IQueryable<Property> query)
@@ -314,6 +322,10 @@ public class PropertyService(
             CheckOutTime = property.CheckOutTime,
             Latitude = property.Latitude,
             Longitude = property.Longitude,
+            HasElevator = property.HasElevator,
+            IsWheelchairAccessible = property.IsWheelchairAccessible,
+            HasGroundFloorRoom = property.HasGroundFloorRoom,
+            HasAccessibleBathroom = property.HasAccessibleBathroom,
             IsInstantBooking = property.RoomTypes.Any(roomType => roomType.Availability.Any(
                 availability => availability.Date >= today &&
                                 availability.Status == AvailabilityStatus.Available &&
@@ -357,6 +369,17 @@ public class PropertyService(
                     SortOrder = section.SortOrder
                 })
                 .ToList(),
+            CommonAreas = property.CommonAreas
+                .OrderBy(area => area.SortOrder)
+                .ThenBy(area => area.Name)
+                .Select(area => new PublicCommonAreaResponse
+                {
+                    Id = area.Id,
+                    Name = area.Name,
+                    Description = area.Description,
+                    SortOrder = area.SortOrder
+                })
+                .ToList(),
             Amenities = property.PropertyAmenities
                 .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
                 .ThenBy(join => join.Amenity.SortOrder)
@@ -381,6 +404,10 @@ public class PropertyService(
                     DrivingMinutes = place.DrivingMinutes,
                     Description = place.Description
                 })
+                .ToList(),
+            Views = property.Views
+                .OrderBy(view => view.ViewType)
+                .Select(view => view.ViewType)
                 .ToList(),
             RoomTypes = property.RoomTypes
                 .Where(roomType => roomType.IsActive)

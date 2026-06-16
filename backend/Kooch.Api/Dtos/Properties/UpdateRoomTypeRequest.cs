@@ -34,4 +34,5 @@ public class UpdateRoomTypeRequest
     public bool IsActive { get; set; } = true;
 
     public IReadOnlyCollection<RoomTypeBedRequest> BedConfigurations { get; set; } = [];
+    public IReadOnlyCollection<int> AmenityIds { get; set; } = [];
 }

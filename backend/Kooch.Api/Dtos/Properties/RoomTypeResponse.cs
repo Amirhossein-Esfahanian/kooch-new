@@ -17,4 +17,13 @@ public class RoomTypeResponse
     public decimal? BasePrice { get; set; }
     public bool IsActive { get; set; }
     public IReadOnlyList<RoomTypeBedResponse> BedConfigurations { get; set; } = [];
+    public IReadOnlyList<RoomTypeAmenityResponse> Amenities { get; set; } = [];
+}
+
+public class RoomTypeAmenityResponse
+{
+    public int AmenityId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int AmenityCategoryId { get; set; }
+    public string CategoryName { get; set; } = string.Empty;
 }

@@ -48,4 +48,8 @@ public class CreatePropertyRequest
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
     public PropertyStatus? Status { get; set; }
+    public bool? IsWheelchairAccessible { get; set; }
+    public bool HasElevator { get; set; }
+    public bool? HasGroundFloorRoom { get; set; }
+    public bool? HasAccessibleBathroom { get; set; }
 }

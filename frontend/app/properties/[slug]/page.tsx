@@ -18,9 +18,15 @@ const propertyTypeLabels: Record<string, string> = {
 
 const sectionLabels: Record<string, string> = {
   PropertyIntroduction: "معرفی اقامتگاه",
-  CommonAreas: "فضاهای مشترک",
-  SharedAmenities: "امکانات مشترک",
   ImportantNotes: "نکات مهم",
+};
+
+const viewLabels: Record<string, string> = {
+  CourtyardView: "Courtyard View",
+  GardenView: "Garden View",
+  CityView: "City View",
+  MountainView: "Mountain View",
+  DesertView: "Desert View",
 };
 
 const bedLabels: Record<string, string> = {
@@ -58,6 +64,12 @@ export default function PublicPropertyPage() {
 
   const gallery = property.images.length ? property.images : [{ id: -1, url: placeholder, altText: property.name, caption: null, tag: null, isCover: true }];
   const descriptions = property.descriptionSections.length ? property.descriptionSections : [{ sectionType: "PropertyIntroduction" as const, title: "", content: property.description, sortOrder: 0 }];
+  const accessibility = [
+    ["مناسب ویلچر", property.isWheelchairAccessible],
+    ["آسانسور", property.hasElevator],
+    ["اتاق همکف", property.hasGroundFloorRoom],
+    ["سرویس مناسب افراد کم‌توان", property.hasAccessibleBathroom],
+  ].filter(([, value]) => value !== null);
 
   return <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
     <div className="mx-auto max-w-7xl">
@@ -70,10 +82,13 @@ export default function PublicPropertyPage() {
         <div className="grid gap-8">
           <section><h2 className="text-2xl font-black">اطلاعات سریع</h2><div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3"><Highlight title="ساعت ورود" value={property.checkInTime?.slice(0,5) ?? "ثبت نشده"} /><Highlight title="ساعت خروج" value={property.checkOutTime?.slice(0,5) ?? "ثبت نشده"} /><Highlight title="نوع اقامتگاه" value={propertyTypeLabels[property.propertyType] ?? property.propertyType} /><Highlight title="نوع رزرو" value={property.isInstantBooking ? "رزرو آنی" : "نیازمند تأیید میزبان"} /></div></section>
           <section className="rounded-2xl bg-white p-6 shadow-sm"><h2 className="text-2xl font-black">درباره اقامتگاه</h2><div className="mt-5 grid gap-6">{descriptions.map((section) => <article key={section.sectionType}><h3 className="text-lg font-bold">{section.title || sectionLabels[section.sectionType]}</h3><p className="mt-2 whitespace-pre-line leading-8 text-slate-600">{section.content}</p></article>)}</div></section>
+          {property.commonAreas.length > 0 && <section><h2 className="text-2xl font-black">فضاهای مشترک</h2><div className="mt-5 grid gap-3 sm:grid-cols-2">{property.commonAreas.map((area) => <article className="rounded-xl border bg-white p-5" key={area.id}><h3 className="font-black">{area.name}</h3>{area.description && <p className="mt-2 text-sm leading-7 text-slate-600">{area.description}</p>}</article>)}</div></section>}
+          {property.views.length > 0 && <section><h2 className="text-2xl font-black">چشم‌اندازها</h2><div className="mt-4 flex flex-wrap gap-2">{property.views.map((view) => <span className="rounded-full border bg-white px-3 py-1.5 text-sm font-bold" key={view}>{viewLabels[view] ?? view}</span>)}</div></section>}
+          {accessibility.length > 0 && <section><h2 className="text-2xl font-black">دسترسی‌پذیری</h2><div className="mt-4 grid gap-3 sm:grid-cols-2">{accessibility.map(([label, value]) => <article className="rounded-xl border bg-white p-4" key={String(label)}><p className="text-sm font-bold text-slate-500">{label}</p><p className={`mt-2 font-black ${value ? "text-green-700" : "text-slate-500"}`}>{value ? "دارد" : "ندارد"}</p></article>)}</div></section>}
           <section><h2 className="text-2xl font-black">امکانات</h2>{groupedAmenities.length ? <div className="mt-5 grid gap-4 sm:grid-cols-2">{groupedAmenities.map(([category, amenities]) => <article className="rounded-xl border bg-white p-5" key={category}><h3 className="font-black">{category}</h3><div className="mt-3 flex flex-wrap gap-2">{amenities.map((amenity) => <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold" key={amenity.id}>{amenity.name}</span>)}</div></article>)}</div> : <Empty>هنوز امکاناتی ثبت نشده است.</Empty>}</section>
           <section><h2 className="text-2xl font-black">انتخاب اتاق</h2><div className="mt-5 grid gap-5">{property.roomTypes.length ? property.roomTypes.map((roomType) => <article className="overflow-hidden rounded-2xl border bg-white shadow-sm" key={roomType.id}><div className="grid md:grid-cols-[220px_minmax(0,1fr)_190px]"><img alt={roomType.name} className="h-full min-h-52 w-full object-cover" src={roomType.images[0]?.url ?? gallery[0].url} /><div className="p-5"><h3 className="text-xl font-black">{roomType.name}</h3>{roomType.englishName && <p className="mt-1 text-xs text-slate-400" dir="ltr">{roomType.englishName}</p>}<p className="mt-3 text-sm font-semibold text-slate-700">{roomType.maxAdults + roomType.maxChildren} نفر | {roomType.bedInformation.map(persianBed).join(" | ") || "ترکیب تخت ثبت نشده"}</p><p className="mt-3 text-sm leading-7 text-slate-600">{roomType.description}</p>{roomType.namedRooms.map((room) => <RoomNotes key={room.id} room={room} />)}</div><div className="flex flex-col justify-end border-t p-5 md:border-r md:border-t-0"><p className="text-xs text-slate-400">قیمت از</p><p className="mt-1 text-lg font-black text-blue-700">{formatPrice(roomType.displayPrice)}</p><p className="mt-3 text-xs text-slate-500">{roomType.inventoryMode === "NamedRooms" ? "اتاق نام‌دار" : `${roomType.totalInventory} واحد موجودی`}</p></div></div></article>) : <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>}</div></section>
           {property.inventoryMode === "NamedRooms" && <section><h2 className="text-2xl font-black">اتاق‌های نام‌دار</h2><div className="mt-5 grid gap-4 sm:grid-cols-2">{property.roomTypes.flatMap((type) => type.namedRooms).map((room) => <article className="overflow-hidden rounded-xl border bg-white" key={room.id}>{room.images[0] && <img alt={room.name} className="aspect-[16/8] w-full object-cover" src={room.images[0].url} />}<div className="p-5"><h3 className="text-lg font-black">{room.name}</h3><RoomNotes room={room} /></div></article>)}</div></section>}
-          <section><h2 className="text-2xl font-black">مکان‌های نزدیک</h2>{property.nearbyPlaces.length ? <div className="mt-5 grid gap-3 sm:grid-cols-2">{property.nearbyPlaces.map((place) => <article className="rounded-xl border bg-white p-4" key={place.id}><strong>{place.title}</strong><p className="mt-2 text-sm text-slate-500">{place.distanceInMeters != null ? `${place.distanceInMeters} متر` : "فاصله ثبت نشده"}{place.walkingMinutes != null ? ` · ${place.walkingMinutes} دقیقه پیاده` : ""}{place.drivingMinutes != null ? ` · ${place.drivingMinutes} دقیقه با خودرو` : ""}</p></article>)}</div> : <Empty>مکان نزدیکی ثبت نشده است.</Empty>}</section>
+          <section><h2 className="text-2xl font-black">مکان‌های نزدیک</h2>{property.nearbyPlaces.length ? <div className="mt-5 overflow-x-auto rounded-xl border bg-white"><table className="w-full min-w-[520px] text-sm"><thead className="bg-slate-100 text-slate-500"><tr><th className="p-3 text-right">مکان</th><th className="p-3 text-right">پیاده</th><th className="p-3 text-right">با خودرو</th></tr></thead><tbody>{property.nearbyPlaces.map((place) => <tr className="border-t" key={place.id}><td className="p-3 font-bold">{place.title}</td><td className="p-3">{place.walkingMinutes != null ? `${place.walkingMinutes} دقیقه` : "-"}</td><td className="p-3">{place.drivingMinutes != null ? `${place.drivingMinutes} دقیقه` : "-"}</td></tr>)}</tbody></table></div> : <Empty>مکان نزدیکی ثبت نشده است.</Empty>}</section>
           <section><h2 className="text-2xl font-black">موقعیت</h2><div className="mt-4 grid min-h-64 place-items-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 text-center"><div><strong className="text-blue-800">نقشه به‌زودی اضافه می‌شود</strong><p className="mt-2 text-sm text-blue-700">{property.city}</p></div></div></section>
         </div>
         <aside className="h-fit rounded-2xl border bg-white p-5 shadow-lg lg:sticky lg:top-24"><p className="text-sm text-slate-500">قیمت از</p><p className="mt-1 text-2xl font-black text-blue-700">{formatPrice(property.startingPrice)}</p><p className="mt-2 font-bold">{property.name}</p><div className="mt-5 grid gap-3"><label className="grid gap-1 text-xs font-bold">تاریخ ورود<input className="rounded-lg border px-3 py-2.5" type="date" /></label><label className="grid gap-1 text-xs font-bold">تاریخ خروج<input className="rounded-lg border px-3 py-2.5" type="date" /></label><label className="grid gap-1 text-xs font-bold">تعداد مهمان<input className="rounded-lg border px-3 py-2.5" defaultValue="2" min="1" type="number" /></label></div><button className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 font-black text-white" type="button">بررسی موجودی</button><p className="mt-3 text-center text-xs text-slate-400">رزرو در نسخه بعدی فعال می‌شود.</p></aside>

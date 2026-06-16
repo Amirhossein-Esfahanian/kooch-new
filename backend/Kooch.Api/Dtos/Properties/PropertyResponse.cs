@@ -30,5 +30,8 @@ public class PropertyResponse
     public int? FloorsCount { get; set; }
     public int? StairCount { get; set; }
     public bool HasElevator { get; set; }
+    public bool? IsWheelchairAccessible { get; set; }
+    public bool? HasGroundFloorRoom { get; set; }
+    public bool? HasAccessibleBathroom { get; set; }
     
 }

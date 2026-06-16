@@ -14,24 +14,24 @@ export function OwnerPage({ title, children }: { title: string; children: ReactN
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-5 py-10 sm:px-8">
+    <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
       <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold uppercase tracking-wider text-ink/50">Owner test area</p>
-          <h1 className="text-3xl font-black text-ink">{title}</h1>
+          <p className="text-sm font-semibold text-slate-500">پنل مدیریت کوچ</p>
+          <h1 className="text-3xl font-black text-slate-950">{title}</h1>
         </div>
-        <div className="flex gap-3">
-          <Link className="rounded-lg border border-ink/20 px-4 py-2 text-sm font-semibold" href="/owner/properties">
-            Properties
+        <div className="flex flex-wrap gap-2">
+          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/owner/properties">
+            اقامتگاه‌ها
           </Link>
-          <Link className="rounded-lg border border-ink/20 px-4 py-2 text-sm font-semibold" href="/owner/amenities">
-            Amenities
+          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/owner/amenities">
+            امکانات
           </Link>
-          <Link className="rounded-lg border border-ink/20 px-4 py-2 text-sm font-semibold" href="/admin/properties">
-            Admin
+          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/admin/properties">
+            مدیریت
           </Link>
-          <button className="rounded-lg border border-ink/20 px-4 py-2 text-sm font-semibold" onClick={logout} type="button">
-            Log out
+          <button className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={logout} type="button">
+            خروج
           </button>
         </div>
       </div>

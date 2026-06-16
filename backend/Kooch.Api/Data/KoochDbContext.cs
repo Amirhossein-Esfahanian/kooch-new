@@ -29,6 +29,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<PropertyTravelPurpose> PropertyTravelPurposes => Set<PropertyTravelPurpose>();
     public DbSet<NearbyPlace> NearbyPlaces => Set<NearbyPlace>();
     public DbSet<DefaultNearbyPlace> DefaultNearbyPlaces => Set<DefaultNearbyPlace>();
+    public DbSet<PropertyCommonArea> PropertyCommonAreas => Set<PropertyCommonArea>();
+    public DbSet<PropertyView> PropertyViews => Set<PropertyView>();
     public DbSet<PropertyDescriptionSection> PropertyDescriptionSections => Set<PropertyDescriptionSection>();
     public DbSet<CancellationPolicy> CancellationPolicies => Set<CancellationPolicy>();
     public DbSet<StayRule> StayRules => Set<StayRule>();
@@ -49,6 +51,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureUserPropertyAccesses(modelBuilder);
         ConfigureNotifications(modelBuilder);
         ConfigureProperties(modelBuilder);
+        ConfigurePropertyCommonAreas(modelBuilder);
+        ConfigurePropertyViews(modelBuilder);
         ConfigurePropertyDescriptionSections(modelBuilder);
         ConfigureDestinationsAndSeo(modelBuilder);
         ConfigureRoomTypes(modelBuilder);
@@ -270,6 +274,32 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(place => place.Property)
                 .WithMany(property => property.NearbyPlaces)
                 .HasForeignKey(place => place.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigurePropertyCommonAreas(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PropertyCommonArea>(entity =>
+        {
+            entity.Property(area => area.Name).HasMaxLength(200).IsRequired();
+            entity.Property(area => area.Description).HasMaxLength(1000);
+            entity.HasIndex(area => new { area.PropertyId, area.SortOrder });
+            entity.HasOne(area => area.Property)
+                .WithMany(property => property.CommonAreas)
+                .HasForeignKey(area => area.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigurePropertyViews(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PropertyView>(entity =>
+        {
+            entity.HasIndex(view => new { view.PropertyId, view.ViewType }).IsUnique();
+            entity.HasOne(view => view.Property)
+                .WithMany(property => property.Views)
+                .HasForeignKey(view => view.PropertyId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

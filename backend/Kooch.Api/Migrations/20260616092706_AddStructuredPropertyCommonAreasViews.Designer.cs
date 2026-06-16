@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260616092706_AddStructuredPropertyCommonAreasViews")]
+    partial class AddStructuredPropertyCommonAreasViews
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -959,22 +962,13 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("FloorsCount")
                         .HasColumnType("int");
 
-                    b.Property<bool?>("HasAccessibleBathroom")
-                        .HasColumnType("bit");
-
                     b.Property<bool>("HasElevator")
-                        .HasColumnType("bit");
-
-                    b.Property<bool?>("HasGroundFloorRoom")
                         .HasColumnType("bit");
 
                     b.Property<int>("InventoryMode")
                         .HasColumnType("int");
 
                     b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<bool?>("IsWheelchairAccessible")
                         .HasColumnType("bit");
 
                     b.Property<decimal?>("LandAreaM2")

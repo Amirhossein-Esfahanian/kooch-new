@@ -31,16 +31,12 @@ public class PropertyCompletionService(
 {
     Basic = property.Name != "" && property.Address != "" && property.City != "" && property.Description != "",
     Building = property.TotalAreaM2 != null &&
-               property.FloorsCount != null &&
-               property.StairCount != null,
+               property.FloorsCount != null,
     Images = property.Images.Any(),
     RoomTypes = property.RoomTypes.Any(),
     Amenities = property.PropertyAmenities.Any(),
     Descriptions = property.DescriptionSections
-        .Where(section => section.Content != "")
-        .Select(section => section.SectionType)
-        .Distinct()
-        .Count() == 4,
+        .Any(section => section.SectionType == PropertyDescriptionSectionType.PropertyIntroduction && section.Content != ""),
     NearbyPlaces = property.NearbyPlaces.Any(place => place.IsActive)
 })
             .SingleAsync(cancellationToken);

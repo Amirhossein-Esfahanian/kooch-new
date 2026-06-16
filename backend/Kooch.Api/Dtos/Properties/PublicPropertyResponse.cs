@@ -20,12 +20,18 @@ public class PublicPropertyResponse
     public TimeOnly? CheckOutTime { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
+    public bool HasElevator { get; set; }
+    public bool? IsWheelchairAccessible { get; set; }
+    public bool? HasGroundFloorRoom { get; set; }
+    public bool? HasAccessibleBathroom { get; set; }
     public bool IsInstantBooking { get; set; }
     public decimal? StartingPrice { get; set; }
     public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
     public IReadOnlyList<PublicDescriptionSectionResponse> DescriptionSections { get; set; } = [];
+    public IReadOnlyList<PublicCommonAreaResponse> CommonAreas { get; set; } = [];
     public IReadOnlyList<PublicAmenityResponse> Amenities { get; set; } = [];
     public IReadOnlyList<PublicNearbyPlaceResponse> NearbyPlaces { get; set; } = [];
+    public IReadOnlyList<PropertyViewType> Views { get; set; } = [];
     public IReadOnlyList<PublicRoomTypeResponse> RoomTypes { get; set; } = [];
 }
 
@@ -85,6 +91,14 @@ public class PublicAmenityResponse
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Category { get; set; } = string.Empty;
+}
+
+public class PublicCommonAreaResponse
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
+    public int SortOrder { get; set; }
 }
 
 public class PublicNearbyPlaceResponse

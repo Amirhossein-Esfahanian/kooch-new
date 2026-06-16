@@ -1,4 +1,10 @@
 export type PublicInventoryMode = "NamedRooms" | "TypeBasedInventory";
+export type PublicPropertyView =
+  | "CourtyardView"
+  | "GardenView"
+  | "CityView"
+  | "MountainView"
+  | "DesertView";
 
 export interface PublicRoom {
   id: number;
@@ -57,13 +63,23 @@ export interface PublicProperty {
   checkOutTime: string | null;
   latitude: number | null;
   longitude: number | null;
+  hasElevator: boolean;
+  isWheelchairAccessible: boolean | null;
+  hasGroundFloorRoom: boolean | null;
+  hasAccessibleBathroom: boolean | null;
   isInstantBooking: boolean;
   startingPrice: number | null;
   images: PublicImage[];
   descriptionSections: {
-    sectionType: "PropertyIntroduction" | "CommonAreas" | "SharedAmenities" | "ImportantNotes";
+    sectionType: "PropertyIntroduction" | "ImportantNotes";
     title: string;
     content: string;
+    sortOrder: number;
+  }[];
+  commonAreas: {
+    id: number;
+    name: string;
+    description: string | null;
     sortOrder: number;
   }[];
   amenities: { id: number; name: string; category: string }[];
@@ -76,6 +92,7 @@ export interface PublicProperty {
     drivingMinutes: number | null;
     description: string | null;
   }[];
+  views: PublicPropertyView[];
   roomTypes: PublicRoomType[];
 }
 

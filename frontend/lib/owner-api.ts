@@ -35,6 +35,9 @@ export interface PropertyResponse {
   floorsCount: number | null;
   stairCount: number | null;
   hasElevator: boolean;
+  isWheelchairAccessible: boolean | null;
+  hasGroundFloorRoom: boolean | null;
+  hasAccessibleBathroom: boolean | null;
 }
 
 export interface RoomTypeResponse {
@@ -51,6 +54,7 @@ export interface RoomTypeResponse {
   basePrice: number | null;
   isActive: boolean;
   bedConfigurations: RoomTypeBedResponse[];
+  amenities: RoomTypeAmenityResponse[];
 }
 
 export interface BedTypeResponse {
@@ -79,6 +83,13 @@ export interface RoomTypeBedResponse {
   quantity: number;
 }
 
+export interface RoomTypeAmenityResponse {
+  amenityId: number;
+  name: string;
+  amenityCategoryId: number;
+  categoryName: string;
+}
+
 export interface RoomResponse {
   id: number;
   roomTypeId: number;
@@ -101,6 +112,12 @@ export interface PropertyAmenityResponse {
 }
 
 export type NearbyPlaceCategory = "Attraction" | "Transport" | "Landmark" | "Market" | "Other";
+export type PropertyViewType =
+  | "CourtyardView"
+  | "GardenView"
+  | "CityView"
+  | "MountainView"
+  | "DesertView";
 
 export interface NearbyPlaceResponse {
   id: number;
@@ -154,8 +171,6 @@ export interface PropertyCompletionResponse {
 
 export type PropertyDescriptionSectionType =
   | "PropertyIntroduction"
-  | "CommonAreas"
-  | "SharedAmenities"
   | "ImportantNotes";
 
 export interface PropertyDescriptionSectionResponse {
@@ -176,6 +191,8 @@ export interface AmenityCategoryResponse {
   isActive: boolean;
 }
 
+export type AmenityScope = "Property" | "RoomType" | "Both";
+
 export interface AmenityResponse {
   id: number;
   amenityCategoryId: number;
@@ -186,7 +203,7 @@ export interface AmenityResponse {
   slug: string;
   description: string | null;
   icon: string | null;
-  scope: "Property" | "RoomType" | "Both";
+  scope: AmenityScope;
   sortOrder: number;
 }
 
@@ -205,6 +222,9 @@ export interface PropertyFormValues {
   floorsCount?: number | null;
   stairCount?: number | null;
   hasElevator?: boolean;
+  isWheelchairAccessible?: boolean | null;
+  hasGroundFloorRoom?: boolean | null;
+  hasAccessibleBathroom?: boolean | null;
 }
 
 const tokenKey = "kooch_owner_token";

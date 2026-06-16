@@ -32,4 +32,5 @@ public class CreateRoomTypeRequest
     public decimal? BasePrice { get; set; }
 
     public IReadOnlyCollection<RoomTypeBedRequest> BedConfigurations { get; set; } = [];
+    public IReadOnlyCollection<int> AmenityIds { get; set; } = [];
 }

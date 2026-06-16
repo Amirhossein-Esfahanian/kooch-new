@@ -18,6 +18,7 @@ import {
   propertyTypes,
   PropertyResponse,
   PropertyImageResponse,
+  PropertyViewType,
   PropertyType,
   RoomResponse,
   RoomTypeResponse,
@@ -38,12 +39,26 @@ const steps = [
 const defaultNearbyPlaces = [
   "Railway Station",
   "Bus Terminal",
-  "Fin Garden",
-  "Bazaar",
-  "Tabatabaei House",
-  "Borujerdi House",
-  "Kamal-ol-Molk Square",
+  "Airport",
+  "City Center",
+  "Hospital",
 ];
+
+const propertyViewOptions: PropertyViewType[] = [
+  "CourtyardView",
+  "GardenView",
+  "CityView",
+  "MountainView",
+  "DesertView",
+];
+
+const propertyViewLabels: Record<PropertyViewType, string> = {
+  CourtyardView: "Courtyard View",
+  GardenView: "Garden View",
+  CityView: "City View",
+  MountainView: "Mountain View",
+  DesertView: "Desert View",
+};
 
 interface AccommodationDraft {
   id: number;
@@ -55,6 +70,7 @@ interface AccommodationDraft {
   totalInventory: number;
   basePrice: string;
   bedConfigurations: { bedTypeId: number; quantity: number }[];
+  amenityIds: number[];
   notes: string;
   floorNumber: number | null;
   stairCount: number | null;
@@ -71,6 +87,18 @@ interface ImageDraft {
   imageId?: number;
 }
 
+interface CommonAreaDraft {
+  name: string;
+  description: string;
+}
+
+interface NearbyPlaceDraft {
+  title: string;
+  drivingMinutes: string;
+  walkingMinutes: string;
+  isDefault: boolean;
+}
+
 interface WizardData {
   name: string;
   englishName: string;
@@ -80,18 +108,19 @@ interface WizardData {
   totalArea: string;
   floors: number;
   hasElevator: boolean;
-  stairCount: number;
+  isWheelchairAccessible: boolean;
+  hasGroundFloorRoom: boolean;
+  hasAccessibleBathroom: boolean;
   inventoryMode: InventoryMode;
   selectedAmenityIds: number[];
   coverImage: string;
   propertyImages: ImageDraft[];
   roomImages: ImageDraft[];
   propertyDescription: string;
-  commonAreasDescription: string;
-  sharedAmenitiesDescription: string;
   additionalNotes: string;
-  selectedNearbyPlaces: string[];
-  customNearbyPlaces: string[];
+  commonAreas: CommonAreaDraft[];
+  views: PropertyViewType[];
+  nearbyPlaces: NearbyPlaceDraft[];
 }
 
 const initialData: WizardData = {
@@ -103,18 +132,19 @@ const initialData: WizardData = {
   totalArea: "",
   floors: 1,
   hasElevator: false,
-  stairCount: 0,
+  isWheelchairAccessible: false,
+  hasGroundFloorRoom: false,
+  hasAccessibleBathroom: false,
   inventoryMode: "NamedRooms",
   selectedAmenityIds: [],
   coverImage: "",
   propertyImages: [{ url: "", tag: "gallery" }],
   roomImages: [{ url: "", tag: "room" }],
   propertyDescription: "",
-  commonAreasDescription: "",
-  sharedAmenitiesDescription: "",
   additionalNotes: "",
-  selectedNearbyPlaces: [],
-  customNearbyPlaces: [""],
+  commonAreas: [{ name: "", description: "" }],
+  views: [],
+  nearbyPlaces: [{ title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }],
 };
 
 const emptyAccommodation = {
@@ -126,6 +156,7 @@ const emptyAccommodation = {
   totalInventory: 1,
   basePrice: "",
   bedConfigurations: [] as { bedTypeId: number; quantity: number }[],
+  amenityIds: [] as number[],
   notes: "",
   floorNumber: null as number | null,
   stairCount: null as number | null,
@@ -140,15 +171,23 @@ function compact(values: string[]) {
   return values.map((value) => value.trim()).filter(Boolean);
 }
 
+function compactCommonAreas(values: CommonAreaDraft[]) {
+  return values.filter((area) => area.name.trim());
+}
+
+function compactNearbyPlaces(values: NearbyPlaceDraft[]) {
+  return values.filter((place) => place.title.trim());
+}
+
 function compactImages(values: ImageDraft[]) {
   return values.filter((image) => image.url.trim());
 }
 
 function nearbyCategory(title: string): NearbyPlaceCategory {
   const normalized = title.toLocaleLowerCase();
-  if (normalized.includes("station") || normalized.includes("terminal")) return "Transport";
+  if (normalized.includes("station") || normalized.includes("terminal") || normalized.includes("airport")) return "Transport";
   if (normalized.includes("bazaar") || normalized.includes("market")) return "Market";
-  if (normalized.includes("square")) return "Landmark";
+  if (normalized.includes("square") || normalized.includes("center")) return "Landmark";
   if (normalized.includes("garden") || normalized.includes("house")) return "Attraction";
   return "Other";
 }
@@ -183,7 +222,7 @@ export default function NewPropertyPage() {
     ])
       .then(([categories, items, beds]) => {
         setAmenityCategories(categories);
-        setAmenities(items.filter((item) => item.scope !== "RoomType"));
+        setAmenities(items);
         setBedTypes(beds);
       })
       .catch(() => setError("Amenities could not be loaded. You can continue and try again later."))
@@ -194,15 +233,17 @@ export default function NewPropertyPage() {
     () => amenities.filter((item) => data.selectedAmenityIds.includes(item.id)),
     [amenities, data.selectedAmenityIds],
   );
+  const propertyAmenityOptions = amenities.filter((item) => item.scope !== "RoomType");
+  const roomAmenityOptions = amenities.filter((item) => item.scope !== "Property");
 
   const completionItems = [
     { label: "اطلاعات پایه", complete: Boolean(data.name.trim() && data.city.trim() && data.address.trim()) },
-    { label: "اطلاعات ساختمان", complete: data.floors > 0 && data.stairCount >= 0 },
+    { label: "اطلاعات ساختمان", complete: data.floors > 0 },
     { label: "مدل اقامت", complete: accommodations.length > 0 },
     { label: "امکانات", complete: data.selectedAmenityIds.length > 0 },
     { label: "تصاویر", complete: Boolean(data.coverImage.trim() || compactImages(data.propertyImages).length || compactImages(data.roomImages).length) },
     { label: "توضیحات", complete: Boolean(data.propertyDescription.trim()) },
-    { label: "مکان‌های نزدیک", complete: Boolean(data.selectedNearbyPlaces.length || compact(data.customNearbyPlaces).length) },
+    { label: "مکان‌های نزدیک", complete: compactNearbyPlaces(data.nearbyPlaces).length > 0 },
   ];
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
@@ -213,14 +254,14 @@ export default function NewPropertyPage() {
     if (step === 0 && (!data.name.trim() || !data.englishName.trim() || !data.city.trim() || !data.address.trim())) {
       return "نام فارسی، نام انگلیسی، شهر و نشانی را کامل کنید.";
     }
-    if (step === 1 && (data.floors < 1 || data.stairCount < 0)) {
-      return "Floors must be at least 1 and stair count cannot be negative.";
+    if (step === 1 && data.floors < 1) {
+      return "Floors must be at least 1.";
     }
     if (step === 2 && accommodations.length === 0) {
-      return `Add at least one ${data.inventoryMode === "NamedRooms" ? "named room" : "room type"}.`;
+      return `حداقل یک ${data.inventoryMode === "NamedRooms" ? "اتاق نام‌دار" : "نوع اتاق"} اضافه کنید.`;
     }
     if (step === 5 && !data.propertyDescription.trim()) {
-      return "Add a property description before continuing.";
+      return "پیش از ادامه، توضیحات اقامتگاه را وارد کنید.";
     }
     return "";
   }
@@ -277,10 +318,16 @@ export default function NewPropertyPage() {
     }
   }
 
-  function updateTextList(key: "customNearbyPlaces", index: number, value: string) {
-    const values = [...data[key]];
-    values[index] = value;
-    update(key, values);
+  function updateCommonArea(index: number, patch: Partial<CommonAreaDraft>) {
+    const values = [...data.commonAreas];
+    values[index] = { ...values[index], ...patch };
+    update("commonAreas", values);
+  }
+
+  function updateNearbyPlace(index: number, patch: Partial<NearbyPlaceDraft>) {
+    const values = [...data.nearbyPlaces];
+    values[index] = { ...values[index], ...patch };
+    update("nearbyPlaces", values);
   }
 
   function updateImageList(key: "propertyImages" | "roomImages", index: number, patch: Partial<ImageDraft>) {
@@ -306,8 +353,11 @@ export default function NewPropertyPage() {
       checkOutTime: "11:00",
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       floorsCount: data.floors,
-      stairCount: data.stairCount,
+      stairCount: null,
       hasElevator: data.hasElevator,
+      isWheelchairAccessible: data.isWheelchairAccessible,
+      hasGroundFloorRoom: data.hasGroundFloorRoom,
+      hasAccessibleBathroom: data.hasAccessibleBathroom,
     });
   }
 
@@ -337,6 +387,7 @@ export default function NewPropertyPage() {
           inventoryMode: data.inventoryMode,
           basePrice: item.basePrice === "" ? null : Number(item.basePrice),
           bedConfigurations: item.bedConfigurations,
+          amenityIds: item.amenityIds,
         }),
       });
       let roomId: number | undefined;
@@ -395,12 +446,9 @@ export default function NewPropertyPage() {
   }
 
   async function saveDescriptions(propertyId: number) {
-    const sharedAmenities = data.sharedAmenitiesDescription.trim() || selectedAmenities.map((item) => item.name).join(", ");
     const sections = [
       { sectionType: "PropertyIntroduction", title: "Property Introduction", content: data.propertyDescription.trim(), sortOrder: 0 },
-      { sectionType: "CommonAreas", title: "Common Areas", content: data.commonAreasDescription.trim(), sortOrder: 1 },
-      { sectionType: "SharedAmenities", title: "Shared Amenities", content: sharedAmenities, sortOrder: 2 },
-      { sectionType: "ImportantNotes", title: "Important Notes", content: data.additionalNotes.trim(), sortOrder: 3 },
+      { sectionType: "ImportantNotes", title: "Important Notes", content: data.additionalNotes.trim(), sortOrder: 1 },
     ] as const;
 
     const ids = { ...descriptionIds };
@@ -413,20 +461,33 @@ export default function NewPropertyPage() {
       });
       ids[section.sectionType] = response.id;
     }
+    await apiRequest(`/owner/properties/${propertyId}/common-areas`, {
+      method: "PUT",
+      body: JSON.stringify({
+        commonAreas: compactCommonAreas(data.commonAreas).map((area, index) => ({
+          name: area.name.trim(),
+          description: area.description.trim() || null,
+          sortOrder: index,
+        })),
+      }),
+    });
     setDescriptionIds(ids);
     await saveProperty(data.propertyDescription.trim());
   }
 
   async function saveNearbyPlaces(propertyId: number) {
     const existing = await apiRequest<NearbyPlaceResponse[]>(`/owner/properties/${propertyId}/nearby-places`);
-    const desired = [
-      ...data.selectedNearbyPlaces.map((title) => ({ title, isDefault: true, isCustom: false })),
-      ...compact(data.customNearbyPlaces).map((title) => ({ title, isDefault: false, isCustom: true })),
-    ];
+    const desired = compactNearbyPlaces(data.nearbyPlaces).map((place) => ({
+      title: place.title.trim(),
+      drivingMinutes: place.drivingMinutes === "" ? null : Number(place.drivingMinutes),
+      walkingMinutes: place.walkingMinutes === "" ? null : Number(place.walkingMinutes),
+      isDefault: place.isDefault,
+      isCustom: !place.isDefault,
+    }));
     const desiredTitles = new Set(desired.map((place) => place.title.toLocaleLowerCase()));
     for (const place of desired) {
       const found = existing.find((item) => item.title.toLocaleLowerCase() === place.title.toLocaleLowerCase());
-      const payload = { ...place, category: nearbyCategory(place.title), isActive: true };
+      const payload = { ...place, category: nearbyCategory(place.title), distanceInMeters: null, description: null, latitude: null, longitude: null, isActive: true };
       await apiRequest<NearbyPlaceResponse>(found ? `/owner/nearby-places/${found.id}` : `/owner/properties/${propertyId}/nearby-places`, {
         method: found ? "PUT" : "POST",
         body: JSON.stringify(payload),
@@ -448,7 +509,10 @@ export default function NewPropertyPage() {
       await saveProperty(property.description);
       await saveAccommodations(property.id);
     }
-    if (step === 3) await apiRequest<PropertyAmenityResponse[]>(`/owner/properties/${property.id}/amenities`, { method: "PUT", body: JSON.stringify({ amenityIds: data.selectedAmenityIds }) });
+    if (step === 3) {
+      await apiRequest<PropertyAmenityResponse[]>(`/owner/properties/${property.id}/amenities`, { method: "PUT", body: JSON.stringify({ amenityIds: data.selectedAmenityIds }) });
+      await apiRequest(`/owner/properties/${property.id}/views`, { method: "PUT", body: JSON.stringify({ views: data.views }) });
+    }
     if (step === 4) await saveImages(property.id);
     if (step === 5) await saveDescriptions(property.id);
     if (step === 6) await saveNearbyPlaces(property.id);
@@ -484,7 +548,7 @@ export default function NewPropertyPage() {
       </div>
 
       {error && <p className="mb-4 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>}
-      {property && <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm font-semibold text-green-800">Draft property #{property.id} is saved. Each completed step is now stored immediately.</p>}
+      {property && <p className="mb-4 rounded-lg bg-green-50 p-3 text-sm font-semibold text-green-800">پیش‌نویس اقامتگاه #{property.id} ذخیره شده است. هر مرحله پس از تکمیل ذخیره می‌شود.</p>}
 
       <form dir="rtl" onSubmit={submit}>
         {step === 0 && (
@@ -507,9 +571,13 @@ export default function NewPropertyPage() {
             <div className="grid gap-4 sm:grid-cols-3">
               <label className="grid gap-1 text-sm font-semibold">مساحت کل (مترمربع)<input className={inputClass} min="0" onChange={(event) => update("totalArea", event.target.value)} type="number" value={data.totalArea} /></label>
               <label className="grid gap-1 text-sm font-semibold">تعداد طبقات<input className={inputClass} min="1" onChange={(event) => update("floors", Number(event.target.value))} type="number" value={data.floors} /></label>
-              <label className="grid gap-1 text-sm font-semibold">تعداد پله<input className={inputClass} min="0" onChange={(event) => update("stairCount", Number(event.target.value))} type="number" value={data.stairCount} /></label>
             </div>
-            <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={data.hasElevator} onChange={(event) => update("hasElevator", event.target.checked)} type="checkbox" />ساختمان آسانسور دارد</label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={data.isWheelchairAccessible} onChange={(event) => update("isWheelchairAccessible", event.target.checked)} type="checkbox" />مناسب ویلچر هست؟</label>
+              <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={data.hasElevator} onChange={(event) => update("hasElevator", event.target.checked)} type="checkbox" />آسانسور دارد؟</label>
+              <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={data.hasGroundFloorRoom} onChange={(event) => update("hasGroundFloorRoom", event.target.checked)} type="checkbox" />اتاق همکف دارد؟</label>
+              <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={data.hasAccessibleBathroom} onChange={(event) => update("hasAccessibleBathroom", event.target.checked)} type="checkbox" />سرویس بهداشتی مناسب افراد کم‌توان دارد؟</label>
+            </div>
           </section>
         )}
 
@@ -532,6 +600,14 @@ export default function NewPropertyPage() {
               <label className="grid gap-1 text-sm font-semibold">نام انگلیسی<input className={inputClass} dir="ltr" onChange={(event) => setAccommodation({ ...accommodation, englishName: event.target.value })} placeholder={namedRooms ? "Shah Abbasi" : "Double Room"} value={accommodation.englishName} /></label>
               <label className="grid gap-1 text-sm font-semibold">توضیحات<textarea className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, description: event.target.value })} rows={2} value={accommodation.description} /></label>
               <div className="grid gap-3 rounded-lg border border-ink/10 p-4"><strong>ترکیب تخت‌ها</strong>{accommodation.bedConfigurations.map((bed, index) => <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]" key={index}><select className={inputClass} onChange={(event) => { const beds = [...accommodation.bedConfigurations]; beds[index] = { ...bed, bedTypeId: Number(event.target.value) }; setAccommodation({ ...accommodation, bedConfigurations: beds }); }} value={bed.bedTypeId}><option value={0}>نوع تخت</option>{bedTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><input className={inputClass} min="1" onChange={(event) => { const beds = [...accommodation.bedConfigurations]; beds[index] = { ...bed, quantity: Number(event.target.value) }; setAccommodation({ ...accommodation, bedConfigurations: beds }); }} type="number" value={bed.quantity} /><button className="text-sm font-bold text-red-700" onClick={() => setAccommodation({ ...accommodation, bedConfigurations: accommodation.bedConfigurations.filter((_, candidate) => candidate !== index) })} type="button">حذف</button></div>)}<button className="justify-self-start rounded-lg border border-ink/20 px-3 py-2 text-sm font-bold" onClick={() => setAccommodation({ ...accommodation, bedConfigurations: [...accommodation.bedConfigurations, { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 }] })} type="button">افزودن تخت</button></div>
+              <div className="grid gap-3 rounded-lg border border-ink/10 p-4">
+                <strong>امکانات اتاق</strong>
+                {amenityCategories.map((category) => {
+                  const categoryAmenities = roomAmenityOptions.filter((item) => item.amenityCategoryId === category.id);
+                  if (categoryAmenities.length === 0) return null;
+                  return <fieldset className="grid gap-2" key={category.id}><legend className="text-sm font-bold text-ink/60">{category.name}</legend><div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">{categoryAmenities.map((amenity) => <label className="flex items-center gap-2 rounded-lg border border-ink/10 p-3 text-sm" key={amenity.id}><input checked={accommodation.amenityIds.includes(amenity.id)} onChange={(event) => setAccommodation({ ...accommodation, amenityIds: event.target.checked ? [...accommodation.amenityIds, amenity.id] : accommodation.amenityIds.filter((id) => id !== amenity.id) })} type="checkbox" />{amenity.name}</label>)}</div></fieldset>;
+                })}
+              </div>
               {namedRooms && <div className="grid gap-3 sm:grid-cols-2"><label className="grid gap-1 text-sm font-semibold">یادداشت کوتاه<input className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, notes: event.target.value })} placeholder="ورودی اتاق ۱۸ پله رو به پایین دارد" value={accommodation.notes} /></label><label className="grid gap-1 text-sm font-semibold">طبقه<input className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, floorNumber: event.target.value === "" ? null : Number(event.target.value) })} type="number" value={accommodation.floorNumber ?? ""} /></label><label className="grid gap-1 text-sm font-semibold">تعداد پله<input className={inputClass} min="0" onChange={(event) => setAccommodation({ ...accommodation, stairCount: event.target.value === "" ? null : Number(event.target.value) })} type="number" value={accommodation.stairCount ?? ""} /></label><label className="grid gap-1 text-sm font-semibold">پنجره<select className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, hasWindow: event.target.value === "" ? null : event.target.value === "true" })} value={accommodation.hasWindow == null ? "" : String(accommodation.hasWindow)}><option value="">نامشخص</option><option value="true">دارد</option><option value="false">ندارد</option></select></label><label className="grid gap-1 text-sm font-semibold">سرویس بهداشتی اختصاصی<select className={inputClass} onChange={(event) => setAccommodation({ ...accommodation, hasPrivateBathroom: event.target.value === "" ? null : event.target.value === "true" })} value={accommodation.hasPrivateBathroom == null ? "" : String(accommodation.hasPrivateBathroom)}><option value="">نامشخص</option><option value="true">دارد</option><option value="false">ندارد</option></select></label></div>}
               <div className={`grid gap-4 ${namedRooms ? "sm:grid-cols-3" : "sm:grid-cols-4"}`}>
                 <label className="grid gap-1 text-sm font-semibold">حداکثر بزرگسال<input className={inputClass} min="1" onChange={(event) => setAccommodation({ ...accommodation, maxAdults: Number(event.target.value) })} type="number" value={accommodation.maxAdults} /></label>
@@ -542,7 +618,7 @@ export default function NewPropertyPage() {
               <button className="rounded-lg bg-ink px-4 py-3 font-bold text-white" onClick={addAccommodation} type="button">{namedRooms ? "افزودن اتاق" : "افزودن نوع اتاق"}</button>
             </div>
             <div className="grid gap-2">
-              {accommodations.map((item) => <div className="flex items-center justify-between rounded-lg border border-ink/15 bg-white p-3" key={item.id}><span><strong>{item.name}</strong>{!namedRooms && ` - ${item.totalInventory} rooms`}</span>{item.roomTypeId ? <span className="text-sm font-semibold text-green-700">Saved</span> : <button className="text-sm font-semibold text-red-700" onClick={() => setAccommodations((current) => current.filter((candidate) => candidate.id !== item.id))} type="button">Remove</button>}</div>)}
+              {accommodations.map((item) => <div className="flex items-center justify-between rounded-lg border border-ink/15 bg-white p-3" key={item.id}><span><strong>{item.name}</strong>{!namedRooms && ` - ${item.totalInventory} واحد`}</span>{item.roomTypeId ? <span className="text-sm font-semibold text-green-700">ذخیره شده</span> : <button className="text-sm font-semibold text-red-700" onClick={() => setAccommodations((current) => current.filter((candidate) => candidate.id !== item.id))} type="button">حذف</button>}</div>)}
             </div>
           </section>
         )}
@@ -552,9 +628,20 @@ export default function NewPropertyPage() {
             <div><h2 className="text-2xl font-bold">امکانات</h2><p className="text-sm text-ink/60">امکانات موجود در اقامتگاه را انتخاب کنید.</p></div>
             {amenitiesLoading && <p>در حال بارگذاری امکانات...</p>}
             {!amenitiesLoading && amenityCategories.map((category) => {
-              const categoryAmenities = amenities.filter((item) => item.amenityCategoryId === category.id);
+              const categoryAmenities = propertyAmenityOptions.filter((item) => item.amenityCategoryId === category.id);
               return <fieldset className="grid gap-2" key={category.id}><legend className="mb-2 text-lg font-bold">{category.name}</legend><div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">{categoryAmenities.map((amenity) => <label className="flex items-center gap-2 rounded-lg border border-ink/10 p-3" key={amenity.id}><input checked={data.selectedAmenityIds.includes(amenity.id)} onChange={(event) => update("selectedAmenityIds", event.target.checked ? [...data.selectedAmenityIds, amenity.id] : data.selectedAmenityIds.filter((id) => id !== amenity.id))} type="checkbox" />{amenity.name}</label>)}</div></fieldset>;
             })}
+            <fieldset className="grid gap-2">
+              <legend className="mb-2 text-lg font-bold">چشم‌انداز اقامتگاه</legend>
+              <div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">
+                {propertyViewOptions.map((view) => (
+                  <label className="flex items-center gap-2 rounded-lg border border-ink/10 p-3" key={view}>
+                    <input checked={data.views.includes(view)} onChange={(event) => update("views", event.target.checked ? [...data.views, view] : data.views.filter((item) => item !== view))} type="checkbox" />
+                    {propertyViewLabels[view]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </section>
         )}
 
@@ -562,26 +649,45 @@ export default function NewPropertyPage() {
           <section className={`${cardClass} grid gap-5`}>
             <div><h2 className="text-2xl font-bold">تصاویر</h2><p className="text-sm text-ink/60">تا زمان فعال شدن آپلود، نشانی اینترنتی تصویر را وارد کنید.</p></div>
             <label className="grid gap-1 text-sm font-semibold">نشانی تصویر کاور<input className={inputClass} dir="ltr" onChange={(event) => update("coverImage", event.target.value)} type="url" value={data.coverImage} /></label>
-            <ImageFields images={data.propertyImages} label="Property image" onAdd={() => addImageField("propertyImages")} onChange={(index, value) => updateImageList("propertyImages", index, value)} />
-            <ImageFields accommodations={accommodations} images={data.roomImages} label="Room image" onAdd={() => addImageField("roomImages")} onChange={(index, value) => updateImageList("roomImages", index, value)} />
+            <ImageFields images={data.propertyImages} label="تصویر اقامتگاه" onAdd={() => addImageField("propertyImages")} onChange={(index, value) => updateImageList("propertyImages", index, value)} />
+            <ImageFields accommodations={accommodations} images={data.roomImages} label="تصویر اتاق" onAdd={() => addImageField("roomImages")} onChange={(index, value) => updateImageList("roomImages", index, value)} />
           </section>
         )}
 
         {step === 5 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-bold">توضیحات</h2>
-            <label className="grid gap-1 text-sm font-semibold">Property description<textarea className={inputClass} onChange={(event) => update("propertyDescription", event.target.value)} required rows={5} value={data.propertyDescription} /></label>
-            <label className="grid gap-1 text-sm font-semibold">Common areas description<textarea className={inputClass} onChange={(event) => update("commonAreasDescription", event.target.value)} rows={4} value={data.commonAreasDescription} /></label>
-            <label className="grid gap-1 text-sm font-semibold">Shared amenities description<textarea className={inputClass} onChange={(event) => update("sharedAmenitiesDescription", event.target.value)} rows={4} value={data.sharedAmenitiesDescription} /></label>
-            <label className="grid gap-1 text-sm font-semibold">Additional notes<textarea className={inputClass} onChange={(event) => update("additionalNotes", event.target.value)} rows={4} value={data.additionalNotes} /></label>
+            <label className="grid gap-1 text-sm font-semibold">توضیحات اقامتگاه<textarea className={inputClass} onChange={(event) => update("propertyDescription", event.target.value)} required rows={5} value={data.propertyDescription} /></label>
+            <div className="grid gap-3 rounded-lg border border-ink/10 p-4">
+              <strong>فضاهای مشترک</strong>
+              {data.commonAreas.map((area, index) => (
+                <div className="grid gap-2 sm:grid-cols-[1fr_1.5fr_auto]" key={index}>
+                  <input className={inputClass} onChange={(event) => updateCommonArea(index, { name: event.target.value })} placeholder="حیاط مرکزی" value={area.name} />
+                  <input className={inputClass} onChange={(event) => updateCommonArea(index, { description: event.target.value })} placeholder="توضیح اختیاری" value={area.description} />
+                  <button className="text-sm font-bold text-red-700" onClick={() => update("commonAreas", data.commonAreas.filter((_, candidate) => candidate !== index))} type="button">حذف</button>
+                </div>
+              ))}
+              <button className="justify-self-start rounded-lg border border-ink/20 px-3 py-2 text-sm font-bold" onClick={() => update("commonAreas", [...data.commonAreas, { name: "", description: "" }])} type="button">افزودن فضای مشترک</button>
+            </div>
+            <label className="grid gap-1 text-sm font-semibold">نکات تکمیلی<textarea className={inputClass} onChange={(event) => update("additionalNotes", event.target.value)} rows={4} value={data.additionalNotes} /></label>
           </section>
         )}
 
         {step === 6 && (
           <section className={`${cardClass} grid gap-5`}>
             <div><h2 className="text-2xl font-bold">مکان‌های نزدیک</h2><p className="text-sm text-ink/60">مکان‌های مهم کاشان یا نقاط دلخواه نزدیک اقامتگاه را انتخاب کنید.</p></div>
-            <div className="grid gap-2 sm:grid-cols-2">{defaultNearbyPlaces.map((place) => <label className="flex items-center gap-2 rounded-lg border border-ink/10 p-3" key={place}><input checked={data.selectedNearbyPlaces.includes(place)} onChange={(event) => update("selectedNearbyPlaces", event.target.checked ? [...data.selectedNearbyPlaces, place] : data.selectedNearbyPlaces.filter((item) => item !== place))} type="checkbox" />{place}</label>)}</div>
-            <UrlFields addLabel="Add custom place" label="Custom nearby place" onAdd={() => update("customNearbyPlaces", [...data.customNearbyPlaces, ""])} onChange={(index, value) => updateTextList("customNearbyPlaces", index, value)} values={data.customNearbyPlaces} />
+            <div className="grid gap-2 sm:grid-cols-2">{defaultNearbyPlaces.map((place) => <button className="rounded-lg border border-ink/10 p-3 text-left font-semibold" key={place} onClick={() => update("nearbyPlaces", data.nearbyPlaces.some((item) => item.title === place) ? data.nearbyPlaces.filter((item) => item.title !== place) : [...data.nearbyPlaces, { title: place, drivingMinutes: "", walkingMinutes: "", isDefault: true }])} type="button">{data.nearbyPlaces.some((item) => item.title === place) ? "انتخاب شده: " : ""}{place}</button>)}</div>
+            <div className="grid gap-3">
+              {data.nearbyPlaces.map((place, index) => (
+                <div className="grid gap-2 rounded-lg border border-ink/10 p-3 sm:grid-cols-[1fr_140px_140px_auto]" key={index}>
+                  <input className={inputClass} disabled={place.isDefault} onChange={(event) => updateNearbyPlace(index, { title: event.target.value })} placeholder="مکان دلخواه" value={place.title} />
+                  <input className={inputClass} min="0" onChange={(event) => updateNearbyPlace(index, { drivingMinutes: event.target.value })} placeholder="دقیقه با خودرو" type="number" value={place.drivingMinutes} />
+                  <input className={inputClass} min="0" onChange={(event) => updateNearbyPlace(index, { walkingMinutes: event.target.value })} placeholder="دقیقه پیاده" type="number" value={place.walkingMinutes} />
+                  <button className="text-sm font-bold text-red-700" onClick={() => update("nearbyPlaces", data.nearbyPlaces.filter((_, candidate) => candidate !== index))} type="button">حذف</button>
+                </div>
+              ))}
+              <button className="justify-self-start rounded-lg border border-ink/20 px-3 py-2 text-sm font-semibold" onClick={() => update("nearbyPlaces", [...data.nearbyPlaces, { title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }])} type="button">افزودن مکان دلخواه</button>
+            </div>
           </section>
         )}
 
@@ -589,7 +695,7 @@ export default function NewPropertyPage() {
           <section className="grid gap-5">
             <div className={cardClass}><h2 className="text-2xl font-bold">بازبینی</h2><p className="mt-1 text-sm text-ink/60">میزان تکمیل اطلاعات: {completion?.completionPercentage ?? 0}٪</p></div>
             <div className={cardClass}>
-              <h3 className="mb-3 text-lg font-bold">Completion status</h3>
+              <h3 className="mb-3 text-lg font-bold">وضعیت تکمیل</h3>
               <div className="grid gap-2 sm:grid-cols-2">
                 {completionItems.map((item) => {
                   const sectionKey: Record<string, string> = { "اطلاعات پایه": "basic info", "اطلاعات ساختمان": "building info", "مدل اقامت": "room types", "امکانات": "amenities", "تصاویر": "images", "توضیحات": "descriptions", "مکان‌های نزدیک": "nearby places" };
@@ -598,7 +704,7 @@ export default function NewPropertyPage() {
                   <div className="flex items-center justify-between rounded-lg border border-ink/10 px-3 py-2" key={item.label}>
                     <span>{item.label}</span>
                     <span className={`text-sm font-bold ${complete ? "text-green-700" : "text-amber-700"}`}>
-                      {complete ? "Complete" : "Optional / incomplete"}
+                      {complete ? "تکمیل" : "اختیاری / ناقص"}
                     </span>
                   </div>
                   );
@@ -606,14 +712,16 @@ export default function NewPropertyPage() {
               </div>
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              <ReviewCard title="Basic information" lines={[data.name, `${data.type} in ${data.city}`, data.address]} />
-              <ReviewCard title="Building" lines={[data.totalArea ? `${data.totalArea} m2` : "Area not provided", `${data.floors} floors`, data.hasElevator ? "Elevator" : "No elevator", `${data.stairCount} stairs`]} />
-              <ReviewCard title={namedRooms ? "Named rooms" : "Room types"} lines={accommodations.map((item) => namedRooms ? item.name : `${item.name} (${item.totalInventory})`)} />
-              <ReviewCard title="Amenities" lines={selectedAmenities.map((item) => item.name)} />
-              <ReviewCard title="Images" lines={[data.coverImage && "Cover image", `${compactImages(data.propertyImages).length} property images`, `${compactImages(data.roomImages).length} room images`].filter(Boolean)} />
-              <ReviewCard title="Nearby places" lines={[...data.selectedNearbyPlaces, ...compact(data.customNearbyPlaces)]} />
+              <ReviewCard title="اطلاعات پایه" lines={[data.name, `${data.type} در ${data.city}`, data.address]} />
+              <ReviewCard title="ساختمان و دسترسی" lines={[data.totalArea ? `${data.totalArea} مترمربع` : "مساحت ثبت نشده", `${data.floors} طبقه`, data.hasElevator ? "آسانسور دارد" : "آسانسور ندارد", data.isWheelchairAccessible ? "مناسب ویلچر" : "", data.hasGroundFloorRoom ? "اتاق همکف" : "", data.hasAccessibleBathroom ? "سرویس مناسب افراد کم‌توان" : ""]} />
+              <ReviewCard title={namedRooms ? "اتاق‌های نام‌دار" : "انواع اتاق"} lines={accommodations.map((item) => namedRooms ? item.name : `${item.name} (${item.totalInventory})`)} />
+              <ReviewCard title="امکانات" lines={selectedAmenities.map((item) => item.name)} />
+              <ReviewCard title="تصاویر" lines={[data.coverImage && "تصویر کاور", `${compactImages(data.propertyImages).length} تصویر اقامتگاه`, `${compactImages(data.roomImages).length} تصویر اتاق`].filter(Boolean)} />
+              <ReviewCard title="فضاهای مشترک" lines={compactCommonAreas(data.commonAreas).map((area) => area.name)} />
+              <ReviewCard title="چشم‌اندازها" lines={data.views.map((view) => propertyViewLabels[view])} />
+              <ReviewCard title="مکان‌های نزدیک" lines={compactNearbyPlaces(data.nearbyPlaces).map((place) => place.title)} />
             </div>
-            <p className="rounded-lg bg-green-50 p-3 text-sm text-green-900">Property details, rooms, amenities, images, descriptions, and nearby places have been saved to the backend.</p>
+            <p className="rounded-lg bg-green-50 p-3 text-sm text-green-900">جزئیات اقامتگاه، اتاق‌ها، امکانات، تصاویر، توضیحات و مکان‌های نزدیک ذخیره شده‌اند.</p>
           </section>
         )}
 
@@ -636,5 +744,5 @@ function ImageFields({ label, images, accommodations, onChange, onAdd }: { label
 
 function ReviewCard({ title, lines }: { title: string; lines: string[] }) {
   const visibleLines = lines.filter(Boolean);
-  return <article className={cardClass}><h3 className="mb-2 text-lg font-bold">{title}</h3>{visibleLines.length ? <ul className="grid gap-1 text-sm text-ink/70">{visibleLines.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}</ul> : <p className="text-sm text-ink/50">Nothing selected.</p>}</article>;
+  return <article className={cardClass}><h3 className="mb-2 text-lg font-bold">{title}</h3>{visibleLines.length ? <ul className="grid gap-1 text-sm text-ink/70">{visibleLines.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}</ul> : <p className="text-sm text-ink/50">موردی انتخاب نشده است.</p>}</article>;
 }

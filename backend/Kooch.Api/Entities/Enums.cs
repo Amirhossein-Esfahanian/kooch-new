@@ -41,10 +41,9 @@ public enum NotificationChannel { Sms, Email, InApp, WhatsApp, Telegram }
 public enum NotificationStatus { Pending, Sent, Failed }
 public enum AvailabilityStatus { Available, Unavailable, OnRequest }
 public enum NearbyPlaceCategory { Attraction, Transport, Landmark, Market, Other }
+public enum PropertyViewType { CourtyardView, GardenView, CityView, MountainView, DesertView }
 public enum PropertyDescriptionSectionType
 {
-    PropertyIntroduction,
-    CommonAreas,
-    SharedAmenities,
-    ImportantNotes
+    PropertyIntroduction = 0,
+    ImportantNotes = 3
 }

@@ -8,6 +8,8 @@ import {
   AvailabilityResponse,
   AvailabilityStatus,
   apiRequest,
+  AmenityCategoryResponse,
+  AmenityResponse,
   BedTypeResponse,
   getToken,
   InventoryMode,
@@ -31,6 +33,7 @@ interface AccommodationFormValues {
   totalInventory: number;
   basePrice: string;
   bedConfigurations: { bedTypeId: number; quantity: number }[];
+  amenityIds: number[];
   notes: string;
   floorNumber: number | null;
   stairCount: number | null;
@@ -70,6 +73,16 @@ type PropertyTab =
   | "Images"
   | "Rooms";
 
+const tabLabels: Record<PropertyTab, string> = {
+  Overview: "اطلاعات پایه",
+  "Building Info": "ساختمان و دسترسی",
+  Rooms: "اتاق‌ها",
+  Amenities: "امکانات",
+  Descriptions: "توضیحات",
+  "Nearby Places": "مکان‌های نزدیک",
+  Images: "تصاویر",
+};
+
 const tabs: PropertyTab[] = [
   "Overview",
   "Building Info",
@@ -84,8 +97,6 @@ const descriptionTypes: {
   title: string;
 }[] = [
   { type: "PropertyIntroduction", title: "Property Introduction" },
-  { type: "CommonAreas", title: "Common Areas" },
-  { type: "SharedAmenities", title: "Shared Amenities" },
   { type: "ImportantNotes", title: "Important Notes" },
 ];
 
@@ -104,6 +115,7 @@ const emptyAccommodation: AccommodationFormValues = {
   totalInventory: 1,
   basePrice: "",
   bedConfigurations: [],
+  amenityIds: [],
   notes: "",
   floorNumber: null,
   stairCount: null,
@@ -152,6 +164,9 @@ function propertyToForm(property: PropertyResponse): PropertyFormValues {
     floorsCount: property.floorsCount,
     stairCount: property.stairCount,
     hasElevator: property.hasElevator,
+    isWheelchairAccessible: property.isWheelchairAccessible,
+    hasGroundFloorRoom: property.hasGroundFloorRoom,
+    hasAccessibleBathroom: property.hasAccessibleBathroom,
   };
 }
 
@@ -166,6 +181,8 @@ export default function ManagePropertyPage() {
   const [rooms, setRooms] = useState<Record<number, RoomResponse[]>>({});
   const [accommodation, setAccommodation] = useState(emptyAccommodation);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
+  const [amenityCategories, setAmenityCategories] = useState<AmenityCategoryResponse[]>([]);
+  const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
   const [editingRoomTypeId, setEditingRoomTypeId] = useState<number | null>(null);
   const [availability, setAvailability] = useState(initialAvailability);
   const [availabilityRows, setAvailabilityRows] = useState<
@@ -185,8 +202,6 @@ export default function ManagePropertyPage() {
     Record<PropertyDescriptionSectionType, string>
   >({
     PropertyIntroduction: "",
-    CommonAreas: "",
-    SharedAmenities: "",
     ImportantNotes: "",
   });
   const [error, setError] = useState("");
@@ -224,6 +239,8 @@ export default function ManagePropertyPage() {
       descriptionResult,
       imageResult,
       bedTypeResult,
+      categoryResult,
+      amenityResult,
     ] = await Promise.all([
       apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`),
       apiRequest<RoomTypeResponse[]>(
@@ -237,6 +254,8 @@ export default function ManagePropertyPage() {
       ),
       apiRequest<PropertyImageResponse[]>(`/owner/properties/${propertyId}/images`),
       apiRequest<BedTypeResponse[]>("/bed-types"),
+      apiRequest<AmenityCategoryResponse[]>("/amenity-categories"),
+      apiRequest<AmenityResponse[]>("/amenities"),
     ]);
     setProperty(propertyResult);
     setPropertyValues(propertyToForm(propertyResult));
@@ -245,6 +264,8 @@ export default function ManagePropertyPage() {
     setDescriptionSections(descriptionResult);
     setImages(imageResult);
     setBedTypes(bedTypeResult);
+    setAmenityCategories(categoryResult);
+    setAmenities(amenityResult);
     setDescriptionDrafts((current) => ({
       ...current,
       ...Object.fromEntries(
@@ -373,6 +394,7 @@ export default function ManagePropertyPage() {
                 : Number(accommodation.basePrice),
             isActive: true,
             bedConfigurations: accommodation.bedConfigurations,
+            amenityIds: accommodation.amenityIds,
           }),
         },
       );
@@ -566,10 +588,11 @@ export default function ManagePropertyPage() {
   }
 
   const namedMode = property?.inventoryMode === "NamedRooms";
+  const roomAmenityOptions = amenities.filter((amenity) => amenity.scope !== "Property");
 
   return (
     <OwnerPage title={property ? property.name : "Manage property"}>
-      {loading && <p>Loading property...</p>}
+      {loading && <p>در حال بارگذاری اقامتگاه...</p>}
       {error && (
         <p className="mb-4 rounded-lg bg-red-50 p-3 text-red-700">{error}</p>
       )}
@@ -585,10 +608,10 @@ export default function ManagePropertyPage() {
             <div className="mb-3 flex items-end justify-between gap-3">
               <div>
                 <p className="text-sm font-semibold text-ink/55">
-                  Property information
+                  اطلاعات اقامتگاه
                 </p>
                 <h2 className="text-2xl font-black">
-                  {completion?.completionPercentage ?? 0}% Complete
+                  {completion?.completionPercentage ?? 0}٪ تکمیل
                 </h2>
               </div>
               <span className="text-sm font-semibold">{property.status}</span>
@@ -632,18 +655,18 @@ export default function ManagePropertyPage() {
                 onClick={() => setActiveTab(tab)}
                 type="button"
               >
-                {tab}
+                {tabLabels[tab]}
               </button>
             ))}
           </nav>
 
           {activeTab === "Overview" && (
             <section>
-              <h2 className="mb-3 text-2xl font-bold">Property details</h2>
+              <h2 className="mb-3 text-2xl font-bold">اطلاعات پایه</h2>
               <PropertyForm
                 onChange={setPropertyValues}
                 onSubmit={updateProperty}
-                submitLabel="Save property"
+                submitLabel="ذخیره اقامتگاه"
                 values={propertyValues}
               />
             </section>
@@ -651,14 +674,14 @@ export default function ManagePropertyPage() {
 
           {activeTab === "Building Info" && (
             <section>
-              <h2 className="mb-3 text-2xl font-bold">Building information</h2>
+              <h2 className="mb-3 text-2xl font-bold">ساختمان و دسترسی</h2>
               <form
                 className="grid gap-4 rounded-xl border border-ink/10 bg-white p-5 shadow-sm"
                 onSubmit={saveBuildingInformation}
               >
                 <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                   <label className="grid gap-1 text-sm font-semibold">
-                    Total area (m2)
+                    مساحت کل (مترمربع)
                     <input
                       className={inputClass}
                       min="0"
@@ -677,7 +700,7 @@ export default function ManagePropertyPage() {
                     />
                   </label>
                   <label className="grid gap-1 text-sm font-semibold">
-                    Land area (m2)
+                    مساحت زمین (مترمربع)
                     <input
                       className={inputClass}
                       min="0"
@@ -696,7 +719,7 @@ export default function ManagePropertyPage() {
                     />
                   </label>
                   <label className="grid gap-1 text-sm font-semibold">
-                    Floors
+                    تعداد طبقات
                     <input
                       className={inputClass}
                       min="1"
@@ -713,24 +736,6 @@ export default function ManagePropertyPage() {
                       value={propertyValues.floorsCount ?? ""}
                     />
                   </label>
-                  <label className="grid gap-1 text-sm font-semibold">
-                    Stair count
-                    <input
-                      className={inputClass}
-                      min="0"
-                      onChange={(event) =>
-                        setPropertyValues({
-                          ...propertyValues,
-                          stairCount:
-                            event.target.value === ""
-                              ? null
-                              : Number(event.target.value),
-                        })
-                      }
-                      type="number"
-                      value={propertyValues.stairCount ?? ""}
-                    />
-                  </label>
                 </div>
                 <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold">
                   <input
@@ -743,13 +748,18 @@ export default function ManagePropertyPage() {
                     }
                     type="checkbox"
                   />
-                  Building has an elevator
+                  آسانسور دارد؟
                 </label>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={propertyValues.isWheelchairAccessible ?? false} onChange={(event) => setPropertyValues({ ...propertyValues, isWheelchairAccessible: event.target.checked })} type="checkbox" />مناسب ویلچر هست؟</label>
+                  <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={propertyValues.hasGroundFloorRoom ?? false} onChange={(event) => setPropertyValues({ ...propertyValues, hasGroundFloorRoom: event.target.checked })} type="checkbox" />اتاق همکف دارد؟</label>
+                  <label className="flex items-center gap-3 rounded-lg border border-ink/15 p-4 font-semibold"><input checked={propertyValues.hasAccessibleBathroom ?? false} onChange={(event) => setPropertyValues({ ...propertyValues, hasAccessibleBathroom: event.target.checked })} type="checkbox" />سرویس بهداشتی مناسب افراد کم‌توان دارد؟</label>
+                </div>
                 <button
                   className="rounded-lg bg-ink px-4 py-3 font-bold text-white"
                   type="submit"
                 >
-                  Save building information
+                  ذخیره اطلاعات ساختمان
                 </button>
               </form>
             </section>
@@ -760,14 +770,14 @@ export default function ManagePropertyPage() {
               complete={
                 completion?.completedSections.includes("amenities") ?? false
               }
-              title="Amenities"
-              text="Amenity assignments will appear here once the owner assignment API is available."
+              title="امکانات"
+              text="امکانات اقامتگاه در روند ثبت اقامتگاه انتخاب می‌شود."
             />
           )}
 
           {activeTab === "Descriptions" && (
             <section className="grid gap-4">
-              <h2 className="text-2xl font-bold">Property descriptions</h2>
+              <h2 className="text-2xl font-bold">توضیحات اقامتگاه</h2>
               {descriptionTypes.map((section, index) => (
                 <div
                   className="grid gap-3 rounded-xl border border-ink/10 bg-white p-5 shadow-sm"
@@ -779,8 +789,8 @@ export default function ManagePropertyPage() {
                       {descriptionSections.some(
                         (item) => item.sectionType === section.type,
                       )
-                        ? "Saved"
-                        : "Not saved"}
+                ? "ذخیره شده"
+                        : "ذخیره نشده"}
                     </span>
                   </div>
                   <textarea
@@ -801,7 +811,7 @@ export default function ManagePropertyPage() {
                     }
                     type="button"
                   >
-                    Save section
+                    ذخیره بخش
                   </button>
                 </div>
               ))}
@@ -813,27 +823,27 @@ export default function ManagePropertyPage() {
               complete={
                 completion?.completedSections.includes("nearby places") ?? false
               }
-              title="Nearby places"
-              text="Nearby-place editing is not exposed by the current owner API yet."
+              title="مکان‌های نزدیک"
+              text="مکان‌های نزدیک در روند ثبت اقامتگاه ذخیره می‌شوند."
             />
           )}
           {activeTab === "Images" && (
             <section className="grid gap-5">
-              <div><h2 className="text-2xl font-bold">Property images</h2><p className="mt-1 text-sm text-ink/60">Add public image URLs and optionally associate them with a room type or named room.</p></div>
+              <div><h2 className="text-2xl font-bold">تصاویر اقامتگاه</h2><p className="mt-1 text-sm text-ink/60">نشانی تصویر را وارد کنید و در صورت نیاز به اتاق یا نوع اتاق وصل کنید.</p></div>
               <form className="grid gap-4 rounded-xl border border-ink/10 bg-white p-5 shadow-sm" onSubmit={addImage}>
-                <label className="grid gap-1 text-sm font-semibold">Image URL<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, url: event.target.value })} required type="url" value={imageForm.url} /></label>
+                <label className="grid gap-1 text-sm font-semibold">نشانی تصویر<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, url: event.target.value })} required type="url" value={imageForm.url} /></label>
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <label className="grid gap-1 text-sm font-semibold">Tag<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, tag: event.target.value })} placeholder="exterior, room, bathroom" value={imageForm.tag} /></label>
-                  <label className="grid gap-1 text-sm font-semibold">Alt text<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, altText: event.target.value })} value={imageForm.altText} /></label>
+                  <label className="grid gap-1 text-sm font-semibold">برچسب<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, tag: event.target.value })} placeholder="exterior, room, bathroom" value={imageForm.tag} /></label>
+                  <label className="grid gap-1 text-sm font-semibold">متن جایگزین<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, altText: event.target.value })} value={imageForm.altText} /></label>
                 </div>
-                <label className="grid gap-1 text-sm font-semibold">Caption<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, caption: event.target.value })} value={imageForm.caption} /></label>
+                <label className="grid gap-1 text-sm font-semibold">عنوان تصویر<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, caption: event.target.value })} value={imageForm.caption} /></label>
                 <div className="grid gap-4 sm:grid-cols-3">
-                  <label className="grid gap-1 text-sm font-semibold">Room type<select className={inputClass} onChange={(event) => setImageForm({ ...imageForm, roomTypeId: event.target.value, roomId: "" })} value={imageForm.roomTypeId}><option value="">General property image</option>{roomTypes.map((roomType) => <option key={roomType.id} value={roomType.id}>{roomType.name}</option>)}</select></label>
-                  <label className="grid gap-1 text-sm font-semibold">Named room<select className={inputClass} disabled={!imageForm.roomTypeId} onChange={(event) => setImageForm({ ...imageForm, roomId: event.target.value })} value={imageForm.roomId}><option value="">No named room</option>{(rooms[Number(imageForm.roomTypeId)] ?? []).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
-                  <label className="grid gap-1 text-sm font-semibold">Sort order<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, sortOrder: Number(event.target.value) })} type="number" value={imageForm.sortOrder} /></label>
+                  <label className="grid gap-1 text-sm font-semibold">نوع اتاق<select className={inputClass} onChange={(event) => setImageForm({ ...imageForm, roomTypeId: event.target.value, roomId: "" })} value={imageForm.roomTypeId}><option value="">تصویر عمومی اقامتگاه</option>{roomTypes.map((roomType) => <option key={roomType.id} value={roomType.id}>{roomType.name}</option>)}</select></label>
+                  <label className="grid gap-1 text-sm font-semibold">اتاق نام‌دار<select className={inputClass} disabled={!imageForm.roomTypeId} onChange={(event) => setImageForm({ ...imageForm, roomId: event.target.value })} value={imageForm.roomId}><option value="">بدون اتاق نام‌دار</option>{(rooms[Number(imageForm.roomTypeId)] ?? []).map((room) => <option key={room.id} value={room.id}>{room.name}</option>)}</select></label>
+                  <label className="grid gap-1 text-sm font-semibold">ترتیب نمایش<input className={inputClass} onChange={(event) => setImageForm({ ...imageForm, sortOrder: Number(event.target.value) })} type="number" value={imageForm.sortOrder} /></label>
                 </div>
-                <div className="flex flex-wrap gap-5"><label className="flex items-center gap-2 text-sm font-semibold"><input checked={imageForm.isCover} onChange={(event) => setImageForm({ ...imageForm, isCover: event.target.checked })} type="checkbox" />Cover image</label><label className="flex items-center gap-2 text-sm font-semibold"><input checked={imageForm.isGallery} onChange={(event) => setImageForm({ ...imageForm, isGallery: event.target.checked })} type="checkbox" />Show in gallery</label></div>
-                <button className="rounded-lg bg-ink px-4 py-3 font-bold text-white disabled:opacity-50" disabled={imageLoading} type="submit">{imageLoading ? "Saving..." : "Add image"}</button>
+                <div className="flex flex-wrap gap-5"><label className="flex items-center gap-2 text-sm font-semibold"><input checked={imageForm.isCover} onChange={(event) => setImageForm({ ...imageForm, isCover: event.target.checked })} type="checkbox" />تصویر کاور</label><label className="flex items-center gap-2 text-sm font-semibold"><input checked={imageForm.isGallery} onChange={(event) => setImageForm({ ...imageForm, isGallery: event.target.checked })} type="checkbox" />نمایش در گالری</label></div>
+                <button className="rounded-lg bg-ink px-4 py-3 font-bold text-white disabled:opacity-50" disabled={imageLoading} type="submit">{imageLoading ? "در حال ذخیره..." : "افزودن تصویر"}</button>
               </form>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {images.map((image) => <article className="overflow-hidden rounded-xl border border-ink/10 bg-white shadow-sm" key={image.id}><img alt={image.altText ?? image.caption ?? "Property image"} className="aspect-[4/3] w-full object-cover" src={image.url} /><div className="p-4"><div className="flex items-center justify-between gap-2"><strong>{image.tag || "Property image"}</strong>{image.isCover && <span className="rounded-full bg-green-50 px-2 py-1 text-xs font-bold text-green-700">Cover</span>}</div>{image.caption && <p className="mt-2 text-sm text-ink/60">{image.caption}</p>}<button className="mt-4 text-sm font-bold text-red-700 disabled:opacity-50" disabled={imageLoading} onClick={() => deleteImage(image.id)} type="button">Delete</button></div></article>)}
@@ -964,6 +974,14 @@ export default function ManagePropertyPage() {
                   {accommodation.bedConfigurations.map((bed, index) => <div className="grid gap-2 sm:grid-cols-[1fr_120px_auto]" key={index}><select className={inputClass} onChange={(event) => { const beds = [...accommodation.bedConfigurations]; beds[index] = { ...bed, bedTypeId: Number(event.target.value) }; setAccommodation({ ...accommodation, bedConfigurations: beds }); }} value={bed.bedTypeId}><option value={0}>نوع تخت</option>{bedTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><input className={inputClass} min="1" onChange={(event) => { const beds = [...accommodation.bedConfigurations]; beds[index] = { ...bed, quantity: Number(event.target.value) }; setAccommodation({ ...accommodation, bedConfigurations: beds }); }} type="number" value={bed.quantity} /><button className="text-sm font-bold text-red-700" onClick={() => setAccommodation({ ...accommodation, bedConfigurations: accommodation.bedConfigurations.filter((_, candidate) => candidate !== index) })} type="button">حذف</button></div>)}
                   <button className="justify-self-start rounded-lg border border-ink/20 px-3 py-2 text-sm font-bold" onClick={() => setAccommodation({ ...accommodation, bedConfigurations: [...accommodation.bedConfigurations, { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 }] })} type="button">افزودن تخت</button>
                 </div>
+                <div className="grid gap-3 rounded-lg border border-ink/10 p-4">
+                  <strong>Room amenities</strong>
+                  {amenityCategories.map((category) => {
+                    const categoryAmenities = roomAmenityOptions.filter((amenity) => amenity.amenityCategoryId === category.id);
+                    if (categoryAmenities.length === 0) return null;
+                    return <fieldset className="grid gap-2" key={category.id}><legend className="text-sm font-bold text-ink/60">{category.name}</legend><div className="grid gap-2 sm:grid-cols-2 md:grid-cols-3">{categoryAmenities.map((amenity) => <label className="flex items-center gap-2 rounded-lg border border-ink/10 p-3 text-sm" key={amenity.id}><input checked={accommodation.amenityIds.includes(amenity.id)} onChange={(event) => setAccommodation({ ...accommodation, amenityIds: event.target.checked ? [...accommodation.amenityIds, amenity.id] : accommodation.amenityIds.filter((id) => id !== amenity.id) })} type="checkbox" />{amenity.name}</label>)}</div></fieldset>;
+                  })}
+                </div>
                 <button
                   className="rounded-lg bg-ink px-4 py-3 font-bold text-white"
                   type="submit"
@@ -1005,9 +1023,10 @@ export default function ManagePropertyPage() {
                             ` · base price ${roomType.basePrice}`}
                         </p>
                         {roomType.bedConfigurations.length > 0 && <p className="mt-2 text-sm text-ink/60">{roomType.bedConfigurations.map((bed) => `${bed.quantity} × ${bed.bedTypeName}`).join(" | ")}</p>}
+                        {roomType.amenities.length > 0 && <p className="mt-2 text-sm text-ink/60">{roomType.amenities.map((amenity) => amenity.name).join(" | ")}</p>}
                         {namedMode && rooms[roomType.id]?.[0] && <p className="mt-2 text-sm text-ink/60">{[rooms[roomType.id][0].notes, rooms[roomType.id][0].floorNumber != null ? `طبقه ${rooms[roomType.id][0].floorNumber}` : "", rooms[roomType.id][0].stairCount != null ? `${rooms[roomType.id][0].stairCount} پله` : "", rooms[roomType.id][0].hasPrivateBathroom == null ? "" : rooms[roomType.id][0].hasPrivateBathroom ? "سرویس اختصاصی" : "سرویس مشترک", rooms[roomType.id][0].hasWindow == null ? "" : rooms[roomType.id][0].hasWindow ? "دارای پنجره" : "بدون پنجره"].filter(Boolean).join(" | ")}</p>}
                       </div>
-                      <div className="flex gap-2"><span className="text-sm font-semibold">{roomType.isActive ? "فعال" : "غیرفعال"}</span>{!namedMode && <button className="text-sm font-bold text-blue-700" onClick={() => { setEditingRoomTypeId(roomType.id); setAccommodation({ name: roomType.name, englishName: roomType.englishName ?? "", description: roomType.description, maxAdults: roomType.maxAdults, maxChildren: roomType.maxChildren, totalInventory: roomType.totalInventory, basePrice: roomType.basePrice?.toString() ?? "", bedConfigurations: roomType.bedConfigurations.map((bed) => ({ bedTypeId: bed.bedTypeId, quantity: bed.quantity })), notes: "", floorNumber: null, stairCount: null, hasWindow: null, hasPrivateBathroom: null }); }} type="button">ویرایش</button>}</div>
+                      <div className="flex gap-2"><span className="text-sm font-semibold">{roomType.isActive ? "فعال" : "غیرفعال"}</span>{!namedMode && <button className="text-sm font-bold text-blue-700" onClick={() => { setEditingRoomTypeId(roomType.id); setAccommodation({ name: roomType.name, englishName: roomType.englishName ?? "", description: roomType.description, maxAdults: roomType.maxAdults, maxChildren: roomType.maxChildren, totalInventory: roomType.totalInventory, basePrice: roomType.basePrice?.toString() ?? "", bedConfigurations: roomType.bedConfigurations.map((bed) => ({ bedTypeId: bed.bedTypeId, quantity: bed.quantity })), amenityIds: roomType.amenities.map((amenity) => amenity.amenityId), notes: "", floorNumber: null, stairCount: null, hasWindow: null, hasPrivateBathroom: null }); }} type="button">ویرایش</button>}</div>
                     </div>
                   </article>
                 ))}

@@ -25,6 +25,9 @@ public class Property : BaseEntity
     public int? FloorsCount { get; set; }
     public int? StairCount { get; set; }
     public bool HasElevator { get; set; }
+    public bool? IsWheelchairAccessible { get; set; }
+    public bool? HasGroundFloorRoom { get; set; }
+    public bool? HasAccessibleBathroom { get; set; }
     
 
     public User Owner { get; set; } = null!;
@@ -37,6 +40,8 @@ public class Property : BaseEntity
     public ICollection<PropertyAmenity> PropertyAmenities { get; set; } = [];
     public ICollection<PropertyTravelPurpose> PropertyTravelPurposes { get; set; } = [];
     public ICollection<NearbyPlace> NearbyPlaces { get; set; } = [];
+    public ICollection<PropertyCommonArea> CommonAreas { get; set; } = [];
+    public ICollection<PropertyView> Views { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<CancellationPolicy> CancellationPolicies { get; set; } = [];

@@ -2,8 +2,21 @@
 @tailwind components;
 @tailwind utilities;
 
+@font-face {
+  font-family: "Yekan";
+  src: url("/fonts/Yekan.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   color-scheme: light;
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --border: #e2e8f0;
+  --page: #f8fafc;
+  --text: #0f172a;
 }
 
 * {
@@ -16,13 +29,70 @@ html {
 
 body {
   margin: 0;
-  background: #f7f3ea;
-  color: #19362f;
-  font-family: Arial, Helvetica, sans-serif;
+  background: var(--page);
+  color: var(--text);
+  font-family: "Yekan", Arial, Helvetica, sans-serif;
+}
+
+body,
+input,
+button,
+select,
+textarea {
+  font-family: "Yekan", Arial, Helvetica, sans-serif;
+}
+
+input,
+select,
+textarea {
+  border-color: var(--border);
+  border-radius: 0.75rem;
+  background: #fff;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--primary);
+  outline: 2px solid rgb(37 99 235 / 0.14);
+  outline-offset: 0;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Keep existing owner/admin classes functional while aligning primary actions. */
+.bg-ink.text-white,
+.bg-moss.text-white,
+.bg-coral.text-white {
+  background-color: var(--primary) !important;
+}
+
+.bg-ink.text-white:hover,
+.bg-moss.text-white:hover,
+.bg-coral.text-white:hover {
+  background-color: var(--primary-hover) !important;
+}
+
+.text-ink {
+  color: var(--text) !important;
+}
+
+.border-ink\/10,
+.border-ink\/15,
+.border-ink\/20 {
+  border-color: var(--border) !important;
+}
+
+.bg-cream,
+.bg-sand,
+.bg-cream\/50 {
+  background-color: #f8fafc !important;
 }
 
 ::selection {
-  background: #e8755f;
+  background: var(--primary);
   color: white;
 }
-
