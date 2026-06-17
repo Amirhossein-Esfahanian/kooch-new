@@ -1,4 +1,5 @@
 using Kooch.Api.Data;
+using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -141,6 +142,51 @@ public class PropertyService(
         return await Project(query.OrderBy(property => property.Name)).ToListAsync(cancellationToken);
     }
 
+    public async Task<PropertyResponse> UpdatePropertyForAdminAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        AdminUpdatePropertyRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
+
+        var property = await GetEntityAsync(propertyId, cancellationToken);
+        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
+                user.Id == request.OwnerId &&
+                user.IsActive &&
+                (user.Role == UserRole.Owner || user.Role == UserRole.SuperAdmin),
+                cancellationToken))
+        {
+            throw new ArgumentException("The selected owner is invalid.");
+        }
+
+        await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        var englishName = CleanOptional(request.EnglishName);
+        var slug = EnglishSlugGenerator.Create(englishName, "property", property.Slug);
+        await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
+
+        property.OwnerId = request.OwnerId;
+        property.DestinationId = request.DestinationId;
+        property.Name = request.Name.Trim();
+        property.EnglishName = englishName;
+        property.Slug = slug;
+        property.Description = request.Description.Trim();
+        property.SeoTitle = CleanOptional(request.SeoTitle);
+        property.SeoDescription = CleanOptional(request.SeoDescription);
+        property.Address = request.Address.Trim();
+        property.City = request.City.Trim();
+        property.Country = request.Country.Trim();
+        property.Status = request.Status;
+        property.Type = request.Type;
+        property.InventoryMode = request.InventoryMode;
+        property.CheckInTime = request.CheckInTime;
+        property.CheckOutTime = request.CheckOutTime;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
     public async Task<PropertyResponse> GetPropertyByIdAsync(
         int userId,
         UserRole role,
@@ -217,6 +263,14 @@ public class PropertyService(
         CancellationToken cancellationToken = default) =>
         SetStatusAsync(userId, role, propertyId, PropertyStatus.Suspended, cancellationToken);
 
+    public Task<PropertyResponse> SetPropertyStatusAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        PropertyStatus status,
+        CancellationToken cancellationToken = default) =>
+        SetStatusAsync(userId, role, propertyId, status, cancellationToken);
+
     private async Task<PropertyResponse> SetStatusAsync(
         int userId,
         UserRole role,
@@ -224,14 +278,7 @@ public class PropertyService(
         PropertyStatus status,
         CancellationToken cancellationToken)
     {
-        var allowed = role == UserRole.SuperAdmin ||
-                      role == UserRole.AdminAssistant &&
-                      await permissionService.HasPermissionAsync(
-                          userId, PermissionKey.ManageProperties, propertyId, cancellationToken);
-        if (!allowed)
-        {
-            throw new UnauthorizedAccessException("You cannot review this property.");
-        }
+        await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
 
         var property = await GetEntityAsync(propertyId, cancellationToken);
         property.Status = status;
@@ -242,6 +289,22 @@ public class PropertyService(
     private async Task<Property> GetEntityAsync(int propertyId, CancellationToken cancellationToken) =>
         await dbContext.Properties.SingleOrDefaultAsync(property => property.Id == propertyId, cancellationToken)
         ?? throw new KeyNotFoundException("Property not found.");
+
+    private async Task EnsureCanAdminManagePropertyAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var allowed = role == UserRole.SuperAdmin ||
+                      role == UserRole.AdminAssistant &&
+                      await permissionService.HasPermissionAsync(
+                          userId, PermissionKey.ManageProperties, propertyId, cancellationToken);
+        if (!allowed)
+        {
+            throw new UnauthorizedAccessException("ManageProperties permission is required.");
+        }
+    }
 
     private async Task<PropertyResponse> LoadResponseAsync(int propertyId, CancellationToken cancellationToken) =>
         await Project(dbContext.Properties.AsNoTracking().Where(property => property.Id == propertyId))
@@ -274,6 +337,8 @@ public class PropertyService(
             Id = property.Id,
             OwnerId = property.OwnerId,
             OwnerName = (property.Owner.FirstName + " " + property.Owner.LastName).Trim(),
+            OwnerEmail = property.Owner.Email,
+            CreatedAtUtc = property.CreatedAtUtc,
             DestinationId = property.DestinationId,
             DestinationName = property.Destination.Name,
             Name = property.Name,

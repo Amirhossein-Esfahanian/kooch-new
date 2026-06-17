@@ -7,6 +7,8 @@ public class PropertyResponse
     public int Id { get; set; }
     public int OwnerId { get; set; }
     public string OwnerName { get; set; } = string.Empty;
+    public string OwnerEmail { get; set; } = string.Empty;
+    public DateTime CreatedAtUtc { get; set; }
     public int DestinationId { get; set; }
     public string DestinationName { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;

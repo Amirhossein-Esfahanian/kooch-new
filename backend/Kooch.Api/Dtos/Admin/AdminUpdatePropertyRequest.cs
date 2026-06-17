@@ -1,0 +1,43 @@
+using System.ComponentModel.DataAnnotations;
+using Kooch.Api.Entities;
+
+namespace Kooch.Api.Dtos.Admin;
+
+public class AdminUpdatePropertyRequest
+{
+    [Range(1, int.MaxValue)]
+    public int OwnerId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int DestinationId { get; set; }
+
+    [Required, MaxLength(200)]
+    public string Name { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    public string? EnglishName { get; set; }
+
+    [MaxLength(4000)]
+    public string Description { get; set; } = string.Empty;
+
+    [MaxLength(200)]
+    public string? SeoTitle { get; set; }
+
+    [MaxLength(500)]
+    public string? SeoDescription { get; set; }
+
+    [Required, MaxLength(500)]
+    public string Address { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string City { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string Country { get; set; } = string.Empty;
+
+    public PropertyStatus Status { get; set; }
+    public PropertyType Type { get; set; }
+    public InventoryMode InventoryMode { get; set; }
+    public TimeOnly? CheckInTime { get; set; }
+    public TimeOnly? CheckOutTime { get; set; }
+}

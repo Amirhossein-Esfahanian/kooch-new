@@ -16,12 +16,16 @@ export interface PropertyResponse {
   id: number;
   ownerId: number;
   ownerName: string;
+  ownerEmail: string;
+  createdAtUtc: string;
   destinationId: number;
   destinationName: string;
   name: string;
   englishName: string | null;
   slug: string;
   description: string;
+  seoTitle: string | null;
+  seoDescription: string | null;
   address: string;
   city: string;
   country: string;
@@ -38,6 +42,32 @@ export interface PropertyResponse {
   isWheelchairAccessible: boolean | null;
   hasGroundFloorRoom: boolean | null;
   hasAccessibleBathroom: boolean | null;
+}
+
+export type PropertyStatus = "Draft" | "PendingReview" | "Approved" | "Rejected" | "Suspended";
+export type UserRole = "SuperAdmin" | "AdminAssistant" | "Owner" | "OwnerAssistant" | "Client";
+
+export interface AdminDashboardResponse {
+  totalProperties: number;
+  pendingProperties: number;
+  approvedProperties: number;
+  totalUsers: number;
+  totalOwners: number;
+  pendingPropertyItems: PropertyResponse[];
+}
+
+export interface AdminUserResponse {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phoneNumber: string | null;
+  role: UserRole;
+  parentUserId: number | null;
+  parentUserName: string | null;
+  isActive: boolean;
+  createdAtUtc: string;
 }
 
 export interface RoomTypeResponse {
@@ -149,6 +179,18 @@ export interface PropertyImageResponse {
   isGallery: boolean;
 }
 
+export interface PropertyCommonAreaResponse {
+  id: number;
+  propertyId: number;
+  name: string;
+  description: string | null;
+  sortOrder: number;
+}
+
+export interface PropertyViewResponse {
+  viewType: PropertyViewType;
+}
+
 export type AvailabilityStatus = "Available" | "Unavailable" | "OnRequest";
 
 export interface AvailabilityResponse {
@@ -228,6 +270,10 @@ export interface PropertyFormValues {
 }
 
 const tokenKey = "kooch_owner_token";
+const userRoleKey = "kooch_user_role";
+const userNameKey = "kooch_user_name";
+export const workspaceKey = "kooch_workspace";
+export type KoochWorkspace = "admin" | "owner" | "traveler";
 
 export function getToken() {
   return typeof window === "undefined" ? null : localStorage.getItem(tokenKey);
@@ -237,8 +283,32 @@ export function setToken(token: string) {
   localStorage.setItem(tokenKey, token);
 }
 
+export function setAuthUser(role: string, fullName?: string) {
+  localStorage.setItem(userRoleKey, role);
+  if (fullName) localStorage.setItem(userNameKey, fullName);
+}
+
+export function getAuthRole() {
+  return typeof window === "undefined" ? null : localStorage.getItem(userRoleKey);
+}
+
+export function getAuthName() {
+  return typeof window === "undefined" ? null : localStorage.getItem(userNameKey);
+}
+
+export function setWorkspace(workspace: KoochWorkspace) {
+  localStorage.setItem(workspaceKey, workspace);
+}
+
+export function getWorkspace() {
+  return typeof window === "undefined" ? null : localStorage.getItem(workspaceKey);
+}
+
 export function clearToken() {
   localStorage.removeItem(tokenKey);
+  localStorage.removeItem(userRoleKey);
+  localStorage.removeItem(userNameKey);
+  localStorage.removeItem(workspaceKey);
 }
 
 export async function apiRequest<T>(

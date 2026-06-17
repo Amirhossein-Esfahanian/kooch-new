@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { apiRequest, setToken } from "@/lib/owner-api";
+import { apiRequest, setAuthUser, setToken } from "@/lib/owner-api";
 
 interface AuthResponse {
   token: string;
@@ -26,11 +26,9 @@ export default function OwnerLoginPage() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      if (!["Owner", "OwnerAssistant", "SuperAdmin", "AdminAssistant"].includes(response.role)) {
-        throw new Error("این حساب اجازه ورود به پنل میزبانی را ندارد.");
-      }
       setToken(response.token);
-      router.push("/owner/properties");
+      setAuthUser(response.role, response.fullName);
+      router.push("/choose-workspace");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "ورود ناموفق بود.");
     } finally {

@@ -10,7 +10,7 @@ export function OwnerPage({ title, children }: { title: string; children: ReactN
 
   function logout() {
     clearToken();
-    router.push("/owner/login");
+    router.push("/login");
   }
 
   return (
@@ -29,6 +29,9 @@ export function OwnerPage({ title, children }: { title: string; children: ReactN
           </Link>
           <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/admin/properties">
             مدیریت
+          </Link>
+          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/choose-workspace">
+            تغییر محیط کاربری
           </Link>
           <button className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={logout} type="button">
             خروج

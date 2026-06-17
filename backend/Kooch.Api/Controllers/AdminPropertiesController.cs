@@ -1,4 +1,5 @@
 using Kooch.Api.Authentication;
+using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -16,6 +17,22 @@ public class AdminPropertiesController(IPropertyService propertyService) : Authe
     {
         var user = GetCurrentUser();
         return Ok(await propertyService.GetAllForAdminAsync(user.UserId, user.Role, cancellationToken));
+    }
+
+    [HttpPut("{id:int}")]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyResponse>> Update(int id, AdminUpdatePropertyRequest request, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyService.UpdatePropertyForAdminAsync(user.UserId, user.Role, id, request, cancellationToken));
+    }
+
+    [HttpPut("{id:int}/status")]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyResponse>> SetStatus(int id, AdminPropertyStatusRequest request, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyService.SetPropertyStatusAsync(user.UserId, user.Role, id, request.Status, cancellationToken));
     }
 
     [HttpGet("{id:int}")]
