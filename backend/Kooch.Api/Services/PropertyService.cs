@@ -182,6 +182,15 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.Latitude = request.Latitude;
+        property.Longitude = request.Longitude;
+        property.TotalAreaM2 = request.TotalAreaM2;
+        property.LandAreaM2 = request.LandAreaM2;
+        property.FloorsCount = request.FloorsCount;
+        property.HasElevator = request.HasElevator;
+        property.IsWheelchairAccessible = request.IsWheelchairAccessible;
+        property.HasGroundFloorRoom = request.HasGroundFloorRoom;
+        property.HasAccessibleBathroom = request.HasAccessibleBathroom;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
@@ -601,6 +610,11 @@ public class PropertyService(
                     TotalInventory = roomType.TotalInventory,
                     MaxAdults = roomType.MaxAdults,
                     MaxChildren = roomType.MaxChildren,
+                    Notes = roomType.Notes,
+                    FloorNumber = roomType.FloorNumber,
+                    StairCount = roomType.StairCount,
+                    HasWindow = roomType.HasWindow,
+                    HasPrivateBathroom = roomType.HasPrivateBathroom,
                     BedInformation = roomType.BedConfigurations
                         .OrderBy(configuration => configuration.BedType.Name)
                         .Select(configuration => configuration.Quantity + " x " + configuration.BedType.Name)
@@ -626,34 +640,6 @@ public class PropertyService(
                             Category = join.Amenity.AmenityCategory.Name
                         })
                         .ToList(),
-                    NamedRooms = roomType.Rooms
-                        .Where(room => room.IsActive)
-                        .OrderBy(room => room.Name)
-                        .Select(room => new PublicRoomResponse
-                        {
-                            Id = room.Id,
-                            Name = room.Name,
-                            EnglishName = room.EnglishName,
-                            Description = room.Description,
-                            Notes = room.Notes,
-                            FloorNumber = room.FloorNumber,
-                            StairCount = room.StairCount,
-                            HasWindow = room.HasWindow,
-                            HasPrivateBathroom = room.HasPrivateBathroom,
-                            Images = room.PropertyImages
-                                .OrderBy(image => image.SortOrder)
-                                .Select(image => new PublicImageResponse
-                                {
-                                    Id = image.Id,
-                                    Url = image.Url,
-                                    AltText = image.AltText,
-                                    Caption = image.Caption,
-                                    Tag = image.Tag,
-                                    IsCover = image.IsCover
-                                })
-                                .ToList()
-                        })
-                        .ToList()
                 })
                 .ToList()
         });

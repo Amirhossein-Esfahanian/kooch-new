@@ -40,4 +40,13 @@ public class AdminUpdatePropertyRequest
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public decimal? Latitude { get; set; }
+    public decimal? Longitude { get; set; }
+    public int? TotalAreaM2 { get; set; }
+    public int? LandAreaM2 { get; set; }
+    public int? FloorsCount { get; set; }
+    public bool HasElevator { get; set; }
+    public bool? IsWheelchairAccessible { get; set; }
+    public bool? HasGroundFloorRoom { get; set; }
+    public bool? HasAccessibleBathroom { get; set; }
 }

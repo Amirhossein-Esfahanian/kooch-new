@@ -15,6 +15,9 @@ export default function AdminPropertyEditPage() {
         <Link className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-300" href="/admin/properties">
           بازگشت به مدیریت اقامتگاه‌ها
         </Link>
+        <Link className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700" href={`/admin/properties/${propertyId}/rooms`}>
+          مدیریت اتاق‌ها
+        </Link>
       </div>
       <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
     </AdminPage>

@@ -31,6 +31,17 @@ public class CreateRoomTypeRequest
     [Range(0, double.MaxValue)]
     public decimal? BasePrice { get; set; }
 
+    [MaxLength(2000)]
+    public string? Notes { get; set; }
+
+    public int? FloorNumber { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int? StairCount { get; set; }
+
+    public bool? HasWindow { get; set; }
+    public bool? HasPrivateBathroom { get; set; }
+
     public IReadOnlyCollection<RoomTypeBedRequest> BedConfigurations { get; set; } = [];
     public IReadOnlyCollection<int> AmenityIds { get; set; } = [];
 }

@@ -15,6 +15,11 @@ public class RoomTypeResponse
     public int TotalInventory { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public decimal? BasePrice { get; set; }
+    public string? Notes { get; set; }
+    public int? FloorNumber { get; set; }
+    public int? StairCount { get; set; }
+    public bool? HasWindow { get; set; }
+    public bool? HasPrivateBathroom { get; set; }
     public bool IsActive { get; set; }
     public IReadOnlyList<RoomTypeBedResponse> BedConfigurations { get; set; } = [];
     public IReadOnlyList<RoomTypeAmenityResponse> Amenities { get; set; } = [];

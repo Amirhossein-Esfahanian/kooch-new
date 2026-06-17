@@ -37,6 +37,11 @@ public class RoomTypeService(
             TotalInventory = request.TotalInventory,
             InventoryMode = request.InventoryMode,
             BasePrice = request.BasePrice,
+            Notes = CleanOptional(request.Notes),
+            FloorNumber = request.FloorNumber,
+            StairCount = request.StairCount,
+            HasWindow = request.HasWindow,
+            HasPrivateBathroom = request.HasPrivateBathroom,
             IsActive = true,
             BedConfigurations = beds.Select(bed => new RoomTypeBed
             {
@@ -83,6 +88,11 @@ public class RoomTypeService(
         roomType.TotalInventory = request.TotalInventory;
         roomType.InventoryMode = request.InventoryMode;
         roomType.BasePrice = request.BasePrice;
+        roomType.Notes = CleanOptional(request.Notes);
+        roomType.FloorNumber = request.FloorNumber;
+        roomType.StairCount = request.StairCount;
+        roomType.HasWindow = request.HasWindow;
+        roomType.HasPrivateBathroom = request.HasPrivateBathroom;
         roomType.IsActive = request.IsActive;
 
         var existingBeds = await dbContext.RoomTypeBeds
@@ -138,6 +148,11 @@ public class RoomTypeService(
                 TotalInventory = roomType.TotalInventory,
                 InventoryMode = roomType.InventoryMode,
                 BasePrice = roomType.BasePrice,
+                Notes = roomType.Notes,
+                FloorNumber = roomType.FloorNumber,
+                StairCount = roomType.StairCount,
+                HasWindow = roomType.HasWindow,
+                HasPrivateBathroom = roomType.HasPrivateBathroom,
                 IsActive = roomType.IsActive,
                 BedConfigurations = roomType.BedConfigurations
                     .OrderBy(configuration => configuration.BedType.Name)
@@ -172,12 +187,10 @@ public class RoomTypeService(
     {
         var canManageRooms = await propertyAccessService.CanManageRoomsAsync(
             userId, role, propertyId, cancellationToken);
-        var canManagePricing = await propertyAccessService.CanManagePricingAsync(
-            userId, role, propertyId, cancellationToken);
 
-        if (!canManageRooms || !canManagePricing)
+        if (!canManageRooms)
         {
-            throw new UnauthorizedAccessException("Room and pricing access are required.");
+            throw new UnauthorizedAccessException("Room management access is required.");
         }
     }
 
@@ -222,6 +235,11 @@ public class RoomTypeService(
                 TotalInventory = roomType.TotalInventory,
                 InventoryMode = roomType.InventoryMode,
                 BasePrice = roomType.BasePrice,
+                Notes = roomType.Notes,
+                FloorNumber = roomType.FloorNumber,
+                StairCount = roomType.StairCount,
+                HasWindow = roomType.HasWindow,
+                HasPrivateBathroom = roomType.HasPrivateBathroom,
                 IsActive = roomType.IsActive,
                 BedConfigurations = roomType.BedConfigurations
                     .OrderBy(configuration => configuration.BedType.Name)

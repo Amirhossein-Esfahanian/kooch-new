@@ -29,6 +29,8 @@ export interface PropertyResponse {
   address: string;
   city: string;
   country: string;
+  latitude: number | null;
+  longitude: number | null;
   status: string;
   type: PropertyType;
   inventoryMode: InventoryMode;
@@ -82,6 +84,11 @@ export interface RoomTypeResponse {
   totalInventory: number;
   inventoryMode: InventoryMode;
   basePrice: number | null;
+  notes: string | null;
+  floorNumber: number | null;
+  stairCount: number | null;
+  hasWindow: boolean | null;
+  hasPrivateBathroom: boolean | null;
   isActive: boolean;
   bedConfigurations: RoomTypeBedResponse[];
   amenities: RoomTypeAmenityResponse[];

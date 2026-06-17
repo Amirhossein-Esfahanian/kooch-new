@@ -51,24 +51,14 @@ public class PublicRoomTypeResponse
     public int TotalInventory { get; set; }
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
-    public IReadOnlyList<string> BedInformation { get; set; } = [];
-    public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
-    public IReadOnlyList<PublicAmenityResponse> Amenities { get; set; } = [];
-    public IReadOnlyList<PublicRoomResponse> NamedRooms { get; set; } = [];
-}
-
-public class PublicRoomResponse
-{
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public string? EnglishName { get; set; }
-    public string? Description { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }
     public int? StairCount { get; set; }
     public bool? HasWindow { get; set; }
     public bool? HasPrivateBathroom { get; set; }
+    public IReadOnlyList<string> BedInformation { get; set; } = [];
     public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
+    public IReadOnlyList<PublicAmenityResponse> Amenities { get; set; } = [];
 }
 
 public class PublicImageResponse

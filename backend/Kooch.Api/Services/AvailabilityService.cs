@@ -325,10 +325,7 @@ public class AvailabilityService(KoochDbContext dbContext) : IAvailabilityServic
                 Days = days.Select(date =>
                 {
                     availabilityMap.TryGetValue((roomType.Id, date), out var availability);
-                    var defaultCount = roomType.InventoryMode == InventoryMode.NamedRooms
-                        ? 1
-                        : roomType.TotalInventory;
-                    var count = availability?.AvailableCount ?? Math.Max(0, defaultCount);
+                    var count = availability?.AvailableCount ?? Math.Max(0, roomType.TotalInventory);
                     return new InventoryDayResponse
                     {
                         AvailabilityId = availability?.Id,
@@ -449,7 +446,7 @@ public class AvailabilityService(KoochDbContext dbContext) : IAvailabilityServic
             throw new ArgumentException("Available count cannot be negative.");
         }
 
-        var maxCount = roomType.InventoryMode == InventoryMode.NamedRooms ? 1 : roomType.TotalInventory;
+        var maxCount = roomType.TotalInventory;
         if (availableCount > maxCount)
         {
             throw new ArgumentException($"Available count cannot exceed {maxCount} for this room type.");

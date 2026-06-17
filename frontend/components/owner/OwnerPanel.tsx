@@ -12,10 +12,11 @@ import {
 
 const navItems = [
   { label: "داشبورد", icon: "▦", href: "dashboard" },
-  { label: "هتل من / اقامتگاه من", icon: "⌂", href: "" },
-  { label: "لیست رزروها", icon: "●", href: "reservations" },
+  { label: "اقامتگاه من", icon: "⌂", href: "" },
+  { label: "اتاق‌ها", icon: "▤", href: "rooms" },
   { label: "ظرفیت اتاق‌ها", icon: "▣", href: "inventory" },
   { label: "قیمت‌گذاری اتاق‌ها", icon: "▥", href: "pricing" },
+  { label: "رزروها", icon: "●", href: "reservations" },
   { label: "نظرات", icon: "□", href: "reviews" },
   { label: "کاربران", icon: "♟", href: "users" },
   { label: "سوابق تغییرات نرخی", icon: "≡", href: "change-logs" },

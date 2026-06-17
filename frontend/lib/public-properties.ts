@@ -6,19 +6,6 @@ export type PublicPropertyView =
   | "MountainView"
   | "DesertView";
 
-export interface PublicRoom {
-  id: number;
-  name: string;
-  englishName: string | null;
-  description: string | null;
-  notes: string | null;
-  floorNumber: number | null;
-  stairCount: number | null;
-  hasWindow: boolean | null;
-  hasPrivateBathroom: boolean | null;
-  images: PublicImage[];
-}
-
 export interface PublicImage {
   id: number;
   url: string;
@@ -41,10 +28,14 @@ export interface PublicRoomType {
   totalInventory: number;
   maxAdults: number;
   maxChildren: number;
+  notes: string | null;
+  floorNumber: number | null;
+  stairCount: number | null;
+  hasWindow: boolean | null;
+  hasPrivateBathroom: boolean | null;
   bedInformation: string[];
   images: PublicImage[];
   amenities: { id: number; name: string; category: string }[];
-  namedRooms: PublicRoom[];
 }
 
 export interface PublicProperty {
