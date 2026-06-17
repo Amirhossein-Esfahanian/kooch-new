@@ -42,7 +42,8 @@ export default function HomePage() {
   const [city, setCity] = useState("کاشان");
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
-  const [guests, setGuests] = useState(2);
+  const [adults, setAdults] = useState(2);
+  const [children, setChildren] = useState(0);
 
   useEffect(() => {
     fetchPublicApi<PublicProperty[]>("/properties")
@@ -59,7 +60,8 @@ export default function HomePage() {
     const query = new URLSearchParams({ city });
     if (checkIn) query.set("checkIn", checkIn);
     if (checkOut) query.set("checkOut", checkOut);
-    query.set("guests", guests.toString());
+    query.set("adults", Math.max(1, adults).toString());
+    query.set("children", Math.max(0, children).toString());
     router.push(`/properties?${query.toString()}`);
   }
 
@@ -76,7 +78,7 @@ export default function HomePage() {
       </section>
 
       <div className="relative z-10 mx-auto -mt-8 max-w-6xl px-5 sm:px-8">
-        <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg md:grid-cols-[1.2fr_2fr_0.7fr_auto] md:items-end" onSubmit={search}>
+        <form className="grid gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg md:grid-cols-[1.1fr_1.7fr_0.7fr_0.7fr_auto] md:items-end" onSubmit={search}>
           <label className="grid gap-1 text-sm font-bold text-slate-700">مقصد یا شهر<input className="rounded-xl border border-slate-300 px-4 py-3 font-normal" onChange={(event) => setCity(event.target.value)} required value={city} /></label>
           <div>
             <DateRangePicker
@@ -91,7 +93,8 @@ export default function HomePage() {
               value={{ startDate: checkIn || null, endDate: checkOut || null }}
             />
           </div>
-          <label className="grid gap-1 text-sm font-bold text-slate-700">مهمان<input className="rounded-xl border border-slate-300 px-4 py-3 font-normal" min="1" onChange={(event) => setGuests(Number(event.target.value))} type="number" value={guests} /></label>
+          <label className="grid gap-1 text-sm font-bold text-slate-700">بزرگسال<input className="rounded-xl border border-slate-300 px-4 py-3 font-normal" min="1" onChange={(event) => setAdults(Number(event.target.value))} type="number" value={adults} /></label>
+          <label className="grid gap-1 text-sm font-bold text-slate-700">کودک<input className="rounded-xl border border-slate-300 px-4 py-3 font-normal" min="0" onChange={(event) => setChildren(Number(event.target.value))} type="number" value={children} /></label>
           <button className="rounded-xl bg-blue-600 px-7 py-3 font-black text-white transition hover:bg-blue-700" type="submit">جست‌وجو</button>
         </form>
       </div>

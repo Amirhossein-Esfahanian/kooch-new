@@ -36,6 +36,7 @@ export interface PublicRoomType {
   basePrice: number | null;
   availabilityPrice: number | null;
   displayPrice: number | null;
+  availabilityStatus: "Available" | "Unavailable" | "OnRequest" | null;
   inventoryMode: PublicInventoryMode;
   totalInventory: number;
   maxAdults: number;
@@ -69,6 +70,8 @@ export interface PublicProperty {
   hasAccessibleBathroom: boolean | null;
   isInstantBooking: boolean;
   startingPrice: number | null;
+  matchingRoomTypesCount: number;
+  availabilityStatusSummary: "Available" | "OnRequest" | "Unknown";
   images: PublicImage[];
   descriptionSections: {
     sectionType: "PropertyIntroduction" | "ImportantNotes";

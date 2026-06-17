@@ -224,11 +224,54 @@ public class PropertyService(
     }
 
     public async Task<IReadOnlyList<PublicPropertyResponse>> GetPublicPropertiesAsync(
+        string? city = null,
+        DateOnly? checkIn = null,
+        DateOnly? checkOut = null,
+        int? adults = null,
+        int? children = null,
         CancellationToken cancellationToken = default)
     {
-        return await ProjectPublic(dbContext.Properties.AsNoTracking()
-                .Where(property => property.Status == PropertyStatus.Approved)
-                .OrderBy(property => property.Name))
+        var minAdults = Math.Max(0, adults ?? 0);
+        var minChildren = Math.Max(0, children ?? 0);
+        var hasDates = checkIn.HasValue && checkOut.HasValue && checkOut.Value > checkIn.Value;
+        var rangeStart = checkIn ?? DateOnly.FromDateTime(DateTime.UtcNow);
+        var rangeEndExclusive = checkOut ?? rangeStart.AddDays(1);
+        var nights = Math.Max(1, rangeEndExclusive.DayNumber - rangeStart.DayNumber);
+
+        var query = dbContext.Properties.AsNoTracking()
+            .Where(property => property.Status == PropertyStatus.Approved);
+
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            var normalizedCity = city.Trim();
+            query = query.Where(property => property.City.Contains(normalizedCity));
+        }
+
+        if (minAdults > 0 || minChildren > 0)
+        {
+            query = query.Where(property => property.RoomTypes.Any(roomType =>
+                roomType.IsActive &&
+                roomType.MaxAdults >= minAdults &&
+                roomType.MaxChildren >= minChildren));
+        }
+
+        if (hasDates)
+        {
+            query = query.Where(property => property.RoomTypes.Any(roomType =>
+                roomType.IsActive &&
+                roomType.MaxAdults >= minAdults &&
+                roomType.MaxChildren >= minChildren &&
+                (!roomType.Availability.Any(availability =>
+                     availability.Date >= rangeStart &&
+                     availability.Date < rangeEndExclusive) ||
+                 roomType.Availability.Count(availability =>
+                     availability.Date >= rangeStart &&
+                     availability.Date < rangeEndExclusive &&
+                     availability.Status == AvailabilityStatus.Available &&
+                     availability.AvailableCount > 0) == nights)));
+        }
+
+        return await ProjectPublic(query.OrderBy(property => property.Name), minAdults, minChildren, hasDates, rangeStart, rangeEndExclusive, nights)
             .ToListAsync(cancellationToken);
     }
 
@@ -367,9 +410,18 @@ public class PropertyService(
             HasAccessibleBathroom = property.HasAccessibleBathroom,
         });
 
-    private static IQueryable<PublicPropertyResponse> ProjectPublic(IQueryable<Property> query)
+    private static IQueryable<PublicPropertyResponse> ProjectPublic(
+        IQueryable<Property> query,
+        int minAdults = 0,
+        int minChildren = 0,
+        bool hasDates = false,
+        DateOnly? rangeStartValue = null,
+        DateOnly? rangeEndExclusiveValue = null,
+        int nights = 1)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var rangeStart = rangeStartValue ?? today;
+        var rangeEndExclusive = rangeEndExclusiveValue ?? today.AddDays(1);
         return query.Select(property => new PublicPropertyResponse
         {
             Id = property.Id,
@@ -395,6 +447,50 @@ public class PropertyService(
                 availability => availability.Date >= today &&
                                 availability.Status == AvailabilityStatus.Available &&
                                 availability.AvailableCount > 0)),
+            MatchingRoomTypesCount = property.RoomTypes.Count(roomType =>
+                roomType.IsActive &&
+                roomType.MaxAdults >= minAdults &&
+                roomType.MaxChildren >= minChildren &&
+                (!hasDates ||
+                 !roomType.Availability.Any(availability =>
+                     availability.Date >= rangeStart &&
+                     availability.Date < rangeEndExclusive) ||
+                 roomType.Availability.Count(availability =>
+                     availability.Date >= rangeStart &&
+                     availability.Date < rangeEndExclusive &&
+                     availability.Status == AvailabilityStatus.Available &&
+                     availability.AvailableCount > 0) == nights)),
+            AvailabilityStatusSummary = hasDates
+                ? property.RoomTypes.Any(roomType =>
+                    roomType.IsActive &&
+                    roomType.MaxAdults >= minAdults &&
+                    roomType.MaxChildren >= minChildren &&
+                    roomType.Availability.Count(availability =>
+                        availability.Date >= rangeStart &&
+                        availability.Date < rangeEndExclusive &&
+                        availability.Status == AvailabilityStatus.Available &&
+                        availability.AvailableCount > 0) == nights)
+                    ? "Available"
+                    : property.RoomTypes.Any(roomType =>
+                        roomType.IsActive &&
+                        roomType.MaxAdults >= minAdults &&
+                        roomType.MaxChildren >= minChildren &&
+                        roomType.Availability.Any(availability =>
+                            availability.Date >= rangeStart &&
+                            availability.Date < rangeEndExclusive &&
+                            availability.Status == AvailabilityStatus.OnRequest))
+                        ? "OnRequest"
+                        : "Unknown"
+                : property.RoomTypes.Any(roomType => roomType.IsActive && roomType.Availability.Any(availability =>
+                    availability.Date >= today &&
+                    availability.Status == AvailabilityStatus.Available &&
+                    availability.AvailableCount > 0))
+                    ? "Available"
+                    : property.RoomTypes.Any(roomType => roomType.IsActive && roomType.Availability.Any(availability =>
+                        availability.Date >= today &&
+                        availability.Status == AvailabilityStatus.OnRequest))
+                        ? "OnRequest"
+                        : "Unknown",
             CoverImageUrl = property.Images
                 .OrderByDescending(image => image.IsCover)
                 .ThenBy(image => image.SortOrder)
@@ -496,6 +592,11 @@ public class PropertyService(
                         .OrderBy(availability => availability.Date)
                         .Select(availability => (decimal?)availability.Price)
                         .FirstOrDefault() ?? roomType.BasePrice,
+                    AvailabilityStatus = roomType.Availability
+                        .Where(availability => availability.Date >= today)
+                        .OrderBy(availability => availability.Date)
+                        .Select(availability => (AvailabilityStatus?)availability.Status)
+                        .FirstOrDefault(),
                     InventoryMode = roomType.InventoryMode,
                     TotalInventory = roomType.TotalInventory,
                     MaxAdults = roomType.MaxAdults,

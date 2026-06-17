@@ -14,7 +14,7 @@ type WorkspaceOption = {
 
 const options: WorkspaceOption[] = [
   { key: "admin", title: "پنل مدیریت سایت", description: "مدیریت اقامتگاه‌ها، کاربران، امکانات و گزارش‌ها", href: "/admin" },
-  { key: "owner", title: "پنل مالک اقامتگاه", description: "مدیریت اقامتگاه‌ها، اتاق‌ها، تصاویر و موجودی", href: "/owner/properties" },
+  { key: "owner", title: "پنل مالک اقامتگاه", description: "مدیریت اقامتگاه‌ها، اتاق‌ها، تصاویر و موجودی", href: "/owner" },
   { key: "traveler", title: "سایت مسافر", description: "مشاهده صفحه اصلی، جست‌وجو و صفحات عمومی", href: "/" },
 ];
 

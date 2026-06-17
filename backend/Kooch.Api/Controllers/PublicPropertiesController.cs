@@ -12,8 +12,14 @@ public class PublicPropertiesController(IPropertyService propertyService) : Cont
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PublicPropertyResponse>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<PublicPropertyResponse>>> Get(CancellationToken cancellationToken) =>
-        Ok(await propertyService.GetPublicPropertiesAsync(cancellationToken));
+    public async Task<ActionResult<IReadOnlyList<PublicPropertyResponse>>> Get(
+        [FromQuery] string? city,
+        [FromQuery] DateOnly? checkIn,
+        [FromQuery] DateOnly? checkOut,
+        [FromQuery] int? adults,
+        [FromQuery] int? children,
+        CancellationToken cancellationToken) =>
+        Ok(await propertyService.GetPublicPropertiesAsync(city, checkIn, checkOut, adults, children, cancellationToken));
 
     [HttpGet("{slug}")]
     [ProducesResponseType<PublicPropertyResponse>(StatusCodes.Status200OK)]

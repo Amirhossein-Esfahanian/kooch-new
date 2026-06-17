@@ -2,7 +2,12 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import dayjs from "dayjs";
+import jalaliday from "jalaliday/dayjs";
+import "dayjs/locale/fa";
 import {
+  AvailabilityResponse,
+  AvailabilityStatus,
   AmenityCategoryResponse,
   AmenityResponse,
   apiRequest,
@@ -15,6 +20,7 @@ import {
   PropertyCommonAreaResponse,
   PropertyCompletionResponse,
   PropertyDescriptionSectionResponse,
+  PropertyInventoryResponse,
   propertyTypes,
   PropertyResponse,
   PropertyImageResponse,
@@ -26,10 +32,13 @@ import {
   toPropertyPayload,
 } from "@/lib/owner-api";
 
+dayjs.extend(jalaliday);
+
 const steps = [
   "اطلاعات پایه",
   "اطلاعات ساختمان",
   "مدل اقامت",
+  "موجودی و قیمت",
   "امکانات",
   "تصاویر",
   "توضیحات",
@@ -100,6 +109,13 @@ interface NearbyPlaceDraft {
   isDefault: boolean;
 }
 
+interface InventoryBulkDraft {
+  roomTypeId: string;
+  startDate: string;
+  endDate: string;
+  availableCount: number;
+}
+
 interface WizardData {
   name: string;
   englishName: string;
@@ -165,6 +181,25 @@ const emptyAccommodation = {
   hasPrivateBathroom: null as boolean | null,
 };
 
+function isoFromToday(days: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+const initialInventoryBulk: InventoryBulkDraft = {
+  roomTypeId: "",
+  startDate: isoFromToday(0),
+  endDate: isoFromToday(30),
+  availableCount: 1,
+};
+
+const availabilityLabels: Record<AvailabilityStatus, string> = {
+  Available: "موجود",
+  Unavailable: "ناموجود",
+  OnRequest: "نیازمند استعلام",
+};
+
 const inputClass = "w-full rounded-lg border border-ink/20 bg-white px-3 py-2";
 const cardClass = "rounded-xl border border-ink/10 bg-white p-5 shadow-sm";
 
@@ -206,6 +241,11 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [data, setData] = useState(initialData);
   const [accommodations, setAccommodations] = useState<AccommodationDraft[]>([]);
   const [accommodation, setAccommodation] = useState(emptyAccommodation);
+  const [inventoryBulk, setInventoryBulk] = useState<InventoryBulkDraft>(initialInventoryBulk);
+  const [inventoryMonth, setInventoryMonth] = useState(dayjs().format("YYYY-MM"));
+  const [inventoryData, setInventoryData] = useState<PropertyInventoryResponse | null>(null);
+  const availability = { roomTypeId: "", startDate: "", endDate: "", price: "", originalPrice: "", availableCount: 0, status: "Available" as AvailabilityStatus, minNightsOverride: "" };
+  const setAvailabilityRows = (_rows: AvailabilityResponse[]) => undefined;
   const [amenityCategories, setAmenityCategories] = useState<AmenityCategoryResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
@@ -287,6 +327,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             roomId: room?.id,
           };
         }));
+        setInventoryBulk((current) => ({ ...current, roomTypeId: current.roomTypeId || roomTypeResult[0]?.id.toString() || "" }));
         const intro = descriptionResult.find((section) => section.sectionType === "PropertyIntroduction");
         const notes = descriptionResult.find((section) => section.sectionType === "ImportantNotes");
         update("name", propertyResult.name);
@@ -321,6 +362,11 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       .finally(() => setLoading(false));
   }, [isAdmin, mode, propertyId]);
 
+  useEffect(() => {
+    if (!property?.id || step !== 3) return;
+    loadInventoryMonth().catch((caught: Error) => setError(caught.message));
+  }, [inventoryMonth, property?.id, step]);
+
   const selectedAmenities = useMemo(
     () => amenities.filter((item) => data.selectedAmenityIds.includes(item.id)),
     [amenities, data.selectedAmenityIds],
@@ -352,7 +398,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     if (step === 2 && accommodations.length === 0) {
       return `حداقل یک ${data.inventoryMode === "NamedRooms" ? "اتاق نام‌دار" : "نوع اتاق"} اضافه کنید.`;
     }
-    if (step === 5 && !data.propertyDescription.trim()) {
+    if (step === 6 && !data.propertyDescription.trim()) {
       return "پیش از ادامه، توضیحات اقامتگاه را وارد کنید.";
     }
     return "";
@@ -544,6 +590,123 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       saved[index] = { ...item, roomTypeId: roomType.id, roomId: item.roomId ?? roomId };
     }
     setAccommodations(saved);
+    setInventoryBulk((current) => ({ ...current, roomTypeId: current.roomTypeId || saved.find((item) => item.roomTypeId)?.roomTypeId?.toString() || "" }));
+  }
+
+  async function loadInventoryMonth() {
+    if (!property?.id) return;
+    const rows = await apiRequest<PropertyInventoryResponse>(
+      `/owner/properties/${property.id}/inventory?month=${encodeURIComponent(inventoryMonth)}`,
+    );
+    setInventoryData(rows);
+  }
+
+  function maxInventory(roomTypeId: number) {
+    const roomType = inventoryData?.roomTypes.find((item) => item.roomTypeId === roomTypeId);
+    if (!roomType) return 0;
+    return roomType.inventoryMode === "NamedRooms" ? 1 : roomType.totalInventory;
+  }
+
+  function clampInventory(roomTypeId: number, value: number) {
+    const max = maxInventory(roomTypeId);
+    return Math.min(Math.max(0, value), max);
+  }
+
+  async function applyBulkInventory() {
+    if (!property?.id) return;
+    setLoading(true);
+    setError("");
+    try {
+      const roomTypeId = inventoryBulk.roomTypeId ? Number(inventoryBulk.roomTypeId) : null;
+      const count = roomTypeId ? clampInventory(roomTypeId, inventoryBulk.availableCount) : Math.max(0, inventoryBulk.availableCount);
+      const rows = await apiRequest<PropertyInventoryResponse>(`/owner/properties/${property.id}/inventory/bulk`, {
+        method: "POST",
+        body: JSON.stringify({
+          roomTypeId,
+          startDate: inventoryBulk.startDate,
+          endDate: inventoryBulk.endDate,
+          availableCount: count,
+        }),
+      });
+      setInventoryData(rows);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "موجودی ذخیره نشد.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function saveInventoryCell(roomTypeId: number, date: string, availableCount: number) {
+    if (!property?.id) return;
+    const count = clampInventory(roomTypeId, availableCount);
+    setInventoryData((current) => current && {
+      ...current,
+      roomTypes: current.roomTypes.map((roomType) => roomType.roomTypeId === roomTypeId
+        ? {
+            ...roomType,
+            days: roomType.days.map((day) => day.date === date
+              ? { ...day, roomTypeId, availableCount: count, status: count === 0 ? "Unavailable" : "Available" }
+              : day),
+          }
+        : roomType),
+    });
+    try {
+      const row = await apiRequest<{ availabilityId: number | null; roomTypeId: number; date: string; availableCount: number; status: AvailabilityStatus }>(
+        `/owner/properties/${property.id}/inventory/cell`,
+        {
+          method: "POST",
+          body: JSON.stringify({ roomTypeId, date, availableCount: count }),
+        },
+      );
+      setInventoryData((current) => current && {
+        ...current,
+        roomTypes: current.roomTypes.map((roomType) => roomType.roomTypeId === roomTypeId
+          ? {
+              ...roomType,
+              days: roomType.days.map((day) => day.date === date ? row : day),
+            }
+          : roomType),
+      });
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "موجودی ذخیره نشد.");
+      await loadInventoryMonth();
+    }
+  }
+
+  async function oldLoadAvailabilityRowsUnused() {
+    return;
+  }
+
+  async function saveAvailability() {
+    if (!availability.roomTypeId) {
+      setError("ابتدا نوع اتاق را انتخاب کنید.");
+      return;
+    }
+    if (!availability.price) {
+      setError("قیمت را وارد کنید.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      const rows = await apiRequest<AvailabilityResponse[]>(`/owner/room-types/${availability.roomTypeId}/availability`, {
+        method: "POST",
+        body: JSON.stringify({
+          startDate: availability.startDate,
+          endDate: availability.endDate,
+          price: Number(availability.price),
+          originalPrice: availability.originalPrice === "" ? null : Number(availability.originalPrice),
+          availableCount: availability.status === "Unavailable" ? 0 : availability.availableCount,
+          status: availability.status,
+          minNightsOverride: availability.minNightsOverride === "" ? null : Number(availability.minNightsOverride),
+        }),
+      });
+      setAvailabilityRows(rows);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "موجودی و قیمت ذخیره نشد.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function saveImages(propertyId: number) {
@@ -643,13 +806,14 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       await saveProperty(property.description);
       await saveAccommodations(property.id);
     }
-    if (step === 3) {
+    if (step === 3) return property;
+    if (step === 4) {
       await apiRequest<PropertyAmenityResponse[]>(`/owner/properties/${property.id}/amenities`, { method: "PUT", body: JSON.stringify({ amenityIds: data.selectedAmenityIds }) });
       await apiRequest(`/owner/properties/${property.id}/views`, { method: "PUT", body: JSON.stringify({ views: data.views }) });
     }
-    if (step === 4) await saveImages(property.id);
-    if (step === 5) await saveDescriptions(property.id);
-    if (step === 6) await saveNearbyPlaces(property.id);
+    if (step === 5) await saveImages(property.id);
+    if (step === 6) await saveDescriptions(property.id);
+    if (step === 7) await saveNearbyPlaces(property.id);
     return property;
   }
 
@@ -667,10 +831,10 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     <div>
       <div className="mb-6" dir="rtl">
         <div className="mb-2 flex items-center justify-between text-sm font-semibold">
-          <span>{mode === "edit" ? "ویرایش" : "ثبت"} · مرحله {step + 1} از ۸</span>
+          <span>{mode === "edit" ? "ویرایش" : "ثبت"} · مرحله {step + 1} از {steps.length}</span>
           <span>{steps[step]}</span>
         </div>
-        <div className="grid grid-cols-8 gap-1" aria-label={`Step ${step + 1} of 8`}>
+        <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }} aria-label={`Step ${step + 1} of ${steps.length}`}>
           {steps.map((label, index) => (
             <button
               aria-label={label}
@@ -790,6 +954,87 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 3 && (
           <section className={`${cardClass} grid gap-5`}>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <h2 className="text-2xl font-bold">موجودی اتاق‌ها</h2>
+                <p className="text-sm text-ink/60">برای هر روز فقط تعداد موجودی را مدیریت کنید. قیمت در بخش جداگانه اضافه می‌شود.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <button className="rounded-lg border border-ink/20 px-3 py-2 text-sm font-bold" onClick={() => setInventoryMonth(dayjs(inventoryMonth).subtract(1, "month").format("YYYY-MM"))} type="button">ماه قبل</button>
+                <strong>{dayjs(`${inventoryMonth}-01`).calendar("jalali").locale("fa").format("MMMM YYYY")}</strong>
+                <button className="rounded-lg border border-ink/20 px-3 py-2 text-sm font-bold" onClick={() => setInventoryMonth(dayjs(inventoryMonth).add(1, "month").format("YYYY-MM"))} type="button">ماه بعد</button>
+              </div>
+            </div>
+
+            <div className="grid gap-4 rounded-xl border border-ink/10 bg-slate-50 p-4 md:grid-cols-5">
+              <label className="grid gap-1 text-sm font-semibold">نوع اتاق
+                <select className={inputClass} onChange={(event) => setInventoryBulk({ ...inventoryBulk, roomTypeId: event.target.value })} value={inventoryBulk.roomTypeId}>
+                  <option value="">همه اتاق‌ها</option>
+                  {inventoryData?.roomTypes.map((item) => <option key={item.roomTypeId} value={item.roomTypeId}>{item.name}</option>)}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm font-semibold">تاریخ شروع<input className={inputClass} onChange={(event) => setInventoryBulk({ ...inventoryBulk, startDate: event.target.value })} type="date" value={inventoryBulk.startDate} /></label>
+              <label className="grid gap-1 text-sm font-semibold">تاریخ پایان<input className={inputClass} onChange={(event) => setInventoryBulk({ ...inventoryBulk, endDate: event.target.value })} type="date" value={inventoryBulk.endDate} /></label>
+              <label className="grid gap-1 text-sm font-semibold">تعداد موجود<input className={inputClass} min="0" max={inventoryBulk.roomTypeId ? maxInventory(Number(inventoryBulk.roomTypeId)) : undefined} onChange={(event) => setInventoryBulk({ ...inventoryBulk, availableCount: Number(event.target.value) })} type="number" value={inventoryBulk.availableCount} /></label>
+              <button className="self-end rounded-lg bg-ink px-4 py-3 font-bold text-white disabled:opacity-60" disabled={loading || !property?.id} onClick={applyBulkInventory} type="button">اعمال</button>
+            </div>
+
+            <div className="overflow-x-auto rounded-xl border border-ink/10 bg-white">
+              <table className="min-w-max text-sm">
+                <thead className="bg-slate-50 text-slate-600">
+                  <tr>
+                    <th className="sticky right-0 z-10 min-w-44 bg-slate-50 p-3 text-right">اتاق</th>
+                    {inventoryData?.roomTypes[0]?.days.map((day) => {
+                      const jalaliDay = dayjs(day.date).calendar("jalali").locale("fa");
+                      const today = day.date === dayjs().format("YYYY-MM-DD");
+                      return <th className={`min-w-14 p-2 text-center ${today ? "text-blue-700" : ""}`} key={day.date}>{jalaliDay.format("D")}</th>;
+                    })}
+                  </tr>
+                </thead>
+                <tbody>
+                  {inventoryData?.roomTypes.map((roomType) => (
+                    <tr className="border-t" key={roomType.roomTypeId}>
+                      <th className="sticky right-0 z-10 bg-white p-3 text-right align-middle">
+                        <span className="font-bold">{roomType.name}</span>
+                        <span className="mt-1 block text-xs text-slate-400">{roomType.inventoryMode === "NamedRooms" ? "۰/۱" : `حداکثر ${roomType.totalInventory}`}</span>
+                      </th>
+                      {roomType.days.map((day) => {
+                        const isUnavailable = day.availableCount === 0;
+                        const isOnRequest = day.status === "OnRequest";
+                        return (
+                          <td className={`border-r border-slate-100 p-1 ${isOnRequest ? "bg-amber-50" : isUnavailable ? "bg-red-50" : "bg-green-50"}`} key={day.date}>
+                            <input
+                              aria-label={`${roomType.name} ${day.date}`}
+                              className={`h-10 w-12 rounded-md border text-center font-bold ${isUnavailable ? "border-red-200 text-red-700" : "border-green-200 text-green-700"}`}
+                              max={roomType.inventoryMode === "NamedRooms" ? 1 : roomType.totalInventory}
+                              min="0"
+                              onBlur={(event) => saveInventoryCell(roomType.roomTypeId, day.date, Number(event.target.value))}
+                              onChange={(event) => {
+                                const nextCount = clampInventory(roomType.roomTypeId, Number(event.target.value));
+                                setInventoryData((current) => current && {
+                                  ...current,
+                                  roomTypes: current.roomTypes.map((candidate) => candidate.roomTypeId === roomType.roomTypeId
+                                    ? { ...candidate, days: candidate.days.map((candidateDay) => candidateDay.date === day.date ? { ...candidateDay, availableCount: nextCount } : candidateDay) }
+                                    : candidate),
+                                });
+                              }}
+                              type="number"
+                              value={day.availableCount}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!inventoryData?.roomTypes.length && <p className="p-5 text-center text-sm text-slate-500">ابتدا نوع اتاق را ذخیره کنید.</p>}
+            </div>
+          </section>
+        )}
+
+        {step === 4 && (
+          <section className={`${cardClass} grid gap-5`}>
             <div><h2 className="text-2xl font-bold">امکانات</h2><p className="text-sm text-ink/60">امکانات موجود در اقامتگاه را انتخاب کنید.</p></div>
             {amenitiesLoading && <p>در حال بارگذاری امکانات...</p>}
             {!amenitiesLoading && amenityCategories.map((category) => {
@@ -810,7 +1055,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           </section>
         )}
 
-        {step === 4 && (
+        {step === 5 && (
           <section className={`${cardClass} grid gap-5`}>
             <div><h2 className="text-2xl font-bold">تصاویر</h2><p className="text-sm text-ink/60">تا زمان فعال شدن آپلود، نشانی اینترنتی تصویر را وارد کنید.</p></div>
             <label className="grid gap-1 text-sm font-semibold">نشانی تصویر کاور<input className={inputClass} dir="ltr" onChange={(event) => update("coverImage", event.target.value)} type="url" value={data.coverImage} /></label>
@@ -819,7 +1064,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           </section>
         )}
 
-        {step === 5 && (
+        {step === 6 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-bold">توضیحات</h2>
             <label className="grid gap-1 text-sm font-semibold">توضیحات اقامتگاه<textarea className={inputClass} onChange={(event) => update("propertyDescription", event.target.value)} required rows={5} value={data.propertyDescription} /></label>
@@ -838,7 +1083,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           </section>
         )}
 
-        {step === 6 && (
+        {step === 7 && (
           <section className={`${cardClass} grid gap-5`}>
             <div><h2 className="text-2xl font-bold">مکان‌های نزدیک</h2><p className="text-sm text-ink/60">مکان‌های مهم کاشان یا نقاط دلخواه نزدیک اقامتگاه را انتخاب کنید.</p></div>
             <div className="grid gap-2 sm:grid-cols-2">{defaultNearbyPlaces.map((place) => <button className="rounded-lg border border-ink/10 p-3 text-left font-semibold" key={place} onClick={() => update("nearbyPlaces", data.nearbyPlaces.some((item) => item.title === place) ? data.nearbyPlaces.filter((item) => item.title !== place) : [...data.nearbyPlaces, { title: place, drivingMinutes: "", walkingMinutes: "", isDefault: true }])} type="button">{data.nearbyPlaces.some((item) => item.title === place) ? "انتخاب شده: " : ""}{place}</button>)}</div>
@@ -856,7 +1101,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           </section>
         )}
 
-        {step === 7 && (
+        {step === 8 && (
           <section className="grid gap-5">
             <div className={cardClass}><h2 className="text-2xl font-bold">بازبینی</h2><p className="mt-1 text-sm text-ink/60">میزان تکمیل اطلاعات: {completion?.completionPercentage ?? 0}٪</p></div>
             <div className={cardClass}>
@@ -892,7 +1137,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         <div className="mt-6 flex items-center justify-between gap-3">
           <button className="rounded-lg border border-ink/20 px-5 py-3 font-bold disabled:opacity-40" disabled={step === 0 || loading} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }} type="button">بازگشت</button>
-          {step < 7 ? <button className="rounded-lg bg-ink px-5 py-3 font-bold text-white disabled:opacity-60" disabled={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</button> : <button className="rounded-lg bg-ink px-5 py-3 font-bold text-white disabled:opacity-60" disabled={loading || !property} type="submit">پایان</button>}
+          {step < steps.length - 1 ? <button className="rounded-lg bg-ink px-5 py-3 font-bold text-white disabled:opacity-60" disabled={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</button> : <button className="rounded-lg bg-ink px-5 py-3 font-bold text-white disabled:opacity-60" disabled={loading || !property} type="submit">پایان</button>}
         </div>
       </form>
     </div>

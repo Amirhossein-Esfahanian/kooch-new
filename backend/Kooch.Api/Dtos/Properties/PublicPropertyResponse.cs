@@ -26,6 +26,8 @@ public class PublicPropertyResponse
     public bool? HasAccessibleBathroom { get; set; }
     public bool IsInstantBooking { get; set; }
     public decimal? StartingPrice { get; set; }
+    public int MatchingRoomTypesCount { get; set; }
+    public string AvailabilityStatusSummary { get; set; } = "Unknown";
     public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
     public IReadOnlyList<PublicDescriptionSectionResponse> DescriptionSections { get; set; } = [];
     public IReadOnlyList<PublicCommonAreaResponse> CommonAreas { get; set; } = [];
@@ -44,6 +46,7 @@ public class PublicRoomTypeResponse
     public decimal? BasePrice { get; set; }
     public decimal? AvailabilityPrice { get; set; }
     public decimal? DisplayPrice { get; set; }
+    public AvailabilityStatus? AvailabilityStatus { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public int TotalInventory { get; set; }
     public int MaxAdults { get; set; }

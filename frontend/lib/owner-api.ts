@@ -204,6 +204,30 @@ export interface AvailabilityResponse {
   minNightsOverride: number | null;
 }
 
+export interface InventoryDayResponse {
+  availabilityId: number | null;
+  roomTypeId: number;
+  date: string;
+  availableCount: number;
+  status: AvailabilityStatus;
+}
+
+export interface InventoryRoomTypeResponse {
+  roomTypeId: number;
+  name: string;
+  inventoryMode: InventoryMode;
+  totalInventory: number;
+  days: InventoryDayResponse[];
+}
+
+export interface PropertyInventoryResponse {
+  propertyId: number;
+  month: string;
+  startDate: string;
+  endDate: string;
+  roomTypes: InventoryRoomTypeResponse[];
+}
+
 export interface PropertyCompletionResponse {
   propertyId: number;
   completionPercentage: number;
@@ -272,6 +296,7 @@ export interface PropertyFormValues {
 const tokenKey = "kooch_owner_token";
 const userRoleKey = "kooch_user_role";
 const userNameKey = "kooch_user_name";
+export const ownerPropertyKey = "kooch_owner_property_id";
 export const workspaceKey = "kooch_workspace";
 export type KoochWorkspace = "admin" | "owner" | "traveler";
 
