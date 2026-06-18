@@ -501,6 +501,7 @@ public class PropertyService(
                         ? "OnRequest"
                         : "Unknown",
             CoverImageUrl = property.Images
+                .Where(image => image.RoomTypeId == null && image.RoomId == null)
                 .OrderByDescending(image => image.IsCover)
                 .ThenBy(image => image.SortOrder)
                 .Select(image => image.Url)
@@ -516,7 +517,9 @@ public class PropertyService(
                 .Where(price => price != null)
                 .Min(),
             Images = property.Images
-                .Where(image => image.IsGallery || image.IsCover)
+                .Where(image => image.RoomTypeId == null &&
+                                image.RoomId == null &&
+                                (image.IsGallery || image.IsCover))
                 .OrderByDescending(image => image.IsCover)
                 .ThenBy(image => image.SortOrder)
                 .Select(image => new PublicImageResponse
@@ -620,7 +623,8 @@ public class PropertyService(
                         .Select(configuration => configuration.Quantity + " x " + configuration.BedType.Name)
                         .ToList(),
                     Images = roomType.PropertyImages
-                        .OrderBy(image => image.SortOrder)
+                        .OrderByDescending(image => image.IsCover)
+                        .ThenBy(image => image.SortOrder)
                         .Select(image => new PublicImageResponse
                         {
                             Id = image.Id,

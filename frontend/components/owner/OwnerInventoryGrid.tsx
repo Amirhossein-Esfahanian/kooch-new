@@ -155,10 +155,7 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
       const roomType = inventory.roomTypes.find(
         (item) => item.roomTypeId === cell.roomTypeId,
       );
-      const max =
-        roomType?.inventoryMode === "NamedRooms"
-          ? 1
-          : (roomType?.totalInventory ?? 0);
+      const max = roomType?.totalInventory ?? 0;
       return Math.min(min, max);
     }, Number.MAX_SAFE_INTEGER);
   }
@@ -332,7 +329,7 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
                             {roomType.name}
                           </span>
                           <span className="mt-1 block text-xs text-slate-400">
-                            {roomType.inventoryMode === "NamedRooms"
+                            {roomType.totalInventory === 1
                               ? "۰/۱"
                               : `حداکثر ${toPersianNumber(roomType.totalInventory)}`}
                           </span>

@@ -23,7 +23,10 @@ import {
   PropertyViewResponse,
   PropertyViewType,
   resolveDestinationId,
+  RoomTypeResponse,
 } from "@/lib/owner-api";
+import { ImageUploadDropzone } from "@/components/owner/ImageUploadDropzone";
+import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 const steps = [
   "اطلاعات پایه",
@@ -190,6 +193,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [adminOwnerId, setAdminOwnerId] = useState("");
   const [amenityCategories, setAmenityCategories] = useState<AmenityCategoryResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
+  const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
+  const [allImages, setAllImages] = useState<PropertyImageResponse[]>([]);
   const [completion, setCompletion] = useState<PropertyCompletionResponse | null>(null);
   const [coverImageId, setCoverImageId] = useState<number | null>(null);
   const [descriptionIds, setDescriptionIds] = useState<Partial<Record<string, number>>>({});
@@ -225,9 +230,12 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       apiRequest<PropertyCommonAreaResponse[]>(`/owner/properties/${propertyId}/common-areas`),
       apiRequest<NearbyPlaceResponse[]>(`/owner/properties/${propertyId}/nearby-places`),
       apiRequest<PropertyViewResponse[]>(`/owner/properties/${propertyId}/views`),
+      apiRequest<RoomTypeResponse[]>(`/owner/properties/${propertyId}/room-types`).catch(() => []),
     ])
-      .then(([propertyResult, completionResult, descriptions, images, propertyAmenities, commonAreas, nearbyPlaces, views]) => {
+      .then(([propertyResult, completionResult, descriptions, images, propertyAmenities, commonAreas, nearbyPlaces, views, roomTypeItems]) => {
         setProperty(propertyResult);
+        setAllImages(images);
+        setRoomTypes(roomTypeItems);
         setCompletion(completionResult);
         setAdminStatus(propertyResult.status as PropertyStatus);
         setAdminOwnerId(String(propertyResult.ownerId));
@@ -353,6 +361,10 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         body: JSON.stringify({ url: data.coverImage.trim(), tag: "cover", sortOrder: 0, isCover: true, isGallery: true }),
       });
       setCoverImageId(response.id);
+      setAllImages((current) => [
+        ...current.map((image) => image.roomTypeId == null && image.roomId == null ? { ...image, isCover: false } : image).filter((image) => image.id !== response.id),
+        response,
+      ]);
     }
 
     const images = [...data.propertyImages];
@@ -364,6 +376,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         body: JSON.stringify({ url: image.url.trim(), tag: image.tag.trim() || null, sortOrder: index + 1, isCover: false, isGallery: true }),
       });
       images[index] = { ...image, imageId: response.id };
+      setAllImages((current) => [...current.filter((item) => item.id !== response.id), response]);
     }
     update("propertyImages", images.some((image) => !image.url.trim()) ? images : [...images, { url: "", tag: "gallery" }]);
   }
@@ -478,6 +491,27 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
   function addImageField() {
     update("propertyImages", [...data.propertyImages, { url: "", tag: "gallery" }]);
+  }
+
+  function syncImages(images: PropertyImageResponse[]) {
+    setAllImages(images);
+    const cover = images.find((image) => image.isCover && !image.roomTypeId && !image.roomId);
+    setCoverImageId(cover?.id ?? null);
+    setData((current) => ({
+      ...current,
+      coverImage: cover?.url ?? "",
+      propertyImages: [
+        ...images
+          .filter((image) => !image.isCover && !image.roomTypeId && !image.roomId)
+          .map((image) => ({ url: image.url, tag: image.tag ?? "", imageId: image.id })),
+        { url: "", tag: "gallery" },
+      ],
+    }));
+  }
+
+  function handleUploadedImages(images: PropertyImageResponse[]) {
+    if (!images.length) return;
+    syncImages([...allImages.filter((image) => !images.some((item) => item.id === image.id)), ...images]);
   }
 
   if (booting) {
@@ -608,9 +642,28 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         {step === 4 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-black">تصاویر اقامتگاه</h2>
+            <ImageUploadDropzone
+              onUploaded={handleUploadedImages}
+              propertyId={property?.id ?? null}
+              roomTypes={roomTypes}
+            />
+            <div className="grid gap-3">
+              <h3 className="font-black">گالری تصاویر</h3>
+              <PropertyImageManager
+                images={allImages}
+                onImagesChange={syncImages}
+                roomTypes={roomTypes}
+              />
+            </div>
+            <div className="rounded-2xl border border-slate-200 p-4">
+              <h3 className="font-black">افزودن تصویر با نشانی</h3>
+              <p className="mt-1 text-sm text-slate-500">این روش به عنوان جایگزین ساده برای تصویرهای آماده باقی می‌ماند.</p>
+            </div>
             <label className="grid gap-1 text-sm font-bold">تصویر کاور<input className={inputClass} dir="ltr" onChange={(event) => update("coverImage", event.target.value)} type="url" value={data.coverImage} /></label>
+            {data.coverImage.trim() && <img alt="تصویر کاور" className="h-[120px] w-[160px] rounded-xl object-cover" src={data.coverImage} />}
             {data.propertyImages.map((image, index) => (
               <div className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-2" key={index}>
+                {image.url.trim() && <img alt={image.tag || "تصویر اقامتگاه"} className="h-[120px] w-[160px] rounded-xl object-cover md:col-span-2" src={image.url} />}
                 <input className={inputClass} dir="ltr" onChange={(event) => {
                   const next = [...data.propertyImages];
                   next[index] = { ...next[index], url: event.target.value };

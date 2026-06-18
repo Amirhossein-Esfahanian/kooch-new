@@ -26,6 +26,18 @@ public class PropertyImagesController(IPropertyImageService imageService) : Auth
         return StatusCode(StatusCodes.Status201Created, image);
     }
 
+    [HttpPost("api/owner/properties/{propertyId:int}/images/upload")]
+    [RequestSizeLimit(60_000_000)]
+    public async Task<ActionResult<IReadOnlyList<PropertyImageResponse>>> Upload(
+        int propertyId,
+        [FromForm] PropertyImageUploadRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        var images = await imageService.UploadAsync(user.UserId, user.Role, propertyId, request, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, images);
+    }
+
     [HttpPut("api/owner/property-images/{imageId:int}")]
     public async Task<ActionResult<PropertyImageResponse>> Update(
         int imageId, PropertyImageRequest request, CancellationToken cancellationToken)

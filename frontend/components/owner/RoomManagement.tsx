@@ -6,8 +6,11 @@ import {
   apiRequest,
   BedTypeResponse,
   bedTypeLabel,
+  PropertyImageResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { ImageUploadDropzone } from "@/components/owner/ImageUploadDropzone";
+import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 interface RoomTypeDraft {
   id?: number;
@@ -60,6 +63,7 @@ function booleanLabel(value: boolean | null, trueLabel: string, falseLabel: stri
 
 export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
+  const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
   const [roomTypeDraft, setRoomTypeDraft] =
@@ -78,6 +82,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       apiRequest<BedTypeResponse[]>("/bed-types"),
       apiRequest<AmenityResponse[]>("/amenities"),
       loadRoomTypes(),
+      loadImages(),
     ])
       .then(([beds, amenityItems]) => {
         setBedTypes(beds);
@@ -92,6 +97,14 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       `/owner/properties/${propertyId}/room-types`,
     );
     setRoomTypes(items);
+    return items;
+  }
+
+  async function loadImages() {
+    const items = await apiRequest<PropertyImageResponse[]>(
+      `/owner/properties/${propertyId}/images`,
+    );
+    setImages(items);
     return items;
   }
 
@@ -157,7 +170,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         isActive: true,
       };
 
-      await apiRequest<RoomTypeResponse>(
+      const saved = await apiRequest<RoomTypeResponse>(
         roomTypeDraft.id
           ? `/owner/room-types/${roomTypeDraft.id}`
           : `/owner/properties/${propertyId}/room-types`,
@@ -166,7 +179,8 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           body: JSON.stringify(payload),
         },
       );
-      setRoomTypeDraft(emptyRoomType);
+      if (roomTypeDraft.id) setRoomTypeDraft(emptyRoomType);
+      else editRoomType(saved);
       await loadRoomTypes();
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "اتاق ذخیره نشد.");
@@ -477,6 +491,37 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           </div>
         </fieldset>
 
+        <div className="mt-5 grid gap-4 rounded-2xl border border-slate-200 p-4">
+          <div>
+            <h3 className="font-black">تصاویر اتاق</h3>
+            <p className="mt-1 text-sm text-slate-500">
+              برای بارگذاری تصویر، ابتدا اتاق را ذخیره کنید. تصاویر این بخش به همین اتاق متصل می‌شوند.
+            </p>
+          </div>
+          <ImageUploadDropzone
+            fixedRoomTypeId={roomTypeDraft.id ?? null}
+            onUploaded={(uploaded) =>
+              setImages((current) => [
+                ...current.filter((image) => !uploaded.some((item) => item.id === image.id)),
+                ...uploaded,
+              ])
+            }
+            propertyId={propertyId}
+          />
+          {roomTypeDraft.id ? (
+            <PropertyImageManager
+              fixedRoomTypeId={roomTypeDraft.id}
+              images={images}
+              onImagesChange={setImages}
+              roomTypes={roomTypes}
+            />
+          ) : (
+            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+              پس از ذخیره اتاق، مدیریت تصاویر فعال می‌شود.
+            </p>
+          )}
+        </div>
+
         <button
           className="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
           disabled={saving}
@@ -543,6 +588,21 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                       <p className="mt-2 text-sm text-slate-500">
                         {roomType.notes}
                       </p>
+                    )}
+                    {images.some((image) => image.roomTypeId === roomType.id) && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {images
+                          .filter((image) => image.roomTypeId === roomType.id)
+                          .slice(0, 4)
+                          .map((image) => (
+                            <img
+                              alt={image.altText || image.caption || roomType.name}
+                              className="h-[120px] w-[160px] rounded-xl object-cover"
+                              key={image.id}
+                              src={image.url}
+                            />
+                          ))}
+                      </div>
                     )}
                   </div>
                   <button

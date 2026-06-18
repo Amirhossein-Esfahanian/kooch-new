@@ -348,10 +348,12 @@ export async function apiRequest<T>(
   init: RequestInit = {},
 ): Promise<T> {
   const token = getToken();
+  const isFormData =
+    typeof FormData !== "undefined" && init.body instanceof FormData;
   const response = await fetch(`/api/backend${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...init.headers,
     },
