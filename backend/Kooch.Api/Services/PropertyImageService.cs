@@ -50,6 +50,7 @@ public class PropertyImageService(
     {
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
         await ValidateLinksAsync(propertyId, request.RoomTypeId, request.RoomId, cancellationToken);
+        var generatedAltText = await GenerateAltTextAsync(propertyId, request.RoomTypeId, request.Tag, cancellationToken);
         if (request.IsCover)
         {
             await UnsetOtherCoversAsync(propertyId, request.RoomTypeId, null, cancellationToken);
@@ -57,6 +58,7 @@ public class PropertyImageService(
 
         var image = new PropertyImage { PropertyId = propertyId };
         Apply(image, request);
+        image.AltText ??= generatedAltText;
         dbContext.PropertyImages.Add(image);
         await dbContext.SaveChangesAsync(cancellationToken);
         return Map(image);
@@ -71,6 +73,7 @@ public class PropertyImageService(
     {
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
         await ValidateLinksAsync(propertyId, request.RoomTypeId, null, cancellationToken);
+        var generatedAltText = await GenerateAltTextAsync(propertyId, request.RoomTypeId, request.Tag, cancellationToken);
 
         if (request.Files.Count == 0)
         {
@@ -119,7 +122,7 @@ public class PropertyImageService(
                 Url = $"/uploads/properties/{propertyId}/{fileName}",
                 Tag = Clean(request.Tag),
                 Caption = Clean(request.Caption),
-                AltText = Clean(request.AltText),
+                AltText = Clean(request.AltText) ?? generatedAltText,
                 SortOrder = nextSortOrder++,
                 IsCover = isCover,
                 IsGallery = true
@@ -142,12 +145,14 @@ public class PropertyImageService(
             ?? throw new KeyNotFoundException("Property image not found.");
         await EnsureCanManageAsync(userId, role, image.PropertyId, cancellationToken);
         await ValidateLinksAsync(image.PropertyId, request.RoomTypeId, request.RoomId, cancellationToken);
+        var generatedAltText = await GenerateAltTextAsync(image.PropertyId, request.RoomTypeId, request.Tag, cancellationToken);
         if (request.IsCover)
         {
             await UnsetOtherCoversAsync(image.PropertyId, request.RoomTypeId, image.Id, cancellationToken);
         }
 
         Apply(image, request);
+        image.AltText ??= generatedAltText;
         await dbContext.SaveChangesAsync(cancellationToken);
         return Map(image);
     }
@@ -230,6 +235,42 @@ public class PropertyImageService(
         image.IsCover = request.IsCover;
         image.IsGallery = request.IsGallery;
     }
+
+    private async Task<string> GenerateAltTextAsync(
+        int propertyId,
+        int? roomTypeId,
+        string? tag,
+        CancellationToken cancellationToken)
+    {
+        var propertyName = await dbContext.Properties.AsNoTracking()
+            .Where(property => property.Id == propertyId)
+            .Select(property => property.Name)
+            .SingleAsync(cancellationToken);
+
+        if (roomTypeId is not null)
+        {
+            var roomTypeName = await dbContext.RoomTypes.AsNoTracking()
+                .Where(roomType => roomType.Id == roomTypeId)
+                .Select(roomType => roomType.Name)
+                .SingleAsync(cancellationToken);
+            return $"اتاق {roomTypeName} {propertyName}";
+        }
+
+        return $"{TagLabel(tag)} {propertyName}";
+    }
+
+    private static string TagLabel(string? tag) => Clean(tag)?.ToLowerInvariant() switch
+    {
+        "exterior" => "نمای بیرونی",
+        "courtyard" => "نمای حیاط",
+        "lobby" => "لابی",
+        "room" => "اتاق",
+        "bathroom" => "حمام",
+        "breakfast" => "صبحانه",
+        "restaurant" => "رستوران",
+        "amenities" => "امکانات",
+        _ => "تصویر"
+    };
 
     private static async Task ValidateUploadAsync(IFormFile file, CancellationToken cancellationToken)
     {

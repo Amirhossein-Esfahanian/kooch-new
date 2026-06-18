@@ -24,6 +24,17 @@ interface ImageUploadDropzoneProps {
 
 const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 const maxFileSize = 5 * 1024 * 1024;
+const imageTags = [
+  { value: "exterior", label: "نمای بیرونی" },
+  { value: "courtyard", label: "حیاط" },
+  { value: "lobby", label: "لابی" },
+  { value: "room", label: "اتاق" },
+  { value: "bathroom", label: "حمام" },
+  { value: "breakfast", label: "صبحانه" },
+  { value: "restaurant", label: "رستوران" },
+  { value: "amenities", label: "امکانات" },
+  { value: "other", label: "سایر" },
+];
 
 function formatSize(size: number) {
   if (size < 1024 * 1024) return `${Math.round(size / 1024)} KB`;
@@ -87,7 +98,7 @@ export function ImageUploadDropzone({
   onUploaded,
 }: ImageUploadDropzoneProps) {
   const [items, setItems] = useState<PendingImage[]>([]);
-  const [tag, setTag] = useState("gallery");
+  const [tag, setTag] = useState("other");
   const [caption, setCaption] = useState("");
   const [altText, setAltText] = useState("");
   const [isCover, setIsCover] = useState(false);
@@ -282,11 +293,17 @@ export function ImageUploadDropzone({
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <label className="grid gap-1 text-sm font-bold">
           برچسب
-          <input
+          <select
             className="rounded-xl border border-slate-300 px-3 py-2.5"
             onChange={(event) => setTag(event.target.value)}
             value={tag}
-          />
+          >
+            {imageTags.map((item) => (
+              <option key={item.value} value={item.value}>
+                {item.label}
+              </option>
+            ))}
+          </select>
         </label>
         <label className="grid gap-1 text-sm font-bold">
           متن جایگزین

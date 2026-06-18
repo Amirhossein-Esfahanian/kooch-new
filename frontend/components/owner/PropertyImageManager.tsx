@@ -16,6 +16,17 @@ interface PropertyImageManagerProps {
 
 const inputClass =
   "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+const imageTags = [
+  { value: "exterior", label: "نمای بیرونی" },
+  { value: "courtyard", label: "حیاط" },
+  { value: "lobby", label: "لابی" },
+  { value: "room", label: "اتاق" },
+  { value: "bathroom", label: "حمام" },
+  { value: "breakfast", label: "صبحانه" },
+  { value: "restaurant", label: "رستوران" },
+  { value: "amenities", label: "امکانات" },
+  { value: "other", label: "سایر" },
+];
 
 function imageScopeLabel(image: PropertyImageResponse, roomTypes: RoomTypeResponse[]) {
   if (!image.roomTypeId) return "تصویر عمومی اقامتگاه";
@@ -134,6 +145,21 @@ export function PropertyImageManager({
               <p className="text-sm font-bold text-slate-600">
                 {imageScopeLabel(image, roomTypes)}
               </p>
+              <label className="grid gap-1 text-xs font-bold">
+                دسته تصویر
+                <select
+                  className={inputClass}
+                  disabled={savingId === image.id}
+                  onChange={(event) => patchImage(image, { tag: event.target.value })}
+                  value={image.tag ?? "other"}
+                >
+                  {imageTags.map((item) => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <label className="grid gap-1 text-xs font-bold">
                 کپشن
                 <input

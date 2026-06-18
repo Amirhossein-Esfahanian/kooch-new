@@ -43,6 +43,8 @@ export interface PublicProperty {
   name: string;
   englishName: string | null;
   slug: string;
+  seoTitle: string | null;
+  seoDescription: string | null;
   city: string;
   country: string;
   address: string;

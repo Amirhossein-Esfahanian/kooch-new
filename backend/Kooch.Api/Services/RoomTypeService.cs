@@ -56,6 +56,12 @@ public class RoomTypeService(
 
         dbContext.RoomTypes.Add(roomType);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(englishName))
+        {
+            roomType.Slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "room-type", roomType.Id);
+            await EnsureUniqueSlugAsync(propertyId, roomType.Slug, roomType.Id, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
         return await LoadResponseAsync(roomType.Id, cancellationToken);
     }
 
@@ -74,7 +80,7 @@ public class RoomTypeService(
         var englishName = request.EnglishName is null
             ? roomType.EnglishName
             : CleanOptional(request.EnglishName);
-        var slug = EnglishSlugGenerator.Create(englishName, "room-type", roomType.Slug);
+        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "room-type", roomType.Id, roomType.Slug);
         await EnsureUniqueSlugAsync(roomType.PropertyId, slug, roomTypeId, cancellationToken);
         var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
         var amenityIds = await ValidateAmenityIdsAsync(request.AmenityIds, cancellationToken);

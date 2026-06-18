@@ -66,6 +66,19 @@ export default function PublicPropertyPage() {
       .finally(() => setLoading(false));
   }, [slug]);
 
+  useEffect(() => {
+    if (!property) return;
+    document.title = property.seoTitle || property.name;
+    const description = property.seoDescription || property.description;
+    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.name = "description";
+      document.head.appendChild(meta);
+    }
+    meta.content = description;
+  }, [property]);
+
   const groupedAmenities = useMemo(() => {
     const groups = new Map<string, PublicProperty["amenities"]>();
     for (const amenity of property?.amenities ?? []) {
@@ -453,11 +466,18 @@ function Gallery({
   className?: string;
 }) {
   return (
-    <img
-      alt={image.altText || image.caption || name}
-      className={`h-full w-full object-cover ${className}`}
-      src={image.url}
-    />
+    <figure className={`relative h-full w-full ${className}`}>
+      <img
+        alt={image.altText || image.caption || name}
+        className="h-full w-full object-cover"
+        src={image.url}
+      />
+      {image.caption && (
+        <figcaption className="absolute bottom-2 right-2 rounded-lg bg-white/90 px-2 py-1 text-xs font-bold text-slate-700">
+          {image.caption}
+        </figcaption>
+      )}
+    </figure>
   );
 }
 

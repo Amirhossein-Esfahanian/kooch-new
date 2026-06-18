@@ -23,6 +23,21 @@ internal static class EnglishSlugGenerator
 
     public static string NormalizeLookup(string slug) => slug.Trim().ToLowerInvariant();
 
+    public static string CreateWithEntityFallback(
+        string? englishName,
+        string fallbackPrefix,
+        int id,
+        string? existingSlug = null)
+    {
+        var slug = Slugify(englishName);
+        if (slug.Length > 0)
+        {
+            return slug;
+        }
+
+        return $"{fallbackPrefix}-{id}";
+    }
+
     private static string Slugify(string? value)
     {
         if (string.IsNullOrWhiteSpace(value))

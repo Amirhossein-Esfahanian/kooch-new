@@ -137,7 +137,7 @@ const initialData: WizardData = {
   inventoryMode: "NamedRooms",
   selectedAmenityIds: [],
   coverImage: "",
-  propertyImages: [{ url: "", tag: "gallery" }],
+  propertyImages: [{ url: "", tag: "other" }],
   propertyDescription: "",
   additionalNotes: "",
   commonAreas: [{ name: "", description: "" }],
@@ -151,6 +151,17 @@ const initialData: WizardData = {
 
 const inputClass = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
 const cardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+const imageTags = [
+  { value: "exterior", label: "نمای بیرونی" },
+  { value: "courtyard", label: "حیاط" },
+  { value: "lobby", label: "لابی" },
+  { value: "room", label: "اتاق" },
+  { value: "bathroom", label: "حمام" },
+  { value: "breakfast", label: "صبحانه" },
+  { value: "restaurant", label: "رستوران" },
+  { value: "amenities", label: "امکانات" },
+  { value: "other", label: "سایر" },
+];
 
 interface PropertyWizardProps {
   mode: "create" | "edit";
@@ -490,7 +501,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   }
 
   function addImageField() {
-    update("propertyImages", [...data.propertyImages, { url: "", tag: "gallery" }]);
+    update("propertyImages", [...data.propertyImages, { url: "", tag: "other" }]);
   }
 
   function syncImages(images: PropertyImageResponse[]) {
@@ -504,7 +515,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         ...images
           .filter((image) => !image.isCover && !image.roomTypeId && !image.roomId)
           .map((image) => ({ url: image.url, tag: image.tag ?? "", imageId: image.id })),
-        { url: "", tag: "gallery" },
+        { url: "", tag: "other" },
       ],
     }));
   }
@@ -669,11 +680,13 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                   next[index] = { ...next[index], url: event.target.value };
                   update("propertyImages", next);
                 }} placeholder="نشانی تصویر" type="url" value={image.url} />
-                <input className={inputClass} onChange={(event) => {
+                <select className={inputClass} onChange={(event) => {
                   const next = [...data.propertyImages];
                   next[index] = { ...next[index], tag: event.target.value };
                   update("propertyImages", next);
-                }} placeholder="برچسب تصویر" value={image.tag} />
+                }} value={image.tag || "other"}>
+                  {imageTags.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                </select>
               </div>
             ))}
             <button className="justify-self-start rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold" onClick={addImageField} type="button">افزودن تصویر</button>

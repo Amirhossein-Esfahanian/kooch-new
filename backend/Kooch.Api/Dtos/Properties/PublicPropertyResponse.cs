@@ -8,6 +8,8 @@ public class PublicPropertyResponse
     public string Name { get; set; } = string.Empty;
     public string? EnglishName { get; set; }
     public string Slug { get; set; } = string.Empty;
+    public string? SeoTitle { get; set; }
+    public string? SeoDescription { get; set; }
     public string City { get; set; } = string.Empty;
     public string Country { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;

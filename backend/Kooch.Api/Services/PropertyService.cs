@@ -65,6 +65,12 @@ public class PropertyService(
 
         dbContext.Properties.Add(property);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (string.IsNullOrWhiteSpace(englishName))
+        {
+            property.Slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id);
+            await EnsureUniqueSlugAsync(property.Slug, property.Id, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
         return await LoadResponseAsync(property.Id, cancellationToken);
     }
 
@@ -85,7 +91,7 @@ public class PropertyService(
         var englishName = request.EnglishName is null
             ? property.EnglishName
             : CleanOptional(request.EnglishName);
-        var slug = EnglishSlugGenerator.Create(englishName, "property", property.Slug);
+        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
         await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
 
         property.DestinationId = request.DestinationId;
@@ -163,7 +169,7 @@ public class PropertyService(
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
-        var slug = EnglishSlugGenerator.Create(englishName, "property", property.Slug);
+        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
         await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
 
         property.OwnerId = request.OwnerId;
@@ -437,6 +443,8 @@ public class PropertyService(
             Name = property.Name,
             EnglishName = property.EnglishName,
             Slug = property.Slug,
+            SeoTitle = property.SeoTitle,
+            SeoDescription = property.SeoDescription,
             City = property.City,
             Country = property.Country,
             Address = property.Address,
