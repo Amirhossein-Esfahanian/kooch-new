@@ -3,6 +3,38 @@
 @tailwind utilities;
 
 @font-face {
+  font-family: "YekanBakh";
+  src: url("/fonts/Yekanbakhregular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "YekanBakh";
+  src: url("/fonts/Yekanbakhbold.woff") format("woff");
+  font-weight: 700 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IRANYekanX";
+  src: url("/fonts/IRANYekanXVF.woff") format("woff");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: "IRANSans";
+  src: url("/fonts/Iransansregular.woff") format("woff");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
   font-family: "Yekan";
   src: url("/fonts/Yekan.woff") format("woff");
   font-weight: 400;
@@ -12,11 +44,59 @@
 
 :root {
   color-scheme: light;
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
+  --theme-primary: #2563eb;
+  --theme-primary-hover: #1d4ed8;
+  --theme-primary-soft: #eff6ff;
+  --theme-primary-border: #bfdbfe;
+  --theme-primary-text: #1d4ed8;
+  --theme-accent: #0ea5e9;
   --border: #e2e8f0;
   --page: #f8fafc;
+  --surface: #ffffff;
   --text: #0f172a;
+  --muted: #64748b;
+  --card-radius: 16px;
+  --input-radius: 12px;
+  --button-radius: 12px;
+  --modal-radius: 20px;
+  --shadow-subtle: 0 14px 40px rgb(15 23 42 / 0.08);
+  --font-kooch: "YekanBakh", "IRANYekanX", "IRANSans", sans-serif;
+}
+
+:root[data-theme="ocean"] {
+  --theme-primary: #2563eb;
+  --theme-primary-hover: #1d4ed8;
+  --theme-primary-soft: #eff6ff;
+  --theme-primary-border: #bfdbfe;
+  --theme-primary-text: #1d4ed8;
+  --theme-accent: #0ea5e9;
+}
+
+:root[data-theme="forest"] {
+  --theme-primary: #15803d;
+  --theme-primary-hover: #166534;
+  --theme-primary-soft: #f0fdf4;
+  --theme-primary-border: #bbf7d0;
+  --theme-primary-text: #166534;
+  --theme-accent: #14b8a6;
+}
+
+:root[data-theme="royal"] {
+  --theme-primary: #7c3aed;
+  --theme-primary-hover: #6d28d9;
+  --theme-primary-soft: #f5f3ff;
+  --theme-primary-border: #ddd6fe;
+  --theme-primary-text: #6d28d9;
+  --theme-accent: #a855f7;
+}
+
+:root[data-theme="sunset"] {
+  --theme-primary: #ea580c;
+  --theme-primary-hover: #c2410c;
+  --theme-primary-soft: #fff7ed;
+  --theme-primary-border: #fed7aa;
+  --theme-primary-text: #c2410c;
+  --theme-accent: #f59e0b;
 }
 
 * {
@@ -31,7 +111,8 @@ body {
   margin: 0;
   background: var(--page);
   color: var(--text);
-  font-family: "Yekan", Arial, Helvetica, sans-serif;
+  font-family: var(--font-kooch);
+  font-weight: 400;
 }
 
 body,
@@ -39,7 +120,18 @@ input,
 button,
 select,
 textarea {
-  font-family: "Yekan", Arial, Helvetica, sans-serif;
+  font-family: var(--font-kooch);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+strong,
+b {
+  font-weight: 800;
 }
 
 input,
@@ -53,8 +145,8 @@ textarea {
 input:focus,
 select:focus,
 textarea:focus {
-  border-color: var(--primary);
-  outline: 2px solid rgb(37 99 235 / 0.14);
+  border-color: var(--theme-primary);
+  outline: 2px solid color-mix(in srgb, var(--theme-primary) 16%, transparent);
   outline-offset: 0;
 }
 
@@ -93,6 +185,61 @@ a {
 }
 
 ::selection {
-  background: var(--primary);
+  background: var(--theme-primary);
   color: white;
+}
+
+.ds-card {
+  border: 1px solid var(--border);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+  box-shadow: var(--shadow-subtle);
+}
+
+.ds-input {
+  border: 1px solid var(--border);
+  border-radius: var(--input-radius);
+  background: var(--surface);
+}
+
+.ds-button-primary,
+.ds-button-secondary,
+.ds-button-danger {
+  border-radius: var(--button-radius);
+  padding: 0.75rem 1rem;
+  font-weight: 800;
+  transition:
+    background-color 160ms ease,
+    border-color 160ms ease,
+    color 160ms ease,
+    transform 160ms ease;
+}
+
+.ds-button-primary {
+  background: var(--theme-primary);
+  color: white;
+}
+
+.ds-button-primary:hover {
+  background: var(--theme-primary-hover);
+}
+
+.ds-button-secondary {
+  border: 1px solid var(--theme-primary-border);
+  background: var(--theme-primary-soft);
+  color: var(--theme-primary-text);
+}
+
+.ds-button-secondary:hover {
+  border-color: var(--theme-primary);
+}
+
+.ds-button-danger {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.ds-button-danger:hover {
+  border-color: #ef4444;
 }

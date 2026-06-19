@@ -22,6 +22,9 @@ interface DateRangePickerProps {
   disablePastDates?: boolean;
   placeholderStart?: string;
   placeholderEnd?: string;
+  labelsAbove?: boolean;
+  showFieldLabels?: boolean;
+  controlClassName?: string;
 }
 
 const jalaliMonths = [
@@ -118,8 +121,11 @@ export function DateRangePicker({
   onChange,
   calendarType,
   disablePastDates = false,
-  placeholderStart = "تاریخ رفت",
-  placeholderEnd = "تاریخ برگشت",
+  placeholderStart = "انتخاب تاریخ",
+  placeholderEnd = "انتخاب تاریخ",
+  labelsAbove = false,
+  showFieldLabels = true,
+  controlClassName,
 }: DateRangePickerProps) {
   const [activeCalendar, setActiveCalendar] = useState<CalendarType>(calendarType);
   const [activeField, setActiveField] = useState<ActiveField | null>(null);
@@ -128,6 +134,8 @@ export function DateRangePicker({
   const [visibleMonth, setVisibleMonth] = useState(() => asCalendar(dayjs(), calendarType).startOf("month"));
   const wrapperRef = useRef<HTMLDivElement>(null);
   const isOpen = activeField !== null;
+  const dateButtonBase =
+    controlClassName ?? "grid rounded-xl border bg-white px-4 py-3 text-right transition";
 
   useEffect(() => {
     setActiveCalendar(calendarType);
@@ -193,17 +201,32 @@ export function DateRangePicker({
     setVisibleMonth(asCalendar(tempStartDate ? dayjs(tempStartDate) : visibleMonth, nextCalendar).startOf("month"));
   }
 
+  function renderDateButton(field: ActiveField, label: string, valueDate: string | null, placeholder: string) {
+    const active = activeField === field;
+    return (
+      <div className="grid gap-2">
+        {labelsAbove && <span className="text-sm font-bold text-slate-700">{label}</span>}
+        <button
+          className={`${dateButtonBase} ${
+            active ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300 hover:border-blue-300"
+          }`}
+          onClick={() => open(field)}
+          type="button"
+        >
+          {showFieldLabels && !labelsAbove && <span className="text-xs font-bold text-slate-500">{label}</span>}
+          <span className={`${showFieldLabels && !labelsAbove ? "mt-1" : ""} font-bold ${valueDate ? "text-slate-950" : "text-slate-400"}`}>
+            {displayDate(valueDate, activeCalendar, placeholder)}
+          </span>
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="relative" ref={wrapperRef} dir="rtl">
       <div className="grid gap-3 sm:grid-cols-2">
-        <button className={`grid rounded-xl border bg-white px-4 py-3 text-right transition ${activeField === "startDate" ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300 hover:border-blue-300"}`} onClick={() => open("startDate")} type="button">
-          <span className="text-xs font-bold text-slate-500">تاریخ رفت</span>
-          <span className={`mt-1 font-bold ${value.startDate ? "text-slate-950" : "text-slate-400"}`}>{displayDate(value.startDate, activeCalendar, placeholderStart)}</span>
-        </button>
-        <button className={`grid rounded-xl border bg-white px-4 py-3 text-right transition ${activeField === "endDate" ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300 hover:border-blue-300"}`} onClick={() => open("endDate")} type="button">
-          <span className="text-xs font-bold text-slate-500">تاریخ برگشت</span>
-          <span className={`mt-1 font-bold ${value.endDate ? "text-slate-950" : "text-slate-400"}`}>{displayDate(value.endDate, activeCalendar, placeholderEnd)}</span>
-        </button>
+        {renderDateButton("startDate", "تاریخ رفت", value.startDate, placeholderStart)}
+        {renderDateButton("endDate", "تاریخ برگشت", value.endDate, placeholderEnd)}
       </div>
 
       {isOpen && (
@@ -211,24 +234,51 @@ export function DateRangePicker({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-xs font-bold text-slate-400">مبدا · مقصد</p>
-              <p className="mt-1 text-sm font-bold text-slate-700">{activeField === "startDate" ? "انتخاب تاریخ رفت" : "انتخاب تاریخ برگشت"}</p>
+              <p className="mt-1 text-sm font-bold text-slate-700">
+                {activeField === "startDate" ? "انتخاب تاریخ رفت" : "انتخاب تاریخ برگشت"}
+              </p>
             </div>
-            <button className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={toggleCalendar} type="button">
+            <button
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700"
+              onClick={toggleCalendar}
+              type="button"
+            >
               {activeCalendar === "jalali" ? "تقویم میلادی" : "تقویم شمسی"}
             </button>
           </div>
 
           <div className="mb-4 flex items-center justify-between" dir="rtl">
-            <button aria-label="ماه قبل" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => moveMonth(-1)} type="button">›</button>
-            <button aria-label="ماه بعد" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => moveMonth(1)} type="button">‹</button>
+            <button
+              aria-label="ماه قبل"
+              className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700"
+              onClick={() => moveMonth(-1)}
+              type="button"
+            >
+              ›
+            </button>
+            <button
+              aria-label="ماه بعد"
+              className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700"
+              onClick={() => moveMonth(1)}
+              type="button"
+            >
+              ‹
+            </button>
           </div>
 
           <div className="grid gap-5 sm:grid-cols-2">
             {months.map((month, monthIndex) => (
-              <section className={monthIndex === 1 ? "hidden sm:block" : ""} key={`${activeCalendar}-${month.format("YYYY-MM")}-${monthIndex}`}>
+              <section
+                className={monthIndex === 1 ? "hidden sm:block" : ""}
+                key={`${activeCalendar}-${month.format("YYYY-MM")}-${monthIndex}`}
+              >
                 <h3 className="mb-3 text-center text-base font-black text-slate-950">{monthTitle(month, activeCalendar)}</h3>
                 <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-400">
-                  {weekdayLabels.map((weekday) => <span className="py-1" key={weekday}>{weekday}</span>)}
+                  {weekdayLabels.map((weekday) => (
+                    <span className="py-1" key={weekday}>
+                      {weekday}
+                    </span>
+                  ))}
                 </div>
                 <div className="mt-1 grid grid-cols-7 gap-1">
                   {buildMonthDays(month, activeCalendar).map((date, index) => {
@@ -241,9 +291,20 @@ export function DateRangePicker({
                     const selected = isRangeStart || isRangeEnd;
                     const today = iso === dayjs().format(isoFormat);
                     return (
-                      <div className={`h-10 ${inRange || selected ? "bg-blue-50" : ""} ${isRangeStart ? "rounded-r-full" : ""} ${isRangeEnd ? "rounded-l-full" : ""}`} key={iso}>
+                      <div
+                        className={`h-10 ${inRange || selected ? "bg-blue-50" : ""} ${isRangeStart ? "rounded-r-full" : ""} ${isRangeEnd ? "rounded-l-full" : ""}`}
+                        key={iso}
+                      >
                         <button
-                          className={`h-10 w-full text-sm font-bold transition ${selected ? "rounded-full bg-blue-600 text-white" : inRange ? "text-blue-700" : today ? "rounded-full border border-blue-500 text-blue-700" : "rounded-full text-slate-700 hover:bg-blue-50"} ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`}
+                          className={`h-10 w-full text-sm font-bold transition ${
+                            selected
+                              ? "rounded-full bg-blue-600 text-white"
+                              : inRange
+                                ? "text-blue-700"
+                                : today
+                                  ? "rounded-full border border-blue-500 text-blue-700"
+                                  : "rounded-full text-slate-700 hover:bg-blue-50"
+                          } ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`}
                           disabled={disabled}
                           onClick={() => selectDay(date)}
                           type="button"
@@ -259,8 +320,21 @@ export function DateRangePicker({
           </div>
 
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={goToToday} type="button">برو به امروز</button>
-            <button className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!tempStartDate || !tempEndDate} onClick={confirm} type="button">تایید</button>
+            <button
+              className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700"
+              onClick={goToToday}
+              type="button"
+            >
+              برو به امروز
+            </button>
+            <button
+              className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!tempStartDate || !tempEndDate}
+              onClick={confirm}
+              type="button"
+            >
+              تایید
+            </button>
           </div>
         </div>
       )}

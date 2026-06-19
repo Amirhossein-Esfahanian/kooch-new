@@ -15,6 +15,12 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="fa" dir="rtl">
       <body className="min-h-screen antialiased">
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "try{var t=localStorage.getItem('kooch_theme')||'ocean';document.documentElement.dataset.theme=t}catch(e){}",
+          }}
+        />
         <div className="flex min-h-screen flex-col">
           <Header />
           <main className="flex-1">{children}</main>
