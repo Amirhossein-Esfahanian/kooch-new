@@ -12,6 +12,7 @@ public static class SeedData
     {
         await SeedAdminAsync(dbContext);
         await SeedPermissionsAsync(dbContext);
+        await SeedSiteSettingsAsync(dbContext);
         await SeedDestinationAsync(dbContext);
         await dbContext.SaveChangesAsync();
         await SeedDefaultNearbyPlacesAsync(dbContext);
@@ -76,6 +77,74 @@ public static class SeedData
 
         dbContext.Permissions.AddRange(permissions);
     }
+
+    private static async Task SeedSiteSettingsAsync(KoochDbContext dbContext)
+    {
+        var defaults = new[]
+        {
+            SiteSettingSeed("site.name", "کوچ", SiteSettingType.Text, "Brand", "نام سایت", null, 10),
+            SiteSettingSeed("site.logoUrl", "", SiteSettingType.ImageUrl, "Brand", "آدرس لوگو", "اگر خالی باشد نام سایت نمایش داده می‌شود.", 20),
+            SiteSettingSeed("site.footerText", "اقامتگاه‌های سنتی و میزبانی محلی در کاشان", SiteSettingType.Text, "Footer", "متن فوتر", null, 10),
+            SiteSettingSeed("home.heroTitle", "اقامتگاه بعدی خود را پیدا کنید", SiteSettingType.Text, "Homepage", "عنوان هیرو", null, 10),
+            SiteSettingSeed("home.heroSubtitle", "رزرو اقامتگاه‌های سنتی، بوتیک‌هتل‌ها و خانه‌های خاص", SiteSettingType.LongText, "Homepage", "زیرعنوان هیرو", null, 20),
+            SiteSettingSeed("home.heroBackgroundUrl", "/images/hero.jpg", SiteSettingType.ImageUrl, "Homepage", "تصویر پس‌زمینه هیرو", null, 30),
+            SiteSettingSeed("home.searchButtonText", "جستجوی اقامتگاه", SiteSettingType.Text, "Homepage", "متن دکمه جستجو", null, 40),
+            SiteSettingSeed("home.popularSectionTitle", "اقامتگاه‌های محبوب", SiteSettingType.Text, "Homepage", "عنوان بخش محبوب", null, 50),
+            SiteSettingSeed("home.popularSectionSubtitle", "اقامتگاه‌های منتخب برای سفر بعدی شما", SiteSettingType.LongText, "Homepage", "زیرعنوان بخش محبوب", null, 60),
+            SiteSettingSeed("site.defaultSeoTitle", "کوچ | رزرو اقامتگاه سنتی", SiteSettingType.Text, "SEO", "عنوان پیش‌فرض سئو", null, 10),
+            SiteSettingSeed("site.defaultSeoDescription", "رزرو اقامتگاه‌های سنتی، بوتیک‌هتل‌ها و خانه‌های خاص", SiteSettingType.LongText, "SEO", "توضیحات پیش‌فرض سئو", null, 20)
+        };
+
+        var existing = await dbContext.SiteSettings.IgnoreQueryFilters().ToListAsync();
+        foreach (var item in defaults)
+        {
+            var setting = existing.SingleOrDefault(existingSetting => existingSetting.Key == item.Key);
+            if (setting is null)
+            {
+                dbContext.SiteSettings.Add(new SiteSetting
+                {
+                    Key = item.Key,
+                    Value = item.Value,
+                    Type = item.Type,
+                    Group = item.Group,
+                    Label = item.Label,
+                    Description = item.Description,
+                    SortOrder = item.SortOrder,
+                    IsActive = true
+                });
+                continue;
+            }
+
+            setting.Type = item.Type;
+            setting.Group = item.Group;
+            setting.Label = item.Label;
+            setting.Description = item.Description;
+            setting.SortOrder = item.SortOrder;
+            setting.IsActive = true;
+            setting.IsDeleted = false;
+            setting.DeletedAtUtc = null;
+            setting.DeletedByUserId = null;
+        }
+    }
+
+    private static SiteSettingSeedItem SiteSettingSeed(
+        string key,
+        string value,
+        SiteSettingType type,
+        string group,
+        string label,
+        string? description,
+        int sortOrder) =>
+        new(key, value, type, group, label, description, sortOrder);
+
+    private sealed record SiteSettingSeedItem(
+        string Key,
+        string Value,
+        SiteSettingType Type,
+        string Group,
+        string Label,
+        string? Description,
+        int SortOrder);
 
     private static async Task SeedDestinationAsync(KoochDbContext dbContext)
     {

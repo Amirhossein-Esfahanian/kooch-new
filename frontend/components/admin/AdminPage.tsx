@@ -9,6 +9,7 @@ const links = [
   { href: "/admin/properties", label: "مدیریت اقامتگاه‌ها" },
   { href: "/admin/users", label: "مدیریت کاربران" },
   { href: "/owner/amenities", label: "مدیریت امکانات" },
+  { href: "/admin/site-settings", label: "تنظیمات سایت" },
   { href: "/admin#reports", label: "گزارش‌ها" },
   { href: "/admin/settings", label: "تنظیمات" },
 ];

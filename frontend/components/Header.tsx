@@ -4,6 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { clearToken, getToken, getWorkspace } from "@/lib/owner-api";
+import {
+  defaultSiteSettings,
+  fetchPublicSiteSettings,
+  mergeSiteSettings,
+  settingValue,
+  SiteSettingsMap,
+} from "@/lib/site-settings";
 
 const workspaceLabels: Record<string, string> = {
   admin: "پنل مدیریت",
@@ -16,11 +23,18 @@ export function Header() {
   const router = useRouter();
   const [workspace, setWorkspaceLabel] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [settings, setSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
 
   useEffect(() => {
     setWorkspaceLabel(getWorkspace());
     setIsLoggedIn(Boolean(getToken()));
   }, [pathname]);
+
+  useEffect(() => {
+    fetchPublicSiteSettings()
+      .then((items) => setSettings(mergeSiteSettings(items)))
+      .catch(() => setSettings(defaultSiteSettings));
+  }, []);
 
   function logout() {
     clearToken();
@@ -28,6 +42,9 @@ export function Header() {
     setIsLoggedIn(false);
     router.push("/login");
   }
+
+  const siteName = settingValue(settings, "site.name");
+  const logoUrl = settingValue(settings, "site.logoUrl");
 
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
@@ -38,7 +55,11 @@ export function Header() {
             className="text-2xl font-black tracking-tight text-[var(--theme-primary-text)]"
             href="/"
           >
-            کوچ
+            {logoUrl ? (
+              <img alt={siteName} className="h-10 w-auto object-contain" src={logoUrl} />
+            ) : (
+              siteName
+            )}
           </Link>
           {workspace && (
             <span className="rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-xs font-bold text-[var(--theme-primary-text)]">

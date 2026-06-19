@@ -9,6 +9,13 @@ import {
   formatPrice,
   PublicProperty,
 } from "@/lib/public-properties";
+import {
+  defaultSiteSettings,
+  fetchPublicSiteSettings,
+  mergeSiteSettings,
+  settingValue,
+  SiteSettingsMap,
+} from "@/lib/site-settings";
 
 type PropertyCardData = Pick<
   PublicProperty,
@@ -21,9 +28,6 @@ type PropertyCardData = Pick<
   | "startingPrice"
   | "propertyType"
 >;
-
-const heroImage =
-  "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=2200&q=85";
 
 const sampleProperties: PropertyCardData[] = [
   {
@@ -80,6 +84,8 @@ export default function HomePage() {
   const [properties, setProperties] = useState<PropertyCardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingSamples, setUsingSamples] = useState(false);
+  const [settings, setSettings] =
+    useState<SiteSettingsMap>(defaultSiteSettings);
   const [city, setCity] = useState("کاشان");
   const [checkIn, setCheckIn] = useState("");
   const [checkOut, setCheckOut] = useState("");
@@ -96,6 +102,10 @@ export default function HomePage() {
     "flex h-[60px] w-full items-center rounded-xl border bg-white px-4 text-right text-sm transition";
 
   useEffect(() => {
+    fetchPublicSiteSettings()
+      .then((items) => setSettings(mergeSiteSettings(items)))
+      .catch(() => setSettings(defaultSiteSettings));
+
     fetchPublicApi<PublicProperty[]>("/properties")
       .then((items) => {
         if (items.length > 0) setProperties(items);
@@ -120,6 +130,18 @@ export default function HomePage() {
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
+
+  useEffect(() => {
+    document.title = settingValue(settings, "site.defaultSeoTitle");
+    const description = settingValue(settings, "site.defaultSeoDescription");
+    let metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    if (!metaDescription) {
+      metaDescription = document.createElement("meta");
+      metaDescription.name = "description";
+      document.head.appendChild(metaDescription);
+    }
+    metaDescription.content = description;
+  }, [settings]);
 
   function search(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -199,6 +221,9 @@ export default function HomePage() {
 
   const guestSummary = `${formatFaNumber(adults)} بزرگسال، ${formatFaNumber(children)} کودک`;
   const roomSummary = `${formatFaNumber(rooms)} اتاق`;
+  const heroBackgroundUrl =
+    settingValue(settings, "home.heroBackgroundUrl") ||
+    defaultSiteSettings["home.heroBackgroundUrl"];
 
   return (
     <div className="bg-white text-slate-900" dir="rtl">
@@ -208,7 +233,7 @@ export default function HomePage() {
       >
         <div
           className="relative -mx-5 h-[300px] overflow-hidden bg-cover bg-center sm:-mx-8 lg:h-[320px]"
-          style={{ backgroundImage: `url(${heroImage})` }}
+          style={{ backgroundImage: `url(${heroBackgroundUrl})` }}
         >
           <div
             className="absolute inset-0"
@@ -219,10 +244,10 @@ export default function HomePage() {
           />
           <div className="relative z-10 mx-auto flex h-full max-w-7xl flex-col items-center justify-center px-5 pt-6 text-center text-white sm:px-8">
             <h1 className="mt-3 text-3xl font-black leading-tight sm:text-5xl">
-              اقامتگاه بعدی خود را پیدا کنید
+              {settingValue(settings, "home.heroTitle")}
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-blue-50 sm:text-lg">
-              رزرو اقامتگاه های سنتی، بوتیک هتل ها و خانه های خاص
+              {settingValue(settings, "home.heroSubtitle")}
             </p>
           </div>
         </div>
@@ -341,7 +366,7 @@ export default function HomePage() {
               className="h-12 w-full rounded-full bg-[var(--theme-primary)] px-8 text-base font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-[var(--theme-primary-hover)] sm:absolute sm:bottom-[-24px] sm:left-1/2 sm:w-[58%] sm:-translate-x-1/2"
               type="submit"
             >
-              جستجو
+              {settingValue(settings, "home.searchButtonText")}
             </button>
           </div>
         </form>
@@ -355,8 +380,11 @@ export default function HomePage() {
                 پیشنهاد کوچ
               </p>
               <h2 className="mt-2 text-3xl font-black tracking-tight">
-                اقامتگاه های محبوب
+                {settingValue(settings, "home.popularSectionTitle")}
               </h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                {settingValue(settings, "home.popularSectionSubtitle")}
+              </p>
             </div>
             {usingSamples && (
               <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">

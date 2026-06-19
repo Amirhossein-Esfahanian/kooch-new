@@ -16,6 +16,7 @@ public enum PermissionKey
     ManageStaff,
     ManageSettings
 }
+public enum SiteSettingType { Text, LongText, ImageUrl, Color, Boolean, Number }
 public enum PropertyStatus { Draft, PendingReview, Approved, Rejected, Suspended }
 public enum PropertyType { TraditionalHouse, BoutiqueHotel, EcoLodge, Hotel, Villa, Apartment }
 public enum InventoryMode { NamedRooms, TypeBasedInventory }

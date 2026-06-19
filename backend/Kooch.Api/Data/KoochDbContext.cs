@@ -43,6 +43,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<MealPlan> MealPlans => Set<MealPlan>();
     public DbSet<SeoMetadata> SeoMetadata => Set<SeoMetadata>();
     public DbSet<Destination> Destinations => Set<Destination>();
+    public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -66,6 +67,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureImages(modelBuilder);
         ConfigureTravelPurposes(modelBuilder);
         ConfigurePoliciesAndPricing(modelBuilder);
+        ConfigureSiteSettings(modelBuilder);
         ApplySoftDeleteFilters(modelBuilder);
     }
 
@@ -696,6 +698,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(mealPlan => mealPlan.Slug).HasMaxLength(170).IsRequired();
             entity.Property(mealPlan => mealPlan.Description).HasMaxLength(1000);
             entity.HasIndex(mealPlan => mealPlan.Slug).IsUnique();
+        });
+    }
+
+    private static void ConfigureSiteSettings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<SiteSetting>(entity =>
+        {
+            entity.Property(setting => setting.Key).HasMaxLength(200).IsRequired();
+            entity.Property(setting => setting.Value).HasMaxLength(4000);
+            entity.Property(setting => setting.Group).HasMaxLength(100).IsRequired();
+            entity.Property(setting => setting.Label).HasMaxLength(200).IsRequired();
+            entity.Property(setting => setting.Description).HasMaxLength(1000);
+            entity.Property(setting => setting.IsActive).HasDefaultValue(true);
+            entity.HasIndex(setting => setting.Key).IsUnique();
+            entity.HasIndex(setting => new { setting.Group, setting.SortOrder });
         });
     }
 
