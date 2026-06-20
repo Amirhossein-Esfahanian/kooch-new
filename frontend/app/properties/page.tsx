@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
-import { DateRangePicker } from "@/components/DateRangePicker";
+import { SharedDateRangePicker } from "@/components/SharedDateRangePicker";
 import { fetchPublicApi, formatPrice, PublicProperty } from "@/lib/public-properties";
 
 type ResultProperty = Pick<
@@ -173,7 +173,7 @@ function PropertiesContent() {
             />
           </label>
           <div>
-            <DateRangePicker
+            <SharedDateRangePicker
               calendarType="jalali"
               disablePastDates
               onChange={(nextValue) => {

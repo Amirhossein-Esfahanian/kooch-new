@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminPage } from "@/components/admin/AdminPage";
 import { apiRequest, getToken } from "@/lib/owner-api";
+import { SharedUploader } from "@/components/SharedUploader";
 
 type SiteSettingType = "Text" | "LongText" | "ImageUrl" | "Color" | "Boolean" | "Number";
 
@@ -26,6 +27,11 @@ const groupLabels: Record<string, string> = {
   Homepage: "صفحه اصلی",
   SEO: "سئو",
   Footer: "فوتر",
+};
+
+const imageLabels: Record<string, string> = {
+  "site.logoUrl": "لوگوی سایت",
+  "home.heroBackgroundUrl": "تصویر پس‌زمینه صفحه اصلی",
 };
 
 function inputType(type: SiteSettingType) {
@@ -95,6 +101,59 @@ export default function AdminSiteSettingsPage() {
     const commonClass =
       "w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold outline-none transition focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]";
 
+    if (setting.type === "ImageUrl" && imageLabels[setting.key]) {
+      const isLogo = setting.key === "site.logoUrl";
+      const token = getToken();
+      return (
+        <div className="grid gap-4">
+          <label className="grid gap-2 text-sm font-bold text-slate-700">
+            آدرس تصویر
+            <input
+              className={`${commonClass} h-12`}
+              dir="ltr"
+              onChange={(event) =>
+                setDrafts((current) => ({ ...current, [setting.key]: event.target.value }))
+              }
+              type="text"
+              value={value}
+            />
+          </label>
+
+          <SharedUploader
+            accept={isLogo ? ["image/png", "image/jpeg", "image/webp", "image/svg+xml"] : ["image/png", "image/jpeg", "image/webp"]}
+            cropAspectRatio={16 / 9}
+            enableCrop={!isLogo}
+            enablePreview
+            existingFiles={value ? [{ id: setting.key, url: value, name: imageLabels[setting.key], alt: imageLabels[setting.key] }] : []}
+            extraFormFields={{ key: setting.key }}
+            fieldName="file"
+            headers={token ? { Authorization: `Bearer ${token}` } : undefined}
+            labels={{
+              title: imageLabels[setting.key],
+              description: isLogo ? "لوگوی سایت را انتخاب و آپلود کنید." : "تصویر پس‌زمینه صفحه اصلی را انتخاب و آپلود کنید.",
+              uploadText: "آپلود",
+              uploadingText: "در حال آپلود...",
+              successText: "تصویر آپلود و ذخیره شد.",
+              previewText: "پیش‌نمایش",
+              existingEmptyText: "تصویری ثبت نشده است.",
+            }}
+            maxFileSizeMb={5}
+            maxFiles={1}
+            multiple={false}
+            onUploadError={setError}
+            onUploadSuccess={(uploaded) => {
+              const updated = uploaded as unknown as SiteSettingResponse;
+              setSettings((current) => current.map((item) => (item.key === updated.key ? updated : item)));
+              setDrafts((current) => ({ ...current, [updated.key]: updated.value }));
+              setMessage("تصویر آپلود و ذخیره شد.");
+            }}
+            showExistingFiles
+            uploadUrl="/api/backend/admin/site-settings/upload"
+          />
+        </div>
+      );
+    }
+
     if (setting.type === "LongText") {
       return (
         <textarea
@@ -160,7 +219,7 @@ export default function AdminSiteSettingsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <label className="font-black text-slate-900" htmlFor={setting.key}>
-                        {setting.label}
+                        {imageLabels[setting.key] ?? setting.label}
                       </label>
                       <p className="mt-1 text-xs font-semibold text-slate-400" dir="ltr">
                         {setting.key}

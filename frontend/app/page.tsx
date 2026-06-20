@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { DateRangePicker } from "@/components/DateRangePicker";
+import { SharedDateRangePicker } from "@/components/SharedDateRangePicker";
 import {
   fetchPublicApi,
   formatPrice,
@@ -268,7 +268,7 @@ export default function HomePage() {
               />
             </label>
 
-            <DateRangePicker
+            <SharedDateRangePicker
               calendarType="jalali"
               controlClassName={dateControlClass}
               disablePastDates
