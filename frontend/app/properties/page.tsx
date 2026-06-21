@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, Suspense, useEffect, useState } from "react";
-import { SharedDateRangePicker } from "@/components/SharedDateRangePicker";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState } from "react";
+import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
 import { fetchPublicApi, formatPrice, PublicProperty } from "@/lib/public-properties";
 
 type ResultProperty = Pick<
@@ -14,11 +14,15 @@ type ResultProperty = Pick<
   | "city"
   | "address"
   | "description"
+  | "shortDescription"
   | "coverImageUrl"
   | "startingPrice"
   | "propertyType"
   | "roomTypes"
   | "matchingRoomTypesCount"
+  | "matchingRoomTypes"
+  | "guestFitStatus"
+  | "availabilitySummary"
   | "availabilityStatusSummary"
 >;
 
@@ -35,7 +39,11 @@ const sampleProperties: ResultProperty[] = [
     propertyType: "TraditionalHouse",
     roomTypes: [],
     matchingRoomTypesCount: 1,
+    matchingRoomTypes: [],
+    guestFitStatus: "مناسب ظرفیت",
+    availabilitySummary: "فعلاً همه موجود فرض شده‌اند",
     availabilityStatusSummary: "Unknown",
+    shortDescription: "خانه‌ای آرام با اتاق‌های سنتی دور یک حیاط مرکزی.",
   },
   {
     id: -2,
@@ -49,7 +57,11 @@ const sampleProperties: ResultProperty[] = [
     propertyType: "BoutiqueHotel",
     roomTypes: [],
     matchingRoomTypesCount: 1,
+    matchingRoomTypes: [],
+    guestFitStatus: "مناسب ظرفیت",
+    availabilitySummary: "فعلاً همه موجود فرض شده‌اند",
     availabilityStatusSummary: "Unknown",
+    shortDescription: "اقامتگاهی ساده و تمیز نزدیک باغ فین و دیدنی‌های تاریخی.",
   },
   {
     id: -3,
@@ -63,7 +75,11 @@ const sampleProperties: ResultProperty[] = [
     propertyType: "EcoLodge",
     roomTypes: [],
     matchingRoomTypesCount: 1,
+    matchingRoomTypes: [],
+    guestFitStatus: "مناسب ظرفیت",
+    availabilitySummary: "فعلاً همه موجود فرض شده‌اند",
     availabilityStatusSummary: "Unknown",
+    shortDescription: "اقامتی راحت برای شب‌های آرام و سفر کوتاه به کویر.",
   },
 ];
 
@@ -102,113 +118,77 @@ export default function PropertiesPage() {
 }
 
 function PropertiesContent() {
-  const router = useRouter();
   const searchParams = useSearchParams();
-  const [city, setCity] = useState(searchParams.get("city") ?? "کاشان");
-  const [checkIn, setCheckIn] = useState(searchParams.get("checkIn") ?? "");
-  const [checkOut, setCheckOut] = useState(searchParams.get("checkOut") ?? "");
-  const [adults, setAdults] = useState(Number(searchParams.get("adults") ?? searchParams.get("guests") ?? 2));
-  const [children, setChildren] = useState(Number(searchParams.get("children") ?? 0));
   const [properties, setProperties] = useState<ResultProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingSamples, setUsingSamples] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const q = searchParams.get("q") ?? "";
+  const city = searchParams.get("city") ?? "Kashan";
+  const checkIn = searchParams.get("checkIn") ?? "";
+  const checkOut = searchParams.get("checkOut") ?? "";
+  const rooms = Number(searchParams.get("rooms") ?? 1);
+  const adults = Number(searchParams.get("adults") ?? searchParams.get("guests") ?? 2);
+  const children = Number(searchParams.get("children") ?? 0);
+  const childAges = (searchParams.get("childAges") ?? "")
+    .split(",")
+    .filter(Boolean)
+    .map((age) => Number(age));
 
   useEffect(() => {
     const query = new URLSearchParams();
-    if (city) query.set("city", city);
+    if (q) query.set("q", q);
+    query.set("city", city);
     if (checkIn) query.set("checkIn", checkIn);
     if (checkOut) query.set("checkOut", checkOut);
+    query.set("rooms", Math.max(1, rooms).toString());
     query.set("adults", Math.max(1, adults).toString());
     query.set("children", Math.max(0, children).toString());
+    if (childAges.length) query.set("childAges", childAges.join(","));
 
     setLoading(true);
     fetchPublicApi<PublicProperty[]>(`/properties?${query.toString()}`)
       .then((items) => {
-        if (items.length > 0) {
-          setProperties(items);
-          setUsingSamples(false);
-        } else {
-          setProperties(sampleProperties);
-          setUsingSamples(true);
-        }
+        setProperties(items);
+        setUsingSamples(false);
       })
       .catch(() => {
         setProperties(sampleProperties);
         setUsingSamples(true);
       })
       .finally(() => setLoading(false));
-  }, [adults, checkIn, checkOut, children, city]);
-
-  function search(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const query = new URLSearchParams({
-      city,
-      adults: Math.max(1, adults).toString(),
-      children: Math.max(0, children).toString(),
-    });
-    if (checkIn) query.set("checkIn", checkIn);
-    if (checkOut) query.set("checkOut", checkOut);
-    router.push(`/properties?${query.toString()}`);
-  }
+  }, [adults, checkIn, checkOut, children, childAges.join(","), city, q, rooms]);
 
   const detailQuery = new URLSearchParams();
+  if (q) detailQuery.set("q", q);
+  detailQuery.set("city", city);
   if (checkIn) detailQuery.set("checkIn", checkIn);
   if (checkOut) detailQuery.set("checkOut", checkOut);
+  detailQuery.set("rooms", Math.max(1, rooms).toString());
   detailQuery.set("adults", Math.max(1, adults).toString());
   detailQuery.set("children", Math.max(0, children).toString());
+  if (childAges.length) detailQuery.set("childAges", childAges.join(","));
   const detailQueryText = detailQuery.toString();
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
       <div className="sticky top-16 z-40 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
-        <form className="mx-auto grid max-w-7xl gap-3 md:grid-cols-[1.1fr_1.7fr_0.65fr_0.65fr_auto] md:items-end" onSubmit={search}>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">
-            مقصد یا شهر
-            <input
-              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"
-              onChange={(event) => setCity(event.target.value)}
-              required
-              value={city}
-            />
-          </label>
-          <div>
-            <SharedDateRangePicker
-              calendarType="jalali"
-              disablePastDates
-              onChange={(nextValue) => {
-                setCheckIn(nextValue.startDate ?? "");
-                setCheckOut(nextValue.endDate ?? "");
-              }}
-              placeholderEnd="تاریخ خروج"
-              placeholderStart="تاریخ ورود"
-              value={{ startDate: checkIn || null, endDate: checkOut || null }}
-            />
-          </div>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">
-            بزرگسال
-            <input
-              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"
-              min="1"
-              onChange={(event) => setAdults(Number(event.target.value))}
-              type="number"
-              value={adults}
-            />
-          </label>
-          <label className="grid gap-1 text-xs font-bold text-slate-600">
-            کودک
-            <input
-              className="rounded-lg border border-slate-300 px-3 py-2.5 text-sm font-normal"
-              min="0"
-              onChange={(event) => setChildren(Number(event.target.value))}
-              type="number"
-              value={children}
-            />
-          </label>
-          <button className="rounded-lg bg-blue-600 px-6 py-2.5 font-bold text-white hover:bg-blue-700" type="submit">
-            جست‌وجو
-          </button>
-        </form>
+        <AccommodationSearchBox
+          className="mx-auto max-w-7xl"
+          initialValues={{
+            q,
+            city,
+            checkIn: checkIn || null,
+            checkOut: checkOut || null,
+            rooms,
+            adults,
+            children,
+            childAges,
+          }}
+          enableSuggestions
+          redirectToResults
+          variant="compact"
+        />
       </div>
 
       <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10">
@@ -217,8 +197,8 @@ function PropertiesContent() {
         </Link>
         <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">اقامتگاه‌های {city || "کاشان"}</h1>
-            <p className="mt-2 text-slate-500">خانه‌های سنتی و هتل‌های بوتیک تاییدشده</p>
+            <h1 className="text-3xl font-black tracking-tight">نتایج جستجو در کاشان</h1>
+            {q ? <p className="mt-2 text-slate-500">نمایش نتایج برای "{q}"</p> : <p className="mt-2 text-slate-500">اقامتگاه‌های تاییدشده کاشان</p>}
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-slate-500">
@@ -236,7 +216,7 @@ function PropertiesContent() {
 
         {usingSamples && (
           <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-            اقامتگاه تاییدشده‌ای از API دریافت نشد؛ کارت‌های نمونه نمایش داده شده‌اند.
+            اتصال به API برقرار نشد؛ کارت‌های نمونه نمایش داده شده‌اند.
           </p>
         )}
 
@@ -269,6 +249,10 @@ function PropertiesContent() {
           <section>
             {loading ? (
               <PageLoading compact />
+            ) : properties.length === 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-600">
+                هیچ اقامتگاهی با این شرایط پیدا نشد.
+              </div>
             ) : (
               <div className="grid gap-5">
                 {properties.map((property) => {
@@ -291,16 +275,24 @@ function PropertiesContent() {
                             {propertyBadge(property.propertyType)}
                           </span>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                            {availabilityLabels[property.availabilityStatusSummary] ?? availabilityLabels.Unknown}
+                            {property.availabilitySummary || availabilityLabels[property.availabilityStatusSummary] || availabilityLabels.Unknown}
+                          </span>
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                            {property.guestFitStatus}
                           </span>
                         </div>
                         <h2 className="mt-3 text-2xl font-black">{property.name}</h2>
                         <p className="mt-1 text-sm font-semibold text-blue-700">{property.city}</p>
                         <p className="mt-1 text-sm text-slate-500">{property.address}</p>
-                        <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">{property.description}</p>
+                        <p className="mt-4 line-clamp-3 text-sm leading-6 text-slate-600">{property.shortDescription || property.description}</p>
                         {roomCount > 0 && (
                           <p className="mt-4 text-xs font-semibold text-slate-500">
-                            {roomCount} نوع اتاق مناسب جست‌وجوی شما · قیمت فعلی یا پایه نمایش داده شده است
+                            {roomCount} نوع اتاق مناسب جست‌وجوی شما
+                          </p>
+                        )}
+                        {checkIn && checkOut && (
+                          <p className="mt-2 text-xs font-semibold text-blue-700">
+                            تاریخ انتخاب‌شده برای مرحله بعدی رزرو نگه داشته می‌شود.
                           </p>
                         )}
                       </div>

@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useRef, useState } from "react";
-import { SharedDateRangePicker } from "@/components/SharedDateRangePicker";
+import { useEffect, useState } from "react";
+import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
 import {
   fetchPublicApi,
   formatPrice,
@@ -79,27 +78,11 @@ function badge(type: string) {
 }
 
 export default function HomePage() {
-  const router = useRouter();
-  const guestRef = useRef<HTMLDivElement>(null);
   const [properties, setProperties] = useState<PropertyCardData[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingSamples, setUsingSamples] = useState(false);
   const [settings, setSettings] =
     useState<SiteSettingsMap>(defaultSiteSettings);
-  const [city, setCity] = useState("کاشان");
-  const [checkIn, setCheckIn] = useState("");
-  const [checkOut, setCheckOut] = useState("");
-  const [rooms, setRooms] = useState(1);
-  const [adults, setAdults] = useState(2);
-  const [children, setChildren] = useState(0);
-  const [childAges, setChildAges] = useState<number[]>([]);
-  const [guestOpen, setGuestOpen] = useState(false);
-
-  const fieldClass =
-    "h-[60px] w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]";
-  const labelClass = "grid gap-2 text-sm font-bold text-slate-700";
-  const dateControlClass =
-    "flex h-[60px] w-full items-center rounded-xl border bg-white px-4 text-right text-sm transition";
 
   useEffect(() => {
     fetchPublicSiteSettings()
@@ -122,16 +105,6 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    function onPointerDown(event: PointerEvent) {
-      if (!guestRef.current?.contains(event.target as Node)) {
-        setGuestOpen(false);
-      }
-    }
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
-
-  useEffect(() => {
     document.title = settingValue(settings, "site.defaultSeoTitle");
     const description = settingValue(settings, "site.defaultSeoDescription");
     let metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
@@ -143,84 +116,6 @@ export default function HomePage() {
     metaDescription.content = description;
   }, [settings]);
 
-  function search(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const query = new URLSearchParams({ city });
-    if (checkIn) query.set("checkIn", checkIn);
-    if (checkOut) query.set("checkOut", checkOut);
-    query.set("rooms", Math.max(1, rooms).toString());
-    query.set("adults", Math.max(1, adults).toString());
-    query.set("children", Math.max(0, children).toString());
-    if (childAges.length > 0) query.set("childAges", childAges.join(","));
-    router.push(`/properties?${query.toString()}`);
-  }
-
-  function formatFaNumber(value: number) {
-    return new Intl.NumberFormat("fa-IR").format(value);
-  }
-
-  function updateChildren(nextCount: number) {
-    const count = Math.max(0, Math.min(6, nextCount));
-    setChildren(count);
-    setChildAges((current) => {
-      const next = current.slice(0, count);
-      while (next.length < count) next.push(5);
-      return next;
-    });
-  }
-
-  function CounterRow({
-    title,
-    subtitle,
-    value,
-    min,
-    max,
-    onChange,
-  }: {
-    title: string;
-    subtitle?: string;
-    value: number;
-    min: number;
-    max?: number;
-    onChange: (value: number) => void;
-  }) {
-    const canDecrease = value > min;
-    const canIncrease = max === undefined || value < max;
-    return (
-      <div className="flex items-center justify-between gap-4 py-3">
-        <div>
-          <p className="font-black text-slate-950">{title}</p>
-          {subtitle && (
-            <p className="mt-1 text-xs font-bold text-slate-500">{subtitle}</p>
-          )}
-        </div>
-        <div className="flex items-center gap-3" dir="ltr">
-          <button
-            className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
-            disabled={!canDecrease}
-            onClick={() => onChange(value - 1)}
-            type="button"
-          >
-            -
-          </button>
-          <span className="w-7 text-center text-xl font-black text-slate-950">
-            {formatFaNumber(value)}
-          </span>
-          <button
-            className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
-            disabled={!canIncrease}
-            onClick={() => onChange(value + 1)}
-            type="button"
-          >
-            +
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  const guestSummary = `${formatFaNumber(adults)} بزرگسال، ${formatFaNumber(children)} کودک`;
-  const roomSummary = `${formatFaNumber(rooms)} اتاق`;
   const heroBackgroundUrl =
     settingValue(settings, "home.heroBackgroundUrl") ||
     defaultSiteSettings["home.heroBackgroundUrl"];
@@ -252,124 +147,14 @@ export default function HomePage() {
           </div>
         </div>
 
-        <form
-          className="relative z-10 mx-auto -mt-20 w-full max-w-[860px] rounded-3xl border border-slate-200 bg-[#f5f6fa] p-4 pb-5 shadow-2xl sm:-mt-24 sm:p-6 sm:pb-14"
-          onSubmit={search}
-        >
-          <div className="grid gap-4">
-            <label className={labelClass}>
-              مقصد
-              <input
-                className={fieldClass}
-                onChange={(event) => setCity(event.target.value)}
-                placeholder="کاشان"
-                required
-                value={city}
-              />
-            </label>
-
-            <SharedDateRangePicker
-              calendarType="jalali"
-              controlClassName={dateControlClass}
-              disablePastDates
-              labelsAbove
-              showFieldLabels={false}
-              onChange={(nextValue) => {
-                setCheckIn(nextValue.startDate ?? "");
-                setCheckOut(nextValue.endDate ?? "");
-              }}
-              placeholderEnd="انتخاب تاریخ"
-              placeholderStart="انتخاب تاریخ"
-              value={{ startDate: checkIn || null, endDate: checkOut || null }}
-            />
-
-            <div className={`${labelClass} relative`} ref={guestRef}>
-              مسافران
-              <button
-                className={`${fieldClass} flex items-center justify-between gap-4 text-right`}
-                onClick={() => setGuestOpen((current) => !current)}
-                type="button"
-              >
-                <span className="grid min-w-0 gap-1">
-                  <span className="truncate">{guestSummary}</span>
-                  <span className="text-xs font-bold text-slate-500">
-                    {roomSummary}
-                  </span>
-                </span>
-                <span
-                  className={`text-lg text-slate-500 transition ${guestOpen ? "rotate-180" : ""}`}
-                >
-                  ⌄
-                </span>
-              </button>
-              {guestOpen && (
-                <div className="absolute right-0 top-full z-40 mt-3 w-full rounded-2xl border border-slate-200 bg-white p-5 text-right shadow-2xl sm:w-[360px]">
-                  <CounterRow
-                    title="تعداد اتاق"
-                    value={rooms}
-                    min={1}
-                    onChange={setRooms}
-                  />
-                  <CounterRow
-                    title="بزرگسال"
-                    subtitle="۱۸ سال به بالا"
-                    value={adults}
-                    min={1}
-                    onChange={setAdults}
-                  />
-                  <CounterRow
-                    title="کودک"
-                    subtitle="۰ تا ۱۷ سال"
-                    value={children}
-                    min={0}
-                    max={6}
-                    onChange={updateChildren}
-                  />
-
-                  {children > 0 && (
-                    <div className="mt-4 border-t border-slate-100 pt-4">
-                      <p className="mb-3 text-sm leading-6 text-slate-600">
-                        برای محاسبه دقیق، سن کودک را وارد کنید.
-                      </p>
-                      <div className="grid gap-3">
-                        {childAges.map((age, index) => (
-                          <label
-                            className="grid gap-2 text-sm font-bold text-slate-700"
-                            key={index}
-                          >
-                            سن کودک {formatFaNumber(index + 1)}
-                            <select
-                              className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
-                              onChange={(event) => {
-                                const nextAges = [...childAges];
-                                nextAges[index] = Number(event.target.value);
-                                setChildAges(nextAges);
-                              }}
-                              value={age}
-                            >
-                              {Array.from({ length: 18 }, (_, optionAge) => (
-                                <option key={optionAge} value={optionAge}>
-                                  {formatFaNumber(optionAge)}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
-            <button
-              className="h-12 w-full rounded-full bg-[var(--theme-primary)] px-8 text-base font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-[var(--theme-primary-hover)] sm:absolute sm:bottom-[-24px] sm:left-1/2 sm:w-[58%] sm:-translate-x-1/2"
-              type="submit"
-            >
-              {settingValue(settings, "home.searchButtonText")}
-            </button>
-          </div>
-        </form>
+        <AccommodationSearchBox
+          className="-mt-20 sm:-mt-24"
+          enableSuggestions
+          initialValues={{ city: "Kashan", rooms: 1, adults: 2, children: 0 }}
+          redirectToResults
+          searchButtonText={settingValue(settings, "home.searchButtonText")}
+          variant="hero"
+        />
       </section>
 
       <section className="px-5 py-16 sm:px-8 sm:py-20">

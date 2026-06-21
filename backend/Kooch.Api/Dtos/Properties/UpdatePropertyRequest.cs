@@ -63,5 +63,11 @@ public class UpdatePropertyRequest
     public bool? HasGroundFloorRoom { get; set; }
     public bool? HasAccessibleBathroom { get; set; }
 
+    [Range(0, 17)]
+    public int? FreeChildAgeLimit { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int? MaxFreeChildren { get; set; }
+
     
 }

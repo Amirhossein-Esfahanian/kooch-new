@@ -13,13 +13,24 @@ public class PublicPropertiesController(IPropertyService propertyService) : Cont
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PublicPropertyResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<PublicPropertyResponse>>> Get(
+        [FromQuery] string? q,
         [FromQuery] string? city,
         [FromQuery] DateOnly? checkIn,
         [FromQuery] DateOnly? checkOut,
+        [FromQuery] int? rooms,
         [FromQuery] int? adults,
         [FromQuery] int? children,
+        [FromQuery] string? childAges,
         CancellationToken cancellationToken) =>
-        Ok(await propertyService.GetPublicPropertiesAsync(city, checkIn, checkOut, adults, children, cancellationToken));
+        Ok(await propertyService.GetPublicPropertiesAsync(q, city, checkIn, checkOut, rooms, adults, children, childAges, cancellationToken));
+
+    [HttpGet("suggestions")]
+    [ProducesResponseType<IReadOnlyList<PublicPropertySuggestionResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<PublicPropertySuggestionResponse>>> Suggestions(
+        [FromQuery] string? q,
+        [FromQuery] string? city,
+        CancellationToken cancellationToken) =>
+        Ok(await propertyService.GetPublicPropertySuggestionsAsync(q, city, cancellationToken));
 
     [HttpGet("{slug}")]
     [ProducesResponseType<PublicPropertyResponse>(StatusCodes.Status200OK)]

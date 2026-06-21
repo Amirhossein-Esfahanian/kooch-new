@@ -14,6 +14,7 @@ public class PublicPropertyResponse
     public string Country { get; set; } = string.Empty;
     public string Address { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
+    public string ShortDescription { get; set; } = string.Empty;
     public string? CoverImageUrl { get; set; }
     public PropertyStatus Status { get; set; }
     public PropertyType PropertyType { get; set; }
@@ -29,7 +30,12 @@ public class PublicPropertyResponse
     public bool IsInstantBooking { get; set; }
     public decimal? StartingPrice { get; set; }
     public int MatchingRoomTypesCount { get; set; }
+    public IReadOnlyList<PublicRoomTypeSummaryResponse> MatchingRoomTypes { get; set; } = [];
+    public string GuestFitStatus { get; set; } = "ظرفیت نامشخص";
+    public string AvailabilitySummary { get; set; } = "فعلاً همه موجود فرض شده‌اند";
     public string AvailabilityStatusSummary { get; set; } = "Unknown";
+    public int? FreeChildAgeLimit { get; set; }
+    public int? MaxFreeChildren { get; set; }
     public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
     public IReadOnlyList<PublicDescriptionSectionResponse> DescriptionSections { get; set; } = [];
     public IReadOnlyList<PublicCommonAreaResponse> CommonAreas { get; set; } = [];
@@ -37,6 +43,25 @@ public class PublicPropertyResponse
     public IReadOnlyList<PublicNearbyPlaceResponse> NearbyPlaces { get; set; } = [];
     public IReadOnlyList<PropertyViewType> Views { get; set; } = [];
     public IReadOnlyList<PublicRoomTypeResponse> RoomTypes { get; set; } = [];
+}
+
+public class PublicRoomTypeSummaryResponse
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int MaxAdults { get; set; }
+    public int MaxChildren { get; set; }
+    public int TotalInventory { get; set; }
+    public decimal? DisplayPrice { get; set; }
+}
+
+public class PublicPropertySuggestionResponse
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string? EnglishName { get; set; }
+    public string Slug { get; set; } = string.Empty;
+    public string City { get; set; } = string.Empty;
 }
 
 public class PublicRoomTypeResponse

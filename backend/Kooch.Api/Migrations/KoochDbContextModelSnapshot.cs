@@ -959,6 +959,9 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("FloorsCount")
                         .HasColumnType("int");
 
+                    b.Property<int?>("FreeChildAgeLimit")
+                        .HasColumnType("int");
+
                     b.Property<bool?>("HasAccessibleBathroom")
                         .HasColumnType("bit");
 
@@ -988,6 +991,9 @@ namespace Kooch.Api.Migrations
                     b.Property<decimal?>("Longitude")
                         .HasPrecision(9, 6)
                         .HasColumnType("decimal(9,6)");
+
+                    b.Property<int?>("MaxFreeChildren")
+                        .HasColumnType("int");
 
                     b.Property<string>("Name")
                         .IsRequired()

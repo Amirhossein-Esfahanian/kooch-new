@@ -58,6 +58,8 @@ public class PropertyService(
             IsWheelchairAccessible = request.IsWheelchairAccessible,
             HasGroundFloorRoom = request.HasGroundFloorRoom,
             HasAccessibleBathroom = request.HasAccessibleBathroom,
+            FreeChildAgeLimit = request.FreeChildAgeLimit,
+            MaxFreeChildren = request.MaxFreeChildren,
             Status = role == UserRole.SuperAdmin
                 ? request.Status ?? PropertyStatus.PendingReview
                 : PropertyStatus.PendingReview
@@ -118,6 +120,8 @@ public class PropertyService(
         property.IsWheelchairAccessible = request.IsWheelchairAccessible;
         property.HasGroundFloorRoom = request.HasGroundFloorRoom;
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        property.FreeChildAgeLimit = request.FreeChildAgeLimit;
+        property.MaxFreeChildren = request.MaxFreeChildren;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
@@ -197,6 +201,8 @@ public class PropertyService(
         property.IsWheelchairAccessible = request.IsWheelchairAccessible;
         property.HasGroundFloorRoom = request.HasGroundFloorRoom;
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        property.FreeChildAgeLimit = request.FreeChildAgeLimit;
+        property.MaxFreeChildren = request.MaxFreeChildren;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
@@ -239,54 +245,112 @@ public class PropertyService(
     }
 
     public async Task<IReadOnlyList<PublicPropertyResponse>> GetPublicPropertiesAsync(
+        string? q = null,
         string? city = null,
         DateOnly? checkIn = null,
         DateOnly? checkOut = null,
+        int? rooms = null,
         int? adults = null,
         int? children = null,
+        string? childAges = null,
         CancellationToken cancellationToken = default)
     {
         var minAdults = Math.Max(0, adults ?? 0);
-        var minChildren = Math.Max(0, children ?? 0);
-        var hasDates = checkIn.HasValue && checkOut.HasValue && checkOut.Value > checkIn.Value;
-        var rangeStart = checkIn ?? DateOnly.FromDateTime(DateTime.UtcNow);
-        var rangeEndExclusive = checkOut ?? rangeStart.AddDays(1);
-        var nights = Math.Max(1, rangeEndExclusive.DayNumber - rangeStart.DayNumber);
+        var requestedChildren = Math.Max(0, children ?? 0);
+        var parsedChildAges = ParseChildAges(childAges, requestedChildren);
+        var hasGuestFilter = minAdults > 0 || requestedChildren > 0 || rooms.HasValue;
 
         var query = dbContext.Properties.AsNoTracking()
             .Where(property => property.Status == PropertyStatus.Approved);
 
-        if (!string.IsNullOrWhiteSpace(city))
+        var normalizedCity = string.IsNullOrWhiteSpace(city) ? "Kashan" : city.Trim();
+        query = query.Where(property => property.City.Contains(normalizedCity));
+
+        if (!string.IsNullOrWhiteSpace(q))
         {
-            var normalizedCity = city.Trim();
-            query = query.Where(property => property.City.Contains(normalizedCity));
+            var normalizedQuery = q.Trim();
+            query = query.Where(property =>
+                property.Name.Contains(normalizedQuery) ||
+                (property.EnglishName != null && property.EnglishName.Contains(normalizedQuery)) ||
+                property.Slug.Contains(normalizedQuery) ||
+                property.Description.Contains(normalizedQuery) ||
+                property.City.Contains(normalizedQuery));
         }
 
-        if (minAdults > 0 || minChildren > 0)
+        if (hasGuestFilter)
         {
             query = query.Where(property => property.RoomTypes.Any(roomType =>
                 roomType.IsActive &&
+                roomType.TotalInventory > 0 &&
                 roomType.MaxAdults >= minAdults &&
-                roomType.MaxChildren >= minChildren));
+                roomType.MaxChildren >= 0));
         }
 
-        if (hasDates)
+        var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0)
+            .ToListAsync(cancellationToken);
+
+        foreach (var property in properties)
         {
-            query = query.Where(property => property.RoomTypes.Any(roomType =>
-                roomType.IsActive &&
-                roomType.MaxAdults >= minAdults &&
-                roomType.MaxChildren >= minChildren &&
-                (!roomType.Availability.Any(availability =>
-                     availability.Date >= rangeStart &&
-                     availability.Date < rangeEndExclusive) ||
-                 roomType.Availability.Count(availability =>
-                     availability.Date >= rangeStart &&
-                     availability.Date < rangeEndExclusive &&
-                     availability.Status == AvailabilityStatus.Available &&
-                     availability.AvailableCount > 0) == nights)));
+            var effectiveChildren = CountCapacityChildren(parsedChildAges, requestedChildren, property.FreeChildAgeLimit, property.MaxFreeChildren);
+            var matchingRoomTypes = property.RoomTypes
+                .Where(roomType =>
+                    roomType.TotalInventory > 0 &&
+                    roomType.MaxAdults >= minAdults &&
+                    roomType.MaxChildren >= effectiveChildren)
+                .Select(roomType => new PublicRoomTypeSummaryResponse
+                {
+                    Id = roomType.Id,
+                    Name = roomType.Name,
+                    MaxAdults = roomType.MaxAdults,
+                    MaxChildren = roomType.MaxChildren,
+                    TotalInventory = roomType.TotalInventory,
+                    DisplayPrice = roomType.DisplayPrice
+                })
+                .ToList();
+
+            property.MatchingRoomTypes = matchingRoomTypes;
+            property.MatchingRoomTypesCount = matchingRoomTypes.Count;
+            property.GuestFitStatus = matchingRoomTypes.Count > 0 ? "مناسب ظرفیت" : property.RoomTypes.Count == 0 ? "ظرفیت نامشخص" : "نامناسب";
+            property.AvailabilitySummary = "فعلاً همه موجود فرض شده‌اند";
+            property.AvailabilityStatusSummary = matchingRoomTypes.Count > 0 ? "Available" : "Unknown";
         }
 
-        return await ProjectPublic(query.OrderBy(property => property.Name), minAdults, minChildren, hasDates, rangeStart, rangeEndExclusive, nights)
+        return hasGuestFilter
+            ? properties.Where(property => property.MatchingRoomTypesCount > 0).ToList()
+            : properties;
+    }
+
+    public async Task<IReadOnlyList<PublicPropertySuggestionResponse>> GetPublicPropertySuggestionsAsync(
+        string? q = null,
+        string? city = null,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedCity = string.IsNullOrWhiteSpace(city) ? "Kashan" : city.Trim();
+        var query = dbContext.Properties.AsNoTracking()
+            .Where(property => property.Status == PropertyStatus.Approved && property.City.Contains(normalizedCity));
+
+        if (!string.IsNullOrWhiteSpace(q))
+        {
+            var normalizedQuery = q.Trim();
+            query = query.Where(property =>
+                property.Name.Contains(normalizedQuery) ||
+                (property.EnglishName != null && property.EnglishName.Contains(normalizedQuery)) ||
+                property.Slug.Contains(normalizedQuery) ||
+                property.Description.Contains(normalizedQuery) ||
+                property.City.Contains(normalizedQuery));
+        }
+
+        return await query
+            .OrderBy(property => property.Name)
+            .Take(8)
+            .Select(property => new PublicPropertySuggestionResponse
+            {
+                Id = property.Id,
+                Name = property.Name,
+                EnglishName = property.EnglishName,
+                Slug = property.Slug,
+                City = property.City
+            })
             .ToListAsync(cancellationToken);
     }
 
@@ -423,6 +487,8 @@ public class PropertyService(
             IsWheelchairAccessible = property.IsWheelchairAccessible,
             HasGroundFloorRoom = property.HasGroundFloorRoom,
             HasAccessibleBathroom = property.HasAccessibleBathroom,
+            FreeChildAgeLimit = property.FreeChildAgeLimit,
+            MaxFreeChildren = property.MaxFreeChildren,
         });
 
     private static IQueryable<PublicPropertyResponse> ProjectPublic(
@@ -449,6 +515,9 @@ public class PropertyService(
             Country = property.Country,
             Address = property.Address,
             Description = property.Description,
+            ShortDescription = property.Description.Length > 180
+                ? property.Description.Substring(0, 180) + "..."
+                : property.Description,
             Status = property.Status,
             PropertyType = property.Type,
             InventoryMode = property.InventoryMode,
@@ -460,6 +529,8 @@ public class PropertyService(
             IsWheelchairAccessible = property.IsWheelchairAccessible,
             HasGroundFloorRoom = property.HasGroundFloorRoom,
             HasAccessibleBathroom = property.HasAccessibleBathroom,
+            FreeChildAgeLimit = property.FreeChildAgeLimit,
+            MaxFreeChildren = property.MaxFreeChildren,
             IsInstantBooking = property.RoomTypes.Any(roomType => roomType.Availability.Any(
                 availability => availability.Date >= today &&
                                 availability.Status == AvailabilityStatus.Available &&
@@ -655,6 +726,47 @@ public class PropertyService(
                 })
                 .ToList()
         });
+    }
+
+    private static IReadOnlyList<int> ParseChildAges(string? childAges, int requestedChildren)
+    {
+        var ages = string.IsNullOrWhiteSpace(childAges)
+            ? new List<int>()
+            : childAges.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Select(value => int.TryParse(value, out var age) ? Math.Clamp(age, 0, 17) : (int?)null)
+                .Where(age => age.HasValue)
+                .Select(age => age!.Value)
+                .ToList();
+
+        while (ages.Count < requestedChildren)
+        {
+            ages.Add(17);
+        }
+
+        return ages.Take(requestedChildren).ToList();
+    }
+
+    private static int CountCapacityChildren(
+        IReadOnlyList<int> childAges,
+        int requestedChildren,
+        int? freeChildAgeLimit,
+        int? maxFreeChildren)
+    {
+        if (requestedChildren <= 0)
+        {
+            return 0;
+        }
+
+        if (!freeChildAgeLimit.HasValue || !maxFreeChildren.HasValue || maxFreeChildren.Value <= 0)
+        {
+            return requestedChildren;
+        }
+
+        var freeChildren = childAges
+            .Take(requestedChildren)
+            .Count(age => age <= freeChildAgeLimit.Value);
+
+        return Math.Max(0, requestedChildren - Math.Min(freeChildren, maxFreeChildren.Value));
     }
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

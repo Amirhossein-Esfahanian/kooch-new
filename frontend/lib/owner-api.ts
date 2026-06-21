@@ -44,6 +44,8 @@ export interface PropertyResponse {
   isWheelchairAccessible: boolean | null;
   hasGroundFloorRoom: boolean | null;
   hasAccessibleBathroom: boolean | null;
+  freeChildAgeLimit: number | null;
+  maxFreeChildren: number | null;
 }
 
 export type PropertyStatus = "Draft" | "PendingReview" | "Approved" | "Rejected" | "Suspended";
@@ -298,6 +300,8 @@ export interface PropertyFormValues {
   isWheelchairAccessible?: boolean | null;
   hasGroundFloorRoom?: boolean | null;
   hasAccessibleBathroom?: boolean | null;
+  freeChildAgeLimit?: number | null;
+  maxFreeChildren?: number | null;
 }
 
 const tokenKey = "kooch_owner_token";

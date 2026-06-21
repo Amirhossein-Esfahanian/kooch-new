@@ -35,5 +35,7 @@ public class PropertyResponse
     public bool? IsWheelchairAccessible { get; set; }
     public bool? HasGroundFloorRoom { get; set; }
     public bool? HasAccessibleBathroom { get; set; }
+    public int? FreeChildAgeLimit { get; set; }
+    public int? MaxFreeChildren { get; set; }
     
 }

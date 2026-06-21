@@ -38,6 +38,15 @@ export interface PublicRoomType {
   amenities: { id: number; name: string; category: string }[];
 }
 
+export interface PublicRoomTypeSummary {
+  id: number;
+  name: string;
+  maxAdults: number;
+  maxChildren: number;
+  totalInventory: number;
+  displayPrice: number | null;
+}
+
 export interface PublicProperty {
   id: number;
   name: string;
@@ -49,6 +58,7 @@ export interface PublicProperty {
   country: string;
   address: string;
   description: string;
+  shortDescription: string;
   coverImageUrl: string | null;
   status: "Approved";
   propertyType: string;
@@ -64,7 +74,12 @@ export interface PublicProperty {
   isInstantBooking: boolean;
   startingPrice: number | null;
   matchingRoomTypesCount: number;
+  matchingRoomTypes: PublicRoomTypeSummary[];
+  guestFitStatus: string;
+  availabilitySummary: string;
   availabilityStatusSummary: "Available" | "OnRequest" | "Unknown";
+  freeChildAgeLimit: number | null;
+  maxFreeChildren: number | null;
   images: PublicImage[];
   descriptionSections: {
     sectionType: "PropertyIntroduction" | "ImportantNotes";

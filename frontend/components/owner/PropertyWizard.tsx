@@ -115,6 +115,8 @@ interface WizardData {
   nearbyPlaces: NearbyPlaceDraft[];
   checkInTime: string;
   checkOutTime: string;
+  freeChildAgeLimit: string;
+  maxFreeChildren: string;
   seoTitle: string;
   seoDescription: string;
 }
@@ -145,6 +147,8 @@ const initialData: WizardData = {
   nearbyPlaces: [{ title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }],
   checkInTime: "14:00",
   checkOutTime: "12:00",
+  freeChildAgeLimit: "",
+  maxFreeChildren: "",
   seoTitle: "",
   seoDescription: "",
 };
@@ -285,6 +289,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             : [{ title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }],
           checkInTime: propertyResult.checkInTime ?? "14:00",
           checkOutTime: propertyResult.checkOutTime ?? "12:00",
+          freeChildAgeLimit: propertyResult.freeChildAgeLimit == null ? "" : String(propertyResult.freeChildAgeLimit),
+          maxFreeChildren: propertyResult.maxFreeChildren == null ? "" : String(propertyResult.maxFreeChildren),
           seoTitle: propertyResult.seoTitle ?? "",
           seoDescription: propertyResult.seoDescription ?? "",
         });
@@ -327,6 +333,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       inventoryMode: data.inventoryMode,
       checkInTime: data.checkInTime || null,
       checkOutTime: data.checkOutTime || null,
+      freeChildAgeLimit: data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
+      maxFreeChildren: data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       landAreaM2: data.landArea === "" ? null : Number(data.landArea),
       floorsCount: data.floors === "" ? null : Number(data.floors),
@@ -754,6 +762,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-bold">ساعت ورود<input className={inputClass} onChange={(event) => update("checkInTime", event.target.value)} type="time" value={data.checkInTime} /></label>
               <label className="grid gap-1 text-sm font-bold">ساعت خروج<input className={inputClass} onChange={(event) => update("checkOutTime", event.target.value)} type="time" value={data.checkOutTime} /></label>
+              <label className="grid gap-1 text-sm font-bold">سن کودک رایگان تا<input className={inputClass} max="17" min="0" onChange={(event) => update("freeChildAgeLimit", event.target.value)} type="number" value={data.freeChildAgeLimit} /></label>
+              <label className="grid gap-1 text-sm font-bold">حداکثر تعداد کودک رایگان<input className={inputClass} min="0" onChange={(event) => update("maxFreeChildren", event.target.value)} type="number" value={data.maxFreeChildren} /></label>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">عنوان سئو<input className={inputClass} onChange={(event) => update("seoTitle", event.target.value)} value={data.seoTitle} /></label>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">توضیح سئو<textarea className={inputClass} onChange={(event) => update("seoDescription", event.target.value)} rows={3} value={data.seoDescription} /></label>
             </div>
