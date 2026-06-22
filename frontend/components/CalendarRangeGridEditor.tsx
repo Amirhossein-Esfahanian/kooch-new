@@ -534,7 +534,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
         <button
           aria-label="بازکردن پنل ویرایش"
-          className={`fixed bottom-4 right-4 z-[60] grid h-12 w-12 place-items-center rounded-full bg-[var(--theme-primary)] text-white shadow-2xl ring-1 ring-black/5 transition-all duration-[250ms] ease-out hover:bg-[var(--theme-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2 md:bottom-6 md:right-6 ${
+          className={`fixed bottom-4 right-4 z-[60] grid h-12 w-32 place-items-center rounded-md bg-[var(--theme-primary)] text-white shadow-2xl ring-1 ring-black/5 transition-all duration-[250ms] ease-out hover:bg-[var(--theme-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2 md:bottom-6 md:right-6 ${
             isMinimized
               ? "visible scale-100 opacity-100"
               : "pointer-events-none invisible scale-95 opacity-0"
@@ -563,6 +563,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
               strokeWidth="2"
             />
           </svg>
+          <p className=" text-xs text-white font-regular text-slate-500">
+            {toPersianNumber(selectedCount)} خانه انتخاب شده
+          </p>
         </button>
       </>
     ) : null;
