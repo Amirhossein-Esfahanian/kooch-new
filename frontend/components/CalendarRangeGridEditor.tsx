@@ -519,6 +519,12 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     setLocalError("");
   }
 
+  function changeSelectionMode(nextMode: SelectionMode) {
+    if (nextMode === selectionMode) return;
+    if (nextMode === "range") clearSelections();
+    setSelectionMode(nextMode);
+  }
+
   function removeDateFromRows(rowIds: Set<string>, dayIndex: number) {
     setSelectedRanges((current) =>
       current.flatMap((selection) => {
@@ -572,6 +578,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
   function toggleRow(row: Row) {
     if (readonly) return;
+    setSelectionMode("single");
     const keys = days
       .filter((day) => !disabledDateResolver?.(day.date))
       .map((day) => keyOf(row.id, day.date));
@@ -599,6 +606,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
   function toggleColumn(dayIndex: number) {
     if (dayDisabled(dayIndex)) return;
+    setSelectionMode("single");
     const date = days[dayIndex].date;
     const keys = rows.map((row) => keyOf(row.id, date));
     const allSelected =
@@ -847,7 +855,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 <button
                   className={`rounded-lg px-3 py-1.5 text-sm font-black transition ${selectionMode === option.value ? "bg-[var(--theme-primary)] text-white shadow-sm" : "text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]"}`}
                   key={option.value}
-                  onClick={() => setSelectionMode(option.value)}
+                  onClick={() => changeSelectionMode(option.value)}
                   type="button"
                 >
                   {option.label}
@@ -897,7 +905,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
               />
             </svg>
             <span className="text-xs font-normal text-white">
-              {toPersianNumber(selectedCount)} خانه انتخاب شده
+              {toPersianNumber(selectedCount)} روز انتخاب شده
             </span>
           </button>
         )}
