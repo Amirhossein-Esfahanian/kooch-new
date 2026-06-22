@@ -144,6 +144,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   const [dragMode, setDragMode] = useState<DragMode>(null);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("range");
   const [isDesktop, setIsDesktop] = useState(false);
+  const [isMinimized, setIsMinimized] = useState(false);
   const [popupPosition, setPopupPosition] = useState({ top: 8, left: 16 });
   const [value, setValue] = useState(1);
   const [status, setStatus] = useState<AvailabilityStatus>("Available");
@@ -186,6 +187,11 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     });
   }, [selectedKeys]);
   const selectedCount = selectedItems.length;
+
+  useEffect(() => {
+    if (selectedCount === 0) setIsMinimized(false);
+  }, [selectedCount]);
+
   const firstSelectedRow = useMemo(
     () =>
       rows.find((row) =>
@@ -416,96 +422,149 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
   const editorPanel =
     selectedCount > 0 && activeRow ? (
-      <div
-        className="fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-[var(--theme-primary-border)] bg-white p-4 shadow-2xl md:inset-x-auto md:bottom-auto md:w-[360px]"
-        ref={popupRef}
-        style={{
-          left: isDesktop ? popupPosition.left : undefined,
-          top: isDesktop ? popupPosition.top : undefined,
-        }}
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="font-black text-slate-950">
-              {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش بازه"}
-            </h3>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
-              {toPersianNumber(selectedCount)} خانه انتخاب شده
-            </p>
-          </div>
-          {/* <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" onClick={() => { setSelectedKeys(new Set()); setActiveRange(null); }} type="button">
+      <>
+        <div
+          aria-hidden={isMinimized}
+          className={`fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-[var(--theme-primary-border)] bg-white p-4 shadow-2xl transition-all duration-[250ms] ease-out md:inset-x-auto md:bottom-auto md:w-[360px] ${
+            isMinimized
+              ? "pointer-events-none invisible scale-95 opacity-0"
+              : "visible scale-100 opacity-100"
+          }`}
+          ref={popupRef}
+          style={{
+            left: isDesktop ? popupPosition.left : undefined,
+            top: isDesktop ? popupPosition.top : undefined,
+          }}
+        >
+          <button
+            aria-label="کوچک‌کردن پنل ویرایش"
+            className="flex items-center justify-center absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-black leading-none text-slate-500 transition hover:border-[var(--theme-primary-border)] hover:bg-[var(--theme-primary-soft)] hover:text-[var(--theme-primary-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)]"
+            onClick={() => setIsMinimized(true)}
+            title="کوچک‌ کردن"
+            type="button"
+          >
+            <span aria-hidden="true" className="relative top-[1px]">
+              —
+            </span>
+          </button>
+          <div className="flex items-start justify-between gap-3 pr-9">
+            <div>
+              <h3 className="font-black text-slate-950">
+                {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش بازه"}
+              </h3>
+              <p className="mt-1 text-xs font-semibold text-slate-500">
+                {toPersianNumber(selectedCount)} خانه انتخاب شده
+              </p>
+            </div>
+            {/* <button className="rounded-lg border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-600" onClick={() => { setSelectedKeys(new Set()); setActiveRange(null); }} type="button">
           لغو
         </button> */}
-        </div>
+          </div>
 
-        <div className="mt-5 flex flex-col gap-4">
-          <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
-            {valueLabel}
-            <input
-              className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
-              disabled={status === "Unavailable"}
-              min={activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0}
-              onChange={(event) => setValue(Number(event.target.value))}
-              type={valueInputType}
-              value={status === "Unavailable" ? 0 : value}
-            />
-          </label>
-          {statusOptions && (
+          <div className="mt-5 flex flex-col gap-4">
             <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
-              وضعیت
-              <select
+              {valueLabel}
+              <input
                 className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
-                onChange={(event) =>
-                  setStatus(event.target.value as AvailabilityStatus)
+                disabled={status === "Unavailable"}
+                min={
+                  activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0
                 }
-                value={status}
-              >
-                {statusOptions?.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+                onChange={(event) => setValue(Number(event.target.value))}
+                type={valueInputType}
+                value={status === "Unavailable" ? 0 : value}
+              />
             </label>
-          )}
-        </div>
-
-        {(localError || error || message) && (
-          <div className="mt-3 grid gap-2">
-            {(localError || error) && (
-              <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
-                {localError || error}
-              </p>
-            )}
-            {message && (
-              <p className="rounded-xl bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
-                {message}
-              </p>
+            {statusOptions && (
+              <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
+                وضعیت
+                <select
+                  className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
+                  onChange={(event) =>
+                    setStatus(event.target.value as AvailabilityStatus)
+                  }
+                  value={status}
+                >
+                  {statusOptions?.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
           </div>
-        )}
 
-        <div className="mt-4 flex justify-end gap-2">
-          <button
-            className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
-            onClick={() => {
-              setSelectedKeys(new Set());
-              setActiveRange(null);
-            }}
-            type="button"
-          >
-            لغو
-          </button>
-          <button
-            className="rounded-xl bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60"
-            disabled={saving}
-            onClick={applySelection}
-            type="button"
-          >
-            {saving ? "در حال ذخیره..." : "ذخیره"}
-          </button>
+          {(localError || error || message) && (
+            <div className="mt-3 grid gap-2">
+              {(localError || error) && (
+                <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                  {localError || error}
+                </p>
+              )}
+              {message && (
+                <p className="rounded-xl bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
+                  {message}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="mt-4 flex justify-end gap-2">
+            <button
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
+              onClick={() => {
+                setSelectedKeys(new Set());
+                setActiveRange(null);
+              }}
+              type="button"
+            >
+              لغو
+            </button>
+            <button
+              className="rounded-xl bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60"
+              disabled={saving}
+              onClick={applySelection}
+              type="button"
+            >
+              {saving ? "در حال ذخیره..." : "ذخیره"}
+            </button>
+          </div>
         </div>
-      </div>
+
+        <button
+          aria-label="بازکردن پنل ویرایش"
+          className={`fixed bottom-4 right-4 z-[60] grid h-12 w-12 place-items-center rounded-full bg-[var(--theme-primary)] text-white shadow-2xl ring-1 ring-black/5 transition-all duration-[250ms] ease-out hover:bg-[var(--theme-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2 md:bottom-6 md:right-6 ${
+            isMinimized
+              ? "visible scale-100 opacity-100"
+              : "pointer-events-none invisible scale-95 opacity-0"
+          }`}
+          onClick={() => setIsMinimized(false)}
+          title="بازکردن پنل ویرایش"
+          type="button"
+        >
+          <svg
+            aria-hidden="true"
+            className="h-5 w-5"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <path
+              d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="2"
+            />
+            <path
+              d="m13.5 6.5 4 4"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeWidth="2"
+            />
+          </svg>
+        </button>
+      </>
     ) : null;
 
   return (
