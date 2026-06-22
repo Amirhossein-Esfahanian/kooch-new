@@ -149,7 +149,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   const popupRef = useRef<HTMLDivElement | null>(null);
   const selectionSequence = useRef(0);
   const [selectedRanges, setSelectedRanges] = useState<SelectedRange[]>([]);
-  const [activeSelectionId, setActiveSelectionId] = useState<string | null>(null);
+  const [activeSelectionId, setActiveSelectionId] = useState<string | null>(
+    null,
+  );
   const [dragTarget, setDragTarget] = useState<DragTarget>(null);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("range");
   const [isDesktop, setIsDesktop] = useState(false);
@@ -191,15 +193,20 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   useEffect(() => {
     if (selectionMode !== "single") return;
     setSelectedRanges((current) => {
-      if (!current.some((selection) => selection.mode === "range")) return current;
+      if (!current.some((selection) => selection.mode === "range"))
+        return current;
       const converted: SelectedRange[] = [];
       current.forEach((selection) => {
         if (selection.mode !== "range") {
           converted.push(selection);
           return;
         }
-        const startIndex = days.findIndex((day) => day.date === selection.startDate);
-        const endIndex = days.findIndex((day) => day.date === selection.endDate);
+        const startIndex = days.findIndex(
+          (day) => day.date === selection.startDate,
+        );
+        const endIndex = days.findIndex(
+          (day) => day.date === selection.endDate,
+        );
         if (startIndex < 0 || endIndex < 0) return;
         rangeKeys(selection.roomTypeId, startIndex, endIndex).forEach((key) => {
           const date = key.slice(key.indexOf("|") + 1);
@@ -222,7 +229,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       const startIndex = days.findIndex((day) => day.date === range.startDate);
       const endIndex = days.findIndex((day) => day.date === range.endDate);
       if (startIndex < 0 || endIndex < 0) return;
-      rangeKeys(range.roomTypeId, startIndex, endIndex).forEach((key) => keys.add(key));
+      rangeKeys(range.roomTypeId, startIndex, endIndex).forEach((key) =>
+        keys.add(key),
+      );
     });
     return keys;
   }, [days, selectedRanges]);
@@ -246,17 +255,33 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   }, [activeSelectionId, selectedRanges]);
 
   const activeSelection = useMemo(
-    () => selectedRanges.find((range) => range.id === activeSelectionId) ?? selectedRanges[0] ?? null,
+    () =>
+      selectedRanges.find((range) => range.id === activeSelectionId) ??
+      selectedRanges[0] ??
+      null,
     [activeSelectionId, selectedRanges],
   );
   const activeRange = useMemo<RangeSelection | null>(() => {
     if (!activeSelection) return null;
-    const startIndex = days.findIndex((day) => day.date === activeSelection.startDate);
-    const endIndex = days.findIndex((day) => day.date === activeSelection.endDate);
-    return startIndex < 0 || endIndex < 0 ? null : normalizeRange({ rowId: activeSelection.roomTypeId, startIndex, endIndex });
+    const startIndex = days.findIndex(
+      (day) => day.date === activeSelection.startDate,
+    );
+    const endIndex = days.findIndex(
+      (day) => day.date === activeSelection.endDate,
+    );
+    return startIndex < 0 || endIndex < 0
+      ? null
+      : normalizeRange({
+          rowId: activeSelection.roomTypeId,
+          startIndex,
+          endIndex,
+        });
   }, [activeSelection, days]);
   const activeRow = useMemo(
-    () => rows.find((row) => activeSelection && row.id === activeSelection.roomTypeId) ?? null,
+    () =>
+      rows.find(
+        (row) => activeSelection && row.id === activeSelection.roomTypeId,
+      ) ?? null,
     [activeSelection, rows],
   );
 
@@ -345,15 +370,19 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const normalized = normalizeRange(range);
     const startDate = days[normalized.startIndex].date;
     const endDate = days[normalized.endIndex].date;
-    return selectedRanges.some((selection) =>
-      selection.id !== excludeId &&
-      selection.roomTypeId === normalized.rowId &&
-      startDate <= selection.endDate &&
-      endDate >= selection.startDate);
+    return selectedRanges.some(
+      (selection) =>
+        selection.id !== excludeId &&
+        selection.roomTypeId === normalized.rowId &&
+        startDate <= selection.endDate &&
+        endDate >= selection.startDate,
+    );
   }
 
   function showOverlapError() {
-    toast.error("این بازه با بازه انتخاب‌شده قبلی همپوشانی دارد", { id: "calendar-range-overlap" });
+    toast.error("این بازه با بازه انتخاب‌شده قبلی همپوشانی دارد", {
+      id: "calendar-range-overlap",
+    });
   }
 
   function mergeAdjacentRanges(range: RangeSelection, excludeId?: string) {
@@ -363,11 +392,24 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     while (changed) {
       changed = false;
       for (const selection of selectedRanges) {
-        if (selection.id === excludeId || mergedIds.has(selection.id) || selection.mode !== "range" || selection.roomTypeId !== normalized.rowId) continue;
+        if (
+          selection.id === excludeId ||
+          mergedIds.has(selection.id) ||
+          selection.mode !== "range" ||
+          selection.roomTypeId !== normalized.rowId
+        )
+          continue;
         const start = days.findIndex((day) => day.date === selection.startDate);
         const end = days.findIndex((day) => day.date === selection.endDate);
-        if (end + 1 === normalized.startIndex || normalized.endIndex + 1 === start) {
-          normalized = normalizeRange({ rowId: normalized.rowId, startIndex: Math.min(start, normalized.startIndex), endIndex: Math.max(end, normalized.endIndex) });
+        if (
+          end + 1 === normalized.startIndex ||
+          normalized.endIndex + 1 === start
+        ) {
+          normalized = normalizeRange({
+            rowId: normalized.rowId,
+            startIndex: Math.min(start, normalized.startIndex),
+            endIndex: Math.max(end, normalized.endIndex),
+          });
           mergedIds.add(selection.id);
           changed = true;
         }
@@ -376,7 +418,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     return { normalized, mergedIds };
   }
 
-  function addRange(range: RangeSelection, rangeMode: SelectionMode = selectionMode) {
+  function addRange(
+    range: RangeSelection,
+    rangeMode: SelectionMode = selectionMode,
+  ) {
     let normalized = normalizeRange(range);
     if (overlapsExistingRange(normalized)) {
       showOverlapError();
@@ -389,17 +434,23 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       merged.mergedIds.forEach((id) => mergedIds.add(id));
     }
     const id = makeSelectionId();
-    setSelectedRanges((current) => [...current.filter((selection) => !mergedIds.has(selection.id)), {
-      id,
-      roomTypeId: normalized.rowId,
-      startDate: days[normalized.startIndex].date,
-      endDate: days[normalized.endIndex].date,
-      mode: rangeMode,
-    }]);
+    setSelectedRanges((current) => [
+      ...current.filter((selection) => !mergedIds.has(selection.id)),
+      {
+        id,
+        roomTypeId: normalized.rowId,
+        startDate: days[normalized.startIndex].date,
+        endDate: days[normalized.endIndex].date,
+        mode: rangeMode,
+      },
+    ]);
     setActiveSelectionId(id);
   }
 
-  function replaceTemporaryOneDayRange(selectionId: string, range: RangeSelection) {
+  function replaceTemporaryOneDayRange(
+    selectionId: string,
+    range: RangeSelection,
+  ) {
     let normalized = normalizeRange(range);
     if (overlapsExistingRange(normalized, selectionId)) {
       showOverlapError();
@@ -408,14 +459,19 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const merged = mergeAdjacentRanges(normalized, selectionId);
     normalized = merged.normalized;
     const id = makeSelectionId();
-    setSelectedRanges((current) => [...current.filter((selection) =>
-      selection.id !== selectionId && !merged.mergedIds.has(selection.id)), {
-      id,
-      roomTypeId: normalized.rowId,
-      startDate: days[normalized.startIndex].date,
-      endDate: days[normalized.endIndex].date,
-      mode: "range",
-    }]);
+    setSelectedRanges((current) => [
+      ...current.filter(
+        (selection) =>
+          selection.id !== selectionId && !merged.mergedIds.has(selection.id),
+      ),
+      {
+        id,
+        roomTypeId: normalized.rowId,
+        startDate: days[normalized.startIndex].date,
+        endDate: days[normalized.endIndex].date,
+        mode: "range",
+      },
+    ]);
     setActiveSelectionId(id);
   }
 
@@ -426,16 +482,34 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       return;
     }
     const selection = selectedRanges.find((item) => item.id === selectionId);
-    const merged = selection?.mode === "range" ? mergeAdjacentRanges(normalized, selectionId) : { normalized, mergedIds: new Set<string>() };
+    const merged =
+      selection?.mode === "range"
+        ? mergeAdjacentRanges(normalized, selectionId)
+        : { normalized, mergedIds: new Set<string>() };
     normalized = merged.normalized;
-    setSelectedRanges((current) => current.filter((item) => !merged.mergedIds.has(item.id)).map((item) => item.id === selectionId
-      ? { ...item, roomTypeId: normalized.rowId, startDate: days[normalized.startIndex].date, endDate: days[normalized.endIndex].date }
-      : item));
+    setSelectedRanges((current) =>
+      current
+        .filter((item) => !merged.mergedIds.has(item.id))
+        .map((item) =>
+          item.id === selectionId
+            ? {
+                ...item,
+                roomTypeId: normalized.rowId,
+                startDate: days[normalized.startIndex].date,
+                endDate: days[normalized.endIndex].date,
+              }
+            : item,
+        ),
+    );
   }
 
   function removeSelection(selectionId: string) {
-    setSelectedRanges((current) => current.filter((selection) => selection.id !== selectionId));
-    setActiveSelectionId((current) => current === selectionId ? null : current);
+    setSelectedRanges((current) =>
+      current.filter((selection) => selection.id !== selectionId),
+    );
+    setActiveSelectionId((current) =>
+      current === selectionId ? null : current,
+    );
   }
 
   function clearSelections() {
@@ -446,19 +520,27 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   }
 
   function removeDateFromRows(rowIds: Set<string>, dayIndex: number) {
-    setSelectedRanges((current) => current.flatMap((selection) => {
-      if (!rowIds.has(String(selection.roomTypeId))) return [selection];
-      const start = days.findIndex((day) => day.date === selection.startDate);
-      const end = days.findIndex((day) => day.date === selection.endDate);
-      if (dayIndex < start || dayIndex > end) return [selection];
-      if (start === end) return [];
-      if (dayIndex === start) return [{ ...selection, startDate: days[start + 1].date }];
-      if (dayIndex === end) return [{ ...selection, endDate: days[end - 1].date }];
-      return [
-        { ...selection, endDate: days[dayIndex - 1].date },
-        { ...selection, id: makeSelectionId(), startDate: days[dayIndex + 1].date },
-      ];
-    }));
+    setSelectedRanges((current) =>
+      current.flatMap((selection) => {
+        if (!rowIds.has(String(selection.roomTypeId))) return [selection];
+        const start = days.findIndex((day) => day.date === selection.startDate);
+        const end = days.findIndex((day) => day.date === selection.endDate);
+        if (dayIndex < start || dayIndex > end) return [selection];
+        if (start === end) return [];
+        if (dayIndex === start)
+          return [{ ...selection, startDate: days[start + 1].date }];
+        if (dayIndex === end)
+          return [{ ...selection, endDate: days[end - 1].date }];
+        return [
+          { ...selection, endDate: days[dayIndex - 1].date },
+          {
+            ...selection,
+            id: makeSelectionId(),
+            startDate: days[dayIndex + 1].date,
+          },
+        ];
+      }),
+    );
   }
 
   function toggleCell(rowId: Row["id"], dayIndex: number) {
@@ -466,17 +548,26 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     setLocalError("");
     if (selectionMode === "range") {
       const nextRange = { rowId, startIndex: dayIndex, endIndex: dayIndex };
-      const temporaryOneDayRange = activeSelection?.mode === "range" && activeSelection.startDate === activeSelection.endDate
-        ? activeSelection
-        : null;
-      if (temporaryOneDayRange) replaceTemporaryOneDayRange(temporaryOneDayRange.id, nextRange);
+      const temporaryOneDayRange =
+        activeSelection?.mode === "range" &&
+        activeSelection.startDate === activeSelection.endDate
+          ? activeSelection
+          : null;
+      if (temporaryOneDayRange)
+        replaceTemporaryOneDayRange(temporaryOneDayRange.id, nextRange);
       else addRange(nextRange);
       return;
     }
-    const exactSelection = selectedRanges.find((selection) =>
-      selection.mode === "single" && selection.roomTypeId === rowId && selection.startDate === days[dayIndex].date && selection.endDate === days[dayIndex].date);
+    const exactSelection = selectedRanges.find(
+      (selection) =>
+        selection.mode === "single" &&
+        selection.roomTypeId === rowId &&
+        selection.startDate === days[dayIndex].date &&
+        selection.endDate === days[dayIndex].date,
+    );
     if (exactSelection) removeSelection(exactSelection.id);
-    else addRange({ rowId, startIndex: dayIndex, endIndex: dayIndex }, "single");
+    else
+      addRange({ rowId, startIndex: dayIndex, endIndex: dayIndex }, "single");
   }
 
   function toggleRow(row: Row) {
@@ -487,16 +578,21 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const allSelected =
       keys.length > 0 && keys.every((key) => selectedKeys.has(key));
     if (allSelected) {
-      setSelectedRanges((current) => current.filter((selection) => selection.roomTypeId !== row.id));
+      setSelectedRanges((current) =>
+        current.filter((selection) => selection.roomTypeId !== row.id),
+      );
     } else if (days.length) {
       const id = makeSelectionId();
-      setSelectedRanges((current) => [...current.filter((selection) => selection.roomTypeId !== row.id), {
-        id,
-        roomTypeId: row.id,
-        startDate: days[0].date,
-        endDate: days[days.length - 1].date,
-        mode: "single",
-      }]);
+      setSelectedRanges((current) => [
+        ...current.filter((selection) => selection.roomTypeId !== row.id),
+        {
+          id,
+          roomTypeId: row.id,
+          startDate: days[0].date,
+          endDate: days[days.length - 1].date,
+          mode: "single",
+        },
+      ]);
       setActiveSelectionId(id);
     }
   }
@@ -507,11 +603,24 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const keys = rows.map((row) => keyOf(row.id, date));
     const allSelected =
       keys.length > 0 && keys.every((key) => selectedKeys.has(key));
-    if (allSelected) removeDateFromRows(new Set(rows.map((row) => String(row.id))), dayIndex);
-    else rows.filter((row) => !selectedKeys.has(keyOf(row.id, date))).forEach((row) => addRange({ rowId: row.id, startIndex: dayIndex, endIndex: dayIndex }, "single"));
+    if (allSelected)
+      removeDateFromRows(new Set(rows.map((row) => String(row.id))), dayIndex);
+    else
+      rows
+        .filter((row) => !selectedKeys.has(keyOf(row.id, date)))
+        .forEach((row) =>
+          addRange(
+            { rowId: row.id, startIndex: dayIndex, endIndex: dayIndex },
+            "single",
+          ),
+        );
   }
 
-  function startHandleDrag(selectionId: string, edge: "start" | "end", event: PointerEvent) {
+  function startHandleDrag(
+    selectionId: string,
+    edge: "start" | "end",
+    event: PointerEvent,
+  ) {
     if (selectionMode !== "range") return;
     event.stopPropagation();
     document.body.style.cursor = "ew-resize";
@@ -522,19 +631,25 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
   function extendHandle(rowId: Row["id"], dayIndex: number) {
     if (!dragTarget || dayDisabled(dayIndex)) return;
-    const selection = selectedRanges.find((range) => range.id === dragTarget.selectionId);
+    const selection = selectedRanges.find(
+      (range) => range.id === dragTarget.selectionId,
+    );
     if (!selection || selection.roomTypeId !== rowId) return;
-    const startIndex = days.findIndex((day) => day.date === selection.startDate);
+    const startIndex = days.findIndex(
+      (day) => day.date === selection.startDate,
+    );
     const endIndex = days.findIndex((day) => day.date === selection.endDate);
     if (startIndex < 0 || endIndex < 0) return;
-    updateRange(selection.id, dragTarget.edge === "start"
-      ? { rowId, startIndex: dayIndex, endIndex }
-      : { rowId, startIndex, endIndex: dayIndex });
+    updateRange(
+      selection.id,
+      dragTarget.edge === "start"
+        ? { rowId, startIndex: dayIndex, endIndex }
+        : { rowId, startIndex, endIndex: dayIndex },
+    );
   }
 
   function validate() {
-    if (selectedItems.length === 0)
-      return "حداقل یک خانه را انتخاب کنید.";
+    if (selectedItems.length === 0) return "حداقل یک خانه را انتخاب کنید.";
     const selectedRows = new Set(selectedItems.map((item) => item.rowId));
     const rowsToCheck = rows.filter((row) => selectedRows.has(String(row.id)));
     const effectiveValue = status === "Unavailable" ? 0 : value;
@@ -542,7 +657,11 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     for (const row of rowsToCheck) {
       const min = minValueResolver?.(row) ?? 0;
       const max = maxValueResolver?.(row) ?? Number.MAX_SAFE_INTEGER;
-      if (effectiveValue < min || ((row.totalInventory ?? max) === 1 && effectiveValue > 1) || effectiveValue > max)
+      if (
+        effectiveValue < min ||
+        ((row.totalInventory ?? max) === 1 && effectiveValue > 1) ||
+        effectiveValue > max
+      )
         return mode === "inventory"
           ? "ظرفیت وارد شده برای برخی اتاق‌ها معتبر نیست"
           : `${valueLabel} برای برخی ردیف‌ها معتبر نیست.`;
@@ -577,9 +696,14 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         items: sortedItems,
       });
       clearSelections();
-      toast.success(mode === "inventory" ? "ظرفیت با موفقیت ذخیره شد" : "تغییرات با موفقیت ذخیره شد");
+      toast.success(
+        mode === "inventory"
+          ? "ظرفیت با موفقیت ذخیره شد"
+          : "تغییرات با موفقیت ذخیره شد",
+      );
     } catch (caught) {
-      const saveError = caught instanceof Error ? caught.message : "ذخیره تغییرات انجام نشد.";
+      const saveError =
+        caught instanceof Error ? caught.message : "ذخیره تغییرات انجام نشد.";
       setLocalError(saveError);
       toast.error(saveError, { id: "calendar-save-error" });
     } finally {
@@ -591,9 +715,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const row = rows.find((item) => item.id === range.roomTypeId);
     const startDay = days.find((day) => day.date === range.startDate);
     const endDay = days.find((day) => day.date === range.endDate);
-    const dates = range.startDate === range.endDate
-      ? (startDay?.label ?? range.startDate)
-      : `${startDay?.label ?? range.startDate}–${endDay?.label ?? range.endDate}`;
+    const dates =
+      range.startDate === range.endDate
+        ? (startDay?.label ?? range.startDate)
+        : `${startDay?.label ?? range.startDate}–${endDay?.label ?? range.endDate}`;
     return `${row?.label ?? range.roomTypeId} | ${dates}`;
   }
 
@@ -630,7 +755,8 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش بازه"}
               </h3>
               <p className="mt-1 text-xs font-semibold text-slate-500">
-                {toPersianNumber(selectedCount)} خانه در {toPersianNumber(selectedRanges.length)} بازه انتخاب شده
+                {toPersianNumber(selectedCount)} خانه در{" "}
+                {toPersianNumber(selectedRanges.length)} بازه انتخاب شده
               </p>
             </div>
           </div>
@@ -702,7 +828,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
             </button>
           </div>
         </div>
-
       </>
     ) : null;
 
@@ -711,7 +836,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div className="hidden items-center gap-3 md:flex">
-            <span className="text-sm font-bold text-[var(--theme-muted-text)]">حالت انتخاب:</span>
+            <span className="text-sm font-bold text-[var(--theme-muted-text)]">
+              حالت انتخاب:
+            </span>
             <div className="inline-flex rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-1">
               {[
                 { value: "range" as const, label: "انتخاب بازه‌ای" },
@@ -728,7 +855,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
               ))}
             </div>
           </div>
-          <span className="text-xs font-bold text-[var(--theme-muted-text)] md:hidden">حالت انتخاب تکی</span>
+          <span className="text-xs font-bold text-[var(--theme-muted-text)] md:hidden">
+            حالت انتخاب تکی
+          </span>
           {selectedRanges.length > 0 && (
             <button
               className="rounded-lg border border-[var(--theme-danger)] bg-white px-3 py-2 text-xs font-black text-[var(--theme-danger)] transition hover:bg-[var(--theme-danger-soft)]"
@@ -747,8 +876,29 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
             title="بازکردن پنل ویرایش"
             type="button"
           >
-            <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24"><path d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /><path d="m13.5 6.5 4 4" stroke="currentColor" strokeLinecap="round" strokeWidth="2" /></svg>
-            <span className="text-xs font-normal text-white">{toPersianNumber(selectedCount)} خانه انتخاب شده</span>
+            <svg
+              aria-hidden="true"
+              className="h-5 w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth="2"
+              />
+              <path
+                d="m13.5 6.5 4 4"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="2"
+              />
+            </svg>
+            <span className="text-xs font-normal text-white">
+              {toPersianNumber(selectedCount)} خانه انتخاب شده
+            </span>
           </button>
         )}
       </div>
@@ -756,12 +906,12 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         (isDesktop && typeof document !== "undefined"
           ? createPortal(editorPanel, document.body)
           : editorPanel)}
-      <div className="overflow-x-auto rounded-2xl border border-[var(--theme-border)]">
+      <div className="overflow-x-auto  border border-[var(--theme-border)]">
         <table className="min-w-max border-collapse bg-white text-sm">
           <thead>
             <tr>
               <th className="sticky right-0 z-30 min-w-[180px] border border-[var(--theme-border)] bg-white p-3 text-right shadow-sm">
-                اتاق / نوع اتاق
+                اتاق / تاریخ
               </th>
               {days.map((day, dayIndex) => {
                 const disabled = dayDisabled(dayIndex);
@@ -808,16 +958,42 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                   const selected = selectedKeys.has(keyOf(row.id, day.date));
                   const rangesForCell = selectedRanges.filter((range) => {
                     if (range.roomTypeId !== row.id) return false;
-                    const start = days.findIndex((item) => item.date === range.startDate);
-                    const end = days.findIndex((item) => item.date === range.endDate);
-                    return dayIndex >= Math.min(start, end) && dayIndex <= Math.max(start, end);
+                    const start = days.findIndex(
+                      (item) => item.date === range.startDate,
+                    );
+                    const end = days.findIndex(
+                      (item) => item.date === range.endDate,
+                    );
+                    return (
+                      dayIndex >= Math.min(start, end) &&
+                      dayIndex <= Math.max(start, end)
+                    );
                   });
-                  const endingRanges = selectedRanges.filter((range) => range.roomTypeId === row.id && range.endDate === day.date);
-                  const startingRanges = selectedRanges.filter((range) => range.roomTypeId === row.id && range.startDate === day.date);
-                  const rangeStart = selectedRanges.some((range) => range.roomTypeId === row.id && range.startDate === day.date);
+                  const endingRanges = selectedRanges.filter(
+                    (range) =>
+                      range.roomTypeId === row.id && range.endDate === day.date,
+                  );
+                  const startingRanges = selectedRanges.filter(
+                    (range) =>
+                      range.roomTypeId === row.id &&
+                      range.startDate === day.date,
+                  );
+                  const rangeStart = selectedRanges.some(
+                    (range) =>
+                      range.roomTypeId === row.id &&
+                      range.startDate === day.date,
+                  );
                   const rangeEnd = endingRanges.length > 0;
-                  const inRange = rangesForCell.some((range) => range.startDate !== day.date && range.endDate !== day.date);
-                  const activeSelected = Boolean(activeRange?.rowId === row.id && dayIndex >= activeRange.startIndex && dayIndex <= activeRange.endIndex);
+                  const inRange = rangesForCell.some(
+                    (range) =>
+                      range.startDate !== day.date &&
+                      range.endDate !== day.date,
+                  );
+                  const activeSelected = Boolean(
+                    activeRange?.rowId === row.id &&
+                    dayIndex >= activeRange.startIndex &&
+                    dayIndex <= activeRange.endIndex,
+                  );
                   const state = {
                     selected,
                     rangeStart,
@@ -831,7 +1007,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                     <td
                       className={`relative h-10 min-w-[68px] select-none border border-[var(--theme-border)] p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-slate-100" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected ? "bg-[var(--theme-primary-light)] shadow-inner ring-1 ring-inset ring-[var(--theme-primary)]" : ""}`}
                       data-calendar-selected={selected ? "true" : undefined}
-                      data-calendar-active-selected={activeSelected ? "true" : undefined}
+                      data-calendar-active-selected={
+                        activeSelected ? "true" : undefined
+                      }
                       key={`${row.id}-${day.date}`}
                       onPointerEnter={() => extendHandle(row.id, dayIndex)}
                     >
@@ -843,41 +1021,63 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                       >
                         {renderCell(row, day.date, cellValue, state)}
                       </button>
-                      {selectionMode === "range" && startingRanges.filter((range) => range.mode === "range").map((range) => (
-                        <button
-                          aria-label="تغییر شروع بازه"
-                          className="absolute right-0 top-1/2 z-20 hidden h-[18px] w-[18px] translate-x-1/2 -translate-y-1/2 cursor-ew-resize place-items-center rounded-full bg-[var(--theme-primary)] shadow-md ring-2 ring-white md:grid"
-                          key={`start-handle-${range.id}`}
-                          onPointerDown={(event) => startHandleDrag(range.id, "start", event)}
-                          type="button"
-                        >
-                          <span className="h-2.5 w-[2px] rounded bg-white/90" />
-                          <span className="absolute h-2.5 w-[2px] translate-x-1 rounded bg-white/90" />
-                        </button>
-                      ))}
-                      {selectionMode === "range" && endingRanges.filter((range) => range.mode === "range").map((range) => (
-                        <button
-                          aria-label="تغییر پایان بازه"
-                          className="absolute left-0 top-1/2 z-20 hidden h-[18px] w-[18px] -translate-x-1/2 -translate-y-1/2 cursor-ew-resize place-items-center rounded-full bg-[var(--theme-primary)] shadow-md ring-2 ring-white md:grid"
-                          key={`end-handle-${range.id}`}
-                          onPointerDown={(event) => startHandleDrag(range.id, "end", event)}
-                          type="button"
-                        >
-                          <span className="h-2.5 w-[2px] rounded bg-white/90" />
-                          <span className="absolute h-2.5 w-[2px] translate-x-1 rounded bg-white/90" />
-                        </button>
-                      ))}
-                      {selectionMode === "range" && endingRanges.filter((range) => range.mode === "range").map((range) => (
-                        <button
-                          aria-label={`حذف انتخاب ${selectionLabel(range)}`}
-                          className="absolute left-0 top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[var(--theme-danger)] bg-white text-[11px] font-black text-[var(--theme-danger)] shadow-md hover:bg-[var(--theme-danger-soft)]"
-                          key={range.id}
-                          onClick={(event) => { event.stopPropagation(); removeSelection(range.id); }}
-                          type="button"
-                        >
-                          X
-                        </button>
-                      ))}
+                      {selectionMode === "range" &&
+                        startingRanges
+                          .filter((range) => range.mode === "range")
+                          .map((range) => (
+                            <button
+                              aria-label="تغییر شروع بازه"
+                              className="absolute right-0 top-1/2 z-20 hidden h-[24px] w-[24px] translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex items-center justify-center rounded-full bg-[var(--theme-primary)] shadow-md ring-2 ring-white md:grid"
+                              key={`start-handle-${range.id}`}
+                              onPointerDown={(event) =>
+                                startHandleDrag(range.id, "start", event)
+                              }
+                              type="button"
+                            >
+                              <span className="flex items-center justify-center gap-[3px]">
+                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                              </span>
+                            </button>
+                          ))}
+                      {selectionMode === "range" &&
+                        endingRanges
+                          .filter((range) => range.mode === "range")
+                          .map((range) => (
+                            <button
+                              aria-label="تغییر پایان بازه"
+                              className="absolute left-0 top-1/2 z-20 hidden h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex items-center justify-center rounded-full bg-[var(--theme-primary)] shadow-md ring-2 ring-white md:grid"
+                              key={`end-handle-${range.id}`}
+                              onPointerDown={(event) =>
+                                startHandleDrag(range.id, "end", event)
+                              }
+                              type="button"
+                            >
+                              <span className="flex items-center justify-center gap-[3px]">
+                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                              </span>
+                            </button>
+                          ))}
+                      {selectionMode === "range" &&
+                        endingRanges
+                          .filter((range) => range.mode === "range")
+                          .map((range) => (
+                            <button
+                              aria-label={`حذف انتخاب ${selectionLabel(range)}`}
+                              className="absolute left-50% top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[var(--theme-danger)] bg-white text-[11px] font-black text-[var(--theme-danger)] shadow-md hover:bg-[var(--theme-danger-soft)]"
+                              key={range.id}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                removeSelection(range.id);
+                              }}
+                              type="button"
+                            >
+                              x
+                            </button>
+                          ))}
                     </td>
                   );
                 })}
