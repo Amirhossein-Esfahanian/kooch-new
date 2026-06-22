@@ -58,7 +58,20 @@ public class AdminSiteSettingsController(
             .SingleOrDefaultAsync(setting => setting.Key == key, cancellationToken)
             ?? throw new KeyNotFoundException("Site setting was not found.");
 
-        setting.Value = request.Value ?? string.Empty;
+        var value = request.Value?.Trim() ?? string.Empty;
+        if (setting.Key is "image.maxFileSizeMb" or "image.minWidth" or "image.minHeight" or "image.maxImagesPerProperty")
+        {
+            if (!int.TryParse(value, out var number) || number <= 0)
+            {
+                throw new ArgumentException("مقدار تنظیم تصویر باید عددی بزرگ‌تر از صفر باشد.");
+            }
+        }
+        else if (setting.Key == "image.enableWebpConversion" && !bool.TryParse(value, out _))
+        {
+            throw new ArgumentException("مقدار تبدیل WebP معتبر نیست.");
+        }
+
+        setting.Value = value;
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Ok(ToResponse(setting));

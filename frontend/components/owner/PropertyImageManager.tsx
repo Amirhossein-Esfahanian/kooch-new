@@ -1,234 +1,214 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  apiRequest,
-  PropertyImageResponse,
-  RoomTypeResponse,
-} from "@/lib/owner-api";
+import { useEffect, useMemo, useState } from "react";
+import { CropSaveMode, ImageUploadConstraints, MediaGallery } from "@/components/MediaGallery";
+import { apiRequest, getToken, PropertyImageResponse, RoomTypeResponse } from "@/lib/owner-api";
 
 interface PropertyImageManagerProps {
+  propertyId?: number | null;
   images: PropertyImageResponse[];
   roomTypes?: RoomTypeResponse[];
   fixedRoomTypeId?: number | null;
+  aspectRatio?: number;
+  allowFreeCrop?: boolean;
+  cropSaveMode?: CropSaveMode;
   onImagesChange: (images: PropertyImageResponse[]) => void;
 }
 
-const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
-const imageTags = [
-  { value: "exterior", label: "نمای بیرونی" },
-  { value: "courtyard", label: "حیاط" },
-  { value: "lobby", label: "لابی" },
-  { value: "room", label: "اتاق" },
-  { value: "bathroom", label: "حمام" },
-  { value: "breakfast", label: "صبحانه" },
-  { value: "restaurant", label: "رستوران" },
-  { value: "amenities", label: "امکانات" },
-  { value: "other", label: "سایر" },
-];
-
-function imageScopeLabel(image: PropertyImageResponse, roomTypes: RoomTypeResponse[]) {
-  if (!image.roomTypeId) return "تصویر عمومی اقامتگاه";
-  return roomTypes.find((roomType) => roomType.id === image.roomTypeId)?.name ?? "اتاق";
-}
-
 export function PropertyImageManager({
+  propertyId,
   images,
-  roomTypes = [],
   fixedRoomTypeId,
+  aspectRatio,
+  allowFreeCrop = false,
+  cropSaveMode = "replace",
   onImagesChange,
 }: PropertyImageManagerProps) {
-  const [savingId, setSavingId] = useState<number | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState("");
+  const [constraints, setConstraints] = useState<ImageUploadConstraints>({
+    maxFileSizeMb: 2,
+    minWidth: 800,
+    minHeight: 600,
+    maxImages: 30,
+  });
+  const mode = fixedRoomTypeId === undefined ? "property" : "room";
+  const effectiveAspectRatio = aspectRatio ?? (mode === "property" ? 4 / 3 : 1);
+  const effectivePropertyId = propertyId ?? images[0]?.propertyId ?? null;
 
-  const visibleImages = useMemo(() => {
-    if (fixedRoomTypeId === undefined) return images;
-    return images.filter((image) =>
-      fixedRoomTypeId === null
+  useEffect(() => {
+    fetch("/api/backend/site-settings/public")
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((settings: Record<string, string>) => {
+        const positive = (key: string, fallback: number) => {
+          const value = Number(settings[key]);
+          return Number.isFinite(value) && value > 0 ? value : fallback;
+        };
+        setConstraints({
+          maxFileSizeMb: positive("image.maxFileSizeMb", 2),
+          minWidth: positive("image.minWidth", 800),
+          minHeight: positive("image.minHeight", 600),
+          maxImages: positive("image.maxImagesPerProperty", 30),
+        });
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const visibleImages = useMemo(
+    () => images
+      .filter((image) => mode === "property"
         ? image.roomTypeId == null && image.roomId == null
-        : image.roomTypeId === fixedRoomTypeId,
-    );
-  }, [fixedRoomTypeId, images]);
+        : image.roomTypeId === fixedRoomTypeId)
+      .sort((first, second) => first.sortOrder - second.sortOrder),
+    [fixedRoomTypeId, images, mode],
+  );
 
-  async function patchImage(
-    image: PropertyImageResponse,
-    patch: Partial<PropertyImageResponse>,
-  ) {
-    setSavingId(image.id);
+  async function uploadFiles(files: File[], source?: PropertyImageResponse, replacing = false) {
+    if (!effectivePropertyId) throw new Error("ابتدا اقامتگاه را ذخیره کنید.");
+    const formData = new FormData();
+    files.forEach((file) => formData.append("files", file));
+    formData.append("tag", source?.tag || (mode === "room" ? "room" : "other"));
+    formData.append("caption", source?.caption || "");
+    formData.append("altText", source?.altText || "");
+    formData.append("isCover", String(mode === "property" && Boolean(source?.isCover)));
+    if (mode === "room" && fixedRoomTypeId) formData.append("roomTypeId", String(fixedRoomTypeId));
+    if (source && replacing) formData.append("replaceImageId", String(source.id));
+
+    setUploadProgress(0);
+    return new Promise<PropertyImageResponse[]>((resolve, reject) => {
+      const request = new XMLHttpRequest();
+      request.open("POST", `/api/backend/owner/properties/${effectivePropertyId}/images/upload`);
+      const token = getToken();
+      if (token) request.setRequestHeader("Authorization", `Bearer ${token}`);
+      request.upload.onprogress = (event) => {
+        if (event.lengthComputable) setUploadProgress(Math.round((event.loaded / event.total) * 100));
+      };
+      request.onload = () => {
+        let parsed: PropertyImageResponse[] | { message?: string } = [];
+        try {
+          parsed = request.responseText ? JSON.parse(request.responseText) as PropertyImageResponse[] | { message?: string } : [];
+        } catch {
+          reject(new Error("پاسخ بارگذاری تصویر معتبر نبود."));
+          return;
+        }
+        if (request.status >= 200 && request.status < 300) {
+          setUploadProgress(100);
+          resolve(parsed as PropertyImageResponse[]);
+        } else {
+          reject(new Error(!Array.isArray(parsed) && parsed.message ? parsed.message : "بارگذاری تصاویر انجام نشد."));
+        }
+      };
+      request.onerror = () => reject(new Error("ارتباط برای بارگذاری تصویر برقرار نشد."));
+      request.send(formData);
+    });
+  }
+
+  async function addImages(files: File[]) {
+    setUploading(true);
     setError("");
     try {
-      const updated = await apiRequest<PropertyImageResponse>(
-        `/owner/property-images/${image.id}`,
-        {
-          method: "PUT",
-          body: JSON.stringify({
-            url: image.url,
-            altText: patch.altText ?? image.altText,
-            caption: patch.caption ?? image.caption,
-            tag: patch.tag ?? image.tag,
-            roomTypeId:
-              patch.roomTypeId === undefined ? image.roomTypeId : patch.roomTypeId,
-            roomId: null,
-            sortOrder: patch.sortOrder ?? image.sortOrder,
-            isCover: patch.isCover ?? image.isCover,
-            isGallery: patch.isGallery ?? image.isGallery,
-          }),
-        },
-      );
-      onImagesChange(
-        images.map((item) => {
-          if (item.id === updated.id) return updated;
-          const sameScope =
-            item.propertyId === updated.propertyId &&
-            item.roomTypeId === updated.roomTypeId &&
-            item.roomId == null;
-          return updated.isCover && sameScope
-            ? { ...item, isCover: false }
-            : item;
+      const uploaded = await uploadFiles(files);
+      onImagesChange([...images, ...uploaded]);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "بارگذاری تصاویر انجام نشد.");
+    } finally {
+      setUploading(false);
+      setUploadProgress(null);
+    }
+  }
+
+  async function patchImage(image: PropertyImageResponse, isCover: boolean) {
+    setBusyId(image.id);
+    setError("");
+    try {
+      const updated = await apiRequest<PropertyImageResponse>(`/owner/property-images/${image.id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          url: image.url,
+          altText: image.altText,
+          caption: image.caption,
+          tag: image.tag,
+          roomTypeId: image.roomTypeId,
+          roomId: image.roomId,
+          sortOrder: image.sortOrder,
+          isCover,
+          isGallery: image.isGallery,
         }),
-      );
+      });
+      onImagesChange(images.map((item) => item.id === updated.id
+        ? updated
+        : mode === "property" && updated.isCover && item.roomTypeId == null && item.roomId == null
+          ? { ...item, isCover: false }
+          : item));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تصویر ذخیره نشد.");
     } finally {
-      setSavingId(null);
+      setBusyId(null);
     }
   }
 
-  async function deleteImage(imageId: number) {
-    setSavingId(imageId);
+  async function deleteImage(image: PropertyImageResponse) {
+    setBusyId(image.id);
     setError("");
     try {
-      await apiRequest(`/owner/property-images/${imageId}`, { method: "DELETE" });
-      onImagesChange(images.filter((image) => image.id !== imageId));
+      await apiRequest(`/owner/property-images/${image.id}`, { method: "DELETE" });
+      onImagesChange(images.filter((item) => item.id !== image.id));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تصویر حذف نشد.");
     } finally {
-      setSavingId(null);
+      setBusyId(null);
     }
   }
 
-  if (!visibleImages.length) {
-    return (
-      <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-6 text-center text-sm text-slate-500">
-        هنوز تصویری ثبت نشده است.
-      </div>
-    );
+  async function cropImage(image: PropertyImageResponse, file: File, saveMode: CropSaveMode) {
+    setBusyId(image.id);
+    setError("");
+    try {
+      const replacing = saveMode === "replace";
+      const [replacement] = await uploadFiles([file], image, replacing);
+      if (replacing) {
+        await apiRequest(`/owner/property-images/${image.id}`, { method: "DELETE" });
+        onImagesChange(images.map((item) => item.id === image.id ? replacement : item));
+      } else {
+        onImagesChange([
+          ...images.map((item) => replacement.isCover && item.roomTypeId == null && item.roomId == null ? { ...item, isCover: false } : item),
+          replacement,
+        ]);
+      }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "برش تصویر ذخیره نشد.";
+      setError(message);
+      throw new Error(message);
+    } finally {
+      setBusyId(null);
+      setUploadProgress(null);
+    }
   }
 
   return (
-    <div className="grid gap-4">
-      {error && (
-        <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
-          {error}
-        </p>
-      )}
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {visibleImages.map((image) => (
-          <article
-            className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
-            key={image.id}
-          >
-            <div className="relative">
-              <img
-                alt={image.altText || image.caption || "تصویر اقامتگاه"}
-                className="h-[120px] w-[160px] rounded-br-2xl object-cover sm:h-40 sm:w-full"
-                src={image.url}
-              />
-              {image.isCover && (
-                <span className="absolute right-3 top-3 rounded-full bg-blue-600 px-3 py-1 text-xs font-black text-white">
-                  کاور
-                </span>
-              )}
-            </div>
-            <div className="grid gap-3 p-4">
-              <p className="text-sm font-bold text-slate-600">
-                {imageScopeLabel(image, roomTypes)}
-              </p>
-              <label className="grid gap-1 text-xs font-bold">
-                دسته تصویر
-                <select
-                  className={inputClass}
-                  disabled={savingId === image.id}
-                  onChange={(event) => patchImage(image, { tag: event.target.value })}
-                  value={image.tag ?? "other"}
-                >
-                  {imageTags.map((item) => (
-                    <option key={item.value} value={item.value}>
-                      {item.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-xs font-bold">
-                کپشن
-                <input
-                  className={inputClass}
-                  onBlur={(event) =>
-                    event.target.value !== (image.caption ?? "") &&
-                    patchImage(image, { caption: event.target.value || null })
-                  }
-                  defaultValue={image.caption ?? ""}
-                />
-              </label>
-              <label className="grid gap-1 text-xs font-bold">
-                متن جایگزین
-                <input
-                  className={inputClass}
-                  onBlur={(event) =>
-                    event.target.value !== (image.altText ?? "") &&
-                    patchImage(image, { altText: event.target.value || null })
-                  }
-                  defaultValue={image.altText ?? ""}
-                />
-              </label>
-              {fixedRoomTypeId === undefined && (
-                <label className="grid gap-1 text-xs font-bold">
-                  انتساب تصویر
-                  <select
-                    className={inputClass}
-                    disabled={savingId === image.id}
-                    onChange={(event) =>
-                      patchImage(image, {
-                        roomTypeId: event.target.value
-                          ? Number(event.target.value)
-                          : null,
-                        isCover: false,
-                      })
-                    }
-                    value={image.roomTypeId ?? ""}
-                  >
-                    <option value="">تصویر عمومی اقامتگاه</option>
-                    {roomTypes.map((roomType) => (
-                      <option key={roomType.id} value={roomType.id}>
-                        {roomType.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              )}
-              <div className="flex flex-wrap gap-2">
-                <button
-                  className="rounded-xl border border-blue-200 px-3 py-2 text-xs font-black text-blue-700 disabled:opacity-60"
-                  disabled={savingId === image.id}
-                  onClick={() => patchImage(image, { isCover: true })}
-                  type="button"
-                >
-                  {image.roomTypeId ? "کاور اتاق" : "کاور اقامتگاه"}
-                </button>
-                <button
-                  className="rounded-xl border border-red-200 px-3 py-2 text-xs font-black text-red-700 disabled:opacity-60"
-                  disabled={savingId === image.id}
-                  onClick={() => deleteImage(image.id)}
-                  type="button"
-                >
-                  حذف
-                </button>
-              </div>
-            </div>
-          </article>
-        ))}
-      </div>
-    </div>
+    <MediaGallery
+      allowFreeCrop={allowFreeCrop}
+      aspectRatio={effectiveAspectRatio}
+      busyId={busyId}
+      constraints={constraints}
+      cropSaveMode={cropSaveMode}
+      disabled={!effectivePropertyId || (mode === "room" && !fixedRoomTypeId)}
+      error={error}
+      items={visibleImages.map((image) => ({
+        ...image,
+        alt: image.altText || image.caption,
+        isMain: mode === "property" && image.isCover,
+      }))}
+      mode={mode}
+      onAdd={addImages}
+      onCrop={cropImage}
+      onDelete={deleteImage}
+      onSetMain={mode === "property" ? (image) => patchImage(image, true) : undefined}
+      totalItemCount={images.length}
+      uploading={uploading}
+      uploadProgress={uploadProgress}
+    />
   );
 }

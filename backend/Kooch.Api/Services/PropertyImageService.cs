@@ -2,6 +2,8 @@ using Kooch.Api.Data;
 using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.Formats.Webp;
 
 namespace Kooch.Api.Services;
 
@@ -10,7 +12,6 @@ public class PropertyImageService(
     IPropertyAccessService propertyAccessService,
     IWebHostEnvironment environment) : IPropertyImageService
 {
-    private const long MaxFileSizeBytes = 5 * 1024 * 1024;
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
         ".jpg",
@@ -50,6 +51,11 @@ public class PropertyImageService(
     {
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
         await ValidateLinksAsync(propertyId, request.RoomTypeId, request.RoomId, cancellationToken);
+        var constraints = await GetImageConstraintsAsync(cancellationToken);
+        if (await dbContext.PropertyImages.CountAsync(image => image.PropertyId == propertyId, cancellationToken) >= constraints.MaxImagesPerProperty)
+        {
+            throw new ArgumentException("حداکثر تعداد تصاویر مجاز برای اقامتگاه تکمیل شده است.");
+        }
         var generatedAltText = await GenerateAltTextAsync(propertyId, request.RoomTypeId, request.Tag, cancellationToken);
         if (request.IsCover)
         {
@@ -77,8 +83,10 @@ public class PropertyImageService(
 
         if (request.Files.Count == 0)
         {
-            throw new ArgumentException("At least one image file is required.");
+            throw new ArgumentException("حداقل یک تصویر انتخاب کنید.");
         }
+
+        var constraints = await GetImageConstraintsAsync(cancellationToken);
 
         var uploadRoot = Path.Combine(environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"), "uploads", "properties", propertyId.ToString());
         Directory.CreateDirectory(uploadRoot);
@@ -86,6 +94,15 @@ public class PropertyImageService(
         var existingImages = await dbContext.PropertyImages
             .Where(image => image.PropertyId == propertyId)
             .ToListAsync(cancellationToken);
+        if (request.ReplaceImageId.HasValue && existingImages.All(image => image.Id != request.ReplaceImageId.Value))
+        {
+            throw new ArgumentException("تصویر جایگزین متعلق به این اقامتگاه نیست.");
+        }
+        var effectiveExistingCount = existingImages.Count - (request.ReplaceImageId.HasValue ? 1 : 0);
+        if (effectiveExistingCount + request.Files.Count > constraints.MaxImagesPerProperty)
+        {
+            throw new ArgumentException("حداکثر تعداد تصاویر مجاز برای اقامتگاه تکمیل شده است.");
+        }
         var hasExistingImage = existingImages.Any(image => image.RoomTypeId == request.RoomTypeId && image.RoomId == null);
         var nextSortOrder = existingImages.Count == 0 ? 0 : existingImages.Max(image => image.SortOrder) + 1;
         var uploadedImages = new List<PropertyImage>();
@@ -93,17 +110,24 @@ public class PropertyImageService(
         for (var index = 0; index < request.Files.Count; index += 1)
         {
             var file = request.Files[index];
-            await ValidateUploadAsync(file, cancellationToken);
-            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            await ValidateUploadAsync(file, constraints, cancellationToken);
+            var extension = constraints.EnableWebpConversion ? ".webp" : Path.GetExtension(file.FileName).ToLowerInvariant();
             var fileName = $"{DateTime.UtcNow:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{extension}";
             var absolutePath = Path.Combine(uploadRoot, fileName);
 
-            await using (var stream = File.Create(absolutePath))
+            if (constraints.EnableWebpConversion)
             {
+                await using var input = file.OpenReadStream();
+                using var decodedImage = await Image.LoadAsync(input, cancellationToken);
+                await decodedImage.SaveAsWebpAsync(absolutePath, new WebpEncoder { Quality = 85 }, cancellationToken);
+            }
+            else
+            {
+                await using var stream = File.Create(absolutePath);
                 await file.CopyToAsync(stream, cancellationToken);
             }
 
-            var isCover = index == 0 && (request.IsCover || !hasExistingImage);
+            var isCover = request.RoomTypeId == null && index == 0 && (request.IsCover || !hasExistingImage);
             if (isCover)
             {
                 foreach (var cover in existingImages.Where(image =>
@@ -272,69 +296,66 @@ public class PropertyImageService(
         _ => "تصویر"
     };
 
-    private static async Task ValidateUploadAsync(IFormFile file, CancellationToken cancellationToken)
+    private async Task<ImageConstraints> GetImageConstraintsAsync(CancellationToken cancellationToken)
+    {
+        var values = await dbContext.SiteSettings.AsNoTracking()
+            .Where(setting => setting.IsActive && setting.Group == "Images")
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);
+
+        return new ImageConstraints(
+            PositiveInt(values, "image.maxFileSizeMb", 2),
+            PositiveInt(values, "image.minWidth", 800),
+            PositiveInt(values, "image.minHeight", 600),
+            PositiveInt(values, "image.maxImagesPerProperty", 30),
+            !values.TryGetValue("image.enableWebpConversion", out var webp) || !bool.TryParse(webp, out var enabled) || enabled);
+    }
+
+    private static int PositiveInt(IReadOnlyDictionary<string, string> values, string key, int fallback) =>
+        values.TryGetValue(key, out var value) && int.TryParse(value, out var parsed) && parsed > 0 ? parsed : fallback;
+
+    private static async Task ValidateUploadAsync(IFormFile file, ImageConstraints constraints, CancellationToken cancellationToken)
     {
         if (file.Length <= 0)
         {
-            throw new ArgumentException("Uploaded file is empty.");
+            throw new ArgumentException("فرمت فایل پشتیبانی نمی‌شود");
         }
 
-        if (file.Length > MaxFileSizeBytes)
+        if (file.Length > constraints.MaxFileSizeMb * 1024L * 1024L)
         {
-            throw new ArgumentException("Each image must be 5MB or smaller.");
+            throw new ArgumentException("حجم تصویر بیش از حد مجاز است");
         }
 
         var extension = Path.GetExtension(file.FileName);
         if (!AllowedExtensions.Contains(extension))
         {
-            throw new ArgumentException("Only jpg, jpeg, png and webp files are allowed.");
+            throw new ArgumentException("فرمت فایل پشتیبانی نمی‌شود");
         }
 
-        var buffer = new byte[Math.Min(12, file.Length)];
-        await using var stream = file.OpenReadStream();
-        var read = await stream.ReadAsync(buffer.AsMemory(0, buffer.Length), cancellationToken);
-        if (!HasKnownImageSignature(buffer.AsSpan(0, read), extension))
+        try
         {
-            throw new ArgumentException("The uploaded file is not a supported image.");
+            await using var stream = file.OpenReadStream();
+            var info = await Image.IdentifyAsync(stream, cancellationToken);
+            if (info.Width < constraints.MinWidth || info.Height < constraints.MinHeight)
+            {
+                throw new ArgumentException("ابعاد تصویر مناسب نیست");
+            }
+        }
+        catch (ArgumentException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            throw new ArgumentException("فرمت فایل پشتیبانی نمی‌شود");
         }
     }
 
-    private static bool HasKnownImageSignature(ReadOnlySpan<byte> bytes, string extension)
-    {
-        if (extension.Equals(".jpg", StringComparison.OrdinalIgnoreCase) ||
-            extension.Equals(".jpeg", StringComparison.OrdinalIgnoreCase))
-        {
-            return bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF;
-        }
-
-        if (extension.Equals(".png", StringComparison.OrdinalIgnoreCase))
-        {
-            return bytes.Length >= 8 &&
-                   bytes[0] == 0x89 &&
-                   bytes[1] == 0x50 &&
-                   bytes[2] == 0x4E &&
-                   bytes[3] == 0x47 &&
-                   bytes[4] == 0x0D &&
-                   bytes[5] == 0x0A &&
-                   bytes[6] == 0x1A &&
-                   bytes[7] == 0x0A;
-        }
-
-        if (extension.Equals(".webp", StringComparison.OrdinalIgnoreCase))
-        {
-            return bytes.Length >= 12 &&
-                   bytes[0] == 0x52 &&
-                   bytes[1] == 0x49 &&
-                   bytes[2] == 0x46 &&
-                   bytes[3] == 0x46 &&
-                   bytes[8] == 0x57 &&
-                   bytes[9] == 0x45 &&
-                   bytes[10] == 0x42 &&
-                   bytes[11] == 0x50;
-        }
-
-        return false;
-    }
+    private sealed record ImageConstraints(
+        int MaxFileSizeMb,
+        int MinWidth,
+        int MinHeight,
+        int MaxImagesPerProperty,
+        bool EnableWebpConversion);
 
     private static PropertyImageResponse Map(PropertyImage image) => new()
     {

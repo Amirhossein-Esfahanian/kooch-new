@@ -92,7 +92,12 @@ public static class SeedData
             SiteSettingSeed("home.popularSectionTitle", "اقامتگاه‌های محبوب", SiteSettingType.Text, "Homepage", "عنوان بخش محبوب", null, 50),
             SiteSettingSeed("home.popularSectionSubtitle", "اقامتگاه‌های منتخب برای سفر بعدی شما", SiteSettingType.LongText, "Homepage", "زیرعنوان بخش محبوب", null, 60),
             SiteSettingSeed("site.defaultSeoTitle", "کوچ | رزرو اقامتگاه سنتی", SiteSettingType.Text, "SEO", "عنوان پیش‌فرض سئو", null, 10),
-            SiteSettingSeed("site.defaultSeoDescription", "رزرو اقامتگاه‌های سنتی، بوتیک‌هتل‌ها و خانه‌های خاص", SiteSettingType.LongText, "SEO", "توضیحات پیش‌فرض سئو", null, 20)
+            SiteSettingSeed("site.defaultSeoDescription", "رزرو اقامتگاه‌های سنتی، بوتیک‌هتل‌ها و خانه‌های خاص", SiteSettingType.LongText, "SEO", "توضیحات پیش‌فرض سئو", null, 20),
+            SiteSettingSeed("image.maxFileSizeMb", "2", SiteSettingType.Number, "Images", "حداکثر حجم هر تصویر (مگابایت)", "تصاویر بزرگ‌تر پیش از بارگذاری رد می‌شوند.", 10),
+            SiteSettingSeed("image.minWidth", "800", SiteSettingType.Number, "Images", "حداقل عرض تصویر (پیکسل)", null, 20),
+            SiteSettingSeed("image.minHeight", "600", SiteSettingType.Number, "Images", "حداقل ارتفاع تصویر (پیکسل)", null, 30),
+            SiteSettingSeed("image.maxImagesPerProperty", "30", SiteSettingType.Number, "Images", "حداکثر تصاویر هر اقامتگاه", "مجموع تصاویر اقامتگاه و اتاق‌های آن.", 40),
+            SiteSettingSeed("image.enableWebpConversion", "true", SiteSettingType.Boolean, "Images", "تبدیل خودکار به WebP", "نسخه ذخیره‌شده تصاویر را برای کاهش حجم به WebP تبدیل می‌کند.", 50)
         };
 
         var existing = await dbContext.SiteSettings.IgnoreQueryFilters().ToListAsync();

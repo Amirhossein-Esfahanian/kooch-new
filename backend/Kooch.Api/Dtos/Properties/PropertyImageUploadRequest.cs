@@ -10,4 +10,5 @@ public class PropertyImageUploadRequest
     public string? AltText { get; set; }
     public bool IsCover { get; set; }
     public int? RoomTypeId { get; set; }
+    public int? ReplaceImageId { get; set; }
 }

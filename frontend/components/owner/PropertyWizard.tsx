@@ -25,7 +25,6 @@ import {
   resolveDestinationId,
   RoomTypeResponse,
 } from "@/lib/owner-api";
-import { ImageUploadDropzone } from "@/components/owner/ImageUploadDropzone";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 const steps = [
@@ -647,11 +646,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     }));
   }
 
-  function handleUploadedImages(images: PropertyImageResponse[]) {
-    if (!images.length) return;
-    syncImages([...allImages.filter((image) => !images.some((item) => item.id === image.id)), ...images]);
-  }
-
   if (booting) {
     return <div className={cardClass}>در حال بارگذاری اطلاعات اقامتگاه...</div>;
   }
@@ -786,16 +780,13 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         {step === 4 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-black">تصاویر اقامتگاه</h2>
-            <ImageUploadDropzone
-              onUploaded={handleUploadedImages}
-              propertyId={property?.id ?? null}
-              roomTypes={roomTypes}
-            />
             <div className="grid gap-3">
               <h3 className="font-black">گالری تصاویر</h3>
               <PropertyImageManager
+                allowFreeCrop={isAdmin}
                 images={allImages}
                 onImagesChange={syncImages}
+                propertyId={property?.id ?? null}
                 roomTypes={roomTypes}
               />
             </div>

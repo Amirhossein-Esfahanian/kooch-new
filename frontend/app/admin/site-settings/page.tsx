@@ -27,6 +27,7 @@ const groupLabels: Record<string, string> = {
   Homepage: "صفحه اصلی",
   SEO: "سئو",
   Footer: "فوتر",
+  Images: "تنظیمات تصاویر",
 };
 
 const imageLabels: Record<string, string> = {
@@ -185,6 +186,7 @@ export default function AdminSiteSettingsPage() {
       <input
         className={`${commonClass} h-12`}
         dir={setting.type === "ImageUrl" ? "ltr" : "rtl"}
+        min={setting.type === "Number" ? 1 : undefined}
         onChange={(event) =>
           setDrafts((current) => ({ ...current, [setting.key]: event.target.value }))
         }

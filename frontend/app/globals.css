@@ -321,3 +321,28 @@ a {
 .text-emerald-700 {
   color: var(--theme-success) !important;
 }
+
+@keyframes media-shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.media-skeleton {
+  overflow: hidden;
+}
+
+.media-skeleton::after {
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  animation: media-shimmer 1.35s infinite;
+  content: "";
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .media-skeleton::after {
+    animation: none;
+  }
+}

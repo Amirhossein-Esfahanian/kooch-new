@@ -9,7 +9,6 @@ import {
   PropertyImageResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
-import { ImageUploadDropzone } from "@/components/owner/ImageUploadDropzone";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 interface RoomTypeDraft {
@@ -498,21 +497,12 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               برای بارگذاری تصویر، ابتدا اتاق را ذخیره کنید. تصاویر این بخش به همین اتاق متصل می‌شوند.
             </p>
           </div>
-          <ImageUploadDropzone
-            fixedRoomTypeId={roomTypeDraft.id ?? null}
-            onUploaded={(uploaded) =>
-              setImages((current) => [
-                ...current.filter((image) => !uploaded.some((item) => item.id === image.id)),
-                ...uploaded,
-              ])
-            }
-            propertyId={propertyId}
-          />
           {roomTypeDraft.id ? (
             <PropertyImageManager
               fixedRoomTypeId={roomTypeDraft.id}
               images={images}
               onImagesChange={setImages}
+              propertyId={propertyId}
               roomTypes={roomTypes}
             />
           ) : (
