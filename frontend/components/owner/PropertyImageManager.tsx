@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CropSaveMode, ImageUploadConstraints, MediaGallery } from "@/components/MediaGallery";
 import { apiRequest, getToken, PropertyImageResponse, RoomTypeResponse } from "@/lib/owner-api";
+import { toast } from "sonner";
 
 interface PropertyImageManagerProps {
   propertyId?: number | null;
@@ -111,6 +112,7 @@ export function PropertyImageManager({
     try {
       const uploaded = await uploadFiles(files);
       onImagesChange([...images, ...uploaded]);
+      toast.success("تصویر با موفقیت بارگذاری شد");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "بارگذاری تصاویر انجام نشد.");
     } finally {
@@ -142,6 +144,7 @@ export function PropertyImageManager({
         : mode === "property" && updated.isCover && item.roomTypeId == null && item.roomId == null
           ? { ...item, isCover: false }
           : item));
+      toast.success("عکس کاور تغییر کرد");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تصویر ذخیره نشد.");
     } finally {
@@ -155,6 +158,7 @@ export function PropertyImageManager({
     try {
       await apiRequest(`/owner/property-images/${image.id}`, { method: "DELETE" });
       onImagesChange(images.filter((item) => item.id !== image.id));
+      toast.success("تصویر حذف شد");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تصویر حذف نشد.");
     } finally {
@@ -177,6 +181,7 @@ export function PropertyImageManager({
           replacement,
         ]);
       }
+      toast.success("تصویر برش خورد");
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "برش تصویر ذخیره نشد.";
       setError(message);
@@ -188,7 +193,16 @@ export function PropertyImageManager({
   }
 
   return (
-    <MediaGallery
+    <div className="grid gap-3">
+      <aside className="rounded-2xl border border-[var(--theme-primary-border)] bg-[var(--theme-primary-soft)] px-4 py-3 text-sm font-bold leading-7 text-[var(--theme-primary-text)]" role="note">
+        <ul className="grid list-inside list-disc gap-x-6 sm:grid-cols-2">
+          <li>حداقل ۳ عکس برای اقامتگاه پیشنهاد می‌شود</li>
+          <li>حجم هر عکس حداکثر {constraints.maxFileSizeMb.toLocaleString("fa-IR")} مگابایت</li>
+          <li>فرمت‌های مجاز: JPG، PNG، WEBP</li>
+          <li>ابعاد پیشنهادی: حداقل {constraints.minWidth.toLocaleString("fa-IR")}×{constraints.minHeight.toLocaleString("fa-IR")} پیکسل</li>
+        </ul>
+      </aside>
+      <MediaGallery
       allowFreeCrop={allowFreeCrop}
       aspectRatio={effectiveAspectRatio}
       busyId={busyId}
@@ -209,6 +223,7 @@ export function PropertyImageManager({
       totalItemCount={images.length}
       uploading={uploading}
       uploadProgress={uploadProgress}
-    />
+      />
+    </div>
   );
 }

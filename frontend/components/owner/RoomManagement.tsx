@@ -70,6 +70,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   const roomAmenityOptions = useMemo(
     () => amenities.filter((item) => item.scope !== "Property"),
@@ -107,7 +108,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return items;
   }
 
-  function editRoomType(roomType: RoomTypeResponse) {
+  function editRoomType(roomType: RoomTypeResponse, openModal = true) {
     setRoomTypeDraft({
       id: roomType.id,
       name: roomType.name,
@@ -127,7 +128,23 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       })),
       amenityIds: roomType.amenities.map((amenity) => amenity.amenityId),
     });
+    setIsEditModalOpen(openModal);
   }
+
+  function closeEditModal() {
+    setIsEditModalOpen(false);
+    setRoomTypeDraft(emptyRoomType);
+    setError("");
+  }
+
+  useEffect(() => {
+    if (!isEditModalOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !saving) closeEditModal();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isEditModalOpen, saving]);
 
   function updateBed(
     index: number,
@@ -178,9 +195,13 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           body: JSON.stringify(payload),
         },
       );
-      if (roomTypeDraft.id) setRoomTypeDraft(emptyRoomType);
-      else editRoomType(saved);
-      await loadRoomTypes();
+      if (roomTypeDraft.id) {
+        setRoomTypeDraft(emptyRoomType);
+        setIsEditModalOpen(false);
+      } else {
+        editRoomType(saved, false);
+      }
+      await Promise.all([loadRoomTypes(), loadImages()]);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "اتاق ذخیره نشد.");
     } finally {
@@ -196,15 +217,24 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         </p>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      {isEditModalOpen && (
+        <div className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-[2px]" />
+      )}
+
+      <section className={isEditModalOpen
+        ? "fixed inset-x-0 bottom-0 z-50 max-h-[94vh] w-full overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-5 shadow-2xl sm:inset-0 sm:m-auto sm:h-fit sm:max-h-[90vh] sm:max-w-5xl sm:rounded-3xl"
+        : "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"}
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black">مدیریت اتاق‌ها</h2>
-            <p className="mt-1 text-sm text-slate-500">
-              هر ردیف یک واحد قابل فروش است؛ موجودی ۱ مثل اتاق نام‌دار عمل می‌کند و موجودی بیشتر مثل دسته اتاق هتل.
-            </p>
+            <h2 className="text-xl font-black">{isEditModalOpen ? "ویرایش اتاق" : "مدیریت اتاق‌ها"}</h2>
+            {!isEditModalOpen && (
+              <p className="mt-1 text-sm text-slate-500">
+                هر ردیف یک واحد قابل فروش است؛ موجودی ۱ مثل اتاق نام‌دار عمل می‌کند و موجودی بیشتر مثل دسته اتاق هتل.
+              </p>
+            )}
           </div>
-          {roomTypeDraft.id && (
+          {roomTypeDraft.id && !isEditModalOpen && (
             <button
               className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold"
               onClick={() => setRoomTypeDraft(emptyRoomType)}
@@ -212,6 +242,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             >
               فرم جدید
             </button>
+          )}
+          {isEditModalOpen && (
+            <button aria-label="بستن" className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 text-xl text-slate-600 hover:bg-slate-50" disabled={saving} onClick={closeEditModal} type="button">×</button>
           )}
         </div>
 
@@ -512,14 +545,19 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           )}
         </div>
 
-        <button
-          className="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
-          disabled={saving}
-          onClick={saveRoomType}
-          type="button"
-        >
-          {roomTypeDraft.id ? "ذخیره تغییرات اتاق" : "افزودن اتاق"}
-        </button>
+        <div className="mt-5 flex flex-wrap justify-end gap-3">
+          {isEditModalOpen && (
+            <button className="rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-700 disabled:opacity-60" disabled={saving} onClick={closeEditModal} type="button">لغو</button>
+          )}
+          <button
+            className="rounded-xl bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60"
+            disabled={saving}
+            onClick={saveRoomType}
+            type="button"
+          >
+            {roomTypeDraft.id ? "ذخیره تغییرات" : "افزودن اتاق"}
+          </button>
+        </div>
       </section>
 
       <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

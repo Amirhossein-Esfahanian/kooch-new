@@ -3,6 +3,7 @@
 import Cropper, { Area } from "react-easy-crop";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export interface MediaGalleryItem {
   id: string | number;
@@ -53,7 +54,7 @@ async function dimensions(file: File) {
     return await new Promise<{ width: number; height: number }>((resolve, reject) => {
       const image = new window.Image();
       image.onload = () => resolve({ width: image.naturalWidth, height: image.naturalHeight });
-      image.onerror = () => reject(new Error("فرمت فایل پشتیبانی نمی‌شود"));
+      image.onerror = () => reject(new Error("فرمت تصویر پشتیبانی نمی‌شود"));
       image.src = url;
     });
   } finally {
@@ -63,7 +64,7 @@ async function dimensions(file: File) {
 
 function DotsIcon() {
   return (
-    <svg aria-hidden="true" fill="currentColor" height="20" viewBox="0 0 24 24" width="20">
+    <svg aria-hidden="true" fill="currentColor" height="16" viewBox="0 0 24 24" width="16">
       <circle cx="12" cy="5" r="2" /><circle cx="12" cy="12" r="2" /><circle cx="12" cy="19" r="2" />
     </svg>
   );
@@ -164,7 +165,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
   uploadProgress = null,
 }: MediaGalleryProps<T>) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [menuId, setMenuId] = useState<string | number | null>(null);
+  const [openMenuImageId, setOpenMenuImageId] = useState<string | number | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const touchStartX = useRef<number | null>(null);
@@ -176,33 +177,30 @@ export function MediaGallery<T extends MediaGalleryItem>({
   const [cropPixels, setCropPixels] = useState<Area | null>(null);
   const [cropError, setCropError] = useState("");
   const [cropping, setCropping] = useState(false);
-  const [toast, setToast] = useState("");
 
   useEffect(() => {
-    if (error) setToast(error);
+    if (error) toast.error(error, { id: "media-gallery-error" });
   }, [error]);
 
   useEffect(() => {
-    if (!toast) return;
-    const timeout = window.setTimeout(() => setToast(""), 4500);
-    return () => window.clearTimeout(timeout);
-  }, [toast]);
-
-  useEffect(() => {
-    const closeMenu = () => setMenuId(null);
+    const closeMenuOnOutsideClick = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest("[data-media-menu]")) return;
+      setOpenMenuImageId(null);
+    };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
-        setMenuId(null);
+        setOpenMenuImageId(null);
         setPreviewIndex(null);
         setCropTarget(null);
       }
       if (event.key === "ArrowLeft") setPreviewIndex((current) => current === null ? null : (current + 1) % items.length);
       if (event.key === "ArrowRight") setPreviewIndex((current) => current === null ? null : (current - 1 + items.length) % items.length);
     };
-    document.addEventListener("click", closeMenu);
+    document.addEventListener("pointerdown", closeMenuOnOutsideClick);
     document.addEventListener("keydown", onKeyDown);
     return () => {
-      document.removeEventListener("click", closeMenu);
+      document.removeEventListener("pointerdown", closeMenuOnOutsideClick);
       document.removeEventListener("keydown", onKeyDown);
     };
   }, [items.length]);
@@ -224,7 +222,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "برش تصویر انجام نشد.";
       setCropError(message);
-      setToast(message);
+      toast.error(message, { id: "media-gallery-error" });
     } finally {
       setCropping(false);
     }
@@ -237,7 +235,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
       }
       for (const file of files) {
         if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-          throw new Error("فرمت فایل پشتیبانی نمی‌شود");
+          throw new Error("فرمت تصویر پشتیبانی نمی‌شود");
         }
         if (file.size > constraints.maxFileSizeMb * 1024 * 1024) {
           throw new Error("حجم تصویر بیش از حد مجاز است");
@@ -249,19 +247,13 @@ export function MediaGallery<T extends MediaGalleryItem>({
       }
       await onAdd(files);
     } catch (caught) {
-      setToast(caught instanceof Error ? caught.message : "بارگذاری تصویر انجام نشد.");
+      toast.error(caught instanceof Error ? caught.message : "بارگذاری تصویر انجام نشد.", { id: "media-gallery-error" });
     }
   }
 
   return (
     <section className="grid gap-3" dir="rtl">
       {cropError && <p className="sr-only" role="alert">{cropError}</p>}
-      {toast && (
-        <div className="fixed left-1/2 top-5 z-[70] w-[min(92vw,420px)] -translate-x-1/2 rounded-2xl border border-red-200 bg-white px-4 py-3 text-sm font-black text-[var(--theme-danger)] shadow-2xl" role="alert">
-          <div className="flex items-center justify-between gap-3"><span>{toast}</span><button aria-label="بستن پیام" className="grid h-8 w-8 shrink-0 place-items-center rounded-full hover:bg-[var(--theme-danger-soft)]" onClick={() => setToast("")} type="button"><CloseIcon /></button></div>
-        </div>
-      )}
-
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
         <button
           aria-label="افزودن عکس"
@@ -295,7 +287,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
 
         {items.map((item, index) => (
           <article
-            className={`relative overflow-hidden rounded-2xl border-2 bg-[var(--theme-surface-muted)] transition ${
+            className={`relative overflow-visible rounded-2xl border-2 bg-[var(--theme-surface-muted)] transition ${
               mode === "property" && item.isMain
                 ? "border-[var(--theme-primary)] shadow-[0_0_0_3px_var(--theme-primary-soft)]"
                 : "border-[var(--theme-border)]"
@@ -305,7 +297,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
           >
             <button
               aria-label="نمایش تصویر"
-              className="absolute inset-0 z-[1] h-full w-full cursor-zoom-in"
+              className="absolute inset-0 z-[1] h-full w-full cursor-zoom-in overflow-hidden rounded-[14px]"
               onClick={() => { setPreviewIndex(index); setPreviewZoom(1); }}
               type="button"
             >
@@ -313,29 +305,33 @@ export function MediaGallery<T extends MediaGalleryItem>({
             </button>
 
             {mode === "property" && item.isMain && (
-              <span className="absolute bottom-2 right-2 z-[2] rounded-full bg-[var(--theme-primary)] px-2.5 py-1 text-[11px] font-black text-white shadow-sm">
+              <span className="absolute bottom-2 left-2 z-[2] rounded-full bg-[var(--theme-primary)] px-2.5 py-1 text-[11px] font-black text-white shadow-sm">
                 عکس اصلی
               </span>
             )}
+            {mode === "room" && index === 0 && (
+              <span className="absolute bottom-2 left-2 z-[2] rounded-full bg-slate-950/65 px-2.5 py-1 text-[11px] font-black text-white shadow-sm backdrop-blur-sm">عکس اول</span>
+            )}
 
-            <div className="absolute right-2 top-2 z-[3]">
+            <div className="absolute bottom-2 right-2 z-30" data-media-menu>
               <button
-                aria-expanded={menuId === item.id}
+                aria-expanded={openMenuImageId === item.id}
                 aria-label="گزینه‌های تصویر"
-                className="grid h-9 w-9 place-items-center rounded-full bg-slate-950/65 text-white shadow-md backdrop-blur-sm transition hover:bg-slate-950/80"
+                className="grid h-7 w-7 place-items-center rounded-full bg-slate-950/65 text-white shadow-md backdrop-blur-sm transition hover:bg-slate-950/80"
                 disabled={busyId === item.id}
-                onClick={(event) => { event.stopPropagation(); setMenuId((current) => current === item.id ? null : item.id); }}
+                onClick={(event) => { event.stopPropagation(); setOpenMenuImageId((current) => current === item.id ? null : item.id); }}
+                onPointerDown={(event) => event.stopPropagation()}
                 type="button"
               >
                 {busyId === item.id ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" /> : <DotsIcon />}
               </button>
-              {menuId === item.id && (
-                <div className="absolute right-0 top-11 min-w-44 overflow-hidden rounded-xl border border-[var(--theme-border)] bg-white py-1 text-right text-sm font-bold text-[var(--theme-text)] shadow-xl" onClick={(event) => event.stopPropagation()}>
-                  {mode === "property" && !item.isMain && onSetMain && (
-                    <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-primary-soft)]" onClick={() => { setMenuId(null); void onSetMain(item); }} type="button">انتخاب به‌عنوان عکس اصلی</button>
+              {openMenuImageId === item.id && (
+                <div className="absolute bottom-9 right-0 z-50 min-w-48 overflow-hidden rounded-xl border border-[var(--theme-border)] bg-white py-1 text-right text-sm font-bold text-[var(--theme-text)] shadow-xl" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
+                  {mode === "property" && onSetMain && (
+                    <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-primary-soft)] disabled:cursor-default disabled:opacity-50" disabled={item.isMain} onClick={() => { setOpenMenuImageId(null); if (!item.isMain) void onSetMain(item); }} type="button">تعیین به عنوان عکس کاور</button>
                   )}
-                  <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-surface-muted)]" onClick={() => { setMenuId(null); setCropError(""); setCropTarget(item); setCropZoom(1); setCropAspect(aspectRatio); setSelectedSaveMode(cropSaveMode); setCrop({ x: 0, y: 0 }); }} type="button">برش تصویر</button>
-                  <button className="block w-full px-4 py-2.5 text-right text-[var(--theme-danger)] hover:bg-[var(--theme-danger-soft)]" onClick={() => { setMenuId(null); void onDelete(item); }} type="button">حذف تصویر</button>
+                  <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-surface-muted)]" onClick={() => { setOpenMenuImageId(null); setCropError(""); setCropTarget(item); setCropZoom(1); setCropAspect(aspectRatio); setSelectedSaveMode(cropSaveMode); setCrop({ x: 0, y: 0 }); toast.info("تصویر برای برش آماده شد"); }} type="button">برش تصویر</button>
+                  <button className="block w-full px-4 py-2.5 text-right text-[var(--theme-danger)] hover:bg-[var(--theme-danger-soft)]" onClick={() => { setOpenMenuImageId(null); void onDelete(item); }} type="button">حذف تصویر</button>
                 </div>
               )}
             </div>
