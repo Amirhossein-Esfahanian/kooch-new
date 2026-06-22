@@ -46,15 +46,27 @@
   color-scheme: light;
   --theme-primary: #2563eb;
   --theme-primary-hover: #1d4ed8;
+  --theme-primary-light: #dbeafe;
   --theme-primary-soft: #eff6ff;
   --theme-primary-border: #bfdbfe;
   --theme-primary-text: #1d4ed8;
   --theme-accent: #0ea5e9;
-  --border: #e2e8f0;
-  --page: #f8fafc;
-  --surface: #ffffff;
-  --text: #0f172a;
-  --muted: #64748b;
+  --theme-surface: #ffffff;
+  --theme-surface-muted: #f8fafc;
+  --theme-border: #e2e8f0;
+  --theme-danger: #dc2626;
+  --theme-danger-soft: #fef2f2;
+  --theme-warning: #d97706;
+  --theme-warning-soft: #fffbeb;
+  --theme-success: #16a34a;
+  --theme-success-soft: #f0fdf4;
+  --theme-text: #0f172a;
+  --theme-muted-text: #64748b;
+  --border: var(--theme-border);
+  --page: var(--theme-surface-muted);
+  --surface: var(--theme-surface);
+  --text: var(--theme-text);
+  --muted: var(--theme-muted-text);
   --card-radius: 16px;
   --input-radius: 12px;
   --button-radius: 12px;
@@ -66,6 +78,7 @@
 :root[data-theme="ocean"] {
   --theme-primary: #2563eb;
   --theme-primary-hover: #1d4ed8;
+  --theme-primary-light: #dbeafe;
   --theme-primary-soft: #eff6ff;
   --theme-primary-border: #bfdbfe;
   --theme-primary-text: #1d4ed8;
@@ -75,6 +88,7 @@
 :root[data-theme="forest"] {
   --theme-primary: #15803d;
   --theme-primary-hover: #166534;
+  --theme-primary-light: #dcfce7;
   --theme-primary-soft: #f0fdf4;
   --theme-primary-border: #bbf7d0;
   --theme-primary-text: #166534;
@@ -84,6 +98,7 @@
 :root[data-theme="royal"] {
   --theme-primary: #7c3aed;
   --theme-primary-hover: #6d28d9;
+  --theme-primary-light: #ede9fe;
   --theme-primary-soft: #f5f3ff;
   --theme-primary-border: #ddd6fe;
   --theme-primary-text: #6d28d9;
@@ -93,6 +108,7 @@
 :root[data-theme="sunset"] {
   --theme-primary: #ea580c;
   --theme-primary-hover: #c2410c;
+  --theme-primary-light: #ffedd5;
   --theme-primary-soft: #fff7ed;
   --theme-primary-border: #fed7aa;
   --theme-primary-text: #c2410c;
@@ -242,4 +258,66 @@ a {
 
 .ds-button-danger:hover {
   border-color: #ef4444;
+}
+
+/* Compatibility layer for older Tailwind primary classes while the app moves to tokens. */
+.bg-blue-600 {
+  background-color: var(--theme-primary) !important;
+}
+
+.hover\:bg-blue-700:hover,
+.hover\:bg-blue-600:hover {
+  background-color: var(--theme-primary-hover) !important;
+}
+
+.bg-blue-50,
+.bg-blue-100 {
+  background-color: var(--theme-primary-soft) !important;
+}
+
+.text-blue-600,
+.text-blue-700,
+.text-blue-800 {
+  color: var(--theme-primary-text) !important;
+}
+
+.border-blue-300,
+.border-blue-500,
+.border-blue-600 {
+  border-color: var(--theme-primary) !important;
+}
+
+.ring-blue-100,
+.ring-blue-200,
+.ring-blue-300 {
+  --tw-ring-color: var(--theme-primary-border) !important;
+}
+
+.accent-blue-600 {
+  accent-color: var(--theme-primary) !important;
+}
+
+.bg-red-50 {
+  background-color: var(--theme-danger-soft) !important;
+}
+
+.text-red-700 {
+  color: var(--theme-danger) !important;
+}
+
+.bg-amber-50 {
+  background-color: var(--theme-warning-soft) !important;
+}
+
+.text-amber-700,
+.text-amber-800 {
+  color: var(--theme-warning) !important;
+}
+
+.bg-emerald-50 {
+  background-color: var(--theme-success-soft) !important;
+}
+
+.text-emerald-700 {
+  color: var(--theme-success) !important;
 }

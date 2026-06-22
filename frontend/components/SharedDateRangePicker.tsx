@@ -193,7 +193,7 @@ export function SharedDateRangePicker({
     return (
       <div className="grid gap-2">
         {labelsAbove && <span className="text-sm font-bold text-slate-700">{label}</span>}
-        <button className={`${dateButtonBase} ${active ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300 hover:border-blue-300"}`} onClick={() => open(field)} type="button">
+        <button className={`${dateButtonBase} ${active ? "border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary-border)]" : "border-slate-300 hover:border-[var(--theme-primary-border)]"}`} onClick={() => open(field)} type="button">
           {showFieldLabels && !labelsAbove && <span className="text-xs font-bold text-slate-500">{label}</span>}
           <span className={`${showFieldLabels && !labelsAbove ? "mt-1" : ""} font-bold ${valueDate ? "text-slate-950" : "text-slate-400"}`}>{displayDate(valueDate, activeCalendar, placeholder)}</span>
         </button>
@@ -215,7 +215,7 @@ export function SharedDateRangePicker({
               <p className="mt-1 text-sm font-bold text-slate-700">{text.rangeTitle}</p>
             </div>
             {showGregorianToggle && (
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => {
+              <button className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => {
                 const nextCalendar = activeCalendar === "jalali" ? "gregorian" : "jalali";
                 setActiveCalendar(nextCalendar);
                 setVisibleMonth(asCalendar(tempStartDate ? dayjs(tempStartDate) : visibleMonth, nextCalendar).startOf("month"));
@@ -225,17 +225,17 @@ export function SharedDateRangePicker({
             )}
           </div>
           <div className="mb-4 flex items-center justify-between" dir="rtl">
-            <button aria-label="ماه قبل" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(-1, "month").startOf("month"))} type="button">›</button>
-            <button aria-label="ماه بعد" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(1, "month").startOf("month"))} type="button">‹</button>
+            <button aria-label="ماه قبل" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(-1, "month").startOf("month"))} type="button">›</button>
+            <button aria-label="ماه بعد" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(1, "month").startOf("month"))} type="button">‹</button>
           </div>
           <div className="grid gap-5 sm:grid-cols-2">
             {months.map((month, monthIndex) => (
               <section className={monthIndex === 1 ? "hidden sm:block" : ""} key={`${activeCalendar}-${month.format("YYYY-MM")}-${monthIndex}`}>
                 <h3 className="mb-3 text-center text-base font-black text-slate-950">{monthTitle(month, activeCalendar)}</h3>
-                <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-400">
+                <div className="grid grid-cols-7 text-center text-xs font-bold text-slate-400">
                   {weekdayLabels.map((weekday) => <span className="py-1" key={weekday}>{weekday}</span>)}
                 </div>
-                <div className="mt-1 grid grid-cols-7 gap-1">
+                <div className="mt-1 grid grid-cols-7">
                   {buildMonthDays(month, activeCalendar).map((date, index) => {
                     if (!date) return <span className="h-10" key={`empty-${index}`} />;
                     const iso = toIso(date);
@@ -246,8 +246,8 @@ export function SharedDateRangePicker({
                     const selected = isRangeStart || isRangeEnd;
                     const today = iso === dayjs().format(isoFormat);
                     return (
-                      <div className={`h-10 ${inRange || selected ? "bg-blue-50" : ""} ${isRangeStart ? "rounded-r-full" : ""} ${isRangeEnd ? "rounded-l-full" : ""}`} key={iso}>
-                        <button className={`h-10 w-full text-sm font-bold transition ${selected ? "rounded-full bg-blue-600 text-white" : inRange ? "text-blue-700" : today ? "rounded-full border border-blue-500 text-blue-700" : "rounded-full text-slate-700 hover:bg-blue-50"} ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`} disabled={disabled} onClick={() => selectDay(date)} type="button">
+                      <div className={`h-10 ${inRange || selected ? "bg-[var(--theme-primary-soft)]" : ""} ${isRangeStart ? "rounded-r-[4px]" : ""} ${isRangeEnd ? "rounded-l-[4px]" : ""}`} key={iso}>
+                        <button className={`h-10 w-full text-sm font-bold transition ${selected ? "rounded-[4px] bg-[var(--theme-primary)] text-white shadow-sm" : inRange ? "text-[var(--theme-primary-text)] hover:bg-[var(--theme-primary-soft)]" : today ? "rounded-[4px] border border-[var(--theme-primary)] text-[var(--theme-primary-text)]" : "rounded-[4px] text-slate-700 hover:bg-[var(--theme-primary-soft)]"} ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`} disabled={disabled} onClick={() => selectDay(date)} type="button">
                           {asCalendar(date, activeCalendar).format("D")}
                         </button>
                       </div>
@@ -258,10 +258,10 @@ export function SharedDateRangePicker({
             ))}
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => setVisibleMonth(asCalendar(dayjs(), activeCalendar).startOf("month"))} type="button">{text.today}</button>
+            <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => setVisibleMonth(asCalendar(dayjs(), activeCalendar).startOf("month"))} type="button">{text.today}</button>
             <div className="flex gap-2">
               <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setActiveField(null)} type="button">{cancelText}</button>
-              <button className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-black text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50" disabled={!tempStartDate || !tempEndDate} onClick={() => {
+              <button className="rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50" disabled={!tempStartDate || !tempEndDate} onClick={() => {
                 if (!tempStartDate || !tempEndDate) return;
                 onChange({ startDate: tempStartDate, endDate: tempEndDate });
                 setActiveField(null);

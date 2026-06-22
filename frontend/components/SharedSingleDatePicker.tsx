@@ -133,7 +133,7 @@ export function SharedSingleDatePicker({
   return (
     <div className="relative grid gap-2" ref={wrapperRef} dir="rtl">
       <span className="text-sm font-bold text-slate-700">{label}</span>
-      <button className={`${buttonClass} ${open ? "border-blue-500 ring-2 ring-blue-100" : "border-slate-300 hover:border-blue-300"}`} onClick={() => {
+      <button className={`${buttonClass} ${open ? "border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary-border)]" : "border-slate-300 hover:border-[var(--theme-primary-border)]"}`} onClick={() => {
         setTempDate(value);
         setVisibleMonth(asCalendar(value ? dayjs(value) : dayjs(), activeCalendar).startOf("month"));
         setOpen(true);
@@ -146,7 +146,7 @@ export function SharedSingleDatePicker({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm font-bold text-slate-700">{text.title}</p>
             {showGregorianToggle && (
-              <button className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => {
+              <button className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => {
                 const nextCalendar = activeCalendar === "jalali" ? "gregorian" : "jalali";
                 setActiveCalendar(nextCalendar);
                 setVisibleMonth(asCalendar(tempDate ? dayjs(tempDate) : visibleMonth, nextCalendar).startOf("month"));
@@ -156,14 +156,14 @@ export function SharedSingleDatePicker({
             )}
           </div>
           <div className="mb-4 flex items-center justify-between" dir="rtl">
-            <button aria-label="ماه قبل" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(-1, "month").startOf("month"))} type="button">›</button>
+            <button aria-label="ماه قبل" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(-1, "month").startOf("month"))} type="button">›</button>
             <h3 className="text-center text-base font-black text-slate-950">{monthTitle(visibleMonth, activeCalendar)}</h3>
-            <button aria-label="ماه بعد" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(1, "month").startOf("month"))} type="button">‹</button>
+            <button aria-label="ماه بعد" className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => setVisibleMonth((current) => asCalendar(current, activeCalendar).add(1, "month").startOf("month"))} type="button">‹</button>
           </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-xs font-bold text-slate-400">
+          <div className="grid grid-cols-7 text-center text-xs font-bold text-slate-400">
             {weekdayLabels.map((weekday) => <span className="py-1" key={weekday}>{weekday}</span>)}
           </div>
-          <div className="mt-1 grid grid-cols-7 gap-1">
+          <div className="mt-1 grid grid-cols-7">
             {buildMonthDays(visibleMonth, activeCalendar).map((date, index) => {
               if (!date) return <span className="h-10" key={`empty-${index}`} />;
               const iso = toIso(date);
@@ -171,21 +171,21 @@ export function SharedSingleDatePicker({
               const selected = tempDate === iso;
               const today = iso === dayjs().format(isoFormat);
               return (
-                <button className={`h-10 rounded-full text-sm font-bold transition ${selected ? "bg-blue-600 text-white" : today ? "border border-blue-500 text-blue-700" : "text-slate-700 hover:bg-blue-50"} ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`} disabled={disabled} key={iso} onClick={() => setTempDate(iso)} type="button">
+                <button className={`h-10 rounded-[4px] text-sm font-bold transition ${selected ? "bg-[var(--theme-primary)] text-white shadow-sm" : today ? "border border-[var(--theme-primary)] text-[var(--theme-primary-text)]" : "text-slate-700 hover:bg-[var(--theme-primary-soft)]"} ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`} disabled={disabled} key={iso} onClick={() => setTempDate(iso)} type="button">
                   {asCalendar(date, activeCalendar).format("D")}
                 </button>
               );
             })}
           </div>
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={() => {
+            <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => {
               const today = dayjs();
               setVisibleMonth(asCalendar(today, activeCalendar).startOf("month"));
               setTempDate(toIso(today));
             }} type="button">{text.today}</button>
             <div className="flex gap-2">
               <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setOpen(false)} type="button">{cancelText}</button>
-              <button className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-black text-white hover:bg-blue-700" onClick={() => {
+              <button className="rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)]" onClick={() => {
                 onChange(tempDate);
                 setOpen(false);
               }} type="button">{confirmText}</button>

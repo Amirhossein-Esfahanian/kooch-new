@@ -153,8 +153,8 @@ const initialData: WizardData = {
   seoDescription: "",
 };
 
-const inputClass = "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
-const cardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+const inputClass = "w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]";
+const cardClass = "rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm";
 const imageTags = [
   { value: "exterior", label: "نمای بیرونی" },
   { value: "courtyard", label: "حیاط" },
@@ -172,6 +172,15 @@ interface PropertyWizardProps {
   propertyId?: number;
   isAdmin?: boolean;
   onDone?: (property: PropertyResponse) => void;
+}
+
+interface CompletionSection {
+  key: string;
+  label: string;
+  isComplete: boolean;
+  missingItems: string[];
+  recommendedMissingItems: string[];
+  targetStepIndex: number;
 }
 
 function cleanImages(values: ImageDraft[]) {
@@ -311,6 +320,116 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     Boolean(data.checkInTime && data.checkOutTime),
     Boolean(property),
   ], [data, property]);
+
+  const completionSections = useMemo<CompletionSection[]>(() => {
+    const hasImages = Boolean(data.coverImage.trim() || cleanImages(data.propertyImages).length || allImages.some((image) => !image.roomTypeId && !image.roomId));
+    const hasDescription = Boolean(data.propertyDescription.trim());
+    const hasCommonAreas = cleanCommonAreas(data.commonAreas).length > 0;
+    const hasNearbyPlaces = cleanNearbyPlaces(data.nearbyPlaces).length > 0;
+    const required = (items: Array<[boolean, string]>) => items.filter(([done]) => !done).map(([, label]) => label);
+    const recommended = (items: Array<[boolean, string]>) => items.filter(([done]) => !done).map(([, label]) => label);
+
+    return [
+      {
+        key: "basic",
+        label: "اطلاعات پایه",
+        targetStepIndex: 0,
+        isComplete: Boolean(data.name.trim() && data.englishName.trim()),
+        missingItems: required([
+          [Boolean(data.name.trim()), "نام فارسی"],
+          [Boolean(data.englishName.trim()), "نام انگلیسی"],
+        ]),
+        recommendedMissingItems: recommended([
+          [Boolean(data.seoTitle.trim()), "عنوان سئو"],
+          [Boolean(data.seoDescription.trim()), "توضیحات سئو"],
+        ]),
+      },
+      {
+        key: "location",
+        label: "موقعیت و نشانی",
+        targetStepIndex: 1,
+        isComplete: Boolean(data.city.trim() && data.address.trim()),
+        missingItems: required([
+          [Boolean(data.city.trim()), "شهر"],
+          [Boolean(data.address.trim()), "نشانی"],
+        ]),
+        recommendedMissingItems: recommended([
+          [Boolean(data.latitude && data.longitude), "مختصات نقشه"],
+        ]),
+      },
+      {
+        key: "building",
+        label: "ساختمان و دسترسی",
+        targetStepIndex: 2,
+        isComplete: Number(data.floors || 0) > 0,
+        missingItems: required([[Number(data.floors || 0) > 0, "تعداد طبقات"]]),
+        recommendedMissingItems: [],
+      },
+      {
+        key: "amenities",
+        label: "امکانات و چشم‌انداز",
+        targetStepIndex: 3,
+        isComplete: data.selectedAmenityIds.length > 0 || data.views.length > 0,
+        missingItems: required([[data.selectedAmenityIds.length > 0 || data.views.length > 0, "حداقل یک امکان یا چشم‌انداز"]]),
+        recommendedMissingItems: [],
+      },
+      {
+        key: "images",
+        label: "تصاویر",
+        targetStepIndex: 4,
+        isComplete: hasImages,
+        missingItems: required([[hasImages, "حداقل یک تصویر"]]),
+        recommendedMissingItems: [],
+      },
+      {
+        key: "descriptions",
+        label: "توضیحات و فضاها",
+        targetStepIndex: 5,
+        isComplete: hasDescription || hasCommonAreas,
+        missingItems: required([[hasDescription || hasCommonAreas, "توضیح اقامتگاه یا فضای مشترک"]]),
+        recommendedMissingItems: recommended([[hasCommonAreas, "فضاهای مشترک"]]),
+      },
+      {
+        key: "nearby",
+        label: "مکان‌های نزدیک",
+        targetStepIndex: 6,
+        isComplete: hasNearbyPlaces,
+        missingItems: required([[hasNearbyPlaces, "حداقل یک مکان نزدیک"]]),
+        recommendedMissingItems: [],
+      },
+      {
+        key: "rules",
+        label: "قوانین و زمان‌ها",
+        targetStepIndex: 7,
+        isComplete: Boolean(data.checkInTime && data.checkOutTime),
+        missingItems: required([
+          [Boolean(data.checkInTime), "ساعت ورود"],
+          [Boolean(data.checkOutTime), "ساعت خروج"],
+        ]),
+        recommendedMissingItems: recommended([
+          [Boolean(data.freeChildAgeLimit || data.maxFreeChildren), "قانون کودک رایگان"],
+        ]),
+      },
+      {
+        key: "review",
+        label: "بازبینی",
+        targetStepIndex: 8,
+        isComplete: Boolean(property),
+        missingItems: required([[Boolean(property), "ذخیره اولیه اقامتگاه"]]),
+        recommendedMissingItems: [],
+      },
+    ];
+  }, [allImages, data, property]);
+
+  const requiredIncompleteSections = completionSections.filter((section) => !section.isComplete);
+  const recommendedIncompleteSections = completionSections.filter((section) => section.isComplete && section.recommendedMissingItems.length > 0);
+  const localCompletionPercentage = Math.round((completionSections.filter((section) => section.isComplete).length / completionSections.length) * 100);
+
+  function jumpToStep(index: number) {
+    setError("");
+    setStep(index);
+    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData((current) => ({ ...current, [key]: value }));
@@ -539,33 +658,39 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
   return (
     <form className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]" dir="rtl" onSubmit={finish}>
-      <aside className="h-fit rounded-2xl border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-5">
+      <aside className="h-fit rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3 shadow-sm lg:sticky lg:top-5">
         <div className="mb-3 px-2">
           <p className="text-xs font-bold text-slate-400">{mode === "create" ? "ثبت اقامتگاه" : "ویرایش اقامتگاه"}</p>
           <p className="mt-1 text-sm font-black text-slate-900">مرحله {step + 1} از {steps.length}</p>
         </div>
         <nav className="grid gap-1">
-          {steps.map((label, index) => (
-            <button
-              className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-right text-sm font-bold ${step === index ? "bg-blue-600 text-white" : completed[index] ? "bg-blue-50 text-blue-700" : "text-slate-600 hover:bg-slate-50"}`}
-              key={label}
-              onClick={() => {
-                setError("");
-                setStep(index);
-              }}
-              type="button"
-            >
-              <span>{label}</span>
-              <span>{completed[index] ? "✓" : index + 1}</span>
-            </button>
-          ))}
+          {steps.map((label, index) => {
+            const section = completionSections.find((item) => item.targetStepIndex === index);
+            const isComplete = Boolean(section?.isComplete);
+            const hasRequiredMissing = Boolean(section && !section.isComplete);
+            const hasRecommendedMissing = Boolean(section?.isComplete && section.recommendedMissingItems.length);
+            return (
+              <button
+                className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-right text-sm font-bold transition ${step === index ? "bg-[var(--theme-primary)] text-white" : isComplete ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)] hover:bg-[var(--theme-primary-soft)]" : "text-[var(--theme-muted-text)] hover:bg-[var(--theme-surface-muted)]"}`}
+                key={label}
+                onClick={() => jumpToStep(index)}
+                title={section ? [...section.missingItems, ...section.recommendedMissingItems].join("، ") : undefined}
+                type="button"
+              >
+                <span>{label}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-white/20 text-white" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : hasRecommendedMissing ? "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]" : "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"}`}>
+                  {isComplete ? (hasRecommendedMissing ? "پیشنهاد" : "✓") : "ناقص"}
+                </span>
+              </button>
+            );
+          })}
         </nav>
         {property && (
           <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4">
-            <Link className="rounded-xl border border-slate-200 px-3 py-2 text-center text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>
+            <Link className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-center text-sm font-bold text-[var(--theme-text)] hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>
               مدیریت اتاق‌ها
             </Link>
-            <Link className="rounded-xl border border-slate-200 px-3 py-2 text-center text-sm font-bold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/owner/properties">
+            <Link className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-center text-sm font-bold text-[var(--theme-text)] hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" href="/owner/properties">
               بازگشت به لیست اقامتگاه‌ها
             </Link>
           </div>
@@ -573,7 +698,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       </aside>
 
       <main className="min-w-0">
-        {error && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+        {error && <p className="mb-4 rounded-xl bg-[var(--theme-danger-soft)] p-3 text-sm font-semibold text-[var(--theme-danger)]">{error}</p>}
 
         {step === 0 && (
           <section className={`${cardClass} grid gap-4`}>
@@ -616,7 +741,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                 ["hasAccessibleBathroom", "سرویس بهداشتی مناسب افراد کم‌توان دارد؟"],
               ].map(([key, label]) => (
                 <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={key}>
-                  <input checked={Boolean(data[key as keyof WizardData])} className="h-4 w-4 accent-blue-600" onChange={(event) => update(key as keyof WizardData, event.target.checked as never)} type="checkbox" />
+                  <input checked={Boolean(data[key as keyof WizardData])} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update(key as keyof WizardData, event.target.checked as never)} type="checkbox" />
                   {label}
                 </label>
               ))}
@@ -636,7 +761,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                   <div className="grid gap-2 md:grid-cols-3">
                     {categoryAmenities.map((amenity) => (
                       <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={amenity.id}>
-                        <input checked={data.selectedAmenityIds.includes(amenity.id)} className="h-4 w-4 accent-blue-600" onChange={(event) => update("selectedAmenityIds", event.target.checked ? [...data.selectedAmenityIds, amenity.id] : data.selectedAmenityIds.filter((id) => id !== amenity.id))} type="checkbox" />
+                        <input checked={data.selectedAmenityIds.includes(amenity.id)} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update("selectedAmenityIds", event.target.checked ? [...data.selectedAmenityIds, amenity.id] : data.selectedAmenityIds.filter((id) => id !== amenity.id))} type="checkbox" />
                         {amenity.name}
                       </label>
                     ))}
@@ -649,7 +774,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               <div className="grid gap-2 md:grid-cols-3">
                 {propertyViewOptions.map((view) => (
                   <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={view}>
-                    <input checked={data.views.includes(view)} className="h-4 w-4 accent-blue-600" onChange={(event) => update("views", event.target.checked ? [...data.views, view] : data.views.filter((item) => item !== view))} type="checkbox" />
+                    <input checked={data.views.includes(view)} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update("views", event.target.checked ? [...data.views, view] : data.views.filter((item) => item !== view))} type="checkbox" />
                     {propertyViewLabels[view]}
                   </label>
                 ))}
@@ -774,7 +899,48 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           <section className="grid gap-4">
             <div className={cardClass}>
               <h2 className="text-2xl font-black">بازبینی</h2>
-              <p className="mt-1 text-sm text-slate-500">میزان تکمیل اطلاعات: {completion?.completionPercentage ?? 0}٪</p>
+              <p className="mt-1 text-sm text-slate-500">میزان تکمیل اطلاعات: {localCompletionPercentage}٪</p>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-[var(--theme-surface-muted)]">
+                <div className="h-full rounded-full bg-[var(--theme-primary)] transition-all" style={{ width: `${localCompletionPercentage}%` }} />
+              </div>
+              <p className="mt-3 inline-flex rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-sm font-black text-[var(--theme-primary-text)]">
+                {localCompletionPercentage}٪ تکمیل شده
+              </p>
+              {isAdmin && requiredIncompleteSections.length > 0 && (
+                <p className="mt-3 rounded-xl bg-[var(--theme-warning-soft)] p-3 text-sm font-bold text-[var(--theme-warning)]">
+                  این اقامتگاه هنوز بخش‌های ناقص دارد.
+                </p>
+              )}
+            </div>
+            <div className={cardClass}>
+              <h3 className="text-xl font-black">موارد ناقص</h3>
+              {requiredIncompleteSections.length === 0 && recommendedIncompleteSections.length === 0 ? (
+                <p className="mt-3 rounded-xl bg-[var(--theme-success-soft)] p-3 text-sm font-bold text-[var(--theme-success)]">
+                  اطلاعات اقامتگاه کامل است.
+                </p>
+              ) : (
+                <div className="mt-4 grid gap-3">
+                  {[...requiredIncompleteSections, ...recommendedIncompleteSections].map((section) => {
+                    const requiredMissing = section.missingItems.length > 0;
+                    const items = requiredMissing ? section.missingItems : section.recommendedMissingItems;
+                    return (
+                      <article className={`rounded-xl border p-4 ${requiredMissing ? "border-[var(--theme-danger)] bg-[var(--theme-danger-soft)]" : "border-[var(--theme-warning)] bg-[var(--theme-warning-soft)]"}`} key={section.key}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <h4 className="font-black text-[var(--theme-text)]">{section.label}</h4>
+                            <ul className="mt-2 grid gap-1 text-sm text-[var(--theme-muted-text)]">
+                              {items.map((item) => <li key={item}>• {item}</li>)}
+                            </ul>
+                          </div>
+                          <button className="rounded-xl bg-[var(--theme-primary)] px-4 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)]" onClick={() => jumpToStep(section.targetStepIndex)} type="button">
+                            تکمیل این بخش
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
               <ReviewCard title="اطلاعات پایه" lines={[data.name, propertyTypeLabels[data.type], data.city]} />
@@ -784,7 +950,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             </div>
             {property && (
               <div className={`${cardClass} grid gap-3 md:grid-cols-3`}>
-                <Link className="rounded-xl bg-blue-600 px-4 py-3 text-center font-black text-white" href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>مدیریت اتاق‌ها</Link>
+                <Link className="rounded-xl bg-[var(--theme-primary)] px-4 py-3 text-center font-black text-white hover:bg-[var(--theme-primary-hover)]" href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>مدیریت اتاق‌ها</Link>
                 {property.slug && <Link className="rounded-xl border border-slate-300 px-4 py-3 text-center font-black text-slate-700" href={`/properties/${property.slug}`}>مشاهده صفحه عمومی</Link>}
                 <Link className="rounded-xl border border-slate-300 px-4 py-3 text-center font-black text-slate-700" href={isAdmin ? "/admin/properties" : "/owner/properties"}>بازگشت به لیست اقامتگاه‌ها</Link>
               </div>
@@ -795,12 +961,12 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <button className="rounded-xl border border-slate-300 px-5 py-3 font-bold disabled:opacity-40" disabled={step === 0 || loading} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }} type="button">قبلی</button>
           <div className="flex gap-2">
-            <button className="rounded-xl border border-blue-600 px-5 py-3 font-bold text-blue-700 disabled:opacity-50" disabled={loading} onClick={async () => {
+            <button className="rounded-xl border border-[var(--theme-primary)] px-5 py-3 font-bold text-[var(--theme-primary-text)] disabled:opacity-50" disabled={loading} onClick={async () => {
               setLoading(true);
               setError("");
               try { await saveCurrentStep(); } catch (caught) { setError(caught instanceof Error ? caught.message : "ذخیره انجام نشد."); } finally { setLoading(false); }
             }} type="button">ذخیره</button>
-            {step < steps.length - 1 ? <button className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-60" disabled={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</button> : <button className="rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-60" disabled={loading} type="submit">پایان</button>}
+            {step < steps.length - 1 ? <button className="rounded-xl bg-[var(--theme-primary)] px-5 py-3 font-bold text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60" disabled={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</button> : <button className="rounded-xl bg-[var(--theme-primary)] px-5 py-3 font-bold text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60" disabled={loading} type="submit">پایان</button>}
           </div>
         </div>
       </main>
