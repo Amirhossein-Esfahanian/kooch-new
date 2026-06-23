@@ -18,6 +18,8 @@ interface RoomTypeDraft {
   description: string;
   maxAdults: number;
   maxChildren: number;
+  allowExtraGuest: boolean;
+  maxExtraGuests: number;
   totalInventory: number;
   floorNumber: string;
   stairCount: string;
@@ -37,6 +39,8 @@ const emptyRoomType: RoomTypeDraft = {
   description: "",
   maxAdults: 2,
   maxChildren: 0,
+  allowExtraGuest: false,
+  maxExtraGuests: 0,
   totalInventory: 1,
   floorNumber: "",
   stairCount: "",
@@ -116,6 +120,8 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       description: roomType.description,
       maxAdults: roomType.maxAdults,
       maxChildren: roomType.maxChildren,
+      allowExtraGuest: roomType.allowExtraGuest,
+      maxExtraGuests: roomType.maxExtraGuests,
       totalInventory: Math.max(1, roomType.totalInventory),
       floorNumber: roomType.floorNumber == null ? "" : String(roomType.floorNumber),
       stairCount: roomType.stairCount == null ? "" : String(roomType.stairCount),
@@ -171,6 +177,8 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         description: roomTypeDraft.description.trim() || roomTypeDraft.name.trim(),
         maxAdults: Math.max(1, roomTypeDraft.maxAdults),
         maxChildren: Math.max(0, roomTypeDraft.maxChildren),
+        allowExtraGuest: roomTypeDraft.allowExtraGuest,
+        maxExtraGuests: roomTypeDraft.allowExtraGuest ? Math.max(0, roomTypeDraft.maxExtraGuests) : 0,
         inventoryMode: roomInventoryMode(totalInventory),
         totalInventory,
         basePrice: null,
@@ -341,6 +349,16 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                   value={roomTypeDraft.totalInventory}
                 />
               </label>
+              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold">
+                <input checked={roomTypeDraft.allowExtraGuest} className="h-4 w-4 accent-blue-600" onChange={(event) => setRoomTypeDraft({ ...roomTypeDraft, allowExtraGuest: event.target.checked, maxExtraGuests: event.target.checked ? roomTypeDraft.maxExtraGuests : 0 })} type="checkbox" />
+                آیا نفر اضافه مجاز است؟
+              </label>
+              {roomTypeDraft.allowExtraGuest && (
+                <label className="grid gap-1 text-sm font-bold">
+                  حداکثر تعداد نفر اضافه
+                  <input className={inputClass} min="0" onChange={(event) => setRoomTypeDraft({ ...roomTypeDraft, maxExtraGuests: Number(event.target.value) })} type="number" value={roomTypeDraft.maxExtraGuests} />
+                </label>
+              )}
             </div>
           </div>
 

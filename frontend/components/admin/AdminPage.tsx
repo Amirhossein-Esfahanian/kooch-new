@@ -11,6 +11,7 @@ const links = [
   { href: "/owner/amenities", label: "مدیریت امکانات" },
   { href: "/admin/site-settings", label: "تنظیمات سایت" },
   { href: "/admin/reservation-settings", label: "تنظیمات رزرو" },
+  { href: "/admin/promotions", label: "پروموشن‌ها" },
   { href: "/admin#reports", label: "گزارش‌ها" },
   { href: "/admin/settings", label: "تنظیمات" },
 ];

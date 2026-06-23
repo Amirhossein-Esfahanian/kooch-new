@@ -122,6 +122,11 @@ export default function PublicPropertyPage() {
     ["اتاق همکف", property.hasGroundFloorRoom],
     ["سرویس مناسب افراد کم‌توان", property.hasAccessibleBathroom],
   ].filter(([, value]) => value !== null);
+  const breakfastLabel = {
+    NoBreakfast: "بدون صبحانه",
+    Included: "صبحانه رایگان",
+    Paid: "صبحانه با هزینه",
+  }[property.breakfastOption];
 
   return (
     <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
@@ -135,6 +140,7 @@ export default function PublicPropertyPage() {
             <div className="flex gap-2">
               <Badge>{propertyTypeLabels[property.propertyType] ?? property.propertyType}</Badge>
               <Badge green>تایید شده</Badge>
+              <Badge>{breakfastLabel}</Badge>
             </div>
             <h1 className="mt-3 text-3xl font-black sm:text-5xl">
               {property.name}
@@ -181,6 +187,7 @@ export default function PublicPropertyPage() {
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
                 <Highlight title="ساعت ورود" value={property.checkInTime?.slice(0, 5) ?? "ثبت نشده"} />
                 <Highlight title="ساعت خروج" value={property.checkOutTime?.slice(0, 5) ?? "ثبت نشده"} />
+                <Highlight title="صبحانه" value={property.breakfastOption === "Paid" && property.breakfastPrice != null ? `${breakfastLabel} (${formatPrice(property.breakfastPrice)})` : breakfastLabel} />
                 <Highlight title="نوع اقامتگاه" value={propertyTypeLabels[property.propertyType] ?? property.propertyType} />
                 <Highlight title="نوع رزرو" value={property.isInstantBooking ? "رزرو آنی" : "نیازمند تایید میزبان"} />
               </div>

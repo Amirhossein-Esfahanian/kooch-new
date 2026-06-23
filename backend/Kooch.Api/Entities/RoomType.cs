@@ -11,6 +11,8 @@ public class RoomType : BaseEntity
     public string? SeoDescription { get; set; }
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
+    public bool AllowExtraGuest { get; set; }
+    public int MaxExtraGuests { get; set; }
     public int TotalInventory { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public decimal? BasePrice { get; set; }
@@ -31,6 +33,6 @@ public class RoomType : BaseEntity
     public ICollection<RatePlan> RatePlans { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<StayRule> StayRules { get; set; } = [];
-    public ICollection<Promotion> Promotions { get; set; } = [];
+    public ICollection<PromotionRoomType> PromotionRoomTypes { get; set; } = [];
     public ICollection<RoomDailyPrice> DailyPrices { get; set; } = [];
 }

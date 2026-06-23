@@ -1,4 +1,5 @@
 export type PublicInventoryMode = "NamedRooms" | "TypeBasedInventory";
+export type PublicBreakfastOption = "NoBreakfast" | "Included" | "Paid";
 export type PublicPropertyView =
   | "CourtyardView"
   | "GardenView"
@@ -28,6 +29,8 @@ export interface PublicRoomType {
   totalInventory: number;
   maxAdults: number;
   maxChildren: number;
+  allowExtraGuest: boolean;
+  maxExtraGuests: number;
   notes: string | null;
   floorNumber: number | null;
   stairCount: number | null;
@@ -65,6 +68,8 @@ export interface PublicProperty {
   inventoryMode: PublicInventoryMode;
   checkInTime: string | null;
   checkOutTime: string | null;
+  breakfastOption: PublicBreakfastOption;
+  breakfastPrice: number | null;
   latitude: number | null;
   longitude: number | null;
   hasElevator: boolean;

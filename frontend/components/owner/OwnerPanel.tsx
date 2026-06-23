@@ -16,6 +16,7 @@ const navItems = [
   { label: "اتاق‌ها", icon: "▤", href: "rooms" },
   { label: "ظرفیت اتاق‌ها", icon: "▣", href: "inventory" },
   { label: "قیمت‌گذاری اتاق‌ها", icon: "▥", href: "pricing" },
+  { label: "پروموشن‌ها", icon: "%", href: "promotions" },
   { label: "رزروها", icon: "●", href: "reservations" },
   { label: "نظرات", icon: "□", href: "reviews" },
   { label: "کاربران", icon: "♟", href: "users" },

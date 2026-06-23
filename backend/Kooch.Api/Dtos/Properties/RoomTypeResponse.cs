@@ -12,6 +12,8 @@ public class RoomTypeResponse
     public string Description { get; set; } = string.Empty;
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
+    public bool AllowExtraGuest { get; set; }
+    public int MaxExtraGuests { get; set; }
     public int TotalInventory { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public decimal? BasePrice { get; set; }

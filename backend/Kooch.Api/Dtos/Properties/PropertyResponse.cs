@@ -27,6 +27,8 @@ public class PropertyResponse
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public BreakfastOption BreakfastOption { get; set; }
+    public decimal? BreakfastPrice { get; set; }
     public decimal? TotalAreaM2 { get; set; }
     public decimal? LandAreaM2 { get; set; }
     public int? FloorsCount { get; set; }

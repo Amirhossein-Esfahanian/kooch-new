@@ -20,11 +20,26 @@ public enum SiteSettingType { Text, LongText, ImageUrl, Color, Boolean, Number }
 public enum PropertyStatus { Draft, PendingReview, Approved, Rejected, Suspended }
 public enum PropertyType { TraditionalHouse, BoutiqueHotel, EcoLodge, Hotel, Villa, Apartment }
 public enum InventoryMode { NamedRooms, TypeBasedInventory }
+public enum BreakfastOption { NoBreakfast, Included, Paid }
 public enum ReservationStatus { Pending, Confirmed, Rejected, Cancelled, Paid, Completed, OnHold, Expired }
 public enum ReservationSource { Website, OwnerManual, PhoneReferral, AdminCreated, ExternalChannel }
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
 public enum AmenityScope { Property, RoomType, Both }
 public enum DiscountType { Percentage, FixedAmount }
+public enum PromotionType { PercentageDiscount, FixedAmountDiscount, LastMinute, Informational }
+[Flags]
+public enum PromotionWeekday
+{
+    None = 0,
+    Saturday = 1 << 0,
+    Sunday = 1 << 1,
+    Monday = 1 << 2,
+    Tuesday = 1 << 3,
+    Wednesday = 1 << 4,
+    Thursday = 1 << 5,
+    Friday = 1 << 6,
+    All = Saturday | Sunday | Monday | Tuesday | Wednesday | Thursday | Friday
+}
 public enum PriceModifierType { Percentage, FixedAmount }
 public enum WarningType { Accessibility, Noise, Stairs, NoElevator, NoWindow, SharedBathroom, Parking, Other }
 public enum PromotionScope { Global, Property, RoomType }

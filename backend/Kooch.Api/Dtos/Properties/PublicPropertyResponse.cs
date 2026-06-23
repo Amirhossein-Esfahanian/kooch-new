@@ -21,6 +21,8 @@ public class PublicPropertyResponse
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public BreakfastOption BreakfastOption { get; set; }
+    public decimal? BreakfastPrice { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
     public bool HasElevator { get; set; }
@@ -51,6 +53,8 @@ public class PublicRoomTypeSummaryResponse
     public string Name { get; set; } = string.Empty;
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
+    public bool AllowExtraGuest { get; set; }
+    public int MaxExtraGuests { get; set; }
     public int TotalInventory { get; set; }
     public decimal? DisplayPrice { get; set; }
 }
@@ -78,6 +82,8 @@ public class PublicRoomTypeResponse
     public int TotalInventory { get; set; }
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
+    public bool AllowExtraGuest { get; set; }
+    public int MaxExtraGuests { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }
     public int? StairCount { get; set; }

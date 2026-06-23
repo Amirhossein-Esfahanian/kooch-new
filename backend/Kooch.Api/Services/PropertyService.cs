@@ -54,6 +54,8 @@ public class PropertyService(
             InventoryMode = request.InventoryMode,
             CheckInTime = request.CheckInTime,
             CheckOutTime = request.CheckOutTime,
+            BreakfastOption = request.BreakfastOption,
+            BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null,
             HasElevator = request.HasElevator,
             IsWheelchairAccessible = request.IsWheelchairAccessible,
             HasGroundFloorRoom = request.HasGroundFloorRoom,
@@ -112,6 +114,8 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.BreakfastOption = request.BreakfastOption;
+        property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
         property.TotalAreaM2 = request.TotalAreaM2;
         property.LandAreaM2 = request.LandAreaM2;
         property.FloorsCount = request.FloorsCount;
@@ -192,6 +196,8 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.BreakfastOption = request.BreakfastOption;
+        property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
         property.Latitude = request.Latitude;
         property.Longitude = request.Longitude;
         property.TotalAreaM2 = request.TotalAreaM2;
@@ -303,6 +309,8 @@ public class PropertyService(
                     Name = roomType.Name,
                     MaxAdults = roomType.MaxAdults,
                     MaxChildren = roomType.MaxChildren,
+                    AllowExtraGuest = roomType.AllowExtraGuest,
+                    MaxExtraGuests = roomType.MaxExtraGuests,
                     TotalInventory = roomType.TotalInventory,
                     DisplayPrice = roomType.DisplayPrice
                 })
@@ -479,6 +487,8 @@ public class PropertyService(
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
             CheckOutTime = property.CheckOutTime,
+            BreakfastOption = property.BreakfastOption,
+            BreakfastPrice = property.BreakfastPrice,
             TotalAreaM2 = property.TotalAreaM2,
             LandAreaM2 = property.LandAreaM2,
             FloorsCount = property.FloorsCount,
@@ -523,6 +533,8 @@ public class PropertyService(
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
             CheckOutTime = property.CheckOutTime,
+            BreakfastOption = property.BreakfastOption,
+            BreakfastPrice = property.BreakfastPrice,
             Latitude = property.Latitude,
             Longitude = property.Longitude,
             HasElevator = property.HasElevator,
@@ -692,6 +704,8 @@ public class PropertyService(
                     TotalInventory = roomType.TotalInventory,
                     MaxAdults = roomType.MaxAdults,
                     MaxChildren = roomType.MaxChildren,
+                    AllowExtraGuest = roomType.AllowExtraGuest,
+                    MaxExtraGuests = roomType.MaxExtraGuests,
                     Notes = roomType.Notes,
                     FloorNumber = roomType.FloorNumber,
                     StairCount = roomType.StairCount,

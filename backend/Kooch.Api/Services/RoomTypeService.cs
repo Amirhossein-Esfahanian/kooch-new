@@ -34,6 +34,8 @@ public class RoomTypeService(
             Description = request.Description.Trim(),
             MaxAdults = request.MaxAdults,
             MaxChildren = request.MaxChildren,
+            AllowExtraGuest = request.AllowExtraGuest,
+            MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0,
             TotalInventory = request.TotalInventory,
             InventoryMode = request.InventoryMode,
             BasePrice = request.BasePrice,
@@ -91,6 +93,8 @@ public class RoomTypeService(
         roomType.Description = request.Description.Trim();
         roomType.MaxAdults = request.MaxAdults;
         roomType.MaxChildren = request.MaxChildren;
+        roomType.AllowExtraGuest = request.AllowExtraGuest;
+        roomType.MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0;
         roomType.TotalInventory = request.TotalInventory;
         roomType.InventoryMode = request.InventoryMode;
         roomType.BasePrice = request.BasePrice;
@@ -151,6 +155,8 @@ public class RoomTypeService(
                 Description = roomType.Description,
                 MaxAdults = roomType.MaxAdults,
                 MaxChildren = roomType.MaxChildren,
+                AllowExtraGuest = roomType.AllowExtraGuest,
+                MaxExtraGuests = roomType.MaxExtraGuests,
                 TotalInventory = roomType.TotalInventory,
                 InventoryMode = roomType.InventoryMode,
                 BasePrice = roomType.BasePrice,
@@ -238,6 +244,8 @@ public class RoomTypeService(
                 Description = roomType.Description,
                 MaxAdults = roomType.MaxAdults,
                 MaxChildren = roomType.MaxChildren,
+                AllowExtraGuest = roomType.AllowExtraGuest,
+                MaxExtraGuests = roomType.MaxExtraGuests,
                 TotalInventory = roomType.TotalInventory,
                 InventoryMode = roomType.InventoryMode,
                 BasePrice = roomType.BasePrice,

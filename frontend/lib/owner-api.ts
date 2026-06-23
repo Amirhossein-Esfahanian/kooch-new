@@ -11,6 +11,7 @@ export const inventoryModes = ["NamedRooms", "TypeBasedInventory"] as const;
 
 export type PropertyType = (typeof propertyTypes)[number];
 export type InventoryMode = (typeof inventoryModes)[number];
+export type BreakfastOption = "NoBreakfast" | "Included" | "Paid";
 
 export interface PropertyResponse {
   id: number;
@@ -36,6 +37,8 @@ export interface PropertyResponse {
   inventoryMode: InventoryMode;
   checkInTime: string | null;
   checkOutTime: string | null;
+  breakfastOption: BreakfastOption;
+  breakfastPrice: number | null;
   totalAreaM2: number | null;
   landAreaM2: number | null;
   floorsCount: number | null;
@@ -83,6 +86,8 @@ export interface RoomTypeResponse {
   description: string;
   maxAdults: number;
   maxChildren: number;
+  allowExtraGuest: boolean;
+  maxExtraGuests: number;
   totalInventory: number;
   inventoryMode: InventoryMode;
   basePrice: number | null;
@@ -94,6 +99,49 @@ export interface RoomTypeResponse {
   isActive: boolean;
   bedConfigurations: RoomTypeBedResponse[];
   amenities: RoomTypeAmenityResponse[];
+}
+
+export type PromotionType =
+  | "PercentageDiscount"
+  | "FixedAmountDiscount"
+  | "LastMinute"
+  | "Informational";
+
+export type PromotionWeekday =
+  | "Saturday"
+  | "Sunday"
+  | "Monday"
+  | "Tuesday"
+  | "Wednesday"
+  | "Thursday"
+  | "Friday";
+
+export interface PromotionRoomTypeResponse {
+  id: number;
+  name: string;
+  basePrice: number | null;
+}
+
+export interface PromotionResponse {
+  id: number;
+  propertyId: number;
+  propertyName: string;
+  title: string;
+  internalDescription: string | null;
+  publicDescription: string | null;
+  startDate: string;
+  endDate: string;
+  weekdays: PromotionWeekday[];
+  type: PromotionType;
+  percentage: number | null;
+  amount: number | null;
+  lastMinuteDays: number | null;
+  sortOrder: number;
+  isActive: boolean;
+  createdByUserId: number | null;
+  createdBy: string;
+  createdAtUtc: string;
+  roomTypes: PromotionRoomTypeResponse[];
 }
 
 export interface BedTypeResponse {
@@ -314,6 +362,8 @@ export interface PropertyFormValues {
   inventoryMode: InventoryMode;
   checkInTime: string;
   checkOutTime: string;
+  breakfastOption: BreakfastOption;
+  breakfastPrice: number | null;
   totalAreaM2?: number | null;
   landAreaM2?: number | null;
   floorsCount?: number | null;

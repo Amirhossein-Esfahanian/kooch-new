@@ -35,6 +35,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<CancellationPolicy> CancellationPolicies => Set<CancellationPolicy>();
     public DbSet<StayRule> StayRules => Set<StayRule>();
     public DbSet<Promotion> Promotions => Set<Promotion>();
+    public DbSet<PromotionRoomType> PromotionRoomTypes => Set<PromotionRoomType>();
     public DbSet<RatePlan> RatePlans => Set<RatePlan>();
     public DbSet<PropertyHighlight> PropertyHighlights => Set<PropertyHighlight>();
     public DbSet<PropertyWarning> PropertyWarnings => Set<PropertyWarning>();
@@ -232,6 +233,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(property => property.Longitude).HasPrecision(9, 6);
             entity.Property(property => property.TotalAreaM2).HasPrecision(12, 2);
             entity.Property(property => property.LandAreaM2).HasPrecision(12, 2);
+            entity.Property(property => property.BreakfastPrice).HasPrecision(18, 2);
             entity.HasIndex(property => property.Slug).IsUnique();
             entity.HasOne(property => property.Owner)
                 .WithMany(user => user.OwnedProperties)
@@ -685,16 +687,24 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
         modelBuilder.Entity<Promotion>(entity =>
         {
-            entity.Property(promotion => promotion.Name).HasMaxLength(150).IsRequired();
-            entity.Property(promotion => promotion.Code).HasMaxLength(50);
-            entity.Property(promotion => promotion.DiscountValue).HasPrecision(18, 2);
-            entity.ToTable(table => table.HasCheckConstraint(
-                "CK_Promotion_Scope",
-                "([Scope] = 0 AND [PropertyId] IS NULL AND [RoomTypeId] IS NULL) OR ([Scope] = 1 AND [PropertyId] IS NOT NULL AND [RoomTypeId] IS NULL) OR ([Scope] = 2 AND [PropertyId] IS NULL AND [RoomTypeId] IS NOT NULL)"));
+            entity.Property(promotion => promotion.Title).HasMaxLength(150).IsRequired();
+            entity.Property(promotion => promotion.InternalDescription).HasMaxLength(1000);
+            entity.Property(promotion => promotion.PublicDescription).HasMaxLength(1000);
+            entity.Property(promotion => promotion.Percentage).HasPrecision(5, 2);
+            entity.Property(promotion => promotion.Amount).HasPrecision(18, 2);
+            entity.HasIndex(promotion => new { promotion.PropertyId, promotion.SortOrder });
             entity.HasOne(promotion => promotion.Property).WithMany(property => property.Promotions)
                 .HasForeignKey(promotion => promotion.PropertyId).OnDelete(DeleteBehavior.NoAction);
-            entity.HasOne(promotion => promotion.RoomType).WithMany(roomType => roomType.Promotions)
-                .HasForeignKey(promotion => promotion.RoomTypeId).OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<PromotionRoomType>(entity =>
+        {
+            entity.HasKey(item => new { item.PromotionId, item.RoomTypeId });
+            entity.HasQueryFilter(item => !item.Promotion.IsDeleted);
+            entity.HasOne(item => item.Promotion).WithMany(promotion => promotion.PromotionRoomTypes)
+                .HasForeignKey(item => item.PromotionId).OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(item => item.RoomType).WithMany(roomType => roomType.PromotionRoomTypes)
+                .HasForeignKey(item => item.RoomTypeId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<RatePlan>(entity =>

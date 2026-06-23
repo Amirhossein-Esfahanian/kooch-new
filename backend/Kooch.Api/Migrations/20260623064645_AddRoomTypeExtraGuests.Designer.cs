@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260623064645_AddRoomTypeExtraGuests")]
+    partial class AddRoomTypeExtraGuests
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -833,9 +836,9 @@ namespace Kooch.Api.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<decimal?>("Amount")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
+                    b.Property<string>("Code")
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -849,12 +852,15 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("DeletedByUserId")
                         .HasColumnType("int");
 
+                    b.Property<int>("DiscountType")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("DiscountValue")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
                     b.Property<DateOnly>("EndDate")
                         .HasColumnType("date");
-
-                    b.Property<string>("InternalDescription")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<bool>("IsActive")
                         .HasColumnType("bit");
@@ -862,33 +868,25 @@ namespace Kooch.Api.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<int?>("LastMinuteDays")
+                    b.Property<int?>("MinimumNights")
                         .HasColumnType("int");
 
-                    b.Property<decimal?>("Percentage")
-                        .HasPrecision(5, 2)
-                        .HasColumnType("decimal(5,2)");
-
-                    b.Property<int>("PropertyId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("PublicDescription")
-                        .HasMaxLength(1000)
-                        .HasColumnType("nvarchar(1000)");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.Property<DateOnly>("StartDate")
-                        .HasColumnType("date");
-
-                    b.Property<string>("Title")
+                    b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(150)
                         .HasColumnType("nvarchar(150)");
 
-                    b.Property<int>("Type")
+                    b.Property<int?>("PropertyId")
                         .HasColumnType("int");
+
+                    b.Property<int?>("RoomTypeId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Scope")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -896,29 +894,16 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("UpdatedByUserId")
                         .HasColumnType("int");
 
-                    b.Property<int>("Weekdays")
-                        .HasColumnType("int");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("PropertyId", "SortOrder");
-
-                    b.ToTable("Promotions");
-                });
-
-            modelBuilder.Entity("Kooch.Api.Entities.PromotionRoomType", b =>
-                {
-                    b.Property<int>("PromotionId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("RoomTypeId")
-                        .HasColumnType("int");
-
-                    b.HasKey("PromotionId", "RoomTypeId");
+                    b.HasIndex("PropertyId");
 
                     b.HasIndex("RoomTypeId");
 
-                    b.ToTable("PromotionRoomTypes");
+                    b.ToTable("Promotions", t =>
+                        {
+                            t.HasCheckConstraint("CK_Promotion_Scope", "([Scope] = 0 AND [PropertyId] IS NULL AND [RoomTypeId] IS NULL) OR ([Scope] = 1 AND [PropertyId] IS NOT NULL AND [RoomTypeId] IS NULL) OR ([Scope] = 2 AND [PropertyId] IS NULL AND [RoomTypeId] IS NOT NULL)");
+                        });
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Property", b =>
@@ -2780,27 +2765,14 @@ namespace Kooch.Api.Migrations
                     b.HasOne("Kooch.Api.Entities.Property", "Property")
                         .WithMany("Promotions")
                         .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Property");
-                });
-
-            modelBuilder.Entity("Kooch.Api.Entities.PromotionRoomType", b =>
-                {
-                    b.HasOne("Kooch.Api.Entities.Promotion", "Promotion")
-                        .WithMany("PromotionRoomTypes")
-                        .HasForeignKey("PromotionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.NoAction);
 
                     b.HasOne("Kooch.Api.Entities.RoomType", "RoomType")
-                        .WithMany("PromotionRoomTypes")
+                        .WithMany("Promotions")
                         .HasForeignKey("RoomTypeId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.NoAction);
 
-                    b.Navigation("Promotion");
+                    b.Navigation("Property");
 
                     b.Navigation("RoomType");
                 });
@@ -3249,11 +3221,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("UserPermissions");
                 });
 
-            modelBuilder.Entity("Kooch.Api.Entities.Promotion", b =>
-                {
-                    b.Navigation("PromotionRoomTypes");
-                });
-
             modelBuilder.Entity("Kooch.Api.Entities.Property", b =>
                 {
                     b.Navigation("CancellationPolicies");
@@ -3328,7 +3295,7 @@ namespace Kooch.Api.Migrations
 
                     b.Navigation("Images");
 
-                    b.Navigation("PromotionRoomTypes");
+                    b.Navigation("Promotions");
 
                     b.Navigation("PropertyImages");
 

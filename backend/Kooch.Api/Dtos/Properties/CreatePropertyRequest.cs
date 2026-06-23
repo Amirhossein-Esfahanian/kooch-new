@@ -47,6 +47,9 @@ public class CreatePropertyRequest
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public BreakfastOption BreakfastOption { get; set; }
+    [Range(0, double.MaxValue)]
+    public decimal? BreakfastPrice { get; set; }
     public PropertyStatus? Status { get; set; }
     public bool? IsWheelchairAccessible { get; set; }
     public bool HasElevator { get; set; }

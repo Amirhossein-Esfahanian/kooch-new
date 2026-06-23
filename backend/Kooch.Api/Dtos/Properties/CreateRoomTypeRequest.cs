@@ -23,6 +23,11 @@ public class CreateRoomTypeRequest
     [Range(0, int.MaxValue)]
     public int MaxChildren { get; set; }
 
+    public bool AllowExtraGuest { get; set; }
+
+    [Range(0, int.MaxValue)]
+    public int MaxExtraGuests { get; set; }
+
     [Range(0, int.MaxValue)]
     public int TotalInventory { get; set; }
 

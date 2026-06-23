@@ -44,6 +44,8 @@ export function PropertyForm({ values, onChange, onSubmit, submitLabel, disabled
         <label className="grid gap-1 text-sm font-semibold">ساعت ورود<input className={inputClass} onChange={(event) => set("checkInTime", event.target.value)} type="time" value={values.checkInTime} /></label>
         <label className="grid gap-1 text-sm font-semibold">ساعت خروج<input className={inputClass} onChange={(event) => set("checkOutTime", event.target.value)} type="time" value={values.checkOutTime} /></label>
       </div>
+      <label className="grid gap-1 text-sm font-semibold">وضعیت صبحانه<select className={inputClass} onChange={(event) => set("breakfastOption", event.target.value as PropertyFormValues["breakfastOption"])} value={values.breakfastOption}><option value="NoBreakfast">بدون صبحانه</option><option value="Included">صبحانه رایگان</option><option value="Paid">صبحانه با هزینه</option></select></label>
+      {values.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-semibold">هزینه صبحانه<input className={inputClass} min="0" onChange={(event) => set("breakfastPrice", event.target.value === "" ? null : Number(event.target.value))} type="number" value={values.breakfastPrice ?? ""} /></label>}
       <button className="rounded-lg bg-ink px-4 py-3 font-bold text-white disabled:opacity-50" disabled={disabled} type="submit">{submitLabel}</button>
     </form>
   );
