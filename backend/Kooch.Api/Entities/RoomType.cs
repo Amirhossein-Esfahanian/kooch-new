@@ -32,4 +32,5 @@ public class RoomType : BaseEntity
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<StayRule> StayRules { get; set; } = [];
     public ICollection<Promotion> Promotions { get; set; } = [];
+    public ICollection<RoomDailyPrice> DailyPrices { get; set; } = [];
 }

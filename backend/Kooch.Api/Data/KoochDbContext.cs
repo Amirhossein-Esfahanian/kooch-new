@@ -44,6 +44,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<SeoMetadata> SeoMetadata => Set<SeoMetadata>();
     public DbSet<Destination> Destinations => Set<Destination>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
+    public DbSet<RoomDailyPrice> RoomDailyPrices => Set<RoomDailyPrice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -60,6 +61,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureBeds(modelBuilder);
         ConfigureRooms(modelBuilder);
         ConfigureAvailability(modelBuilder);
+        ConfigureRoomDailyPrices(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigurePayments(modelBuilder);
         ConfigureReviews(modelBuilder);
@@ -454,6 +456,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(availability => availability.RoomType)
                 .WithMany(roomType => roomType.Availability)
                 .HasForeignKey(availability => availability.RoomTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigureRoomDailyPrices(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<RoomDailyPrice>(entity =>
+        {
+            entity.Property(price => price.BasePrice).HasPrecision(18, 2);
+            entity.Property(price => price.ChildPrice).HasPrecision(18, 2);
+            entity.Property(price => price.ExtraGuestPrice).HasPrecision(18, 2);
+            entity.HasIndex(price => new { price.RoomTypeId, price.Date }).IsUnique();
+            entity.HasOne(price => price.RoomType)
+                .WithMany(roomType => roomType.DailyPrices)
+                .HasForeignKey(price => price.RoomTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
     }

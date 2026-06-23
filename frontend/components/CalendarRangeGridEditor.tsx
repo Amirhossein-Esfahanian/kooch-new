@@ -41,6 +41,9 @@ export type CalendarRangeApplyPayload = {
   endDate: string;
   value: number;
   status?: AvailabilityStatus;
+  basePrice?: number;
+  childPrice?: number;
+  extraGuestPrice?: number;
   /** All selected cells. Range selections and scattered multi-select both save through this list. */
   items: { rowId: number | string; date: string }[];
 };
@@ -76,6 +79,8 @@ export interface CalendarRangeGridEditorProps<
   maxValueResolver?: (row: Row) => number;
   /** Optional status selector, used by inventory. */
   statusOptions?: { value: AvailabilityStatus; label: string }[];
+  pricingMinValue?: number;
+  pricingMaxValue?: number;
   /** Blocks selecting a date, for example past days. Row/column selection and dragging skip these. */
   disabledDateResolver?: (date: string) => boolean;
   /** Semantic cell state for reusable styling: available, unavailable, reserved, onRequest. */
@@ -139,6 +144,8 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   minValueResolver,
   maxValueResolver,
   statusOptions,
+  pricingMinValue = 0,
+  pricingMaxValue = Number.MAX_SAFE_INTEGER,
   disabledDateResolver,
   cellStateResolver,
   readonly = false,
@@ -159,6 +166,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   const [popupPosition, setPopupPosition] = useState({ top: 8, left: 16 });
   const [value, setValue] = useState(1);
   const [status, setStatus] = useState<AvailabilityStatus>("Available");
+  const [basePrice, setBasePrice] = useState(0);
+  const [childPrice, setChildPrice] = useState(0);
+  const [extraGuestPrice, setExtraGuestPrice] = useState(0);
   const [localError, setLocalError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -658,6 +668,12 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
   function validate() {
     if (selectedItems.length === 0) return "حداقل یک خانه را انتخاب کنید.";
+    if (mode === "pricing") {
+      const prices = [basePrice, childPrice, extraGuestPrice];
+      if (prices.some((price) => !Number.isFinite(price) || price < pricingMinValue || price > pricingMaxValue))
+        return `مبلغ‌ها باید بین ${toPersianNumber(pricingMinValue)} و ${toPersianNumber(pricingMaxValue)} باشند.`;
+      return "";
+    }
     const selectedRows = new Set(selectedItems.map((item) => item.rowId));
     const rowsToCheck = rows.filter((row) => selectedRows.has(String(row.id)));
     const effectiveValue = status === "Unavailable" ? 0 : value;
@@ -699,8 +715,11 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         rowId: sortedItems[0].rowId,
         startDate: sortedItems[0].date,
         endDate: sortedItems[sortedItems.length - 1].date,
-        value: status === "Unavailable" ? 0 : value,
-        status,
+        value: mode === "pricing" ? basePrice : status === "Unavailable" ? 0 : value,
+        status: mode === "inventory" ? status : undefined,
+        basePrice: mode === "pricing" ? basePrice : undefined,
+        childPrice: mode === "pricing" ? childPrice : undefined,
+        extraGuestPrice: mode === "pricing" ? extraGuestPrice : undefined,
         items: sortedItems,
       });
       clearSelections();
@@ -770,20 +789,40 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           </div>
 
           <div className="mt-5 flex flex-col gap-4">
-            <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
-              {valueLabel}
-              <input
-                className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
-                disabled={status === "Unavailable"}
-                min={
-                  activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0
-                }
-                onChange={(event) => setValue(Number(event.target.value))}
-                type={valueInputType}
-                value={status === "Unavailable" ? 0 : value}
-              />
-            </label>
-            {statusOptions && (
+            {mode === "pricing" ? (
+              <>
+                {[
+                  { label: "نرخ اتاق", fieldValue: basePrice, update: setBasePrice },
+                  { label: "نرخ کودک", fieldValue: childPrice, update: setChildPrice },
+                  { label: "نرخ هر نفر اضافه", fieldValue: extraGuestPrice, update: setExtraGuestPrice },
+                ].map((field) => (
+                  <label className="flex flex-col gap-2 text-sm font-bold text-slate-700" key={field.label}>
+                    {field.label}
+                    <input
+                      className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
+                      max={pricingMaxValue}
+                      min={pricingMinValue}
+                      onChange={(event) => field.update(Number(event.target.value))}
+                      type="number"
+                      value={field.fieldValue}
+                    />
+                  </label>
+                ))}
+              </>
+            ) : (
+              <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
+                {valueLabel}
+                <input
+                  className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
+                  disabled={status === "Unavailable"}
+                  min={activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0}
+                  onChange={(event) => setValue(Number(event.target.value))}
+                  type={valueInputType}
+                  value={status === "Unavailable" ? 0 : value}
+                />
+              </label>
+            )}
+            {mode === "inventory" && statusOptions && (
               <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
                 وضعیت
                 <select

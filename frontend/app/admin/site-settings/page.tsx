@@ -28,6 +28,7 @@ const groupLabels: Record<string, string> = {
   SEO: "سئو",
   Footer: "فوتر",
   Images: "تنظیمات تصاویر",
+  Pricing: "تنظیمات قیمت‌گذاری",
 };
 
 const imageLabels: Record<string, string> = {
@@ -186,7 +187,7 @@ export default function AdminSiteSettingsPage() {
       <input
         className={`${commonClass} h-12`}
         dir={setting.type === "ImageUrl" ? "ltr" : "rtl"}
-        min={setting.type === "Number" ? 1 : undefined}
+        min={setting.type === "Number" ? (setting.key === "pricing.minPrice" ? 0 : 1) : undefined}
         onChange={(event) =>
           setDrafts((current) => ({ ...current, [setting.key]: event.target.value }))
         }

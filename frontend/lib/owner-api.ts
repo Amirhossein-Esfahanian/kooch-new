@@ -237,6 +237,28 @@ export interface PropertyInventoryResponse {
   roomTypes: InventoryRoomTypeResponse[];
 }
 
+export interface RoomDailyPriceResponse {
+  id: number | null;
+  roomTypeId: number;
+  date: string;
+  basePrice: number;
+  childPrice: number;
+  extraGuestPrice: number;
+}
+
+export interface PricingRoomTypeResponse {
+  roomTypeId: number;
+  name: string;
+  days: RoomDailyPriceResponse[];
+}
+
+export interface PropertyPricingResponse {
+  propertyId: number;
+  startDate: string;
+  endDate: string;
+  roomTypes: PricingRoomTypeResponse[];
+}
+
 export interface PropertyCompletionResponse {
   propertyId: number;
   completionPercentage: number;

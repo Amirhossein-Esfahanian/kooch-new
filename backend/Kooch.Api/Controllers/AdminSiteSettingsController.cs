@@ -1,3 +1,4 @@
+using System.Globalization;
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.SiteSettings;
@@ -29,6 +30,12 @@ public class AdminSiteSettingsController(
         ".png",
         ".webp",
         ".svg"
+    };
+    private static readonly HashSet<string> CommissionKeys = new(StringComparer.Ordinal)
+    {
+        "ReservationCommissionPercent",
+        "ReferralCommissionPercent",
+        "CommissionType3Percent"
     };
 
     [HttpGet]
@@ -69,6 +76,31 @@ public class AdminSiteSettingsController(
         else if (setting.Key == "image.enableWebpConversion" && !bool.TryParse(value, out _))
         {
             throw new ArgumentException("مقدار تبدیل WebP معتبر نیست.");
+        }
+        else if (setting.Key is "pricing.minPrice" or "pricing.maxPrice")
+        {
+            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price < 0)
+            {
+                throw new ArgumentException("محدوده قیمت معتبر نیست.");
+            }
+            var otherKey = setting.Key == "pricing.minPrice" ? "pricing.maxPrice" : "pricing.minPrice";
+            var otherValue = await dbContext.SiteSettings.AsNoTracking()
+                .Where(item => item.Key == otherKey)
+                .Select(item => item.Value)
+                .SingleAsync(cancellationToken);
+            var otherPrice = decimal.Parse(otherValue, CultureInfo.InvariantCulture);
+            if ((setting.Key == "pricing.minPrice" && price > otherPrice) ||
+                (setting.Key == "pricing.maxPrice" && price < otherPrice))
+            {
+                throw new ArgumentException("حداقل قیمت نمی‌تواند بیشتر از حداکثر قیمت باشد.");
+            }
+        }
+        else if (CommissionKeys.Contains(setting.Key))
+        {
+            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var percent) || percent < 0 || percent > 100)
+            {
+                throw new ArgumentException("درصد کمیسیون باید بین ۰ تا ۱۰۰ باشد.");
+            }
         }
 
         setting.Value = value;
