@@ -39,6 +39,14 @@ public sealed class OwnerPromotionsController(IPromotionService promotionService
         return Ok(await promotionService.SetActiveAsync(user.UserId, user.Role, propertyId, id, request.IsActive, cancellationToken));
     }
 
+    [HttpPost("library/{templateId:int}/activate")]
+    public async Task<ActionResult<PromotionResponse>> ActivateAdminPromotion(int propertyId, int templateId, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return StatusCode(StatusCodes.Status201Created,
+            await promotionService.ActivateAdminPromotionAsync(user.UserId, user.Role, propertyId, templateId, cancellationToken));
+    }
+
     [HttpPost("{id:int}/duplicate")]
     public async Task<ActionResult<PromotionResponse>> Duplicate(int propertyId, int id, CancellationToken cancellationToken)
     {

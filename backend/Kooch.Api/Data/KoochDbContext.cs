@@ -693,8 +693,11 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(promotion => promotion.Percentage).HasPrecision(5, 2);
             entity.Property(promotion => promotion.Amount).HasPrecision(18, 2);
             entity.HasIndex(promotion => new { promotion.PropertyId, promotion.SortOrder });
+            entity.HasIndex(promotion => new { promotion.SourcePromotionId, promotion.PropertyId });
             entity.HasOne(promotion => promotion.Property).WithMany(property => property.Promotions)
                 .HasForeignKey(promotion => promotion.PropertyId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(promotion => promotion.SourcePromotion).WithMany(promotion => promotion.OwnerActivations)
+                .HasForeignKey(promotion => promotion.SourcePromotionId).OnDelete(DeleteBehavior.NoAction);
         });
 
         modelBuilder.Entity<PromotionRoomType>(entity =>

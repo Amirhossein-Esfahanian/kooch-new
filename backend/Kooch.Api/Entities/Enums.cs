@@ -27,6 +27,7 @@ public enum PaymentStatus { Pending, Successful, Failed, Refunded }
 public enum AmenityScope { Property, RoomType, Both }
 public enum DiscountType { Percentage, FixedAmount }
 public enum PromotionType { PercentageDiscount, FixedAmountDiscount, LastMinute, Informational }
+public enum PromotionSource { Admin, Owner }
 [Flags]
 public enum PromotionWeekday
 {

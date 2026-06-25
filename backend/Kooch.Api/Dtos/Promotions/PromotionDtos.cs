@@ -5,7 +5,7 @@ namespace Kooch.Api.Dtos.Promotions;
 
 public sealed class PromotionUpsertRequest
 {
-    public int PropertyId { get; set; }
+    public int? PropertyId { get; set; }
 
     [Required, MaxLength(150)]
     public string Title { get; set; } = string.Empty;
@@ -26,12 +26,13 @@ public sealed class PromotionUpsertRequest
     public int? LastMinuteDays { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool IsPublished { get; set; }
 }
 
 public sealed class PromotionResponse
 {
     public int Id { get; set; }
-    public int PropertyId { get; set; }
+    public int? PropertyId { get; set; }
     public string PropertyName { get; set; } = string.Empty;
     public string Title { get; set; } = string.Empty;
     public string? InternalDescription { get; set; }
@@ -45,6 +46,11 @@ public sealed class PromotionResponse
     public int? LastMinuteDays { get; set; }
     public int SortOrder { get; set; }
     public bool IsActive { get; set; }
+    public bool IsPublished { get; set; }
+    public PromotionSource Source { get; set; }
+    public int? SourcePromotionId { get; set; }
+    public bool IsLibraryTemplate { get; set; }
+    public bool CanEdit { get; set; }
     public int? CreatedByUserId { get; set; }
     public string CreatedBy { get; set; } = string.Empty;
     public DateTime CreatedAtUtc { get; set; }

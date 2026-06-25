@@ -29,7 +29,7 @@ const weekdays: { value: PromotionWeekday; label: string }[] = [
 ];
 
 type Draft = {
-  propertyId: number;
+  propertyId: number | null;
   title: string;
   internalDescription: string;
   publicDescription: string;
@@ -42,12 +42,13 @@ type Draft = {
   amount: string;
   lastMinuteDays: string;
   isActive: boolean;
+  isPublished: boolean;
 };
 
 const inputClass = "rounded-xl border border-[var(--theme-border)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--theme-primary)]";
 const today = () => new Date().toISOString().slice(0, 10);
 
-function emptyDraft(propertyId = 0): Draft {
+function emptyDraft(propertyId: number | null = null): Draft {
   return {
     propertyId,
     title: "",
@@ -62,6 +63,7 @@ function emptyDraft(propertyId = 0): Draft {
     amount: "",
     lastMinuteDays: "3",
     isActive: true,
+    isPublished: false,
   };
 }
 
@@ -78,7 +80,7 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [propertyFilter, setPropertyFilter] = useState<number | "all">("all");
   const [editing, setEditing] = useState<PromotionResponse | null>(null);
-  const [draft, setDraft] = useState<Draft>(() => emptyDraft(propertyId));
+  const [draft, setDraft] = useState<Draft>(() => emptyDraft(propertyId ?? null));
   const [modalOpen, setModalOpen] = useState(false);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
@@ -96,7 +98,10 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
   }, [admin, loadPromotions, propertyId]);
 
   useEffect(() => {
-    if (!admin || !draft.propertyId) return;
+    if (!admin || !draft.propertyId) {
+      if (admin) setRooms([]);
+      return;
+    }
     apiRequest<RoomTypeResponse[]>(`/owner/properties/${draft.propertyId}/room-types`)
       .then(setRooms)
       .catch((error: Error) => toast.error(error.message));
@@ -111,13 +116,17 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
   }), [promotions, propertyFilter, search, statusFilter, typeFilter]);
 
   function openNew() {
-    const selectedProperty = propertyId ?? (propertyFilter !== "all" ? propertyFilter : properties[0]?.id ?? 0);
+    const selectedProperty = admin ? null : propertyId ?? (propertyFilter !== "all" ? propertyFilter : properties[0]?.id ?? null);
     setEditing(null);
     setDraft(emptyDraft(selectedProperty));
     setModalOpen(true);
   }
 
   function openEdit(promotion: PromotionResponse) {
+    if (!promotion.canEdit || (!admin && promotion.source === "Admin")) {
+      toast.error("پروموشن‌های مدیریتی فقط قابل فعال‌سازی، غیرفعال‌سازی یا کپی هستند");
+      return;
+    }
     setEditing(promotion);
     setDraft({
       propertyId: promotion.propertyId,
@@ -133,16 +142,17 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
       amount: promotion.amount?.toString() ?? "",
       lastMinuteDays: promotion.lastMinuteDays?.toString() ?? "3",
       isActive: promotion.isActive,
+      isPublished: promotion.isPublished,
     });
     setModalOpen(true);
   }
 
   function validate() {
-    if (!draft.propertyId) return "اقامتگاه را انتخاب کنید";
+    if (!admin && !draft.propertyId) return "اقامتگاه را انتخاب کنید";
     if (!draft.title.trim()) return "عنوان پروموشن الزامی است";
     if (draft.startDate > draft.endDate) return "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد";
     if (!draft.weekdays.length) return "حداقل یک روز هفته را انتخاب کنید";
-    if (!draft.roomTypeIds.length) return "حداقل یک اتاق را انتخاب کنید";
+    if (!admin && !draft.roomTypeIds.length) return "حداقل یک اتاق را انتخاب کنید";
     if (draft.type === "PercentageDiscount" || draft.type === "LastMinute") {
       const value = Number(draft.percentage);
       if (!Number.isFinite(value) || value < 0 || value > 100) return "درصد تخفیف باید بین صفر تا صد باشد";
@@ -186,6 +196,12 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
 
   async function toggle(promotion: PromotionResponse) {
     try {
+      if (!admin && promotion.isLibraryTemplate) {
+        await apiRequest(`${apiBase}/library/${promotion.id}/activate`, { method: "POST" });
+        await loadPromotions();
+        toast.success("پروموشن مدیریتی فعال شد");
+        return;
+      }
       await apiRequest(`${apiBase}/${promotion.id}/status`, { method: "PUT", body: JSON.stringify({ isActive: !promotion.isActive }) });
       setPromotions((current) => current.map((item) => item.id === promotion.id ? { ...item, isActive: !item.isActive } : item));
       toast.success(promotion.isActive ? "پروموشن غیرفعال شد" : "پروموشن فعال شد");
@@ -244,12 +260,22 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
       {!loading && !filtered.length && <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">پروموشنی با این فیلتر پیدا نشد.</div>}
       <div className="grid gap-4 xl:grid-cols-2">
         {filtered.map((promotion) => (
-          <article className={`cursor-grab rounded-2xl border bg-white p-5 shadow-sm transition active:cursor-grabbing ${promotion.isActive ? "border-[var(--theme-primary-border)]" : "border-slate-200 opacity-75"}`} draggable key={promotion.id} onDragOver={(event) => event.preventDefault()} onDragStart={() => setDraggedId(promotion.id)} onDrop={() => drop(promotion.id)}>
+          <article className={`rounded-2xl border bg-white p-5 shadow-sm transition ${promotion.isLibraryTemplate ? "" : "cursor-grab active:cursor-grabbing"} ${promotion.isActive ? "border-[var(--theme-primary-border)]" : "border-slate-200 opacity-75"}`} draggable={!promotion.isLibraryTemplate} key={promotion.id} onDragOver={(event) => !promotion.isLibraryTemplate && event.preventDefault()} onDragStart={() => !promotion.isLibraryTemplate && setDraggedId(promotion.id)} onDrop={() => !promotion.isLibraryTemplate && drop(promotion.id)}>
             <div className="flex items-start justify-between gap-3">
-              <div><h3 className="text-lg font-black text-slate-950">{promotion.title}</h3><p className="mt-1 text-xs font-bold text-[var(--theme-primary-text)]">{typeLabel(promotion.type)}</p></div>
-              <span className={`rounded-full px-3 py-1 text-xs font-bold ${promotion.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{promotion.isActive ? "فعال" : "غیرفعال"}</span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-black text-slate-950">{promotion.title}</h3>
+                  <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${promotion.source === "Admin" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}>
+                    {promotion.source === "Admin" ? "Admin Promotion" : "Owner Promotion"}
+                  </span>
+                  {admin && promotion.source === "Admin" && <span className={`rounded-full px-2.5 py-1 text-[11px] font-black ${promotion.isPublished ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{promotion.isPublished ? "منتشر شده" : "پیش‌نویس"}</span>}
+                </div>
+                <p className="mt-1 text-xs font-bold text-[var(--theme-primary-text)]">{typeLabel(promotion.type)}</p>
+              </div>
+              <span className={`rounded-full px-3 py-1 text-xs font-bold ${promotion.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{promotion.isLibraryTemplate ? "کتابخانه" : promotion.isActive ? "فعال" : "غیرفعال"}</span>
             </div>
             {admin && <p className="mt-3 text-sm font-bold text-slate-600">{promotion.propertyName}</p>}
+            {promotion.publicDescription && <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-600">{promotion.publicDescription}</p>}
             <dl className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
               <div><dt className="text-xs text-slate-400">بازه اجرا</dt><dd>{new Date(promotion.startDate).toLocaleDateString("fa-IR")} تا {new Date(promotion.endDate).toLocaleDateString("fa-IR")}</dd></div>
               <div><dt className="text-xs text-slate-400">روزهای هفته</dt><dd>{promotion.weekdays.map((day) => weekdays.find((item) => item.value === day)?.label).join("، ")}</dd></div>
@@ -257,11 +283,11 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
               <div><dt className="text-xs text-slate-400">ایجادکننده</dt><dd>{promotion.createdBy}</dd></div>
             </dl>
             <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
-              <button className="ds-button-secondary text-xs" onClick={() => openEdit(promotion)} type="button">ویرایش</button>
-              <button className="ds-button-secondary text-xs" onClick={() => toggle(promotion)} type="button">{promotion.isActive ? "غیرفعال کردن" : "فعال کردن"}</button>
-              <button className="ds-button-secondary text-xs" onClick={() => duplicate(promotion)} type="button">کپی</button>
-              <button className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50" onClick={() => remove(promotion)} type="button">حذف</button>
-              <span className="mr-auto self-center text-xs text-slate-400">☰ برای مرتب‌سازی بکشید</span>
+              {promotion.canEdit && !(!admin && promotion.source === "Admin") && <button className="ds-button-secondary text-xs" onClick={() => openEdit(promotion)} type="button">ویرایش</button>}
+              <button className="ds-button-secondary text-xs" onClick={() => toggle(promotion)} type="button">{promotion.isLibraryTemplate ? "فعال‌سازی" : promotion.isActive ? "غیرفعال کردن" : "فعال کردن"}</button>
+              <button className="ds-button-secondary text-xs" onClick={() => duplicate(promotion)} type="button">{!admin && promotion.source === "Admin" ? "کپی خصوصی" : "کپی"}</button>
+              {(admin || promotion.source === "Owner") && <button className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50" onClick={() => remove(promotion)} type="button">حذف</button>}
+              {!promotion.isLibraryTemplate && <span className="mr-auto self-center text-xs text-slate-400">☰ برای مرتب‌سازی بکشید</span>}
             </div>
           </article>
         ))}
@@ -271,7 +297,7 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
         <form className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-7" onSubmit={submit}>
           <div className="mb-6 flex items-center justify-between"><h2 className="text-2xl font-black">{editing ? "ویرایش پروموشن" : "پروموشن جدید"}</h2><button className="text-2xl text-slate-400" onClick={() => setModalOpen(false)} type="button">×</button></div>
           <div className="grid gap-4 sm:grid-cols-2">
-            {admin && <label className="grid gap-2 text-sm font-bold sm:col-span-2">اقامتگاه<select className={inputClass} onChange={(event) => setDraft((current) => ({ ...current, propertyId: Number(event.target.value), roomTypeIds: [] }))} required value={draft.propertyId}><option value="">انتخاب اقامتگاه</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}
+            {admin && <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700 sm:col-span-2">این پروموشن به عنوان قالب مدیریتی قابل انتشار در کتابخانه مالک‌ها ساخته می‌شود.</div>}
             <label className="grid gap-2 text-sm font-bold sm:col-span-2">عنوان<input className={inputClass} maxLength={150} onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))} required value={draft.title} /></label>
             <label className="grid gap-2 text-sm font-bold">نوع پروموشن<select className={inputClass} onChange={(event) => setDraft((current) => ({ ...current, type: event.target.value as PromotionType }))} value={draft.type}>{promotionTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
             {(draft.type === "PercentageDiscount" || draft.type === "LastMinute") && <label className="grid gap-2 text-sm font-bold">درصد تخفیف<input className={inputClass} max="100" min="0" onChange={(event) => setDraft((current) => ({ ...current, percentage: event.target.value }))} type="number" value={draft.percentage} /></label>}
@@ -283,8 +309,9 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
             <label className="grid gap-2 text-sm font-bold sm:col-span-2">توضیحات عمومی<textarea className={inputClass} onChange={(event) => setDraft((current) => ({ ...current, publicDescription: event.target.value }))} rows={2} value={draft.publicDescription} /></label>
           </div>
           <fieldset className="mt-5"><legend className="mb-2 text-sm font-black">روزهای هفته</legend><div className="flex flex-wrap gap-2">{weekdays.map((day) => <label className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]" : "border-slate-200"}`} key={day.value}><input checked={draft.weekdays.includes(day.value)} className="sr-only" onChange={() => setDraft((current) => ({ ...current, weekdays: current.weekdays.includes(day.value) ? current.weekdays.filter((item) => item !== day.value) : [...current.weekdays, day.value] }))} type="checkbox" />{day.label}</label>)}</div></fieldset>
-          <fieldset className="mt-5"><legend className="mb-2 text-sm font-black">اتاق‌های منتخب</legend><div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-3 sm:grid-cols-2">{rooms.map((room) => <label className="flex items-center gap-2 text-sm font-bold" key={room.id}><input checked={draft.roomTypeIds.includes(room.id)} onChange={() => setDraft((current) => ({ ...current, roomTypeIds: current.roomTypeIds.includes(room.id) ? current.roomTypeIds.filter((id) => id !== room.id) : [...current.roomTypeIds, room.id] }))} type="checkbox" />{room.name}</label>)}{!rooms.length && <p className="text-sm text-slate-500">اتاق فعالی برای این اقامتگاه وجود ندارد.</p>}</div></fieldset>
+          {!admin && <fieldset className="mt-5"><legend className="mb-2 text-sm font-black">اتاق‌های منتخب</legend><div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-3 sm:grid-cols-2">{rooms.map((room) => <label className="flex items-center gap-2 text-sm font-bold" key={room.id}><input checked={draft.roomTypeIds.includes(room.id)} onChange={() => setDraft((current) => ({ ...current, roomTypeIds: current.roomTypeIds.includes(room.id) ? current.roomTypeIds.filter((id) => id !== room.id) : [...current.roomTypeIds, room.id] }))} type="checkbox" />{room.name}</label>)}{!rooms.length && <p className="text-sm text-slate-500">اتاق فعالی برای این اقامتگاه وجود ندارد.</p>}</div></fieldset>}
           <label className="mt-5 flex items-center gap-2 text-sm font-bold"><input checked={draft.isActive} onChange={(event) => setDraft((current) => ({ ...current, isActive: event.target.checked }))} type="checkbox" />پروموشن فعال باشد</label>
+          {admin && <label className="mt-3 flex items-center gap-2 text-sm font-bold"><input checked={draft.isPublished} onChange={(event) => setDraft((current) => ({ ...current, isPublished: event.target.checked }))} type="checkbox" />انتشار در کتابخانه مالک‌ها</label>}
           <div className="mt-7 flex justify-end gap-3"><button className="ds-button-secondary" onClick={() => setModalOpen(false)} type="button">لغو</button><button className="ds-button-primary disabled:opacity-50" disabled={saving} type="submit">{saving ? "در حال ذخیره..." : "ذخیره"}</button></div>
         </form>
       </div>}

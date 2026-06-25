@@ -107,6 +107,8 @@ export type PromotionType =
   | "LastMinute"
   | "Informational";
 
+export type PromotionSource = "Admin" | "Owner";
+
 export type PromotionWeekday =
   | "Saturday"
   | "Sunday"
@@ -124,7 +126,7 @@ export interface PromotionRoomTypeResponse {
 
 export interface PromotionResponse {
   id: number;
-  propertyId: number;
+  propertyId: number | null;
   propertyName: string;
   title: string;
   internalDescription: string | null;
@@ -138,6 +140,11 @@ export interface PromotionResponse {
   lastMinuteDays: number | null;
   sortOrder: number;
   isActive: boolean;
+  isPublished: boolean;
+  source: PromotionSource;
+  sourcePromotionId: number | null;
+  isLibraryTemplate: boolean;
+  canEdit: boolean;
   createdByUserId: number | null;
   createdBy: string;
   createdAtUtc: string;
