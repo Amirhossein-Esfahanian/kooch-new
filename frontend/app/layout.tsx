@@ -12,9 +12,11 @@ export const metadata: Metadata = {
   description: "Thoughtful stays for slow mornings and memorable journeys.",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fa" dir="rtl">
+    <html lang="fa" dir="rtl" suppressHydrationWarning>
       <body className="min-h-screen antialiased">
         <Toaster closeButton dir="rtl" position="top-center" richColors />
         <script

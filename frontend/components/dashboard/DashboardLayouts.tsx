@@ -14,16 +14,56 @@ type DashboardMenuItem = {
 };
 
 const adminMenuItems: DashboardMenuItem[] = [
-  { label: "داشبورد", icon: "▣", href: "/admin", exact: true },
-  { label: "مدیریت اقامتگاه‌ها", icon: "⌂", href: "/admin/properties" },
-  { label: "مدیریت کاربران", icon: "👥", href: "/admin/users" },
-  { label: "مدیریت امکانات", icon: "☑", href: "/owner/amenities" },
-  { label: "تنظیمات سایت", icon: "⚙", href: "/admin/site-settings" },
-  { label: "تنظیمات رزرو", icon: "◷", href: "/admin/reservation-settings" },
-  { label: "پروموشن‌ها", icon: "%", href: "/admin/promotions" },
-  { label: "گزارش‌ها", icon: "▤", href: "/admin/reports" },
-  { label: "تنظیمات", icon: "⚙", href: "/admin/settings" },
+  {
+    label: "داشبورد",
+    icon: "/svgs/tachometer-alt.svg",
+    href: "/admin",
+    exact: true,
+  },
+  {
+    label: "مدیریت اقامتگاه‌ها",
+    icon: "/svgs/hotel.svg",
+    href: "/admin/properties",
+  },
+  { label: "مدیریت کاربران", icon: "/svgs/users.svg", href: "/admin/users" },
+  {
+    label: "مدیریت امکانات",
+    icon: "/svgs/folder-gear.svg",
+    href: "/owner/amenities",
+  },
+  {
+    label: "تنظیمات سایت",
+    icon: "/svgs/site-settings.svg",
+    href: "/admin/site-settings",
+  },
+  {
+    label: "تنظیمات رزرو",
+    icon: "/svgs/reservation-settings.svg",
+    href: "/admin/reservation-settings",
+  },
+  { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
+  { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports" },
+  { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },
 ];
+
+function MenuIcon({ icon }: { icon: string }) {
+  const isSvgPath = icon.startsWith("/");
+
+  if (!isSvgPath) {
+    return <span>{icon}</span>;
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-4 w-4 bg-current"
+      style={{
+        WebkitMask: `url(${icon}) center / contain no-repeat`,
+        mask: `url(${icon}) center / contain no-repeat`,
+      }}
+    />
+  );
+}
 
 function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
   const fallbackHref = "/owner/select-property";
@@ -32,58 +72,58 @@ function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
   return [
     {
       label: "داشبورد",
-      icon: "▦",
+      icon: "/svgs/tachometer-alt.svg",
       href: propertyId ? `${base}/dashboard` : fallbackHref,
     },
     {
       label: "اقامتگاه من",
-      icon: "⌂",
+      icon: "/svgs/hotel.svg",
       href: propertyId ? base : "/owner/properties",
       exact: true,
     },
     {
       label: "اتاق‌ها",
-      icon: "▤",
+      icon: "/svgs/bed-alt.svg",
       href: propertyId ? `${base}/rooms` : fallbackHref,
     },
     {
       label: "ظرفیت اتاق‌ها",
-      icon: "▣",
+      icon: "/svgs/table.svg",
       href: propertyId ? `${base}/inventory` : fallbackHref,
     },
     {
       label: "قیمت‌گذاری اتاق‌ها",
-      icon: "▥",
+      icon: "/svgs/money-bill.svg",
       href: propertyId ? `${base}/pricing` : fallbackHref,
     },
     {
       label: "پروموشن‌ها",
-      icon: "%",
+      icon: "/svgs/tags.svg",
       href: propertyId ? `${base}/promotions` : fallbackHref,
     },
     {
       label: "رزروها",
-      icon: "●",
+      icon: "/svgs/address-card.svg",
       href: propertyId ? `${base}/reservations` : fallbackHref,
     },
     {
       label: "نظرات",
-      icon: "□",
+      icon: "/svgs/comment.svg",
       href: propertyId ? `${base}/reviews` : fallbackHref,
     },
     {
       label: "کاربران",
-      icon: "♟",
+      icon: "/svgs/users.svg",
       href: propertyId ? `${base}/users` : fallbackHref,
     },
     {
       label: "سوابق تغییرات نرخی",
-      icon: "≡",
+      icon: "/svgs/list.svg",
       href: propertyId ? `${base}/change-logs` : fallbackHref,
     },
     {
       label: "تنظیمات",
-      icon: "⚙",
+      icon: "/svgs/cogs.svg",
       href: propertyId ? `${base}/settings` : fallbackHref,
     },
   ];
@@ -514,7 +554,7 @@ function DashboardSidebar({
                         : "bg-white/70"
                   }`}
                 >
-                  {item.icon}
+                  <MenuIcon icon={item.icon} />
                 </span>
                 <span className={collapsed ? "md:hidden" : ""}>
                   {item.label}
