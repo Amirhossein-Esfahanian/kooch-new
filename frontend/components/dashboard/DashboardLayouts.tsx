@@ -4,38 +4,95 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { ownerPropertyKey } from "@/lib/owner-api";
 
 type DashboardMenuItem = {
   href: string;
   icon: string;
   label: string;
+  exact?: boolean;
 };
 
 const adminMenuItems: DashboardMenuItem[] = [
-  { label: "داشبورد", icon: "▦", href: "/admin" },
-  { label: "اقامتگاه‌ها", icon: "⌂", href: "/admin/properties" },
-  { label: "اتاق‌ها", icon: "▣", href: "/admin/properties" },
-  { label: "رزروها", icon: "◷", href: "/admin" },
-  { label: "قیمت‌گذاری", icon: "﷼", href: "/admin/reservation-settings" },
-  { label: "ظرفیت", icon: "⇅", href: "/admin" },
+  { label: "داشبورد", icon: "▣", href: "/admin", exact: true },
+  { label: "مدیریت اقامتگاه‌ها", icon: "⌂", href: "/admin/properties" },
+  { label: "مدیریت کاربران", icon: "👥", href: "/admin/users" },
+  { label: "مدیریت امکانات", icon: "☑", href: "/owner/amenities" },
+  { label: "تنظیمات سایت", icon: "⚙", href: "/admin/site-settings" },
+  { label: "تنظیمات رزرو", icon: "◷", href: "/admin/reservation-settings" },
   { label: "پروموشن‌ها", icon: "%", href: "/admin/promotions" },
-  { label: "کاربران", icon: "👥", href: "/admin/users" },
-  { label: "نظرات", icon: "☆", href: "/admin" },
+  { label: "گزارش‌ها", icon: "▤", href: "/admin/reports" },
   { label: "تنظیمات", icon: "⚙", href: "/admin/settings" },
 ];
 
-const ownerMenuItems: DashboardMenuItem[] = [
-  { label: "داشبورد", icon: "▦", href: "/owner" },
-  { label: "هتل من / اقامتگاه من", icon: "⌂", href: "/owner/properties" },
-  { label: "اتاق‌ها", icon: "▣", href: "/owner/properties" },
-  { label: "رزروها", icon: "◷", href: "/owner" },
-  { label: "قیمت‌گذاری", icon: "﷼", href: "/owner" },
-  { label: "ظرفیت", icon: "⇅", href: "/owner" },
-  { label: "پروموشن‌ها", icon: "%", href: "/owner" },
-  { label: "کاربران", icon: "👥", href: "/owner" },
-  { label: "نظرات", icon: "☆", href: "/owner" },
-  { label: "تنظیمات", icon: "⚙", href: "/owner" },
-];
+function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
+  const fallbackHref = "/owner/select-property";
+  const base = propertyId ? `/owner/properties/${propertyId}` : fallbackHref;
+
+  return [
+    {
+      label: "داشبورد",
+      icon: "▦",
+      href: propertyId ? `${base}/dashboard` : fallbackHref,
+    },
+    {
+      label: "اقامتگاه من",
+      icon: "⌂",
+      href: propertyId ? base : "/owner/properties",
+      exact: true,
+    },
+    {
+      label: "اتاق‌ها",
+      icon: "▤",
+      href: propertyId ? `${base}/rooms` : fallbackHref,
+    },
+    {
+      label: "ظرفیت اتاق‌ها",
+      icon: "▣",
+      href: propertyId ? `${base}/inventory` : fallbackHref,
+    },
+    {
+      label: "قیمت‌گذاری اتاق‌ها",
+      icon: "▥",
+      href: propertyId ? `${base}/pricing` : fallbackHref,
+    },
+    {
+      label: "پروموشن‌ها",
+      icon: "%",
+      href: propertyId ? `${base}/promotions` : fallbackHref,
+    },
+    {
+      label: "رزروها",
+      icon: "●",
+      href: propertyId ? `${base}/reservations` : fallbackHref,
+    },
+    {
+      label: "نظرات",
+      icon: "□",
+      href: propertyId ? `${base}/reviews` : fallbackHref,
+    },
+    {
+      label: "کاربران",
+      icon: "♟",
+      href: propertyId ? `${base}/users` : fallbackHref,
+    },
+    {
+      label: "سوابق تغییرات نرخی",
+      icon: "≡",
+      href: propertyId ? `${base}/change-logs` : fallbackHref,
+    },
+    {
+      label: "تنظیمات",
+      icon: "⚙",
+      href: propertyId ? `${base}/settings` : fallbackHref,
+    },
+  ];
+}
+
+function getOwnerPropertyIdFromPathname(pathname: string) {
+  const match = pathname.match(/^\/owner\/properties\/([^/]+)/);
+  return match?.[1];
+}
 
 const stats = [
   {
@@ -193,7 +250,30 @@ export function OwnerLayout({
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
 }) {
-  return <DashboardShell menuItems={ownerMenuItems}>{children}</DashboardShell>;
+  const pathname = usePathname();
+  const [storedPropertyId, setStoredPropertyId] = useState<
+    string | undefined
+  >();
+  const propertyId =
+    getOwnerPropertyIdFromPathname(pathname) ?? storedPropertyId;
+
+  useEffect(() => {
+    const pathPropertyId = getOwnerPropertyIdFromPathname(pathname);
+
+    if (pathPropertyId) {
+      setStoredPropertyId(pathPropertyId);
+      return;
+    }
+
+    const savedPropertyId = localStorage.getItem(ownerPropertyKey) ?? undefined;
+    setStoredPropertyId(savedPropertyId);
+  }, [pathname]);
+
+  return (
+    <DashboardShell menuItems={getOwnerMenuItems(propertyId)}>
+      {children}
+    </DashboardShell>
+  );
 }
 
 export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
@@ -405,7 +485,13 @@ function DashboardSidebar({
 
         <nav className="mt-6 grid gap-1">
           {menuItems.map((item) => {
-            const active = pathname === item.href;
+            const hrefPath = item.href.split("#")[0];
+            const isHashLink = item.href.includes("#");
+            const active = isHashLink
+              ? false
+              : item.exact
+                ? pathname === hrefPath
+                : pathname === hrefPath || pathname.startsWith(`${hrefPath}/`);
 
             return (
               <Link
