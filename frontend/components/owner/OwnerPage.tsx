@@ -1,44 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { ReactNode } from "react";
-import { clearToken } from "@/lib/owner-api";
+import type { ReactNode } from "react";
+import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 
 export function OwnerPage({ title, children }: { title: string; children: ReactNode }) {
-  const router = useRouter();
-
-  function logout() {
-    clearToken();
-    router.push("/login");
-  }
-
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8 sm:px-8">
-      <div className="mb-8 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <p className="text-sm font-semibold text-slate-500">پنل مدیریت کوچ</p>
-          <h1 className="text-3xl font-black text-slate-950">{title}</h1>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/owner/properties">
-            اقامتگاه‌ها
-          </Link>
-          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/owner/amenities">
-            امکانات
-          </Link>
-          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/admin/properties">
-            مدیریت
-          </Link>
-          <Link className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" href="/choose-workspace">
-            تغییر محیط کاربری
-          </Link>
-          <button className="rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:border-blue-300 hover:text-blue-700" onClick={logout} type="button">
-            خروج
-          </button>
-        </div>
-      </div>
-      {children}
-    </div>
+    <OwnerLayout>
+      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#171d27]">
+          <p className="text-sm font-black text-[var(--theme-primary-text)]">پنل مالک</p>
+          <h1 className="mt-2 text-3xl font-black text-slate-950 dark:text-slate-100">{title}</h1>
+        </section>
+        {children}
+      </main>
+    </OwnerLayout>
   );
 }
