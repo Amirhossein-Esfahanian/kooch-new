@@ -46,6 +46,12 @@ const messages = [
   { name: "سیستم قیمت‌گذاری", text: "هشدار اختلاف ظرفیت و قیمت", unread: false },
 ];
 
+const notifications = [
+  { title: "رزرو جدید ثبت شد", text: "اقامتگاه خانه حیاط‌دار کاشان یک رزرو تازه دارد.", unread: true },
+  { title: "نیاز به تایید تصویر", text: "۴ تصویر جدید در صف بررسی قرار گرفته است.", unread: true },
+  { title: "هشدار ظرفیت", text: "ظرفیت برخی اتاق‌ها برای آخر هفته کامل شده است.", unread: false },
+];
+
 const drawerEvents = [
   { time: "۱۰:۳۰", title: "بررسی رزروهای امروز" },
   { time: "۱۲:۰۰", title: "تماس با مالک اقامتگاه باغ فین" },
@@ -70,21 +76,23 @@ function DashboardShell() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [drawerType, setDrawerType] = useState<"messages" | "notifications" | null>(null);
+  const [profileMenuOpen, setProfileMenuOpen] = useState(false);
 
   useEffect(() => {
-    if (!drawerType) {
+    if (!drawerType && !profileMenuOpen) {
       return;
     }
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setDrawerType(null);
+        setProfileMenuOpen(false);
       }
     };
 
     window.addEventListener("keydown", handleEscape);
     return () => window.removeEventListener("keydown", handleEscape);
-  }, [drawerType]);
+  }, [drawerType, profileMenuOpen]);
 
   return (
     <div
@@ -113,7 +121,16 @@ function DashboardShell() {
           <DashboardHeader
             activeDrawer={drawerType}
             darkMode={darkMode}
-            onDrawerToggle={(type) => setDrawerType((current) => (current === type ? null : type))}
+            profileMenuOpen={profileMenuOpen}
+            onDrawerToggle={(type) => {
+              setProfileMenuOpen(false);
+              setDrawerType((current) => (current === type ? null : type));
+            }}
+            onProfileMenuClose={() => setProfileMenuOpen(false)}
+            onProfileMenuToggle={() => {
+              setDrawerType(null);
+              setProfileMenuOpen((value) => !value);
+            }}
             onThemeToggle={() => setDarkMode((value) => !value)}
             onSidebarToggle={() => setMobileSidebarOpen(true)}
           />
@@ -260,14 +277,20 @@ function DashboardHeader({
   activeDrawer,
   darkMode,
   onDrawerToggle,
+  onProfileMenuClose,
+  onProfileMenuToggle,
   onThemeToggle,
   onSidebarToggle,
+  profileMenuOpen,
 }: {
   activeDrawer: "messages" | "notifications" | null;
   darkMode: boolean;
   onDrawerToggle: (type: "messages" | "notifications") => void;
+  onProfileMenuClose: () => void;
+  onProfileMenuToggle: () => void;
   onThemeToggle: () => void;
   onSidebarToggle: () => void;
+  profileMenuOpen: boolean;
 }) {
   return (
     <header className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}>
@@ -305,11 +328,55 @@ function DashboardHeader({
         >
           {darkMode ? "☀" : "☾"}
         </button>
-        <button className={`flex items-center gap-2 rounded-xl border px-2 py-1.5 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`} type="button">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-black text-white">ک</span>
-          <span className="hidden text-sm font-black lg:inline">مدیر کوچ</span>
-          <span className={mutedText(darkMode)}>⌄</span>
-        </button>
+        <div className="relative">
+          {profileMenuOpen && (
+            <button
+              className="fixed inset-0 z-[60] cursor-default"
+              onClick={onProfileMenuClose}
+              type="button"
+              aria-label="بستن منوی پروفایل"
+            />
+          )}
+          <button
+            className={`relative z-[80] flex items-center gap-2 rounded-xl border px-2 py-1.5 transition hover:border-[var(--theme-primary)] ${
+              profileMenuOpen
+                ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)]"
+                : darkMode
+                  ? "border-white/10 bg-white/5"
+                  : "border-slate-200 bg-slate-50"
+            }`}
+            onClick={onProfileMenuToggle}
+            type="button"
+            aria-expanded={profileMenuOpen}
+            aria-haspopup="menu"
+          >
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-black text-white">ک</span>
+            <span className="hidden text-sm font-black lg:inline">مدیر کوچ</span>
+            <span className={mutedText(darkMode)}>⌄</span>
+          </button>
+          {profileMenuOpen && (
+            <div
+              className={`absolute left-0 top-12 z-[90] w-52 overflow-hidden rounded-xl border p-1 text-sm font-bold shadow-2xl ${
+                darkMode ? "border-white/10 bg-[#111720] text-slate-100" : "border-slate-200 bg-white text-slate-800"
+              }`}
+              role="menu"
+            >
+              {["مشاهده پروفایل", "تنظیمات حساب", "خروج از حساب"].map((item) => (
+                <button
+                  className={`block w-full rounded-lg px-3 py-2 text-right transition ${
+                    darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
+                  } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
+                  key={item}
+                  onClick={onProfileMenuClose}
+                  role="menuitem"
+                  type="button"
+                >
+                  {item}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
       </div>
     </header>
   );
@@ -517,7 +584,7 @@ function DashboardSideDrawer({
   const title = type === "messages" ? "پیام‌ها" : "اعلان‌ها";
 
   return (
-    <div className={`pointer-events-none fixed inset-0 z-[70] ${open ? "" : "invisible"}`} aria-hidden={!open}>
+    <div className={`pointer-events-none fixed inset-0 z-[120] ${open ? "" : "invisible"}`} aria-hidden={!open}>
       <button
         className={`absolute inset-0 bg-slate-950/35 transition-opacity duration-300 ${open ? "pointer-events-auto opacity-100" : "opacity-0"}`}
         onClick={onClose}
@@ -578,15 +645,28 @@ function DashboardSideDrawer({
 
             <DrawerSection darkMode={darkMode} title={type === "messages" ? "پیام‌های اخیر" : "اعلان‌های اخیر"}>
               <div className="space-y-2">
-                {messages.map((message) => (
-                  <div className={`rounded-xl border p-3 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`} key={message.name}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-black">{message.name}</p>
-                      {message.unread && <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />}
-                    </div>
-                    <p className={`mt-2 text-xs leading-5 ${mutedText(darkMode)}`}>{message.text}</p>
-                  </div>
-                ))}
+                {type === "messages"
+                  ? messages.map((message) => (
+                      <div className={`rounded-xl border p-3 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`} key={message.name}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-black">{message.name}</p>
+                          {message.unread && <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />}
+                        </div>
+                        <p className={`mt-2 text-xs leading-5 ${mutedText(darkMode)}`}>{message.text}</p>
+                      </div>
+                    ))
+                  : notifications.map((notification) => (
+                      <div
+                        className={`rounded-xl border p-3 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+                        key={notification.title}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-black">{notification.title}</p>
+                          {notification.unread && <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />}
+                        </div>
+                        <p className={`mt-2 text-xs leading-5 ${mutedText(darkMode)}`}>{notification.text}</p>
+                      </div>
+                    ))}
               </div>
             </DrawerSection>
 
