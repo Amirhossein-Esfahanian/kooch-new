@@ -46,6 +46,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Destination> Destinations => Set<Destination>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RoomDailyPrice> RoomDailyPrices => Set<RoomDailyPrice>();
+    public DbSet<Coupon> Coupons => Set<Coupon>();
+    public DbSet<CouponUsage> CouponUsages => Set<CouponUsage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -63,6 +65,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureRooms(modelBuilder);
         ConfigureAvailability(modelBuilder);
         ConfigureRoomDailyPrices(modelBuilder);
+        ConfigureCoupons(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigurePayments(modelBuilder);
         ConfigureReviews(modelBuilder);
@@ -477,6 +480,34 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         });
     }
 
+    private static void ConfigureCoupons(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Coupon>(entity =>
+        {
+            entity.Property(coupon => coupon.Code).HasMaxLength(64).IsRequired();
+            entity.Property(coupon => coupon.Title).HasMaxLength(150).IsRequired();
+            entity.Property(coupon => coupon.Description).HasMaxLength(1000);
+            entity.Property(coupon => coupon.Percentage).HasPrecision(5, 2);
+            entity.Property(coupon => coupon.Amount).HasPrecision(18, 2);
+            entity.Property(coupon => coupon.MinimumOrderAmount).HasPrecision(18, 2);
+            entity.HasIndex(coupon => coupon.Code).IsUnique();
+            entity.HasIndex(coupon => new { coupon.IsActive, coupon.StartDate, coupon.EndDate });
+        });
+
+        modelBuilder.Entity<CouponUsage>(entity =>
+        {
+            entity.Property(usage => usage.DiscountAmount).HasPrecision(18, 2);
+            entity.HasIndex(usage => new { usage.CouponId, usage.UserId });
+            entity.HasIndex(usage => usage.ReservationId);
+            entity.HasOne(usage => usage.Coupon).WithMany(coupon => coupon.Usages)
+                .HasForeignKey(usage => usage.CouponId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(usage => usage.User).WithMany()
+                .HasForeignKey(usage => usage.UserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(usage => usage.Reservation).WithMany()
+                .HasForeignKey(usage => usage.ReservationId).OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
     private static void ConfigureReservations(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Reservation>(entity =>
@@ -690,6 +721,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(promotion => promotion.Title).HasMaxLength(150).IsRequired();
             entity.Property(promotion => promotion.InternalDescription).HasMaxLength(1000);
             entity.Property(promotion => promotion.PublicDescription).HasMaxLength(1000);
+            entity.Property(promotion => promotion.OptionalIcon).HasMaxLength(20);
+            entity.Property(promotion => promotion.BadgeColor).HasMaxLength(40);
             entity.Property(promotion => promotion.Percentage).HasPrecision(5, 2);
             entity.Property(promotion => promotion.Amount).HasPrecision(18, 2);
             entity.HasIndex(promotion => new { promotion.PropertyId, promotion.SortOrder });

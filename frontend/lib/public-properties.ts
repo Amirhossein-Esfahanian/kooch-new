@@ -50,6 +50,20 @@ export interface PublicRoomTypeSummary {
   displayPrice: number | null;
 }
 
+export interface PublicPromotion {
+  id: number;
+  title: string;
+  publicDescription: string | null;
+  internalDescription?: string | null;
+  optionalIcon: string | null;
+  badgeColor: string | null;
+  minimumStayNights: number | null;
+  minimumGuests: number | null;
+  type: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
 export interface PublicProperty {
   id: number;
   name: string;
@@ -83,6 +97,7 @@ export interface PublicProperty {
   guestFitStatus: string;
   availabilitySummary: string;
   availabilityStatusSummary: "Available" | "OnRequest" | "Unknown";
+  promotions?: PublicPromotion[];
   freeChildAgeLimit: number | null;
   maxFreeChildren: number | null;
   images: PublicImage[];

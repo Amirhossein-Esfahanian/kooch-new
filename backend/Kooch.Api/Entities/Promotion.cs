@@ -7,6 +7,10 @@ public class Promotion : BaseEntity
     public string Title { get; set; } = string.Empty;
     public string? InternalDescription { get; set; }
     public string? PublicDescription { get; set; }
+    public string? OptionalIcon { get; set; }
+    public string? BadgeColor { get; set; }
+    public int? MinimumStayNights { get; set; }
+    public int? MinimumGuests { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public PromotionWeekday Weekdays { get; set; }

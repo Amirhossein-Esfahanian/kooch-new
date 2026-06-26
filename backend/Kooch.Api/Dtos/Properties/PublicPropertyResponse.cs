@@ -38,6 +38,7 @@ public class PublicPropertyResponse
     public string AvailabilityStatusSummary { get; set; } = "Unknown";
     public int? FreeChildAgeLimit { get; set; }
     public int? MaxFreeChildren { get; set; }
+    public IReadOnlyList<PublicPromotionResponse> Promotions { get; set; } = [];
     public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
     public IReadOnlyList<PublicDescriptionSectionResponse> DescriptionSections { get; set; } = [];
     public IReadOnlyList<PublicCommonAreaResponse> CommonAreas { get; set; } = [];
@@ -45,6 +46,20 @@ public class PublicPropertyResponse
     public IReadOnlyList<PublicNearbyPlaceResponse> NearbyPlaces { get; set; } = [];
     public IReadOnlyList<PropertyViewType> Views { get; set; } = [];
     public IReadOnlyList<PublicRoomTypeResponse> RoomTypes { get; set; } = [];
+}
+
+public class PublicPromotionResponse
+{
+    public int Id { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string? PublicDescription { get; set; }
+    public string? OptionalIcon { get; set; }
+    public string? BadgeColor { get; set; }
+    public int? MinimumStayNights { get; set; }
+    public int? MinimumGuests { get; set; }
+    public PromotionType Type { get; set; }
+    public int SortOrder { get; set; }
+    public bool IsActive { get; set; }
 }
 
 public class PublicRoomTypeSummaryResponse

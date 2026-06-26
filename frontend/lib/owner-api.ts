@@ -131,6 +131,10 @@ export interface PromotionResponse {
   title: string;
   internalDescription: string | null;
   publicDescription: string | null;
+  optionalIcon: string | null;
+  badgeColor: string | null;
+  minimumStayNights: number | null;
+  minimumGuests: number | null;
   startDate: string;
   endDate: string;
   weekdays: PromotionWeekday[];

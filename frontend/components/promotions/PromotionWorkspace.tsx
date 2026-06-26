@@ -33,6 +33,10 @@ type Draft = {
   title: string;
   internalDescription: string;
   publicDescription: string;
+  optionalIcon: string;
+  badgeColor: string;
+  minimumStayNights: string;
+  minimumGuests: string;
   startDate: string;
   endDate: string;
   weekdays: PromotionWeekday[];
@@ -54,6 +58,10 @@ function emptyDraft(propertyId: number | null = null): Draft {
     title: "",
     internalDescription: "",
     publicDescription: "",
+    optionalIcon: "",
+    badgeColor: "",
+    minimumStayNights: "",
+    minimumGuests: "",
     startDate: today(),
     endDate: today(),
     weekdays: weekdays.map((day) => day.value),
@@ -133,6 +141,10 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
       title: promotion.title,
       internalDescription: promotion.internalDescription ?? "",
       publicDescription: promotion.publicDescription ?? "",
+      optionalIcon: promotion.optionalIcon ?? "",
+      badgeColor: promotion.badgeColor ?? "",
+      minimumStayNights: promotion.minimumStayNights?.toString() ?? "",
+      minimumGuests: promotion.minimumGuests?.toString() ?? "",
       startDate: promotion.startDate,
       endDate: promotion.endDate,
       weekdays: promotion.weekdays,
@@ -150,6 +162,7 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
   function validate() {
     if (!admin && !draft.propertyId) return "اقامتگاه را انتخاب کنید";
     if (!draft.title.trim()) return "عنوان پروموشن الزامی است";
+    if (draft.type === "Informational" && !draft.publicDescription.trim()) return "توضیحات پروموشن اطلاع‌رسانی الزامی است";
     if (draft.startDate > draft.endDate) return "تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد";
     if (!draft.weekdays.length) return "حداقل یک روز هفته را انتخاب کنید";
     if (!admin && !draft.roomTypeIds.length) return "حداقل یک اتاق را انتخاب کنید";
@@ -164,6 +177,8 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
       if (selectedRooms.some((room) => room.basePrice !== null && amount > room.basePrice)) return "مبلغ تخفیف نمی‌تواند از نرخ پایه اتاق بیشتر باشد";
     }
     if (draft.type === "LastMinute" && (!Number.isInteger(Number(draft.lastMinuteDays)) || Number(draft.lastMinuteDays) < 0)) return "تعداد روزهای لحظه آخری معتبر نیست";
+    if (draft.minimumStayNights && (!Number.isInteger(Number(draft.minimumStayNights)) || Number(draft.minimumStayNights) < 0)) return "حداقل تعداد شب معتبر نیست";
+    if (draft.minimumGuests && (!Number.isInteger(Number(draft.minimumGuests)) || Number(draft.minimumGuests) < 0)) return "حداقل تعداد مهمان معتبر نیست";
     return null;
   }
 
@@ -178,6 +193,8 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
         percentage: draft.type === "PercentageDiscount" || draft.type === "LastMinute" ? Number(draft.percentage) : null,
         amount: draft.type === "FixedAmountDiscount" ? Number(draft.amount) : null,
         lastMinuteDays: draft.type === "LastMinute" ? Number(draft.lastMinuteDays) : null,
+        minimumStayNights: draft.minimumStayNights ? Number(draft.minimumStayNights) : null,
+        minimumGuests: draft.minimumGuests ? Number(draft.minimumGuests) : null,
         sortOrder: editing?.sortOrder ?? promotions.length,
       };
       await apiRequest<PromotionResponse>(editing ? `${apiBase}/${editing.id}` : apiBase, {
@@ -307,6 +324,15 @@ export function PromotionWorkspace({ propertyId, admin = false }: { propertyId?:
             <label className="grid gap-2 text-sm font-bold">تاریخ پایان<input className={inputClass} onChange={(event) => setDraft((current) => ({ ...current, endDate: event.target.value }))} type="date" value={draft.endDate} /></label>
             <label className="grid gap-2 text-sm font-bold sm:col-span-2">توضیحات داخلی<textarea className={inputClass} onChange={(event) => setDraft((current) => ({ ...current, internalDescription: event.target.value }))} rows={2} value={draft.internalDescription} /></label>
             <label className="grid gap-2 text-sm font-bold sm:col-span-2">توضیحات عمومی<textarea className={inputClass} onChange={(event) => setDraft((current) => ({ ...current, publicDescription: event.target.value }))} rows={2} value={draft.publicDescription} /></label>
+            {draft.type === "Informational" && (
+              <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800 sm:col-span-2">
+                مثال: با ۳ شب اقامت، گشت رایگان · با ۲ شب اقامت، ناهار رایگان
+              </div>
+            )}
+            <label className="grid gap-2 text-sm font-bold">آیکن اختیاری<input className={inputClass} maxLength={20} onChange={(event) => setDraft((current) => ({ ...current, optionalIcon: event.target.value }))} placeholder="🎁" value={draft.optionalIcon} /></label>
+            <label className="grid gap-2 text-sm font-bold">رنگ بج<input className={inputClass} maxLength={40} onChange={(event) => setDraft((current) => ({ ...current, badgeColor: event.target.value }))} placeholder="#2563eb" value={draft.badgeColor} /></label>
+            <label className="grid gap-2 text-sm font-bold">حداقل شب اقامت<input className={inputClass} min="0" onChange={(event) => setDraft((current) => ({ ...current, minimumStayNights: event.target.value }))} type="number" value={draft.minimumStayNights} /></label>
+            <label className="grid gap-2 text-sm font-bold">حداقل مهمان<input className={inputClass} min="0" onChange={(event) => setDraft((current) => ({ ...current, minimumGuests: event.target.value }))} type="number" value={draft.minimumGuests} /></label>
           </div>
           <fieldset className="mt-5"><legend className="mb-2 text-sm font-black">روزهای هفته</legend><div className="flex flex-wrap gap-2">{weekdays.map((day) => <label className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]" : "border-slate-200"}`} key={day.value}><input checked={draft.weekdays.includes(day.value)} className="sr-only" onChange={() => setDraft((current) => ({ ...current, weekdays: current.weekdays.includes(day.value) ? current.weekdays.filter((item) => item !== day.value) : [...current.weekdays, day.value] }))} type="checkbox" />{day.label}</label>)}</div></fieldset>
           {!admin && <fieldset className="mt-5"><legend className="mb-2 text-sm font-black">اتاق‌های منتخب</legend><div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-3 sm:grid-cols-2">{rooms.map((room) => <label className="flex items-center gap-2 text-sm font-bold" key={room.id}><input checked={draft.roomTypeIds.includes(room.id)} onChange={() => setDraft((current) => ({ ...current, roomTypeIds: current.roomTypeIds.includes(room.id) ? current.roomTypeIds.filter((id) => id !== room.id) : [...current.roomTypeIds, room.id] }))} type="checkbox" />{room.name}</label>)}{!rooms.length && <p className="text-sm text-slate-500">اتاق فعالی برای این اقامتگاه وجود ندارد.</p>}</div></fieldset>}

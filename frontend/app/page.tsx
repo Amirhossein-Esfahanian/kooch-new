@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
+import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
   formatPrice,
@@ -26,6 +27,7 @@ type PropertyCardData = Pick<
   | "coverImageUrl"
   | "startingPrice"
   | "propertyType"
+  | "promotions"
 >;
 
 const sampleProperties: PropertyCardData[] = [
@@ -208,6 +210,7 @@ export default function HomePage() {
                     <p className="mt-3 line-clamp-2 min-h-10 text-sm leading-5 text-slate-600">
                       {property.description}
                     </p>
+                    <PromotionCards className="mt-4" compact maxItems={1} promotions={property.promotions} />
                     <div className="mt-5 flex items-end justify-between gap-3">
                       <div>
                         <p className="text-xs text-slate-400">قیمت از</p>

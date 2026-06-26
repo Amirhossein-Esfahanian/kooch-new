@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
+import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { fetchPublicApi, formatPrice, PublicProperty } from "@/lib/public-properties";
 
 type ResultProperty = Pick<
@@ -24,6 +25,7 @@ type ResultProperty = Pick<
   | "guestFitStatus"
   | "availabilitySummary"
   | "availabilityStatusSummary"
+  | "promotions"
 >;
 
 const sampleProperties: ResultProperty[] = [
@@ -295,6 +297,7 @@ function PropertiesContent() {
                             تاریخ انتخاب‌شده برای مرحله بعدی رزرو نگه داشته می‌شود.
                           </p>
                         )}
+                        <PromotionCards className="mt-4" compact maxItems={2} promotions={property.promotions} />
                       </div>
                       <div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right">
                         <p className="text-xs text-slate-400">قیمت از</p>

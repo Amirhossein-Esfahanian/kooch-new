@@ -16,6 +16,14 @@ public sealed class PromotionUpsertRequest
     [MaxLength(1000)]
     public string? PublicDescription { get; set; }
 
+    [MaxLength(20)]
+    public string? OptionalIcon { get; set; }
+
+    [MaxLength(40)]
+    public string? BadgeColor { get; set; }
+
+    public int? MinimumStayNights { get; set; }
+    public int? MinimumGuests { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public IReadOnlyList<DayOfWeek> Weekdays { get; set; } = [];
@@ -37,6 +45,10 @@ public sealed class PromotionResponse
     public string Title { get; set; } = string.Empty;
     public string? InternalDescription { get; set; }
     public string? PublicDescription { get; set; }
+    public string? OptionalIcon { get; set; }
+    public string? BadgeColor { get; set; }
+    public int? MinimumStayNights { get; set; }
+    public int? MinimumGuests { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
     public IReadOnlyList<DayOfWeek> Weekdays { get; set; } = [];

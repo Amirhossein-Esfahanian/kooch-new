@@ -6,15 +6,22 @@ namespace Kooch.Api.Services;
 
 /// <summary>
 /// Contains reservation price rules that are independent from reservation persistence.
-/// The future reservation engine should calculate each stay date with that date's
-/// <see cref="RoomDailyPrice"/> and sum the returned nightly totals.
+///
+/// Current dynamic calculation order:
+/// RoomDailyPrice → Promotion Engine → FinalPrice.
+///
+/// Future checkout order:
+/// RoomDailyPrice → Promotion → Coupon → Commission → FinalPayablePrice.
+///
+/// RoomDailyPrice remains unchanged in storage:
+/// BasePrice, ChildPrice, ExtraGuestPrice.
 /// </summary>
 public sealed class PricingService
 {
     /// <summary>
-    /// Applies active promotions dynamically to a supplied base price. Discounted prices
+    /// Applies active promotions dynamically to a supplied nightly price. Discounted prices
     /// are never persisted. Applicable promotions are applied by SortOrder, then Id.
-    /// Informational promotions are returned with a zero discount and do not change price.
+    /// Informational promotions are display-only and ignored for price calculation.
     /// </summary>
     public PromotionPriceResult CalculateFinalPrice(
         decimal basePrice,
@@ -47,8 +54,7 @@ public sealed class PricingService
                     discount = Math.Min(finalPrice, promotion.Amount.Value);
                     break;
                 case PromotionType.Informational:
-                    discount = 0;
-                    break;
+                    continue;
                 default:
                     continue;
             }
@@ -58,6 +64,48 @@ public sealed class PricingService
         }
 
         return new PromotionPriceResult(basePrice, finalPrice, applied);
+    }
+
+    /// <summary>
+    /// Calculates one dynamic nightly price in the reservation pricing order:
+    /// RoomDailyPrice → Promotion Engine → FinalPrice.
+    ///
+    /// Child/extra guest rules:
+    /// - If guests fit inside MaxAdults + MaxChildren, charge BasePrice only.
+    /// - If guests exceed capacity, extra adults use ExtraGuestPrice.
+    /// - Extra counted children use ChildPrice.
+    ///
+    /// Examples:
+    /// - Triple room capacity 3, 2 adults + 1 child → BasePrice only.
+    /// - Double room capacity 2, 2 adults + 1 child → BasePrice + ChildPrice.
+    ///
+    /// The returned FinalPrice is dynamic and must not be stored as a discounted price.
+    /// </summary>
+    public ReservationNightPriceResult CalculatePromotedNightPrice(
+        RoomType roomType,
+        RoomDailyPrice dailyPrice,
+        int adults,
+        int countedChildren,
+        DateOnly bookingDate,
+        IEnumerable<Promotion> promotions)
+    {
+        ArgumentNullException.ThrowIfNull(roomType);
+        ArgumentNullException.ThrowIfNull(dailyPrice);
+        ArgumentNullException.ThrowIfNull(promotions);
+
+        var roomDailyPrice = CalculateNightPrice(roomType, dailyPrice, adults, countedChildren);
+        var promotionPrice = CalculateFinalPrice(
+            roomDailyPrice.TotalPrice,
+            roomType.Id,
+            dailyPrice.Date,
+            bookingDate,
+            promotions);
+
+        return new ReservationNightPriceResult
+        {
+            RoomDailyPriceCalculation = roomDailyPrice,
+            PromotionCalculation = promotionPrice
+        };
     }
 
     private static bool IsApplicable(

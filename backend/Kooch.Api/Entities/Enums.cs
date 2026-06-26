@@ -28,6 +28,7 @@ public enum AmenityScope { Property, RoomType, Both }
 public enum DiscountType { Percentage, FixedAmount }
 public enum PromotionType { PercentageDiscount, FixedAmountDiscount, LastMinute, Informational }
 public enum PromotionSource { Admin, Owner }
+public enum CouponType { PercentageDiscount, FixedAmountDiscount, FreeNight, Informational }
 [Flags]
 public enum PromotionWeekday
 {

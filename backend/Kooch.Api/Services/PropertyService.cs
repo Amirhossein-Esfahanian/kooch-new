@@ -543,6 +543,24 @@ public class PropertyService(
             HasAccessibleBathroom = property.HasAccessibleBathroom,
             FreeChildAgeLimit = property.FreeChildAgeLimit,
             MaxFreeChildren = property.MaxFreeChildren,
+            Promotions = property.Promotions
+                .Where(promotion => promotion.IsActive)
+                .OrderBy(promotion => promotion.SortOrder)
+                .ThenByDescending(promotion => promotion.CreatedAtUtc)
+                .Select(promotion => new PublicPromotionResponse
+                {
+                    Id = promotion.Id,
+                    Title = promotion.Title,
+                    PublicDescription = promotion.PublicDescription,
+                    OptionalIcon = promotion.OptionalIcon,
+                    BadgeColor = promotion.BadgeColor,
+                    MinimumStayNights = promotion.MinimumStayNights,
+                    MinimumGuests = promotion.MinimumGuests,
+                    Type = promotion.Type,
+                    SortOrder = promotion.SortOrder,
+                    IsActive = promotion.IsActive
+                })
+                .ToList(),
             IsInstantBooking = property.RoomTypes.Any(roomType => roomType.Availability.Any(
                 availability => availability.Date >= today &&
                                 availability.Status == AvailabilityStatus.Available &&

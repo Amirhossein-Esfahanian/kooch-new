@@ -252,8 +252,12 @@ public sealed class PromotionService(KoochDbContext dbContext, IPropertyAccessSe
         int? propertyId, PromotionUpsertRequest request, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(request.Title)) throw new ArgumentException("عنوان پروموشن الزامی است.");
+        if (request.Type == PromotionType.Informational && string.IsNullOrWhiteSpace(request.PublicDescription))
+            throw new ArgumentException("توضیحات پروموشن اطلاع‌رسانی الزامی است.");
         if (request.StartDate > request.EndDate) throw new ArgumentException("تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.");
         if (request.Weekdays.Count == 0) throw new ArgumentException("حداقل یک روز هفته را انتخاب کنید.");
+        if (request.MinimumStayNights is < 0) throw new ArgumentException("حداقل تعداد شب معتبر نیست.");
+        if (request.MinimumGuests is < 0) throw new ArgumentException("حداقل تعداد مهمان معتبر نیست.");
 
         var rooms = new List<RoomType>();
         if (propertyId.HasValue)
@@ -288,6 +292,10 @@ public sealed class PromotionService(KoochDbContext dbContext, IPropertyAccessSe
         promotion.Title = request.Title.Trim();
         promotion.InternalDescription = NullIfEmpty(request.InternalDescription);
         promotion.PublicDescription = NullIfEmpty(request.PublicDescription);
+        promotion.OptionalIcon = NullIfEmpty(request.OptionalIcon);
+        promotion.BadgeColor = NullIfEmpty(request.BadgeColor);
+        promotion.MinimumStayNights = request.MinimumStayNights;
+        promotion.MinimumGuests = request.MinimumGuests;
         promotion.StartDate = request.StartDate;
         promotion.EndDate = request.EndDate;
         promotion.Weekdays = ToWeekdayMask(request.Weekdays);
@@ -347,6 +355,10 @@ public sealed class PromotionService(KoochDbContext dbContext, IPropertyAccessSe
                 Title = promotion.Title,
                 InternalDescription = promotion.InternalDescription,
                 PublicDescription = promotion.PublicDescription,
+                OptionalIcon = promotion.OptionalIcon,
+                BadgeColor = promotion.BadgeColor,
+                MinimumStayNights = promotion.MinimumStayNights,
+                MinimumGuests = promotion.MinimumGuests,
                 StartDate = promotion.StartDate,
                 EndDate = promotion.EndDate,
                 Weekdays = FromWeekdayMask(promotion.Weekdays),
@@ -383,6 +395,10 @@ public sealed class PromotionService(KoochDbContext dbContext, IPropertyAccessSe
             Title = sourceKind == PromotionSource.Owner ? $"کپی {source.Title}" : source.Title,
             InternalDescription = source.InternalDescription,
             PublicDescription = source.PublicDescription,
+            OptionalIcon = source.OptionalIcon,
+            BadgeColor = source.BadgeColor,
+            MinimumStayNights = source.MinimumStayNights,
+            MinimumGuests = source.MinimumGuests,
             StartDate = source.StartDate,
             EndDate = source.EndDate,
             Weekdays = source.Weekdays,

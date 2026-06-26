@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
   formatPrice,
@@ -161,6 +162,12 @@ export default function PublicPropertyPage() {
             </p>
           </div>
         </header>
+
+        <PromotionCards
+          className="mt-6"
+          promotions={property.promotions}
+          title="پیشنهادهای فعال این اقامتگاه"
+        />
 
         <section className="relative mt-7 grid h-[430px] grid-cols-2 grid-rows-2 gap-2 overflow-hidden rounded-2xl md:grid-cols-4">
           <Gallery image={gallery[0]} className="col-span-2 row-span-2" name={property.name} />
