@@ -28,6 +28,8 @@ export interface SharedSingleDatePickerProps {
   minDate?: string;
   /** Maximum selectable Gregorian ISO date. */
   maxDate?: string;
+  /** Disabled Gregorian ISO dates or predicate. */
+  disabledDates?: string[] | ((isoDate: string) => boolean);
   /** Placeholder shown when no date is selected. */
   placeholder?: string;
   /** Field label. */
@@ -85,11 +87,19 @@ function buildMonthDays(month: Dayjs, calendarType: CalendarType) {
   return days;
 }
 
-function isDisabled(date: Dayjs, disablePastDates: boolean, minDate?: string, maxDate?: string) {
+function isDisabled(
+  date: Dayjs,
+  disablePastDates: boolean,
+  minDate?: string,
+  maxDate?: string,
+  disabledDates?: string[] | ((isoDate: string) => boolean),
+) {
   const iso = toIso(date);
   if (disablePastDates && dayjs(iso).isBefore(dayjs().startOf("day"), "day")) return true;
   if (minDate && dayjs(iso).isBefore(dayjs(minDate), "day")) return true;
   if (maxDate && dayjs(iso).isAfter(dayjs(maxDate), "day")) return true;
+  if (Array.isArray(disabledDates) && disabledDates.includes(iso)) return true;
+  if (typeof disabledDates === "function" && disabledDates(iso)) return true;
   return false;
 }
 
@@ -100,6 +110,7 @@ export function SharedSingleDatePicker({
   disablePastDates = false,
   minDate,
   maxDate,
+  disabledDates,
   placeholder = "انتخاب تاریخ",
   label = "تاریخ",
   labels,
@@ -167,7 +178,7 @@ export function SharedSingleDatePicker({
             {buildMonthDays(visibleMonth, activeCalendar).map((date, index) => {
               if (!date) return <span className="h-10" key={`empty-${index}`} />;
               const iso = toIso(date);
-              const disabled = isDisabled(date, disablePastDates, minDate, maxDate);
+              const disabled = isDisabled(date, disablePastDates, minDate, maxDate, disabledDates);
               const selected = tempDate === iso;
               const today = iso === dayjs().format(isoFormat);
               return (

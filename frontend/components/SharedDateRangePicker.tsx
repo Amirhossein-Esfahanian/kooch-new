@@ -36,6 +36,8 @@ export interface SharedDateRangePickerProps {
   minDate?: string;
   /** Maximum selectable Gregorian ISO date. */
   maxDate?: string;
+  /** Disabled Gregorian ISO dates or predicate. */
+  disabledDates?: string[] | ((isoDate: string) => boolean);
   /** Placeholder for start input. */
   placeholderStart?: string;
   /** Placeholder for end input. */
@@ -112,11 +114,19 @@ function isBetween(date: string, startDate: string | null, endDate: string | nul
   return isAfter(date, startDate) && isBefore(date, endDate);
 }
 
-function isDisabled(date: Dayjs, disablePastDates: boolean, minDate?: string, maxDate?: string) {
+function isDisabled(
+  date: Dayjs,
+  disablePastDates: boolean,
+  minDate?: string,
+  maxDate?: string,
+  disabledDates?: string[] | ((isoDate: string) => boolean),
+) {
   const iso = toIso(date);
   if (disablePastDates && dayjs(iso).isBefore(dayjs().startOf("day"), "day")) return true;
   if (minDate && dayjs(iso).isBefore(dayjs(minDate), "day")) return true;
   if (maxDate && dayjs(iso).isAfter(dayjs(maxDate), "day")) return true;
+  if (Array.isArray(disabledDates) && disabledDates.includes(iso)) return true;
+  if (typeof disabledDates === "function" && disabledDates(iso)) return true;
   return false;
 }
 
@@ -127,6 +137,7 @@ export function SharedDateRangePicker({
   disablePastDates = false,
   minDate,
   maxDate,
+  disabledDates,
   placeholderStart = "انتخاب تاریخ",
   placeholderEnd = "انتخاب تاریخ",
   labels,
@@ -173,7 +184,7 @@ export function SharedDateRangePicker({
   }
 
   function selectDay(date: Dayjs) {
-    if (isDisabled(date, disablePastDates, minDate, maxDate)) return;
+    if (isDisabled(date, disablePastDates, minDate, maxDate, disabledDates)) return;
     const iso = toIso(date);
     if (!tempStartDate || tempEndDate) {
       setTempStartDate(iso);
@@ -239,7 +250,7 @@ export function SharedDateRangePicker({
                   {buildMonthDays(month, activeCalendar).map((date, index) => {
                     if (!date) return <span className="h-10" key={`empty-${index}`} />;
                     const iso = toIso(date);
-                    const disabled = isDisabled(date, disablePastDates, minDate, maxDate);
+                    const disabled = isDisabled(date, disablePastDates, minDate, maxDate, disabledDates);
                     const isRangeStart = tempStartDate === iso;
                     const isRangeEnd = tempEndDate === iso;
                     const inRange = isBetween(iso, tempStartDate, tempEndDate);

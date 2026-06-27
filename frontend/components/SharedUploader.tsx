@@ -2,6 +2,7 @@
 
 import Cropper, { Area } from "react-easy-crop";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 
 export type SharedUploadedFile = Record<string, unknown>;
 
@@ -71,6 +72,16 @@ export interface SharedUploaderProps {
   labels?: SharedUploaderLabels;
   /** Disable upload button and file selection. */
   disabled?: boolean;
+  /** Visual style. "square" matches the media gallery add-photo tile. */
+  variant?: "dropzone" | "square";
+  /** Aspect ratio for the square/media-gallery style tile. */
+  aspectRatio?: string;
+  /** Use Sonner toast for success/error feedback. */
+  useToastNotifications?: boolean;
+  /** Hide file names/URLs below previews. */
+  hideFileDetails?: boolean;
+  /** Hide inline status message, useful when using toast notifications. */
+  hideInlineStatus?: boolean;
 }
 
 type PendingFile = {
@@ -166,6 +177,11 @@ export function SharedUploader({
   onDeleteExisting,
   labels,
   disabled = false,
+  variant = "dropzone",
+  aspectRatio = "1 / 1",
+  useToastNotifications = false,
+  hideFileDetails = false,
+  hideInlineStatus = false,
 }: SharedUploaderProps) {
   const text = { ...defaultLabels, ...(labels ?? {}) };
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -190,8 +206,9 @@ export function SharedUploader({
 
   const setSafeError = useCallback((value: string) => {
     setError(value);
+    if (useToastNotifications) toast.error(value);
     onUploadError?.(value);
-  }, [onUploadError]);
+  }, [onUploadError, useToastNotifications]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     if (disabled) return;
@@ -201,11 +218,11 @@ export function SharedUploader({
     const next: PendingFile[] = [];
     for (const file of incoming) {
       if (accept.length && !accept.includes(file.type)) {
-        setSafeError("نوع فایل انتخاب‌شده مجاز نیست.");
+        setSafeError("فرمت تصویر پشتیبانی نمی‌شود");
         continue;
       }
       if (file.size > maxFileSizeMb * 1024 * 1024) {
-        setSafeError(`حجم هر فایل باید حداکثر ${maxFileSizeMb} مگابایت باشد.`);
+        setSafeError("حجم تصویر بیش از حد مجاز است");
         continue;
       }
       next.push(makePendingFile(file, enablePreview));
@@ -273,6 +290,7 @@ export function SharedUploader({
         items.forEach((item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl));
         setItems([]);
         setMessage(text.successText);
+        if (useToastNotifications) toast.success(text.successText);
         onUploadSuccess?.(parsed);
         return;
       }
@@ -286,6 +304,9 @@ export function SharedUploader({
     request.send(formData);
   }
 
+  const firstExistingPreview = showExistingFiles && existingFiles.length ? existingFiles[0] : null;
+  const squarePreview = items[0]?.previewUrl ?? firstExistingPreview?.url ?? null;
+
   return (
     <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" dir="rtl">
       <div>
@@ -293,7 +314,7 @@ export function SharedUploader({
         <p className="mt-1 text-sm leading-6 text-slate-500">{text.description}</p>
       </div>
 
-      {showExistingFiles && (
+      {variant === "dropzone" && showExistingFiles && (
         <div className="mt-4">
           <p className="mb-2 text-sm font-black text-slate-700">{text.previewText}</p>
           {existingFiles.length ? (
@@ -301,8 +322,8 @@ export function SharedUploader({
               {existingFiles.map((file) => (
                 <article className="rounded-2xl border border-slate-200 bg-slate-50 p-3" key={file.id}>
                   <img alt={file.alt ?? file.name ?? ""} className="aspect-video w-full rounded-xl object-cover" src={file.url} />
-                  <div className="mt-2 flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-bold text-slate-500">{file.name ?? file.url}</p>
+                  <div className={`mt-2 flex items-center justify-between gap-2 ${hideFileDetails && !allowDeleteExisting ? "sr-only" : ""}`}>
+                    {!hideFileDetails && <p className="truncate text-xs font-bold text-slate-500">{file.name ?? file.url}</p>}
                     {allowDeleteExisting && (
                       <button className="text-xs font-bold text-red-700" onClick={() => onDeleteExisting?.(file.id)} type="button">
                         {text.removeText}
@@ -320,6 +341,61 @@ export function SharedUploader({
         </div>
       )}
 
+      {variant === "square" && (
+        <div className="mt-4 grid gap-3 sm:max-w-64">
+          <button
+            aria-label={text.browseText}
+            className={`group relative grid w-full place-items-center overflow-hidden rounded-2xl border-2 border-dashed text-center transition ${
+              dragging
+                ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)]"
+                : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] hover:border-[var(--theme-primary)] hover:bg-[var(--theme-primary-soft)]"
+            } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
+            onClick={() => !disabled && inputRef.current?.click()}
+            onDragEnter={(event) => {
+              event.preventDefault();
+              setDragging(true);
+            }}
+            onDragOver={(event) => event.preventDefault()}
+            onDragLeave={() => setDragging(false)}
+            onDrop={(event) => {
+              event.preventDefault();
+              setDragging(false);
+              addFiles(event.dataTransfer.files);
+            }}
+            style={{ aspectRatio }}
+            type="button"
+          >
+            {squarePreview ? (
+              <>
+                <img alt={firstExistingPreview?.alt ?? firstExistingPreview?.name ?? text.previewText} className="absolute inset-0 h-full w-full object-cover" src={squarePreview} />
+                <span className="absolute inset-0 bg-slate-950/20 opacity-0 transition group-hover:opacity-100" />
+                <span className="relative z-[1] rounded-xl bg-white/90 px-3 py-2 text-xs font-black text-slate-900 shadow-sm opacity-0 transition group-hover:opacity-100">
+                  {text.browseText}
+                </span>
+              </>
+            ) : (
+              <span className="grid justify-items-center gap-2 text-[var(--theme-muted-text)]">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105">+</span>
+                <span className="text-sm font-black">{text.browseText}</span>
+                <span className="text-xs font-semibold">حداکثر {maxFileSizeMb} مگابایت</span>
+              </span>
+            )}
+            <input
+              accept={acceptText}
+              className="hidden"
+              multiple={multiple}
+              onChange={(event) => {
+                if (event.target.files) addFiles(event.target.files);
+                event.currentTarget.value = "";
+              }}
+              ref={inputRef}
+              type="file"
+            />
+          </button>
+        </div>
+      )}
+
+      {variant === "dropzone" && (
       <div
         className={`mt-4 grid min-h-40 cursor-pointer place-items-center rounded-2xl border-2 border-dashed p-6 text-center transition ${
           dragging ? "border-blue-500 bg-blue-50" : "border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/50"
@@ -358,8 +434,9 @@ export function SharedUploader({
           type="file"
         />
       </div>
+      )}
 
-      {items.length > 0 && (
+      {items.length > 0 && variant === "dropzone" && (
         <div className="mt-5 grid gap-3">
           {items.map((item) => (
             <article className="grid gap-3 rounded-2xl border border-slate-200 p-3 sm:grid-cols-[96px_minmax(0,1fr)_auto]" key={item.id}>
@@ -369,8 +446,8 @@ export function SharedUploader({
                 <div className="grid aspect-[4/3] w-24 place-items-center rounded-xl bg-slate-100 text-xs font-bold text-slate-500">FILE</div>
               )}
               <div className="min-w-0">
-                <p className="truncate text-sm font-black">{item.file.name}</p>
-                <p className="mt-1 text-xs text-slate-500">{formatSize(item.file.size)}</p>
+                {!hideFileDetails && <p className="truncate text-sm font-black">{item.file.name}</p>}
+                <p className={`${hideFileDetails ? "" : "mt-1"} text-xs text-slate-500`}>{formatSize(item.file.size)}</p>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
                   <span className="block h-full rounded-full bg-blue-600 transition-all" style={{ width: `${item.progress}%` }} />
                 </div>
@@ -390,7 +467,20 @@ export function SharedUploader({
         </div>
       )}
 
-      {(error || message) && (
+      {items.length > 0 && variant === "square" && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {enableCrop && items[0]?.previewUrl && (
+            <button className="rounded-xl border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700" onClick={() => setCropTarget(items[0])} type="button">
+              {text.cropText}
+            </button>
+          )}
+          <button className="rounded-xl border border-red-200 px-3 py-2 text-sm font-bold text-red-700" onClick={() => removeItem(items[0].id)} type="button">
+            {text.removeText}
+          </button>
+        </div>
+      )}
+
+      {!hideInlineStatus && (error || message) && (
         <p className={`mt-4 rounded-xl p-3 text-sm font-semibold ${error ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700"}`}>
           {error || message}
         </p>

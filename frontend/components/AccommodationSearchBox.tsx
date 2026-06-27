@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GuestSelector, GuestSelectorValue } from "@/components/GuestSelector";
-import { SharedDateRangePicker } from "@/components/SharedDateRangePicker";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 
 export type AccommodationSearchValues = {
   q: string;
@@ -212,11 +212,12 @@ export function AccommodationSearchBox({
           )}
         </label>
 
-        <SharedDateRangePicker
+        <KoochDatePicker
           calendarType="jalali"
           controlClassName={dateControlClass}
           disablePastDates
           labelsAbove
+          mode="range"
           onChange={(nextValue) => update({ checkIn: nextValue.startDate, checkOut: nextValue.endDate })}
           placeholderEnd="انتخاب تاریخ"
           placeholderStart="انتخاب تاریخ"

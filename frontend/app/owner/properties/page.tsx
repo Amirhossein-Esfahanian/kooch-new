@@ -44,7 +44,7 @@ export default function OwnerPropertiesPage() {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {ownerDashboardCards.map((card) => (
           <Link
-            className="rounded-2xl border border-slate-200 bg-white p-4 text-sm font-black text-slate-800 shadow-sm hover:border-blue-300 hover:text-blue-700"
+            className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-black text-slate-800 shadow-sm hover:border-blue-300 hover:text-blue-700"
             href={card.href}
             key={card.title}
           >
@@ -74,7 +74,7 @@ export default function OwnerPropertiesPage() {
       <div className="grid gap-4">
         {properties.map((property) => (
           <article
-            className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"
+            className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
             key={property.id}
           >
             <div>

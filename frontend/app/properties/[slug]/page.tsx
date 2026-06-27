@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
@@ -58,6 +59,10 @@ export default function PublicPropertyPage() {
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [bookingDates, setBookingDates] = useState<{ startDate: string | null; endDate: string | null }>({
+    startDate: null,
+    endDate: null,
+  });
 
   useEffect(() => {
     if (!slug) return;
@@ -352,14 +357,18 @@ export default function PublicPropertyPage() {
             </p>
             <p className="mt-2 font-bold">{property.name}</p>
             <div className="mt-5 grid gap-3">
-              <label className="grid gap-1 text-xs font-bold">
-                تاریخ ورود
-                <input className="rounded-lg border px-3 py-2.5" type="date" />
-              </label>
-              <label className="grid gap-1 text-xs font-bold">
-                تاریخ خروج
-                <input className="rounded-lg border px-3 py-2.5" type="date" />
-              </label>
+              <KoochDatePicker
+                calendarType="jalali"
+                controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs"
+                disablePastDates
+                labels={{ start: "تاریخ ورود", end: "تاریخ خروج", rangeTitle: "انتخاب تاریخ اقامت" }}
+                labelsAbove
+                mode="range"
+                onChange={setBookingDates}
+                placeholderEnd="انتخاب خروج"
+                placeholderStart="انتخاب ورود"
+                value={bookingDates}
+              />
               <label className="grid gap-1 text-xs font-bold">
                 تعداد مهمان
                 <input className="rounded-lg border px-3 py-2.5" defaultValue="2" min="1" type="number" />

@@ -33,12 +33,12 @@ const adminMenuItems: DashboardMenuItem[] = [
   },
   {
     label: "تنظیمات سایت",
-    icon: "/svgs/site-settings.svg",
+    icon: "/svgs/gear-complex-code.svg",
     href: "/admin/site-settings",
   },
   {
     label: "تنظیمات رزرو",
-    icon: "/svgs/reservation-settings.svg",
+    icon: "/svgs/square-sliders.svg",
     href: "/admin/reservation-settings",
   },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
@@ -56,7 +56,7 @@ function MenuIcon({ icon }: { icon: string }) {
   return (
     <span
       aria-hidden="true"
-      className="inline-block h-4 w-4 bg-current"
+      className="inline-block h-6 w-6 bg-current"
       style={{
         WebkitMask: `url(${icon}) center / contain no-repeat`,
         mask: `url(${icon}) center / contain no-repeat`,
@@ -486,11 +486,11 @@ function DashboardSidebar({
           : "border-slate-200 bg-slate-200/95"
       }`}
     >
-      <div className="flex h-full flex-col p-4">
+      <div className="flex h-full flex-col px-2 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-black text-white shadow-lg shadow-blue-600/20">
-              ک
+              کوچ
             </div>
             {!collapsed && (
               <div className="min-w-0">
@@ -545,7 +545,7 @@ function DashboardSidebar({
                 href={item.href}
                 key={item.label}
               >
-                <span
+                {/* <span
                   className={`grid h-7 w-7 shrink-0 place-items-center rounded-lg text-xs ${
                     active
                       ? "bg-white/20"
@@ -553,9 +553,8 @@ function DashboardSidebar({
                         ? "bg-white/5"
                         : "bg-white/70"
                   }`}
-                >
-                  <MenuIcon icon={item.icon} />
-                </span>
+                ></span> */}
+                <MenuIcon icon={item.icon} />
                 <span className={collapsed ? "md:hidden" : ""}>
                   {item.label}
                 </span>
@@ -565,7 +564,7 @@ function DashboardSidebar({
         </nav>
 
         <div
-          className={`mt-auto rounded-2xl border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"}`}
+          className={`mt-auto rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"}`}
         >
           {!collapsed ? (
             <>
@@ -719,7 +718,7 @@ function DashboardHeader({
 function HeroHeader({ darkMode }: { darkMode: boolean }) {
   return (
     <section
-      className={`rounded-2xl border p-5 shadow-sm ${surfaceClass(darkMode)}`}
+      className={`rounded-lg border p-5 shadow-sm ${surfaceClass(darkMode)}`}
     >
       <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
         <div>
@@ -812,7 +811,7 @@ function DashboardSectionCard({
 }) {
   return (
     <section
-      className={`rounded-2xl border p-5 shadow-sm ${surfaceClass(darkMode)}`}
+      className={`rounded-lg border p-5 shadow-sm ${surfaceClass(darkMode)}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
@@ -830,7 +829,7 @@ function DashboardSectionCard({
 function SimpleChart({ darkMode }: { darkMode: boolean }) {
   return (
     <div
-      className={`h-72 rounded-2xl p-4 ${darkMode ? "bg-[#0b0f17]" : "bg-slate-50"}`}
+      className={`h-72 rounded-lg p-4 ${darkMode ? "bg-[#0b0f17]" : "bg-slate-50"}`}
     >
       <div className="flex h-full items-end gap-2">
         {chartBars.map((height, index) => (
@@ -875,7 +874,7 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
         </div>
       ))}
       <div
-        className={`rounded-2xl border border-dashed p-5 text-center ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+        className={`rounded-lg border border-dashed p-5 text-center ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
       >
         <p className="text-3xl font-black text-[var(--theme-primary-text)]">
           ۱۴۲
@@ -890,11 +889,11 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
 
 function RecentReservations({ darkMode }: { darkMode: boolean }) {
   return (
-    <div className="overflow-hidden rounded-2xl">
+    <div className="overflow-hidden rounded-lg">
       <div className="grid gap-3">
         {recentReservations.map((reservation) => (
           <div
-            className={`grid gap-3 rounded-2xl border p-4 transition hover:border-[var(--theme-primary)] md:grid-cols-[1fr_1fr_120px_120px] ${
+            className={`grid gap-3 rounded-lg border p-4 transition hover:border-[var(--theme-primary)] md:grid-cols-[1fr_1fr_120px_120px] ${
               darkMode
                 ? "border-white/10 bg-white/5"
                 : "border-slate-200 bg-slate-50"
@@ -947,7 +946,7 @@ function MessageRail({ darkMode }: { darkMode: boolean }) {
     <div className="grid gap-3">
       {messages.map((message) => (
         <div
-          className={`rounded-2xl border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+          className={`rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
           key={message.name}
         >
           <div className="flex items-center justify-between gap-3">
@@ -989,7 +988,7 @@ function DashboardSideDrawer({
         aria-label="بستن پنل"
       />
       <aside
-        className={`pointer-events-auto absolute inset-x-3 bottom-3 max-h-[88vh] overflow-hidden rounded-2xl border shadow-2xl transition duration-300 sm:inset-x-auto sm:bottom-0 sm:left-0 sm:top-0 sm:h-full sm:max-h-none sm:w-[330px] sm:rounded-none sm:rounded-r-2xl ${
+        className={`pointer-events-auto absolute inset-x-3 bottom-3 max-h-[88vh] overflow-hidden rounded-lg border shadow-2xl transition duration-300 sm:inset-x-auto sm:bottom-0 sm:left-0 sm:top-0 sm:h-full sm:max-h-none sm:w-[330px] sm:rounded-none sm:rounded-r-2xl ${
           open
             ? "translate-y-0 opacity-100 sm:translate-x-0"
             : "translate-y-8 opacity-0 sm:-translate-x-full sm:translate-y-0"
@@ -1022,7 +1021,7 @@ function DashboardSideDrawer({
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
             <section
-              className={`rounded-2xl border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+              className={`rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
             >
               <p className={`text-xs font-bold ${mutedText(darkMode)}`}>
                 امروز

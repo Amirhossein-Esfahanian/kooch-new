@@ -10,6 +10,7 @@ import {
   PromotionWeekday,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 
 const promotionTypes: { value: PromotionType; label: string }[] = [
   { value: "PercentageDiscount", label: "تخفیف درصدی" },
@@ -703,34 +704,25 @@ export function PromotionWorkspace({
                   />
                 </label>
               )}
-              <label className="grid gap-2 text-sm font-bold">
-                تاریخ شروع
-                <input
-                  className={inputClass}
-                  onChange={(event) =>
+              <div className="sm:col-span-2">
+                <KoochDatePicker
+                  calendarType="jalali"
+                  controlClassName={inputClass}
+                  labels={{ start: "تاریخ شروع", end: "تاریخ پایان", rangeTitle: "انتخاب بازه پروموشن" }}
+                  labelsAbove
+                  mode="range"
+                  onChange={(nextValue) =>
                     setDraft((current) => ({
                       ...current,
-                      startDate: event.target.value,
+                      startDate: nextValue.startDate ?? current.startDate,
+                      endDate: nextValue.endDate ?? current.endDate,
                     }))
                   }
-                  type="date"
-                  value={draft.startDate}
+                  placeholderEnd="انتخاب تاریخ پایان"
+                  placeholderStart="انتخاب تاریخ شروع"
+                  value={{ startDate: draft.startDate, endDate: draft.endDate }}
                 />
-              </label>
-              <label className="grid gap-2 text-sm font-bold">
-                تاریخ پایان
-                <input
-                  className={inputClass}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      endDate: event.target.value,
-                    }))
-                  }
-                  type="date"
-                  value={draft.endDate}
-                />
-              </label>
+              </div>
               <label className="grid gap-2 text-sm font-bold sm:col-span-2">
                 توضیحات داخلی
                 <textarea

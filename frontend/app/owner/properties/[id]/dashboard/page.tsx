@@ -65,7 +65,7 @@ export default function OwnerPropertyDashboardPage() {
       <div className="grid gap-4 md:grid-cols-4">
         {cards.map((card) => (
           <Link
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm hover:border-blue-300"
+            className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm hover:border-blue-300"
             href={card.href}
             key={card.title}
           >
@@ -76,7 +76,7 @@ export default function OwnerPropertyDashboardPage() {
           </Link>
         ))}
       </div>
-      <section className="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <section className="mt-5 rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
         <h2 className="text-xl font-black">کارهای سریع</h2>
         <div className="mt-4 flex flex-wrap gap-3">
           <Link

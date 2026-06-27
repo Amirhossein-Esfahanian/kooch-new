@@ -48,13 +48,13 @@ export default function SelectOwnerPropertyPage() {
         </h1>
       </div>
       {loading && (
-        <p className="rounded-2xl border bg-white p-5 text-slate-500">
+        <p className="rounded-lg border bg-white p-5 text-slate-500">
           در حال بارگذاری...
         </p>
       )}
       {error && <p className="text-sm font-semibold text-red-600">{error}</p>}
       {!loading && properties.length === 0 && (
-        <section className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center">
+        <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
           <p className="text-slate-500">
             هنوز اقامتگاهی برای شما ثبت نشده است.
           </p>
@@ -69,7 +69,7 @@ export default function SelectOwnerPropertyPage() {
       <div className="grid gap-4 md:grid-cols-2">
         {properties.map((property) => (
           <button
-            className="rounded-2xl border border-slate-200 bg-white p-5 text-right shadow-sm hover:border-blue-300"
+            className="rounded-lg border border-slate-200 bg-white p-5 text-right shadow-sm hover:border-blue-300"
             key={property.id}
             onClick={() => selectProperty(property)}
             type="button"
