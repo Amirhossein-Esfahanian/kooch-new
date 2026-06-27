@@ -47,6 +47,8 @@ public class CreateRoomTypeRequest
     public bool? HasWindow { get; set; }
     public bool? HasPrivateBathroom { get; set; }
 
+    public bool IsActive { get; set; } = true;
+
     public IReadOnlyCollection<RoomTypeBedRequest> BedConfigurations { get; set; } = [];
     public IReadOnlyCollection<int> AmenityIds { get; set; } = [];
 }

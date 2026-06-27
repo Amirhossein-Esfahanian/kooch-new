@@ -44,7 +44,7 @@ public class RoomTypeService(
             StairCount = request.StairCount,
             HasWindow = request.HasWindow,
             HasPrivateBathroom = request.HasPrivateBathroom,
-            IsActive = true,
+            IsActive = request.IsActive,
             BedConfigurations = beds.Select(bed => new RoomTypeBed
             {
                 BedTypeId = bed.Key,
