@@ -46,6 +46,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Destination> Destinations => Set<Destination>();
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RoomDailyPrice> RoomDailyPrices => Set<RoomDailyPrice>();
+    public DbSet<RoomDailyPriceHistory> RoomDailyPriceHistory => Set<RoomDailyPriceHistory>();
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<CouponUsage> CouponUsages => Set<CouponUsage>();
 
@@ -469,14 +470,37 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<RoomDailyPrice>(entity =>
         {
+            entity.Property(price => price.GuestType)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .HasDefaultValue(PricingGuestType.Iranian);
             entity.Property(price => price.BasePrice).HasPrecision(18, 2);
             entity.Property(price => price.ChildPrice).HasPrecision(18, 2);
             entity.Property(price => price.ExtraGuestPrice).HasPrecision(18, 2);
-            entity.HasIndex(price => new { price.RoomTypeId, price.Date }).IsUnique();
+            entity.HasIndex(price => new { price.RoomTypeId, price.Date, price.GuestType }).IsUnique();
             entity.HasOne(price => price.RoomType)
                 .WithMany(roomType => roomType.DailyPrices)
                 .HasForeignKey(price => price.RoomTypeId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<RoomDailyPriceHistory>(entity =>
+        {
+            entity.Property(history => history.GuestType)
+                .HasConversion<string>()
+                .HasMaxLength(20)
+                .HasDefaultValue(PricingGuestType.Iranian);
+            entity.Property(history => history.OldPrice).HasPrecision(18, 2);
+            entity.Property(history => history.NewPrice).HasPrecision(18, 2);
+            entity.HasIndex(history => new { history.RoomTypeId, history.GuestType, history.ChangedAtUtc });
+            entity.HasOne(history => history.RoomType)
+                .WithMany(roomType => roomType.DailyPriceHistory)
+                .HasForeignKey(history => history.RoomTypeId)
+                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(history => history.User)
+                .WithMany()
+                .HasForeignKey(history => history.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 

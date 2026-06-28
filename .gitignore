@@ -1,3 +1,10 @@
+# Temporary build/check folders
+tmp/
+**/tmp/
+.tmp/
+**/.tmp/
+
+
 # Frontend
 frontend/node_modules/
 frontend/.next/
@@ -15,3 +22,10 @@ backend/**/appsettings.Development.json
 .DS_Store
 Thumbs.db
 
+# NuGet / Roslyn generated files
+*.dll
+*.pdb
+*.cache
+*.resources.dll
+*.deps.json
+*.runtimeconfig.json

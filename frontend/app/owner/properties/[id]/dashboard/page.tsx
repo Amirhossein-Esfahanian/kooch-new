@@ -5,6 +5,10 @@ import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { OwnerPanel } from "@/components/owner/OwnerPanel";
 import {
+  PricingSettingsWarning,
+  usePropertyPricingStatus,
+} from "@/components/pricing/PricingWarnings";
+import {
   apiRequest,
   PropertyCompletionResponse,
   PropertyResponse,
@@ -18,6 +22,7 @@ export default function OwnerPropertyDashboardPage() {
   const [completion, setCompletion] =
     useState<PropertyCompletionResponse | null>(null);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
+  const { warnings: pricingWarnings } = usePropertyPricingStatus(propertyId);
 
   useEffect(() => {
     Promise.all([
@@ -62,6 +67,10 @@ export default function OwnerPropertyDashboardPage() {
 
   return (
     <OwnerPanel propertyId={propertyId} title="داشبورد">
+      <PricingSettingsWarning
+        editHref={`/owner/properties/${propertyId}`}
+        warnings={pricingWarnings}
+      />
       <div className="grid gap-4 md:grid-cols-4">
         {cards.map((card) => (
           <Link

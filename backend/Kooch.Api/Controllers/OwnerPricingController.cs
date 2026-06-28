@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Pricing;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -14,10 +15,11 @@ public class OwnerPricingController(IRoomDailyPriceService pricingService) : Aut
     [ProducesResponseType<PropertyPricingResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PropertyPricingResponse>> Get(
         int propertyId, [FromQuery] DateOnly from, [FromQuery] DateOnly to,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] PricingGuestType guestType = PricingGuestType.Iranian)
     {
         var user = GetCurrentUser();
-        return Ok(await pricingService.GetAsync(user.UserId, user.Role, propertyId, from, to, cancellationToken));
+        return Ok(await pricingService.GetAsync(user.UserId, user.Role, propertyId, from, to, guestType, cancellationToken));
     }
 
     [HttpPost("bulk-cells")]
@@ -27,5 +29,16 @@ public class OwnerPricingController(IRoomDailyPriceService pricingService) : Aut
     {
         var user = GetCurrentUser();
         return Ok(await pricingService.BulkUpdateAsync(user.UserId, user.Role, propertyId, request, cancellationToken));
+    }
+
+    [HttpGet("history")]
+    [ProducesResponseType<IReadOnlyList<RoomDailyPriceHistoryResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<RoomDailyPriceHistoryResponse>>> History(
+        int propertyId,
+        CancellationToken cancellationToken,
+        [FromQuery] PricingGuestType guestType = PricingGuestType.Iranian)
+    {
+        var user = GetCurrentUser();
+        return Ok(await pricingService.GetHistoryAsync(user.UserId, user.Role, propertyId, guestType, cancellationToken));
     }
 }

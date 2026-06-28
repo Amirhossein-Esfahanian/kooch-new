@@ -12,6 +12,7 @@ import {
 import { createPortal } from "react-dom";
 import { AvailabilityStatus } from "@/lib/owner-api";
 import { toast } from "sonner";
+import { QuickPriceSelector } from "@/components/pricing/QuickPriceSelector";
 
 export type CalendarGridRow = {
   id: number | string;
@@ -48,6 +49,12 @@ export type CalendarRangeApplyPayload = {
   items: { rowId: number | string; date: string }[];
 };
 
+type PricingCellValues = {
+  basePrice: number;
+  childPrice: number;
+  extraGuestPrice: number;
+};
+
 export interface CalendarRangeGridEditorProps<
   Row extends CalendarGridRow,
   Value,
@@ -67,6 +74,8 @@ export interface CalendarRangeGridEditorProps<
   ) => ReactNode;
   /** Saves selected cells/range. `items` contains the exact selected cells. */
   onApplyRange: (payload: CalendarRangeApplyPayload) => Promise<void> | void;
+  /** Optional confirmation gate before saving selected cells/range. */
+  confirmApplyRange?: (payload: CalendarRangeApplyPayload) => Promise<boolean> | boolean;
   /** Current editor mode. Inventory uses capacity/status; pricing can reuse this with price fields later. */
   mode: "inventory" | "pricing";
   /** Label for the main value input, for example ظرفیت or قیمت. */
@@ -81,6 +90,12 @@ export interface CalendarRangeGridEditorProps<
   statusOptions?: { value: AvailabilityStatus; label: string }[];
   pricingMinValue?: number;
   pricingMaxValue?: number;
+  /** Currency label shown next to pricing inputs, supplied by site settings. */
+  pricingCurrencyLabel?: string;
+  /** Property-level quick prices shown in pricing mode. */
+  quickPricePresets?: number[];
+  /** Reads pricing values from the generic cell value when mode is pricing. */
+  pricingValueResolver?: (value: Value) => PricingCellValues;
   /** Blocks selecting a date, for example past days. Row/column selection and dragging skip these. */
   disabledDateResolver?: (date: string) => boolean;
   /** Semantic cell state for reusable styling: available, unavailable, reserved, onRequest. */
@@ -138,6 +153,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   getCellValue,
   renderCell,
   onApplyRange,
+  confirmApplyRange,
   mode,
   valueLabel,
   valueInputType = "number",
@@ -146,6 +162,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   statusOptions,
   pricingMinValue = 0,
   pricingMaxValue = Number.MAX_SAFE_INTEGER,
+  pricingCurrencyLabel = "",
+  quickPricePresets = [],
+  pricingValueResolver,
   disabledDateResolver,
   cellStateResolver,
   readonly = false,
@@ -169,6 +188,11 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   const [basePrice, setBasePrice] = useState(0);
   const [childPrice, setChildPrice] = useState(0);
   const [extraGuestPrice, setExtraGuestPrice] = useState(0);
+  const [mixedPricingFields, setMixedPricingFields] = useState({
+    basePrice: false,
+    childPrice: false,
+    extraGuestPrice: false,
+  });
   const [localError, setLocalError] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -252,6 +276,37 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     });
   }, [selectedKeys]);
   const selectedCount = selectedItems.length;
+
+  useEffect(() => {
+    if (mode !== "pricing" || selectedItems.length === 0) {
+      setMixedPricingFields({
+        basePrice: false,
+        childPrice: false,
+        extraGuestPrice: false,
+      });
+      return;
+    }
+
+    const values = selectedItems.map((item) => {
+      const cellValue = getCellValue(item.rowId as Row["id"], item.date);
+      return pricingValueResolver
+        ? pricingValueResolver(cellValue)
+        : (cellValue as PricingCellValues);
+    });
+
+    function syncField(field: keyof PricingCellValues, update: (value: number) => void) {
+      const first = values[0]?.[field] ?? 0;
+      const mixed = values.some((item) => item[field] !== first);
+      update(mixed ? Number.NaN : first);
+      return mixed;
+    }
+
+    setMixedPricingFields({
+      basePrice: syncField("basePrice", setBasePrice),
+      childPrice: syncField("childPrice", setChildPrice),
+      extraGuestPrice: syncField("extraGuestPrice", setExtraGuestPrice),
+    });
+  }, [getCellValue, mode, pricingValueResolver, selectedItems]);
 
   useEffect(() => {
     if (selectedRanges.length === 0) {
@@ -670,7 +725,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     if (selectedItems.length === 0) return "حداقل یک خانه را انتخاب کنید.";
     if (mode === "pricing") {
       const prices = [basePrice, childPrice, extraGuestPrice];
-      if (prices.some((price) => !Number.isFinite(price) || price < pricingMinValue || price > pricingMaxValue))
+      if (prices.some((price) => !Number.isFinite(price)))
+        return "برای همه نرخ‌ها مقدار معتبر وارد کنید.";
+      if (prices.some((price) => price < pricingMinValue || price > pricingMaxValue))
         return `مبلغ‌ها باید بین ${toPersianNumber(pricingMinValue)} و ${toPersianNumber(pricingMaxValue)} باشند.`;
       return "";
     }
@@ -708,10 +765,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           String(first.rowId).localeCompare(String(second.rowId)) ||
           first.date.localeCompare(second.date),
       );
-    setSaving(true);
-    setLocalError("");
-    try {
-      await onApplyRange({
+    const payload: CalendarRangeApplyPayload = {
         rowId: sortedItems[0].rowId,
         startDate: sortedItems[0].date,
         endDate: sortedItems[sortedItems.length - 1].date,
@@ -721,7 +775,16 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         childPrice: mode === "pricing" ? childPrice : undefined,
         extraGuestPrice: mode === "pricing" ? extraGuestPrice : undefined,
         items: sortedItems,
-      });
+      };
+
+    if (confirmApplyRange && !(await confirmApplyRange(payload))) {
+      return;
+    }
+
+    setSaving(true);
+    setLocalError("");
+    try {
+      await onApplyRange(payload);
       clearSelections();
       toast.success(
         mode === "inventory"
@@ -791,21 +854,40 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           <div className="mt-5 flex flex-col gap-4">
             {mode === "pricing" ? (
               <>
+                <QuickPriceSelector
+                  onSelect={(price) => {
+                    setBasePrice(price);
+                    setMixedPricingFields((current) => ({ ...current, basePrice: false }));
+                  }}
+                  prices={quickPricePresets}
+                />
                 {[
-                  { label: "نرخ اتاق", fieldValue: basePrice, update: setBasePrice },
-                  { label: "نرخ کودک", fieldValue: childPrice, update: setChildPrice },
-                  { label: "نرخ هر نفر اضافه", fieldValue: extraGuestPrice, update: setExtraGuestPrice },
+                  { key: "basePrice" as const, label: "نرخ اتاق", fieldValue: basePrice, update: setBasePrice },
+                  { key: "childPrice" as const, label: "نرخ کودک", fieldValue: childPrice, update: setChildPrice },
+                  { key: "extraGuestPrice" as const, label: "نرخ هر نفر اضافه", fieldValue: extraGuestPrice, update: setExtraGuestPrice },
                 ].map((field) => (
                   <label className="flex flex-col gap-2 text-sm font-bold text-slate-700" key={field.label}>
                     {field.label}
-                    <input
-                      className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
-                      max={pricingMaxValue}
-                      min={pricingMinValue}
-                      onChange={(event) => field.update(Number(event.target.value))}
-                      type="number"
-                      value={field.fieldValue}
-                    />
+                    <span className="relative">
+                      <input
+                        className={`w-full rounded-xl border border-slate-300 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)] ${pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"}`}
+                        max={pricingMaxValue}
+                        min={pricingMinValue}
+                        onChange={(event) => field.update(event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                        type="number"
+                        value={Number.isFinite(field.fieldValue) ? field.fieldValue : ""}
+                      />
+                      {pricingCurrencyLabel && (
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                          {pricingCurrencyLabel}
+                        </span>
+                      )}
+                    </span>
+                    {mixedPricingFields[field.key] && (
+                      <span className="text-xs font-semibold text-amber-600">
+                        مقادیر انتخاب‌شده متفاوت هستند.
+                      </span>
+                    )}
                   </label>
                 ))}
               </>
@@ -964,19 +1046,19 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 const disabled = dayDisabled(dayIndex);
                 return (
                   <th
-                    className={`min-w-[68px] border border-[var(--theme-border)] bg-white p-0 text-center ${day.isToday ? "ring-2 ring-[var(--theme-primary-border)]" : ""}`}
+                    className={`min-w-[68px] border border-[var(--theme-border)] p-0 text-center ${disabled ? "bg-slate-100 text-slate-400" : "bg-white"} ${day.isToday ? "ring-2 ring-[var(--theme-primary-border)]" : ""}`}
                     key={day.date}
                   >
                     <button
-                      className={`h-full w-full px-2 py-2 ${disabled ? "cursor-not-allowed text-slate-300" : "hover:bg-[var(--theme-primary-soft)]"}`}
+                      className={`h-full w-full px-2 py-2 ${disabled ? "cursor-not-allowed text-slate-400" : "hover:bg-[var(--theme-primary-soft)]"}`}
                       disabled={disabled}
                       onClick={() => toggleColumn(dayIndex)}
                       type="button"
                     >
-                      <span className="block text-[11px] font-bold text-slate-400">
+                      <span className={`block text-[11px] font-bold ${disabled ? "text-slate-400" : "text-slate-400"}`}>
                         {day.weekday}
                       </span>
-                      <span className="block text-base font-black text-slate-800">
+                      <span className={`block text-base font-black ${disabled ? "text-slate-400" : "text-slate-800"}`}>
                         {day.label}
                       </span>
                     </button>
@@ -1052,7 +1134,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
                   return (
                     <td
-                      className={`relative h-10 min-w-[68px] select-none border border-[var(--theme-border)] p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-slate-100" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected ? "bg-[var(--theme-primary-light)] shadow-inner ring-1 ring-inset ring-[var(--theme-primary)]" : ""}`}
+                      className={`relative h-10 min-w-[68px] select-none border border-[var(--theme-border)] p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-slate-100 text-slate-400" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected && !disabled ? "bg-[var(--theme-primary-light)] shadow-inner ring-1 ring-inset ring-[var(--theme-primary)]" : ""}`}
                       data-calendar-selected={selected ? "true" : undefined}
                       data-calendar-active-selected={
                         activeSelected ? "true" : undefined
@@ -1061,7 +1143,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                       onPointerEnter={() => extendHandle(row.id, dayIndex)}
                     >
                       <button
-                        className={`h-full w-full ${dragTarget ? "cursor-ew-resize" : ""}`}
+                        className={`h-full w-full ${disabled ? "cursor-not-allowed" : dragTarget ? "cursor-ew-resize" : ""}`}
                         disabled={disabled}
                         onClick={() => toggleCell(row.id, dayIndex)}
                         type="button"

@@ -296,13 +296,30 @@ export interface PropertyInventoryResponse {
   roomTypes: InventoryRoomTypeResponse[];
 }
 
+export type PricingGuestType = "Iranian" | "Foreign";
+
 export interface RoomDailyPriceResponse {
   id: number | null;
   roomTypeId: number;
   date: string;
+  guestType: PricingGuestType;
   basePrice: number;
   childPrice: number;
   extraGuestPrice: number;
+}
+
+export interface RoomDailyPriceHistoryResponse {
+  id: number;
+  roomId: number;
+  roomName: string;
+  guestType: PricingGuestType;
+  oldPrice: number;
+  newPrice: number;
+  userId: number;
+  user: string;
+  dateTime: string;
+  affectedStartDate: string;
+  affectedEndDate: string;
 }
 
 export interface PricingRoomTypeResponse {
@@ -315,6 +332,7 @@ export interface PropertyPricingResponse {
   propertyId: number;
   startDate: string;
   endDate: string;
+  guestType: PricingGuestType;
   roomTypes: PricingRoomTypeResponse[];
 }
 

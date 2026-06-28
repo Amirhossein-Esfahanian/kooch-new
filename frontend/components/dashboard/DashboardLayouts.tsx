@@ -29,7 +29,7 @@ const adminMenuItems: DashboardMenuItem[] = [
   {
     label: "مدیریت امکانات",
     icon: "/svgs/folder-gear.svg",
-    href: "/owner/amenities",
+    href: "/admin/amenities",
   },
   {
     label: "تنظیمات سایت",

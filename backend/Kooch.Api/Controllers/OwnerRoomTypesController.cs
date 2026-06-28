@@ -45,4 +45,13 @@ public class OwnerRoomTypesController(IRoomTypeService roomTypeService) : Authen
         return Ok(await roomTypeService.UpdateRoomTypeAsync(
             user.UserId, user.Role, id, request, cancellationToken));
     }
+
+    [HttpDelete("room-types/{id:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        await roomTypeService.DeleteRoomTypeAsync(user.UserId, user.Role, id, cancellationToken);
+        return NoContent();
+    }
 }

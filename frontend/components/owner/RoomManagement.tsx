@@ -43,7 +43,7 @@ const wizardSteps = [
 ] as const;
 
 const inputClass =
-  "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100";
+  "min-h-11 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2.5 text-sm text-[var(--theme-text)] outline-none transition placeholder:text-[var(--theme-muted-text)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950/60";
 
 const emptyRoomType: RoomTypeDraft = {
   name: "",
@@ -110,6 +110,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [roomTypeDraft, setRoomTypeDraft] = useState<RoomTypeDraft>(emptyRoomType);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<WizardMode>("create");
@@ -328,6 +329,24 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     }
   }
 
+  async function deleteRoomType(roomType: RoomTypeResponse) {
+    if (!window.confirm(`آیا از حذف اتاق «${roomType.name}» مطمئن هستید؟`)) return;
+
+    setDeletingRoomTypeId(roomType.id);
+    setError("");
+    try {
+      await apiRequest<void>(`/owner/room-types/${roomType.id}`, { method: "DELETE" });
+      await Promise.all([loadRoomTypes(), loadImages()]);
+      toast.success("اتاق حذف شد");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "حذف اتاق انجام نشد.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setDeletingRoomTypeId(null);
+    }
+  }
+
   function toggleAmenity(amenity: AmenityResponse, checked: boolean) {
     setRoomTypeDraft((current) => {
       const amenityIds = checked
@@ -347,7 +366,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         <div className="grid gap-5">
           <div>
             <h3 className="font-black">اطلاعات اصلی</h3>
-            <p className="mt-1 text-sm text-slate-500">فیلدهای ستاره‌دار برای ساخت پیش‌نویس الزامی هستند.</p>
+            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">فیلدهای ستاره‌دار برای ساخت پیش‌نویس الزامی هستند.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-bold">
@@ -384,7 +403,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         <div className="grid gap-5">
           <div>
             <h3 className="font-black">ویژگی‌ها</h3>
-            <p className="mt-1 text-sm text-slate-500">اطلاعات فیزیکی و قوانین نفر اضافه را مشخص کنید.</p>
+            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">اطلاعات فیزیکی و قوانین نفر اضافه را مشخص کنید.</p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-bold">
@@ -407,7 +426,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                 <option value="false">ندارد</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold">
+            <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold">
               <input
                 checked={roomTypeDraft.allowExtraGuest}
                 className="h-4 w-4 accent-blue-600"
@@ -435,10 +454,10 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       return (
         <fieldset>
           <legend className="font-black">امکانات اتاق</legend>
-          <p className="mt-1 text-sm text-slate-500">امکانات مرتبط با اتاق را انتخاب کنید. سرویس اختصاصی از همین امکانات تشخیص داده می‌شود.</p>
+          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">امکانات مرتبط با اتاق را انتخاب کنید. سرویس اختصاصی از همین امکانات تشخیص داده می‌شود.</p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             {roomAmenityOptions.map((amenity) => (
-              <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={amenity.id}>
+              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold" key={amenity.id}>
                 <input
                   checked={roomTypeDraft.amenityIds.includes(amenity.id)}
                   className="h-4 w-4 accent-blue-600"
@@ -459,10 +478,10 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-black">تخت‌ها / چیدمان</h3>
-              <p className="mt-1 text-sm text-slate-500">اگر چیدمان تخت مشخص است، اینجا اضافه کنید.</p>
+              <p className="mt-1 text-sm text-[var(--theme-muted-text)]">اگر چیدمان تخت مشخص است، اینجا اضافه کنید.</p>
             </div>
             <button
-              className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold"
+              className="min-h-11 rounded-xl border border-[var(--theme-border)] px-3 py-2 text-sm font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)]"
               onClick={() => patchDraft({ bedConfigurations: [...roomTypeDraft.bedConfigurations, { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 }] })}
               type="button"
             >
@@ -470,7 +489,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             </button>
           </div>
           {roomTypeDraft.bedConfigurations.length === 0 && (
-            <p className="rounded-xl border border-dashed border-slate-300 p-5 text-center text-sm text-slate-500">هنوز تختی اضافه نشده است.</p>
+            <p className="rounded-xl border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-5 text-center text-sm text-[var(--theme-muted-text)]">هنوز تختی اضافه نشده است.</p>
           )}
           {roomTypeDraft.bedConfigurations.map((bed, index) => (
             <div className="grid gap-2 md:grid-cols-[1fr_120px_auto]" key={index}>
@@ -499,7 +518,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       <div className="grid gap-4">
         <div>
           <h3 className="font-black">تصاویر اتاق</h3>
-          <p className="mt-1 text-sm text-slate-500">تصاویر این بخش به همین اتاق متصل می‌شوند. این مرحله آخر است.</p>
+          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">تصاویر این بخش به همین اتاق متصل می‌شوند. این مرحله آخر است.</p>
         </div>
         {roomTypeDraft.id ? (
           <PropertyImageManager
@@ -510,7 +529,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             roomTypes={roomTypes}
           />
         ) : (
-          <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">ابتدا مرحله اول را تکمیل کنید تا پیش‌نویس اتاق ذخیره شود.</p>
+          <p className="rounded-xl bg-[var(--theme-surface-muted)] p-4 text-sm text-[var(--theme-muted-text)]">ابتدا مرحله اول را تکمیل کنید تا پیش‌نویس اتاق ذخیره شود.</p>
         )}
       </div>
     );
@@ -604,9 +623,19 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                       </div>
                     )}
                   </div>
-                  <button className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700" onClick={() => editRoomType(roomType)} type="button">
-                    ویرایش اتاق
-                  </button>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-sm font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)]" onClick={() => editRoomType(roomType)} type="button">
+                      ویرایش اتاق
+                    </button>
+                    <button
+                      className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
+                      disabled={deletingRoomTypeId === roomType.id}
+                      onClick={() => deleteRoomType(roomType)}
+                      type="button"
+                    >
+                      {deletingRoomTypeId === roomType.id ? "در حال حذف..." : "حذف"}
+                    </button>
+                  </div>
                 </div>
               </article>
             );
@@ -622,22 +651,24 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       {wizardOpen && (
         <div className="fixed inset-0 z-50" dir="rtl">
           <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" />
-          <section className="absolute inset-x-0 bottom-0 max-h-[94vh] w-full overflow-hidden rounded-t-3xl border border-slate-200 bg-white shadow-2xl sm:inset-0 sm:m-auto sm:max-h-[90vh] sm:max-w-5xl sm:rounded-3xl">
-            <div className="flex items-start justify-between gap-3 border-b border-slate-100 p-5">
+          <section className="absolute inset-x-0 bottom-0 flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--theme-border)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-2xl sm:inset-0 sm:m-auto sm:max-h-[90vh] sm:max-w-5xl sm:rounded-3xl">
+            <div className="shrink-0 border-b border-[var(--theme-border)] bg-[var(--theme-surface)] p-5">
+              <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-black">
                   {wizardMode === "create" ? "افزودن اتاق" : "ویرایش اتاق"}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
                   {roomTypeDraft.id && !roomTypeDraft.isActive ? "این اتاق فعلاً پیش‌نویس است." : "اطلاعات اتاق را مرحله‌به‌مرحله تکمیل کنید."}
                 </p>
               </div>
-              <button aria-label="بستن" className="grid h-10 w-10 place-items-center rounded-full border border-slate-200 text-xl text-slate-600 hover:bg-slate-50" disabled={saving} onClick={closeWizard} type="button">
+              <button aria-label="بستن" className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--theme-border)] text-xl text-[var(--theme-muted-text)] transition hover:bg-[var(--theme-surface-muted)]" disabled={saving} onClick={closeWizard} type="button">
                 X
               </button>
+              </div>
             </div>
 
-            <div className="border-b border-slate-100 px-5 py-4">
+            <div className="shrink-0 border-b border-[var(--theme-border)] bg-[var(--theme-surface)] px-5 py-4">
               <div className="grid gap-2 md:grid-cols-5">
                 {wizardSteps.map((step, index) => (
                   <button
@@ -645,8 +676,8 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                       index === activeStep
                         ? "border-blue-600 bg-blue-600 text-white shadow-md"
                         : index < activeStep
-                          ? "border-blue-100 bg-blue-50 text-blue-700"
-                          : "border-slate-200 bg-white text-slate-500"
+                          ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200"
+                          : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)]"
                     }`}
                     disabled={saving || (index > 0 && !roomTypeDraft.id)}
                     key={step}
@@ -660,24 +691,24 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               </div>
             </div>
 
-            <div className="max-h-[calc(94vh-230px)] overflow-y-auto p-5 sm:max-h-[calc(90vh-230px)]">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--theme-surface)] p-5">
               {renderStep()}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 p-5">
-              <button className="rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-700 disabled:opacity-50" disabled={saving || activeStep === 0} onClick={() => setActiveStep((current) => Math.max(0, current - 1))} type="button">
-                مرحله قبل
+            <div className="sticky bottom-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-[0_-12px_24px_rgba(15,23,42,0.06)] dark:shadow-[0_-12px_24px_rgba(0,0,0,0.25)]">
+              <button className="min-h-11 rounded-xl border border-[var(--theme-border)] px-5 py-2.5 font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)] disabled:opacity-50" disabled={saving || activeStep === 0} onClick={() => setActiveStep((current) => Math.max(0, current - 1))} type="button">
+                قبلی
               </button>
               <div className="flex flex-wrap gap-3">
-                <button className="rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-700 disabled:opacity-60" disabled={saving} onClick={closeWizard} type="button">
+                <button className="min-h-11 rounded-xl border border-[var(--theme-border)] px-5 py-2.5 font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)] disabled:opacity-60" disabled={saving} onClick={closeWizard} type="button">
                   لغو
                 </button>
                 {activeStep < wizardSteps.length - 1 ? (
-                  <button className="rounded-xl bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60" disabled={saving} onClick={goNext} type="button">
-                    {saving ? "در حال ذخیره..." : activeStep === 0 ? "ذخیره پیش‌نویس و ادامه" : "مرحله بعد"}
+                  <button className="min-h-11 rounded-xl bg-blue-600 px-5 py-2.5 font-black text-white transition hover:bg-blue-700 disabled:opacity-60" disabled={saving} onClick={goNext} type="button">
+                    {saving ? "در حال ذخیره..." : activeStep === 0 ? "ذخیره و بعدی" : "بعدی"}
                   </button>
                 ) : (
-                  <button className="rounded-xl bg-blue-600 px-5 py-3 font-black text-white disabled:opacity-60" disabled={saving} onClick={activateRoom} type="button">
+                  <button className="min-h-11 rounded-xl bg-blue-600 px-5 py-2.5 font-black text-white transition hover:bg-blue-700 disabled:opacity-60" disabled={saving} onClick={activateRoom} type="button">
                     {saving ? "در حال فعال‌سازی..." : "فعال‌سازی اتاق"}
                   </button>
                 )}

@@ -191,6 +191,26 @@ public class RoomTypeService(
             .ToListAsync(cancellationToken);
     }
 
+    public async Task DeleteRoomTypeAsync(
+        int userId,
+        UserRole role,
+        int roomTypeId,
+        CancellationToken cancellationToken = default)
+    {
+        var roomType = await dbContext.RoomTypes
+            .SingleOrDefaultAsync(item => item.Id == roomTypeId, cancellationToken)
+            ?? throw new KeyNotFoundException("Room type not found.");
+
+        await EnsureCanManageAsync(userId, role, roomType.PropertyId, cancellationToken);
+
+        roomType.IsDeleted = true;
+        roomType.DeletedAtUtc = DateTime.UtcNow;
+        roomType.DeletedByUserId = userId;
+        roomType.IsActive = false;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private async Task EnsureCanManageAsync(
         int userId,
         UserRole role,

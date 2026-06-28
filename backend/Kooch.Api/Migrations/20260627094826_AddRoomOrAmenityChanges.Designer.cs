@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260627094826_AddRoomOrAmenityChanges")]
+    partial class AddRoomOrAmenityChanges
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2065,12 +2068,6 @@ namespace Kooch.Api.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
-                    b.Property<string>("GuestType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("Iranian");
-
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -2085,7 +2082,7 @@ namespace Kooch.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("RoomTypeId", "Date", "GuestType")
+                    b.HasIndex("RoomTypeId", "Date")
                         .IsUnique();
 
                     b.ToTable("RoomDailyPrices");
@@ -2123,12 +2120,6 @@ namespace Kooch.Api.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
-                    b.Property<string>("GuestType")
-                        .IsRequired()
-                        .HasMaxLength(20)
-                        .HasColumnType("nvarchar(20)")
-                        .HasDefaultValue("Iranian");
-
                     b.Property<decimal>("NewPrice")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -2153,7 +2144,7 @@ namespace Kooch.Api.Migrations
 
                     b.HasIndex("UserId");
 
-                    b.HasIndex("RoomTypeId", "GuestType", "ChangedAtUtc");
+                    b.HasIndex("RoomTypeId", "ChangedAtUtc");
 
                     b.ToTable("RoomDailyPriceHistory");
                 });

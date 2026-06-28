@@ -88,7 +88,7 @@ export default function AdminPropertiesPage() {
         </p>
       )}
       <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid min-w-[980px] grid-cols-[70px_1.4fr_1fr_1.4fr_1fr_1fr_1.5fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500">
+        <div className="grid min-w-[1080px] grid-cols-[70px_1.4fr_1fr_1.4fr_1fr_1fr_2fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500">
           <span>شناسه</span>
           <span>نام</span>
           <span>شهر</span>
@@ -100,7 +100,7 @@ export default function AdminPropertiesPage() {
         <div className="overflow-x-auto">
           {properties.map((property) => (
             <div
-              className="grid min-w-[980px] grid-cols-[70px_1.4fr_1fr_1.4fr_1fr_1fr_1.5fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
+              className="grid min-w-[1080px] grid-cols-[70px_1.4fr_1fr_1.4fr_1fr_1fr_2fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
               key={property.id}
             >
               <span className="font-bold text-slate-500">{property.id}</span>
@@ -143,6 +143,18 @@ export default function AdminPropertiesPage() {
                   href={`/admin/properties/${property.id}`}
                 >
                   ویرایش
+                </Link>
+                <Link
+                  className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
+                  href={`/admin/properties/${property.id}/inventory`}
+                >
+                  ظرفیت
+                </Link>
+                <Link
+                  className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-50"
+                  href={`/admin/properties/${property.id}/pricing`}
+                >
+                  قیمت
                 </Link>
                 {/* <button className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" disabled={workingId === property.id} onClick={() => setStatus(property.id, "Approved")} type="button">تایید</button> */}
                 {/* <button className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50" disabled={workingId === property.id} onClick={() => setStatus(property.id, "Rejected")} type="button">رد</button> */}

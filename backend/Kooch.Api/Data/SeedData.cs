@@ -100,6 +100,7 @@ public static class SeedData
             SiteSettingSeed("image.enableWebpConversion", "true", SiteSettingType.Boolean, "Images", "تبدیل خودکار به WebP", "نسخه ذخیره‌شده تصاویر را برای کاهش حجم به WebP تبدیل می‌کند.", 50),
             SiteSettingSeed("pricing.minPrice", "0", SiteSettingType.Number, "Pricing", "حداقل قیمت روزانه", "کمترین مبلغ مجاز برای نرخ اتاق، کودک و نفر اضافه.", 10),
             SiteSettingSeed("pricing.maxPrice", "1000000000", SiteSettingType.Number, "Pricing", "حداکثر قیمت روزانه", "بیشترین مبلغ مجاز برای نرخ اتاق، کودک و نفر اضافه.", 20),
+            SiteSettingSeed("pricing.currencyLabel", "تومان", SiteSettingType.Text, "Pricing", "واحد پول قیمت‌گذاری", "این برچسب کنار ورودی‌های قیمت نمایش داده می‌شود.", 30),
             SiteSettingSeed("ReservationCommissionPercent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون رزرو", null, 10),
             SiteSettingSeed("ReferralCommissionPercent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون معرفی", null, 20),
             SiteSettingSeed("CommissionType3Percent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون نوع سوم", null, 30)
