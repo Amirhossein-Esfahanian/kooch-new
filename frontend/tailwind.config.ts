@@ -8,6 +8,21 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        background: "var(--background)",
+        foreground: "var(--foreground)",
+        card: "var(--card)",
+        "card-foreground": "var(--card-foreground)",
+        muted: "var(--muted)",
+        "muted-foreground": "var(--muted-foreground)",
+        border: "var(--border)",
+        input: "var(--input)",
+        primary: "var(--primary)",
+        "primary-foreground": "var(--primary-foreground)",
+        popover: "var(--popover)",
+        "popover-foreground": "var(--popover-foreground)",
+        destructive: "var(--destructive)",
+        "destructive-foreground": "var(--destructive-foreground)",
+        ring: "var(--ring)",
         ink: "#19362f",
         moss: "#356859",
         cream: "#f7f3ea",
