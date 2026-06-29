@@ -9,7 +9,9 @@ import {
   apiRequest,
   createSlug,
 } from "@/lib/owner-api";
+import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
 
 interface AmenityFormValues {
   amenityCategoryId: string;
@@ -179,26 +181,22 @@ export function AmenityManagement() {
 
   return (
     <>
-      <section className="rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#171d27]">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="text-xl font-black text-slate-950 dark:text-slate-100">
-              امکانات اقامتگاه و اتاق
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-slate-500 dark:text-slate-400">
-              دسته‌بندی را انتخاب کنید و امکانات همان دسته را مدیریت کنید.
-            </p>
-          </div>
-          <button
-            className="ds-button-primary"
-            onClick={openCreateModal}
-            type="button"
-          >
-            افزودن امکان
-          </button>
-        </div>
-
-        <div className="mt-6 flex gap-2 overflow-x-auto pb-2">
+      <KoochCard variant="elevated">
+        <KoochPageHeader
+          actions={
+            <button
+              className="ds-button-primary"
+              onClick={openCreateModal}
+              type="button"
+            >
+              افزودن امکان
+            </button>
+          }
+          description="دسته‌بندی را انتخاب کنید و امکانات همان دسته را مدیریت کنید."
+          eyebrow="مدیریت امکانات"
+          title="امکانات اقامتگاه و اتاق"
+        />
+        <KoochCard className="mt-6 flex gap-2 overflow-x-auto pb-2" padding="sm" variant="muted">
           {categories.map((category) => {
             const active = activeCategory?.id === category.id;
             return (
@@ -206,7 +204,7 @@ export function AmenityManagement() {
                 className={`shrink-0 rounded-xl border px-4 py-2 text-sm font-black transition ${
                   active
                     ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                    : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700 dark:border-white/10 dark:text-slate-300 dark:hover:bg-white/10"
+                    : "border-border text-muted-foreground hover:border-blue-300 hover:text-blue-700"
                 }`}
                 key={category.id}
                 onClick={() => setActiveCategoryId(category.id)}
@@ -217,39 +215,41 @@ export function AmenityManagement() {
               </button>
             );
           })}
-        </div>
+        </KoochCard>
 
         <div className="mt-6">
           {loading ? (
-            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-white/5 dark:text-slate-400">
+            <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
               در حال بارگذاری امکانات...
             </p>
           ) : !activeCategory ? (
-            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-white/5 dark:text-slate-400">
+            <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
               دسته‌بندی امکاناتی ثبت نشده است.
             </p>
           ) : visibleAmenities.length === 0 ? (
-            <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500 dark:bg-white/5 dark:text-slate-400">
+            <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
               در این دسته‌بندی هنوز امکانی ثبت نشده است.
             </p>
           ) : (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {visibleAmenities.map((amenity) => (
-                <article
-                  className="rounded-lg border border-slate-200 bg-slate-50 p-4 transition hover:border-blue-300 dark:border-white/10 dark:bg-white/5"
+                <KoochCard
+                  className="transition hover:border-blue-300"
+                  padding="sm"
+                  variant="muted"
                   key={amenity.id}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="font-black text-slate-950 dark:text-slate-100">
+                      <h3 className="font-black">
                         {amenity.name}
                       </h3>
-                      <p className="mt-1 text-xs font-bold uppercase tracking-wide text-slate-400">
+                      <p className="mt-1 text-xs font-bold uppercase tracking-wide text-muted-foreground">
                         {amenity.scope} · {amenity.slug}
                       </p>
                     </div>
                     {amenity.icon && (
-                      <span className="rounded-xl bg-white px-3 py-1 text-xs font-bold shadow-sm dark:bg-white/10">
+                      <span className="rounded-xl bg-card px-3 py-1 text-xs font-bold shadow-sm">
                         {amenity.icon}
                       </span>
                     )}
@@ -270,12 +270,12 @@ export function AmenityManagement() {
                       حذف
                     </button>
                   </div>
-                </article>
+                </KoochCard>
               ))}
             </div>
           )}
         </div>
-      </section>
+      </KoochCard>
 
       <KoochDialog
         closeDisabled={saving}
