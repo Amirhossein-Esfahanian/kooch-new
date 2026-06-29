@@ -4,6 +4,7 @@ import Cropper, { Area } from "react-easy-crop";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 
 export interface MediaGalleryItem {
   id: string | number;
@@ -360,22 +361,34 @@ export function MediaGallery<T extends MediaGalleryItem>({
         </div>
       )}
 
-      {cropTarget && (
-        <div aria-label="برش تصویر" aria-modal="true" className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-4" role="dialog">
-          <div className="w-full max-w-3xl rounded-[var(--modal-radius)] bg-white p-4 shadow-2xl">
-            <div className="flex items-center justify-between gap-3"><h3 className="text-lg font-black">برش تصویر</h3><button aria-label="بستن" className="grid h-10 w-10 place-items-center rounded-full hover:bg-slate-100" onClick={() => setCropTarget(null)} type="button"><CloseIcon /></button></div>
-            <div className="relative mt-4 h-[min(55vh,440px)] overflow-hidden rounded-2xl bg-slate-900">
-              <Cropper aspect={cropAspect ?? undefined} crop={crop} image={cropTarget.url} onCropChange={setCrop} onCropComplete={(_, pixels) => setCropPixels(pixels)} onZoomChange={setCropZoom} zoom={cropZoom} />
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <fieldset><legend className="mb-2 text-sm font-black">نسبت برش</legend><div className="flex flex-wrap gap-2"><button className={cropAspect === 1 ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setCropAspect(1)} type="button">۱:۱</button><button className={cropAspect === 4 / 3 ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setCropAspect(4 / 3)} type="button">۴:۳</button>{allowFreeCrop && <button className={cropAspect === null ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setCropAspect(null)} type="button">آزاد</button>}</div></fieldset>
-              <fieldset><legend className="mb-2 text-sm font-black">نحوه ذخیره</legend><div className="flex flex-wrap gap-2"><button className={selectedSaveMode === "replace" ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setSelectedSaveMode("replace")} type="button">جایگزینی تصویر</button><button className={selectedSaveMode === "new" ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setSelectedSaveMode("new")} type="button">ذخیره نسخه جدید</button></div></fieldset>
-            </div>
-            <label className="mt-4 grid gap-2 text-sm font-bold">بزرگ‌نمایی<input max="3" min="1" onChange={(event) => setCropZoom(Number(event.target.value))} step="0.1" type="range" value={cropZoom} /></label>
-            <div className="mt-5 flex justify-end gap-3"><button className="ds-button-secondary" disabled={cropping} onClick={() => setCropTarget(null)} type="button">انصراف</button><button className="ds-button-primary disabled:opacity-60" disabled={cropping} onClick={() => void confirmCrop()} type="button">{cropping ? `در حال ذخیره… ${uploadProgress ?? 0}٪` : "ذخیره برش"}</button></div>
-          </div>
+      <KoochDialog
+        closeDisabled={cropping}
+        footer={
+          <>
+            <KoochDialogButton disabled={cropping} onClick={() => setCropTarget(null)}>
+              انصراف
+            </KoochDialogButton>
+            <KoochDialogButton disabled={cropping} onClick={() => void confirmCrop()} variant="primary">
+              {cropping ? `در حال ذخیره... ${uploadProgress ?? 0}%` : "ذخیره برش"}
+            </KoochDialogButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open && !cropping) setCropTarget(null);
+        }}
+        open={Boolean(cropTarget)}
+        size="lg"
+        title="برش تصویر"
+      >
+        <div className="relative h-[min(55vh,440px)] overflow-hidden rounded-2xl bg-slate-900">
+          <Cropper aspect={cropAspect ?? undefined} crop={crop} image={cropTarget?.url ?? ""} onCropChange={setCrop} onCropComplete={(_, pixels) => setCropPixels(pixels)} onZoomChange={setCropZoom} zoom={cropZoom} />
         </div>
-      )}
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          <fieldset><legend className="mb-2 text-sm font-black">نسبت برش</legend><div className="flex flex-wrap gap-2"><button className={cropAspect === 1 ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setCropAspect(1)} type="button">۱:۱</button><button className={cropAspect === 4 / 3 ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setCropAspect(4 / 3)} type="button">۴:۳</button>{allowFreeCrop && <button className={cropAspect === null ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setCropAspect(null)} type="button">آزاد</button>}</div></fieldset>
+          <fieldset><legend className="mb-2 text-sm font-black">نحوه ذخیره</legend><div className="flex flex-wrap gap-2"><button className={selectedSaveMode === "replace" ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setSelectedSaveMode("replace")} type="button">جایگزینی تصویر</button><button className={selectedSaveMode === "new" ? "ds-button-primary" : "ds-button-secondary"} onClick={() => setSelectedSaveMode("new")} type="button">ذخیره نسخه جدید</button></div></fieldset>
+        </div>
+        <label className="mt-4 grid gap-2 text-sm font-bold">بزرگ‌نمایی<input max="3" min="1" onChange={(event) => setCropZoom(Number(event.target.value))} step="0.1" type="range" value={cropZoom} /></label>
+      </KoochDialog>
     </section>
   );
 }

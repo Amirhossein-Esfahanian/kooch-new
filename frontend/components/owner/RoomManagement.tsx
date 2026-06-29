@@ -10,6 +10,7 @@ import {
   PropertyImageResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 interface RoomTypeDraft {
@@ -113,6 +114,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<WizardMode>("create");
   const [activeStep, setActiveStep] = useState(0);
 
@@ -143,15 +145,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       })
       .finally(() => setLoading(false));
   }, [propertyId]);
-
-  useEffect(() => {
-    if (!wizardOpen) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving) closeWizard();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [wizardOpen, saving]);
 
   async function loadRoomTypes() {
     const items = await apiRequest<RoomTypeResponse[]>(
@@ -185,8 +178,23 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setWizardOpen(true);
   }
 
+  function openTestDialog(roomType: RoomTypeResponse) {
+    setRoomTypeDraft(roomTypeToDraft(roomType));
+    setWizardMode("edit");
+    setActiveStep(0);
+    setError("");
+    setTestDialogOpen(true);
+  }
+
   function closeWizard() {
     setWizardOpen(false);
+    setRoomTypeDraft(emptyRoomType);
+    setActiveStep(0);
+    setError("");
+  }
+
+  function closeTestDialog() {
+    setTestDialogOpen(false);
     setRoomTypeDraft(emptyRoomType);
     setActiveStep(0);
     setError("");
@@ -322,6 +330,36 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       closeWizard();
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "فعال‌سازی اتاق انجام نشد.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveTestDialog() {
+    const validationError = validateStep(activeStep, true);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    try {
+      const endpoint = roomTypeDraft.id
+        ? `/owner/room-types/${roomTypeDraft.id}`
+        : `/owner/properties/${propertyId}/room-types`;
+      const saved = await apiRequest<RoomTypeResponse>(endpoint, {
+        method: roomTypeDraft.id ? "PUT" : "POST",
+        body: JSON.stringify(buildPayload(roomTypeDraft.id ? roomTypeDraft.isActive : false)),
+      });
+      setRoomTypeDraft(roomTypeToDraft(saved));
+      await Promise.all([loadRoomTypes(), loadImages()]);
+      toast.success("ذخیره آزمایشی انجام شد");
+      closeTestDialog();
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "ذخیره آزمایشی انجام نشد.";
       setError(message);
       toast.error(message);
     } finally {
@@ -627,6 +665,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     <button className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-sm font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)]" onClick={() => editRoomType(roomType)} type="button">
                       ویرایش اتاق
                     </button>
+                    <button className="rounded-xl border border-blue-200 px-3 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:text-blue-300 dark:hover:bg-blue-950/30" onClick={() => openTestDialog(roomType)} type="button">
+                      تست دیالوگ جدید
+                    </button>
                     <button
                       className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
                       disabled={deletingRoomTypeId === roomType.id}
@@ -648,75 +689,124 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         )}
       </section>
 
-      {wizardOpen && (
-        <div className="fixed inset-0 z-50" dir="rtl">
-          <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[2px]" />
-          <section className="absolute inset-x-0 bottom-0 flex max-h-[94vh] w-full flex-col overflow-hidden rounded-t-3xl border border-[var(--theme-border)] bg-[var(--theme-surface)] text-[var(--theme-text)] shadow-2xl sm:inset-0 sm:m-auto sm:max-h-[90vh] sm:max-w-5xl sm:rounded-3xl">
-            <div className="shrink-0 border-b border-[var(--theme-border)] bg-[var(--theme-surface)] p-5">
-              <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-black">
-                  {wizardMode === "create" ? "افزودن اتاق" : "ویرایش اتاق"}
-                </h2>
-                <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
-                  {roomTypeDraft.id && !roomTypeDraft.isActive ? "این اتاق فعلاً پیش‌نویس است." : "اطلاعات اتاق را مرحله‌به‌مرحله تکمیل کنید."}
-                </p>
-              </div>
-              <button aria-label="بستن" className="grid h-10 w-10 place-items-center rounded-xl border border-[var(--theme-border)] text-xl text-[var(--theme-muted-text)] transition hover:bg-[var(--theme-surface-muted)]" disabled={saving} onClick={closeWizard} type="button">
-                X
+      <KoochDialog
+        closeDisabled={saving}
+        description={
+          roomTypeDraft.id && !roomTypeDraft.isActive
+            ? "این اتاق فعلاً پیش‌نویس است."
+            : "اطلاعات اتاق را مرحله‌به‌مرحله تکمیل کنید."
+        }
+        footer={
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+            <KoochDialogButton
+              disabled={saving || activeStep === 0}
+              onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
+            >
+              قبلی
+            </KoochDialogButton>
+            <div className="flex flex-wrap gap-3">
+              <KoochDialogButton disabled={saving} onClick={closeWizard}>
+                لغو
+              </KoochDialogButton>
+              {activeStep < wizardSteps.length - 1 ? (
+                <KoochDialogButton disabled={saving} onClick={goNext} variant="primary">
+                  {saving ? "در حال ذخیره..." : activeStep === 0 ? "ذخیره و بعدی" : "بعدی"}
+                </KoochDialogButton>
+              ) : (
+                <KoochDialogButton disabled={saving} onClick={activateRoom} variant="primary">
+                  {saving ? "در حال فعال‌سازی..." : "فعال‌سازی اتاق"}
+                </KoochDialogButton>
+              )}
+            </div>
+          </div>
+        }
+        onOpenChange={(open) => {
+          if (!open && !saving) closeWizard();
+        }}
+        open={wizardOpen}
+        size="xl"
+        title={wizardMode === "create" ? "افزودن اتاق" : "ویرایش اتاق"}
+      >
+        <div className="mb-5 border-b border-[var(--theme-border)] pb-4">
+          <div className="grid gap-2 md:grid-cols-5">
+            {wizardSteps.map((step, index) => (
+              <button
+                className={`min-h-10 rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                  index === activeStep
+                    ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                    : index < activeStep
+                      ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200"
+                      : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]"
+                }`}
+                disabled={saving || (index > 0 && !roomTypeDraft.id)}
+                key={step}
+                onClick={() => setActiveStep(index)}
+                type="button"
+              >
+                <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-white/20 text-xs">{index + 1}</span>
+                {step}
               </button>
-              </div>
-            </div>
-
-            <div className="shrink-0 border-b border-[var(--theme-border)] bg-[var(--theme-surface)] px-5 py-4">
-              <div className="grid gap-2 md:grid-cols-5">
-                {wizardSteps.map((step, index) => (
-                  <button
-                    className={`rounded-xl border px-3 py-2 text-sm font-black transition ${
-                      index === activeStep
-                        ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                        : index < activeStep
-                          ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200"
-                          : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)]"
-                    }`}
-                    disabled={saving || (index > 0 && !roomTypeDraft.id)}
-                    key={step}
-                    onClick={() => setActiveStep(index)}
-                    type="button"
-                  >
-                    <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-white/20 text-xs">{index + 1}</span>
-                    {step}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto bg-[var(--theme-surface)] p-5">
-              {renderStep()}
-            </div>
-
-            <div className="sticky bottom-0 z-10 flex shrink-0 flex-wrap items-center justify-between gap-3 border-t border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-[0_-12px_24px_rgba(15,23,42,0.06)] dark:shadow-[0_-12px_24px_rgba(0,0,0,0.25)]">
-              <button className="min-h-11 rounded-xl border border-[var(--theme-border)] px-5 py-2.5 font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)] disabled:opacity-50" disabled={saving || activeStep === 0} onClick={() => setActiveStep((current) => Math.max(0, current - 1))} type="button">
-                قبلی
-              </button>
-              <div className="flex flex-wrap gap-3">
-                <button className="min-h-11 rounded-xl border border-[var(--theme-border)] px-5 py-2.5 font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)] disabled:opacity-60" disabled={saving} onClick={closeWizard} type="button">
-                  لغو
-                </button>
-                {activeStep < wizardSteps.length - 1 ? (
-                  <button className="min-h-11 rounded-xl bg-blue-600 px-5 py-2.5 font-black text-white transition hover:bg-blue-700 disabled:opacity-60" disabled={saving} onClick={goNext} type="button">
-                    {saving ? "در حال ذخیره..." : activeStep === 0 ? "ذخیره و بعدی" : "بعدی"}
-                  </button>
-                ) : (
-                  <button className="min-h-11 rounded-xl bg-blue-600 px-5 py-2.5 font-black text-white transition hover:bg-blue-700 disabled:opacity-60" disabled={saving} onClick={activateRoom} type="button">
-                    {saving ? "در حال فعال‌سازی..." : "فعال‌سازی اتاق"}
-                  </button>
-                )}
-              </div>
-            </div>
-          </section>
+            ))}
+          </div>
         </div>
-      )}
+
+        {error && (
+          <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200">
+            {error}
+          </p>
+        )}
+        {renderStep()}
+      </KoochDialog>
+      <KoochDialog
+        description="این مسیر فقط برای تست بصری و تجربه کاربری است؛ مودال قبلی بدون تغییر باقی مانده است."
+        footer={
+          <>
+            <KoochDialogButton disabled={saving} onClick={closeTestDialog}>
+              لغو
+            </KoochDialogButton>
+            <KoochDialogButton
+              disabled={saving}
+              onClick={saveTestDialog}
+              variant="primary"
+            >
+              {saving ? "در حال ذخیره..." : "ذخیره آزمایشی"}
+            </KoochDialogButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open && !saving) closeTestDialog();
+        }}
+        open={testDialogOpen}
+        size="lg"
+        title="ویرایش اتاق در دیالوگ جدید"
+      >
+        <div className="mb-5 border-b border-[var(--theme-border)] pb-4">
+          <div className="grid gap-2 md:grid-cols-5">
+            {wizardSteps.map((step, index) => (
+              <button
+                className={`min-h-10 rounded-md border px-3 py-2 text-xs font-semibold transition ${
+                  index === activeStep
+                    ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                    : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]"
+                }`}
+                disabled={saving || (index > 0 && !roomTypeDraft.id)}
+                key={step}
+                onClick={() => setActiveStep(index)}
+                type="button"
+              >
+                {step}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {error && (
+          <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200">
+            {error}
+          </p>
+        )}
+        {renderStep()}
+      </KoochDialog>
     </div>
   );
 }

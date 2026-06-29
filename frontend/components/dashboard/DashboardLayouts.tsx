@@ -123,7 +123,7 @@ function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
     },
     {
       label: "تنظیمات",
-      icon: "/svgs/cogs.svg",
+      icon: "/svgs/cog.svg",
       href: propertyId ? `${base}/settings` : fallbackHref,
     },
   ];
@@ -459,6 +459,17 @@ function DashboardShell({
   );
 }
 
+function logout() {
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  localStorage.removeItem("authToken");
+
+  document.cookie = "token=; Max-Age=0; path=/";
+  document.cookie = "authToken=; Max-Age=0; path=/";
+
+  window.location.href = "/login";
+}
+
 function DashboardSidebar({
   collapsed,
   darkMode,
@@ -643,7 +654,14 @@ function DashboardHeader({
           label="اعلان‌ها"
           onClick={() => onDrawerToggle("notifications")}
         >
-          🔔
+          <span
+            aria-hidden="true"
+            className="inline-block h-4 w-4 bg-current"
+            style={{
+              WebkitMask: `url(${"/svgs/cog.svg"}) center / contain no-repeat`,
+              mask: `url(${"/svgs/cog.svg"}) center / contain no-repeat`,
+            }}
+          />
         </HeaderIcon>
         <button
           className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
@@ -699,7 +717,7 @@ function DashboardHeader({
                       darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
                     } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
                     key={item}
-                    onClick={onProfileMenuClose}
+                    onClick={logout}
                     role="menuitem"
                     type="button"
                   >

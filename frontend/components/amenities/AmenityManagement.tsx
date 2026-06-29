@@ -9,6 +9,7 @@ import {
   apiRequest,
   createSlug,
 } from "@/lib/owner-api";
+import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 
 interface AmenityFormValues {
   amenityCategoryId: string;
@@ -276,199 +277,171 @@ export function AmenityManagement() {
         </div>
       </section>
 
-      {modalOpen && (
-        <div
-          aria-modal="true"
-          className="fixed inset-0 z-[140] grid place-items-center bg-slate-950/60 p-4"
-          role="dialog"
-        >
-          <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[var(--modal-radius)] bg-white p-5 shadow-2xl dark:bg-[#171d27]">
-            <div className="mb-5 flex items-center justify-between gap-3">
-              <h2 className="text-xl font-black">
-                {editingAmenity ? "ویرایش امکان" : "افزودن امکان"}
-              </h2>
-              <button
-                className="rounded-lg border border-slate-200 px-3 py-1 text-sm font-bold dark:border-white/10"
-                onClick={closeModal}
-                type="button"
-              >
-                بستن
-              </button>
-            </div>
-            <form className="grid gap-4" onSubmit={saveAmenity}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-1 text-sm font-bold">
-                  نام فارسی
-                  <input
-                    className={inputClass}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        name: event.target.value,
-                        slug: current.slug || createSlug(event.target.value),
-                      }))
-                    }
-                    required
-                    value={form.name}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold">
-                  نام انگلیسی / اسلاگ
-                  <input
-                    className={inputClass}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        slug: event.target.value,
-                      }))
-                    }
-                    placeholder="در صورت خالی بودن خودکار ساخته می‌شود"
-                    value={form.slug}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold">
-                  دسته‌بندی
-                  <select
-                    className={inputClass}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        amenityCategoryId: event.target.value,
-                      }))
-                    }
-                    required
-                    value={form.amenityCategoryId}
-                  >
-                    <option value="">انتخاب دسته‌بندی</option>
-                    {categories.map((category) => (
-                      <option key={category.id} value={category.id}>
-                        {category.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-bold">
-                  دامنه استفاده
-                  <select
-                    className={inputClass}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        scope: event.target.value as AmenityScope,
-                      }))
-                    }
-                    value={form.scope}
-                  >
-                    {scopes.map((scope) => (
-                      <option key={scope} value={scope}>
-                        {scope === "Property"
-                          ? "اقامتگاه"
-                          : scope === "RoomType"
-                            ? "نوع اتاق"
-                            : "هر دو"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <label className="grid gap-1 text-sm font-bold">
-                  SVG icon
-                  <input
-                    className={inputClass}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        icon: event.target.value,
-                      }))
-                    }
-                    placeholder="اختیاری"
-                    value={form.icon}
-                  />
-                </label>
-                <label className="grid gap-1 text-sm font-bold">
-                  ترتیب نمایش
-                  <input
-                    className={inputClass}
-                    onChange={(event) =>
-                      setForm((current) => ({
-                        ...current,
-                        sortOrder: Number(event.target.value),
-                      }))
-                    }
-                    type="number"
-                    value={form.sortOrder}
-                  />
-                </label>
-              </div>
-              <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm font-bold dark:border-white/10">
-                <span>وضعیت</span>
-                <select
-                  className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      isActive: event.target.value === "active",
-                    }))
-                  }
-                  value={form.isActive ? "active" : "inactive"}
-                >
-                  <option value="active">فعال</option>
-                  <option value="inactive">غیرفعال</option>
-                </select>
-              </label>
-              <div className="flex flex-wrap justify-end gap-3 pt-2">
-                <button
-                  className="ds-button-secondary"
-                  disabled={saving}
-                  onClick={closeModal}
-                  type="button"
-                >
-                  لغو
-                </button>
-                <button
-                  className="ds-button-primary disabled:opacity-50"
-                  disabled={saving}
-                  type="submit"
-                >
-                  {saving ? "در حال ذخیره..." : "ذخیره"}
-                </button>
-              </div>
-            </form>
-          </div>
+      <KoochDialog
+        closeDisabled={saving}
+        footer={
+          <>
+            <KoochDialogButton disabled={saving} onClick={closeModal}>
+              لغو
+            </KoochDialogButton>
+            <KoochDialogButton disabled={saving} form="amenity-form" type="submit" variant="primary">
+              {saving ? "در حال ذخیره..." : "ذخیره"}
+            </KoochDialogButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open) closeModal();
+        }}
+        open={modalOpen}
+        size="md"
+        title={editingAmenity ? "ویرایش امکان" : "افزودن امکان"}
+      >
+        <form className="grid gap-4" id="amenity-form" onSubmit={saveAmenity}>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="grid gap-1 text-sm font-bold">
+            نام فارسی
+            <input
+              className={inputClass}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  name: event.target.value,
+                  slug: current.slug || createSlug(event.target.value),
+                }))
+              }
+              required
+              value={form.name}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            نام انگلیسی / اسلاگ
+            <input
+              className={inputClass}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  slug: event.target.value,
+                }))
+              }
+              placeholder="در صورت خالی بودن خودکار ساخته می‌شود"
+              value={form.slug}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            دسته‌بندی
+            <select
+              className={inputClass}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  amenityCategoryId: event.target.value,
+                }))
+              }
+              required
+              value={form.amenityCategoryId}
+            >
+              <option value="">انتخاب دسته‌بندی</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>
+                  {category.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            دامنه استفاده
+            <select
+              className={inputClass}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  scope: event.target.value as AmenityScope,
+                }))
+              }
+              value={form.scope}
+            >
+              {scopes.map((scope) => (
+                <option key={scope} value={scope}>
+                  {scope === "Property"
+                    ? "اقامتگاه"
+                    : scope === "RoomType"
+                      ? "نوع اتاق"
+                      : "هر دو"}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            SVG icon
+            <input
+              className={inputClass}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  icon: event.target.value,
+                }))
+              }
+              placeholder="اختیاری"
+              value={form.icon}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            ترتیب نمایش
+            <input
+              className={inputClass}
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  sortOrder: Number(event.target.value),
+                }))
+              }
+              type="number"
+              value={form.sortOrder}
+            />
+          </label>
         </div>
-      )}
+        <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm font-bold dark:border-white/10">
+          <span>وضعیت</span>
+          <select
+            className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5"
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                isActive: event.target.value === "active",
+              }))
+            }
+            value={form.isActive ? "active" : "inactive"}
+          >
+            <option value="active">فعال</option>
+            <option value="inactive">غیرفعال</option>
+          </select>
+        </label>
 
-      {deleteTarget && (
-        <div
-          aria-modal="true"
-          className="fixed inset-0 z-[150] grid place-items-center bg-slate-950/60 p-4"
-          role="dialog"
-        >
-          <div className="w-full max-w-md rounded-[var(--modal-radius)] bg-white p-5 shadow-2xl dark:bg-[#171d27]">
-            <h2 className="text-xl font-black">حذف امکان</h2>
-            <p className="mt-3 text-sm leading-7 text-slate-500 dark:text-slate-400">
-              آیا از حذف «{deleteTarget.name}» مطمئن هستید؟
-            </p>
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                className="ds-button-secondary"
-                disabled={saving}
-                onClick={() => setDeleteTarget(null)}
-                type="button"
-              >
-                لغو
-              </button>
-              <button
-                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-black text-white disabled:opacity-50"
-                disabled={saving}
-                onClick={confirmDeleteAmenity}
-                type="button"
-              >
-                حذف
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+        </form>
+      </KoochDialog>
+      <KoochDialog
+        closeDisabled={saving}
+        footer={
+          <>
+            <KoochDialogButton disabled={saving} onClick={() => setDeleteTarget(null)}>
+              لغو
+            </KoochDialogButton>
+            <KoochDialogButton disabled={saving} onClick={confirmDeleteAmenity} variant="danger">
+              حذف
+            </KoochDialogButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open && !saving) setDeleteTarget(null);
+        }}
+        open={Boolean(deleteTarget)}
+        size="md"
+        title="حذف امکان"
+      >
+        <p className="text-sm leading-7 text-[var(--theme-muted-text)]">
+          آیا از حذف «{deleteTarget?.name}» مطمئن هستید؟
+        </p>
+      </KoochDialog>
     </>
   );
 }

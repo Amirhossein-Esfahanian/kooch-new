@@ -6,6 +6,7 @@ import "dayjs/locale/fa";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, PricingGuestType, PropertyPricingResponse, RoomDailyPriceHistoryResponse, RoomDailyPriceResponse } from "@/lib/owner-api";
 import { CalendarGridDay, CalendarGridRow, CalendarRangeApplyPayload, CalendarRangeGridEditor } from "@/components/CalendarRangeGridEditor";
+import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 import {
   getPricingWarnings,
   getPropertyPriceBounds,
@@ -269,55 +270,53 @@ export function OwnerPricingGrid({
         />
       </div>
 
-      {historyOpen && (
-        <div className="fixed inset-0 z-50" dir="rtl">
-          <button aria-label="بستن سوابق" className="absolute inset-0 h-full w-full cursor-default bg-slate-950/60 backdrop-blur-[2px]" onClick={() => setHistoryOpen(false)} type="button" />
-          <section className="absolute inset-x-3 top-1/2 mx-auto max-h-[86vh] max-w-5xl -translate-y-1/2 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between gap-3 border-b border-slate-100 p-5">
-              <div>
-                <h3 className="text-xl font-black text-slate-950">سوابق تغییر قیمت</h3>
-                <p className="mt-1 text-sm text-slate-500">آخرین تغییرات قیمت اتاق‌ها، جدیدترین در ابتدا.</p>
-              </div>
-              <button className="grid h-10 w-10 place-items-center rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50" onClick={() => setHistoryOpen(false)} type="button">×</button>
-            </div>
-            <div className="max-h-[calc(86vh-92px)] overflow-auto p-5">
-              {historyLoading ? (
-                <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">در حال بارگذاری سوابق...</p>
-              ) : history.length === 0 ? (
-                <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">هنوز سابقه‌ای ثبت نشده است.</p>
-              ) : (
-                <table className="min-w-full border-collapse text-sm">
-                  <thead>
-                    <tr className="bg-slate-50 text-right text-xs font-black text-slate-500">
-                      <th className="border border-slate-200 p-3">تاریخ</th>
-                      <th className="border border-slate-200 p-3">کاربر</th>
-                      <th className="border border-slate-200 p-3">قیمت قبلی</th>
-                      <th className="border border-slate-200 p-3">قیمت جدید</th>
-                      <th className="border border-slate-200 p-3">بازه تاریخ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {history.map((item) => (
-                      <tr className="text-slate-700" key={item.id}>
-                        <td className="border border-slate-200 p-3 font-bold">{formatDateTime(item.dateTime)}</td>
-                        <td className="border border-slate-200 p-3">{item.user}</td>
-                        <td className="border border-slate-200 p-3">{formatPrice(item.oldPrice)} {currencyLabel}</td>
-                        <td className="border border-slate-200 p-3 font-black text-blue-700">{formatPrice(item.newPrice)} {currencyLabel}</td>
-                        <td className="border border-slate-200 p-3">
-                          <span className="font-bold">{item.roomName}</span>
-                          <span className="mx-2 text-slate-300">|</span>
-                          {formatIsoDate(item.affectedStartDate)}
-                          {item.affectedStartDate !== item.affectedEndDate && ` تا ${formatIsoDate(item.affectedEndDate)}`}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
-            </div>
-          </section>
-        </div>
-      )}
+      <KoochDialog
+        description="آخرین تغییرات قیمت اتاق‌ها، جدیدترین در ابتدا."
+        footer={
+          <KoochDialogButton onClick={() => setHistoryOpen(false)}>
+            بستن
+          </KoochDialogButton>
+        }
+        onOpenChange={setHistoryOpen}
+        open={historyOpen}
+        size="xl"
+        title="سوابق تغییر قیمت"
+      >
+{historyLoading ? (
+          <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">در حال بارگذاری سوابق...</p>
+        ) : history.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">هنوز سابقه‌ای ثبت نشده است.</p>
+        ) : (
+          <table className="min-w-full border-collapse text-sm">
+            <thead>
+              <tr className="bg-slate-50 text-right text-xs font-black text-slate-500">
+                <th className="border border-slate-200 p-3">تاریخ</th>
+                <th className="border border-slate-200 p-3">کاربر</th>
+                <th className="border border-slate-200 p-3">قیمت قبلی</th>
+                <th className="border border-slate-200 p-3">قیمت جدید</th>
+                <th className="border border-slate-200 p-3">بازه تاریخ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item) => (
+                <tr className="text-slate-700" key={item.id}>
+                  <td className="border border-slate-200 p-3 font-bold">{formatDateTime(item.dateTime)}</td>
+                  <td className="border border-slate-200 p-3">{item.user}</td>
+                  <td className="border border-slate-200 p-3">{formatPrice(item.oldPrice)} {currencyLabel}</td>
+                  <td className="border border-slate-200 p-3 font-black text-blue-700">{formatPrice(item.newPrice)} {currencyLabel}</td>
+                  <td className="border border-slate-200 p-3">
+                    <span className="font-bold">{item.roomName}</span>
+                    <span className="mx-2 text-slate-300">|</span>
+                    {formatIsoDate(item.affectedStartDate)}
+                    {item.affectedStartDate !== item.affectedEndDate && ` تا ${formatIsoDate(item.affectedEndDate)}`}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+      </KoochDialog>
     </section>
   );
 }

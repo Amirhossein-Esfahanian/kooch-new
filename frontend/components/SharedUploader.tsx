@@ -3,6 +3,7 @@
 import Cropper, { Area } from "react-easy-crop";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 
 export type SharedUploadedFile = Record<string, unknown>;
 
@@ -490,33 +491,32 @@ export function SharedUploader({
         {uploading ? text.uploadingText : text.uploadText}
       </button>
 
-      {cropTarget && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/60 p-4">
-          <div className="w-full max-w-3xl rounded-2xl bg-white p-4 shadow-2xl">
-            <div className="flex items-center justify-between gap-3">
-              <h3 className="text-lg font-black">{text.cropText}</h3>
-              <button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold" onClick={() => setCropTarget(null)} type="button">
-                بستن
-              </button>
-            </div>
-            <div className="relative mt-4 h-[420px] overflow-hidden rounded-2xl bg-slate-900">
-              <Cropper aspect={cropAspectRatio} crop={crop} image={cropTarget.previewUrl ?? ""} onCropChange={setCrop} onCropComplete={(_, pixels) => setCroppedPixels(pixels)} onZoomChange={setZoom} zoom={zoom} />
-            </div>
-            <label className="mt-4 grid gap-1 text-sm font-bold">
-              بزرگ‌نمایی
-              <input max="3" min="1" onChange={(event) => setZoom(Number(event.target.value))} step="0.1" type="range" value={zoom} />
-            </label>
-            <div className="mt-5 flex flex-wrap justify-end gap-3">
-              <button className="rounded-xl border border-slate-300 px-4 py-2 font-bold" onClick={() => setCropTarget(null)} type="button">
-                {text.cancelText}
-              </button>
-              <button className="rounded-xl bg-blue-600 px-4 py-2 font-black text-white" onClick={confirmCrop} type="button">
-                {text.confirmCropText}
-              </button>
-            </div>
-          </div>
+      <KoochDialog
+        footer={
+          <>
+            <KoochDialogButton onClick={() => setCropTarget(null)}>
+              {text.cancelText}
+            </KoochDialogButton>
+            <KoochDialogButton onClick={confirmCrop} variant="primary">
+              {text.confirmCropText}
+            </KoochDialogButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open) setCropTarget(null);
+        }}
+        open={Boolean(cropTarget)}
+        size="lg"
+        title={text.cropText}
+      >
+        <div className="relative h-[420px] overflow-hidden rounded-2xl bg-slate-900">
+          <Cropper aspect={cropAspectRatio} crop={crop} image={cropTarget?.previewUrl ?? ""} onCropChange={setCrop} onCropComplete={(_, pixels) => setCroppedPixels(pixels)} onZoomChange={setZoom} zoom={zoom} />
         </div>
-      )}
+        <label className="mt-4 grid gap-1 text-sm font-bold">
+          بزرگ‌نمایی
+          <input max="3" min="1" onChange={(event) => setZoom(Number(event.target.value))} step="0.1" type="range" value={zoom} />
+        </label>
+      </KoochDialog>
     </section>
   );
 }

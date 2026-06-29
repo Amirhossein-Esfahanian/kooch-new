@@ -11,6 +11,7 @@ import {
   RoomTypeResponse,
 } from "@/lib/owner-api";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
+import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 
 const promotionTypes: { value: PromotionType; label: string }[] = [
   { value: "PercentageDiscount", label: "تخفیف درصدی" },
@@ -587,347 +588,328 @@ export function PromotionWorkspace({
         ))}
       </div>
 
-      {modalOpen && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-3"
-          onMouseDown={(event) =>
-            event.target === event.currentTarget && setModalOpen(false)
-          }
-        >
-          <form
-            className="max-h-[92vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl sm:p-7"
-            onSubmit={submit}
-          >
-            <div className="mb-6 flex items-center justify-between">
-              <h2 className="text-2xl font-black">
-                {editing ? "ویرایش پروموشن" : "پروموشن جدید"}
-              </h2>
-              <button
-                className="text-2xl text-slate-400"
-                onClick={() => setModalOpen(false)}
-                type="button"
-              >
-                ×
-              </button>
+      <KoochDialog
+        closeDisabled={saving}
+        footer={
+          <>
+            <KoochDialogButton disabled={saving} onClick={() => setModalOpen(false)}>
+              لغو
+            </KoochDialogButton>
+            <KoochDialogButton disabled={saving} form="promotion-form" type="submit" variant="primary">
+              {saving ? "در حال ذخیره..." : "ذخیره"}
+            </KoochDialogButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open && !saving) setModalOpen(false);
+        }}
+        open={modalOpen}
+        size="lg"
+        title={editing ? "ویرایش پروموشن" : "پروموشن جدید"}
+      >
+        <form className="grid gap-4" id="promotion-form" onSubmit={submit}>
+<div className="grid gap-4 sm:grid-cols-2">
+          {admin && (
+            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700 sm:col-span-2">
+              این پروموشن به عنوان قالب مدیریتی قابل انتشار در کتابخانه
+              مالک‌ها ساخته می‌شود.
             </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              {admin && (
-                <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700 sm:col-span-2">
-                  این پروموشن به عنوان قالب مدیریتی قابل انتشار در کتابخانه
-                  مالک‌ها ساخته می‌شود.
-                </div>
-              )}
-              <label className="grid gap-2 text-sm font-bold sm:col-span-2">
-                عنوان
-                <input
-                  className={inputClass}
-                  maxLength={150}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      title: event.target.value,
-                    }))
-                  }
-                  required
-                  value={draft.title}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold">
-                نوع پروموشن
-                <select
-                  className={inputClass}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      type: event.target.value as PromotionType,
-                    }))
-                  }
-                  value={draft.type}
-                >
-                  {promotionTypes.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {(draft.type === "PercentageDiscount" ||
-                draft.type === "LastMinute") && (
-                <label className="grid gap-2 text-sm font-bold">
-                  درصد تخفیف
-                  <input
-                    className={inputClass}
-                    max="100"
-                    min="0"
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        percentage: event.target.value,
-                      }))
-                    }
-                    type="number"
-                    value={draft.percentage}
-                  />
-                </label>
-              )}
-              {draft.type === "FixedAmountDiscount" && (
-                <label className="grid gap-2 text-sm font-bold">
-                  مبلغ تخفیف
-                  <input
-                    className={inputClass}
-                    min="0"
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        amount: event.target.value,
-                      }))
-                    }
-                    type="number"
-                    value={draft.amount}
-                  />
-                </label>
-              )}
-              {draft.type === "LastMinute" && (
-                <label className="grid gap-2 text-sm font-bold">
-                  حداکثر روز مانده تا ورود
-                  <input
-                    className={inputClass}
-                    min="0"
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        lastMinuteDays: event.target.value,
-                      }))
-                    }
-                    type="number"
-                    value={draft.lastMinuteDays}
-                  />
-                </label>
-              )}
-              <div className="sm:col-span-2">
-                <KoochDatePicker
-                  calendarType="jalali"
-                  controlClassName={inputClass}
-                  labels={{ start: "تاریخ شروع", end: "تاریخ پایان", rangeTitle: "انتخاب بازه پروموشن" }}
-                  labelsAbove
-                  mode="range"
-                  onChange={(nextValue) =>
-                    setDraft((current) => ({
-                      ...current,
-                      startDate: nextValue.startDate ?? current.startDate,
-                      endDate: nextValue.endDate ?? current.endDate,
-                    }))
-                  }
-                  placeholderEnd="انتخاب تاریخ پایان"
-                  placeholderStart="انتخاب تاریخ شروع"
-                  value={{ startDate: draft.startDate, endDate: draft.endDate }}
-                />
-              </div>
-              <label className="grid gap-2 text-sm font-bold sm:col-span-2">
-                توضیحات داخلی
-                <textarea
-                  className={inputClass}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      internalDescription: event.target.value,
-                    }))
-                  }
-                  rows={2}
-                  value={draft.internalDescription}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold sm:col-span-2">
-                توضیحات عمومی
-                <textarea
-                  className={inputClass}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      publicDescription: event.target.value,
-                    }))
-                  }
-                  rows={2}
-                  value={draft.publicDescription}
-                />
-              </label>
-              {draft.type === "Informational" && (
-                <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800 sm:col-span-2">
-                  مثال: با ۳ شب اقامت، گشت رایگان · با ۲ شب اقامت، ناهار رایگان
-                </div>
-              )}
-              <label className="grid gap-2 text-sm font-bold">
-                آیکن اختیاری
-                <input
-                  className={inputClass}
-                  maxLength={20}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      optionalIcon: event.target.value,
-                    }))
-                  }
-                  placeholder="🎁"
-                  value={draft.optionalIcon}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold">
-                رنگ بج
-                <input
-                  className={inputClass}
-                  maxLength={40}
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      badgeColor: event.target.value,
-                    }))
-                  }
-                  placeholder="#2563eb"
-                  value={draft.badgeColor}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold">
-                حداقل شب اقامت
-                <input
-                  className={inputClass}
-                  min="0"
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      minimumStayNights: event.target.value,
-                    }))
-                  }
-                  type="number"
-                  value={draft.minimumStayNights}
-                />
-              </label>
-              <label className="grid gap-2 text-sm font-bold">
-                حداقل مهمان
-                <input
-                  className={inputClass}
-                  min="0"
-                  onChange={(event) =>
-                    setDraft((current) => ({
-                      ...current,
-                      minimumGuests: event.target.value,
-                    }))
-                  }
-                  type="number"
-                  value={draft.minimumGuests}
-                />
-              </label>
-            </div>
-            <fieldset className="mt-5">
-              <legend className="mb-2 text-sm font-black">روزهای هفته</legend>
-              <div className="flex flex-wrap gap-2">
-                {weekdays.map((day) => (
-                  <label
-                    className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]" : "border-slate-200"}`}
-                    key={day.value}
-                  >
-                    <input
-                      checked={draft.weekdays.includes(day.value)}
-                      className="sr-only"
-                      onChange={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          weekdays: current.weekdays.includes(day.value)
-                            ? current.weekdays.filter(
-                                (item) => item !== day.value,
-                              )
-                            : [...current.weekdays, day.value],
-                        }))
-                      }
-                      type="checkbox"
-                    />
-                    {day.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
-            {!admin && (
-              <fieldset className="mt-5">
-                <legend className="mb-2 text-sm font-black">
-                  اتاق‌های منتخب
-                </legend>
-                <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
-                  {rooms.map((room) => (
-                    <label
-                      className="flex items-center gap-2 text-sm font-bold"
-                      key={room.id}
-                    >
-                      <input
-                        checked={draft.roomTypeIds.includes(room.id)}
-                        onChange={() =>
-                          setDraft((current) => ({
-                            ...current,
-                            roomTypeIds: current.roomTypeIds.includes(room.id)
-                              ? current.roomTypeIds.filter(
-                                  (id) => id !== room.id,
-                                )
-                              : [...current.roomTypeIds, room.id],
-                          }))
-                        }
-                        type="checkbox"
-                      />
-                      {room.name}
-                    </label>
-                  ))}
-                  {!rooms.length && (
-                    <p className="text-sm text-slate-500">
-                      اتاق فعالی برای این اقامتگاه وجود ندارد.
-                    </p>
-                  )}
-                </div>
-              </fieldset>
-            )}
-            <label className="mt-5 flex items-center gap-2 text-sm font-bold">
+          )}
+          <label className="grid gap-2 text-sm font-bold sm:col-span-2">
+            عنوان
+            <input
+              className={inputClass}
+              maxLength={150}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  title: event.target.value,
+                }))
+              }
+              required
+              value={draft.title}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold">
+            نوع پروموشن
+            <select
+              className={inputClass}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  type: event.target.value as PromotionType,
+                }))
+              }
+              value={draft.type}
+            >
+              {promotionTypes.map((type) => (
+                <option key={type.value} value={type.value}>
+                  {type.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(draft.type === "PercentageDiscount" ||
+            draft.type === "LastMinute") && (
+            <label className="grid gap-2 text-sm font-bold">
+              درصد تخفیف
               <input
-                checked={draft.isActive}
+                className={inputClass}
+                max="100"
+                min="0"
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    isActive: event.target.checked,
+                    percentage: event.target.value,
                   }))
                 }
-                type="checkbox"
+                type="number"
+                value={draft.percentage}
               />
-              پروموشن فعال باشد
             </label>
-            {admin && (
-              <label className="mt-3 flex items-center gap-2 text-sm font-bold">
+          )}
+          {draft.type === "FixedAmountDiscount" && (
+            <label className="grid gap-2 text-sm font-bold">
+              مبلغ تخفیف
+              <input
+                className={inputClass}
+                min="0"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    amount: event.target.value,
+                  }))
+                }
+                type="number"
+                value={draft.amount}
+              />
+            </label>
+          )}
+          {draft.type === "LastMinute" && (
+            <label className="grid gap-2 text-sm font-bold">
+              حداکثر روز مانده تا ورود
+              <input
+                className={inputClass}
+                min="0"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    lastMinuteDays: event.target.value,
+                  }))
+                }
+                type="number"
+                value={draft.lastMinuteDays}
+              />
+            </label>
+          )}
+          <div className="sm:col-span-2">
+            <KoochDatePicker
+              calendarType="jalali"
+              controlClassName={inputClass}
+              labels={{ start: "تاریخ شروع", end: "تاریخ پایان", rangeTitle: "انتخاب بازه پروموشن" }}
+              labelsAbove
+              mode="range"
+              onChange={(nextValue) =>
+                setDraft((current) => ({
+                  ...current,
+                  startDate: nextValue.startDate ?? current.startDate,
+                  endDate: nextValue.endDate ?? current.endDate,
+                }))
+              }
+              placeholderEnd="انتخاب تاریخ پایان"
+              placeholderStart="انتخاب تاریخ شروع"
+              value={{ startDate: draft.startDate, endDate: draft.endDate }}
+            />
+          </div>
+          <label className="grid gap-2 text-sm font-bold sm:col-span-2">
+            توضیحات داخلی
+            <textarea
+              className={inputClass}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  internalDescription: event.target.value,
+                }))
+              }
+              rows={2}
+              value={draft.internalDescription}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold sm:col-span-2">
+            توضیحات عمومی
+            <textarea
+              className={inputClass}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  publicDescription: event.target.value,
+                }))
+              }
+              rows={2}
+              value={draft.publicDescription}
+            />
+          </label>
+          {draft.type === "Informational" && (
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800 sm:col-span-2">
+              مثال: با ۳ شب اقامت، گشت رایگان · با ۲ شب اقامت، ناهار رایگان
+            </div>
+          )}
+          <label className="grid gap-2 text-sm font-bold">
+            آیکن اختیاری
+            <input
+              className={inputClass}
+              maxLength={20}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  optionalIcon: event.target.value,
+                }))
+              }
+              placeholder="🎁"
+              value={draft.optionalIcon}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold">
+            رنگ بج
+            <input
+              className={inputClass}
+              maxLength={40}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  badgeColor: event.target.value,
+                }))
+              }
+              placeholder="#2563eb"
+              value={draft.badgeColor}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold">
+            حداقل شب اقامت
+            <input
+              className={inputClass}
+              min="0"
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  minimumStayNights: event.target.value,
+                }))
+              }
+              type="number"
+              value={draft.minimumStayNights}
+            />
+          </label>
+          <label className="grid gap-2 text-sm font-bold">
+            حداقل مهمان
+            <input
+              className={inputClass}
+              min="0"
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  minimumGuests: event.target.value,
+                }))
+              }
+              type="number"
+              value={draft.minimumGuests}
+            />
+          </label>
+        </div>
+        <fieldset className="mt-5">
+          <legend className="mb-2 text-sm font-black">روزهای هفته</legend>
+          <div className="flex flex-wrap gap-2">
+            {weekdays.map((day) => (
+              <label
+                className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]" : "border-slate-200"}`}
+                key={day.value}
+              >
                 <input
-                  checked={draft.isPublished}
-                  onChange={(event) =>
+                  checked={draft.weekdays.includes(day.value)}
+                  className="sr-only"
+                  onChange={() =>
                     setDraft((current) => ({
                       ...current,
-                      isPublished: event.target.checked,
+                      weekdays: current.weekdays.includes(day.value)
+                        ? current.weekdays.filter(
+                            (item) => item !== day.value,
+                          )
+                        : [...current.weekdays, day.value],
                     }))
                   }
                   type="checkbox"
                 />
-                انتشار در کتابخانه مالک‌ها
+                {day.label}
               </label>
-            )}
-            <div className="mt-7 flex justify-end gap-3">
-              <button
-                className="ds-button-secondary"
-                onClick={() => setModalOpen(false)}
-                type="button"
-              >
-                لغو
-              </button>
-              <button
-                className="ds-button-primary disabled:opacity-50"
-                disabled={saving}
-                type="submit"
-              >
-                {saving ? "در حال ذخیره..." : "ذخیره"}
-              </button>
+            ))}
+          </div>
+        </fieldset>
+        {!admin && (
+          <fieldset className="mt-5">
+            <legend className="mb-2 text-sm font-black">
+              اتاق‌های منتخب
+            </legend>
+            <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
+              {rooms.map((room) => (
+                <label
+                  className="flex items-center gap-2 text-sm font-bold"
+                  key={room.id}
+                >
+                  <input
+                    checked={draft.roomTypeIds.includes(room.id)}
+                    onChange={() =>
+                      setDraft((current) => ({
+                        ...current,
+                        roomTypeIds: current.roomTypeIds.includes(room.id)
+                          ? current.roomTypeIds.filter(
+                              (id) => id !== room.id,
+                            )
+                          : [...current.roomTypeIds, room.id],
+                      }))
+                    }
+                    type="checkbox"
+                  />
+                  {room.name}
+                </label>
+              ))}
+              {!rooms.length && (
+                <p className="text-sm text-slate-500">
+                  اتاق فعالی برای این اقامتگاه وجود ندارد.
+                </p>
+              )}
             </div>
-          </form>
-        </div>
-      )}
+          </fieldset>
+        )}
+        <label className="mt-5 flex items-center gap-2 text-sm font-bold">
+          <input
+            checked={draft.isActive}
+            onChange={(event) =>
+              setDraft((current) => ({
+                ...current,
+                isActive: event.target.checked,
+              }))
+            }
+            type="checkbox"
+          />
+          پروموشن فعال باشد
+        </label>
+        {admin && (
+          <label className="mt-3 flex items-center gap-2 text-sm font-bold">
+            <input
+              checked={draft.isPublished}
+              onChange={(event) =>
+                setDraft((current) => ({
+                  ...current,
+                  isPublished: event.target.checked,
+                }))
+              }
+              type="checkbox"
+            />
+            انتشار در کتابخانه مالک‌ها
+          </label>
+        )}
+
+        </form>
+      </KoochDialog>
     </div>
   );
 }
