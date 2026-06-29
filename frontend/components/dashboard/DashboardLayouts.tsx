@@ -12,7 +12,21 @@ type DashboardMenuItem = {
   label: string;
   exact?: boolean;
 };
+const menuIcons = {
+  settings: "/svgs/cog-l",
+  notification: "/svgs/bell-l",
+  logout: "/svgs/left-from-bracket-l",
+  account: "/svgs/user-circle-l",
+  menu: "/svgs/sidebar-flip-l",
+  close: "/svgs/x-l",
+  home: "/svgs/house-l",
+  messages: "/svgs/messages-l",
+  dark: "/svgs/moon-cloud-l",
+  light: "/svgs/sun-alt-l",
+  search: "/svgs/search-l",
+} as const;
 
+type MenuIconName = keyof typeof menuIcons;
 const adminMenuItems: DashboardMenuItem[] = [
   {
     label: "داشبورد",
@@ -654,14 +668,9 @@ function DashboardHeader({
           label="اعلان‌ها"
           onClick={() => onDrawerToggle("notifications")}
         >
-          <span
-            aria-hidden="true"
-            className="inline-block h-4 w-4 bg-current"
-            style={{
-              WebkitMask: `url(${"/svgs/cog.svg"}) center / contain no-repeat`,
-              mask: `url(${"/svgs/cog.svg"}) center / contain no-repeat`,
-            }}
-          />
+          <MenuIcon icon={menuIcons.notification} />
+
+          {/* come back here */}
         </HeaderIcon>
         <button
           className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
