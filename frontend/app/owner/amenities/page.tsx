@@ -1,12 +1,16 @@
 "use client";
 
 import { AmenityManagement } from "@/components/amenities/AmenityManagement";
-import { OwnerPage } from "@/components/owner/OwnerPage";
+import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
 
 export default function AmenityManagementPage() {
   return (
-    <OwnerPage title="مدیریت امکانات">
-      <AmenityManagement />
-    </OwnerPage>
+    <OwnerLayout>
+      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+        <KoochPageHeader eyebrow="پنل مالک" title="مدیریت امکانات" />
+        <AmenityManagement />
+      </main>
+    </OwnerLayout>
   );
 }
