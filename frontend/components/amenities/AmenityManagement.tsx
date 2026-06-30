@@ -9,6 +9,7 @@ import {
   apiRequest,
   createSlug,
 } from "@/lib/owner-api";
+import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -184,13 +185,12 @@ export function AmenityManagement() {
       <KoochCard variant="elevated">
         <KoochPageHeader
           actions={
-            <button
-              className="ds-button-primary"
+            <KoochButton
               onClick={openCreateModal}
-              type="button"
+              variant="primary"
             >
               افزودن امکان
-            </button>
+            </KoochButton>
           }
           description="دسته‌بندی را انتخاب کنید و امکانات همان دسته را مدیریت کنید."
           eyebrow="مدیریت امکانات"
@@ -200,19 +200,16 @@ export function AmenityManagement() {
           {categories.map((category) => {
             const active = activeCategory?.id === category.id;
             return (
-              <button
-                className={`shrink-0 rounded-xl border px-4 py-2 text-sm font-black transition ${
-                  active
-                    ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                    : "border-border text-muted-foreground hover:border-blue-300 hover:text-blue-700"
-                }`}
+              <KoochButton
+                className="shrink-0"
                 key={category.id}
                 onClick={() => setActiveCategoryId(category.id)}
-                type="button"
+                size="sm"
+                variant={active ? "primary" : "outline"}
               >
                 {category.icon && <span className="ml-2">{category.icon}</span>}
                 {category.name}
-              </button>
+              </KoochButton>
             );
           })}
         </KoochCard>
@@ -255,20 +252,20 @@ export function AmenityManagement() {
                     )}
                   </div>
                   <div className="mt-4 flex gap-3 text-sm font-black">
-                    <button
-                      className="text-blue-700"
+                    <KoochButton
                       onClick={() => openEditModal(amenity)}
-                      type="button"
+                      size="sm"
+                      variant="ghost"
                     >
                       ویرایش
-                    </button>
-                    <button
-                      className="text-red-700"
+                    </KoochButton>
+                    <KoochButton
                       onClick={() => setDeleteTarget(amenity)}
-                      type="button"
+                      size="sm"
+                      variant="destructive"
                     >
                       حذف
-                    </button>
+                    </KoochButton>
                   </div>
                 </KoochCard>
               ))}

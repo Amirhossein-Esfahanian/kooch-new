@@ -13,17 +13,17 @@ type DashboardMenuItem = {
   exact?: boolean;
 };
 const menuIcons = {
-  settings: "/svgs/cog-l",
-  notification: "/svgs/bell-l",
-  logout: "/svgs/left-from-bracket-l",
-  account: "/svgs/user-circle-l",
-  menu: "/svgs/sidebar-flip-l",
-  close: "/svgs/x-l",
-  home: "/svgs/house-l",
-  messages: "/svgs/messages-l",
-  dark: "/svgs/moon-cloud-l",
-  light: "/svgs/sun-alt-l",
-  search: "/svgs/search-l",
+  settings: "/svgs/cog-l.svg",
+  notification: "/svgs/bell-l.svg",
+  logout: "/svgs/left-from-bracket-l.svg",
+  account: "/svgs/user-circle-l.svg",
+  menu: "/svgs/sidebar-flip-l.svg",
+  close: "/svgs/x-l.svg",
+  home: "/svgs/house-l.svg",
+  messages: "/svgs/messages-l.svg",
+  dark: "/svgs/moon-cloud-l.svg",
+  light: "/svgs/sun-alt-l.svg",
+  search: "/svgs/search-l.svg",
 } as const;
 
 type MenuIconName = keyof typeof menuIcons;
@@ -660,7 +660,7 @@ function DashboardHeader({
           label="پیام‌ها"
           onClick={() => onDrawerToggle("messages")}
         >
-          ✉
+          <MenuIcon icon={menuIcons.messages} />
         </HeaderIcon>
         <HeaderIcon
           active={activeDrawer === "notifications"}
@@ -678,7 +678,11 @@ function DashboardHeader({
           type="button"
           aria-label="تغییر حالت روشن و تیره"
         >
-          {darkMode ? "☀" : "☾"}
+          {darkMode ? (
+            <MenuIcon icon={menuIcons.light} />
+          ) : (
+            <MenuIcon icon={menuIcons.dark} />
+          )}
         </button>
         <div className="relative">
           {profileMenuOpen && (
