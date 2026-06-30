@@ -39,33 +39,7 @@ const statusLabels: Record<PropertyStatus, string> = {
   Suspended: "تعلیق شده",
 };
 
-function MenuIcon({ icon }: { icon: string }) {
-  const isSvgPath = icon.startsWith("/");
-
-  if (!isSvgPath) {
-    return <span>{icon}</span>;
-  }
-
-  return (
-    <span
-      aria-hidden="true"
-      className="inline-block h-6 w-6 bg-current"
-      style={{
-        WebkitMask: `url(${icon}) center / contain no-repeat`,
-        mask: `url(${icon}) center / contain no-repeat`,
-      }}
-    />
-  );
-}
-const menuIcons = {
-  edit: "/svgs/edit.svg",
-  capacity: "/svgs/bed-bunk.svg",
-  price: "/svgs/tags.svg",
-  suspend: "/svgs/ban.svg",
-  view: "/svgs/eye.svg",
-} as const;
-
-type MenuIconName = keyof typeof menuIcons;
+import { KoochIcon } from "@/components/KoochIcon";
 
 const actionLinkClass =
   "inline-flex min-h-9 items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
@@ -220,7 +194,7 @@ export default function AdminPropertiesPage() {
                         href={`/admin/properties/${property.id}`}
                         title="ویرایش"
                       >
-                        <MenuIcon icon={menuIcons.edit} />
+                        <KoochIcon name="edit" />
                       </Link>
                       <Link
                         target="_blank"
@@ -229,7 +203,7 @@ export default function AdminPropertiesPage() {
                         className={actionLinkClass}
                         href={`/admin/properties/${property.id}/inventory`}
                       >
-                        <MenuIcon icon={menuIcons.capacity} />
+                        <KoochIcon name="capacity" />
                       </Link>
                       <Link
                         target="_blank"
@@ -238,7 +212,7 @@ export default function AdminPropertiesPage() {
                         className={actionLinkClass}
                         href={`/admin/properties/${property.id}/pricing`}
                       >
-                        <MenuIcon icon={menuIcons.price} />
+                        <KoochIcon name="price" />
                       </Link>
                       <KoochButton
                         disabled={workingId === property.id}
@@ -247,7 +221,7 @@ export default function AdminPropertiesPage() {
                         variant="outline"
                         title="تعلیق اقامتگاه"
                       >
-                        <MenuIcon icon={menuIcons.suspend} />
+                        <KoochIcon name="suspend" />
                       </KoochButton>
                       {property.status === "Approved" && (
                         <Link
@@ -257,7 +231,7 @@ export default function AdminPropertiesPage() {
                           rel="noopener noreferrer"
                           href={`/properties/${property.slug}`}
                         >
-                          <MenuIcon icon={menuIcons.view} />
+                          <KoochIcon name="view" />
                         </Link>
                       )}
                     </div>
