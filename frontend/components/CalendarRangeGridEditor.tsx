@@ -75,7 +75,9 @@ export interface CalendarRangeGridEditorProps<
   /** Saves selected cells/range. `items` contains the exact selected cells. */
   onApplyRange: (payload: CalendarRangeApplyPayload) => Promise<void> | void;
   /** Optional confirmation gate before saving selected cells/range. */
-  confirmApplyRange?: (payload: CalendarRangeApplyPayload) => Promise<boolean> | boolean;
+  confirmApplyRange?: (
+    payload: CalendarRangeApplyPayload,
+  ) => Promise<boolean> | boolean;
   /** Current editor mode. Inventory uses capacity/status; pricing can reuse this with price fields later. */
   mode: "inventory" | "pricing";
   /** Label for the main value input, for example ظرفیت or قیمت. */
@@ -183,8 +185,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   const [isDesktop, setIsDesktop] = useState(false);
   const [isMinimized, setIsMinimized] = useState(true);
   const [popupPosition, setPopupPosition] = useState({ top: 8, left: 16 });
-  const [value, setValue] = useState(1);
-  const [status, setStatus] = useState<AvailabilityStatus>("Available");
+  const [value, setValue] = useState<number>(Number.NaN);
+  const [status, setStatus] = useState<AvailabilityStatus | "">("Available");
+  const [mixedInventoryValue, setMixedInventoryValue] = useState(false);
+  const [mixedInventoryStatus, setMixedInventoryStatus] = useState(false);
   const [basePrice, setBasePrice] = useState(0);
   const [childPrice, setChildPrice] = useState(0);
   const [extraGuestPrice, setExtraGuestPrice] = useState(0);
@@ -294,7 +298,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         : (cellValue as PricingCellValues);
     });
 
-    function syncField(field: keyof PricingCellValues, update: (value: number) => void) {
+    function syncField(
+      field: keyof PricingCellValues,
+      update: (value: number) => void,
+    ) {
       const first = values[0]?.[field] ?? 0;
       const mixed = values.some((item) => item[field] !== first);
       update(mixed ? Number.NaN : first);
@@ -307,6 +314,40 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       extraGuestPrice: syncField("extraGuestPrice", setExtraGuestPrice),
     });
   }, [getCellValue, mode, pricingValueResolver, selectedItems]);
+
+  useEffect(() => {
+    if (mode !== "inventory" || selectedItems.length === 0) {
+      setMixedInventoryValue(false);
+      setMixedInventoryStatus(false);
+      return;
+    }
+
+    const values = selectedItems.map((item) => {
+      const cellValue = getCellValue(item.rowId as Row["id"], item.date) as {
+        availableCount?: number;
+        status?: AvailabilityStatus;
+      };
+      return {
+        availableCount: cellValue.availableCount,
+        status: cellValue.status,
+      };
+    });
+
+    const firstCapacity = values[0]?.availableCount;
+    const capacityMissing = firstCapacity == null;
+    const capacityMixed = values.some(
+      (item) => item.availableCount !== firstCapacity,
+    );
+    setMixedInventoryValue(!capacityMissing && capacityMixed);
+    setValue(
+      capacityMissing ? 1 : capacityMixed ? Number.NaN : Number(firstCapacity),
+    );
+
+    const firstStatus = values[0]?.status;
+    const statusMixed = values.some((item) => item.status !== firstStatus);
+    setMixedInventoryStatus(statusMixed);
+    setStatus(statusMixed ? "" : (firstStatus ?? "Available"));
+  }, [getCellValue, mode, selectedItems]);
 
   useEffect(() => {
     if (selectedRanges.length === 0) {
@@ -727,12 +768,24 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       const prices = [basePrice, childPrice, extraGuestPrice];
       if (prices.some((price) => !Number.isFinite(price)))
         return "برای همه نرخ‌ها مقدار معتبر وارد کنید.";
-      if (prices.some((price) => price < pricingMinValue || price > pricingMaxValue))
+      if (
+        prices.some(
+          (price) => price < pricingMinValue || price > pricingMaxValue,
+        )
+      )
         return `مبلغ‌ها باید بین ${toPersianNumber(pricingMinValue)} و ${toPersianNumber(pricingMaxValue)} باشند.`;
       return "";
     }
     const selectedRows = new Set(selectedItems.map((item) => item.rowId));
     const rowsToCheck = rows.filter((row) => selectedRows.has(String(row.id)));
+    if (mode === "inventory" && !status)
+      return "وضعیت روزهای انتخاب‌شده را انتخاب کنید.";
+    if (
+      mode === "inventory" &&
+      status !== "Unavailable" &&
+      !Number.isFinite(value)
+    )
+      return "برای ظرفیت مقدار معتبر وارد کنید.";
     const effectiveValue = status === "Unavailable" ? 0 : value;
 
     for (const row of rowsToCheck) {
@@ -766,16 +819,17 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           first.date.localeCompare(second.date),
       );
     const payload: CalendarRangeApplyPayload = {
-        rowId: sortedItems[0].rowId,
-        startDate: sortedItems[0].date,
-        endDate: sortedItems[sortedItems.length - 1].date,
-        value: mode === "pricing" ? basePrice : status === "Unavailable" ? 0 : value,
-        status: mode === "inventory" ? status : undefined,
-        basePrice: mode === "pricing" ? basePrice : undefined,
-        childPrice: mode === "pricing" ? childPrice : undefined,
-        extraGuestPrice: mode === "pricing" ? extraGuestPrice : undefined,
-        items: sortedItems,
-      };
+      rowId: sortedItems[0].rowId,
+      startDate: sortedItems[0].date,
+      endDate: sortedItems[sortedItems.length - 1].date,
+      value:
+        mode === "pricing" ? basePrice : status === "Unavailable" ? 0 : value,
+      status: mode === "inventory" ? status || undefined : undefined,
+      basePrice: mode === "pricing" ? basePrice : undefined,
+      childPrice: mode === "pricing" ? childPrice : undefined,
+      extraGuestPrice: mode === "pricing" ? extraGuestPrice : undefined,
+      items: sortedItems,
+    };
 
     if (confirmApplyRange && !(await confirmApplyRange(payload))) {
       return;
@@ -812,12 +866,21 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     return `${row?.label ?? range.roomTypeId} | ${dates}`;
   }
 
+  const inventoryPanelTone =
+    mode !== "inventory"
+      ? "bg-card text-card-foreground"
+      : status === "OnRequest"
+        ? "bg-yellow-50 text-slate-950 dark:bg-yellow-100 dark:text-slate-950"
+        : status === "Unavailable"
+          ? "bg-red-50 text-slate-950 dark:bg-red-950/20 dark:text-red-50"
+          : "bg-card text-card-foreground";
+
   const editorPanel =
     selectedCount > 0 && activeRow ? (
       <>
         <div
           aria-hidden={isMinimized}
-          className={`fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-2xl transition-all duration-[250ms] ease-out md:inset-x-auto md:bottom-auto md:w-[360px] ${
+          className={`fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-border p-4 shadow-2xl transition-all duration-[250ms] ease-out md:inset-x-auto md:bottom-auto md:w-[360px] ${inventoryPanelTone} ${
             isMinimized
               ? "pointer-events-none invisible scale-95 opacity-0"
               : "visible scale-100 opacity-100"
@@ -857,25 +920,56 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 <QuickPriceSelector
                   onSelect={(price) => {
                     setBasePrice(price);
-                    setMixedPricingFields((current) => ({ ...current, basePrice: false }));
+                    setMixedPricingFields((current) => ({
+                      ...current,
+                      basePrice: false,
+                    }));
                   }}
                   prices={quickPricePresets}
                 />
                 {[
-                  { key: "basePrice" as const, label: "نرخ اتاق", fieldValue: basePrice, update: setBasePrice },
-                  { key: "childPrice" as const, label: "نرخ کودک", fieldValue: childPrice, update: setChildPrice },
-                  { key: "extraGuestPrice" as const, label: "نرخ هر نفر اضافه", fieldValue: extraGuestPrice, update: setExtraGuestPrice },
+                  {
+                    key: "basePrice" as const,
+                    label: "نرخ اتاق",
+                    fieldValue: basePrice,
+                    update: setBasePrice,
+                  },
+                  {
+                    key: "childPrice" as const,
+                    label: "نرخ کودک",
+                    fieldValue: childPrice,
+                    update: setChildPrice,
+                  },
+                  {
+                    key: "extraGuestPrice" as const,
+                    label: "نرخ هر نفر اضافه",
+                    fieldValue: extraGuestPrice,
+                    update: setExtraGuestPrice,
+                  },
                 ].map((field) => (
-                  <label className="flex flex-col gap-2 text-sm font-bold text-foreground" key={field.label}>
+                  <label
+                    className="flex flex-col gap-2 text-sm font-bold text-foreground"
+                    key={field.label}
+                  >
                     {field.label}
                     <span className="relative">
                       <input
                         className={`w-full rounded-xl border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"}`}
                         max={pricingMaxValue}
                         min={pricingMinValue}
-                        onChange={(event) => field.update(event.target.value === "" ? Number.NaN : Number(event.target.value))}
+                        onChange={(event) =>
+                          field.update(
+                            event.target.value === ""
+                              ? Number.NaN
+                              : Number(event.target.value),
+                          )
+                        }
                         type="number"
-                        value={Number.isFinite(field.fieldValue) ? field.fieldValue : ""}
+                        value={
+                          Number.isFinite(field.fieldValue)
+                            ? field.fieldValue
+                            : ""
+                        }
                       />
                       {pricingCurrencyLabel && (
                         <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-muted-foreground">
@@ -897,30 +991,61 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 <input
                   className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   disabled={status === "Unavailable"}
-                  min={activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0}
-                  onChange={(event) => setValue(Number(event.target.value))}
+                  min={
+                    activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0
+                  }
+                  onChange={(event) => {
+                    setValue(
+                      event.target.value === ""
+                        ? Number.NaN
+                        : Number(event.target.value),
+                    );
+                    setMixedInventoryValue(false);
+                  }}
                   type={valueInputType}
-                  value={status === "Unavailable" ? 0 : value}
+                  value={
+                    status === "Unavailable"
+                      ? 0
+                      : Number.isFinite(value)
+                        ? value
+                        : ""
+                  }
                 />
+                {mixedInventoryValue && (
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    ظرفیت روزهای انتخاب‌شده متفاوت است
+                  </span>
+                )}
               </label>
             )}
             {mode === "inventory" && statusOptions && (
-              <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                وضعیت
-                <select
-                  className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  onChange={(event) =>
-                    setStatus(event.target.value as AvailabilityStatus)
-                  }
-                  value={status}
-                >
+              <div className="flex flex-col gap-2 text-sm font-bold text-foreground">
+                <span>وضعیت</span>
+                <div className="grid gap-2 sm:grid-cols-3">
                   {statusOptions?.map((option) => (
-                    <option key={option.value} value={option.value}>
+                    <button
+                      className={`min-h-5 rounded-lg border px-3  text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                        status === option.value
+                          ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                          : "border-border bg-background text-foreground hover:bg-muted"
+                      }`}
+                      key={option.value}
+                      onClick={() => {
+                        setStatus(option.value);
+                        setMixedInventoryStatus(false);
+                      }}
+                      type="button"
+                    >
                       {option.label}
-                    </option>
+                    </button>
                   ))}
-                </select>
-              </label>
+                </div>
+                {mixedInventoryStatus && (
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    وضعیت روزهای انتخاب‌شده متفاوت است
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
@@ -1058,7 +1183,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                       <span className="block text-[11px] font-bold text-muted-foreground">
                         {day.weekday}
                       </span>
-                      <span className={`block text-base font-black ${disabled ? "text-muted-foreground" : "text-foreground"}`}>
+                      <span
+                        className={`block text-base font-black ${disabled ? "text-muted-foreground" : "text-foreground"}`}
+                      >
                         {day.label}
                       </span>
                     </button>

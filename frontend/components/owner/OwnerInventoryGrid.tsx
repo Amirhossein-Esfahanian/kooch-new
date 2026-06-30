@@ -73,11 +73,12 @@ function cellColor(
   state: CalendarRangeGridCellState,
 ) {
   if (state.disabled) return "bg-muted text-muted-foreground";
-  if (state.selected)
-    return "bg-primary/15 text-foreground";
-  if (day.status === "OnRequest") return "bg-muted text-foreground";
-  if (day.availableCount === 0) return "bg-muted text-destructive";
-  return "bg-muted text-foreground";
+  if (state.selected) return "bg-primary/15 text-foreground";
+  if (day.status === "OnRequest")
+    return "bg-yellow-50 text-foreground dark:bg-yellow-950/20";
+  if (day.status === "Unavailable" || day.availableCount === 0)
+    return "bg-red-50 text-foreground dark:bg-red-950/20";
+  return "bg-card text-foreground";
 }
 
 function cellVariant(day: InventoryDayResponse) {
@@ -95,7 +96,6 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-  const [message, setMessage] = useState("");
 
   const monthStart = useMemo(
     () => jalaliMonthStart(activeMonth),
@@ -150,7 +150,6 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
           `/owner/properties/${propertyId}/inventory?from=${from}&to=${to}`,
         ),
       );
-      setMessage("");
     } finally {
       setLoading(false);
     }
@@ -161,7 +160,7 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
   }
 
   function getCellValue(rowId: string | number, date: string) {
-    const row = rows.find((item) => item.id === rowId);
+    const row = rows.find((item) => String(item.id) === String(rowId));
     return (
       row?.days.find((day) => day.date === date) ?? {
         availabilityId: null,
@@ -175,7 +174,6 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
 
   async function applyRange(payload: CalendarRangeApplyPayload) {
     setError("");
-    setMessage("");
     const roomTypeId = Number(payload.rowId);
     const row = rows.find((item) => item.roomTypeId === roomTypeId);
     const max = row?.totalInventory ?? 0;
@@ -224,7 +222,6 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
           })),
         },
     );
-    setMessage("تغییرات ظرفیت ذخیره شد.");
   }
 
   const monthTitle = monthStart.locale("fa").format("MMMM YYYY");
@@ -288,7 +285,6 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
             error={error}
             getCellValue={getCellValue}
             maxValueResolver={(row) => row.totalInventory ?? 0}
-            message={message}
             minValueResolver={() => 0}
             mode="inventory"
             onApplyRange={applyRange}

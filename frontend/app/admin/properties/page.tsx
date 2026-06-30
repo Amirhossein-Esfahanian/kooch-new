@@ -39,6 +39,34 @@ const statusLabels: Record<PropertyStatus, string> = {
   Suspended: "تعلیق شده",
 };
 
+function MenuIcon({ icon }: { icon: string }) {
+  const isSvgPath = icon.startsWith("/");
+
+  if (!isSvgPath) {
+    return <span>{icon}</span>;
+  }
+
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-block h-6 w-6 bg-current"
+      style={{
+        WebkitMask: `url(${icon}) center / contain no-repeat`,
+        mask: `url(${icon}) center / contain no-repeat`,
+      }}
+    />
+  );
+}
+const menuIcons = {
+  edit: "/svgs/edit.svg",
+  capacity: "/svgs/bed-bunk.svg",
+  price: "/svgs/tags.svg",
+  suspend: "/svgs/ban.svg",
+  view: "/svgs/eye.svg",
+} as const;
+
+type MenuIconName = keyof typeof menuIcons;
+
 const actionLinkClass =
   "inline-flex min-h-9 items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 
@@ -97,7 +125,10 @@ export default function AdminPropertiesPage() {
         />
 
         {error && (
-          <KoochCard className="border-destructive text-destructive" variant="elevated">
+          <KoochCard
+            className="border-destructive text-destructive"
+            variant="elevated"
+          >
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
         )}
@@ -116,9 +147,7 @@ export default function AdminPropertiesPage() {
             padding="lg"
             variant="elevated"
           >
-            <p className="text-sm text-muted-foreground">
-              اقامتگاهی پیدا نشد.
-            </p>
+            <p className="text-sm text-muted-foreground">اقامتگاهی پیدا نشد.</p>
           </KoochCard>
         )}
 
@@ -180,42 +209,55 @@ export default function AdminPropertiesPage() {
                     </KoochSelect>
                   </KoochTableCell>
                   <KoochTableCell className="text-xs text-muted-foreground">
-                    {new Date(property.createdAtUtc).toLocaleDateString("fa-IR")}
+                    {new Date(property.createdAtUtc).toLocaleDateString(
+                      "fa-IR",
+                    )}
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="flex flex-wrap gap-2">
                       <Link
                         className={actionLinkClass}
                         href={`/admin/properties/${property.id}`}
+                        title="ویرایش"
                       >
-                        ویرایش
+                        <MenuIcon icon={menuIcons.edit} />
                       </Link>
                       <Link
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="تعیین ظرفیت"
                         className={actionLinkClass}
                         href={`/admin/properties/${property.id}/inventory`}
                       >
-                        ظرفیت
+                        <MenuIcon icon={menuIcons.capacity} />
                       </Link>
                       <Link
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title="تعیین قیمت"
                         className={actionLinkClass}
                         href={`/admin/properties/${property.id}/pricing`}
                       >
-                        قیمت
+                        <MenuIcon icon={menuIcons.price} />
                       </Link>
                       <KoochButton
                         disabled={workingId === property.id}
                         onClick={() => setStatus(property.id, "Suspended")}
                         size="sm"
                         variant="outline"
+                        title="تعلیق اقامتگاه"
                       >
-                        تعلیق
+                        <MenuIcon icon={menuIcons.suspend} />
                       </KoochButton>
                       {property.status === "Approved" && (
                         <Link
                           className={actionLinkClass}
+                          title="نمایش در سایت"
+                          target="_blank"
+                          rel="noopener noreferrer"
                           href={`/properties/${property.slug}`}
                         >
-                          نمای عمومی
+                          <MenuIcon icon={menuIcons.view} />
                         </Link>
                       )}
                     </div>
