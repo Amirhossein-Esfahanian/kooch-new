@@ -10,6 +10,7 @@ import {
   PropertyImageResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
@@ -665,9 +666,13 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     <button className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-sm font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)]" onClick={() => editRoomType(roomType)} type="button">
                       ویرایش اتاق
                     </button>
-                    <button className="rounded-xl border border-blue-200 px-3 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-50 dark:border-blue-900/70 dark:text-blue-300 dark:hover:bg-blue-950/30" onClick={() => openTestDialog(roomType)} type="button">
+                    <KoochButton
+                      onClick={() => openTestDialog(roomType)}
+                      size="sm"
+                      variant="outline"
+                    >
                       تست دیالوگ جدید
-                    </button>
+                    </KoochButton>
                     <button
                       className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
                       disabled={deletingRoomTypeId === roomType.id}
@@ -761,16 +766,21 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         description="این مسیر فقط برای تست بصری و تجربه کاربری است؛ مودال قبلی بدون تغییر باقی مانده است."
         footer={
           <>
-            <KoochDialogButton disabled={saving} onClick={closeTestDialog}>
-              لغو
-            </KoochDialogButton>
-            <KoochDialogButton
+            <KoochButton
               disabled={saving}
+              onClick={closeTestDialog}
+              variant="outline"
+            >
+              لغو
+            </KoochButton>
+            <KoochButton
+              disabled={saving}
+              loading={saving}
               onClick={saveTestDialog}
               variant="primary"
             >
-              {saving ? "در حال ذخیره..." : "ذخیره آزمایشی"}
-            </KoochDialogButton>
+              ذخیره آزمایشی
+            </KoochButton>
           </>
         }
         onOpenChange={(open) => {

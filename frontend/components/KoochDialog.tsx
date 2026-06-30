@@ -1,17 +1,22 @@
 "use client";
 
-import { ReactNode, useEffect } from "react";
+import { ReactNode, useEffect, useId } from "react";
 
 type KoochDialogSize = "md" | "lg" | "xl";
 
 const sizeClass: Record<KoochDialogSize, string> = {
-  md: "max-w-2xl",
+  md: "max-w-3xl",
   lg: "max-w-4xl",
   xl: "max-w-6xl",
 };
 
+function joinClasses(...classes: Array<string | false | null | undefined>) {
+  return classes.filter(Boolean).join(" ");
+}
+
 export function KoochDialog({
   bodyClassName = "",
+  className = "",
   children,
   closeDisabled = false,
   contentClassName = "",
@@ -25,6 +30,7 @@ export function KoochDialog({
   title,
 }: {
   bodyClassName?: string;
+  className?: string;
   children: ReactNode;
   closeDisabled?: boolean;
   contentClassName?: string;
@@ -35,8 +41,11 @@ export function KoochDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
   size?: KoochDialogSize;
-  title: ReactNode;
+  title?: ReactNode;
 }) {
+  const titleId = useId();
+  const descriptionId = useId();
+
   useEffect(() => {
     if (!open) return;
 
@@ -52,55 +61,69 @@ export function KoochDialog({
 
   return (
     <div
+      aria-describedby={description ? descriptionId : undefined}
+      aria-labelledby={title ? titleId : undefined}
       aria-modal="true"
       className="fixed inset-0 z-[70] grid place-items-center p-4"
       dir={dir}
       role="dialog"
     >
       <button
-        aria-label="بستن دیالوگ"
+        aria-label="Close dialog"
         className="fixed inset-0 z-0 bg-black/50"
         disabled={closeDisabled}
         onClick={() => onOpenChange(false)}
         type="button"
       />
       <section
-        className={`relative z-10 grid h-[min(720px,92vh)] w-full ${sizeClass[size]} grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface)] p-0 text-[var(--theme-text)] shadow-lg ${contentClassName}`}
+        className={joinClasses(
+          "relative z-10 grid h-[min(760px,90vh)] w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-card p-0 text-card-foreground shadow-xl",
+          sizeClass[size],
+          contentClassName,
+          className,
+        )}
         data-slot="dialog-content"
       >
         <header
-          className="sticky top-0 z-10 grid gap-1.5 border-b border-[var(--theme-border)] bg-[var(--theme-surface)] px-6 py-5 text-right"
+          className="sticky top-0 z-10 grid gap-1.5 border-b border-border bg-card px-6 py-5 text-right"
           data-slot="dialog-header"
         >
           <div className="max-w-[calc(100%-2.5rem)]">
-            <h2
-              className="text-lg font-semibold leading-none tracking-tight"
-              data-slot="dialog-title"
-            >
-              {title}
-            </h2>
+            {title && (
+              <h2
+                className="text-lg font-semibold leading-none tracking-tight text-card-foreground"
+                data-slot="dialog-title"
+                id={titleId}
+              >
+                {title}
+              </h2>
+            )}
             {description && (
               <p
-                className="mt-2 text-sm leading-6 text-[var(--theme-muted-text)]"
+                className="mt-2 text-sm leading-6 text-muted-foreground"
                 data-slot="dialog-description"
+                id={descriptionId}
               >
                 {description}
               </p>
             )}
           </div>
           <button
-            aria-label="بستن"
-            className="absolute left-4 top-4 grid h-8 w-8 place-items-center rounded-sm text-lg leading-none text-[var(--theme-muted-text)] opacity-70 ring-offset-[var(--theme-surface)] transition hover:bg-[var(--theme-surface-muted)] hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-40"
+            aria-label="Close"
+            className="absolute left-4 top-4 grid h-8 w-8 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-40"
             disabled={closeDisabled}
             onClick={() => onOpenChange(false)}
             type="button"
           >
-            ×
+            x
           </button>
         </header>
 
         <div
-          className={`min-h-0 overflow-y-auto bg-[var(--theme-surface)] px-6 py-5 ${bodyClassName}`}
+          className={joinClasses(
+            "min-h-0 overflow-y-auto bg-card px-6 py-5",
+            bodyClassName,
+          )}
           data-slot="dialog-body"
         >
           {children}
@@ -108,7 +131,10 @@ export function KoochDialog({
 
         {footer && (
           <footer
-            className={`sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-[var(--theme-border)] bg-[var(--theme-surface)] px-6 py-4 shadow-[0_-10px_20px_rgba(15,23,42,0.06)] sm:flex-row sm:justify-start dark:shadow-[0_-10px_20px_rgba(0,0,0,0.28)] ${footerClassName}`}
+            className={joinClasses(
+              "sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-border bg-card px-6 py-4 shadow-[0_-10px_20px_rgb(15_23_42/0.06)] sm:flex-row sm:justify-start dark:shadow-[0_-10px_20px_rgb(0_0_0/0.28)]",
+              footerClassName,
+            )}
             data-slot="dialog-footer"
           >
             {footer}
@@ -138,13 +164,19 @@ export function KoochDialogButton({
 }) {
   const className =
     variant === "primary"
-      ? "inline-flex min-h-10 items-center justify-center rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:opacity-60"
+      ? "inline-flex min-h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)] disabled:opacity-60"
       : variant === "danger"
-        ? "inline-flex min-h-10 items-center justify-center rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-red-700 disabled:opacity-60"
-        : "inline-flex min-h-10 items-center justify-center rounded-md border border-[var(--theme-border)] bg-[var(--theme-surface)] px-4 py-2 text-sm font-medium text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)] disabled:opacity-60";
+        ? "inline-flex min-h-10 items-center justify-center rounded-md border border-destructive bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-[var(--theme-danger)] disabled:opacity-60"
+        : "inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-60";
 
   return (
-    <button className={className} disabled={disabled} form={form} onClick={onClick} type={type}>
+    <button
+      className={className}
+      disabled={disabled}
+      form={form}
+      onClick={onClick}
+      type={type}
+    >
       {children}
     </button>
   );
