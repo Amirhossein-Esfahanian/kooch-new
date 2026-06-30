@@ -817,7 +817,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       <>
         <div
           aria-hidden={isMinimized}
-          className={`fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-[var(--theme-primary-border)] bg-white p-4 shadow-2xl transition-all duration-[250ms] ease-out md:inset-x-auto md:bottom-auto md:w-[360px] ${
+          className={`fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-border bg-card p-4 text-card-foreground shadow-2xl transition-all duration-[250ms] ease-out md:inset-x-auto md:bottom-auto md:w-[360px] ${
             isMinimized
               ? "pointer-events-none invisible scale-95 opacity-0"
               : "visible scale-100 opacity-100"
@@ -830,7 +830,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         >
           <button
             aria-label="کوچک‌کردن پنل ویرایش"
-            className="flex items-center justify-center absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-lg font-black leading-none text-slate-500 transition hover:border-[var(--theme-primary-border)] hover:bg-[var(--theme-primary-soft)] hover:text-[var(--theme-primary-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)]"
+            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border border-border text-lg font-black leading-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => setIsMinimized(true)}
             title="کوچک‌ کردن"
             type="button"
@@ -841,10 +841,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           </button>
           <div className="flex items-start justify-between gap-3 pr-9">
             <div>
-              <h3 className="font-black text-slate-950">
+              <h3 className="font-black text-foreground">
                 {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش بازه"}
               </h3>
-              <p className="mt-1 text-xs font-semibold text-slate-500">
+              <p className="mt-1 text-xs font-semibold text-muted-foreground">
                 {toPersianNumber(selectedCount)} خانه در{" "}
                 {toPersianNumber(selectedRanges.length)} بازه انتخاب شده
               </p>
@@ -866,11 +866,11 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                   { key: "childPrice" as const, label: "نرخ کودک", fieldValue: childPrice, update: setChildPrice },
                   { key: "extraGuestPrice" as const, label: "نرخ هر نفر اضافه", fieldValue: extraGuestPrice, update: setExtraGuestPrice },
                 ].map((field) => (
-                  <label className="flex flex-col gap-2 text-sm font-bold text-slate-700" key={field.label}>
+                  <label className="flex flex-col gap-2 text-sm font-bold text-foreground" key={field.label}>
                     {field.label}
                     <span className="relative">
                       <input
-                        className={`w-full rounded-xl border border-slate-300 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)] ${pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"}`}
+                        className={`w-full rounded-xl border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"}`}
                         max={pricingMaxValue}
                         min={pricingMinValue}
                         onChange={(event) => field.update(event.target.value === "" ? Number.NaN : Number(event.target.value))}
@@ -878,13 +878,13 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                         value={Number.isFinite(field.fieldValue) ? field.fieldValue : ""}
                       />
                       {pricingCurrencyLabel && (
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-muted-foreground">
                           {pricingCurrencyLabel}
                         </span>
                       )}
                     </span>
                     {mixedPricingFields[field.key] && (
-                      <span className="text-xs font-semibold text-amber-600">
+                      <span className="text-xs font-semibold text-muted-foreground">
                         مقادیر انتخاب‌شده متفاوت هستند.
                       </span>
                     )}
@@ -892,10 +892,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 ))}
               </>
             ) : (
-              <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
+              <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
                 {valueLabel}
                 <input
-                  className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   disabled={status === "Unavailable"}
                   min={activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0}
                   onChange={(event) => setValue(Number(event.target.value))}
@@ -905,10 +905,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
               </label>
             )}
             {mode === "inventory" && statusOptions && (
-              <label className="flex flex-col gap-2 text-sm font-bold text-slate-700">
+              <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
                 وضعیت
                 <select
-                  className="rounded-xl border border-slate-300 px-3 py-2 outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
+                  className="rounded-xl border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                   onChange={(event) =>
                     setStatus(event.target.value as AvailabilityStatus)
                   }
@@ -927,7 +927,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           {(localError || error || message) && (
             <div className="mt-3 grid gap-2">
               {(localError || error) && (
-                <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+                <p className="rounded-xl border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
                   {localError || error}
                 </p>
               )}
@@ -941,14 +941,14 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
           <div className="mt-4 flex justify-end gap-2">
             <button
-              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700"
+              className="rounded-xl border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition hover:bg-muted"
               onClick={clearSelections}
               type="button"
             >
               لغو
             </button>
             <button
-              className="rounded-xl bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60"
+              className="rounded-xl border border-primary bg-primary px-5 py-2 text-sm font-black text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
               disabled={saving}
               onClick={applySelection}
               type="button"
@@ -974,7 +974,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 { value: "single" as const, label: "انتخاب تکی" },
               ].map((option) => (
                 <button
-                  className={`rounded-lg px-3 py-1.5 text-sm font-black transition ${selectionMode === option.value ? "bg-[var(--theme-primary)] text-white shadow-sm" : "text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]"}`}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-black transition ${selectionMode === option.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                   key={option.value}
                   onClick={() => changeSelectionMode(option.value)}
                   type="button"
@@ -989,7 +989,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           </span>
           {selectedRanges.length > 0 && (
             <button
-              className="rounded-lg border border-[var(--theme-danger)] bg-white px-3 py-2 text-xs font-black text-[var(--theme-danger)] transition hover:bg-[var(--theme-danger-soft)]"
+              className="rounded-lg border border-destructive bg-background px-3 py-2 text-xs font-black text-destructive transition hover:bg-muted"
               onClick={clearSelections}
               type="button"
             >
@@ -1000,7 +1000,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         {selectedRanges.length > 0 && isMinimized && (
           <button
             aria-label="بازکردن پنل ویرایش"
-            className="grid h-12 w-32 place-items-center rounded-md bg-[var(--theme-primary)] text-white shadow-lg ring-1 ring-black/5 transition hover:bg-[var(--theme-primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--theme-primary)] focus-visible:ring-offset-2"
+            className="grid h-12 w-32 place-items-center rounded-md bg-primary text-primary-foreground shadow-lg ring-1 ring-black/5 transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onClick={() => setIsMinimized(false)}
             title="بازکردن پنل ویرایش"
             type="button"
@@ -1025,7 +1025,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 strokeWidth="2"
               />
             </svg>
-            <span className="text-xs font-normal text-white">
+            <span className="text-xs font-normal text-primary-foreground">
               {toPersianNumber(selectedCount)} روز انتخاب شده
             </span>
           </button>
@@ -1035,30 +1035,30 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         (isDesktop && typeof document !== "undefined"
           ? createPortal(editorPanel, document.body)
           : editorPanel)}
-      <div className="overflow-x-auto  border border-[var(--theme-border)]">
-        <table className="min-w-max border-collapse bg-white text-sm">
+      <div className="overflow-x-auto rounded-xl border border-border">
+        <table className="min-w-max border-collapse bg-card text-sm text-foreground">
           <thead>
             <tr>
-              <th className="sticky right-0 z-30 min-w-[180px] border border-[var(--theme-border)] bg-white p-3 text-right shadow-sm">
+              <th className="sticky right-0 z-30 min-w-[180px] border border-border bg-card p-3 text-right shadow-sm">
                 اتاق / تاریخ
               </th>
               {days.map((day, dayIndex) => {
                 const disabled = dayDisabled(dayIndex);
                 return (
                   <th
-                    className={`min-w-[68px] border border-[var(--theme-border)] p-0 text-center ${disabled ? "bg-slate-100 text-slate-400" : "bg-white"} ${day.isToday ? "ring-2 ring-[var(--theme-primary-border)]" : ""}`}
+                    className={`min-w-[68px] border border-border p-0 text-center ${disabled ? "bg-muted text-muted-foreground" : "bg-card"} ${day.isToday ? "ring-2 ring-ring" : ""}`}
                     key={day.date}
                   >
                     <button
-                      className={`h-full w-full px-2 py-2 ${disabled ? "cursor-not-allowed text-slate-400" : "hover:bg-[var(--theme-primary-soft)]"}`}
+                      className={`h-full w-full px-2 py-2 ${disabled ? "cursor-not-allowed text-muted-foreground" : "hover:bg-muted"}`}
                       disabled={disabled}
                       onClick={() => toggleColumn(dayIndex)}
                       type="button"
                     >
-                      <span className={`block text-[11px] font-bold ${disabled ? "text-slate-400" : "text-slate-400"}`}>
+                      <span className="block text-[11px] font-bold text-muted-foreground">
                         {day.weekday}
                       </span>
-                      <span className={`block text-base font-black ${disabled ? "text-slate-400" : "text-slate-800"}`}>
+                      <span className={`block text-base font-black ${disabled ? "text-muted-foreground" : "text-foreground"}`}>
                         {day.label}
                       </span>
                     </button>
@@ -1070,13 +1070,13 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
-                <th className="sticky right-0 z-30 min-w-[180px] border border-[var(--theme-border)] bg-white p-0 text-right align-middle shadow-sm">
+                <th className="sticky right-0 z-30 min-w-[180px] border border-border bg-card p-0 text-right align-middle shadow-sm">
                   <button
-                    className="h-full w-full px-3 py-2 text-right hover:bg-[var(--theme-primary-soft)]"
+                    className="h-full w-full px-3 py-2 text-right hover:bg-muted"
                     onClick={() => toggleRow(row)}
                     type="button"
                   >
-                    <span className="block font-black text-slate-900">
+                    <span className="block font-black text-foreground">
                       {row.label}
                     </span>
                   </button>
@@ -1134,7 +1134,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
                   return (
                     <td
-                      className={`relative h-10 min-w-[68px] select-none border border-[var(--theme-border)] p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-slate-100 text-slate-400" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected && !disabled ? "bg-[var(--theme-primary-light)] shadow-inner ring-1 ring-inset ring-[var(--theme-primary)]" : ""}`}
+                      className={`relative h-10 min-w-[68px] select-none border border-border p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-muted text-muted-foreground" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected && !disabled ? "bg-primary/15 shadow-inner ring-1 ring-inset ring-primary" : ""}`}
                       data-calendar-selected={selected ? "true" : undefined}
                       data-calendar-active-selected={
                         activeSelected ? "true" : undefined
@@ -1156,7 +1156,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           .map((range) => (
                             <button
                               aria-label="تغییر شروع بازه"
-                              className="absolute right-0 top-1/2 z-20 hidden h-[24px] w-[24px] translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex items-center justify-center rounded-full bg-[var(--theme-primary)] shadow-md ring-2 ring-white md:grid"
+                              className="absolute right-0 top-1/2 z-20 hidden h-[24px] w-[24px] translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex items-center justify-center rounded-full bg-primary shadow-md ring-2 ring-background md:grid"
                               key={`start-handle-${range.id}`}
                               onPointerDown={(event) =>
                                 startHandleDrag(range.id, "start", event)
@@ -1164,9 +1164,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                               type="button"
                             >
                               <span className="flex items-center justify-center gap-[3px]">
-                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
                               </span>
                             </button>
                           ))}
@@ -1176,7 +1176,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           .map((range) => (
                             <button
                               aria-label="تغییر پایان بازه"
-                              className="absolute left-0 top-1/2 z-20 hidden h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex items-center justify-center rounded-full bg-[var(--theme-primary)] shadow-md ring-2 ring-white md:grid"
+                              className="absolute left-0 top-1/2 z-20 hidden h-[24px] w-[24px] -translate-x-1/2 -translate-y-1/2 cursor-ew-resize flex items-center justify-center rounded-full bg-primary shadow-md ring-2 ring-background md:grid"
                               key={`end-handle-${range.id}`}
                               onPointerDown={(event) =>
                                 startHandleDrag(range.id, "end", event)
@@ -1184,9 +1184,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                               type="button"
                             >
                               <span className="flex items-center justify-center gap-[3px]">
-                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-white/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
+                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
                               </span>
                             </button>
                           ))}
@@ -1196,7 +1196,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           .map((range) => (
                             <button
                               aria-label={`حذف انتخاب ${selectionLabel(range)}`}
-                              className="absolute left-50% top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[var(--theme-danger)] bg-white text-[11px] font-black text-[var(--theme-danger)] shadow-md hover:bg-[var(--theme-danger-soft)]"
+                              className="absolute left-50% top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-destructive bg-background text-[11px] font-black text-destructive shadow-md hover:bg-muted"
                               key={range.id}
                               onClick={(event) => {
                                 event.stopPropagation();
@@ -1215,7 +1215,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           </tbody>
         </table>
         {rows.length === 0 && (
-          <p className="p-6 text-center text-sm text-slate-500">
+          <p className="p-6 text-center text-sm text-muted-foreground">
             هنوز موردی برای نمایش ثبت نشده است.
           </p>
         )}

@@ -6,7 +6,9 @@ import "dayjs/locale/fa";
 import { useEffect, useMemo, useState } from "react";
 import { apiRequest, PricingGuestType, PropertyPricingResponse, RoomDailyPriceHistoryResponse, RoomDailyPriceResponse } from "@/lib/owner-api";
 import { CalendarGridDay, CalendarGridRow, CalendarRangeApplyPayload, CalendarRangeGridEditor } from "@/components/CalendarRangeGridEditor";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
+import { KoochDialog } from "@/components/KoochDialog";
 import {
   getPricingWarnings,
   getPropertyPriceBounds,
@@ -199,24 +201,24 @@ export function OwnerPricingGrid({
     }
   }
   return (
-    <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <KoochCard className="min-w-0" variant="elevated">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div><h2 className="text-xl font-black">مدیریت قیمت روزانه</h2><p className="mt-1 text-sm text-slate-500">روزها و اتاق‌ها را انتخاب کنید و نرخ‌ها را به‌صورت گروهی تغییر دهید.</p></div>
+        <div><h2 className="text-xl font-black text-foreground">مدیریت قیمت روزانه</h2><p className="mt-1 text-sm text-muted-foreground">روزها و اتاق‌ها را انتخاب کنید و نرخ‌ها را به‌صورت گروهی تغییر دهید.</p></div>
         <div className="flex items-center gap-2">
-          <button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50" onClick={openHistory} type="button">مشاهده سوابق</button>
-          <button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold" onClick={() => setActiveMonth(monthStart.subtract(1, "month").format("YYYY-MM"))} type="button">ماه قبل</button>
-          <strong className="min-w-32 rounded-xl bg-slate-50 px-4 py-2 text-center">{monthTitle}</strong>
-          <button className="rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold" onClick={() => setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))} type="button">ماه بعد</button>
+          <KoochButton onClick={openHistory} size="sm" type="button" variant="outline">مشاهده سوابق</KoochButton>
+          <KoochButton onClick={() => setActiveMonth(monthStart.subtract(1, "month").format("YYYY-MM"))} size="sm" type="button" variant="outline">ماه قبل</KoochButton>
+          <strong className="min-w-32 rounded-xl bg-muted px-4 py-2 text-center text-foreground">{monthTitle}</strong>
+          <KoochButton onClick={() => setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))} size="sm" type="button" variant="outline">ماه بعد</KoochButton>
         </div>
       </div>
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-2" dir="rtl">
-        <div className="inline-flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted p-2" dir="rtl">
+        <div className="inline-flex rounded-xl border border-border bg-card p-1 shadow-sm">
           {pricingGuestTabs.map((tab) => (
             <button
               className={`rounded-lg px-5 py-2 text-sm font-black transition ${
                 activeGuestType === tab.value
-                  ? "bg-[var(--theme-primary)] text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100 hover:text-slate-950"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
               }`}
               key={tab.value}
               onClick={() => changeGuestType(tab.value)}
@@ -226,10 +228,10 @@ export function OwnerPricingGrid({
             </button>
           ))}
         </div>
-        <p className="text-xs font-bold text-slate-500">{activeGuestTab.description}</p>
+        <p className="text-xs font-bold text-muted-foreground">{activeGuestTab.description}</p>
       </div>
-      {loading && <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">در حال بارگذاری قیمت‌ها...</p>}
-      {error && <p className="mt-5 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">{error}</p>}
+      {loading && <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">در حال بارگذاری قیمت‌ها...</p>}
+      {error && <p className="mt-5 rounded-xl border border-destructive bg-card p-3 text-sm font-semibold text-destructive">{error}</p>}
       <PricingSettingsWarning className="mt-5" editHref={propertyEditHref} warnings={pricingWarnings} />
       <div className="mt-5">
         <CalendarRangeGridEditor
@@ -254,10 +256,10 @@ export function OwnerPricingGrid({
             <div
               className={`grid h-full place-items-center px-1 text-[11px] font-black ${
                 state.disabled
-                  ? "bg-slate-100 text-slate-400"
+                  ? "bg-muted text-muted-foreground"
                   : state.selected
-                    ? "bg-[var(--theme-primary-light)]"
-                    : "bg-[var(--theme-surface-muted)]"
+                    ? "bg-primary/15 text-foreground"
+                    : "bg-muted text-foreground"
               }`}
             >
               {formatPrice(day.basePrice)}
@@ -273,9 +275,9 @@ export function OwnerPricingGrid({
       <KoochDialog
         description="آخرین تغییرات قیمت اتاق‌ها، جدیدترین در ابتدا."
         footer={
-          <KoochDialogButton onClick={() => setHistoryOpen(false)}>
+          <KoochButton onClick={() => setHistoryOpen(false)} variant="outline">
             بستن
-          </KoochDialogButton>
+          </KoochButton>
         }
         onOpenChange={setHistoryOpen}
         open={historyOpen}
@@ -283,30 +285,31 @@ export function OwnerPricingGrid({
         title="سوابق تغییر قیمت"
       >
 {historyLoading ? (
-          <p className="rounded-xl bg-slate-50 p-4 text-sm text-slate-500">در حال بارگذاری سوابق...</p>
+          <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">در حال بارگذاری سوابق...</p>
         ) : history.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">هنوز سابقه‌ای ثبت نشده است.</p>
+          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">هنوز سابقه‌ای ثبت نشده است.</p>
         ) : (
-          <table className="min-w-full border-collapse text-sm">
+          <div className="overflow-x-auto rounded-xl border border-border">
+          <table className="min-w-full border-collapse bg-card text-sm text-foreground">
             <thead>
-              <tr className="bg-slate-50 text-right text-xs font-black text-slate-500">
-                <th className="border border-slate-200 p-3">تاریخ</th>
-                <th className="border border-slate-200 p-3">کاربر</th>
-                <th className="border border-slate-200 p-3">قیمت قبلی</th>
-                <th className="border border-slate-200 p-3">قیمت جدید</th>
-                <th className="border border-slate-200 p-3">بازه تاریخ</th>
+              <tr className="bg-muted text-right text-xs font-black text-muted-foreground">
+                <th className="border border-border p-3">تاریخ</th>
+                <th className="border border-border p-3">کاربر</th>
+                <th className="border border-border p-3">قیمت قبلی</th>
+                <th className="border border-border p-3">قیمت جدید</th>
+                <th className="border border-border p-3">بازه تاریخ</th>
               </tr>
             </thead>
             <tbody>
               {history.map((item) => (
-                <tr className="text-slate-700" key={item.id}>
-                  <td className="border border-slate-200 p-3 font-bold">{formatDateTime(item.dateTime)}</td>
-                  <td className="border border-slate-200 p-3">{item.user}</td>
-                  <td className="border border-slate-200 p-3">{formatPrice(item.oldPrice)} {currencyLabel}</td>
-                  <td className="border border-slate-200 p-3 font-black text-blue-700">{formatPrice(item.newPrice)} {currencyLabel}</td>
-                  <td className="border border-slate-200 p-3">
+                <tr key={item.id}>
+                  <td className="border border-border p-3 font-bold">{formatDateTime(item.dateTime)}</td>
+                  <td className="border border-border p-3">{item.user}</td>
+                  <td className="border border-border p-3">{formatPrice(item.oldPrice)} {currencyLabel}</td>
+                  <td className="border border-border p-3 font-black text-primary">{formatPrice(item.newPrice)} {currencyLabel}</td>
+                  <td className="border border-border p-3">
                     <span className="font-bold">{item.roomName}</span>
-                    <span className="mx-2 text-slate-300">|</span>
+                    <span className="mx-2 text-muted-foreground">|</span>
                     {formatIsoDate(item.affectedStartDate)}
                     {item.affectedStartDate !== item.affectedEndDate && ` تا ${formatIsoDate(item.affectedEndDate)}`}
                   </td>
@@ -314,9 +317,10 @@ export function OwnerPricingGrid({
               ))}
             </tbody>
           </table>
+          </div>
         )}
 
       </KoochDialog>
-    </section>
+    </KoochCard>
   );
 }

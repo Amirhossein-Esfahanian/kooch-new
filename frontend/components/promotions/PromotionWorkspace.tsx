@@ -10,8 +10,15 @@ import {
   PromotionWeekday,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochDialog } from "@/components/KoochDialog";
+import {
+  KoochInput,
+  KoochSelect,
+  KoochTextarea,
+} from "@/components/KoochFormControls";
 
 const promotionTypes: { value: PromotionType; label: string }[] = [
   { value: "PercentageDiscount", label: "تخفیف درصدی" },
@@ -51,8 +58,8 @@ type Draft = {
   isPublished: boolean;
 };
 
-const inputClass =
-  "rounded-xl border border-[var(--theme-border)] bg-white px-3 py-2.5 text-sm outline-none focus:border-[var(--theme-primary)]";
+const dateControlClass =
+  "h-10 rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
 const today = () => new Date().toISOString().slice(0, 10);
 
 function emptyDraft(propertyId: number | null = null): Draft {
@@ -383,21 +390,20 @@ export function PromotionWorkspace({
 
   return (
     <div className="space-y-5" dir="rtl">
-      <div className="rounded-2xl border border-[var(--theme-border)] bg-white p-4 shadow-sm">
+      <KoochCard variant="elevated">
         <div className="flex flex-wrap items-center gap-3">
-          <button className="ds-button-primary" onClick={openNew} type="button">
+          <KoochButton onClick={openNew} type="button">
             + پروموشن جدید
-          </button>
-          <input
-            className={`${inputClass} min-w-52 flex-1`}
+          </KoochButton>
+          <KoochInput
+            className="min-w-52 flex-1"
             onChange={(event) => setSearch(event.target.value)}
             placeholder="جستجو در پروموشن‌ها"
             type="search"
             value={search}
           />
           {admin && (
-            <select
-              className={inputClass}
+            <KoochSelect
               onChange={(event) =>
                 setPropertyFilter(
                   event.target.value === "all"
@@ -413,10 +419,9 @@ export function PromotionWorkspace({
                   {property.name}
                 </option>
               ))}
-            </select>
+            </KoochSelect>
           )}
-          <select
-            className={inputClass}
+          <KoochSelect
             onChange={(event) =>
               setTypeFilter(event.target.value as PromotionType | "all")
             }
@@ -428,9 +433,8 @@ export function PromotionWorkspace({
                 {type.label}
               </option>
             ))}
-          </select>
-          <select
-            className={inputClass}
+          </KoochSelect>
+          <KoochSelect
             onChange={(event) =>
               setStatusFilter(event.target.value as typeof statusFilter)
             }
@@ -439,24 +443,28 @@ export function PromotionWorkspace({
             <option value="all">همه وضعیت‌ها</option>
             <option value="active">فعال</option>
             <option value="inactive">غیرفعال</option>
-          </select>
+          </KoochSelect>
         </div>
-      </div>
+      </KoochCard>
 
       {loading && (
-        <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-slate-500">
+        <KoochCard className="text-center" padding="lg" variant="elevated">
+          <p className="text-sm text-muted-foreground">
           در حال بارگذاری پروموشن‌ها...
-        </div>
+          </p>
+        </KoochCard>
       )}
       {!loading && !filtered.length && (
-        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-slate-500">
-          پروموشنی با این فیلتر پیدا نشد.
-        </div>
+        <KoochCard className="border-dashed text-center" padding="lg" variant="elevated">
+          <p className="text-sm text-muted-foreground">
+            پروموشنی با این فیلتر پیدا نشد.
+          </p>
+        </KoochCard>
       )}
       <div className="grid gap-4 xl:grid-cols-2">
         {filtered.map((promotion) => (
-          <article
-            className={`rounded-lg border bg-white p-5 shadow-sm transition ${promotion.isLibraryTemplate ? "" : "cursor-grab active:cursor-grabbing"} ${promotion.isActive ? "border-[var(--theme-primary-border)]" : "border-slate-200 opacity-75"}`}
+          <KoochCard
+            className={`transition ${promotion.isLibraryTemplate ? "" : "cursor-grab active:cursor-grabbing"} ${promotion.isActive ? "border-primary" : "opacity-75"}`}
             draggable={!promotion.isLibraryTemplate}
             key={promotion.id}
             onDragOver={(event) =>
@@ -466,24 +474,21 @@ export function PromotionWorkspace({
               !promotion.isLibraryTemplate && setDraggedId(promotion.id)
             }
             onDrop={() => !promotion.isLibraryTemplate && drop(promotion.id)}
+            variant="elevated"
           >
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-black text-slate-950">
+                  <h3 className="text-lg font-black text-foreground">
                     {promotion.title}
                   </h3>
-                  <span
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-black ${promotion.source === "Admin" ? "bg-blue-50 text-blue-700" : "bg-amber-50 text-amber-700"}`}
-                  >
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-black text-muted-foreground">
                     {promotion.source === "Admin"
                       ? "Admin Promotion"
                       : "Owner Promotion"}
                   </span>
                   {admin && promotion.source === "Admin" && (
-                    <span
-                      className={`rounded-full px-2.5 py-1 text-[11px] font-black ${promotion.isPublished ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
-                    >
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-black text-muted-foreground">
                       {promotion.isPublished ? "منتشر شده" : "پیش‌نویس"}
                     </span>
                   )}
@@ -493,7 +498,7 @@ export function PromotionWorkspace({
                 </p>
               </div>
               <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${promotion.isActive ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"}`}
+                className={`rounded-full px-3 py-1 text-xs font-bold ${promotion.isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
               >
                 {promotion.isLibraryTemplate
                   ? "کتابخانه"
@@ -503,25 +508,25 @@ export function PromotionWorkspace({
               </span>
             </div>
             {admin && (
-              <p className="mt-3 text-sm font-bold text-slate-600">
+              <p className="mt-3 text-sm font-bold text-muted-foreground">
                 {promotion.propertyName}
               </p>
             )}
             {promotion.publicDescription && (
-              <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm leading-6 text-slate-600">
+              <p className="mt-3 rounded-xl bg-muted p-3 text-sm leading-6 text-muted-foreground">
                 {promotion.publicDescription}
               </p>
             )}
-            <dl className="mt-4 grid gap-2 text-sm text-slate-600 sm:grid-cols-2">
+            <dl className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
               <div>
-                <dt className="text-xs text-slate-400">بازه اجرا</dt>
+                <dt className="text-xs text-muted-foreground">بازه اجرا</dt>
                 <dd>
                   {new Date(promotion.startDate).toLocaleDateString("fa-IR")} تا{" "}
                   {new Date(promotion.endDate).toLocaleDateString("fa-IR")}
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-400">روزهای هفته</dt>
+                <dt className="text-xs text-muted-foreground">روزهای هفته</dt>
                 <dd>
                   {promotion.weekdays
                     .map(
@@ -532,59 +537,63 @@ export function PromotionWorkspace({
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-400">اتاق‌های انتخاب‌شده</dt>
+                <dt className="text-xs text-muted-foreground">اتاق‌های انتخاب‌شده</dt>
                 <dd>{promotion.roomTypes.length} اتاق</dd>
               </div>
               <div>
-                <dt className="text-xs text-slate-400">ایجادکننده</dt>
+                <dt className="text-xs text-muted-foreground">ایجادکننده</dt>
                 <dd>{promotion.createdBy}</dd>
               </div>
             </dl>
-            <div className="mt-5 flex flex-wrap gap-2 border-t border-slate-100 pt-4">
+            <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
               {promotion.canEdit &&
                 !(!admin && promotion.source === "Admin") && (
-                  <button
-                    className="ds-button-secondary text-xs"
+                  <KoochButton
                     onClick={() => openEdit(promotion)}
+                    size="sm"
                     type="button"
+                    variant="outline"
                   >
                     ویرایش
-                  </button>
+                  </KoochButton>
                 )}
-              <button
-                className="ds-button-secondary text-xs"
+              <KoochButton
                 onClick={() => toggle(promotion)}
+                size="sm"
                 type="button"
+                variant="outline"
               >
                 {promotion.isLibraryTemplate
                   ? "فعال‌سازی"
                   : promotion.isActive
                     ? "غیرفعال کردن"
                     : "فعال کردن"}
-              </button>
-              <button
-                className="ds-button-secondary text-xs"
+              </KoochButton>
+              <KoochButton
                 onClick={() => duplicate(promotion)}
+                size="sm"
                 type="button"
+                variant="outline"
               >
                 {!admin && promotion.source === "Admin" ? "کپی خصوصی" : "کپی"}
-              </button>
+              </KoochButton>
               {(admin || promotion.source === "Owner") && (
-                <button
-                  className="rounded-xl border border-red-200 px-3 py-2 text-xs font-bold text-red-700 hover:bg-red-50"
+                <KoochButton
                   onClick={() => remove(promotion)}
+                  size="sm"
                   type="button"
+                  variant="destructive"
                 >
                   حذف
-                </button>
+                </KoochButton>
               )}
               {!promotion.isLibraryTemplate && (
-                <span className="mr-auto self-center text-xs text-slate-400">
+                <span className="mr-auto self-center text-xs text-muted-foreground">
                   ☰ برای مرتب‌سازی بکشید
                 </span>
               )}
             </div>
-          </article>
+          </KoochCard>
         ))}
       </div>
 
@@ -592,12 +601,22 @@ export function PromotionWorkspace({
         closeDisabled={saving}
         footer={
           <>
-            <KoochDialogButton disabled={saving} onClick={() => setModalOpen(false)}>
+            <KoochButton
+              disabled={saving}
+              onClick={() => setModalOpen(false)}
+              variant="outline"
+            >
               لغو
-            </KoochDialogButton>
-            <KoochDialogButton disabled={saving} form="promotion-form" type="submit" variant="primary">
-              {saving ? "در حال ذخیره..." : "ذخیره"}
-            </KoochDialogButton>
+            </KoochButton>
+            <KoochButton
+              disabled={saving}
+              form="promotion-form"
+              loading={saving}
+              type="submit"
+              variant="primary"
+            >
+              ذخیره
+            </KoochButton>
           </>
         }
         onOpenChange={(open) => {
@@ -610,15 +629,14 @@ export function PromotionWorkspace({
         <form className="grid gap-4" id="promotion-form" onSubmit={submit}>
 <div className="grid gap-4 sm:grid-cols-2">
           {admin && (
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm font-bold text-blue-700 sm:col-span-2">
+            <div className="rounded-xl border border-border bg-muted p-3 text-sm font-bold text-muted-foreground sm:col-span-2">
               این پروموشن به عنوان قالب مدیریتی قابل انتشار در کتابخانه
               مالک‌ها ساخته می‌شود.
             </div>
           )}
           <label className="grid gap-2 text-sm font-bold sm:col-span-2">
             عنوان
-            <input
-              className={inputClass}
+            <KoochInput
               maxLength={150}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -632,8 +650,7 @@ export function PromotionWorkspace({
           </label>
           <label className="grid gap-2 text-sm font-bold">
             نوع پروموشن
-            <select
-              className={inputClass}
+            <KoochSelect
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
@@ -647,14 +664,13 @@ export function PromotionWorkspace({
                   {type.label}
                 </option>
               ))}
-            </select>
+            </KoochSelect>
           </label>
           {(draft.type === "PercentageDiscount" ||
             draft.type === "LastMinute") && (
             <label className="grid gap-2 text-sm font-bold">
               درصد تخفیف
-              <input
-                className={inputClass}
+              <KoochInput
                 max="100"
                 min="0"
                 onChange={(event) =>
@@ -671,8 +687,7 @@ export function PromotionWorkspace({
           {draft.type === "FixedAmountDiscount" && (
             <label className="grid gap-2 text-sm font-bold">
               مبلغ تخفیف
-              <input
-                className={inputClass}
+              <KoochInput
                 min="0"
                 onChange={(event) =>
                   setDraft((current) => ({
@@ -688,8 +703,7 @@ export function PromotionWorkspace({
           {draft.type === "LastMinute" && (
             <label className="grid gap-2 text-sm font-bold">
               حداکثر روز مانده تا ورود
-              <input
-                className={inputClass}
+              <KoochInput
                 min="0"
                 onChange={(event) =>
                   setDraft((current) => ({
@@ -705,7 +719,7 @@ export function PromotionWorkspace({
           <div className="sm:col-span-2">
             <KoochDatePicker
               calendarType="jalali"
-              controlClassName={inputClass}
+              controlClassName={dateControlClass}
               labels={{ start: "تاریخ شروع", end: "تاریخ پایان", rangeTitle: "انتخاب بازه پروموشن" }}
               labelsAbove
               mode="range"
@@ -723,8 +737,7 @@ export function PromotionWorkspace({
           </div>
           <label className="grid gap-2 text-sm font-bold sm:col-span-2">
             توضیحات داخلی
-            <textarea
-              className={inputClass}
+            <KoochTextarea
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
@@ -737,8 +750,7 @@ export function PromotionWorkspace({
           </label>
           <label className="grid gap-2 text-sm font-bold sm:col-span-2">
             توضیحات عمومی
-            <textarea
-              className={inputClass}
+            <KoochTextarea
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
@@ -750,14 +762,13 @@ export function PromotionWorkspace({
             />
           </label>
           {draft.type === "Informational" && (
-            <div className="rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm font-bold leading-6 text-amber-800 sm:col-span-2">
+            <div className="rounded-xl border border-border bg-muted p-3 text-sm font-bold leading-6 text-muted-foreground sm:col-span-2">
               مثال: با ۳ شب اقامت، گشت رایگان · با ۲ شب اقامت، ناهار رایگان
             </div>
           )}
           <label className="grid gap-2 text-sm font-bold">
             آیکن اختیاری
-            <input
-              className={inputClass}
+            <KoochInput
               maxLength={20}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -771,8 +782,7 @@ export function PromotionWorkspace({
           </label>
           <label className="grid gap-2 text-sm font-bold">
             رنگ بج
-            <input
-              className={inputClass}
+            <KoochInput
               maxLength={40}
               onChange={(event) =>
                 setDraft((current) => ({
@@ -786,8 +796,7 @@ export function PromotionWorkspace({
           </label>
           <label className="grid gap-2 text-sm font-bold">
             حداقل شب اقامت
-            <input
-              className={inputClass}
+            <KoochInput
               min="0"
               onChange={(event) =>
                 setDraft((current) => ({
@@ -801,8 +810,7 @@ export function PromotionWorkspace({
           </label>
           <label className="grid gap-2 text-sm font-bold">
             حداقل مهمان
-            <input
-              className={inputClass}
+            <KoochInput
               min="0"
               onChange={(event) =>
                 setDraft((current) => ({
@@ -820,7 +828,7 @@ export function PromotionWorkspace({
           <div className="flex flex-wrap gap-2">
             {weekdays.map((day) => (
               <label
-                className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]" : "border-slate-200"}`}
+                className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-primary bg-muted text-foreground" : "border-border text-muted-foreground"}`}
                 key={day.value}
               >
                 <input
@@ -848,7 +856,7 @@ export function PromotionWorkspace({
             <legend className="mb-2 text-sm font-black">
               اتاق‌های منتخب
             </legend>
-            <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-slate-200 p-3 sm:grid-cols-2">
+            <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-border bg-background p-3 sm:grid-cols-2">
               {rooms.map((room) => (
                 <label
                   className="flex items-center gap-2 text-sm font-bold"
@@ -872,7 +880,7 @@ export function PromotionWorkspace({
                 </label>
               ))}
               {!rooms.length && (
-                <p className="text-sm text-slate-500">
+                <p className="text-sm text-muted-foreground">
                   اتاق فعالی برای این اقامتگاه وجود ندارد.
                 </p>
               )}

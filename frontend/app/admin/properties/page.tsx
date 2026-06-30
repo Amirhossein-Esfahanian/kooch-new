@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminPage } from "@/components/admin/AdminPage";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
+import { KoochSelect } from "@/components/KoochFormControls";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
+import {
+  KoochTable,
+  KoochTableBody,
+  KoochTableCell,
+  KoochTableHead,
+  KoochTableHeader,
+  KoochTableRow,
+} from "@/components/KoochTable";
+import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   apiRequest,
   getToken,
@@ -18,6 +30,7 @@ const statuses: PropertyStatus[] = [
   "Rejected",
   "Suspended",
 ];
+
 const statusLabels: Record<PropertyStatus, string> = {
   Draft: "پیش‌نویس",
   PendingReview: "در انتظار تایید",
@@ -26,12 +39,16 @@ const statusLabels: Record<PropertyStatus, string> = {
   Suspended: "تعلیق شده",
 };
 
+const actionLinkClass =
+  "inline-flex min-h-9 items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
+
 export default function AdminPropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
   const [error, setError] = useState("");
+
   const load = useCallback(
     async () =>
       setProperties(await apiRequest<PropertyResponse[]>("/admin/properties")),
@@ -71,114 +88,144 @@ export default function AdminPropertiesPage() {
   }
 
   return (
-    <AdminPage title="مدیریت اقامتگاه‌ها">
-      {error && (
-        <p className="mb-4 rounded-xl bg-red-50 p-4 text-sm font-semibold text-red-700">
-          {error}
-        </p>
-      )}
-      {loading && (
-        <p className="rounded-xl border border-slate-200 bg-white p-5 text-slate-500">
-          در حال بارگذاری اقامتگاه‌ها...
-        </p>
-      )}
-      {!loading && properties.length === 0 && (
-        <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-500">
-          اقامتگاهی پیدا نشد.
-        </p>
-      )}
-      <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-        <div className="grid min-w-[1080px] grid-cols-[70px_1.4fr_1fr_1.4fr_1fr_1fr_2fr] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-black text-slate-500">
-          <span>شناسه</span>
-          <span>نام</span>
-          <span>شهر</span>
-          <span>مالک</span>
-          <span>وضعیت</span>
-          <span>تاریخ ایجاد</span>
-          <span>عملیات</span>
-        </div>
-        <div className="overflow-x-auto">
-          {properties.map((property) => (
-            <div
-              className="grid min-w-[1080px] grid-cols-[70px_1.4fr_1fr_1.4fr_1fr_1fr_2fr] items-center gap-3 border-b border-slate-100 px-4 py-3 text-sm last:border-b-0"
-              key={property.id}
-            >
-              <span className="font-bold text-slate-500">{property.id}</span>
-              <div>
-                <p className="font-black text-slate-950">{property.name}</p>
-                {property.englishName && (
-                  <p className="text-xs text-slate-400" dir="ltr">
-                    {property.englishName}
-                  </p>
-                )}
-              </div>
-              <span>{property.city}</span>
-              <span className="text-slate-600">
-                {property.ownerName || property.ownerId}
-                <br />
-                <span className="text-xs text-slate-400">
-                  {property.ownerEmail}
-                </span>
-              </span>
-              <select
-                className="rounded-lg border border-slate-300 px-2 py-2"
-                disabled={workingId === property.id}
-                onChange={(event) =>
-                  setStatus(property.id, event.target.value as PropertyStatus)
-                }
-                value={property.status}
-              >
-                {statuses.map((status) => (
-                  <option key={status} value={status}>
-                    {statusLabels[status]}
-                  </option>
-                ))}
-              </select>
-              <span className="text-xs text-slate-500">
-                {new Date(property.createdAtUtc).toLocaleDateString("fa-IR")}
-              </span>
-              <div className="flex flex-wrap gap-2">
-                <Link
-                  className="rounded-lg border border-blue-600 px-3 py-2 text-xs font-bold text-blue-700 hover:bg-blue-50"
-                  href={`/admin/properties/${property.id}`}
-                >
-                  ویرایش
-                </Link>
-                <Link
-                  className="rounded-lg border border-emerald-200 px-3 py-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50"
-                  href={`/admin/properties/${property.id}/inventory`}
-                >
-                  ظرفیت
-                </Link>
-                <Link
-                  className="rounded-lg border border-violet-200 px-3 py-2 text-xs font-bold text-violet-700 hover:bg-violet-50"
-                  href={`/admin/properties/${property.id}/pricing`}
-                >
-                  قیمت
-                </Link>
-                {/* <button className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-50" disabled={workingId === property.id} onClick={() => setStatus(property.id, "Approved")} type="button">تایید</button> */}
-                {/* <button className="rounded-lg border border-red-200 px-3 py-2 text-xs font-bold text-red-700 disabled:opacity-50" disabled={workingId === property.id} onClick={() => setStatus(property.id, "Rejected")} type="button">رد</button> */}
-                <button
-                  className="rounded-lg border border-amber-200 px-3 py-2 text-xs font-bold text-amber-700 disabled:opacity-50"
-                  disabled={workingId === property.id}
-                  onClick={() => setStatus(property.id, "Suspended")}
-                  type="button"
-                >
-                  تعلیق
-                </button>
-                {property.status === "Approved" && (
-                  <Link
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700"
-                    href={`/properties/${property.slug}`}
-                  >
-                    نمای عمومی
-                  </Link>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </AdminPage>
+    <AdminLayout>
+      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+        <KoochPageHeader
+          description="اقامتگاه‌ها، وضعیت بررسی، ظرفیت و قیمت‌گذاری را از همین صفحه مدیریت کنید."
+          eyebrow="پنل مدیریت"
+          title="مدیریت اقامتگاه‌ها"
+        />
+
+        {error && (
+          <KoochCard className="border-destructive text-destructive" variant="elevated">
+            <p className="text-sm font-semibold">{error}</p>
+          </KoochCard>
+        )}
+
+        {loading && (
+          <KoochCard variant="elevated">
+            <p className="text-sm text-muted-foreground">
+              در حال بارگذاری اقامتگاه‌ها...
+            </p>
+          </KoochCard>
+        )}
+
+        {!loading && properties.length === 0 && (
+          <KoochCard
+            className="border-dashed text-center"
+            padding="lg"
+            variant="elevated"
+          >
+            <p className="text-sm text-muted-foreground">
+              اقامتگاهی پیدا نشد.
+            </p>
+          </KoochCard>
+        )}
+
+        {!loading && properties.length > 0 && (
+          <KoochTable>
+            <KoochTableHeader>
+              <KoochTableRow>
+                <KoochTableHead className="w-14">ردیف</KoochTableHead>
+                <KoochTableHead>نام</KoochTableHead>
+                <KoochTableHead>شهر</KoochTableHead>
+                <KoochTableHead>مالک</KoochTableHead>
+                <KoochTableHead>وضعیت</KoochTableHead>
+                <KoochTableHead>تاریخ ایجاد</KoochTableHead>
+                <KoochTableHead className="min-w-[280px]">
+                  عملیات
+                </KoochTableHead>
+              </KoochTableRow>
+            </KoochTableHeader>
+            <KoochTableBody>
+              {properties.map((property, index) => (
+                <KoochTableRow key={property.id}>
+                  <KoochTableCell className="font-bold text-muted-foreground">
+                    {index + 1}
+                  </KoochTableCell>
+                  <KoochTableCell>
+                    <p className="font-black text-foreground">
+                      {property.name}
+                    </p>
+                    {property.englishName && (
+                      <p className="text-xs text-muted-foreground" dir="ltr">
+                        {property.englishName}
+                      </p>
+                    )}
+                  </KoochTableCell>
+                  <KoochTableCell>{property.city}</KoochTableCell>
+                  <KoochTableCell className="text-muted-foreground">
+                    {property.ownerName || property.ownerId}
+                    <br />
+                    <span className="text-xs text-muted-foreground">
+                      {property.ownerEmail}
+                    </span>
+                  </KoochTableCell>
+                  <KoochTableCell>
+                    <KoochSelect
+                      disabled={workingId === property.id}
+                      onChange={(event) =>
+                        setStatus(
+                          property.id,
+                          event.target.value as PropertyStatus,
+                        )
+                      }
+                      value={property.status}
+                    >
+                      {statuses.map((status) => (
+                        <option key={status} value={status}>
+                          {statusLabels[status]}
+                        </option>
+                      ))}
+                    </KoochSelect>
+                  </KoochTableCell>
+                  <KoochTableCell className="text-xs text-muted-foreground">
+                    {new Date(property.createdAtUtc).toLocaleDateString("fa-IR")}
+                  </KoochTableCell>
+                  <KoochTableCell>
+                    <div className="flex flex-wrap gap-2">
+                      <Link
+                        className={actionLinkClass}
+                        href={`/admin/properties/${property.id}`}
+                      >
+                        ویرایش
+                      </Link>
+                      <Link
+                        className={actionLinkClass}
+                        href={`/admin/properties/${property.id}/inventory`}
+                      >
+                        ظرفیت
+                      </Link>
+                      <Link
+                        className={actionLinkClass}
+                        href={`/admin/properties/${property.id}/pricing`}
+                      >
+                        قیمت
+                      </Link>
+                      <KoochButton
+                        disabled={workingId === property.id}
+                        onClick={() => setStatus(property.id, "Suspended")}
+                        size="sm"
+                        variant="outline"
+                      >
+                        تعلیق
+                      </KoochButton>
+                      {property.status === "Approved" && (
+                        <Link
+                          className={actionLinkClass}
+                          href={`/properties/${property.slug}`}
+                        >
+                          نمای عمومی
+                        </Link>
+                      )}
+                    </div>
+                  </KoochTableCell>
+                </KoochTableRow>
+              ))}
+            </KoochTableBody>
+          </KoochTable>
+        )}
+      </main>
+    </AdminLayout>
   );
 }

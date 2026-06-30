@@ -2,7 +2,14 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AdminPage } from "@/components/admin/AdminPage";
+import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
+import {
+  KoochInput,
+  KoochSelect,
+} from "@/components/KoochFormControls";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   AdminUserResponse,
   apiRequest,
@@ -138,178 +145,178 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <AdminPage title="مدیریت کاربران">
-      {error && (
-        <p className="mb-4 rounded-xl bg-red-50 p-4 text-sm font-bold text-red-700">
-          {error}
-        </p>
-      )}
-      <form
-        className="mb-6 grid gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
-        onSubmit={submit}
-      >
-        <h2 className="text-xl font-black text-slate-950">
-          {form.id ? "ویرایش کاربر" : "ایجاد کاربر"}
-        </h2>
-        <div className="grid gap-4 md:grid-cols-3">
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2.5"
-            onChange={(event) =>
-              setForm({ ...form, firstName: event.target.value })
-            }
-            placeholder="نام"
-            required
-            value={form.firstName}
-          />
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2.5"
-            onChange={(event) =>
-              setForm({ ...form, lastName: event.target.value })
-            }
-            placeholder="نام خانوادگی"
-            required
-            value={form.lastName}
-          />
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2.5 text-left"
-            dir="ltr"
-            onChange={(event) =>
-              setForm({ ...form, email: event.target.value })
-            }
-            placeholder="ایمیل"
-            required
-            type="email"
-            value={form.email}
-          />
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2.5 text-left"
-            dir="ltr"
-            onChange={(event) =>
-              setForm({ ...form, phoneNumber: event.target.value })
-            }
-            placeholder="شماره تماس"
-            value={form.phoneNumber}
-          />
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2.5 text-left"
-            dir="ltr"
-            minLength={8}
-            onChange={(event) =>
-              setForm({ ...form, password: event.target.value })
-            }
-            placeholder={form.id ? "رمز جدید اختیاری" : "رمز عبور"}
-            required={!form.id}
-            type="password"
-            value={form.password}
-          />
-          <select
-            className="rounded-xl border border-slate-300 px-3 py-2.5"
-            onChange={(event) =>
-              setForm({ ...form, role: event.target.value as UserRole })
-            }
-            value={form.role}
-          >
-            {roles.map((role) => (
-              <option key={role} value={role}>
-                {roleLabels[role]}
-              </option>
-            ))}
-          </select>
-          <select
-            className="rounded-xl border border-slate-300 px-3 py-2.5"
-            onChange={(event) =>
-              setForm({ ...form, parentUserId: event.target.value })
-            }
-            value={form.parentUserId}
-          >
-            <option value="">والد کاربر</option>
-            {users.map((user) => (
-              <option key={user.id} value={user.id}>
-                {user.fullName || user.email}
-              </option>
-            ))}
-          </select>
-          <input
-            className="rounded-xl border border-slate-300 px-3 py-2.5"
-            min="1"
-            onChange={(event) =>
-              setForm({ ...form, propertyId: event.target.value })
-            }
-            placeholder="شناسه اقامتگاه برای همکار مالک"
-            type="number"
-            value={form.propertyId}
-          />
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <button
-            className="rounded-xl bg-blue-600 px-5 py-3 font-black text-white hover:bg-blue-700 disabled:opacity-50"
-            disabled={saving}
-            type="submit"
-          >
-            {saving ? "در حال ذخیره..." : "ذخیره کاربر"}
-          </button>
-          {form.id && (
-            <button
-              className="rounded-xl border border-slate-300 px-5 py-3 font-bold text-slate-700"
-              onClick={() => setForm(emptyForm)}
-              type="button"
-            >
-              لغو ویرایش
-            </button>
-          )}
-        </div>
-      </form>
+    <AdminLayout>
+      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+        <KoochPageHeader
+          eyebrow="پنل مدیریت"
+          title="مدیریت کاربران"
+        />
 
-      {loading && (
-        <p className="rounded-xl border border-slate-200 bg-white p-5 text-slate-500">
-          در حال بارگذاری کاربران...
-        </p>
-      )}
-      <div className="grid gap-3">
-        {users.map((user) => (
-          <article
-            className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm"
-            key={user.id}
-          >
-            <div>
-              <p className="font-black text-slate-950">
-                #{user.id} · {user.fullName || user.email}
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                {user.email} · {roleLabels[user.role]} · والد:{" "}
-                {user.parentUserName ?? "-"}
-              </p>
-              <p className="mt-1 text-xs text-slate-400">
-                {user.isActive ? "فعال" : "غیرفعال"} ·{" "}
-                {new Date(user.createdAtUtc).toLocaleDateString("fa-IR")}
-              </p>
+        {error && (
+          <KoochCard className="border-destructive/30 bg-destructive/10 text-destructive" padding="sm">
+            <p className="text-sm font-bold">{error}</p>
+          </KoochCard>
+        )}
+
+        <KoochCard padding="none" variant="elevated">
+          <form className="grid gap-4 p-5" onSubmit={submit}>
+            <h2 className="text-xl font-black text-foreground">
+              {form.id ? "ویرایش کاربر" : "ایجاد کاربر"}
+            </h2>
+            <div className="grid gap-4 md:grid-cols-3">
+              <KoochInput
+                onChange={(event) =>
+                  setForm({ ...form, firstName: event.target.value })
+                }
+                placeholder="نام"
+                required
+                value={form.firstName}
+              />
+              <KoochInput
+                onChange={(event) =>
+                  setForm({ ...form, lastName: event.target.value })
+                }
+                placeholder="نام خانوادگی"
+                required
+                value={form.lastName}
+              />
+              <KoochInput
+                className="text-left"
+                dir="ltr"
+                onChange={(event) =>
+                  setForm({ ...form, email: event.target.value })
+                }
+                placeholder="ایمیل"
+                required
+                type="email"
+                value={form.email}
+              />
+              <KoochInput
+                className="text-left"
+                dir="ltr"
+                onChange={(event) =>
+                  setForm({ ...form, phoneNumber: event.target.value })
+                }
+                placeholder="شماره تماس"
+                value={form.phoneNumber}
+              />
+              <KoochInput
+                className="text-left"
+                dir="ltr"
+                minLength={8}
+                onChange={(event) =>
+                  setForm({ ...form, password: event.target.value })
+                }
+                placeholder={form.id ? "رمز جدید اختیاری" : "رمز عبور"}
+                required={!form.id}
+                type="password"
+                value={form.password}
+              />
+              <KoochSelect
+                onChange={(event) =>
+                  setForm({ ...form, role: event.target.value as UserRole })
+                }
+                value={form.role}
+              >
+                {roles.map((role) => (
+                  <option key={role} value={role}>
+                    {roleLabels[role]}
+                  </option>
+                ))}
+              </KoochSelect>
+              <KoochSelect
+                onChange={(event) =>
+                  setForm({ ...form, parentUserId: event.target.value })
+                }
+                value={form.parentUserId}
+              >
+                <option value="">والد کاربر</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.fullName || user.email}
+                  </option>
+                ))}
+              </KoochSelect>
+              <KoochInput
+                min="1"
+                onChange={(event) =>
+                  setForm({ ...form, propertyId: event.target.value })
+                }
+                placeholder="شناسه اقامتگاه برای همکار مالک"
+                type="number"
+                value={form.propertyId}
+              />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                className="rounded-lg border border-blue-600 px-3 py-2 text-xs font-bold text-blue-700"
-                onClick={() => edit(user)}
-                type="button"
-              >
-                ویرایش
-              </button>
-              <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-500"
-                disabled
-                type="button"
-              >
-                بازنشانی رمز عبور
-              </button>
-              <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-bold text-slate-700"
-                onClick={() => setActive(user, !user.isActive)}
-                type="button"
-              >
-                {user.isActive ? "غیرفعال" : "فعال"}
-              </button>
+            <div className="flex flex-wrap gap-3">
+              <KoochButton loading={saving} type="submit">
+                {saving ? "در حال ذخیره..." : "ذخیره کاربر"}
+              </KoochButton>
+              {form.id && (
+                <KoochButton
+                  onClick={() => setForm(emptyForm)}
+                  type="button"
+                  variant="outline"
+                >
+                  لغو ویرایش
+                </KoochButton>
+              )}
             </div>
-          </article>
-        ))}
-      </div>
-    </AdminPage>
+          </form>
+        </KoochCard>
+
+        {loading && (
+          <KoochCard>
+            <p className="text-sm font-semibold text-muted-foreground">
+              در حال بارگذاری کاربران...
+            </p>
+          </KoochCard>
+        )}
+        <div className="grid gap-3">
+          {users.map((user) => (
+            <KoochCard
+              className="flex flex-wrap items-center justify-between gap-4"
+              key={user.id}
+              padding="sm"
+              variant="elevated"
+            >
+              <div>
+                <p className="font-black text-foreground">
+                  #{user.id} · {user.fullName || user.email}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {user.email} · {roleLabels[user.role]} · والد:{" "}
+                  {user.parentUserName ?? "-"}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {user.isActive ? "فعال" : "غیرفعال"} ·{" "}
+                  {new Date(user.createdAtUtc).toLocaleDateString("fa-IR")}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <KoochButton
+                  onClick={() => edit(user)}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  ویرایش
+                </KoochButton>
+                <KoochButton disabled size="sm" type="button" variant="outline">
+                  بازنشانی رمز عبور
+                </KoochButton>
+                <KoochButton
+                  onClick={() => setActive(user, !user.isActive)}
+                  size="sm"
+                  type="button"
+                  variant="ghost"
+                >
+                  {user.isActive ? "غیرفعال" : "فعال"}
+                </KoochButton>
+              </div>
+            </KoochCard>
+          ))}
+        </div>
+      </main>
+    </AdminLayout>
   );
 }

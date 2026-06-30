@@ -3,7 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AdminPage } from "@/components/admin/AdminPage";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
+import {
+  KoochInput,
+  KoochSelect,
+  KoochTextarea,
+} from "@/components/KoochFormControls";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { apiRequest, getToken } from "@/lib/owner-api";
 import { SharedUploader } from "@/components/SharedUploader";
 
@@ -195,8 +203,6 @@ export default function AdminSiteSettingsPage() {
 
   function renderInput(setting: SiteSettingResponse) {
     const value = drafts[setting.key] ?? "";
-    const commonClass =
-      "w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold outline-none transition focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]";
 
     if (setting.type === "ImageUrl") {
       const isLogo = setting.key === "site.logoUrl";
@@ -266,8 +272,8 @@ export default function AdminSiteSettingsPage() {
 
     if (setting.type === "LongText") {
       return (
-        <textarea
-          className={`${commonClass} min-h-28 py-3 leading-7`}
+        <KoochTextarea
+          className="font-bold leading-7"
           onChange={(event) =>
             setDrafts((current) => ({
               ...current,
@@ -281,8 +287,7 @@ export default function AdminSiteSettingsPage() {
 
     if (setting.type === "Boolean") {
       return (
-        <select
-          className={`${commonClass} h-12`}
+        <KoochSelect
           onChange={(event) =>
             setDrafts((current) => ({
               ...current,
@@ -293,13 +298,13 @@ export default function AdminSiteSettingsPage() {
         >
           <option value="true">فعال</option>
           <option value="false">غیرفعال</option>
-        </select>
+        </KoochSelect>
       );
     }
 
     return (
-      <input
-        className={`${commonClass} h-12`}
+      <KoochInput
+        className="font-bold"
         dir="rtl"
         onChange={(event) =>
           setDrafts((current) => ({
@@ -340,31 +345,35 @@ export default function AdminSiteSettingsPage() {
   }
 
   return (
-    <AdminPage title="تنظیمات سایت">
-      <div className="grid gap-5">
+    <AdminLayout>
+      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+        <KoochPageHeader
+          description="تنظیمات عمومی، برند، تصاویر و مقادیر مرکزی سایت را مدیریت کنید."
+          eyebrow="پنل مدیریت"
+          title="تنظیمات سایت"
+        />
         {loading && (
-          <p className="rounded-lg border border-slate-200 bg-white p-5 text-slate-500">
-            در حال بارگذاری تنظیمات...
-          </p>
+          <KoochCard variant="elevated">
+            <p className="text-sm text-muted-foreground">
+              در حال بارگذاری تنظیمات...
+            </p>
+          </KoochCard>
         )}
         {Object.entries(groupedSettings).map(([group, items]) => (
-          <section
-            className="rounded-lg border border-slate-200 bg-white p-5 shadow-[var(--shadow-subtle)]"
-            key={group}
-          >
-            <h2 className="text-xl font-black text-slate-950">
+          <KoochCard key={group} variant="elevated">
+            <h2 className="text-xl font-black text-foreground">
               {groupLabels[group] ?? group}
             </h2>
             <div className="mt-5 grid gap-5">
               {items.map((setting) => (
                 <div
-                  className="grid gap-3 rounded-lg border border-slate-100 bg-slate-50 p-4"
+                  className="grid gap-3 rounded-lg border border-border bg-muted p-4"
                   key={setting.key}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <label
-                        className="font-black text-slate-900"
+                        className="font-black text-foreground"
                         htmlFor={setting.key}
                       >
                         {settingDisplayLabels[setting.key] ??
@@ -372,33 +381,34 @@ export default function AdminSiteSettingsPage() {
                           setting.label}
                       </label>
                       <p
-                        className="mt-1 text-xs font-semibold text-slate-400"
+                        className="mt-1 text-xs font-semibold text-muted-foreground"
                         dir="ltr"
                       >
                         {setting.key}
                       </p>
                       {setting.description && (
-                        <p className="mt-2 text-sm leading-6 text-slate-500">
+                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
                           {setting.description}
                         </p>
                       )}
                     </div>
-                    <button
-                      className="rounded-xl bg-[var(--theme-primary)] px-4 py-2 text-sm font-black text-white transition hover:bg-[var(--theme-primary-hover)] disabled:cursor-wait disabled:opacity-60"
+                    <KoochButton
                       disabled={savingKey === setting.key}
+                      loading={savingKey === setting.key}
                       onClick={() => save(setting)}
+                      size="sm"
                       type="button"
                     >
-                      {savingKey === setting.key ? "در حال ذخیره..." : "ذخیره"}
-                    </button>
+                      ذخیره
+                    </KoochButton>
                   </div>
                   <div id={setting.key}>{renderInput(setting)}</div>
                 </div>
               ))}
             </div>
-          </section>
+          </KoochCard>
         ))}
-      </div>
-    </AdminPage>
+      </main>
+    </AdminLayout>
   );
 }

@@ -2,24 +2,43 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AdminPage } from "@/components/admin/AdminPage";
+import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { PropertyWizard } from "@/components/owner/PropertyWizard";
+
+const linkButtonClass =
+  "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 
 export default function AdminPropertyEditPage() {
   const params = useParams<{ id: string }>();
   const propertyId = Number(params.id);
 
   return (
-    <AdminPage title="ویرایش اقامتگاه">
-      <div className="mb-4 flex flex-wrap gap-2">
-        <Link className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:border-blue-300" href="/admin/properties">
-          بازگشت به مدیریت اقامتگاه‌ها
-        </Link>
-        <Link className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-bold text-white hover:bg-blue-700" href={`/admin/properties/${propertyId}/rooms`}>
-          مدیریت اتاق‌ها
-        </Link>
-      </div>
-      <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
-    </AdminPage>
+    <AdminLayout>
+      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+        <KoochPageHeader
+          actions={
+            <>
+              <Link
+                className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+                href="/admin/properties"
+              >
+                بازگشت به مدیریت اقامتگاه‌ها
+              </Link>
+              <Link
+                className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
+                href={`/admin/properties/${propertyId}/rooms`}
+              >
+                مدیریت اتاق‌ها
+              </Link>
+            </>
+          }
+          description="ویرایش اطلاعات اقامتگاه در همان جریان مرحله‌ای مالک."
+          eyebrow="پنل مدیریت"
+          title="ویرایش اقامتگاه"
+        />
+        <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
+      </main>
+    </AdminLayout>
   );
 }

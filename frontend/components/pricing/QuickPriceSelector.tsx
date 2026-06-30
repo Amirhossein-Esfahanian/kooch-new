@@ -20,9 +20,9 @@ export function QuickPriceSelector({
   const visiblePrices = prices.slice(0, maxItems);
 
   return (
-    <div className={`grid gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 ${className}`} dir="rtl">
+    <div className={`grid gap-2 rounded-xl border border-border bg-muted p-3 ${className}`} dir="rtl">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-black text-[var(--theme-muted-text)]">
+        <span className="text-xs font-black text-muted-foreground">
           قیمت‌های اخیر این اقامتگاه
         </span>
       </div>
@@ -31,7 +31,7 @@ export function QuickPriceSelector({
         <div className="flex flex-wrap gap-2">
           {visiblePrices.map((price) => (
             <button
-              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-black text-slate-700 transition hover:border-[var(--theme-primary-border)] hover:bg-[var(--theme-primary-soft)] hover:text-[var(--theme-primary-text)]"
+              className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-black text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
               key={price}
               onClick={() => onSelect(price)}
               type="button"
@@ -41,7 +41,7 @@ export function QuickPriceSelector({
           ))}
         </div>
       ) : (
-        <p className="text-xs font-semibold text-slate-400">
+        <p className="text-xs font-semibold text-muted-foreground">
           هنوز قیمت سریعی برای این اقامتگاه ثبت نشده است.
         </p>
       )}

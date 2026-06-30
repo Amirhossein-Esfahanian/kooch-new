@@ -4,6 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
+import { KoochCard } from "@/components/KoochCard";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { ownerPropertyKey } from "@/lib/owner-api";
 
 type DashboardMenuItem = {
@@ -334,23 +336,21 @@ export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
   return (
     <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:p-6">
       <div className="grid min-w-0 gap-5">
-        <HeroHeader darkMode={darkMode} />
+        <HeroHeader />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {stats.map((stat) => (
-            <DashboardStatCard darkMode={darkMode} key={stat.title} {...stat} />
+            <DashboardStatCard key={stat.title} {...stat} />
           ))}
         </section>
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <DashboardSectionCard
-            darkMode={darkMode}
             title="نمودار رزروها"
             subtitle="placeholder ساده بدون کتابخانه نمودار"
           >
             <SimpleChart darkMode={darkMode} />
           </DashboardSectionCard>
           <DashboardSectionCard
-            darkMode={darkMode}
             title="وضعیت اقامتگاه‌ها"
             subtitle="نمای خلاصه mock data"
           >
@@ -359,28 +359,25 @@ export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
         </section>
 
         <DashboardSectionCard
-          darkMode={darkMode}
           title="رزروهای اخیر"
           subtitle="آخرین درخواست‌های ثبت‌شده در کوچ"
         >
-          <RecentReservations darkMode={darkMode} />
+          <RecentReservations />
         </DashboardSectionCard>
       </div>
 
       <aside className="grid h-fit gap-5 lg:sticky lg:top-6">
         <DashboardSectionCard
-          darkMode={darkMode}
           title="فعالیت‌های اخیر"
           subtitle="رویدادهای مهم پنل"
         >
-          <ActivityList darkMode={darkMode} />
+          <ActivityList />
         </DashboardSectionCard>
         <DashboardSectionCard
-          darkMode={darkMode}
           title="پیام‌ها / اعلان‌ها"
           subtitle="placeholder ریل کناری"
         >
-          <MessageRail darkMode={darkMode} />
+          <MessageRail />
         </DashboardSectionCard>
       </aside>
     </main>
@@ -746,38 +743,23 @@ function DashboardHeader({
   );
 }
 
-function HeroHeader({ darkMode }: { darkMode: boolean }) {
+function HeroHeader() {
   return (
-    <section
-      className={`rounded-lg border p-5 shadow-sm ${surfaceClass(darkMode)}`}
-    >
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div>
-          <p className="text-sm font-black text-[var(--theme-primary-text)]">
-            پروتوتایپ بصری
-          </p>
-          <h1 className="mt-2 text-3xl font-black tracking-tight lg:text-4xl">
-            داشبورد مدیریتی کوچ
-          </h1>
-          <p
-            className={`mt-3 max-w-3xl text-sm leading-7 ${mutedText(darkMode)}`}
-          >
-            یک نمونه حرفه‌ای و Fuse-inspired برای ارزیابی ساختار پنل؛ بدون اتصال
-            به بک‌اند و بدون تغییر در صفحات فعلی.
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-2">
+    <KoochPageHeader
+      actions={
+        <>
           <span className="rounded-full bg-[var(--theme-primary-soft)] px-4 py-2 text-sm font-black text-[var(--theme-primary-text)]">
             امروز: ۶ تیر ۱۴۰۵
           </span>
-          <span
-            className={`rounded-full px-4 py-2 text-sm font-black ${darkMode ? "bg-white/5 text-slate-200" : "bg-slate-100 text-slate-700"}`}
-          >
+          <span className="rounded-full bg-muted px-4 py-2 text-sm font-black text-muted-foreground">
             Mock Data
           </span>
-        </div>
-      </div>
-    </section>
+        </>
+      }
+      description="یک نمونه حرفه‌ای و Fuse-inspired برای ارزیابی ساختار پنل؛ بدون اتصال به بک‌اند و بدون تغییر در صفحات فعلی."
+      eyebrow="پروتوتایپ بصری"
+      title="داشبورد مدیریتی کوچ"
+    />
   );
 }
 
@@ -787,14 +769,12 @@ function DashboardStatCard({
   detail,
   icon,
   tone,
-  darkMode,
 }: {
   title: string;
   value: string;
   detail: string;
   icon: string;
   tone: string;
-  darkMode: boolean;
 }) {
   const toneClass =
     tone === "success"
@@ -806,13 +786,14 @@ function DashboardStatCard({
           : "bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]";
 
   return (
-    <article
-      className={`rounded-lg border p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-xl ${surfaceClass(darkMode)}`}
+    <KoochCard
+      className="transition hover:-translate-y-1 hover:shadow-xl"
+      variant="elevated"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className={`text-sm font-bold ${mutedText(darkMode)}`}>{title}</p>
-          <p className="mt-3 text-3xl font-black">{value}</p>
+          <p className="text-sm font-bold text-muted-foreground">{title}</p>
+          <p className="mt-3 text-3xl font-black text-foreground">{value}</p>
         </div>
         <span
           className={`grid h-12 w-12 place-items-center rounded-xl text-lg ${toneClass}`}
@@ -820,12 +801,10 @@ function DashboardStatCard({
           {icon}
         </span>
       </div>
-      <p
-        className={`mt-5 rounded-xl px-3 py-2 text-xs font-bold ${darkMode ? "bg-white/5 text-slate-400" : "bg-slate-50 text-slate-500"}`}
-      >
+      <p className="mt-5 rounded-xl bg-muted px-3 py-2 text-xs font-bold text-muted-foreground">
         {detail}
       </p>
-    </article>
+    </KoochCard>
   );
 }
 
@@ -833,35 +812,29 @@ function DashboardSectionCard({
   title,
   subtitle,
   children,
-  darkMode,
 }: {
   title: string;
   subtitle?: string;
   children: ReactNode;
-  darkMode: boolean;
 }) {
   return (
-    <section
-      className={`rounded-lg border p-5 shadow-sm ${surfaceClass(darkMode)}`}
-    >
+    <KoochCard variant="elevated">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black">{title}</h2>
+          <h2 className="text-xl font-black text-foreground">{title}</h2>
           {subtitle && (
-            <p className={`mt-1 text-sm ${mutedText(darkMode)}`}>{subtitle}</p>
+            <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           )}
         </div>
       </div>
       <div className="mt-5">{children}</div>
-    </section>
+    </KoochCard>
   );
 }
 
 function SimpleChart({ darkMode }: { darkMode: boolean }) {
   return (
-    <div
-      className={`h-72 rounded-lg p-4 ${darkMode ? "bg-[#0b0f17]" : "bg-slate-50"}`}
-    >
+    <div className="h-72 rounded-lg bg-muted p-4">
       <div className="flex h-full items-end gap-2">
         {chartBars.map((height, index) => (
           <div className="flex flex-1 flex-col items-center gap-2" key={index}>
@@ -895,7 +868,7 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
             <span className={mutedText(darkMode)}>{value}</span>
           </div>
           <div
-            className={`h-3 overflow-hidden rounded-full ${darkMode ? "bg-white/10" : "bg-slate-100"}`}
+            className="h-3 overflow-hidden rounded-full bg-muted"
           >
             <div
               className={`h-full rounded-full ${index === 0 ? "bg-[var(--theme-success)]" : index === 1 ? "bg-[var(--theme-warning)]" : "bg-[var(--theme-danger)]"}`}
@@ -904,13 +877,11 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
           </div>
         </div>
       ))}
-      <div
-        className={`rounded-lg border border-dashed p-5 text-center ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-      >
+      <div className="rounded-lg border border-dashed border-border bg-muted p-5 text-center">
         <p className="text-3xl font-black text-[var(--theme-primary-text)]">
           ۱۴۲
         </p>
-        <p className={`mt-1 text-sm ${mutedText(darkMode)}`}>
+        <p className="mt-1 text-sm text-muted-foreground">
           کل اقامتگاه‌های ثبت‌شده
         </p>
       </div>
@@ -918,42 +889,38 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
   );
 }
 
-function RecentReservations({ darkMode }: { darkMode: boolean }) {
+function RecentReservations() {
   return (
     <div className="overflow-hidden rounded-lg">
       <div className="grid gap-3">
         {recentReservations.map((reservation) => (
-          <div
-            className={`grid gap-3 rounded-lg border p-4 transition hover:border-[var(--theme-primary)] md:grid-cols-[1fr_1fr_120px_120px] ${
-              darkMode
-                ? "border-white/10 bg-white/5"
-                : "border-slate-200 bg-slate-50"
-            }`}
+          <KoochCard
+            className="grid gap-3 transition hover:border-primary md:grid-cols-[1fr_1fr_120px_120px]"
             key={`${reservation.guest}-${reservation.date}`}
+            padding="sm"
+            variant="muted"
           >
             <div>
-              <p className="font-black">{reservation.guest}</p>
-              <p className={`mt-1 text-xs ${mutedText(darkMode)}`}>
+              <p className="font-black text-foreground">{reservation.guest}</p>
+              <p className="mt-1 text-xs text-muted-foreground">
                 {reservation.date}
               </p>
             </div>
-            <p className="font-bold">{reservation.property}</p>
+            <p className="font-bold text-foreground">{reservation.property}</p>
             <p className="font-black text-[var(--theme-primary-text)]">
               {reservation.amount}
             </p>
-            <span
-              className={`w-fit rounded-full px-3 py-1 text-xs font-black ${darkMode ? "bg-white/10" : "bg-white"}`}
-            >
+            <span className="w-fit rounded-full bg-card px-3 py-1 text-xs font-black text-card-foreground">
               {reservation.status}
             </span>
-          </div>
+          </KoochCard>
         ))}
       </div>
     </div>
   );
 }
 
-function ActivityList({ darkMode }: { darkMode: boolean }) {
+function ActivityList() {
   return (
     <div className="grid gap-3">
       {activities.map((activity, index) => (
@@ -961,9 +928,7 @@ function ActivityList({ darkMode }: { darkMode: boolean }) {
           <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--theme-primary-soft)] text-xs font-black text-[var(--theme-primary-text)]">
             {index + 1}
           </span>
-          <p
-            className={`rounded-xl border p-3 text-sm leading-6 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          >
+          <p className="rounded-xl border border-border bg-muted p-3 text-sm leading-6 text-foreground">
             {activity}
           </p>
         </div>
@@ -972,24 +937,21 @@ function ActivityList({ darkMode }: { darkMode: boolean }) {
   );
 }
 
-function MessageRail({ darkMode }: { darkMode: boolean }) {
+function MessageRail() {
   return (
     <div className="grid gap-3">
       {messages.map((message) => (
-        <div
-          className={`rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          key={message.name}
-        >
+        <KoochCard key={message.name} padding="sm" variant="muted">
           <div className="flex items-center justify-between gap-3">
-            <p className="font-black">{message.name}</p>
+            <p className="font-black text-foreground">{message.name}</p>
             {message.unread && (
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />
             )}
           </div>
-          <p className={`mt-2 text-sm leading-6 ${mutedText(darkMode)}`}>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {message.text}
           </p>
-        </div>
+        </KoochCard>
       ))}
     </div>
   );

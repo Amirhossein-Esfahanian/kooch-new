@@ -11,7 +11,13 @@ import {
   RoomTypeResponse,
 } from "@/lib/owner-api";
 import { KoochButton } from "@/components/KoochButton";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochCard } from "@/components/KoochCard";
+import { KoochDialog } from "@/components/KoochDialog";
+import {
+  KoochInput,
+  KoochSelect,
+  KoochTextarea,
+} from "@/components/KoochFormControls";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 interface RoomTypeDraft {
@@ -43,9 +49,6 @@ const wizardSteps = [
   "تخت‌ها / چیدمان",
   "تصاویر",
 ] as const;
-
-const inputClass =
-  "min-h-11 w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2.5 text-sm text-[var(--theme-text)] outline-none transition placeholder:text-[var(--theme-muted-text)] focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-950/60";
 
 const emptyRoomType: RoomTypeDraft = {
   name: "",
@@ -115,7 +118,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [wizardOpen, setWizardOpen] = useState(false);
-  const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<WizardMode>("create");
   const [activeStep, setActiveStep] = useState(0);
 
@@ -179,23 +181,8 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setWizardOpen(true);
   }
 
-  function openTestDialog(roomType: RoomTypeResponse) {
-    setRoomTypeDraft(roomTypeToDraft(roomType));
-    setWizardMode("edit");
-    setActiveStep(0);
-    setError("");
-    setTestDialogOpen(true);
-  }
-
   function closeWizard() {
     setWizardOpen(false);
-    setRoomTypeDraft(emptyRoomType);
-    setActiveStep(0);
-    setError("");
-  }
-
-  function closeTestDialog() {
-    setTestDialogOpen(false);
     setRoomTypeDraft(emptyRoomType);
     setActiveStep(0);
     setError("");
@@ -338,36 +325,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     }
   }
 
-  async function saveTestDialog() {
-    const validationError = validateStep(activeStep, true);
-    if (validationError) {
-      toast.error(validationError);
-      return;
-    }
-
-    setSaving(true);
-    setError("");
-    try {
-      const endpoint = roomTypeDraft.id
-        ? `/owner/room-types/${roomTypeDraft.id}`
-        : `/owner/properties/${propertyId}/room-types`;
-      const saved = await apiRequest<RoomTypeResponse>(endpoint, {
-        method: roomTypeDraft.id ? "PUT" : "POST",
-        body: JSON.stringify(buildPayload(roomTypeDraft.id ? roomTypeDraft.isActive : false)),
-      });
-      setRoomTypeDraft(roomTypeToDraft(saved));
-      await Promise.all([loadRoomTypes(), loadImages()]);
-      toast.success("ذخیره آزمایشی انجام شد");
-      closeTestDialog();
-    } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "ذخیره آزمایشی انجام نشد.";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setSaving(false);
-    }
-  }
-
   async function deleteRoomType(roomType: RoomTypeResponse) {
     if (!window.confirm(`آیا از حذف اتاق «${roomType.name}» مطمئن هستید؟`)) return;
 
@@ -409,28 +366,28 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-bold">
-              نام اتاق / عنوان <span className="text-red-600">*</span>
-              <input className={inputClass} onChange={(event) => patchDraft({ name: event.target.value })} value={roomTypeDraft.name} />
+              نام اتاق / عنوان <span className="text-destructive">*</span>
+              <KoochInput onChange={(event) => patchDraft({ name: event.target.value })} value={roomTypeDraft.name} />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               نام انگلیسی
-              <input className={inputClass} dir="ltr" onChange={(event) => patchDraft({ englishName: event.target.value })} value={roomTypeDraft.englishName} />
+              <KoochInput dir="ltr" onChange={(event) => patchDraft({ englishName: event.target.value })} value={roomTypeDraft.englishName} />
             </label>
             <label className="grid gap-1 text-sm font-bold md:col-span-2">
               توضیح
-              <textarea className={inputClass} onChange={(event) => patchDraft({ description: event.target.value })} rows={4} value={roomTypeDraft.description} />
+              <KoochTextarea onChange={(event) => patchDraft({ description: event.target.value })} rows={4} value={roomTypeDraft.description} />
             </label>
             <label className="grid gap-1 text-sm font-bold">
-              تعداد موجودی / TotalInventory <span className="text-red-600">*</span>
-              <input className={inputClass} min="1" onChange={(event) => patchDraft({ totalInventory: Number(event.target.value) })} type="number" value={roomTypeDraft.totalInventory} />
+              تعداد موجودی / TotalInventory <span className="text-destructive">*</span>
+              <KoochInput min="1" onChange={(event) => patchDraft({ totalInventory: Number(event.target.value) })} type="number" value={roomTypeDraft.totalInventory} />
             </label>
             <label className="grid gap-1 text-sm font-bold">
-              ظرفیت بزرگسال <span className="text-red-600">*</span>
-              <input className={inputClass} min="1" onChange={(event) => patchDraft({ maxAdults: Number(event.target.value) })} type="number" value={roomTypeDraft.maxAdults} />
+              ظرفیت بزرگسال <span className="text-destructive">*</span>
+              <KoochInput min="1" onChange={(event) => patchDraft({ maxAdults: Number(event.target.value) })} type="number" value={roomTypeDraft.maxAdults} />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               ظرفیت کودک
-              <input className={inputClass} min="0" onChange={(event) => patchDraft({ maxChildren: Number(event.target.value) })} type="number" value={roomTypeDraft.maxChildren} />
+              <KoochInput min="0" onChange={(event) => patchDraft({ maxChildren: Number(event.target.value) })} type="number" value={roomTypeDraft.maxChildren} />
             </label>
           </div>
         </div>
@@ -447,28 +404,27 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-bold">
               طبقه
-              <input className={inputClass} onChange={(event) => patchDraft({ floorNumber: event.target.value })} type="number" value={roomTypeDraft.floorNumber} />
+              <KoochInput onChange={(event) => patchDraft({ floorNumber: event.target.value })} type="number" value={roomTypeDraft.floorNumber} />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               تعداد پله
-              <input className={inputClass} min="0" onChange={(event) => patchDraft({ stairCount: event.target.value })} type="number" value={roomTypeDraft.stairCount} />
+              <KoochInput min="0" onChange={(event) => patchDraft({ stairCount: event.target.value })} type="number" value={roomTypeDraft.stairCount} />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               پنجره دارد
-              <select
-                className={inputClass}
+              <KoochSelect
                 onChange={(event) => patchDraft({ hasWindow: event.target.value === "" ? null : event.target.value === "true" })}
                 value={roomTypeDraft.hasWindow === null ? "" : String(roomTypeDraft.hasWindow)}
               >
                 <option value="">ثبت نشده</option>
                 <option value="true">دارد</option>
                 <option value="false">ندارد</option>
-              </select>
+              </KoochSelect>
             </label>
             <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold">
               <input
                 checked={roomTypeDraft.allowExtraGuest}
-                className="h-4 w-4 accent-blue-600"
+                className="h-4 w-4 accent-primary"
                 onChange={(event) => patchDraft({ allowExtraGuest: event.target.checked, maxExtraGuests: event.target.checked ? roomTypeDraft.maxExtraGuests : 0 })}
                 type="checkbox"
               />
@@ -476,13 +432,13 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             </label>
             {roomTypeDraft.allowExtraGuest && (
               <label className="grid gap-1 text-sm font-bold">
-                حداکثر تعداد نفر اضافه <span className="text-red-600">*</span>
-                <input className={inputClass} min="1" onChange={(event) => patchDraft({ maxExtraGuests: Number(event.target.value) })} type="number" value={roomTypeDraft.maxExtraGuests} />
+                حداکثر تعداد نفر اضافه <span className="text-destructive">*</span>
+                <KoochInput min="1" onChange={(event) => patchDraft({ maxExtraGuests: Number(event.target.value) })} type="number" value={roomTypeDraft.maxExtraGuests} />
               </label>
             )}
             <label className="grid gap-1 text-sm font-bold md:col-span-2">
               یادداشت‌ها
-              <textarea className={inputClass} onChange={(event) => patchDraft({ notes: event.target.value })} rows={4} value={roomTypeDraft.notes} />
+              <KoochTextarea onChange={(event) => patchDraft({ notes: event.target.value })} rows={4} value={roomTypeDraft.notes} />
             </label>
           </div>
         </div>
@@ -499,7 +455,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold" key={amenity.id}>
                 <input
                   checked={roomTypeDraft.amenityIds.includes(amenity.id)}
-                  className="h-4 w-4 accent-blue-600"
+                  className="h-4 w-4 accent-primary"
                   onChange={(event) => toggleAmenity(amenity, event.target.checked)}
                   type="checkbox"
                 />
@@ -519,34 +475,35 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               <h3 className="font-black">تخت‌ها / چیدمان</h3>
               <p className="mt-1 text-sm text-[var(--theme-muted-text)]">اگر چیدمان تخت مشخص است، اینجا اضافه کنید.</p>
             </div>
-            <button
-              className="min-h-11 rounded-xl border border-[var(--theme-border)] px-3 py-2 text-sm font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)]"
+            <KoochButton
               onClick={() => patchDraft({ bedConfigurations: [...roomTypeDraft.bedConfigurations, { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 }] })}
+              variant="outline"
               type="button"
             >
               افزودن تخت
-            </button>
+            </KoochButton>
           </div>
           {roomTypeDraft.bedConfigurations.length === 0 && (
             <p className="rounded-xl border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-5 text-center text-sm text-[var(--theme-muted-text)]">هنوز تختی اضافه نشده است.</p>
           )}
           {roomTypeDraft.bedConfigurations.map((bed, index) => (
             <div className="grid gap-2 md:grid-cols-[1fr_120px_auto]" key={index}>
-              <select className={inputClass} onChange={(event) => updateBed(index, { bedTypeId: Number(event.target.value) })} value={bed.bedTypeId}>
+              <KoochSelect onChange={(event) => updateBed(index, { bedTypeId: Number(event.target.value) })} value={bed.bedTypeId}>
                 {bedTypes.map((bedType) => (
                   <option key={bedType.id} value={bedType.id}>
                     {bedTypeLabel(bedType.slug, bedType.name)}
                   </option>
                 ))}
-              </select>
-              <input className={inputClass} min="1" onChange={(event) => updateBed(index, { quantity: Number(event.target.value) })} type="number" value={bed.quantity} />
-              <button
-                className="text-sm font-bold text-red-700"
+              </KoochSelect>
+              <KoochInput min="1" onChange={(event) => updateBed(index, { quantity: Number(event.target.value) })} type="number" value={bed.quantity} />
+              <KoochButton
                 onClick={() => patchDraft({ bedConfigurations: roomTypeDraft.bedConfigurations.filter((_, candidate) => candidate !== index) })}
+                size="sm"
                 type="button"
+                variant="destructive"
               >
                 حذف
-              </button>
+              </KoochButton>
             </div>
           ))}
         </div>
@@ -577,29 +534,31 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   return (
     <div className="grid gap-5">
       {error && (
-        <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
+        <KoochCard className="border-destructive text-destructive" variant="elevated">
+          <p className="text-sm font-semibold">
           {error}
-        </p>
+          </p>
+        </KoochCard>
       )}
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+      <KoochCard variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black">مدیریت اتاق‌ها</h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <h2 className="text-xl font-black text-foreground">مدیریت اتاق‌ها</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               اتاق‌ها را از طریق ویزارد مرحله‌ای ایجاد یا ویرایش کنید. اتاق‌های پیش‌نویس فعال و قابل رزرو نیستند.
             </p>
           </div>
-          <button className="rounded-xl bg-blue-600 px-5 py-3 text-sm font-black text-white hover:bg-blue-700" onClick={openCreateWizard} type="button">
+          <KoochButton onClick={openCreateWizard} type="button">
             افزودن اتاق
-          </button>
+          </KoochButton>
         </div>
-      </section>
+      </KoochCard>
 
-      <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-xl font-black">اتاق‌های ثبت‌شده</h2>
+      <KoochCard variant="elevated">
+        <h2 className="text-xl font-black text-foreground">اتاق‌های ثبت‌شده</h2>
         {loading && (
-          <p className="mt-5 rounded-xl bg-slate-50 p-4 text-sm text-slate-500">
+          <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">
             در حال بارگذاری اتاق‌ها...
           </p>
         )}
@@ -613,39 +572,39 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             ].filter(Boolean);
 
             return (
-              <article className="rounded-2xl border border-slate-200 p-4" key={roomType.id}>
+              <KoochCard key={roomType.id} padding="sm">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-black">{roomType.name}</h3>
+                      <h3 className="text-lg font-black text-foreground">{roomType.name}</h3>
                       {!roomType.isActive && (
-                        <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-black text-amber-700">
+                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-black text-muted-foreground">
                           پیش‌نویس
                         </span>
                       )}
                     </div>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <p className="mt-1 text-sm text-muted-foreground">
                       {roomType.maxAdults + roomType.maxChildren} نفر ·{" "}
                       {roomType.totalInventory === 1 ? "یک واحد اختصاصی" : `موجودی کل ${roomType.totalInventory}`}
                     </p>
                     {roomType.allowExtraGuest && (
-                      <p className="mt-1 text-sm font-semibold text-slate-600">
+                      <p className="mt-1 text-sm font-semibold text-muted-foreground">
                         نفر اضافه مجاز: {roomType.maxExtraGuests}
                       </p>
                     )}
                     {roomType.bedConfigurations.length > 0 && (
-                      <p className="mt-2 text-sm text-slate-600">
+                      <p className="mt-2 text-sm text-muted-foreground">
                         {roomType.bedConfigurations
                           .map((bed) => `${bed.quantity} × ${bedTypeLabel(bed.bedTypeSlug, bed.bedTypeName)}`)
                           .join("، ")}
                       </p>
                     )}
                     {details.length > 0 && (
-                      <p className="mt-2 text-sm font-semibold text-slate-700">
+                      <p className="mt-2 text-sm font-semibold text-muted-foreground">
                         {details.join(" · ")}
                       </p>
                     )}
-                    {roomType.notes && <p className="mt-2 text-sm text-slate-500">{roomType.notes}</p>}
+                    {roomType.notes && <p className="mt-2 text-sm text-muted-foreground">{roomType.notes}</p>}
                     {images.some((image) => image.roomTypeId === roomType.id) && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {images
@@ -663,36 +622,31 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <button className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-sm font-bold text-[var(--theme-text)] transition hover:bg-[var(--theme-surface-muted)]" onClick={() => editRoomType(roomType)} type="button">
+                    <KoochButton onClick={() => editRoomType(roomType)} size="sm" type="button" variant="outline">
                       ویرایش اتاق
-                    </button>
-                    <KoochButton
-                      onClick={() => openTestDialog(roomType)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      تست دیالوگ جدید
                     </KoochButton>
-                    <button
-                      className="rounded-xl border border-red-300 px-3 py-2 text-sm font-bold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60 dark:border-red-900/70 dark:text-red-300 dark:hover:bg-red-950/30"
+                    <KoochButton
                       disabled={deletingRoomTypeId === roomType.id}
+                      loading={deletingRoomTypeId === roomType.id}
                       onClick={() => deleteRoomType(roomType)}
+                      size="sm"
                       type="button"
+                      variant="destructive"
                     >
-                      {deletingRoomTypeId === roomType.id ? "در حال حذف..." : "حذف"}
-                    </button>
+                      حذف
+                    </KoochButton>
                   </div>
                 </div>
-              </article>
+              </KoochCard>
             );
           })}
         </div>
         {!loading && roomTypes.length === 0 && (
-          <p className="mt-5 rounded-xl border border-dashed border-slate-300 p-6 text-center text-slate-500">
+          <p className="mt-5 rounded-xl border border-dashed border-border p-6 text-center text-muted-foreground">
             هنوز اتاقی ثبت نشده است.
           </p>
         )}
-      </section>
+      </KoochCard>
 
       <KoochDialog
         closeDisabled={saving}
@@ -703,24 +657,39 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         }
         footer={
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
-            <KoochDialogButton
+            <KoochButton
               disabled={saving || activeStep === 0}
               onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
+              variant="outline"
             >
               قبلی
-            </KoochDialogButton>
+            </KoochButton>
             <div className="flex flex-wrap gap-3">
-              <KoochDialogButton disabled={saving} onClick={closeWizard}>
+              <KoochButton
+                disabled={saving}
+                onClick={closeWizard}
+                variant="outline"
+              >
                 لغو
-              </KoochDialogButton>
+              </KoochButton>
               {activeStep < wizardSteps.length - 1 ? (
-                <KoochDialogButton disabled={saving} onClick={goNext} variant="primary">
+                <KoochButton
+                  disabled={saving}
+                  loading={saving}
+                  onClick={goNext}
+                  variant="primary"
+                >
                   {saving ? "در حال ذخیره..." : activeStep === 0 ? "ذخیره و بعدی" : "بعدی"}
-                </KoochDialogButton>
+                </KoochButton>
               ) : (
-                <KoochDialogButton disabled={saving} onClick={activateRoom} variant="primary">
+                <KoochButton
+                  disabled={saving}
+                  loading={saving}
+                  onClick={activateRoom}
+                  variant="primary"
+                >
                   {saving ? "در حال فعال‌سازی..." : "فعال‌سازی اتاق"}
-                </KoochDialogButton>
+                </KoochButton>
               )}
             </div>
           </div>
@@ -732,86 +701,33 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         size="xl"
         title={wizardMode === "create" ? "افزودن اتاق" : "ویرایش اتاق"}
       >
-        <div className="mb-5 border-b border-[var(--theme-border)] pb-4">
+        <div className="mb-5 border-b border-border pb-4">
           <div className="grid gap-2 md:grid-cols-5">
             {wizardSteps.map((step, index) => (
-              <button
-                className={`min-h-10 rounded-md border px-3 py-2 text-xs font-semibold transition ${
+              <KoochButton
+                className={`justify-start text-right ${
                   index === activeStep
-                    ? "border-blue-600 bg-blue-600 text-white shadow-md"
+                    ? "border-primary bg-primary text-primary-foreground shadow-md"
                     : index < activeStep
-                      ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900/60 dark:bg-blue-950/40 dark:text-blue-200"
-                      : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]"
+                      ? "border-primary bg-muted text-foreground"
+                      : "border-border bg-muted text-muted-foreground hover:text-foreground"
                 }`}
                 disabled={saving || (index > 0 && !roomTypeDraft.id)}
                 key={step}
                 onClick={() => setActiveStep(index)}
+                size="sm"
                 type="button"
+                variant="outline"
               >
-                <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-white/20 text-xs">{index + 1}</span>
+                <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-background/20 text-xs">{index + 1}</span>
                 {step}
-              </button>
+              </KoochButton>
             ))}
           </div>
         </div>
 
         {error && (
-          <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200">
-            {error}
-          </p>
-        )}
-        {renderStep()}
-      </KoochDialog>
-      <KoochDialog
-        description="این مسیر فقط برای تست بصری و تجربه کاربری است؛ مودال قبلی بدون تغییر باقی مانده است."
-        footer={
-          <>
-            <KoochButton
-              disabled={saving}
-              onClick={closeTestDialog}
-              variant="outline"
-            >
-              لغو
-            </KoochButton>
-            <KoochButton
-              disabled={saving}
-              loading={saving}
-              onClick={saveTestDialog}
-              variant="primary"
-            >
-              ذخیره آزمایشی
-            </KoochButton>
-          </>
-        }
-        onOpenChange={(open) => {
-          if (!open && !saving) closeTestDialog();
-        }}
-        open={testDialogOpen}
-        size="lg"
-        title="ویرایش اتاق در دیالوگ جدید"
-      >
-        <div className="mb-5 border-b border-[var(--theme-border)] pb-4">
-          <div className="grid gap-2 md:grid-cols-5">
-            {wizardSteps.map((step, index) => (
-              <button
-                className={`min-h-10 rounded-md border px-3 py-2 text-xs font-semibold transition ${
-                  index === activeStep
-                    ? "border-blue-600 bg-blue-600 text-white shadow-md"
-                    : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)] hover:text-[var(--theme-text)]"
-                }`}
-                disabled={saving || (index > 0 && !roomTypeDraft.id)}
-                key={step}
-                onClick={() => setActiveStep(index)}
-                type="button"
-              >
-                {step}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {error && (
-          <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 dark:bg-red-950/30 dark:text-red-200">
+          <p className="mb-4 rounded-xl border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
             {error}
           </p>
         )}

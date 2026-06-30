@@ -113,7 +113,7 @@ export function PricingSettingsWarning({
 
   return (
     <div
-      className={`rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900 ${className}`}
+      className={`rounded-xl border border-border bg-muted p-4 text-foreground ${className}`}
       dir="rtl"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -124,7 +124,7 @@ export function PricingSettingsWarning({
           </p>
         </div>
         <Link
-          className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-black text-white hover:bg-amber-700"
+          className="inline-flex min-h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 py-2 text-sm font-black text-primary-foreground transition hover:bg-[var(--primary-hover)]"
           href={editHref}
         >
           تکمیل تنظیمات مالی

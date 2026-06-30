@@ -18,6 +18,8 @@ import {
   CalendarRangeGridCellState,
   CalendarRangeGridEditor,
 } from "@/components/CalendarRangeGridEditor";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
 
 dayjs.extend(jalaliday);
 
@@ -70,12 +72,12 @@ function cellColor(
   day: InventoryDayResponse,
   state: CalendarRangeGridCellState,
 ) {
-  if (state.disabled) return "bg-slate-100 text-slate-400";
+  if (state.disabled) return "bg-muted text-muted-foreground";
   if (state.selected)
-    return "bg-[var(--theme-primary-light)] text-[var(--theme-text)]";
-  if (day.status === "OnRequest") return "bg-amber-50 text-amber-800";
-  if (day.availableCount === 0) return "bg-rose-50 text-rose-700";
-  return "bg-[var(--theme-surface-muted)] text-[var(--theme-text)]";
+    return "bg-primary/15 text-foreground";
+  if (day.status === "OnRequest") return "bg-muted text-foreground";
+  if (day.availableCount === 0) return "bg-muted text-destructive";
+  return "bg-muted text-foreground";
 }
 
 function cellVariant(day: InventoryDayResponse) {
@@ -229,46 +231,48 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-hidden">
-      <section className="w-full max-w-full min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white p-5 shadow-sm">
+      <KoochCard className="w-full max-w-full min-w-0 overflow-hidden" variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black">تقویم ظرفیت اتاق‌ها</h2>
-            <p className="mt-1 text-sm text-slate-500">
+            <h2 className="text-xl font-black text-foreground">تقویم ظرفیت اتاق‌ها</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               روی یک سلول کلیک کنید و بازه را با دستگیره‌ها تغییر دهید.
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+            <KoochButton
               onClick={() => moveMonth(-1)}
+              size="sm"
               type="button"
+              variant="outline"
             >
               ماه قبل
-            </button>
+            </KoochButton>
 
-            <strong className="min-w-32 rounded-lg bg-slate-50 px-4 py-2 text-center text-slate-950">
+            <strong className="min-w-32 rounded-lg bg-muted px-4 py-2 text-center text-foreground">
               {monthTitle}
             </strong>
 
-            <button
-              className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-bold hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+            <KoochButton
               onClick={() => moveMonth(1)}
+              size="sm"
               type="button"
+              variant="outline"
             >
               ماه بعد
-            </button>
+            </KoochButton>
           </div>
         </div>
 
         {loading && (
-          <p className="mt-5 rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+          <p className="mt-5 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
             در حال بارگذاری موجودی...
           </p>
         )}
 
         {error && (
-          <p className="mt-5 rounded-lg bg-red-50 p-3 text-sm font-semibold text-red-700">
+          <p className="mt-5 rounded-lg border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
             {error}
           </p>
         )}
@@ -301,7 +305,7 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
             valueLabel="ظرفیت"
           />
         </div>
-      </section>
+      </KoochCard>
     </div>
   );
 }

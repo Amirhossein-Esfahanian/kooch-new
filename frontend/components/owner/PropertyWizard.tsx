@@ -26,6 +26,8 @@ import {
   resolveDestinationId,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 const steps = [
@@ -157,8 +159,14 @@ const initialData: WizardData = {
   seoDescription: "",
 };
 
-const inputClass = "w-full rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface)] px-3 py-2.5 text-sm outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]";
-const cardClass = "rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-5 shadow-sm";
+const inputClass =
+  "w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+const cardClass =
+  "rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm";
+const choiceClass =
+  "flex items-center gap-2 rounded-xl border border-border bg-background p-3 text-sm font-bold text-foreground transition hover:bg-muted";
+const linkButtonClass =
+  "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 const imageTags = [
   { value: "exterior", label: "نمای بیرونی" },
   { value: "courtyard", label: "حیاط" },
@@ -656,15 +664,19 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   }
 
   if (booting) {
-    return <div className={cardClass}>در حال بارگذاری اطلاعات اقامتگاه...</div>;
+    return (
+      <KoochCard variant="elevated">
+        در حال بارگذاری اطلاعات اقامتگاه...
+      </KoochCard>
+    );
   }
 
   return (
     <form className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]" dir="rtl" onSubmit={finish}>
-      <aside className="h-fit rounded-2xl border border-[var(--theme-border)] bg-[var(--theme-surface)] p-3 shadow-sm lg:sticky lg:top-5">
+      <aside className="h-fit rounded-xl border border-border bg-card p-3 text-card-foreground shadow-sm lg:sticky lg:top-5">
         <div className="mb-3 px-2">
-          <p className="text-xs font-bold text-slate-400">{mode === "create" ? "ثبت اقامتگاه" : "ویرایش اقامتگاه"}</p>
-          <p className="mt-1 text-sm font-black text-slate-900">مرحله {step + 1} از {steps.length}</p>
+          <p className="text-xs font-bold text-muted-foreground">{mode === "create" ? "ثبت اقامتگاه" : "ویرایش اقامتگاه"}</p>
+          <p className="mt-1 text-sm font-black text-foreground">مرحله {step + 1} از {steps.length}</p>
         </div>
         <nav className="grid gap-1">
           {steps.map((label, index) => {
@@ -674,14 +686,14 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             const hasRecommendedMissing = Boolean(section?.isComplete && section.recommendedMissingItems.length);
             return (
               <button
-                className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-right text-sm font-bold transition ${step === index ? "bg-[var(--theme-primary)] text-white" : isComplete ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)] hover:bg-[var(--theme-primary-soft)]" : "text-[var(--theme-muted-text)] hover:bg-[var(--theme-surface-muted)]"}`}
+                className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-right text-sm font-bold transition ${step === index ? "bg-primary text-primary-foreground" : isComplete ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)] hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
                 key={label}
                 onClick={() => jumpToStep(index)}
                 title={section ? [...section.missingItems, ...section.recommendedMissingItems].join("، ") : undefined}
                 type="button"
               >
                 <span>{label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-white/20 text-white" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : hasRecommendedMissing ? "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]" : "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"}`}>
+                <span className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-primary-foreground/20 text-primary-foreground" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : hasRecommendedMissing ? "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]" : "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"}`}>
                   {isComplete ? (hasRecommendedMissing ? "پیشنهاد" : "✓") : "ناقص"}
                 </span>
               </button>
@@ -689,11 +701,11 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           })}
         </nav>
         {property && (
-          <div className="mt-4 grid gap-2 border-t border-slate-100 pt-4">
-            <Link className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-center text-sm font-bold text-[var(--theme-text)] hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>
+          <div className="mt-4 grid gap-2 border-t border-border pt-4">
+            <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>
               مدیریت اتاق‌ها
             </Link>
-            <Link className="rounded-xl border border-[var(--theme-border)] px-3 py-2 text-center text-sm font-bold text-[var(--theme-text)] hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" href="/owner/properties">
+            <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href="/owner/properties">
               بازگشت به لیست اقامتگاه‌ها
             </Link>
           </div>
@@ -743,7 +755,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                 ["hasGroundFloorRoom", "اتاق همکف دارد؟"],
                 ["hasAccessibleBathroom", "سرویس بهداشتی مناسب افراد کم‌توان دارد؟"],
               ].map(([key, label]) => (
-                <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={key}>
+                <label className={choiceClass} key={key}>
                   <input checked={Boolean(data[key as keyof WizardData])} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update(key as keyof WizardData, event.target.checked as never)} type="checkbox" />
                   {label}
                 </label>
@@ -763,7 +775,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                   <legend className="mb-2 text-lg font-black">{category.name}</legend>
                   <div className="grid gap-2 md:grid-cols-3">
                     {categoryAmenities.map((amenity) => (
-                      <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={amenity.id}>
+                      <label className={choiceClass} key={amenity.id}>
                         <input checked={data.selectedAmenityIds.includes(amenity.id)} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update("selectedAmenityIds", event.target.checked ? [...data.selectedAmenityIds, amenity.id] : data.selectedAmenityIds.filter((id) => id !== amenity.id))} type="checkbox" />
                         {amenity.name}
                       </label>
@@ -776,7 +788,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               <legend className="mb-2 text-lg font-black">چشم‌انداز</legend>
               <div className="grid gap-2 md:grid-cols-3">
                 {propertyViewOptions.map((view) => (
-                  <label className="flex items-center gap-2 rounded-xl border border-slate-200 p-3 text-sm font-bold" key={view}>
+                  <label className={choiceClass} key={view}>
                     <input checked={data.views.includes(view)} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update("views", event.target.checked ? [...data.views, view] : data.views.filter((item) => item !== view))} type="checkbox" />
                     {propertyViewLabels[view]}
                   </label>
@@ -799,14 +811,14 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                 roomTypes={roomTypes}
               />
             </div>
-            <div className="rounded-2xl border border-slate-200 p-4">
+            <div className="rounded-xl border border-border bg-muted p-4">
               <h3 className="font-black">افزودن تصویر با نشانی</h3>
-              <p className="mt-1 text-sm text-slate-500">این روش به عنوان جایگزین ساده برای تصویرهای آماده باقی می‌ماند.</p>
+              <p className="mt-1 text-sm text-muted-foreground">این روش به عنوان جایگزین ساده برای تصویرهای آماده باقی می‌ماند.</p>
             </div>
             <label className="grid gap-1 text-sm font-bold">تصویر کاور<input className={inputClass} dir="ltr" onChange={(event) => update("coverImage", event.target.value)} type="url" value={data.coverImage} /></label>
             {data.coverImage.trim() && <img alt="تصویر کاور" className="h-[120px] w-[160px] rounded-xl object-cover" src={data.coverImage} />}
             {data.propertyImages.map((image, index) => (
-              <div className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-2" key={index}>
+              <div className="grid gap-2 rounded-xl border border-border bg-background p-3 md:grid-cols-2" key={index}>
                 {image.url.trim() && <img alt={image.tag || "تصویر اقامتگاه"} className="h-[120px] w-[160px] rounded-xl object-cover md:col-span-2" src={image.url} />}
                 <input className={inputClass} dir="ltr" onChange={(event) => {
                   const next = [...data.propertyImages];
@@ -822,7 +834,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                 </select>
               </div>
             ))}
-            <button className="justify-self-start rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold" onClick={addImageField} type="button">افزودن تصویر</button>
+            <KoochButton className="justify-self-start" onClick={addImageField} type="button" variant="outline">افزودن تصویر</KoochButton>
           </section>
         )}
 
@@ -830,7 +842,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-black">توضیحات و فضاها</h2>
             <label className="grid gap-1 text-sm font-bold">توضیحات اقامتگاه<textarea className={inputClass} onChange={(event) => update("propertyDescription", event.target.value)} rows={5} value={data.propertyDescription} /></label>
-            <div className="grid gap-3 rounded-xl border border-slate-200 p-4">
+            <div className="grid gap-3 rounded-xl border border-border bg-muted p-4">
               <strong>فضاهای مشترک</strong>
               {data.commonAreas.map((area, index) => (
                 <div className="grid gap-2 md:grid-cols-[1fr_1.5fr_auto]" key={index}>
@@ -844,10 +856,10 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                     next[index] = { ...next[index], description: event.target.value };
                     update("commonAreas", next);
                   }} placeholder="توضیح اختیاری" value={area.description} />
-                  <button className="text-sm font-bold text-red-700" onClick={() => update("commonAreas", data.commonAreas.filter((_, candidate) => candidate !== index))} type="button">حذف</button>
+                  <KoochButton onClick={() => update("commonAreas", data.commonAreas.filter((_, candidate) => candidate !== index))} size="sm" type="button" variant="destructive">حذف</KoochButton>
                 </div>
               ))}
-              <button className="justify-self-start rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold" onClick={() => update("commonAreas", [...data.commonAreas, { name: "", description: "" }])} type="button">افزودن فضای مشترک</button>
+              <KoochButton className="justify-self-start" onClick={() => update("commonAreas", [...data.commonAreas, { name: "", description: "" }])} type="button" variant="outline">افزودن فضای مشترک</KoochButton>
             </div>
             <label className="grid gap-1 text-sm font-bold">نکات تکمیلی<textarea className={inputClass} onChange={(event) => update("additionalNotes", event.target.value)} rows={4} value={data.additionalNotes} /></label>
           </section>
@@ -856,9 +868,9 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         {step === 6 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-black">مکان‌های نزدیک</h2>
-            <div className="grid gap-2 md:grid-cols-3">{defaultNearbyPlaces.map((place) => <button className="rounded-xl border border-slate-200 p-3 text-right text-sm font-bold" key={place} onClick={() => update("nearbyPlaces", data.nearbyPlaces.some((item) => item.title === place) ? data.nearbyPlaces.filter((item) => item.title !== place) : [...data.nearbyPlaces, { title: place, drivingMinutes: "", walkingMinutes: "", isDefault: true }])} type="button">{data.nearbyPlaces.some((item) => item.title === place) ? "انتخاب شده: " : ""}{place}</button>)}</div>
+            <div className="grid gap-2 md:grid-cols-3">{defaultNearbyPlaces.map((place) => <button className="rounded-xl border border-border bg-background p-3 text-right text-sm font-bold text-foreground transition hover:bg-muted" key={place} onClick={() => update("nearbyPlaces", data.nearbyPlaces.some((item) => item.title === place) ? data.nearbyPlaces.filter((item) => item.title !== place) : [...data.nearbyPlaces, { title: place, drivingMinutes: "", walkingMinutes: "", isDefault: true }])} type="button">{data.nearbyPlaces.some((item) => item.title === place) ? "انتخاب شده: " : ""}{place}</button>)}</div>
             {data.nearbyPlaces.map((place, index) => (
-              <div className="grid gap-2 rounded-xl border border-slate-200 p-3 md:grid-cols-[1fr_140px_140px_auto]" key={index}>
+              <div className="grid gap-2 rounded-xl border border-border bg-background p-3 md:grid-cols-[1fr_140px_140px_auto]" key={index}>
                 <input className={inputClass} disabled={place.isDefault} onChange={(event) => {
                   const next = [...data.nearbyPlaces];
                   next[index] = { ...next[index], title: event.target.value };
@@ -874,10 +886,10 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                   next[index] = { ...next[index], walkingMinutes: event.target.value };
                   update("nearbyPlaces", next);
                 }} placeholder="پیاده" type="number" value={place.walkingMinutes} />
-                <button className="text-sm font-bold text-red-700" onClick={() => update("nearbyPlaces", data.nearbyPlaces.filter((_, candidate) => candidate !== index))} type="button">حذف</button>
+                <KoochButton onClick={() => update("nearbyPlaces", data.nearbyPlaces.filter((_, candidate) => candidate !== index))} size="sm" type="button" variant="destructive">حذف</KoochButton>
               </div>
             ))}
-            <button className="justify-self-start rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold" onClick={() => update("nearbyPlaces", [...data.nearbyPlaces, { title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }])} type="button">افزودن مکان</button>
+            <KoochButton className="justify-self-start" onClick={() => update("nearbyPlaces", [...data.nearbyPlaces, { title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }])} type="button" variant="outline">افزودن مکان</KoochButton>
           </section>
         )}
 
@@ -901,9 +913,9 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           <section className="grid gap-4">
             <div className={cardClass}>
               <h2 className="text-2xl font-black">بازبینی</h2>
-              <p className="mt-1 text-sm text-slate-500">میزان تکمیل اطلاعات: {localCompletionPercentage}٪</p>
-              <div className="mt-4 h-3 overflow-hidden rounded-full bg-[var(--theme-surface-muted)]">
-                <div className="h-full rounded-full bg-[var(--theme-primary)] transition-all" style={{ width: `${localCompletionPercentage}%` }} />
+              <p className="mt-1 text-sm text-muted-foreground">میزان تکمیل اطلاعات: {localCompletionPercentage}٪</p>
+              <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${localCompletionPercentage}%` }} />
               </div>
               <p className="mt-3 inline-flex rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-sm font-black text-[var(--theme-primary-text)]">
                 {localCompletionPercentage}٪ تکمیل شده
@@ -926,17 +938,17 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                     const requiredMissing = section.missingItems.length > 0;
                     const items = requiredMissing ? section.missingItems : section.recommendedMissingItems;
                     return (
-                      <article className={`rounded-xl border p-4 ${requiredMissing ? "border-[var(--theme-danger)] bg-[var(--theme-danger-soft)]" : "border-[var(--theme-warning)] bg-[var(--theme-warning-soft)]"}`} key={section.key}>
+                      <article className={`rounded-xl border p-4 ${requiredMissing ? "border-destructive bg-destructive/10" : "border-[var(--theme-warning)] bg-[var(--theme-warning-soft)]"}`} key={section.key}>
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <h4 className="font-black text-[var(--theme-text)]">{section.label}</h4>
-                            <ul className="mt-2 grid gap-1 text-sm text-[var(--theme-muted-text)]">
+                            <h4 className="font-black text-foreground">{section.label}</h4>
+                            <ul className="mt-2 grid gap-1 text-sm text-muted-foreground">
                               {items.map((item) => <li key={item}>• {item}</li>)}
                             </ul>
                           </div>
-                          <button className="rounded-xl bg-[var(--theme-primary)] px-4 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)]" onClick={() => jumpToStep(section.targetStepIndex)} type="button">
+                          <KoochButton onClick={() => jumpToStep(section.targetStepIndex)} size="sm" type="button">
                             تکمیل این بخش
-                          </button>
+                          </KoochButton>
                         </div>
                       </article>
                     );
@@ -952,23 +964,23 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             </div>
             {property && (
               <div className={`${cardClass} grid gap-3 md:grid-cols-3`}>
-                <Link className="rounded-xl bg-[var(--theme-primary)] px-4 py-3 text-center font-black text-white hover:bg-[var(--theme-primary-hover)]" href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>مدیریت اتاق‌ها</Link>
-                {property.slug && <Link className="rounded-xl border border-slate-300 px-4 py-3 text-center font-black text-slate-700" href={`/properties/${property.slug}`}>مشاهده صفحه عمومی</Link>}
-                <Link className="rounded-xl border border-slate-300 px-4 py-3 text-center font-black text-slate-700" href={isAdmin ? "/admin/properties" : "/owner/properties"}>بازگشت به لیست اقامتگاه‌ها</Link>
+                <Link className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`} href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>مدیریت اتاق‌ها</Link>
+                {property.slug && <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href={`/properties/${property.slug}`}>مشاهده صفحه عمومی</Link>}
+                <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href={isAdmin ? "/admin/properties" : "/owner/properties"}>بازگشت به لیست اقامتگاه‌ها</Link>
               </div>
             )}
           </section>
         )}
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <button className="rounded-xl border border-slate-300 px-5 py-3 font-bold disabled:opacity-40" disabled={step === 0 || loading} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }} type="button">قبلی</button>
+          <KoochButton disabled={step === 0 || loading} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }} type="button" variant="outline">قبلی</KoochButton>
           <div className="flex gap-2">
-            <button className="rounded-xl border border-[var(--theme-primary)] px-5 py-3 font-bold text-[var(--theme-primary-text)] disabled:opacity-50" disabled={loading} onClick={async () => {
+            <KoochButton disabled={loading} onClick={async () => {
               setLoading(true);
               setError("");
               try { await saveCurrentStep(); } catch (caught) { setError(caught instanceof Error ? caught.message : "ذخیره انجام نشد."); } finally { setLoading(false); }
-            }} type="button">ذخیره</button>
-            {step < steps.length - 1 ? <button className="rounded-xl bg-[var(--theme-primary)] px-5 py-3 font-bold text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60" disabled={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</button> : <button className="rounded-xl bg-[var(--theme-primary)] px-5 py-3 font-bold text-white hover:bg-[var(--theme-primary-hover)] disabled:opacity-60" disabled={loading} type="submit">پایان</button>}
+            }} type="button" variant="outline">ذخیره</KoochButton>
+            {step < steps.length - 1 ? <KoochButton disabled={loading} loading={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</KoochButton> : <KoochButton disabled={loading} loading={loading} type="submit">پایان</KoochButton>}
           </div>
         </div>
       </main>
@@ -979,9 +991,9 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 function ReviewCard({ title, lines }: { title: string; lines: string[] }) {
   const visibleLines = lines.filter(Boolean);
   return (
-    <article className={cardClass}>
+    <KoochCard variant="elevated">
       <h3 className="mb-2 text-lg font-black">{title}</h3>
-      {visibleLines.length ? <ul className="grid gap-1 text-sm text-slate-600">{visibleLines.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}</ul> : <p className="text-sm text-slate-400">موردی ثبت نشده است.</p>}
-    </article>
+      {visibleLines.length ? <ul className="grid gap-1 text-sm text-muted-foreground">{visibleLines.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}</ul> : <p className="text-sm text-muted-foreground">موردی ثبت نشده است.</p>}
+    </KoochCard>
   );
 }
