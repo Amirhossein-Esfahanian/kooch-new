@@ -12,6 +12,11 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import {
+  KoochField,
+  KoochInput,
+  KoochSelect,
+} from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 
 interface AmenityFormValues {
@@ -35,8 +40,6 @@ const emptyForm: AmenityFormValues = {
 };
 
 const scopes: AmenityScope[] = ["Property", "RoomType", "Both"];
-const inputClass =
-  "w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-soft)] dark:border-white/10 dark:bg-white/5";
 
 export function AmenityManagement() {
   const [categories, setCategories] = useState<AmenityCategoryResponse[]>([]);
@@ -294,126 +297,114 @@ export function AmenityManagement() {
         title={editingAmenity ? "ویرایش امکان" : "افزودن امکان"}
       >
         <form className="grid gap-4" id="amenity-form" onSubmit={saveAmenity}>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label className="grid gap-1 text-sm font-bold">
-            نام فارسی
-            <input
-              className={inputClass}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  name: event.target.value,
-                  slug: current.slug || createSlug(event.target.value),
-                }))
-              }
-              required
-              value={form.name}
-            />
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            نام انگلیسی / اسلاگ
-            <input
-              className={inputClass}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  slug: event.target.value,
-                }))
-              }
-              placeholder="در صورت خالی بودن خودکار ساخته می‌شود"
-              value={form.slug}
-            />
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            دسته‌بندی
-            <select
-              className={inputClass}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  amenityCategoryId: event.target.value,
-                }))
-              }
-              required
-              value={form.amenityCategoryId}
+          <div className="grid gap-4 sm:grid-cols-2">
+            <KoochField label="نام فارسی" required>
+              <KoochInput
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    name: event.target.value,
+                    slug: current.slug || createSlug(event.target.value),
+                  }))
+                }
+                required
+                value={form.name}
+              />
+            </KoochField>
+            <KoochField
+              helperText="در صورت خالی بودن خودکار ساخته می‌شود"
+              label="نام انگلیسی / اسلاگ"
             >
-              <option value="">انتخاب دسته‌بندی</option>
-              {categories.map((category) => (
-                <option key={category.id} value={category.id}>
-                  {category.name}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            دامنه استفاده
-            <select
-              className={inputClass}
+              <KoochInput
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    slug: event.target.value,
+                  }))
+                }
+                placeholder="در صورت خالی بودن خودکار ساخته می‌شود"
+                value={form.slug}
+              />
+            </KoochField>
+            <KoochField label="دسته‌بندی" required>
+              <KoochSelect
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    amenityCategoryId: event.target.value,
+                  }))
+                }
+                required
+                value={form.amenityCategoryId}
+              >
+                <option value="">انتخاب دسته‌بندی</option>
+                {categories.map((category) => (
+                  <option key={category.id} value={category.id}>
+                    {category.name}
+                  </option>
+                ))}
+              </KoochSelect>
+            </KoochField>
+            <KoochField label="دامنه استفاده">
+              <KoochSelect
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    scope: event.target.value as AmenityScope,
+                  }))
+                }
+                value={form.scope}
+              >
+                {scopes.map((scope) => (
+                  <option key={scope} value={scope}>
+                    {scope === "Property"
+                      ? "اقامتگاه"
+                      : scope === "RoomType"
+                        ? "نوع اتاق"
+                        : "هر دو"}
+                  </option>
+                ))}
+              </KoochSelect>
+            </KoochField>
+            <KoochField helperText="اختیاری" label="SVG icon">
+              <KoochInput
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    icon: event.target.value,
+                  }))
+                }
+                placeholder="اختیاری"
+                value={form.icon}
+              />
+            </KoochField>
+            <KoochField label="ترتیب نمایش">
+              <KoochInput
+                onChange={(event) =>
+                  setForm((current) => ({
+                    ...current,
+                    sortOrder: Number(event.target.value),
+                  }))
+                }
+                type="number"
+                value={form.sortOrder}
+              />
+            </KoochField>
+          </div>
+          <KoochField label="وضعیت">
+            <KoochSelect
               onChange={(event) =>
                 setForm((current) => ({
                   ...current,
-                  scope: event.target.value as AmenityScope,
+                  isActive: event.target.value === "active",
                 }))
               }
-              value={form.scope}
+              value={form.isActive ? "active" : "inactive"}
             >
-              {scopes.map((scope) => (
-                <option key={scope} value={scope}>
-                  {scope === "Property"
-                    ? "اقامتگاه"
-                    : scope === "RoomType"
-                      ? "نوع اتاق"
-                      : "هر دو"}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            SVG icon
-            <input
-              className={inputClass}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  icon: event.target.value,
-                }))
-              }
-              placeholder="اختیاری"
-              value={form.icon}
-            />
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            ترتیب نمایش
-            <input
-              className={inputClass}
-              onChange={(event) =>
-                setForm((current) => ({
-                  ...current,
-                  sortOrder: Number(event.target.value),
-                }))
-              }
-              type="number"
-              value={form.sortOrder}
-            />
-          </label>
-        </div>
-        <label className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 p-3 text-sm font-bold dark:border-white/10">
-          <span>وضعیت</span>
-          <select
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5"
-            onChange={(event) =>
-              setForm((current) => ({
-                ...current,
-                isActive: event.target.value === "active",
-              }))
-            }
-            value={form.isActive ? "active" : "inactive"}
-          >
-            <option value="active">فعال</option>
-            <option value="inactive">غیرفعال</option>
-          </select>
-        </label>
-
+              <option value="active">فعال</option>
+              <option value="inactive">غیرفعال</option>
+            </KoochSelect>
+          </KoochField>
         </form>
       </KoochDialog>
       <KoochDialog

@@ -12,42 +12,38 @@ type FieldStateProps = {
   helperText?: ReactNode;
 };
 
+type InvalidStateProps = {
+  error?: ReactNode;
+};
+
 function joinClasses(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-const controlBaseClass =
-  "w-full rounded-lg border border-border bg-background text-foreground outline-none transition placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-60 focus:border-ring focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background aria-[invalid=true]:border-destructive aria-[invalid=true]:focus:ring-destructive";
+const controlClass =
+  "flex w-full rounded-md border border-border bg-background text-foreground shadow-sm transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive";
 
 export type KoochInputProps = InputHTMLAttributes<HTMLInputElement> &
-  FieldStateProps & {
+  InvalidStateProps & {
     className?: string;
   };
 
 export function KoochInput({
   className = "",
   error,
-  helperText,
   ...props
 }: KoochInputProps) {
   return (
-    <div className="grid gap-1.5">
-      <input
-        aria-invalid={Boolean(error) || undefined}
-        className={joinClasses(
-          "min-h-10 px-3 py-2 text-sm",
-          controlBaseClass,
-          className,
-        )}
-        {...props}
-      />
-      <KoochFieldMessage error={error} helperText={helperText} />
-    </div>
+    <input
+      aria-invalid={Boolean(error) || undefined}
+      className={joinClasses("h-10 px-3 py-2 text-sm", controlClass, className)}
+      {...props}
+    />
   );
 }
 
 export type KoochSelectProps = SelectHTMLAttributes<HTMLSelectElement> &
-  FieldStateProps & {
+  InvalidStateProps & {
     className?: string;
   };
 
@@ -55,53 +51,41 @@ export function KoochSelect({
   children,
   className = "",
   error,
-  helperText,
   ...props
 }: KoochSelectProps) {
   return (
-    <div className="grid gap-1.5">
-      <select
-        aria-invalid={Boolean(error) || undefined}
-        className={joinClasses(
-          "min-h-10 px-3 py-2 text-sm",
-          controlBaseClass,
-          className,
-        )}
-        {...props}
-      >
-        {children}
-      </select>
-      <KoochFieldMessage error={error} helperText={helperText} />
-    </div>
+    <select
+      aria-invalid={Boolean(error) || undefined}
+      className={joinClasses("h-10 px-3 py-2 text-sm", controlClass, className)}
+      {...props}
+    >
+      {children}
+    </select>
   );
 }
 
 export type KoochTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> &
-  FieldStateProps & {
+  InvalidStateProps & {
     className?: string;
   };
 
 export function KoochTextarea({
   className = "",
   error,
-  helperText,
   rows = 4,
   ...props
 }: KoochTextareaProps) {
   return (
-    <div className="grid gap-1.5">
-      <textarea
-        aria-invalid={Boolean(error) || undefined}
-        className={joinClasses(
-          "min-h-28 px-3 py-2 text-sm",
-          controlBaseClass,
-          className,
-        )}
-        rows={rows}
-        {...props}
-      />
-      <KoochFieldMessage error={error} helperText={helperText} />
-    </div>
+    <textarea
+      aria-invalid={Boolean(error) || undefined}
+      className={joinClasses(
+        "min-h-28 px-3 py-2 text-sm",
+        controlClass,
+        className,
+      )}
+      rows={rows}
+      {...props}
+    />
   );
 }
 
@@ -118,7 +102,7 @@ export function KoochLabel({
 }: KoochLabelProps) {
   return (
     <label
-      className={joinClasses("text-sm font-bold text-foreground", className)}
+      className={joinClasses("text-sm font-semibold text-foreground", className)}
       {...props}
     >
       {children}
@@ -153,17 +137,14 @@ export function KoochField({
   );
 }
 
-function KoochFieldMessage({
-  error,
-  helperText,
-}: FieldStateProps) {
+function KoochFieldMessage({ error, helperText }: FieldStateProps) {
   if (error) {
-    return <p className="text-xs font-semibold text-destructive">{error}</p>;
+    return <p className="text-xs font-medium text-destructive">{error}</p>;
   }
 
   if (helperText) {
     return (
-      <p className="text-xs font-semibold text-muted-foreground">
+      <p className="text-xs font-medium text-muted-foreground">
         {helperText}
       </p>
     );

@@ -20,7 +20,7 @@ const menuIcons = {
   menu: "/svgs/sidebar-flip-l.svg",
   close: "/svgs/x-l.svg",
   home: "/svgs/house-l.svg",
-  messages: "/svgs/messages-l.svg",
+  messages: "/svgs/message-l.svg",
   dark: "/svgs/moon-cloud-l.svg",
   light: "/svgs/sun-alt-l.svg",
   search: "/svgs/search-l.svg",
