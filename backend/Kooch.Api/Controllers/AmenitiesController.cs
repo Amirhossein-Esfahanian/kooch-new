@@ -11,8 +11,12 @@ namespace Kooch.Api.Controllers;
 
 [ApiController]
 [Route("api/amenities")]
-public class AmenitiesController(KoochDbContext dbContext) : ControllerBase
+public class AmenitiesController(
+    KoochDbContext dbContext,
+    IWebHostEnvironment environment) : ControllerBase
 {
+    private const long MaxSvgFileSizeBytes = 256 * 1024;
+
     [HttpGet]
     [AllowAnonymous]
     [ProducesResponseType<IReadOnlyList<AmenityResponse>>(StatusCodes.Status200OK)]
@@ -106,6 +110,35 @@ public class AmenitiesController(KoochDbContext dbContext) : ControllerBase
         return NoContent();
     }
 
+    [HttpPost("svg")]
+    [OwnerAuthorize]
+    [Consumes("multipart/form-data")]
+    [ProducesResponseType<AmenitySvgUploadResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<AmenitySvgUploadResponse>> UploadSvg(
+        [FromForm] IFormFile file,
+        [FromForm] string slug,
+        CancellationToken cancellationToken)
+    {
+        var safeSlug = EnglishSlugGenerator.Create(Clean(slug) ?? "amenity-icon", "amenity-icon");
+        await ValidateSvgUploadAsync(file, cancellationToken);
+
+        var uploadRoot = Path.Combine(
+            environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"),
+            "svgs",
+            "amenities");
+        Directory.CreateDirectory(uploadRoot);
+
+        var fileName = $"{safeSlug}.svg";
+        var absolutePath = Path.Combine(uploadRoot, fileName);
+
+        await using (var stream = System.IO.File.Create(absolutePath))
+        {
+            await file.CopyToAsync(stream, cancellationToken);
+        }
+
+        return Ok(new AmenitySvgUploadResponse($"/svgs/amenities/{fileName}"));
+    }
+
     private async Task EnsureCategoryAsync(int categoryId, CancellationToken cancellationToken)
     {
         if (!await dbContext.AmenityCategories.AsNoTracking()
@@ -151,4 +184,38 @@ public class AmenitiesController(KoochDbContext dbContext) : ControllerBase
             .SingleAsync(cancellationToken);
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static async Task ValidateSvgUploadAsync(IFormFile file, CancellationToken cancellationToken)
+    {
+        if (file.Length <= 0)
+        {
+            throw new ArgumentException("Uploaded SVG file is empty.");
+        }
+
+        if (file.Length > MaxSvgFileSizeBytes)
+        {
+            throw new ArgumentException("SVG file must be 256KB or smaller.");
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        if (!extension.Equals(".svg", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException("Only SVG files are allowed.");
+        }
+
+        await using var stream = file.OpenReadStream();
+        using var reader = new StreamReader(stream);
+        var content = await reader.ReadToEndAsync(cancellationToken);
+        var normalized = content.TrimStart('\uFEFF', ' ', '\t', '\r', '\n').ToLowerInvariant();
+        if (!normalized.Contains("<svg", StringComparison.Ordinal) ||
+            normalized.Contains("<script", StringComparison.Ordinal) ||
+            normalized.Contains("javascript:", StringComparison.Ordinal) ||
+            normalized.Contains("onload=", StringComparison.Ordinal) ||
+            normalized.Contains("onerror=", StringComparison.Ordinal))
+        {
+            throw new ArgumentException("The uploaded file is not a safe SVG.");
+        }
+    }
 }
+
+public sealed record AmenitySvgUploadResponse(string Path);

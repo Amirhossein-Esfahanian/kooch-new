@@ -11,6 +11,10 @@ const nextConfig: NextConfig = {
         source: "/uploads/:path*",
         destination: "http://localhost:5081/uploads/:path*",
       },
+      {
+        source: "/svgs/:path*",
+        destination: "http://localhost:5081/svgs/:path*",
+      },
     ];
   },
   images: {

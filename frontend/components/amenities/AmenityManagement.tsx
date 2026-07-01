@@ -18,6 +18,7 @@ import {
   KoochSelect,
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { KoochSvgUploader } from "@/components/KoochSvgUploader";
 
 interface AmenityFormValues {
   amenityCategoryId: string;
@@ -40,6 +41,10 @@ const emptyForm: AmenityFormValues = {
 };
 
 const scopes: AmenityScope[] = ["Property", "RoomType", "Both"];
+
+function isSvgPath(value: string | null | undefined) {
+  return Boolean(value?.toLocaleLowerCase().endsWith(".svg"));
+}
 
 export function AmenityManagement() {
   const [categories, setCategories] = useState<AmenityCategoryResponse[]>([]);
@@ -72,6 +77,8 @@ export function AmenityManagement() {
         : [],
     [activeCategory, amenities],
   );
+
+  const iconSlug = form.slug.trim() || createSlug(form.name) || "amenity-icon";
 
   async function load() {
     const [categoryResults, amenityResults] = await Promise.all([
@@ -248,11 +255,20 @@ export function AmenityManagement() {
                         {amenity.scope} · {amenity.slug}
                       </p>
                     </div>
-                    {amenity.icon && (
-                      <span className="rounded-xl bg-card px-3 py-1 text-xs font-bold shadow-sm">
-                        {amenity.icon}
-                      </span>
-                    )}
+                    {amenity.icon &&
+                      (isSvgPath(amenity.icon) ? (
+                        <span className="grid h-12 w-12 place-items-center rounded-xl bg-card p-1 shadow-sm">
+                          <img
+                            alt=""
+                            className="h-10 w-10 object-contain"
+                            src={amenity.icon}
+                          />
+                        </span>
+                      ) : (
+                        <span className="rounded-xl bg-card px-3 py-1 text-xs font-bold shadow-sm">
+                          {amenity.icon}
+                        </span>
+                      ))}
                   </div>
                   <div className="mt-4 flex gap-3 text-sm font-black">
                     <KoochButton
@@ -366,15 +382,28 @@ export function AmenityManagement() {
                 ))}
               </KoochSelect>
             </KoochField>
-            <KoochField helperText="اختیاری" label="SVG icon">
-              <KoochInput
-                onChange={(event) =>
+            <KoochField
+              className="sm:col-span-2"
+              helperText="فقط فایل SVG پذیرفته می‌شود و مسیر نسبی آن ذخیره خواهد شد."
+              label="آیکن SVG"
+            >
+              <KoochSvgUploader
+                disabled={saving}
+                fileNameHint={iconSlug}
+                helperText="پیش‌نمایش پس از بارگذاری نمایش داده می‌شود."
+                onChange={(path) =>
                   setForm((current) => ({
                     ...current,
-                    icon: event.target.value,
+                    icon: path,
                   }))
                 }
-                placeholder="اختیاری"
+                onRemove={() =>
+                  setForm((current) => ({
+                    ...current,
+                    icon: "",
+                  }))
+                }
+                uploadPath="/amenities/svg"
                 value={form.icon}
               />
             </KoochField>
