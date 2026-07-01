@@ -13,8 +13,7 @@ namespace Kooch.Api.Services;
 /// Future checkout order:
 /// RoomDailyPrice → Promotion → Coupon → Commission → FinalPayablePrice.
 ///
-/// RoomDailyPrice remains unchanged in storage:
-/// BasePrice, ChildPrice, ExtraGuestPrice.
+/// RoomDailyPrice stores the room/day base price; child and extra guest prices are property-level rules.
 /// </summary>
 public sealed class PricingService
 {
@@ -152,8 +151,8 @@ public sealed class PricingService
             roomType.MaxAdults,
             roomType.MaxChildren,
             dailyPrice.BasePrice,
-            dailyPrice.ChildPrice,
-            dailyPrice.ExtraGuestPrice,
+            roomType.Property?.ChildPrice ?? 0,
+            roomType.Property?.ExtraGuestPrice ?? 0,
             adults,
             countedChildren);
     }

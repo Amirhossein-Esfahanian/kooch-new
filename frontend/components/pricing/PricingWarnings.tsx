@@ -50,17 +50,7 @@ export function getPropertyPriceBounds(
 export function getPricingWarnings(
   pricing: PropertyPricingResponse | null,
 ): PricingWarningKey[] {
-  if (!pricing) return [];
-
-  const days = pricing.roomTypes.flatMap((roomType) => roomType.days);
-  if (days.length === 0) return [];
-
-  const warnings: PricingWarningKey[] = [];
-  if (!days.some((day) => day.childPrice > 0))
-    warnings.push("missingChildPrice");
-  if (!days.some((day) => day.extraGuestPrice > 0))
-    warnings.push("missingExtraGuestPrice");
-  return warnings;
+  return [];
 }
 
 export function getPropertyFinancialWarnings(

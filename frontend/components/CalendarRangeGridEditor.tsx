@@ -1293,7 +1293,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                               <span className="flex items-center justify-center gap-[3px]">
                                 <span className="h-2.5 w-[2px] rounded  bg-white" />
                                 <span className="h-2.5 w-[2px] rounded  bg-white" />
-                                <span className="h-2.5 w-[2px] rounded  bg-white" />
+                                <span className="h-2.5 w-[2px] rounded bg- bg-white" />
                               </span>
                             </button>
                           ))}

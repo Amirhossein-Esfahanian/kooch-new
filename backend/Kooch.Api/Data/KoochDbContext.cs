@@ -477,8 +477,6 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasMaxLength(20)
                 .HasDefaultValue(PricingGuestType.Iranian);
             entity.Property(price => price.BasePrice).HasPrecision(18, 2);
-            entity.Property(price => price.ChildPrice).HasPrecision(18, 2);
-            entity.Property(price => price.ExtraGuestPrice).HasPrecision(18, 2);
             entity.HasIndex(price => new { price.RoomTypeId, price.Date, price.GuestType }).IsUnique();
             entity.HasOne(price => price.RoomType)
                 .WithMany(roomType => roomType.DailyPrices)

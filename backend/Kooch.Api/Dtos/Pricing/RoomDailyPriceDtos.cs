@@ -25,8 +25,6 @@ public class RoomDailyPriceResponse
     public DateOnly Date { get; set; }
     public PricingGuestType GuestType { get; set; }
     public decimal BasePrice { get; set; }
-    public decimal ChildPrice { get; set; }
-    public decimal ExtraGuestPrice { get; set; }
 }
 
 public class BulkRoomDailyPriceRequest
@@ -34,8 +32,6 @@ public class BulkRoomDailyPriceRequest
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
     public IReadOnlyList<RoomDailyPriceCellRequest> Items { get; set; } = [];
     public decimal BasePrice { get; set; }
-    public decimal ChildPrice { get; set; }
-    public decimal ExtraGuestPrice { get; set; }
 }
 
 public class RoomDailyPriceCellRequest

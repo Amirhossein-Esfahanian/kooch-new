@@ -28,6 +28,7 @@ import {
 } from "@/lib/owner-api";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 import { propertyCompletionHref } from "@/lib/property-completion";
@@ -934,8 +935,12 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               {data.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-bold">هزینه صبحانه<input className={inputClass} min="0" onChange={(event) => update("breakfastPrice", event.target.value)} type="number" value={data.breakfastPrice} /></label>}
               <label className="grid gap-1 text-sm font-bold">سن کودک رایگان تا<input className={inputClass} max="17" min="0" onChange={(event) => update("freeChildAgeLimit", event.target.value)} type="number" value={data.freeChildAgeLimit} /></label>
               <label className="grid gap-1 text-sm font-bold">حداکثر تعداد کودک رایگان<input className={inputClass} min="0" onChange={(event) => update("maxFreeChildren", event.target.value)} type="number" value={data.maxFreeChildren} /></label>
-              <label className="grid gap-1 text-sm font-bold">نرخ کودک<input className={inputClass} min="0" onChange={(event) => update("childPrice", event.target.value)} type="number" value={data.childPrice} /></label>
-              <label className="grid gap-1 text-sm font-bold">نرخ نفر اضافه<input className={inputClass} min="0" onChange={(event) => update("extraGuestPrice", event.target.value)} type="number" value={data.extraGuestPrice} /></label>
+              <KoochField label="نرخ کودک">
+                <KoochInput min="0" onChange={(event) => update("childPrice", event.target.value)} type="number" value={data.childPrice} />
+              </KoochField>
+              <KoochField label="نرخ نفر اضافه">
+                <KoochInput min="0" onChange={(event) => update("extraGuestPrice", event.target.value)} type="number" value={data.extraGuestPrice} />
+              </KoochField>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">عنوان سئو<input className={inputClass} onChange={(event) => update("seoTitle", event.target.value)} value={data.seoTitle} /></label>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">توضیح سئو<textarea className={inputClass} onChange={(event) => update("seoDescription", event.target.value)} rows={3} value={data.seoDescription} /></label>
             </div>

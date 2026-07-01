@@ -320,8 +320,6 @@ export interface RoomDailyPriceResponse {
   date: string;
   guestType: PricingGuestType;
   basePrice: number;
-  childPrice: number;
-  extraGuestPrice: number;
 }
 
 export interface RoomDailyPriceHistoryResponse {

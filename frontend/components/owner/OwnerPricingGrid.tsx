@@ -6,6 +6,7 @@ import "dayjs/locale/fa";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiRequest, PricingGuestType, PropertyPricingResponse, PropertyResponse, RoomDailyPriceHistoryResponse, RoomDailyPriceResponse } from "@/lib/owner-api";
 import { CalendarGridDay, CalendarGridRow, CalendarRangeApplyPayload, CalendarRangeGridEditor } from "@/components/CalendarRangeGridEditor";
+import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -57,23 +58,13 @@ const pricingGuestTypeLabels: Record<PricingGuestType, string> = {
 
 function PriceHistoryValues({
   basePrice,
-  childPrice,
   currencyLabel,
-  extraGuestPrice,
 }: {
   basePrice: number;
-  childPrice: number;
   currencyLabel: string;
-  extraGuestPrice: number;
 }) {
   return (
-    <div className="grid gap-1 text-xs leading-5">
-      <span>پایه: {formatPriceWithCurrency(basePrice, currencyLabel)}</span>
-      <span>کودک: {formatPriceWithCurrency(childPrice, currencyLabel)}</span>
-      <span>
-        نفر اضافه: {formatPriceWithCurrency(extraGuestPrice, currencyLabel)}
-      </span>
-    </div>
+    <span>{formatPriceWithCurrency(basePrice, currencyLabel)}</span>
   );
 }
 
@@ -223,7 +214,7 @@ export function OwnerPricingGrid({
   }
 
   function getCellValue(rowId: string | number, date: string) {
-    return rows.find((row) => String(row.id) === String(rowId))?.days.find((day) => day.date === date) ?? { id: null, roomTypeId: Number(rowId), date, guestType: activeGuestType, basePrice: 0, childPrice: 0, extraGuestPrice: 0 };
+    return rows.find((row) => String(row.id) === String(rowId))?.days.find((day) => day.date === date) ?? { id: null, roomTypeId: Number(rowId), date, guestType: activeGuestType, basePrice: 0 };
   }
 
   async function applyPrices(payload: CalendarRangeApplyPayload) {
@@ -233,8 +224,6 @@ export function OwnerPricingGrid({
         items: payload.items.map((item) => ({ roomTypeId: Number(item.rowId), date: item.date })),
         guestType: activeGuestType,
         basePrice: payload.basePrice ?? 0,
-        childPrice: payload.childPrice ?? 0,
-        extraGuestPrice: payload.extraGuestPrice ?? 0,
       }),
     });
     const updateMap = new Map(updated.map((item) => [cellKey(item.roomTypeId, item.date), item]));
@@ -257,9 +246,9 @@ export function OwnerPricingGrid({
               oldBasePrice: 0,
               newBasePrice: payload.basePrice,
               oldChildPrice: 0,
-              newChildPrice: payload.childPrice ?? 0,
+              newChildPrice: 0,
               oldExtraGuestPrice: 0,
-              newExtraGuestPrice: payload.extraGuestPrice ?? 0,
+              newExtraGuestPrice: 0,
               changedByUserId: 0,
               user: "",
               dateTime: new Date().toISOString(),
@@ -345,6 +334,14 @@ export function OwnerPricingGrid({
       {loading && <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">در حال بارگذاری قیمت‌ها...</p>}
       {error && <p className="mt-5 rounded-xl border border-destructive bg-card p-3 text-sm font-semibold text-destructive">{error}</p>}
       <PricingSettingsWarning className="mt-5" editHref={propertyEditHref} warnings={pricingWarnings} />
+      {pricingWarnings.length === 0 && property && (
+        <KoochAlert className="mt-5" dir="rtl" title="قوانین قیمت مهمانان" variant="success">
+          <div className="flex flex-wrap gap-4">
+            <span>نرخ کودک: {formatPriceWithCurrency(property.childPrice ?? 0, currencyLabel)}</span>
+            <span>نرخ نفر اضافه: {formatPriceWithCurrency(property.extraGuestPrice ?? 0, currencyLabel)}</span>
+          </div>
+        </KoochAlert>
+      )}
       <div className="mt-5">
         <CalendarRangeGridEditor
           days={gridDays}
@@ -361,8 +358,6 @@ export function OwnerPricingGrid({
           quickPricePresets={quickPricePresets}
           pricingValueResolver={(day) => ({
             basePrice: day.basePrice,
-            childPrice: day.childPrice,
-            extraGuestPrice: day.extraGuestPrice,
           })}
           renderCell={(_row, _date, day, state) => (
             <div
@@ -440,17 +435,13 @@ export function OwnerPricingGrid({
                   <KoochTableCell>
                     <PriceHistoryValues
                       basePrice={item.oldBasePrice}
-                      childPrice={item.oldChildPrice}
                       currencyLabel={currencyLabel}
-                      extraGuestPrice={item.oldExtraGuestPrice}
                     />
                   </KoochTableCell>
                   <KoochTableCell className="font-black text-primary">
                     <PriceHistoryValues
                       basePrice={item.newBasePrice}
-                      childPrice={item.newChildPrice}
                       currencyLabel={currencyLabel}
-                      extraGuestPrice={item.newExtraGuestPrice}
                     />
                   </KoochTableCell>
                 </KoochTableRow>

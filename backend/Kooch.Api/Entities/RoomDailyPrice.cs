@@ -6,8 +6,6 @@ public class RoomDailyPrice : BaseEntity
     public DateOnly Date { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
     public decimal BasePrice { get; set; }
-    public decimal ChildPrice { get; set; }
-    public decimal ExtraGuestPrice { get; set; }
 
     public RoomType RoomType { get; set; } = null!;
 }
