@@ -43,16 +43,12 @@ export type CalendarRangeApplyPayload = {
   value: number;
   status?: AvailabilityStatus;
   basePrice?: number;
-  childPrice?: number;
-  extraGuestPrice?: number;
   /** All selected cells. Range selections and scattered multi-select both save through this list. */
   items: { rowId: number | string; date: string }[];
 };
 
 type PricingCellValues = {
   basePrice: number;
-  childPrice: number;
-  extraGuestPrice: number;
 };
 
 export interface CalendarRangeGridEditorProps<
@@ -190,12 +186,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   const [mixedInventoryValue, setMixedInventoryValue] = useState(false);
   const [mixedInventoryStatus, setMixedInventoryStatus] = useState(false);
   const [basePrice, setBasePrice] = useState(0);
-  const [childPrice, setChildPrice] = useState(0);
-  const [extraGuestPrice, setExtraGuestPrice] = useState(0);
+
   const [mixedPricingFields, setMixedPricingFields] = useState({
     basePrice: false,
-    childPrice: false,
-    extraGuestPrice: false,
   });
   const [localError, setLocalError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -285,8 +278,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     if (mode !== "pricing" || selectedItems.length === 0) {
       setMixedPricingFields({
         basePrice: false,
-        childPrice: false,
-        extraGuestPrice: false,
       });
       return;
     }
@@ -310,8 +301,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
     setMixedPricingFields({
       basePrice: syncField("basePrice", setBasePrice),
-      childPrice: syncField("childPrice", setChildPrice),
-      extraGuestPrice: syncField("extraGuestPrice", setExtraGuestPrice),
     });
   }, [getCellValue, mode, pricingValueResolver, selectedItems]);
 
@@ -765,7 +754,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   function validate() {
     if (selectedItems.length === 0) return "حداقل یک خانه را انتخاب کنید.";
     if (mode === "pricing") {
-      const prices = [basePrice, childPrice, extraGuestPrice];
+      const prices = [basePrice];
       if (prices.some((price) => !Number.isFinite(price)))
         return "برای همه نرخ‌ها مقدار معتبر وارد کنید.";
       if (
@@ -826,8 +815,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         mode === "pricing" ? basePrice : status === "Unavailable" ? 0 : value,
       status: mode === "inventory" ? status || undefined : undefined,
       basePrice: mode === "pricing" ? basePrice : undefined,
-      childPrice: mode === "pricing" ? childPrice : undefined,
-      extraGuestPrice: mode === "pricing" ? extraGuestPrice : undefined,
       items: sortedItems,
     };
 
@@ -933,18 +920,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                     label: "نرخ اتاق",
                     fieldValue: basePrice,
                     update: setBasePrice,
-                  },
-                  {
-                    key: "childPrice" as const,
-                    label: "نرخ کودک",
-                    fieldValue: childPrice,
-                    update: setChildPrice,
-                  },
-                  {
-                    key: "extraGuestPrice" as const,
-                    label: "نرخ هر نفر اضافه",
-                    fieldValue: extraGuestPrice,
-                    update: setExtraGuestPrice,
                   },
                 ].map((field) => (
                   <label
