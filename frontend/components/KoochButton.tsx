@@ -1,10 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type KoochButtonVariant =
-  | "primary"
-  | "outline"
-  | "ghost"
-  | "destructive";
+type KoochButtonVariant = "primary" | "outline" | "ghost" | "destructive";
 
 type KoochButtonSize = "sm" | "md" | "lg" | "icon";
 
@@ -66,7 +62,7 @@ export function KoochButton({
       {loading && (
         <span
           aria-hidden="true"
-          className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+          className="h-4 w-4 animate-spin rounded border-2 border-current border-t-transparent"
         />
       )}
       {!loading && leftIcon}

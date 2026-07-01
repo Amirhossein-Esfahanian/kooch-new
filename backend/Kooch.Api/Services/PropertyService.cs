@@ -9,7 +9,8 @@ namespace Kooch.Api.Services;
 public class PropertyService(
     KoochDbContext dbContext,
     IPropertyAccessService propertyAccessService,
-    IPermissionService permissionService) : IPropertyService
+    IPermissionService permissionService,
+    IPropertyCompletionService propertyCompletionService) : IPropertyService
 {
     public async Task<PropertyResponse> CreatePropertyAsync(
         int userId,
@@ -63,7 +64,9 @@ public class PropertyService(
             FreeChildAgeLimit = request.FreeChildAgeLimit,
             MaxFreeChildren = request.MaxFreeChildren,
             Status = role == UserRole.SuperAdmin
-                ? request.Status ?? PropertyStatus.PendingReview
+                ? request.Status == PropertyStatus.Approved
+                    ? PropertyStatus.PendingReview
+                    : request.Status ?? PropertyStatus.PendingReview
                 : PropertyStatus.PendingReview
         };
 
@@ -191,6 +194,11 @@ public class PropertyService(
         property.Address = request.Address.Trim();
         property.City = request.City.Trim();
         property.Country = request.Country.Trim();
+        if (request.Status == PropertyStatus.Approved)
+        {
+            await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
+        }
+
         property.Status = request.Status;
         property.Type = request.Type;
         property.InventoryMode = request.InventoryMode;
@@ -411,9 +419,30 @@ public class PropertyService(
         await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
 
         var property = await GetEntityAsync(propertyId, cancellationToken);
+        if (status == PropertyStatus.Approved)
+        {
+            await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
+        }
+
         property.Status = status;
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    private async Task EnsurePropertyCanActivateAsync(
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var completion = await propertyCompletionService.CalculateAsync(propertyId, cancellationToken);
+        if (!completion.CanActivate)
+        {
+            var missing = completion.Sections
+                .Where(section => section.Status != PropertyCompletionSectionStatus.Complete)
+                .Select(section => section.Label)
+                .ToArray();
+            throw new InvalidOperationException(
+                $"Property cannot be activated until completion is 100%. Missing sections: {string.Join(", ", missing)}.");
+        }
     }
 
     private async Task<Property> GetEntityAsync(int propertyId, CancellationToken cancellationToken) =>

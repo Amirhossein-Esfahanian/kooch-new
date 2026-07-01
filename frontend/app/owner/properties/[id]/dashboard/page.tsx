@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 import {
   PricingSettingsWarning,
   usePropertyPricingStatus,
@@ -18,6 +19,7 @@ import {
   PropertyResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { propertyCompletionHref } from "@/lib/property-completion";
 
 const linkButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
@@ -118,6 +120,15 @@ export default function OwnerPropertyDashboardPage() {
           editHref={`/owner/properties/${propertyId}`}
           warnings={pricingWarnings}
         />
+
+        {completion && (
+          <PropertyCompletionCard
+            completion={completion}
+            getActionHref={(section) =>
+              propertyCompletionHref("owner", propertyId, section)
+            }
+          />
+        )}
 
         <div className="grid gap-4 md:grid-cols-4">
           {cards.map((card) => (

@@ -44,7 +44,7 @@ public class RoomTypeService(
             StairCount = request.StairCount,
             HasWindow = request.HasWindow,
             HasPrivateBathroom = request.HasPrivateBathroom,
-            IsActive = request.IsActive,
+            IsActive = false,
             BedConfigurations = beds.Select(bed => new RoomTypeBed
             {
                 BedTypeId = bed.Key,
@@ -103,6 +103,10 @@ public class RoomTypeService(
         roomType.StairCount = request.StairCount;
         roomType.HasWindow = request.HasWindow;
         roomType.HasPrivateBathroom = request.HasPrivateBathroom;
+        if (request.IsActive)
+        {
+            EnsureCanActivate(request, await HasRoomImagesAsync(roomTypeId, cancellationToken));
+        }
         roomType.IsActive = request.IsActive;
 
         var existingBeds = await dbContext.RoomTypeBeds
@@ -142,53 +146,18 @@ public class RoomTypeService(
             throw new UnauthorizedAccessException("You cannot access this property.");
         }
 
-        return await dbContext.RoomTypes.AsNoTracking()
+        var roomTypes = await dbContext.RoomTypes.AsNoTracking()
             .Where(roomType => roomType.PropertyId == propertyId)
             .OrderBy(roomType => roomType.Name)
-            .Select(roomType => new RoomTypeResponse
-            {
-                Id = roomType.Id,
-                PropertyId = roomType.PropertyId,
-                Name = roomType.Name,
-                EnglishName = roomType.EnglishName,
-                Slug = roomType.Slug,
-                Description = roomType.Description,
-                MaxAdults = roomType.MaxAdults,
-                MaxChildren = roomType.MaxChildren,
-                AllowExtraGuest = roomType.AllowExtraGuest,
-                MaxExtraGuests = roomType.MaxExtraGuests,
-                TotalInventory = roomType.TotalInventory,
-                InventoryMode = roomType.InventoryMode,
-                BasePrice = roomType.BasePrice,
-                Notes = roomType.Notes,
-                FloorNumber = roomType.FloorNumber,
-                StairCount = roomType.StairCount,
-                HasWindow = roomType.HasWindow,
-                HasPrivateBathroom = roomType.HasPrivateBathroom,
-                IsActive = roomType.IsActive,
-                BedConfigurations = roomType.BedConfigurations
-                    .OrderBy(configuration => configuration.BedType.Name)
-                    .Select(configuration => new RoomTypeBedResponse
-                    {
-                        BedTypeId = configuration.BedTypeId,
-                        BedTypeName = configuration.BedType.Name,
-                        BedTypeSlug = configuration.BedType.Slug,
-                        Quantity = configuration.Quantity
-                    })
-                    .ToList(),
-                Amenities = roomType.RoomTypeAmenities
-                    .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
-                    .ThenBy(join => join.Amenity.SortOrder)
-                    .Select(join => new RoomTypeAmenityResponse
-                    {
-                        AmenityId = join.AmenityId,
-                        Name = join.Amenity.Name,
-                        AmenityCategoryId = join.Amenity.AmenityCategoryId,
-                        CategoryName = join.Amenity.AmenityCategory.Name
-                    })
-                    .ToList()
-            })
+            .Include(roomType => roomType.BedConfigurations)
+                .ThenInclude(configuration => configuration.BedType)
+            .Include(roomType => roomType.RoomTypeAmenities)
+                .ThenInclude(join => join.Amenity)
+                    .ThenInclude(amenity => amenity.AmenityCategory)
+            .Include(roomType => roomType.PropertyImages)
             .ToListAsync(cancellationToken);
+
+        return roomTypes.Select(MapRoomType).ToList();
     }
 
     public async Task DeleteRoomTypeAsync(
@@ -251,53 +220,177 @@ public class RoomTypeService(
         }
     }
 
-    private async Task<RoomTypeResponse> LoadResponseAsync(int roomTypeId, CancellationToken cancellationToken) =>
-        await dbContext.RoomTypes.AsNoTracking()
+    private async Task<RoomTypeResponse> LoadResponseAsync(int roomTypeId, CancellationToken cancellationToken)
+    {
+        var roomType = await dbContext.RoomTypes.AsNoTracking()
             .Where(roomType => roomType.Id == roomTypeId)
-            .Select(roomType => new RoomTypeResponse
-            {
-                Id = roomType.Id,
-                PropertyId = roomType.PropertyId,
-                Name = roomType.Name,
-                EnglishName = roomType.EnglishName,
-                Slug = roomType.Slug,
-                Description = roomType.Description,
-                MaxAdults = roomType.MaxAdults,
-                MaxChildren = roomType.MaxChildren,
-                AllowExtraGuest = roomType.AllowExtraGuest,
-                MaxExtraGuests = roomType.MaxExtraGuests,
-                TotalInventory = roomType.TotalInventory,
-                InventoryMode = roomType.InventoryMode,
-                BasePrice = roomType.BasePrice,
-                Notes = roomType.Notes,
-                FloorNumber = roomType.FloorNumber,
-                StairCount = roomType.StairCount,
-                HasWindow = roomType.HasWindow,
-                HasPrivateBathroom = roomType.HasPrivateBathroom,
-                IsActive = roomType.IsActive,
-                BedConfigurations = roomType.BedConfigurations
-                    .OrderBy(configuration => configuration.BedType.Name)
-                    .Select(configuration => new RoomTypeBedResponse
-                    {
-                        BedTypeId = configuration.BedTypeId,
-                        BedTypeName = configuration.BedType.Name,
-                        BedTypeSlug = configuration.BedType.Slug,
-                        Quantity = configuration.Quantity
-                    })
-                    .ToList(),
-                Amenities = roomType.RoomTypeAmenities
-                    .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
-                    .ThenBy(join => join.Amenity.SortOrder)
-                    .Select(join => new RoomTypeAmenityResponse
-                    {
-                        AmenityId = join.AmenityId,
-                        Name = join.Amenity.Name,
-                        AmenityCategoryId = join.Amenity.AmenityCategoryId,
-                        CategoryName = join.Amenity.AmenityCategory.Name
-                    })
-                    .ToList()
-            })
+            .Include(roomType => roomType.BedConfigurations)
+                .ThenInclude(configuration => configuration.BedType)
+            .Include(roomType => roomType.RoomTypeAmenities)
+                .ThenInclude(join => join.Amenity)
+                    .ThenInclude(amenity => amenity.AmenityCategory)
+            .Include(roomType => roomType.PropertyImages)
             .SingleAsync(cancellationToken);
+
+        return MapRoomType(roomType);
+    }
+
+    private async Task<bool> HasRoomImagesAsync(int roomTypeId, CancellationToken cancellationToken) =>
+        await dbContext.PropertyImages.AsNoTracking()
+            .AnyAsync(image => image.RoomTypeId == roomTypeId, cancellationToken);
+
+    private static void EnsureCanActivate(UpdateRoomTypeRequest request, bool hasImages)
+    {
+        var completion = CalculateCompletion(
+            request.Name,
+            request.Description,
+            request.MaxAdults,
+            request.MaxChildren,
+            request.TotalInventory,
+            request.AmenityIds.Any(),
+            hasImages);
+
+        if (!completion.IsComplete)
+        {
+            throw new InvalidOperationException(
+                $"Room cannot be activated until required data is complete. Missing items: {string.Join(", ", completion.MissingItems)}.");
+        }
+    }
+
+    private static RoomTypeResponse MapRoomType(RoomType roomType)
+    {
+        return new RoomTypeResponse
+        {
+            Id = roomType.Id,
+            PropertyId = roomType.PropertyId,
+            Name = roomType.Name,
+            EnglishName = roomType.EnglishName,
+            Slug = roomType.Slug,
+            Description = roomType.Description,
+            MaxAdults = roomType.MaxAdults,
+            MaxChildren = roomType.MaxChildren,
+            AllowExtraGuest = roomType.AllowExtraGuest,
+            MaxExtraGuests = roomType.MaxExtraGuests,
+            TotalInventory = roomType.TotalInventory,
+            InventoryMode = roomType.InventoryMode,
+            BasePrice = roomType.BasePrice,
+            Notes = roomType.Notes,
+            FloorNumber = roomType.FloorNumber,
+            StairCount = roomType.StairCount,
+            HasWindow = roomType.HasWindow,
+            HasPrivateBathroom = roomType.HasPrivateBathroom,
+            IsActive = roomType.IsActive,
+            Completion = CalculateCompletion(
+                roomType.Name,
+                roomType.Description,
+                roomType.MaxAdults,
+                roomType.MaxChildren,
+                roomType.TotalInventory,
+                roomType.RoomTypeAmenities.Any(),
+                roomType.PropertyImages.Any(image => image.RoomTypeId == roomType.Id)),
+            BedConfigurations = roomType.BedConfigurations
+                .OrderBy(configuration => configuration.BedType.Name)
+                .Select(configuration => new RoomTypeBedResponse
+                {
+                    BedTypeId = configuration.BedTypeId,
+                    BedTypeName = configuration.BedType.Name,
+                    BedTypeSlug = configuration.BedType.Slug,
+                    Quantity = configuration.Quantity
+                })
+                .ToList(),
+            Amenities = roomType.RoomTypeAmenities
+                .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
+                .ThenBy(join => join.Amenity.SortOrder)
+                .Select(join => new RoomTypeAmenityResponse
+                {
+                    AmenityId = join.AmenityId,
+                    Name = join.Amenity.Name,
+                    AmenityCategoryId = join.Amenity.AmenityCategoryId,
+                    CategoryName = join.Amenity.AmenityCategory.Name
+                })
+                .ToList()
+        };
+    }
+
+    private static RoomCompletionResponse CalculateCompletion(
+        string name,
+        string description,
+        int maxAdults,
+        int maxChildren,
+        int totalInventory,
+        bool hasAmenities,
+        bool hasImages)
+    {
+        var sections = new[]
+        {
+            Section(
+                "basic",
+                "اطلاعات پایه",
+                [
+                    (!string.IsNullOrWhiteSpace(name), "نام اتاق"),
+                    (!string.IsNullOrWhiteSpace(description), "توضیح اتاق")
+                ],
+                started: !string.IsNullOrWhiteSpace(name) || !string.IsNullOrWhiteSpace(description)),
+            Section(
+                "capacity",
+                "ظرفیت",
+                [
+                    (maxAdults >= 1, "ظرفیت بزرگسال"),
+                    (maxChildren >= 0, "ظرفیت کودک")
+                ],
+                started: maxAdults > 0 || maxChildren > 0),
+            Section(
+                "inventory",
+                "موجودی",
+                [(totalInventory >= 1, "تعداد موجودی")],
+                started: totalInventory > 0),
+            Section(
+                "amenities",
+                "امکانات",
+                [(hasAmenities, "حداقل یک امکان اتاق")],
+                started: hasAmenities),
+            Section(
+                "images",
+                "تصاویر",
+                [(hasImages, "حداقل یک تصویر اتاق")],
+                started: hasImages),
+        };
+
+        var missingItems = sections
+            .SelectMany(section => section.MissingItems)
+            .ToArray();
+
+        return new RoomCompletionResponse
+        {
+            IsComplete = missingItems.Length == 0,
+            MissingItems = missingItems,
+            Sections = sections
+        };
+    }
+
+    private static RoomCompletionSectionResponse Section(
+        string key,
+        string label,
+        IReadOnlyList<(bool IsComplete, string MissingLabel)> requiredItems,
+        bool started)
+    {
+        var missingItems = requiredItems
+            .Where(item => !item.IsComplete)
+            .Select(item => item.MissingLabel)
+            .ToArray();
+
+        return new RoomCompletionSectionResponse
+        {
+            Key = key,
+            Label = label,
+            MissingItems = missingItems,
+            Status = missingItems.Length == 0
+                ? PropertyCompletionSectionStatus.Complete
+                : started
+                    ? PropertyCompletionSectionStatus.Incomplete
+                    : PropertyCompletionSectionStatus.NotStarted
+        };
+    }
 
     private async Task<Dictionary<int, int>> ValidateBedsAsync(
         IReadOnlyCollection<RoomTypeBedRequest> requestedBeds,

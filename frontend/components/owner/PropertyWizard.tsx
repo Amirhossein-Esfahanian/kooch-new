@@ -29,6 +29,8 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
+import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
+import { propertyCompletionHref } from "@/lib/property-completion";
 
 const steps = [
   "اطلاعات پایه",
@@ -239,6 +241,15 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [error, setError] = useState("");
 
   useEffect(() => {
+    const requestedStep = Number(
+      new URLSearchParams(window.location.search).get("step") ?? 0,
+    );
+    if (Number.isFinite(requestedStep) && requestedStep > 0) {
+      setStep(Math.min(Math.max(requestedStep, 0), steps.length - 1));
+    }
+  }, []);
+
+  useEffect(() => {
     if (!getToken()) {
       router.replace("/login");
       return;
@@ -443,6 +454,17 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     setError("");
     setStep(index);
     window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+  }
+
+  function completionStepTarget(actionTarget: string) {
+    const stepByTarget: Record<string, number> = {
+      basic: 0,
+      location: 1,
+      amenities: 3,
+      images: 4,
+      policies: 7,
+    };
+    return stepByTarget[actionTarget];
   }
 
   function update<K extends keyof WizardData>(key: K, value: WizardData[K]) {
@@ -911,6 +933,26 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 8 && (
           <section className="grid gap-4">
+            {completion && property && (
+              <PropertyCompletionCard
+                completion={completion}
+                getActionHref={(section) => {
+                  const target = section.actionTarget || section.key;
+                  if (completionStepTarget(target) != null) return undefined;
+                  return propertyCompletionHref(
+                    isAdmin ? "admin" : "owner",
+                    property.id,
+                    section,
+                  );
+                }}
+                onSectionAction={(section) => {
+                  const target = completionStepTarget(
+                    section.actionTarget || section.key,
+                  );
+                  if (target != null) jumpToStep(target);
+                }}
+              />
+            )}
             <div className={cardClass}>
               <h2 className="text-2xl font-black">بازبینی</h2>
               <p className="mt-1 text-sm text-muted-foreground">میزان تکمیل اطلاعات: {localCompletionPercentage}٪</p>

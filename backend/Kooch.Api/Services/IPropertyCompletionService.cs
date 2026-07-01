@@ -10,4 +10,8 @@ public interface IPropertyCompletionService
         UserRole role,
         int propertyId,
         CancellationToken cancellationToken = default);
+
+    Task<PropertyCompletionResponse> CalculateAsync(
+        int propertyId,
+        CancellationToken cancellationToken = default);
 }

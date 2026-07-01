@@ -23,8 +23,24 @@ public class RoomTypeResponse
     public bool? HasWindow { get; set; }
     public bool? HasPrivateBathroom { get; set; }
     public bool IsActive { get; set; }
+    public RoomCompletionResponse Completion { get; set; } = new();
     public IReadOnlyList<RoomTypeBedResponse> BedConfigurations { get; set; } = [];
     public IReadOnlyList<RoomTypeAmenityResponse> Amenities { get; set; } = [];
+}
+
+public class RoomCompletionResponse
+{
+    public bool IsComplete { get; set; }
+    public IReadOnlyList<string> MissingItems { get; set; } = [];
+    public IReadOnlyList<RoomCompletionSectionResponse> Sections { get; set; } = [];
+}
+
+public class RoomCompletionSectionResponse
+{
+    public string Key { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
+    public PropertyCompletionSectionStatus Status { get; set; }
+    public IReadOnlyList<string> MissingItems { get; set; } = [];
 }
 
 public class RoomTypeAmenityResponse

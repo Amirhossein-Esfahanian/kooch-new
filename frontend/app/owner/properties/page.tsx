@@ -4,7 +4,14 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { OwnerPage } from "@/components/owner/OwnerPage";
-import { apiRequest, getToken, PropertyResponse } from "@/lib/owner-api";
+import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
+import {
+  apiRequest,
+  getToken,
+  PropertyCompletionResponse,
+  PropertyResponse,
+} from "@/lib/owner-api";
+import { propertyCompletionHref } from "@/lib/property-completion";
 
 const statusLabels: Record<string, string> = {
   Draft: "پیش‌نویس",
@@ -25,6 +32,9 @@ const ownerDashboardCards = [
 export default function OwnerPropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
+  const [completions, setCompletions] = useState<
+    Record<number, PropertyCompletionResponse>
+  >({});
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
@@ -34,7 +44,22 @@ export default function OwnerPropertiesPage() {
       return;
     }
     apiRequest<PropertyResponse[]>("/owner/properties")
-      .then(setProperties)
+      .then(async (propertyItems) => {
+        setProperties(propertyItems);
+        const completionEntries = await Promise.all(
+          propertyItems.map(async (property) => {
+            const completion = await apiRequest<PropertyCompletionResponse>(
+              `/owner/properties/${property.id}/completion`,
+            ).catch(() => null);
+            return [property.id, completion] as const;
+          }),
+        );
+        setCompletions(
+          Object.fromEntries(
+            completionEntries.filter(([, completion]) => completion),
+          ) as Record<number, PropertyCompletionResponse>,
+        );
+      })
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
   }, [router]);
@@ -74,7 +99,7 @@ export default function OwnerPropertiesPage() {
       <div className="grid gap-4">
         {properties.map((property) => (
           <article
-            className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-slate-200 bg-white p-5 shadow-sm"
+            className="grid gap-4 rounded-lg border border-border bg-card p-5 text-card-foreground shadow-sm"
             key={property.id}
           >
             <div>
@@ -100,6 +125,16 @@ export default function OwnerPropertiesPage() {
                 ویرایش کامل
               </Link>
             </div>
+            {completions[property.id] && (
+              <PropertyCompletionCard
+                compact
+                completion={completions[property.id]}
+                getActionHref={(section) =>
+                  propertyCompletionHref("owner", property.id, section)
+                }
+                title="تکمیل اقامتگاه"
+              />
+            )}
           </article>
         ))}
       </div>

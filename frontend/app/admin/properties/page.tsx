@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochSelect } from "@/components/KoochFormControls";
+import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 import {
   KoochTable,
   KoochTableBody,
@@ -19,9 +21,11 @@ import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   apiRequest,
   getToken,
+  PropertyCompletionResponse,
   PropertyResponse,
   PropertyStatus,
 } from "@/lib/owner-api";
+import { propertyCompletionHref } from "@/lib/property-completion";
 
 const statuses: PropertyStatus[] = [
   "Draft",
@@ -39,23 +43,37 @@ const statusLabels: Record<PropertyStatus, string> = {
   Suspended: "تعلیق شده",
 };
 
-import { KoochIcon } from "@/components/KoochIcon";
-
 const actionLinkClass =
   "inline-flex min-h-9 items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 
 export default function AdminPropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
+  const [completions, setCompletions] = useState<
+    Record<number, PropertyCompletionResponse>
+  >({});
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
-  const load = useCallback(
-    async () =>
-      setProperties(await apiRequest<PropertyResponse[]>("/admin/properties")),
-    [],
-  );
+  const load = useCallback(async () => {
+    const propertyItems =
+      await apiRequest<PropertyResponse[]>("/admin/properties");
+    setProperties(propertyItems);
+    const completionEntries = await Promise.all(
+      propertyItems.map(async (property) => {
+        const completion = await apiRequest<PropertyCompletionResponse>(
+          `/admin/properties/${property.id}/completion`,
+        ).catch(() => null);
+        return [property.id, completion] as const;
+      }),
+    );
+    setCompletions(
+      Object.fromEntries(
+        completionEntries.filter(([, completion]) => completion),
+      ) as Record<number, PropertyCompletionResponse>,
+    );
+  }, []);
 
   useEffect(() => {
     if (!getToken()) {
@@ -75,9 +93,15 @@ export default function AdminPropertiesPage() {
         `/admin/properties/${id}/status`,
         { method: "PUT", body: JSON.stringify({ status }) },
       );
+      const completion = await apiRequest<PropertyCompletionResponse>(
+        `/admin/properties/${id}/completion`,
+      ).catch(() => null);
       setProperties((current) =>
         current.map((property) => (property.id === id ? updated : property)),
       );
+      if (completion) {
+        setCompletions((current) => ({ ...current, [id]: completion }));
+      }
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -154,6 +178,17 @@ export default function AdminPropertiesPage() {
                       <p className="text-xs text-muted-foreground" dir="ltr">
                         {property.englishName}
                       </p>
+                    )}
+                    {completions[property.id] && (
+                      <PropertyCompletionCard
+                        className="mt-3 max-w-xl"
+                        compact
+                        completion={completions[property.id]}
+                        getActionHref={(section) =>
+                          propertyCompletionHref("admin", property.id, section)
+                        }
+                        title="تکمیل اقامتگاه"
+                      />
                     )}
                   </KoochTableCell>
                   <KoochTableCell>{property.city}</KoochTableCell>

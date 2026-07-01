@@ -8,8 +8,11 @@ import {
   BedTypeResponse,
   bedTypeLabel,
   PropertyImageResponse,
+  RoomCompletionResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochAlert } from "@/components/KoochAlert";
+import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
@@ -18,6 +21,15 @@ import {
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import {
+  KoochTable,
+  KoochTableBody,
+  KoochTableCell,
+  KoochTableEmpty,
+  KoochTableHead,
+  KoochTableHeader,
+  KoochTableRow,
+} from "@/components/KoochTable";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 interface RoomTypeDraft {
@@ -107,6 +119,95 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
   };
 }
 
+function sectionStatus(
+  missingItems: string[],
+  started: boolean,
+): RoomCompletionResponse["sections"][number]["status"] {
+  if (missingItems.length === 0) return "Complete";
+  return started ? "Incomplete" : "NotStarted";
+}
+
+function calculateDraftCompletion(
+  draft: RoomTypeDraft,
+  hasImages: boolean,
+): RoomCompletionResponse {
+  const sections = [
+    {
+      key: "basic",
+      label: "اطلاعات پایه",
+      missingItems: [
+        draft.name.trim() ? "" : "نام اتاق",
+        draft.description.trim() ? "" : "توضیح اتاق",
+      ].filter(Boolean),
+      started: Boolean(draft.name.trim() || draft.description.trim()),
+    },
+    {
+      key: "capacity",
+      label: "ظرفیت",
+      missingItems: [
+        draft.maxAdults >= 1 ? "" : "ظرفیت بزرگسال",
+        draft.maxChildren >= 0 ? "" : "ظرفیت کودک",
+      ].filter(Boolean),
+      started: draft.maxAdults > 0 || draft.maxChildren > 0,
+    },
+    {
+      key: "inventory",
+      label: "موجودی",
+      missingItems: [draft.totalInventory >= 1 ? "" : "تعداد موجودی"].filter(
+        Boolean,
+      ),
+      started: draft.totalInventory > 0,
+    },
+    {
+      key: "amenities",
+      label: "امکانات",
+      missingItems: [
+        draft.amenityIds.length > 0 ? "" : "حداقل یک امکان اتاق",
+      ].filter(Boolean),
+      started: draft.amenityIds.length > 0,
+    },
+    {
+      key: "images",
+      label: "تصاویر",
+      missingItems: [hasImages ? "" : "حداقل یک تصویر اتاق"].filter(Boolean),
+      started: hasImages,
+    },
+  ].map((section) => ({
+    key: section.key,
+    label: section.label,
+    missingItems: section.missingItems,
+    status: sectionStatus(section.missingItems, section.started),
+  }));
+
+  const missingItems = sections.flatMap((section) => section.missingItems);
+  return {
+    isComplete: missingItems.length === 0,
+    missingItems,
+    sections,
+  };
+}
+
+const completionStatusLabels = {
+  Complete: "کامل",
+  Incomplete: "ناقص",
+  NotStarted: "شروع نشده",
+} as const;
+
+function roomStatus(roomType: RoomTypeResponse) {
+  if (roomType.isActive) return { label: "Active", variant: "success" as const };
+  if (roomType.completion?.isComplete) return { label: "Inactive", variant: "muted" as const };
+  return { label: "Draft", variant: "warning" as const };
+}
+
+function roomCapacitySummary(roomType: RoomTypeResponse) {
+  const parts = [`${roomType.maxAdults} بزرگسال`];
+  if (roomType.maxChildren > 0) parts.push(`${roomType.maxChildren} کودک`);
+  if (roomType.allowExtraGuest && roomType.maxExtraGuests > 0) {
+    parts.push(`${roomType.maxExtraGuests} نفر اضافه`);
+  }
+  return parts.join("، ");
+}
+
 export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
@@ -116,7 +217,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(null);
+  const [roomTypeToDelete, setRoomTypeToDelete] = useState<RoomTypeResponse | null>(null);
   const [error, setError] = useState("");
+  const [activationWarning, setActivationWarning] = useState<string[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [wizardMode, setWizardMode] = useState<WizardMode>("create");
   const [activeStep, setActiveStep] = useState(0);
@@ -129,6 +232,20 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const privateBathroomAmenity = useMemo(
     () => roomAmenityOptions.find((item) => item.slug === "private-bathroom"),
     [roomAmenityOptions],
+  );
+
+  const draftHasImages = useMemo(
+    () =>
+      Boolean(
+        roomTypeDraft.id &&
+          images.some((image) => image.roomTypeId === roomTypeDraft.id),
+      ),
+    [images, roomTypeDraft.id],
+  );
+
+  const draftCompletion = useMemo(
+    () => calculateDraftCompletion(roomTypeDraft, draftHasImages),
+    [draftHasImages, roomTypeDraft],
   );
 
   useEffect(() => {
@@ -170,6 +287,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setWizardMode("create");
     setActiveStep(0);
     setError("");
+    setActivationWarning([]);
     setWizardOpen(true);
   }
 
@@ -178,6 +296,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setWizardMode("edit");
     setActiveStep(0);
     setError("");
+    setActivationWarning([]);
     setWizardOpen(true);
   }
 
@@ -186,9 +305,11 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setRoomTypeDraft(emptyRoomType);
     setActiveStep(0);
     setError("");
+    setActivationWarning([]);
   }
 
   function patchDraft(patch: Partial<RoomTypeDraft>) {
+    setActivationWarning([]);
     setRoomTypeDraft((current) => ({ ...current, ...patch }));
   }
 
@@ -301,6 +422,11 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       toast.error(validationError);
       return;
     }
+    if (!draftCompletion.isComplete) {
+      setActivationWarning(draftCompletion.missingItems);
+      toast.error("برای فعال‌سازی اتاق، موارد ناقص را تکمیل کنید.");
+      return;
+    }
 
     setSaving(true);
     setError("");
@@ -325,15 +451,16 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     }
   }
 
-  async function deleteRoomType(roomType: RoomTypeResponse) {
-    if (!window.confirm(`آیا از حذف اتاق «${roomType.name}» مطمئن هستید؟`)) return;
+  async function confirmDeleteRoomType() {
+    if (!roomTypeToDelete) return;
 
-    setDeletingRoomTypeId(roomType.id);
+    setDeletingRoomTypeId(roomTypeToDelete.id);
     setError("");
     try {
-      await apiRequest<void>(`/owner/room-types/${roomType.id}`, { method: "DELETE" });
+      await apiRequest<void>(`/owner/room-types/${roomTypeToDelete.id}`, { method: "DELETE" });
       await Promise.all([loadRoomTypes(), loadImages()]);
       toast.success("اتاق حذف شد");
+      setRoomTypeToDelete(null);
     } catch (caught) {
       const message = caught instanceof Error ? caught.message : "حذف اتاق انجام نشد.";
       setError(message);
@@ -562,7 +689,102 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             در حال بارگذاری اتاق‌ها...
           </p>
         )}
-        <div className="mt-5 grid gap-4">
+        {!loading && roomTypes.length > 0 && (
+          <div className="mt-5">
+            <KoochTable>
+              <KoochTableHeader>
+                <KoochTableRow>
+                  <KoochTableHead className="w-14">ردیف</KoochTableHead>
+                  <KoochTableHead>تصویر</KoochTableHead>
+                  <KoochTableHead>نام اتاق</KoochTableHead>
+                  <KoochTableHead>وضعیت</KoochTableHead>
+                  <KoochTableHead>موجودی</KoochTableHead>
+                  <KoochTableHead>ظرفیت</KoochTableHead>
+                  <KoochTableHead>موارد ناقص</KoochTableHead>
+                  <KoochTableHead>عملیات</KoochTableHead>
+                </KoochTableRow>
+              </KoochTableHeader>
+              <KoochTableBody>
+                {roomTypes.map((roomType, index) => {
+                  const firstImage = images.find(
+                    (image) => image.roomTypeId === roomType.id,
+                  );
+                  const status = roomStatus(roomType);
+                  return (
+                    <KoochTableRow key={roomType.id}>
+                      <KoochTableCell className="font-bold text-muted-foreground">
+                        {index + 1}
+                      </KoochTableCell>
+                      <KoochTableCell>
+                        {firstImage ? (
+                          <img
+                            alt={firstImage.altText || firstImage.caption || roomType.name}
+                            className="h-14 w-20 rounded-lg object-cover"
+                            src={firstImage.url}
+                          />
+                        ) : (
+                          <div className="grid h-14 w-20 place-items-center rounded-lg border border-dashed border-border bg-muted text-xs font-bold text-muted-foreground">
+                            بدون تصویر
+                          </div>
+                        )}
+                      </KoochTableCell>
+                      <KoochTableCell>
+                        <p className="font-black text-foreground">{roomType.name}</p>
+                        {roomType.englishName && (
+                          <p className="text-xs text-muted-foreground" dir="ltr">
+                            {roomType.englishName}
+                          </p>
+                        )}
+                      </KoochTableCell>
+                      <KoochTableCell>
+                        <KoochBadge variant={status.variant}>{status.label}</KoochBadge>
+                      </KoochTableCell>
+                      <KoochTableCell className="font-bold">
+                        {roomType.totalInventory}
+                      </KoochTableCell>
+                      <KoochTableCell className="text-sm text-muted-foreground">
+                        {roomCapacitySummary(roomType)}
+                      </KoochTableCell>
+                      <KoochTableCell className="max-w-[260px] text-xs text-muted-foreground">
+                        {roomType.completion?.missingItems?.length
+                          ? roomType.completion.missingItems.join("، ")
+                          : "کامل"}
+                      </KoochTableCell>
+                      <KoochTableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <KoochButton
+                            onClick={() => editRoomType(roomType)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            ویرایش
+                          </KoochButton>
+                          <KoochButton
+                            disabled={deletingRoomTypeId === roomType.id}
+                            loading={deletingRoomTypeId === roomType.id}
+                            onClick={() => setRoomTypeToDelete(roomType)}
+                            size="sm"
+                            type="button"
+                            variant="destructive"
+                          >
+                            حذف
+                          </KoochButton>
+                        </div>
+                      </KoochTableCell>
+                    </KoochTableRow>
+                  );
+                })}
+                {roomTypes.length === 0 && (
+                  <KoochTableEmpty colSpan={8}>
+                    هنوز اتاقی ثبت نشده است.
+                  </KoochTableEmpty>
+                )}
+              </KoochTableBody>
+            </KoochTable>
+          </div>
+        )}
+        <div className="hidden">
           {roomTypes.map((roomType) => {
             const details = [
               roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
@@ -578,9 +800,14 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-lg font-black text-foreground">{roomType.name}</h3>
                       {!roomType.isActive && (
-                        <span className="rounded-full bg-muted px-2.5 py-1 text-xs font-black text-muted-foreground">
+                        <KoochBadge variant="muted">
                           پیش‌نویس
-                        </span>
+                        </KoochBadge>
+                      )}
+                      {roomType.completion?.isComplete ? (
+                        <KoochBadge variant="success">کامل</KoochBadge>
+                      ) : (
+                        <KoochBadge variant="warning">ناقص</KoochBadge>
                       )}
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
@@ -605,6 +832,15 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                       </p>
                     )}
                     {roomType.notes && <p className="mt-2 text-sm text-muted-foreground">{roomType.notes}</p>}
+                    {roomType.completion && !roomType.completion.isComplete && (
+                      <KoochAlert className="mt-3" title="موارد ناقص اتاق" variant="warning">
+                        <ul className="grid gap-1">
+                          {roomType.completion.missingItems.map((item) => (
+                            <li key={item}>{item}</li>
+                          ))}
+                        </ul>
+                      </KoochAlert>
+                    )}
                     {images.some((image) => image.roomTypeId === roomType.id) && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {images
@@ -628,7 +864,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     <KoochButton
                       disabled={deletingRoomTypeId === roomType.id}
                       loading={deletingRoomTypeId === roomType.id}
-                      onClick={() => deleteRoomType(roomType)}
+                      onClick={() => setRoomTypeToDelete(roomType)}
                       size="sm"
                       type="button"
                       variant="destructive"
@@ -647,6 +883,44 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           </p>
         )}
       </KoochCard>
+
+      <KoochDialog
+        closeDisabled={deletingRoomTypeId !== null}
+        description={
+          roomTypeToDelete
+            ? `آیا از حذف اتاق «${roomTypeToDelete.name}» مطمئن هستید؟`
+            : undefined
+        }
+        footer={
+          <div className="flex w-full flex-wrap justify-end gap-3">
+            <KoochButton
+              disabled={deletingRoomTypeId !== null}
+              onClick={() => setRoomTypeToDelete(null)}
+              variant="outline"
+            >
+              لغو
+            </KoochButton>
+            <KoochButton
+              disabled={!roomTypeToDelete}
+              loading={deletingRoomTypeId !== null}
+              onClick={confirmDeleteRoomType}
+              variant="destructive"
+            >
+              حذف
+            </KoochButton>
+          </div>
+        }
+        onOpenChange={(open) => {
+          if (!open && deletingRoomTypeId === null) setRoomTypeToDelete(null);
+        }}
+        open={Boolean(roomTypeToDelete)}
+        size="md"
+        title="حذف اتاق"
+      >
+        <KoochAlert variant="warning">
+          این عملیات قابل بازگشت نیست و اتاق از لیست مدیریت حذف می‌شود.
+        </KoochAlert>
+      </KoochDialog>
 
       <KoochDialog
         closeDisabled={saving}
@@ -727,9 +1001,45 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         </div>
 
         {error && (
-          <p className="mb-4 rounded-xl border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
+          <KoochAlert className="mb-4" variant="destructive">
             {error}
-          </p>
+          </KoochAlert>
+        )}
+        {activationWarning.length > 0 && (
+          <KoochAlert className="mb-4" title="اتاق هنوز قابل فعال‌سازی نیست" variant="warning">
+            <ul className="grid gap-1">
+              {activationWarning.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </KoochAlert>
+        )}
+        {!draftCompletion.isComplete && (
+          <KoochAlert className="mb-4" title="وضعیت تکمیل اتاق" variant="default">
+            <div className="grid gap-2">
+              {draftCompletion.sections.map((section) => (
+                <div className="flex flex-wrap items-center justify-between gap-2" key={section.key}>
+                  <span className="font-black">{section.label}</span>
+                  <KoochBadge
+                    variant={
+                      section.status === "Complete"
+                        ? "success"
+                        : section.status === "Incomplete"
+                          ? "warning"
+                          : "muted"
+                    }
+                  >
+                    {completionStatusLabels[section.status]}
+                  </KoochBadge>
+                  {section.missingItems.length > 0 && (
+                    <span className="basis-full text-xs text-muted-foreground">
+                      {section.missingItems.join("، ")}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </KoochAlert>
         )}
         {renderStep()}
       </KoochDialog>

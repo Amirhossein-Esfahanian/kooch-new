@@ -9,7 +9,9 @@ namespace Kooch.Api.Controllers;
 [ApiController]
 [AdminAuthorize]
 [Route("api/admin/properties")]
-public class AdminPropertiesController(IPropertyService propertyService) : AuthenticatedControllerBase
+public class AdminPropertiesController(
+    IPropertyService propertyService,
+    IPropertyCompletionService propertyCompletionService) : AuthenticatedControllerBase
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PropertyResponse>>(StatusCodes.Status200OK)]
@@ -41,6 +43,14 @@ public class AdminPropertiesController(IPropertyService propertyService) : Authe
     {
         var user = GetCurrentUser();
         return Ok(await propertyService.GetPropertyByIdAsync(user.UserId, user.Role, id, cancellationToken));
+    }
+
+    [HttpGet("{id:int}/completion")]
+    [ProducesResponseType<PropertyCompletionResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyCompletionResponse>> GetCompletion(int id, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyCompletionService.GetAsync(user.UserId, user.Role, id, cancellationToken));
     }
 
     [HttpPut("{id:int}/approve")]

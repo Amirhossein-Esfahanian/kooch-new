@@ -97,8 +97,22 @@ export interface RoomTypeResponse {
   hasWindow: boolean | null;
   hasPrivateBathroom: boolean | null;
   isActive: boolean;
+  completion: RoomCompletionResponse;
   bedConfigurations: RoomTypeBedResponse[];
   amenities: RoomTypeAmenityResponse[];
+}
+
+export interface RoomCompletionResponse {
+  isComplete: boolean;
+  missingItems: string[];
+  sections: RoomCompletionSectionResponse[];
+}
+
+export interface RoomCompletionSectionResponse {
+  key: string;
+  label: string;
+  status: PropertyCompletionSectionStatus;
+  missingItems: string[];
 }
 
 export type PromotionType =
@@ -339,8 +353,25 @@ export interface PropertyPricingResponse {
 export interface PropertyCompletionResponse {
   propertyId: number;
   completionPercentage: number;
+  healthStatus: "Ready" | "NeedsAttention" | "Incomplete";
+  sections: PropertyCompletionSectionResponse[];
+  warnings: string[];
   completedSections: string[];
   missingSections: string[];
+  canActivate: boolean;
+}
+
+export type PropertyCompletionSectionStatus =
+  | "Complete"
+  | "Incomplete"
+  | "NotStarted";
+
+export interface PropertyCompletionSectionResponse {
+  key: string;
+  label: string;
+  status: PropertyCompletionSectionStatus;
+  missingItems: string[];
+  actionTarget: string;
 }
 
 export type PropertyDescriptionSectionType =

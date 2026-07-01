@@ -6,7 +6,7 @@ const koochIcons = {
   price: "/svgs/tags.svg",
   suspend: "/svgs/ban.svg",
   view: "/svgs/eye.svg",
-  // other icons used across the app  settings: "/svgs/cog-l.svg",
+
   notification: "/svgs/bell-l.svg",
   logout: "/svgs/left-from-bracket-l.svg",
   account: "/svgs/user-circle-l.svg",
