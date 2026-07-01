@@ -77,19 +77,32 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
             .Where(price => roomTypeIds.Contains(price.RoomTypeId) && dates.Contains(price.Date) && price.GuestType == request.GuestType)
             .ToDictionaryAsync(price => (price.RoomTypeId, price.Date), cancellationToken);
         var updated = new List<RoomDailyPrice>();
-        var historyCandidates = new List<(int RoomTypeId, DateOnly Date, PricingGuestType GuestType, decimal OldPrice, decimal NewPrice)>();
+        var historyCandidates = new List<PriceHistoryChange>();
         foreach (var item in items)
         {
             var price = existing.GetValueOrDefault((item.RoomTypeId, item.Date));
             var oldBasePrice = price?.BasePrice ?? 0;
+            var oldChildPrice = price?.ChildPrice ?? 0;
+            var oldExtraGuestPrice = price?.ExtraGuestPrice ?? 0;
             if (price is null)
             {
                 price = new RoomDailyPrice { RoomTypeId = item.RoomTypeId, Date = item.Date, GuestType = request.GuestType };
                 dbContext.RoomDailyPrices.Add(price);
             }
-            if (oldBasePrice != request.BasePrice)
+            if (oldBasePrice != request.BasePrice ||
+                oldChildPrice != request.ChildPrice ||
+                oldExtraGuestPrice != request.ExtraGuestPrice)
             {
-                historyCandidates.Add((item.RoomTypeId, item.Date, request.GuestType, oldBasePrice, request.BasePrice));
+                historyCandidates.Add(new PriceHistoryChange(
+                    item.RoomTypeId,
+                    item.Date,
+                    request.GuestType,
+                    oldBasePrice,
+                    request.BasePrice,
+                    oldChildPrice,
+                    request.ChildPrice,
+                    oldExtraGuestPrice,
+                    request.ExtraGuestPrice));
             }
             price.GuestType = request.GuestType;
             price.BasePrice = request.BasePrice;
@@ -98,7 +111,7 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
             updated.Add(price);
         }
 
-        dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(userId, historyCandidates));
+        dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(propertyId, userId, historyCandidates));
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
@@ -108,31 +121,42 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
         int userId,
         UserRole role,
         int propertyId,
-        PricingGuestType guestType,
+        PricingGuestType? guestType = null,
         CancellationToken cancellationToken = default)
     {
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
 
-        return await dbContext.RoomDailyPriceHistory.AsNoTracking()
-            .Where(history => history.RoomType.PropertyId == propertyId && history.GuestType == guestType)
+        var query = dbContext.RoomDailyPriceHistory.AsNoTracking()
+            .Where(history => history.PropertyId == propertyId);
+        if (guestType.HasValue)
+        {
+            query = query.Where(history => history.GuestType == guestType.Value);
+        }
+
+        return await query
             .OrderByDescending(history => history.ChangedAtUtc)
             .ThenByDescending(history => history.Id)
             .Take(200)
             .Select(history => new RoomDailyPriceHistoryResponse
             {
                 Id = history.Id,
+                PropertyId = history.PropertyId,
                 RoomId = history.RoomTypeId,
                 RoomName = history.RoomType.Name,
                 GuestType = history.GuestType,
-                OldPrice = history.OldPrice,
-                NewPrice = history.NewPrice,
-                UserId = history.UserId,
+                AffectedDateFrom = history.AffectedDateFrom,
+                AffectedDateTo = history.AffectedDateTo,
+                OldBasePrice = history.OldBasePrice,
+                NewBasePrice = history.NewBasePrice,
+                OldChildPrice = history.OldChildPrice,
+                NewChildPrice = history.NewChildPrice,
+                OldExtraGuestPrice = history.OldExtraGuestPrice,
+                NewExtraGuestPrice = history.NewExtraGuestPrice,
+                ChangedByUserId = history.ChangedByUserId,
                 User = (history.User.FirstName + " " + history.User.LastName).Trim() == ""
                     ? history.User.Email
                     : (history.User.FirstName + " " + history.User.LastName).Trim(),
                 DateTime = history.ChangedAtUtc,
-                AffectedStartDate = history.AffectedStartDate,
-                AffectedEndDate = history.AffectedEndDate
             })
             .ToListAsync(cancellationToken);
     }
@@ -172,16 +196,31 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
     }
 
     private static IEnumerable<RoomDailyPriceHistory> BuildHistory(
+        int propertyId,
         int userId,
-        IReadOnlyCollection<(int RoomTypeId, DateOnly Date, PricingGuestType GuestType, decimal OldPrice, decimal NewPrice)> changes)
+        IReadOnlyCollection<PriceHistoryChange> changes)
     {
         foreach (var group in changes
                      .OrderBy(change => change.RoomTypeId)
                      .ThenBy(change => change.GuestType)
-                     .ThenBy(change => change.OldPrice)
-                     .ThenBy(change => change.NewPrice)
+                     .ThenBy(change => change.OldBasePrice)
+                     .ThenBy(change => change.NewBasePrice)
+                     .ThenBy(change => change.OldChildPrice)
+                     .ThenBy(change => change.NewChildPrice)
+                     .ThenBy(change => change.OldExtraGuestPrice)
+                     .ThenBy(change => change.NewExtraGuestPrice)
                      .ThenBy(change => change.Date)
-                     .GroupBy(change => new { change.RoomTypeId, change.GuestType, change.OldPrice, change.NewPrice }))
+                     .GroupBy(change => new
+                     {
+                         change.RoomTypeId,
+                         change.GuestType,
+                         change.OldBasePrice,
+                         change.NewBasePrice,
+                         change.OldChildPrice,
+                         change.NewChildPrice,
+                         change.OldExtraGuestPrice,
+                         change.NewExtraGuestPrice
+                     }))
         {
             DateOnly? start = null;
             DateOnly? previous = null;
@@ -202,13 +241,18 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
 
                 yield return new RoomDailyPriceHistory
                 {
+                    PropertyId = propertyId,
                     RoomTypeId = group.Key.RoomTypeId,
                     GuestType = group.Key.GuestType,
-                    OldPrice = group.Key.OldPrice,
-                    NewPrice = group.Key.NewPrice,
-                    UserId = userId,
-                    AffectedStartDate = start.Value,
-                    AffectedEndDate = previous.Value,
+                    AffectedDateFrom = start.Value,
+                    AffectedDateTo = previous.Value,
+                    OldBasePrice = group.Key.OldBasePrice,
+                    NewBasePrice = group.Key.NewBasePrice,
+                    OldChildPrice = group.Key.OldChildPrice,
+                    NewChildPrice = group.Key.NewChildPrice,
+                    OldExtraGuestPrice = group.Key.OldExtraGuestPrice,
+                    NewExtraGuestPrice = group.Key.NewExtraGuestPrice,
+                    ChangedByUserId = userId,
                     ChangedAtUtc = DateTime.UtcNow
                 };
                 start = change.Date;
@@ -219,13 +263,18 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
             {
                 yield return new RoomDailyPriceHistory
                 {
+                    PropertyId = propertyId,
                     RoomTypeId = group.Key.RoomTypeId,
                     GuestType = group.Key.GuestType,
-                    OldPrice = group.Key.OldPrice,
-                    NewPrice = group.Key.NewPrice,
-                    UserId = userId,
-                    AffectedStartDate = start.Value,
-                    AffectedEndDate = previous.Value,
+                    AffectedDateFrom = start.Value,
+                    AffectedDateTo = previous.Value,
+                    OldBasePrice = group.Key.OldBasePrice,
+                    NewBasePrice = group.Key.NewBasePrice,
+                    OldChildPrice = group.Key.OldChildPrice,
+                    NewChildPrice = group.Key.NewChildPrice,
+                    OldExtraGuestPrice = group.Key.OldExtraGuestPrice,
+                    NewExtraGuestPrice = group.Key.NewExtraGuestPrice,
+                    ChangedByUserId = userId,
                     ChangedAtUtc = DateTime.UtcNow
                 };
             }
@@ -242,4 +291,15 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
         ChildPrice = price.ChildPrice,
         ExtraGuestPrice = price.ExtraGuestPrice
     };
+
+    private sealed record PriceHistoryChange(
+        int RoomTypeId,
+        DateOnly Date,
+        PricingGuestType GuestType,
+        decimal OldBasePrice,
+        decimal NewBasePrice,
+        decimal OldChildPrice,
+        decimal NewChildPrice,
+        decimal OldExtraGuestPrice,
+        decimal NewExtraGuestPrice);
 }

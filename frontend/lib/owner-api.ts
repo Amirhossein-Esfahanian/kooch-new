@@ -49,6 +49,8 @@ export interface PropertyResponse {
   hasAccessibleBathroom: boolean | null;
   freeChildAgeLimit: number | null;
   maxFreeChildren: number | null;
+  childPrice: number | null;
+  extraGuestPrice: number | null;
 }
 
 export type PropertyStatus = "Draft" | "PendingReview" | "Approved" | "Rejected" | "Suspended";
@@ -324,16 +326,21 @@ export interface RoomDailyPriceResponse {
 
 export interface RoomDailyPriceHistoryResponse {
   id: number;
+  propertyId: number;
   roomId: number;
   roomName: string;
   guestType: PricingGuestType;
-  oldPrice: number;
-  newPrice: number;
-  userId: number;
+  affectedDateFrom: string;
+  affectedDateTo: string;
+  oldBasePrice: number;
+  newBasePrice: number;
+  oldChildPrice: number;
+  newChildPrice: number;
+  oldExtraGuestPrice: number;
+  newExtraGuestPrice: number;
+  changedByUserId: number;
   user: string;
   dateTime: string;
-  affectedStartDate: string;
-  affectedEndDate: string;
 }
 
 export interface PricingRoomTypeResponse {

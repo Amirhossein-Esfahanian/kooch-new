@@ -36,7 +36,7 @@ public class OwnerPricingController(IRoomDailyPriceService pricingService) : Aut
     public async Task<ActionResult<IReadOnlyList<RoomDailyPriceHistoryResponse>>> History(
         int propertyId,
         CancellationToken cancellationToken,
-        [FromQuery] PricingGuestType guestType = PricingGuestType.Iranian)
+        [FromQuery] PricingGuestType? guestType = null)
     {
         var user = GetCurrentUser();
         return Ok(await pricingService.GetHistoryAsync(user.UserId, user.Role, propertyId, guestType, cancellationToken));

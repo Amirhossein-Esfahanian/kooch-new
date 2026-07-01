@@ -45,7 +45,11 @@ public class AdminDashboardController(KoochDbContext dbContext) : AuthenticatedC
                 HasElevator = property.HasElevator,
                 IsWheelchairAccessible = property.IsWheelchairAccessible,
                 HasGroundFloorRoom = property.HasGroundFloorRoom,
-                HasAccessibleBathroom = property.HasAccessibleBathroom
+                HasAccessibleBathroom = property.HasAccessibleBathroom,
+                FreeChildAgeLimit = property.FreeChildAgeLimit,
+                MaxFreeChildren = property.MaxFreeChildren,
+                ChildPrice = property.ChildPrice,
+                ExtraGuestPrice = property.ExtraGuestPrice
             })
             .ToListAsync(cancellationToken);
 

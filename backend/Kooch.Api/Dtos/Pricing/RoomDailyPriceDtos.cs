@@ -47,14 +47,19 @@ public class RoomDailyPriceCellRequest
 public class RoomDailyPriceHistoryResponse
 {
     public int Id { get; set; }
+    public int PropertyId { get; set; }
     public int RoomId { get; set; }
     public string RoomName { get; set; } = string.Empty;
     public PricingGuestType GuestType { get; set; }
-    public decimal OldPrice { get; set; }
-    public decimal NewPrice { get; set; }
-    public int UserId { get; set; }
+    public DateOnly AffectedDateFrom { get; set; }
+    public DateOnly AffectedDateTo { get; set; }
+    public decimal OldBasePrice { get; set; }
+    public decimal NewBasePrice { get; set; }
+    public decimal OldChildPrice { get; set; }
+    public decimal NewChildPrice { get; set; }
+    public decimal OldExtraGuestPrice { get; set; }
+    public decimal NewExtraGuestPrice { get; set; }
+    public int? ChangedByUserId { get; set; }
     public string User { get; set; } = string.Empty;
     public DateTime DateTime { get; set; }
-    public DateOnly AffectedStartDate { get; set; }
-    public DateOnly AffectedEndDate { get; set; }
 }

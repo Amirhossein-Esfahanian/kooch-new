@@ -123,6 +123,8 @@ interface WizardData {
   breakfastPrice: string;
   freeChildAgeLimit: string;
   maxFreeChildren: string;
+  childPrice: string;
+  extraGuestPrice: string;
   seoTitle: string;
   seoDescription: string;
 }
@@ -157,6 +159,8 @@ const initialData: WizardData = {
   breakfastPrice: "",
   freeChildAgeLimit: "",
   maxFreeChildren: "",
+  childPrice: "",
+  extraGuestPrice: "",
   seoTitle: "",
   seoDescription: "",
 };
@@ -325,6 +329,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           breakfastPrice: propertyResult.breakfastPrice == null ? "" : String(propertyResult.breakfastPrice),
           freeChildAgeLimit: propertyResult.freeChildAgeLimit == null ? "" : String(propertyResult.freeChildAgeLimit),
           maxFreeChildren: propertyResult.maxFreeChildren == null ? "" : String(propertyResult.maxFreeChildren),
+          childPrice: propertyResult.childPrice == null ? "" : String(propertyResult.childPrice),
+          extraGuestPrice: propertyResult.extraGuestPrice == null ? "" : String(propertyResult.extraGuestPrice),
           seoTitle: propertyResult.seoTitle ?? "",
           seoDescription: propertyResult.seoDescription ?? "",
         });
@@ -463,6 +469,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       amenities: 3,
       images: 4,
       policies: 7,
+      financial: 7,
     };
     return stepByTarget[actionTarget];
   }
@@ -492,6 +499,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       breakfastPrice: data.breakfastOption === "Paid" && data.breakfastPrice !== "" ? Number(data.breakfastPrice) : null,
       freeChildAgeLimit: data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
       maxFreeChildren: data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
+      childPrice: data.childPrice === "" ? null : Number(data.childPrice),
+      extraGuestPrice: data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       landAreaM2: data.landArea === "" ? null : Number(data.landArea),
       floorsCount: data.floors === "" ? null : Number(data.floors),
@@ -925,6 +934,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               {data.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-bold">هزینه صبحانه<input className={inputClass} min="0" onChange={(event) => update("breakfastPrice", event.target.value)} type="number" value={data.breakfastPrice} /></label>}
               <label className="grid gap-1 text-sm font-bold">سن کودک رایگان تا<input className={inputClass} max="17" min="0" onChange={(event) => update("freeChildAgeLimit", event.target.value)} type="number" value={data.freeChildAgeLimit} /></label>
               <label className="grid gap-1 text-sm font-bold">حداکثر تعداد کودک رایگان<input className={inputClass} min="0" onChange={(event) => update("maxFreeChildren", event.target.value)} type="number" value={data.maxFreeChildren} /></label>
+              <label className="grid gap-1 text-sm font-bold">نرخ کودک<input className={inputClass} min="0" onChange={(event) => update("childPrice", event.target.value)} type="number" value={data.childPrice} /></label>
+              <label className="grid gap-1 text-sm font-bold">نرخ نفر اضافه<input className={inputClass} min="0" onChange={(event) => update("extraGuestPrice", event.target.value)} type="number" value={data.extraGuestPrice} /></label>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">عنوان سئو<input className={inputClass} onChange={(event) => update("seoTitle", event.target.value)} value={data.seoTitle} /></label>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">توضیح سئو<textarea className={inputClass} onChange={(event) => update("seoDescription", event.target.value)} rows={3} value={data.seoDescription} /></label>
             </div>

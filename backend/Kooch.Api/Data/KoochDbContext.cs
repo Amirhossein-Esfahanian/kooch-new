@@ -238,6 +238,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(property => property.TotalAreaM2).HasPrecision(12, 2);
             entity.Property(property => property.LandAreaM2).HasPrecision(12, 2);
             entity.Property(property => property.BreakfastPrice).HasPrecision(18, 2);
+            entity.Property(property => property.ChildPrice).HasPrecision(18, 2);
+            entity.Property(property => property.ExtraGuestPrice).HasPrecision(18, 2);
             entity.HasIndex(property => property.Slug).IsUnique();
             entity.HasOne(property => property.Owner)
                 .WithMany(user => user.OwnedProperties)
@@ -490,8 +492,13 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasConversion<string>()
                 .HasMaxLength(20)
                 .HasDefaultValue(PricingGuestType.Iranian);
-            entity.Property(history => history.OldPrice).HasPrecision(18, 2);
-            entity.Property(history => history.NewPrice).HasPrecision(18, 2);
+            entity.Property(history => history.OldBasePrice).HasPrecision(18, 2);
+            entity.Property(history => history.NewBasePrice).HasPrecision(18, 2);
+            entity.Property(history => history.OldChildPrice).HasPrecision(18, 2);
+            entity.Property(history => history.NewChildPrice).HasPrecision(18, 2);
+            entity.Property(history => history.OldExtraGuestPrice).HasPrecision(18, 2);
+            entity.Property(history => history.NewExtraGuestPrice).HasPrecision(18, 2);
+            entity.HasIndex(history => new { history.PropertyId, history.ChangedAtUtc });
             entity.HasIndex(history => new { history.RoomTypeId, history.GuestType, history.ChangedAtUtc });
             entity.HasOne(history => history.RoomType)
                 .WithMany(roomType => roomType.DailyPriceHistory)
@@ -499,7 +506,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(history => history.User)
                 .WithMany()
-                .HasForeignKey(history => history.UserId)
+                .HasForeignKey(history => history.ChangedByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }

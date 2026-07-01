@@ -54,4 +54,8 @@ public class AdminUpdatePropertyRequest
     public bool? HasAccessibleBathroom { get; set; }
     public int? FreeChildAgeLimit { get; set; }
     public int? MaxFreeChildren { get; set; }
+    [Range(0, double.MaxValue)]
+    public decimal? ChildPrice { get; set; }
+    [Range(0, double.MaxValue)]
+    public decimal? ExtraGuestPrice { get; set; }
 }

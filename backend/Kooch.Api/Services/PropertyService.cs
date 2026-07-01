@@ -66,6 +66,8 @@ public class PropertyService(
             HasAccessibleBathroom = request.HasAccessibleBathroom,
             FreeChildAgeLimit = request.FreeChildAgeLimit,
             MaxFreeChildren = request.MaxFreeChildren,
+            ChildPrice = request.ChildPrice,
+            ExtraGuestPrice = request.ExtraGuestPrice,
             Status = request.Status == PropertyStatus.Approved
                 ? PropertyStatus.Draft
                 : request.Status ?? PropertyStatus.Draft
@@ -130,6 +132,8 @@ public class PropertyService(
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
         property.FreeChildAgeLimit = request.FreeChildAgeLimit;
         property.MaxFreeChildren = request.MaxFreeChildren;
+        property.ChildPrice = request.ChildPrice;
+        property.ExtraGuestPrice = request.ExtraGuestPrice;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
@@ -218,6 +222,8 @@ public class PropertyService(
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
         property.FreeChildAgeLimit = request.FreeChildAgeLimit;
         property.MaxFreeChildren = request.MaxFreeChildren;
+        property.ChildPrice = request.ChildPrice;
+        property.ExtraGuestPrice = request.ExtraGuestPrice;
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
@@ -529,6 +535,8 @@ public class PropertyService(
             HasAccessibleBathroom = property.HasAccessibleBathroom,
             FreeChildAgeLimit = property.FreeChildAgeLimit,
             MaxFreeChildren = property.MaxFreeChildren,
+            ChildPrice = property.ChildPrice,
+            ExtraGuestPrice = property.ExtraGuestPrice,
         });
 
     private static IQueryable<PublicPropertyResponse> ProjectPublic(

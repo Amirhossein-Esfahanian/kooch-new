@@ -1,5 +1,7 @@
 "use client";
 
+import { KoochButton } from "@/components/KoochButton";
+
 export interface QuickPriceSelectorProps {
   prices: number[];
   onSelect: (price: number) => void;
@@ -30,14 +32,15 @@ export function QuickPriceSelector({
       {visiblePrices.length > 0 ? (
         <div className="flex flex-wrap gap-2">
           {visiblePrices.map((price) => (
-            <button
-              className="rounded-full border border-border bg-background px-3 py-1.5 text-xs font-black text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+            <KoochButton
+              className="min-h-8 rounded-full px-3 py-1 text-xs font-black"
               key={price}
               onClick={() => onSelect(price)}
-              type="button"
+              size="sm"
+              variant="outline"
             >
               {formatPrice(price)}
-            </button>
+            </KoochButton>
           ))}
         </div>
       ) : (

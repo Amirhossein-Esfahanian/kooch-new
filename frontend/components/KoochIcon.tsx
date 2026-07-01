@@ -17,6 +17,10 @@ const koochIcons = {
   dark: "/svgs/moon-cloud-l.svg",
   light: "/svgs/sun-alt-l.svg",
   search: "/svgs/search-l.svg",
+  warning: "/svgs/alert.svg",
+  info: "/svgs/info.svg",
+  success: "/svgs/success.svg",
+  error: "/svgs/error.svg",
 } as const;
 
 export type KoochIconName = keyof typeof koochIcons;

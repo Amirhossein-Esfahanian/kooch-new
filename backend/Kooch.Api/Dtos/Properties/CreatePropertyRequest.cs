@@ -61,4 +61,10 @@ public class CreatePropertyRequest
 
     [Range(0, int.MaxValue)]
     public int? MaxFreeChildren { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal? ChildPrice { get; set; }
+
+    [Range(0, double.MaxValue)]
+    public decimal? ExtraGuestPrice { get; set; }
 }

@@ -1,11 +1,14 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { KoochAlert } from "@/components/KoochAlert";
+import { KoochButton } from "@/components/KoochButton";
 import {
   apiRequest,
   PricingGuestType,
   PropertyPricingResponse,
+  PropertyResponse,
 } from "@/lib/owner-api";
 
 export type PricingWarningKey = "missingChildPrice" | "missingExtraGuestPrice";
@@ -53,15 +56,29 @@ export function getPricingWarnings(
   if (days.length === 0) return [];
 
   const warnings: PricingWarningKey[] = [];
-  if (!days.some((day) => day.childPrice > 0)) warnings.push("missingChildPrice");
-  if (!days.some((day) => day.extraGuestPrice > 0)) warnings.push("missingExtraGuestPrice");
+  if (!days.some((day) => day.childPrice > 0))
+    warnings.push("missingChildPrice");
+  if (!days.some((day) => day.extraGuestPrice > 0))
+    warnings.push("missingExtraGuestPrice");
   return warnings;
 }
 
-export function isOutlierPrice(
-  price: number,
-  bounds: PropertyPriceBounds,
-) {
+export function getPropertyFinancialWarnings(
+  property: PropertyResponse | null,
+): PricingWarningKey[] {
+  if (!property) return [];
+
+  const warnings: PricingWarningKey[] = [];
+  if (property.childPrice == null || property.childPrice <= 0) {
+    warnings.push("missingChildPrice");
+  }
+  if (property.extraGuestPrice == null || property.extraGuestPrice <= 0) {
+    warnings.push("missingExtraGuestPrice");
+  }
+  return warnings;
+}
+
+export function isOutlierPrice(price: number, bounds: PropertyPriceBounds) {
   return (
     Number.isFinite(price) &&
     ((bounds.minimum !== null && price < bounds.minimum * 0.2) ||
@@ -104,32 +121,45 @@ export function PricingSettingsWarning({
   editHref: string;
   warnings: PricingWarningKey[];
 }) {
+  const router = useRouter();
   if (warnings.length === 0) return null;
 
-  const missingLabels = [
-    warnings.includes("missingChildPrice") ? "قیمت کودک" : null,
-    warnings.includes("missingExtraGuestPrice") ? "قیمت نفر اضافه" : null,
+  const messages = [
+    warnings.includes("missingChildPrice")
+      ? "نرخ کودک برای این اقامتگاه تعریف نشده است."
+      : null,
+    warnings.includes("missingExtraGuestPrice")
+      ? "نرخ نفر اضافه برای این اقامتگاه تعریف نشده است."
+      : null,
   ].filter(Boolean);
 
   return (
-    <div
-      className={`rounded-xl border border-border bg-muted p-4 text-foreground ${className}`}
+    <KoochAlert
+      className={className}
       dir="rtl"
+      title="خظای تنظیمات بخش مالی"
+      variant="warning"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="font-black">تنظیمات مالی اقامتگاه کامل نیست.</p>
-          <p className="mt-1 text-sm font-semibold leading-6">
-            {missingLabels.join(" و ")} برای این اقامتگاه ثبت نشده است. ذخیره قیمت‌ها فعلا مسدود نمی‌شود، اما بهتر است تنظیمات مالی را کامل کنید.
+          <ul className="grid gap-1">
+            {messages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs font-semibold text-muted-foreground">
+            ذخیره قیمت‌ها فعلا مسدود نمی‌شود، اما بهتر است تنظیمات مالی را کامل
+            کنید.
           </p>
         </div>
-        <Link
-          className="inline-flex min-h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 py-2 text-sm font-black text-primary-foreground transition hover:bg-[var(--primary-hover)]"
-          href={editHref}
+        <KoochButton
+          onClick={() => router.push(editHref)}
+          type="button"
+          variant="primary"
         >
           تکمیل تنظیمات مالی
-        </Link>
+        </KoochButton>
       </div>
-    </div>
+    </KoochAlert>
   );
 }

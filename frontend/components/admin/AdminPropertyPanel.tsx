@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
+  getPropertyFinancialWarnings,
   PricingSettingsWarning,
-  usePropertyPricingStatus,
 } from "@/components/pricing/PricingWarnings";
 import { apiRequest, getToken, PropertyResponse } from "@/lib/owner-api";
 
@@ -24,7 +24,6 @@ export function AdminPropertyPanel({
   const router = useRouter();
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [error, setError] = useState("");
-  const { warnings: pricingWarnings } = usePropertyPricingStatus(propertyId);
 
   useEffect(() => {
     if (!getToken()) {
@@ -66,8 +65,8 @@ export function AdminPropertyPanel({
         )}
         {showPricingWarnings && (
           <PricingSettingsWarning
-            editHref={`/admin/properties/${propertyId}`}
-            warnings={pricingWarnings}
+            editHref={`/admin/properties/${propertyId}?step=7`}
+            warnings={getPropertyFinancialWarnings(property)}
           />
         )}
         {children}

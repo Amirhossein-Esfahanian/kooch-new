@@ -3,14 +3,24 @@
 import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
-import { useEffect, useMemo, useState } from "react";
-import { apiRequest, PricingGuestType, PropertyPricingResponse, RoomDailyPriceHistoryResponse, RoomDailyPriceResponse } from "@/lib/owner-api";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { apiRequest, PricingGuestType, PropertyPricingResponse, PropertyResponse, RoomDailyPriceHistoryResponse, RoomDailyPriceResponse } from "@/lib/owner-api";
 import { CalendarGridDay, CalendarGridRow, CalendarRangeApplyPayload, CalendarRangeGridEditor } from "@/components/CalendarRangeGridEditor";
+import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
-  getPricingWarnings,
+  KoochTable,
+  KoochTableBody,
+  KoochTableCell,
+  KoochTableEmpty,
+  KoochTableHead,
+  KoochTableHeader,
+  KoochTableRow,
+} from "@/components/KoochTable";
+import {
+  getPropertyFinancialWarnings,
   getPropertyPriceBounds,
   isOutlierPrice,
   PricingSettingsWarning,
@@ -29,6 +39,9 @@ function cellKey(roomTypeId: number, date: string) { return `${roomTypeId}|${dat
 function formatPrice(value: number) { return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(value); }
 function formatDateTime(value: string) { return new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)); }
 function formatIsoDate(value: string) { return dayjs(value).calendar("jalali").locale("fa").format("YYYY/MM/DD"); }
+function formatPriceWithCurrency(value: number, currencyLabel: string) {
+  return `${formatPrice(value)}${currencyLabel ? ` ${currencyLabel}` : ""}`;
+}
 
 const pricingGuestTypeStorageKey = "kooch:owner-pricing-guest-type";
 const maxQuickPrices = 6;
@@ -36,6 +49,33 @@ const pricingGuestTabs: { value: PricingGuestType; label: string; description: s
   { value: "Iranian", label: "ایرانی", description: "قیمت روزانه برای مهمانان ایرانی" },
   { value: "Foreign", label: "خارجی", description: "قیمت روزانه برای مهمانان خارجی" },
 ];
+
+const pricingGuestTypeLabels: Record<PricingGuestType, string> = {
+  Iranian: "ایرانی",
+  Foreign: "خارجی",
+};
+
+function PriceHistoryValues({
+  basePrice,
+  childPrice,
+  currencyLabel,
+  extraGuestPrice,
+}: {
+  basePrice: number;
+  childPrice: number;
+  currencyLabel: string;
+  extraGuestPrice: number;
+}) {
+  return (
+    <div className="grid gap-1 text-xs leading-5">
+      <span>پایه: {formatPriceWithCurrency(basePrice, currencyLabel)}</span>
+      <span>کودک: {formatPriceWithCurrency(childPrice, currencyLabel)}</span>
+      <span>
+        نفر اضافه: {formatPriceWithCurrency(extraGuestPrice, currencyLabel)}
+      </span>
+    </div>
+  );
+}
 
 function readStoredGuestType(): PricingGuestType {
   if (typeof window === "undefined") return "Iranian";
@@ -52,7 +92,7 @@ function uniqueRecentPrices(prices: number[]) {
   const result: number[] = [];
   for (const price of prices) {
     const normalized = Math.round(price);
-    if (!Number.isFinite(normalized) || normalized < 0 || seen.has(normalized)) continue;
+    if (!Number.isFinite(normalized) || normalized <= 0 || seen.has(normalized)) continue;
     seen.add(normalized);
     result.push(normalized);
     if (result.length >= maxQuickPrices) break;
@@ -86,6 +126,10 @@ function pricingRecentPrices(pricing: PropertyPricingResponse | null) {
   );
 }
 
+function historyRecentPrices(history: RoomDailyPriceHistoryResponse[]) {
+  return uniqueRecentPrices(history.map((item) => item.newBasePrice));
+}
+
 export function OwnerPricingGrid({
   context = "owner",
   propertyId,
@@ -95,6 +139,7 @@ export function OwnerPricingGrid({
 }) {
   const [activeMonth, setActiveMonth] = useState(() => dayjs().calendar("jalali").format("YYYY-MM"));
   const [activeGuestType, setActiveGuestType] = useState<PricingGuestType>(readStoredGuestType);
+  const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [pricing, setPricing] = useState<PropertyPricingResponse | null>(null);
   const [priceBounds, setPriceBounds] = useState({ minimum: 0, maximum: 1_000_000_000 });
   const [currencyLabel, setCurrencyLabel] = useState("");
@@ -102,7 +147,10 @@ export function OwnerPricingGrid({
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<RoomDailyPriceHistoryResponse[]>([]);
+  const [quickPriceHistory, setQuickPriceHistory] = useState<RoomDailyPriceHistoryResponse[]>([]);
   const [storedQuickPrices, setStoredQuickPrices] = useState<number[]>([]);
+  const [outlierDialogOpen, setOutlierDialogOpen] = useState(false);
+  const outlierResolverRef = useRef<((confirmed: boolean) => void) | null>(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const monthStart = useMemo(() => jalaliMonthStart(activeMonth), [activeMonth]);
@@ -112,14 +160,44 @@ export function OwnerPricingGrid({
     return { date: iso, label: date.locale("fa").format("D"), weekday: date.locale("fa").format("ddd"), isToday: iso === dayjs().format("YYYY-MM-DD") };
   }), [monthDays]);
   const rows = useMemo<PricingRow[]>(() => pricing?.roomTypes.map((roomType) => ({ id: roomType.roomTypeId, roomTypeId: roomType.roomTypeId, label: roomType.name, days: roomType.days })) ?? [], [pricing]);
-  const quickPricePresets = useMemo(() => uniqueRecentPrices([...storedQuickPrices, ...pricingRecentPrices(pricing)]), [pricing, storedQuickPrices]);
-  const pricingWarnings = useMemo(() => getPricingWarnings(pricing), [pricing]);
+  const quickPricePresets = useMemo(
+    () =>
+      uniqueRecentPrices([
+        ...storedQuickPrices,
+        ...historyRecentPrices(quickPriceHistory),
+        ...pricingRecentPrices(pricing),
+      ]),
+    [pricing, quickPriceHistory, storedQuickPrices],
+  );
+  const pricingWarnings = useMemo(() => getPropertyFinancialWarnings(property), [property]);
   const propertyPriceBounds = useMemo(() => getPropertyPriceBounds(pricing), [pricing]);
-  const propertyEditHref = context === "admin" ? `/admin/properties/${propertyId}` : `/owner/properties/${propertyId}`;
+  const propertyEditHref = context === "admin" ? `/admin/properties/${propertyId}?step=7` : `/owner/properties/${propertyId}?step=7`;
 
   useEffect(() => { loadMonth().catch((caught: Error) => setError(caught.message)); }, [activeGuestType, activeMonth, propertyId]);
   useEffect(() => {
+    apiRequest<PropertyResponse>(
+      context === "admin"
+        ? `/admin/properties/${propertyId}`
+        : `/owner/properties/${propertyId}`,
+    )
+      .then(setProperty)
+      .catch(() => setProperty(null));
+  }, [context, propertyId]);
+  useEffect(() => {
     setStoredQuickPrices(readStoredQuickPrices(propertyId));
+  }, [propertyId]);
+  useEffect(() => {
+    let active = true;
+    apiRequest<RoomDailyPriceHistoryResponse[]>(`/owner/properties/${propertyId}/pricing/history`)
+      .then((items) => {
+        if (active) setQuickPriceHistory(items);
+      })
+      .catch(() => {
+        if (active) setQuickPriceHistory([]);
+      });
+    return () => {
+      active = false;
+    };
   }, [propertyId]);
   useEffect(() => {
     fetch("/api/backend/site-settings/public")
@@ -164,6 +242,31 @@ export function OwnerPricingGrid({
     const nextQuickPrices = uniqueRecentPrices([payload.basePrice ?? 0, ...storedQuickPrices]);
     setStoredQuickPrices(nextQuickPrices);
     writeStoredQuickPrices(propertyId, nextQuickPrices);
+    setQuickPriceHistory((current) =>
+      payload.basePrice == null
+        ? current
+        : [
+            {
+              id: -Date.now(),
+              propertyId,
+              roomId: Number(payload.rowId),
+              roomName: "",
+              guestType: activeGuestType,
+              affectedDateFrom: payload.startDate,
+              affectedDateTo: payload.endDate,
+              oldBasePrice: 0,
+              newBasePrice: payload.basePrice,
+              oldChildPrice: 0,
+              newChildPrice: payload.childPrice ?? 0,
+              oldExtraGuestPrice: 0,
+              newExtraGuestPrice: payload.extraGuestPrice ?? 0,
+              changedByUserId: 0,
+              user: "",
+              dateTime: new Date().toISOString(),
+            },
+            ...current,
+          ],
+    );
     setMessage("قیمت‌ها با موفقیت ذخیره شدند.");
   }
 
@@ -172,7 +275,7 @@ export function OwnerPricingGrid({
     setHistoryLoading(true);
     setError("");
     try {
-      setHistory(await apiRequest<RoomDailyPriceHistoryResponse[]>(`/owner/properties/${propertyId}/pricing/history?guestType=${activeGuestType}`));
+      setHistory(await apiRequest<RoomDailyPriceHistoryResponse[]>(`/owner/properties/${propertyId}/pricing/history`));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "سوابق قیمت بارگذاری نشد.");
     } finally {
@@ -180,10 +283,19 @@ export function OwnerPricingGrid({
     }
   }
 
+  function resolveOutlierConfirmation(confirmed: boolean) {
+    outlierResolverRef.current?.(confirmed);
+    outlierResolverRef.current = null;
+    setOutlierDialogOpen(false);
+  }
+
   function confirmOutlierPrice(payload: CalendarRangeApplyPayload) {
     const nextPrice = payload.basePrice ?? 0;
     if (!isOutlierPrice(nextPrice, propertyPriceBounds)) return true;
-    return window.confirm("این قیمت نسبت به قیمت‌های این اقامتگاه غیرعادی است. آیا از ثبت آن مطمئن هستید؟");
+    return new Promise<boolean>((resolve) => {
+      outlierResolverRef.current = resolve;
+      setOutlierDialogOpen(true);
+    });
   }
 
   const monthTitle = monthStart.locale("fa").format("MMMM YYYY");
@@ -205,7 +317,7 @@ export function OwnerPricingGrid({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div><h2 className="text-xl font-black text-foreground">مدیریت قیمت روزانه</h2><p className="mt-1 text-sm text-muted-foreground">روزها و اتاق‌ها را انتخاب کنید و نرخ‌ها را به‌صورت گروهی تغییر دهید.</p></div>
         <div className="flex items-center gap-2">
-          <KoochButton onClick={openHistory} size="sm" type="button" variant="outline">مشاهده سوابق</KoochButton>
+          <KoochButton onClick={openHistory} size="sm" type="button" variant="outline">مشاهده سوابق تغییر قیمت</KoochButton>
           <KoochButton onClick={() => setActiveMonth(monthStart.subtract(1, "month").format("YYYY-MM"))} size="sm" type="button" variant="outline">ماه قبل</KoochButton>
           <strong className="min-w-32 rounded-xl bg-muted px-4 py-2 text-center text-foreground">{monthTitle}</strong>
           <KoochButton onClick={() => setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))} size="sm" type="button" variant="outline">ماه بعد</KoochButton>
@@ -284,42 +396,101 @@ export function OwnerPricingGrid({
         size="xl"
         title="سوابق تغییر قیمت"
       >
-{historyLoading ? (
-          <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">در حال بارگذاری سوابق...</p>
-        ) : history.length === 0 ? (
-          <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">هنوز سابقه‌ای ثبت نشده است.</p>
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border">
-          <table className="min-w-full border-collapse bg-card text-sm text-foreground">
-            <thead>
-              <tr className="bg-muted text-right text-xs font-black text-muted-foreground">
-                <th className="border border-border p-3">تاریخ</th>
-                <th className="border border-border p-3">کاربر</th>
-                <th className="border border-border p-3">قیمت قبلی</th>
-                <th className="border border-border p-3">قیمت جدید</th>
-                <th className="border border-border p-3">بازه تاریخ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {history.map((item) => (
-                <tr key={item.id}>
-                  <td className="border border-border p-3 font-bold">{formatDateTime(item.dateTime)}</td>
-                  <td className="border border-border p-3">{item.user}</td>
-                  <td className="border border-border p-3">{formatPrice(item.oldPrice)} {currencyLabel}</td>
-                  <td className="border border-border p-3 font-black text-primary">{formatPrice(item.newPrice)} {currencyLabel}</td>
-                  <td className="border border-border p-3">
-                    <span className="font-bold">{item.roomName}</span>
-                    <span className="mx-2 text-muted-foreground">|</span>
-                    {formatIsoDate(item.affectedStartDate)}
-                    {item.affectedStartDate !== item.affectedEndDate && ` تا ${formatIsoDate(item.affectedEndDate)}`}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          </div>
-        )}
+        <KoochTable>
+          <KoochTableHeader>
+            <KoochTableRow>
+              <KoochTableHead>تاریخ تغییر</KoochTableHead>
+              <KoochTableHead>کاربر</KoochTableHead>
+              <KoochTableHead>اتاق</KoochTableHead>
+              <KoochTableHead>نوع مهمان</KoochTableHead>
+              <KoochTableHead>بازه تاریخ</KoochTableHead>
+              <KoochTableHead>قیمت قبلی</KoochTableHead>
+              <KoochTableHead>قیمت جدید</KoochTableHead>
+            </KoochTableRow>
+          </KoochTableHeader>
+          <KoochTableBody>
+            {historyLoading ? (
+              <KoochTableEmpty colSpan={7}>
+                در حال بارگذاری سوابق...
+              </KoochTableEmpty>
+            ) : history.length === 0 ? (
+              <KoochTableEmpty colSpan={7}>
+                هنوز سابقه‌ای ثبت نشده است.
+              </KoochTableEmpty>
+            ) : (
+              history.map((item) => (
+                <KoochTableRow key={item.id}>
+                  <KoochTableCell className="font-bold">
+                    {formatDateTime(item.dateTime)}
+                  </KoochTableCell>
+                  <KoochTableCell>{item.user}</KoochTableCell>
+                  <KoochTableCell>{item.roomName}</KoochTableCell>
+                  <KoochTableCell>
+                    <KoochBadge
+                      variant={item.guestType === "Foreign" ? "warning" : "default"}
+                    >
+                      {pricingGuestTypeLabels[item.guestType]}
+                    </KoochBadge>
+                  </KoochTableCell>
+                  <KoochTableCell>
+                    {formatIsoDate(item.affectedDateFrom)}
+                    {item.affectedDateFrom !== item.affectedDateTo &&
+                      ` تا ${formatIsoDate(item.affectedDateTo)}`}
+                  </KoochTableCell>
+                  <KoochTableCell>
+                    <PriceHistoryValues
+                      basePrice={item.oldBasePrice}
+                      childPrice={item.oldChildPrice}
+                      currencyLabel={currencyLabel}
+                      extraGuestPrice={item.oldExtraGuestPrice}
+                    />
+                  </KoochTableCell>
+                  <KoochTableCell className="font-black text-primary">
+                    <PriceHistoryValues
+                      basePrice={item.newBasePrice}
+                      childPrice={item.newChildPrice}
+                      currencyLabel={currencyLabel}
+                      extraGuestPrice={item.newExtraGuestPrice}
+                    />
+                  </KoochTableCell>
+                </KoochTableRow>
+              ))
+            )}
+          </KoochTableBody>
+        </KoochTable>
 
+      </KoochDialog>
+      <KoochDialog
+        bodyClassName="py-6"
+        footer={
+          <>
+            <KoochButton
+              onClick={() => resolveOutlierConfirmation(false)}
+              type="button"
+              variant="outline"
+            >
+              انصراف
+            </KoochButton>
+            <KoochButton
+              onClick={() => resolveOutlierConfirmation(true)}
+              type="button"
+              variant="primary"
+            >
+              تایید و ذخیره
+            </KoochButton>
+          </>
+        }
+        onOpenChange={(open) => {
+          if (!open) resolveOutlierConfirmation(false);
+          else setOutlierDialogOpen(true);
+        }}
+        open={outlierDialogOpen}
+        size="md"
+        title="تایید قیمت غیرعادی"
+      >
+        <p className="text-sm font-semibold leading-7 text-foreground">
+          این قیمت نسبت به قیمت‌های این اقامتگاه غیرعادی است. آیا از ثبت آن مطمئن هستید؟
+        </p>
       </KoochDialog>
     </KoochCard>
   );

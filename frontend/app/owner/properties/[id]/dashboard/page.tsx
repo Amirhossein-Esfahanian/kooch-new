@@ -8,8 +8,8 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 import {
+  getPropertyFinancialWarnings,
   PricingSettingsWarning,
-  usePropertyPricingStatus,
 } from "@/components/pricing/PricingWarnings";
 import {
   apiRequest,
@@ -33,7 +33,6 @@ export default function OwnerPropertyDashboardPage() {
     useState<PropertyCompletionResponse | null>(null);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [error, setError] = useState("");
-  const { warnings: pricingWarnings } = usePropertyPricingStatus(propertyId);
 
   useEffect(() => {
     if (!getToken()) {
@@ -117,8 +116,8 @@ export default function OwnerPropertyDashboardPage() {
         )}
 
         <PricingSettingsWarning
-          editHref={`/owner/properties/${propertyId}`}
-          warnings={pricingWarnings}
+          editHref={`/owner/properties/${propertyId}?step=7`}
+          warnings={getPropertyFinancialWarnings(property)}
         />
 
         {completion && (

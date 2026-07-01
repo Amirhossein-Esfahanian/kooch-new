@@ -32,6 +32,8 @@ public class Property : BaseEntity
     public bool? HasAccessibleBathroom { get; set; }
     public int? FreeChildAgeLimit { get; set; }
     public int? MaxFreeChildren { get; set; }
+    public decimal? ChildPrice { get; set; }
+    public decimal? ExtraGuestPrice { get; set; }
     
 
     public User Owner { get; set; } = null!;

@@ -60,12 +60,8 @@ public class PropertyCompletionService(
                         availability.Date >= today &&
                         availability.Status != AvailabilityStatus.Unavailable &&
                         availability.AvailableCount > 0)),
-                ChildPrice = property.RoomTypes.Any(roomType =>
-                    roomType.IsActive &&
-                    roomType.DailyPrices.Any(price => price.ChildPrice > 0)),
-                ExtraGuestPrice = property.RoomTypes.Any(roomType =>
-                    roomType.IsActive &&
-                    roomType.DailyPrices.Any(price => price.ExtraGuestPrice > 0)),
+                ChildPrice = property.ChildPrice != null && property.ChildPrice > 0,
+                ExtraGuestPrice = property.ExtraGuestPrice != null && property.ExtraGuestPrice > 0,
             })
             .SingleAsync(cancellationToken);
 
