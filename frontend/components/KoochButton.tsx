@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 type KoochButtonVariant = "primary" | "outline" | "ghost" | "destructive";
@@ -30,18 +31,22 @@ export type KoochButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: KoochButtonVariant;
 };
 
-export function KoochButton({
-  children,
-  className = "",
-  disabled,
-  leftIcon,
-  loading = false,
-  rightIcon,
-  size = "md",
-  type = "button",
-  variant = "primary",
-  ...props
-}: KoochButtonProps) {
+export const KoochButton = forwardRef<HTMLButtonElement, KoochButtonProps>(
+  function KoochButton(
+    {
+      children,
+      className = "",
+      disabled,
+      leftIcon,
+      loading = false,
+      rightIcon,
+      size = "md",
+      type = "button",
+      variant = "primary",
+      ...props
+    },
+    ref,
+  ) {
   const isDisabled = disabled || loading;
 
   return (
@@ -56,6 +61,7 @@ export function KoochButton({
         .filter(Boolean)
         .join(" ")}
       disabled={isDisabled}
+      ref={ref}
       type={type}
       {...props}
     >
@@ -70,4 +76,5 @@ export function KoochButton({
       {!loading && rightIcon}
     </button>
   );
-}
+  },
+);

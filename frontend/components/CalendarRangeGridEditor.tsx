@@ -939,6 +939,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                               : Number(event.target.value),
                           )
                         }
+                        onFocus={(event) => event.currentTarget.select()}
                         type="number"
                         value={
                           Number.isFinite(field.fieldValue)

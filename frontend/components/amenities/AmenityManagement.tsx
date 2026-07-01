@@ -11,6 +11,7 @@ import {
 } from "@/lib/owner-api";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 import {
   KoochField,
@@ -436,29 +437,20 @@ export function AmenityManagement() {
           </KoochField>
         </form>
       </KoochDialog>
-      <KoochDialog
-        closeDisabled={saving}
-        footer={
-          <>
-            <KoochDialogButton disabled={saving} onClick={() => setDeleteTarget(null)}>
-              لغو
-            </KoochDialogButton>
-            <KoochDialogButton disabled={saving} onClick={confirmDeleteAmenity} variant="danger">
-              حذف
-            </KoochDialogButton>
-          </>
-        }
+      <KoochConfirmDialog
+        cancelText="انصراف"
+        confirmText="حذف"
+        description={`آیا از حذف «${deleteTarget?.name ?? ""}» مطمئن هستید؟`}
+        disabled={saving}
+        loading={saving}
+        onConfirm={confirmDeleteAmenity}
         onOpenChange={(open) => {
           if (!open && !saving) setDeleteTarget(null);
         }}
         open={Boolean(deleteTarget)}
-        size="md"
         title="حذف امکان"
-      >
-        <p className="text-sm leading-7 text-[var(--theme-muted-text)]">
-          آیا از حذف «{deleteTarget?.name}» مطمئن هستید؟
-        </p>
-      </KoochDialog>
+        variant="destructive"
+      />
     </>
   );
 }

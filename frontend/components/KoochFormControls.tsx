@@ -26,15 +26,25 @@ const controlClass =
 export type KoochInputProps = InputHTMLAttributes<HTMLInputElement> &
   InvalidStateProps & {
     className?: string;
+    selectOnFocus?: boolean;
   };
 
 export function KoochInput({
+  selectOnFocus = false,
+  onFocus,
   className = "",
   error,
   ...props
 }: KoochInputProps) {
   return (
     <input
+      onFocus={(event) => {
+        if (selectOnFocus) {
+          event.currentTarget.select();
+        }
+
+        onFocus?.(event);
+      }}
       aria-invalid={Boolean(error) || undefined}
       className={joinClasses("h-10 px-3 py-2 text-sm", controlClass, className)}
       {...props}
@@ -102,7 +112,10 @@ export function KoochLabel({
 }: KoochLabelProps) {
   return (
     <label
-      className={joinClasses("text-sm font-semibold text-foreground", className)}
+      className={joinClasses(
+        "text-sm font-semibold text-foreground",
+        className,
+      )}
       {...props}
     >
       {children}
@@ -144,9 +157,7 @@ function KoochFieldMessage({ error, helperText }: FieldStateProps) {
 
   if (helperText) {
     return (
-      <p className="text-xs font-medium text-muted-foreground">
-        {helperText}
-      </p>
+      <p className="text-xs font-medium text-muted-foreground">{helperText}</p>
     );
   }
 

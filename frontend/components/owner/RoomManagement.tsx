@@ -15,6 +15,7 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochInput,
@@ -1130,43 +1131,24 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         )}
       </KoochCard>
 
-      <KoochDialog
-        closeDisabled={deletingRoomTypeId !== null}
+      <KoochConfirmDialog
+        cancelText="انصراف"
+        confirmText="حذف"
         description={
           roomTypeToDelete
-            ? `آیا از حذف اتاق «${roomTypeToDelete.name}» مطمئن هستید؟`
+            ? `آیا از حذف اتاق «${roomTypeToDelete.name}» مطمئن هستید؟ این عملیات قابل بازگشت نیست و اتاق از لیست مدیریت حذف می‌شود.`
             : undefined
         }
-        footer={
-          <div className="flex w-full flex-wrap justify-end gap-3">
-            <KoochButton
-              disabled={deletingRoomTypeId !== null}
-              onClick={() => setRoomTypeToDelete(null)}
-              variant="outline"
-            >
-              لغو
-            </KoochButton>
-            <KoochButton
-              disabled={!roomTypeToDelete}
-              loading={deletingRoomTypeId !== null}
-              onClick={confirmDeleteRoomType}
-              variant="destructive"
-            >
-              حذف
-            </KoochButton>
-          </div>
-        }
+        disabled={!roomTypeToDelete}
+        loading={deletingRoomTypeId !== null}
+        onConfirm={confirmDeleteRoomType}
         onOpenChange={(open) => {
           if (!open && deletingRoomTypeId === null) setRoomTypeToDelete(null);
         }}
         open={Boolean(roomTypeToDelete)}
-        size="md"
         title="حذف اتاق"
-      >
-        <KoochAlert variant="warning">
-          این عملیات قابل بازگشت نیست و اتاق از لیست مدیریت حذف می‌شود.
-        </KoochAlert>
-      </KoochDialog>
+        variant="destructive"
+      />
 
       <KoochDialog
         closeDisabled={saving}

@@ -12,6 +12,7 @@ import {
 } from "@/lib/owner-api";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
@@ -348,7 +349,6 @@ export function PromotionWorkspace({
   }
 
   async function remove(promotion: PromotionResponse) {
-    if (!window.confirm(`پروموشن «${promotion.title}» حذف شود؟`)) return;
     try {
       await apiRequest(`${apiBase}/${promotion.id}`, { method: "DELETE" });
       setPromotions((current) =>
@@ -578,14 +578,19 @@ export function PromotionWorkspace({
                 {!admin && promotion.source === "Admin" ? "کپی خصوصی" : "کپی"}
               </KoochButton>
               {(admin || promotion.source === "Owner") && (
-                <KoochButton
-                  onClick={() => remove(promotion)}
-                  size="sm"
-                  type="button"
+                <KoochConfirmDialog
+                  cancelText="انصراف"
+                  confirmText="حذف"
+                  description={`آیا از حذف پروموشن «${promotion.title}» مطمئن هستید؟ این عملیات قابل بازگشت نیست.`}
+                  onConfirm={() => remove(promotion)}
+                  title="حذف پروموشن"
+                  trigger={
+                    <KoochButton size="sm" type="button" variant="destructive">
+                      حذف
+                    </KoochButton>
+                  }
                   variant="destructive"
-                >
-                  حذف
-                </KoochButton>
+                />
               )}
               {!promotion.isLibraryTemplate && (
                 <span className="mr-auto self-center text-xs text-muted-foreground">
