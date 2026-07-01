@@ -1291,9 +1291,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                               type="button"
                             >
                               <span className="flex items-center justify-center gap-[3px]">
-                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
+                                <span className="h-2.5 w-[2px] rounded  bg-white" />
+                                <span className="h-2.5 w-[2px] rounded  bg-white" />
+                                <span className="h-2.5 w-[2px] rounded  bg-white" />
                               </span>
                             </button>
                           ))}
@@ -1311,9 +1311,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                               type="button"
                             >
                               <span className="flex items-center justify-center gap-[3px]">
-                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
-                                <span className="h-2.5 w-[2px] rounded bg-primary-foreground/90" />
+                                <span className="h-2.5 w-[2px] rounded  bg-white" />
+                                <span className="h-2.5 w-[2px] rounded  bg-white" />
+                                <span className="h-2.5 w-[2px] rounded  bg-white" />
                               </span>
                             </button>
                           ))}

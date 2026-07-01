@@ -89,7 +89,11 @@ function roomInventoryMode(totalInventory: number) {
   return totalInventory <= 1 ? "NamedRooms" : "TypeBasedInventory";
 }
 
-function booleanLabel(value: boolean | null, trueLabel: string, falseLabel: string) {
+function booleanLabel(
+  value: boolean | null,
+  trueLabel: string,
+  falseLabel: string,
+) {
   if (value === null) return "";
   return value ? trueLabel : falseLabel;
 }
@@ -105,7 +109,8 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
     allowExtraGuest: roomType.allowExtraGuest,
     maxExtraGuests: roomType.maxExtraGuests,
     totalInventory: Math.max(1, roomType.totalInventory),
-    floorNumber: roomType.floorNumber == null ? "" : String(roomType.floorNumber),
+    floorNumber:
+      roomType.floorNumber == null ? "" : String(roomType.floorNumber),
     stairCount: roomType.stairCount == null ? "" : String(roomType.stairCount),
     hasWindow: roomType.hasWindow,
     hasPrivateBathroom: roomType.hasPrivateBathroom,
@@ -193,9 +198,27 @@ const completionStatusLabels = {
   NotStarted: "شروع نشده",
 } as const;
 
+const privateBathroomAmenitySlugs = new Set([
+  "private-bathroom",
+  "ensuite-bathroom",
+  "private-toilet",
+]);
+
+const sharedBathroomAmenitySlugs = new Set(["shared-bathroom", "shared-toilet"]);
+
+function isPrivateBathroomAmenity(amenity: AmenityResponse) {
+  return privateBathroomAmenitySlugs.has(amenity.slug);
+}
+
+function isSharedBathroomAmenity(amenity: AmenityResponse) {
+  return sharedBathroomAmenitySlugs.has(amenity.slug);
+}
+
 function roomStatus(roomType: RoomTypeResponse) {
-  if (roomType.isActive) return { label: "Active", variant: "success" as const };
-  if (roomType.completion?.isComplete) return { label: "Inactive", variant: "muted" as const };
+  if (roomType.isActive)
+    return { label: "Active", variant: "success" as const };
+  if (roomType.completion?.isComplete)
+    return { label: "Inactive", variant: "muted" as const };
   return { label: "Draft", variant: "warning" as const };
 }
 
@@ -213,11 +236,15 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
-  const [roomTypeDraft, setRoomTypeDraft] = useState<RoomTypeDraft>(emptyRoomType);
+  const [roomTypeDraft, setRoomTypeDraft] =
+    useState<RoomTypeDraft>(emptyRoomType);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(null);
-  const [roomTypeToDelete, setRoomTypeToDelete] = useState<RoomTypeResponse | null>(null);
+  const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(
+    null,
+  );
+  const [roomTypeToDelete, setRoomTypeToDelete] =
+    useState<RoomTypeResponse | null>(null);
   const [error, setError] = useState("");
   const [activationWarning, setActivationWarning] = useState<string[]>([]);
   const [wizardOpen, setWizardOpen] = useState(false);
@@ -229,8 +256,19 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     [amenities],
   );
 
-  const privateBathroomAmenity = useMemo(
-    () => roomAmenityOptions.find((item) => item.slug === "private-bathroom"),
+  const privateBathroomAmenityIds = useMemo(
+    () =>
+      roomAmenityOptions
+        .filter(isPrivateBathroomAmenity)
+        .map((amenity) => amenity.id),
+    [roomAmenityOptions],
+  );
+
+  const sharedBathroomAmenityIds = useMemo(
+    () =>
+      roomAmenityOptions
+        .filter(isSharedBathroomAmenity)
+        .map((amenity) => amenity.id),
     [roomAmenityOptions],
   );
 
@@ -238,7 +276,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     () =>
       Boolean(
         roomTypeDraft.id &&
-          images.some((image) => image.roomTypeId === roomTypeDraft.id),
+        images.some((image) => image.roomTypeId === roomTypeDraft.id),
       ),
     [images, roomTypeDraft.id],
   );
@@ -313,7 +351,10 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setRoomTypeDraft((current) => ({ ...current, ...patch }));
   }
 
-  function updateBed(index: number, patch: Partial<{ bedTypeId: number; quantity: number }>) {
+  function updateBed(
+    index: number,
+    patch: Partial<{ bedTypeId: number; quantity: number }>,
+  ) {
     setRoomTypeDraft((current) => {
       const next = [...current.bedConfigurations];
       next[index] = { ...next[index], ...patch };
@@ -322,17 +363,29 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   }
 
   function inferPrivateBathroom(amenityIds: number[]) {
-    return privateBathroomAmenity ? amenityIds.includes(privateBathroomAmenity.id) : roomTypeDraft.hasPrivateBathroom;
+    if (privateBathroomAmenityIds.some((id) => amenityIds.includes(id))) {
+      return true;
+    }
+    if (sharedBathroomAmenityIds.some((id) => amenityIds.includes(id))) {
+      return false;
+    }
+    return roomTypeDraft.hasPrivateBathroom;
   }
 
   function validateStep(step: number, finalActivation = false) {
     if (step === 0 || finalActivation) {
       if (!roomTypeDraft.name.trim()) return "نام اتاق الزامی است.";
-      if (roomTypeDraft.totalInventory < 1) return "تعداد موجودی باید حداقل ۱ باشد.";
-      if (roomTypeDraft.maxAdults < 1) return "ظرفیت بزرگسال باید حداقل ۱ باشد.";
+      if (roomTypeDraft.totalInventory < 1)
+        return "تعداد موجودی باید حداقل ۱ باشد.";
+      if (roomTypeDraft.maxAdults < 1)
+        return "ظرفیت بزرگسال باید حداقل ۱ باشد.";
       if (roomTypeDraft.maxChildren < 0) return "ظرفیت کودک معتبر نیست.";
     }
-    if ((step === 1 || finalActivation) && roomTypeDraft.allowExtraGuest && roomTypeDraft.maxExtraGuests < 1) {
+    if (
+      (step === 1 || finalActivation) &&
+      roomTypeDraft.allowExtraGuest &&
+      roomTypeDraft.maxExtraGuests < 1
+    ) {
       return "حداکثر تعداد نفر اضافه را وارد کنید.";
     }
     if (finalActivation && !roomTypeDraft.description.trim()) {
@@ -347,11 +400,14 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return {
       name: roomTypeDraft.name.trim(),
       englishName: roomTypeDraft.englishName.trim() || null,
-      description: roomTypeDraft.description.trim() || roomTypeDraft.name.trim(),
+      description:
+        roomTypeDraft.description.trim() || roomTypeDraft.name.trim(),
       maxAdults: Math.max(1, roomTypeDraft.maxAdults),
       maxChildren: Math.max(0, roomTypeDraft.maxChildren),
       allowExtraGuest: roomTypeDraft.allowExtraGuest,
-      maxExtraGuests: roomTypeDraft.allowExtraGuest ? Math.max(0, roomTypeDraft.maxExtraGuests) : 0,
+      maxExtraGuests: roomTypeDraft.allowExtraGuest
+        ? Math.max(0, roomTypeDraft.maxExtraGuests)
+        : 0,
       inventoryMode: roomInventoryMode(totalInventory),
       totalInventory,
       basePrice: null,
@@ -384,15 +440,19 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           : `/owner/properties/${propertyId}/room-types`,
         {
           method: roomTypeDraft.id ? "PUT" : "POST",
-          body: JSON.stringify(buildPayload(roomTypeDraft.id ? roomTypeDraft.isActive : false)),
+          body: JSON.stringify(
+            buildPayload(roomTypeDraft.id ? roomTypeDraft.isActive : false),
+          ),
         },
       );
       setRoomTypeDraft(roomTypeToDraft(saved));
       await Promise.all([loadRoomTypes(), loadImages()]);
-      if (wizardMode === "create" && !roomTypeDraft.id) toast.success("پیش‌نویس اتاق ذخیره شد");
+      if (wizardMode === "create" && !roomTypeDraft.id)
+        toast.success("پیش‌نویس اتاق ذخیره شد");
       return saved;
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "پیش‌نویس اتاق ذخیره نشد.";
+      const message =
+        caught instanceof Error ? caught.message : "پیش‌نویس اتاق ذخیره نشد.";
       setError(message);
       toast.error(message);
       return null;
@@ -443,7 +503,8 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       toast.success("اتاق فعال شد");
       closeWizard();
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "فعال‌سازی اتاق انجام نشد.";
+      const message =
+        caught instanceof Error ? caught.message : "فعال‌سازی اتاق انجام نشد.";
       setError(message);
       toast.error(message);
     } finally {
@@ -457,12 +518,15 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     setDeletingRoomTypeId(roomTypeToDelete.id);
     setError("");
     try {
-      await apiRequest<void>(`/owner/room-types/${roomTypeToDelete.id}`, { method: "DELETE" });
+      await apiRequest<void>(`/owner/room-types/${roomTypeToDelete.id}`, {
+        method: "DELETE",
+      });
       await Promise.all([loadRoomTypes(), loadImages()]);
       toast.success("اتاق حذف شد");
       setRoomTypeToDelete(null);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "حذف اتاق انجام نشد.";
+      const message =
+        caught instanceof Error ? caught.message : "حذف اتاق انجام نشد.";
       setError(message);
       toast.error(message);
     } finally {
@@ -475,10 +539,26 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       const amenityIds = checked
         ? [...current.amenityIds, amenity.id]
         : current.amenityIds.filter((id) => id !== amenity.id);
+      let hasPrivateBathroom = current.hasPrivateBathroom;
+      if (isPrivateBathroomAmenity(amenity)) {
+        hasPrivateBathroom = checked
+          ? true
+          : sharedBathroomAmenityIds.some((id) => amenityIds.includes(id))
+            ? false
+            : null;
+      }
+      if (isSharedBathroomAmenity(amenity)) {
+        hasPrivateBathroom = checked
+          ? false
+          : privateBathroomAmenityIds.some((id) => amenityIds.includes(id))
+            ? true
+            : null;
+      }
+
       return {
         ...current,
         amenityIds,
-        hasPrivateBathroom: amenity.slug === "private-bathroom" ? checked : current.hasPrivateBathroom,
+        hasPrivateBathroom,
       };
     });
   }
@@ -489,32 +569,71 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         <div className="grid gap-5">
           <div>
             <h3 className="font-black">اطلاعات اصلی</h3>
-            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">فیلدهای ستاره‌دار برای ساخت پیش‌نویس الزامی هستند.</p>
+            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
+              فیلدهای ستاره‌دار برای ساخت پیش‌نویس الزامی هستند.
+            </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-bold">
               نام اتاق / عنوان <span className="text-destructive">*</span>
-              <KoochInput onChange={(event) => patchDraft({ name: event.target.value })} value={roomTypeDraft.name} />
+              <KoochInput
+                onChange={(event) => patchDraft({ name: event.target.value })}
+                value={roomTypeDraft.name}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               نام انگلیسی
-              <KoochInput dir="ltr" onChange={(event) => patchDraft({ englishName: event.target.value })} value={roomTypeDraft.englishName} />
+              <KoochInput
+                dir="ltr"
+                onChange={(event) =>
+                  patchDraft({ englishName: event.target.value })
+                }
+                value={roomTypeDraft.englishName}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold md:col-span-2">
               توضیح
-              <KoochTextarea onChange={(event) => patchDraft({ description: event.target.value })} rows={4} value={roomTypeDraft.description} />
+              <KoochTextarea
+                onChange={(event) =>
+                  patchDraft({ description: event.target.value })
+                }
+                rows={4}
+                value={roomTypeDraft.description}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold">
-              تعداد موجودی / TotalInventory <span className="text-destructive">*</span>
-              <KoochInput min="1" onChange={(event) => patchDraft({ totalInventory: Number(event.target.value) })} type="number" value={roomTypeDraft.totalInventory} />
+              تعداد موجودی / TotalInventory{" "}
+              <span className="text-destructive">*</span>
+              <KoochInput
+                min="1"
+                onChange={(event) =>
+                  patchDraft({ totalInventory: Number(event.target.value) })
+                }
+                type="number"
+                value={roomTypeDraft.totalInventory}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               ظرفیت بزرگسال <span className="text-destructive">*</span>
-              <KoochInput min="1" onChange={(event) => patchDraft({ maxAdults: Number(event.target.value) })} type="number" value={roomTypeDraft.maxAdults} />
+              <KoochInput
+                min="1"
+                onChange={(event) =>
+                  patchDraft({ maxAdults: Number(event.target.value) })
+                }
+                type="number"
+                value={roomTypeDraft.maxAdults}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               ظرفیت کودک
-              <KoochInput min="0" onChange={(event) => patchDraft({ maxChildren: Number(event.target.value) })} type="number" value={roomTypeDraft.maxChildren} />
+              <KoochInput
+                min="0"
+                onChange={(event) =>
+                  patchDraft({ maxChildren: Number(event.target.value) })
+                }
+                type="number"
+                value={roomTypeDraft.maxChildren}
+              />
             </label>
           </div>
         </div>
@@ -526,22 +645,48 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         <div className="grid gap-5">
           <div>
             <h3 className="font-black">ویژگی‌ها</h3>
-            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">اطلاعات فیزیکی و قوانین نفر اضافه را مشخص کنید.</p>
+            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
+              اطلاعات فیزیکی و قوانین نفر اضافه را مشخص کنید.
+            </p>
           </div>
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1 text-sm font-bold">
               طبقه
-              <KoochInput onChange={(event) => patchDraft({ floorNumber: event.target.value })} type="number" value={roomTypeDraft.floorNumber} />
+              <KoochInput
+                onChange={(event) =>
+                  patchDraft({ floorNumber: event.target.value })
+                }
+                type="number"
+                value={roomTypeDraft.floorNumber}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               تعداد پله
-              <KoochInput min="0" onChange={(event) => patchDraft({ stairCount: event.target.value })} type="number" value={roomTypeDraft.stairCount} />
+              <KoochInput
+                min="0"
+                onChange={(event) =>
+                  patchDraft({ stairCount: event.target.value })
+                }
+                type="number"
+                value={roomTypeDraft.stairCount}
+              />
             </label>
             <label className="grid gap-1 text-sm font-bold">
               پنجره دارد
               <KoochSelect
-                onChange={(event) => patchDraft({ hasWindow: event.target.value === "" ? null : event.target.value === "true" })}
-                value={roomTypeDraft.hasWindow === null ? "" : String(roomTypeDraft.hasWindow)}
+                onChange={(event) =>
+                  patchDraft({
+                    hasWindow:
+                      event.target.value === ""
+                        ? null
+                        : event.target.value === "true",
+                  })
+                }
+                value={
+                  roomTypeDraft.hasWindow === null
+                    ? ""
+                    : String(roomTypeDraft.hasWindow)
+                }
               >
                 <option value="">ثبت نشده</option>
                 <option value="true">دارد</option>
@@ -552,20 +697,39 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               <input
                 checked={roomTypeDraft.allowExtraGuest}
                 className="h-4 w-4 accent-primary"
-                onChange={(event) => patchDraft({ allowExtraGuest: event.target.checked, maxExtraGuests: event.target.checked ? roomTypeDraft.maxExtraGuests : 0 })}
+                onChange={(event) =>
+                  patchDraft({
+                    allowExtraGuest: event.target.checked,
+                    maxExtraGuests: event.target.checked
+                      ? roomTypeDraft.maxExtraGuests
+                      : 0,
+                  })
+                }
                 type="checkbox"
               />
               آیا نفر اضافه مجاز است؟
             </label>
             {roomTypeDraft.allowExtraGuest && (
               <label className="grid gap-1 text-sm font-bold">
-                حداکثر تعداد نفر اضافه <span className="text-destructive">*</span>
-                <KoochInput min="1" onChange={(event) => patchDraft({ maxExtraGuests: Number(event.target.value) })} type="number" value={roomTypeDraft.maxExtraGuests} />
+                حداکثر تعداد نفر اضافه{" "}
+                <span className="text-destructive">*</span>
+                <KoochInput
+                  min="1"
+                  onChange={(event) =>
+                    patchDraft({ maxExtraGuests: Number(event.target.value) })
+                  }
+                  type="number"
+                  value={roomTypeDraft.maxExtraGuests}
+                />
               </label>
             )}
             <label className="grid gap-1 text-sm font-bold md:col-span-2">
               یادداشت‌ها
-              <KoochTextarea onChange={(event) => patchDraft({ notes: event.target.value })} rows={4} value={roomTypeDraft.notes} />
+              <KoochTextarea
+                onChange={(event) => patchDraft({ notes: event.target.value })}
+                rows={4}
+                value={roomTypeDraft.notes}
+              />
             </label>
           </div>
         </div>
@@ -576,14 +740,22 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       return (
         <fieldset>
           <legend className="font-black">امکانات اتاق</legend>
-          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">امکانات مرتبط با اتاق را انتخاب کنید. سرویس اختصاصی از همین امکانات تشخیص داده می‌شود.</p>
+          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
+            امکانات مرتبط با اتاق را از لیست موجود انتخاب کنید. حمام، سرویس
+            اختصاصی، توالت ایرانی و توالت فرنگی همگی به عنوان امکان ثبت می‌شوند.
+          </p>
           <div className="mt-4 grid gap-2 md:grid-cols-3">
             {roomAmenityOptions.map((amenity) => (
-              <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold" key={amenity.id}>
+              <label
+                className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold"
+                key={amenity.id}
+              >
                 <input
                   checked={roomTypeDraft.amenityIds.includes(amenity.id)}
                   className="h-4 w-4 accent-primary"
-                  onChange={(event) => toggleAmenity(amenity, event.target.checked)}
+                  onChange={(event) =>
+                    toggleAmenity(amenity, event.target.checked)
+                  }
                   type="checkbox"
                 />
                 {amenity.name}
@@ -600,10 +772,19 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h3 className="font-black">تخت‌ها / چیدمان</h3>
-              <p className="mt-1 text-sm text-[var(--theme-muted-text)]">اگر چیدمان تخت مشخص است، اینجا اضافه کنید.</p>
+              <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
+                اگر چیدمان تخت مشخص است، اینجا اضافه کنید.
+              </p>
             </div>
             <KoochButton
-              onClick={() => patchDraft({ bedConfigurations: [...roomTypeDraft.bedConfigurations, { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 }] })}
+              onClick={() =>
+                patchDraft({
+                  bedConfigurations: [
+                    ...roomTypeDraft.bedConfigurations,
+                    { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 },
+                  ],
+                })
+              }
               variant="outline"
               type="button"
             >
@@ -611,20 +792,43 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             </KoochButton>
           </div>
           {roomTypeDraft.bedConfigurations.length === 0 && (
-            <p className="rounded-xl border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-5 text-center text-sm text-[var(--theme-muted-text)]">هنوز تختی اضافه نشده است.</p>
+            <p className="rounded-xl border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-5 text-center text-sm text-[var(--theme-muted-text)]">
+              هنوز تختی اضافه نشده است.
+            </p>
           )}
           {roomTypeDraft.bedConfigurations.map((bed, index) => (
-            <div className="grid gap-2 md:grid-cols-[1fr_120px_auto]" key={index}>
-              <KoochSelect onChange={(event) => updateBed(index, { bedTypeId: Number(event.target.value) })} value={bed.bedTypeId}>
+            <div
+              className="grid gap-2 md:grid-cols-[1fr_120px_auto]"
+              key={index}
+            >
+              <KoochSelect
+                onChange={(event) =>
+                  updateBed(index, { bedTypeId: Number(event.target.value) })
+                }
+                value={bed.bedTypeId}
+              >
                 {bedTypes.map((bedType) => (
                   <option key={bedType.id} value={bedType.id}>
                     {bedTypeLabel(bedType.slug, bedType.name)}
                   </option>
                 ))}
               </KoochSelect>
-              <KoochInput min="1" onChange={(event) => updateBed(index, { quantity: Number(event.target.value) })} type="number" value={bed.quantity} />
+              <KoochInput
+                min="1"
+                onChange={(event) =>
+                  updateBed(index, { quantity: Number(event.target.value) })
+                }
+                type="number"
+                value={bed.quantity}
+              />
               <KoochButton
-                onClick={() => patchDraft({ bedConfigurations: roomTypeDraft.bedConfigurations.filter((_, candidate) => candidate !== index) })}
+                onClick={() =>
+                  patchDraft({
+                    bedConfigurations: roomTypeDraft.bedConfigurations.filter(
+                      (_, candidate) => candidate !== index,
+                    ),
+                  })
+                }
                 size="sm"
                 type="button"
                 variant="destructive"
@@ -641,7 +845,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       <div className="grid gap-4">
         <div>
           <h3 className="font-black">تصاویر اتاق</h3>
-          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">تصاویر این بخش به همین اتاق متصل می‌شوند. این مرحله آخر است.</p>
+          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
+            تصاویر این بخش به همین اتاق متصل می‌شوند. این مرحله آخر است.
+          </p>
         </div>
         {roomTypeDraft.id ? (
           <PropertyImageManager
@@ -652,7 +858,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             roomTypes={roomTypes}
           />
         ) : (
-          <p className="rounded-xl bg-[var(--theme-surface-muted)] p-4 text-sm text-[var(--theme-muted-text)]">ابتدا مرحله اول را تکمیل کنید تا پیش‌نویس اتاق ذخیره شود.</p>
+          <p className="rounded-xl bg-[var(--theme-surface-muted)] p-4 text-sm text-[var(--theme-muted-text)]">
+            ابتدا مرحله اول را تکمیل کنید تا پیش‌نویس اتاق ذخیره شود.
+          </p>
         )}
       </div>
     );
@@ -661,19 +869,23 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   return (
     <div className="grid gap-5">
       {error && (
-        <KoochCard className="border-destructive text-destructive" variant="elevated">
-          <p className="text-sm font-semibold">
-          {error}
-          </p>
+        <KoochCard
+          className="border-destructive text-destructive"
+          variant="elevated"
+        >
+          <p className="text-sm font-semibold">{error}</p>
         </KoochCard>
       )}
 
       <KoochCard variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-foreground">مدیریت اتاق‌ها</h2>
+            <h2 className="text-xl font-black text-foreground">
+              مدیریت اتاق‌ها
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
-              اتاق‌ها را از طریق ویزارد مرحله‌ای ایجاد یا ویرایش کنید. اتاق‌های پیش‌نویس فعال و قابل رزرو نیستند.
+              اتاق‌ها را از طریق ویزارد مرحله‌ای ایجاد یا ویرایش کنید. اتاق‌های
+              پیش‌نویس فعال و قابل رزرو نیستند.
             </p>
           </div>
           <KoochButton onClick={openCreateWizard} type="button">
@@ -718,7 +930,11 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                       <KoochTableCell>
                         {firstImage ? (
                           <img
-                            alt={firstImage.altText || firstImage.caption || roomType.name}
+                            alt={
+                              firstImage.altText ||
+                              firstImage.caption ||
+                              roomType.name
+                            }
                             className="h-14 w-20 rounded-lg object-cover"
                             src={firstImage.url}
                           />
@@ -729,15 +945,22 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                         )}
                       </KoochTableCell>
                       <KoochTableCell>
-                        <p className="font-black text-foreground">{roomType.name}</p>
+                        <p className="font-black text-foreground">
+                          {roomType.name}
+                        </p>
                         {roomType.englishName && (
-                          <p className="text-xs text-muted-foreground" dir="ltr">
+                          <p
+                            className="text-xs text-muted-foreground"
+                            dir="ltr"
+                          >
                             {roomType.englishName}
                           </p>
                         )}
                       </KoochTableCell>
                       <KoochTableCell>
-                        <KoochBadge variant={status.variant}>{status.label}</KoochBadge>
+                        <KoochBadge variant={status.variant}>
+                          {status.label}
+                        </KoochBadge>
                       </KoochTableCell>
                       <KoochTableCell className="font-bold">
                         {roomType.totalInventory}
@@ -787,10 +1010,11 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         <div className="hidden">
           {roomTypes.map((roomType) => {
             const details = [
-              roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
+              roomType.floorNumber != null
+                ? `طبقه ${roomType.floorNumber}`
+                : "",
               roomType.stairCount != null ? `${roomType.stairCount} پله` : "",
               booleanLabel(roomType.hasWindow, "دارای پنجره", "بدون پنجره"),
-              booleanLabel(roomType.hasPrivateBathroom, "سرویس اختصاصی", "سرویس مشترک"),
             ].filter(Boolean);
 
             return (
@@ -798,11 +1022,11 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-black text-foreground">{roomType.name}</h3>
+                      <h3 className="text-lg font-black text-foreground">
+                        {roomType.name}
+                      </h3>
                       {!roomType.isActive && (
-                        <KoochBadge variant="muted">
-                          پیش‌نویس
-                        </KoochBadge>
+                        <KoochBadge variant="muted">پیش‌نویس</KoochBadge>
                       )}
                       {roomType.completion?.isComplete ? (
                         <KoochBadge variant="success">کامل</KoochBadge>
@@ -812,7 +1036,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     </div>
                     <p className="mt-1 text-sm text-muted-foreground">
                       {roomType.maxAdults + roomType.maxChildren} نفر ·{" "}
-                      {roomType.totalInventory === 1 ? "یک واحد اختصاصی" : `موجودی کل ${roomType.totalInventory}`}
+                      {roomType.totalInventory === 1
+                        ? "یک واحد اختصاصی"
+                        : `موجودی کل ${roomType.totalInventory}`}
                     </p>
                     {roomType.allowExtraGuest && (
                       <p className="mt-1 text-sm font-semibold text-muted-foreground">
@@ -822,7 +1048,10 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     {roomType.bedConfigurations.length > 0 && (
                       <p className="mt-2 text-sm text-muted-foreground">
                         {roomType.bedConfigurations
-                          .map((bed) => `${bed.quantity} × ${bedTypeLabel(bed.bedTypeSlug, bed.bedTypeName)}`)
+                          .map(
+                            (bed) =>
+                              `${bed.quantity} × ${bedTypeLabel(bed.bedTypeSlug, bed.bedTypeName)}`,
+                          )
                           .join("، ")}
                       </p>
                     )}
@@ -831,9 +1060,17 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                         {details.join(" · ")}
                       </p>
                     )}
-                    {roomType.notes && <p className="mt-2 text-sm text-muted-foreground">{roomType.notes}</p>}
+                    {roomType.notes && (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {roomType.notes}
+                      </p>
+                    )}
                     {roomType.completion && !roomType.completion.isComplete && (
-                      <KoochAlert className="mt-3" title="موارد ناقص اتاق" variant="warning">
+                      <KoochAlert
+                        className="mt-3"
+                        title="موارد ناقص اتاق"
+                        variant="warning"
+                      >
                         <ul className="grid gap-1">
                           {roomType.completion.missingItems.map((item) => (
                             <li key={item}>{item}</li>
@@ -841,14 +1078,18 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                         </ul>
                       </KoochAlert>
                     )}
-                    {images.some((image) => image.roomTypeId === roomType.id) && (
+                    {images.some(
+                      (image) => image.roomTypeId === roomType.id,
+                    ) && (
                       <div className="mt-3 flex flex-wrap gap-2">
                         {images
                           .filter((image) => image.roomTypeId === roomType.id)
                           .slice(0, 4)
                           .map((image) => (
                             <img
-                              alt={image.altText || image.caption || roomType.name}
+                              alt={
+                                image.altText || image.caption || roomType.name
+                              }
                               className="h-[120px] w-[160px] rounded-xl object-cover"
                               key={image.id}
                               src={image.url}
@@ -858,7 +1099,12 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <KoochButton onClick={() => editRoomType(roomType)} size="sm" type="button" variant="outline">
+                    <KoochButton
+                      onClick={() => editRoomType(roomType)}
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
                       ویرایش اتاق
                     </KoochButton>
                     <KoochButton
@@ -930,33 +1176,48 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             : "اطلاعات اتاق را مرحله‌به‌مرحله تکمیل کنید."
         }
         footer={
-          <div className="flex w-full flex-wrap items-center justify-between gap-3">
+          <div className="grid w-full gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
             <KoochButton
+              className="w-full sm:w-auto"
               disabled={saving || activeStep === 0}
-              onClick={() => setActiveStep((current) => Math.max(0, current - 1))}
+              onClick={() =>
+                setActiveStep((current) => Math.max(0, current - 1))
+              }
               variant="outline"
             >
               قبلی
             </KoochButton>
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-3 sm:flex sm:flex-wrap">
               <KoochButton
+                className="w-full sm:w-auto"
                 disabled={saving}
                 onClick={closeWizard}
                 variant="outline"
               >
                 لغو
               </KoochButton>
+              <KoochButton
+                className="w-full sm:w-auto"
+                disabled={saving}
+                loading={saving}
+                onClick={saveDraftRoom}
+                variant="outline"
+              >
+                ذخیره
+              </KoochButton>
               {activeStep < wizardSteps.length - 1 ? (
                 <KoochButton
+                  className="w-full sm:w-auto"
                   disabled={saving}
                   loading={saving}
                   onClick={goNext}
                   variant="primary"
                 >
-                  {saving ? "در حال ذخیره..." : activeStep === 0 ? "ذخیره و بعدی" : "بعدی"}
+                  {saving ? "در حال ذخیره..." : "بعدی"}
                 </KoochButton>
               ) : (
                 <KoochButton
+                  className="w-full sm:w-auto"
                   disabled={saving}
                   loading={saving}
                   onClick={activateRoom}
@@ -972,14 +1233,18 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           if (!open && !saving) closeWizard();
         }}
         open={wizardOpen}
-        size="xl"
+        // wizard size
+        size="lg"
+        bodyClassName="px-4 py-4 sm:px-6 sm:py-5"
+        footerClassName="px-4 py-3 sm:px-6 sm:py-4"
+        contentClassName="h-[min(760px,90vh)] sm:h-[min(780px,90vh)]"
         title={wizardMode === "create" ? "افزودن اتاق" : "ویرایش اتاق"}
       >
         <div className="mb-5 border-b border-border pb-4">
-          <div className="grid gap-2 md:grid-cols-5">
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
             {wizardSteps.map((step, index) => (
               <KoochButton
-                className={`justify-start text-right ${
+                className={`min-h-10 w-full justify-start whitespace-normal text-right leading-5 ${
                   index === activeStep
                     ? "border-primary bg-primary text-primary-foreground shadow-md"
                     : index < activeStep
@@ -993,7 +1258,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                 type="button"
                 variant="outline"
               >
-                <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-background/20 text-xs">{index + 1}</span>
+                <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-background/20 text-xs">
+                  {index + 1}
+                </span>
                 {step}
               </KoochButton>
             ))}
@@ -1006,7 +1273,11 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           </KoochAlert>
         )}
         {activationWarning.length > 0 && (
-          <KoochAlert className="mb-4" title="اتاق هنوز قابل فعال‌سازی نیست" variant="warning">
+          <KoochAlert
+            className="mb-4"
+            title="اتاق هنوز قابل فعال‌سازی نیست"
+            variant="warning"
+          >
             <ul className="grid gap-1">
               {activationWarning.map((item) => (
                 <li key={item}>{item}</li>
@@ -1015,10 +1286,17 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           </KoochAlert>
         )}
         {!draftCompletion.isComplete && (
-          <KoochAlert className="mb-4" title="وضعیت تکمیل اتاق" variant="default">
+          <KoochAlert
+            className="mb-4"
+            title="وضعیت تکمیل اتاق"
+            variant="default"
+          >
             <div className="grid gap-2">
               {draftCompletion.sections.map((section) => (
-                <div className="flex flex-wrap items-center justify-between gap-2" key={section.key}>
+                <div
+                  className="flex flex-wrap items-center justify-between gap-2"
+                  key={section.key}
+                >
                   <span className="font-black">{section.label}</span>
                   <KoochBadge
                     variant={

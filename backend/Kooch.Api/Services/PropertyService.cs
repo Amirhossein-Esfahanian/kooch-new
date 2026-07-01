@@ -18,12 +18,15 @@ public class PropertyService(
         CreatePropertyRequest request,
         CancellationToken cancellationToken = default)
     {
-        if (role is not UserRole.Owner and not UserRole.SuperAdmin)
+        var canCreateAsAdmin = role == UserRole.SuperAdmin ||
+                               role == UserRole.AdminAssistant &&
+                               await HasGlobalManagePermissionAsync(userId, cancellationToken);
+        if (role != UserRole.Owner && !canCreateAsAdmin)
         {
-            throw new UnauthorizedAccessException("Only owners and SuperAdmin can create properties.");
+            throw new UnauthorizedAccessException("ManageProperties permission is required.");
         }
 
-        var ownerId = role == UserRole.SuperAdmin ? request.OwnerId ?? userId : userId;
+        var ownerId = canCreateAsAdmin ? request.OwnerId ?? userId : userId;
         if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
                 user.Id == ownerId && user.IsActive &&
                 (user.Role == UserRole.Owner || user.Role == UserRole.SuperAdmin), cancellationToken))
@@ -63,11 +66,9 @@ public class PropertyService(
             HasAccessibleBathroom = request.HasAccessibleBathroom,
             FreeChildAgeLimit = request.FreeChildAgeLimit,
             MaxFreeChildren = request.MaxFreeChildren,
-            Status = role == UserRole.SuperAdmin
-                ? request.Status == PropertyStatus.Approved
-                    ? PropertyStatus.PendingReview
-                    : request.Status ?? PropertyStatus.PendingReview
-                : PropertyStatus.PendingReview
+            Status = request.Status == PropertyStatus.Approved
+                ? PropertyStatus.Draft
+                : request.Status ?? PropertyStatus.Draft
         };
 
         dbContext.Properties.Add(property);

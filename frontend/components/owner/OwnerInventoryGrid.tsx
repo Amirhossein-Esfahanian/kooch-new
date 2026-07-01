@@ -228,10 +228,15 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-hidden">
-      <KoochCard className="w-full max-w-full min-w-0 overflow-hidden" variant="elevated">
+      <KoochCard
+        className="w-full max-w-full min-w-0 overflow-hidden"
+        variant="elevated"
+      >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-foreground">تقویم ظرفیت اتاق‌ها</h2>
+            <h2 className="text-xl font-black text-foreground">
+              تقویم ظرفیت اتاق‌ها
+            </h2>
             <p className="mt-1 text-sm text-muted-foreground">
               روی یک سلول کلیک کنید و بازه را با دستگیره‌ها تغییر دهید.
             </p>

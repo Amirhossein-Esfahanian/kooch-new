@@ -1,6 +1,7 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -13,6 +14,16 @@ public class AdminPropertiesController(
     IPropertyService propertyService,
     IPropertyCompletionService propertyCompletionService) : AuthenticatedControllerBase
 {
+    [HttpPost]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<PropertyResponse>> Create(CreatePropertyRequest request, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        request.Status = PropertyStatus.Draft;
+        var property = await propertyService.CreatePropertyAsync(user.UserId, user.Role, request, cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { id = property.Id }, property);
+    }
+
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PropertyResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<PropertyResponse>>> Get(CancellationToken cancellationToken)

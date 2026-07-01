@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
-import { KoochSelect } from "@/components/KoochFormControls";
+import { KoochDialog } from "@/components/KoochDialog";
+import {
+  KoochField,
+  KoochInput,
+  KoochSelect,
+  KoochTextarea,
+} from "@/components/KoochFormControls";
 import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
@@ -20,10 +27,16 @@ import {
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   apiRequest,
+  AdminUserResponse,
   getToken,
+  InventoryMode,
   PropertyCompletionResponse,
   PropertyResponse,
   PropertyStatus,
+  propertyTypes,
+  PropertyType,
+  resolveDestinationId,
+  UserRole,
 } from "@/lib/owner-api";
 import { propertyCompletionHref } from "@/lib/property-completion";
 
@@ -46,6 +59,51 @@ const statusLabels: Record<PropertyStatus, string> = {
 const actionLinkClass =
   "inline-flex min-h-9 items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 
+const propertyTypeLabels: Record<PropertyType, string> = {
+  TraditionalHouse: "خانه سنتی",
+  BoutiqueHotel: "هتل بوتیک",
+  EcoLodge: "بوم‌گردی",
+  Hotel: "هتل",
+  Villa: "ویلا",
+  Apartment: "آپارتمان",
+};
+
+type AdminCreateMode = "existing-owner" | "new-owner";
+
+type CreatePropertyForm = {
+  ownerMode: AdminCreateMode;
+  ownerId: string;
+  ownerFirstName: string;
+  ownerLastName: string;
+  ownerEmail: string;
+  ownerPhoneNumber: string;
+  ownerPassword: string;
+  name: string;
+  englishName: string;
+  type: PropertyType;
+  city: string;
+  address: string;
+  description: string;
+  inventoryMode: InventoryMode;
+};
+
+const emptyCreateForm: CreatePropertyForm = {
+  ownerMode: "existing-owner",
+  ownerId: "",
+  ownerFirstName: "",
+  ownerLastName: "",
+  ownerEmail: "",
+  ownerPhoneNumber: "",
+  ownerPassword: "",
+  name: "",
+  englishName: "",
+  type: "TraditionalHouse",
+  city: "Kashan",
+  address: "",
+  description: "",
+  inventoryMode: "NamedRooms",
+};
+
 export default function AdminPropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
@@ -54,12 +112,30 @@ export default function AdminPropertiesPage() {
   >({});
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
+  const [users, setUsers] = useState<AdminUserResponse[]>([]);
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createForm, setCreateForm] =
+    useState<CreatePropertyForm>(emptyCreateForm);
+  const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
+  const ownerOptions = useMemo(
+    () =>
+      users.filter(
+        (user) =>
+          user.isActive &&
+          (user.role === "Owner" || user.role === "SuperAdmin"),
+      ),
+    [users],
+  );
+
   const load = useCallback(async () => {
-    const propertyItems =
-      await apiRequest<PropertyResponse[]>("/admin/properties");
+    const [propertyItems, userItems] = await Promise.all([
+      apiRequest<PropertyResponse[]>("/admin/properties"),
+      apiRequest<AdminUserResponse[]>("/admin/users").catch(() => []),
+    ]);
     setProperties(propertyItems);
+    setUsers(userItems);
     const completionEntries = await Promise.all(
       propertyItems.map(async (property) => {
         const completion = await apiRequest<PropertyCompletionResponse>(
@@ -113,10 +189,115 @@ export default function AdminPropertiesPage() {
     }
   }
 
+  function openCreateDialog() {
+    setCreateForm({
+      ...emptyCreateForm,
+      ownerId: ownerOptions[0]?.id ? String(ownerOptions[0].id) : "",
+    });
+    setError("");
+    setCreateOpen(true);
+  }
+
+  async function createOwnerIfNeeded() {
+    if (createForm.ownerMode === "existing-owner") {
+      if (!createForm.ownerId) {
+        throw new Error("مالک اقامتگاه را انتخاب کنید.");
+      }
+      return Number(createForm.ownerId);
+    }
+
+    const createdOwner = await apiRequest<AdminUserResponse>("/admin/users", {
+      method: "POST",
+      body: JSON.stringify({
+        firstName: createForm.ownerFirstName.trim(),
+        lastName: createForm.ownerLastName.trim(),
+        email: createForm.ownerEmail.trim(),
+        phoneNumber: createForm.ownerPhoneNumber.trim() || null,
+        password: createForm.ownerPassword,
+        role: "Owner" satisfies UserRole,
+        parentUserId: null,
+        propertyId: null,
+      }),
+    });
+    setUsers((current) => [...current, createdOwner]);
+    return createdOwner.id;
+  }
+
+  async function createDraftProperty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!createForm.name.trim()) {
+      toast.error("نام اقامتگاه را وارد کنید.");
+      return;
+    }
+    if (!createForm.city.trim()) {
+      toast.error("شهر را وارد کنید.");
+      return;
+    }
+    if (!createForm.address.trim()) {
+      toast.error("آدرس را وارد کنید.");
+      return;
+    }
+    if (
+      createForm.ownerMode === "new-owner" &&
+      (!createForm.ownerFirstName.trim() ||
+        !createForm.ownerLastName.trim() ||
+        !createForm.ownerEmail.trim() ||
+        createForm.ownerPassword.length < 8)
+    ) {
+      toast.error(
+        "برای مالک جدید، نام، ایمیل و رمز حداقل ۸ کاراکتری لازم است.",
+      );
+      return;
+    }
+
+    setCreating(true);
+    setError("");
+    try {
+      const ownerId = await createOwnerIfNeeded();
+      const created = await apiRequest<PropertyResponse>("/admin/properties", {
+        method: "POST",
+        body: JSON.stringify({
+          ownerId,
+          destinationId: resolveDestinationId(createForm.city),
+          name: createForm.name.trim(),
+          englishName: createForm.englishName.trim() || null,
+          description: createForm.description.trim() || createForm.name.trim(),
+          address: createForm.address.trim(),
+          city: createForm.city.trim(),
+          country: "Iran",
+          type: createForm.type,
+          inventoryMode: createForm.inventoryMode,
+          checkInTime: "14:00",
+          checkOutTime: "12:00",
+          breakfastOption: "NoBreakfast",
+          status: "Draft",
+          hasElevator: false,
+        }),
+      });
+      toast.success("اقامتگاه پیش‌نویس ایجاد شد.");
+      setCreateOpen(false);
+      setCreateForm(emptyCreateForm);
+      await load();
+      router.push(`/admin/properties/${created.id}`);
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "ایجاد اقامتگاه انجام نشد.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          actions={
+            <KoochButton onClick={openCreateDialog} type="button">
+              افزودن اقامتگاه
+            </KoochButton>
+          }
           description="اقامتگاه‌ها، وضعیت بررسی، ظرفیت و قیمت‌گذاری را از همین صفحه مدیریت کنید."
           eyebrow="پنل مدیریت"
           title="مدیریت اقامتگاه‌ها"
@@ -178,17 +359,6 @@ export default function AdminPropertiesPage() {
                       <p className="text-xs text-muted-foreground" dir="ltr">
                         {property.englishName}
                       </p>
-                    )}
-                    {completions[property.id] && (
-                      <PropertyCompletionCard
-                        className="mt-3 max-w-xl"
-                        compact
-                        completion={completions[property.id]}
-                        getActionHref={(section) =>
-                          propertyCompletionHref("admin", property.id, section)
-                        }
-                        title="تکمیل اقامتگاه"
-                      />
                     )}
                   </KoochTableCell>
                   <KoochTableCell>{property.city}</KoochTableCell>
@@ -276,6 +446,260 @@ export default function AdminPropertiesPage() {
             </KoochTableBody>
           </KoochTable>
         )}
+
+        <KoochDialog
+          closeDisabled={creating}
+          description="اقامتگاه جدید به صورت پیش‌نویس و غیرعمومی ساخته می‌شود."
+          footer={
+            <>
+              <KoochButton
+                disabled={creating}
+                onClick={() => setCreateOpen(false)}
+                type="button"
+                variant="outline"
+              >
+                لغو
+              </KoochButton>
+              <KoochButton
+                form="admin-create-property-form"
+                loading={creating}
+                type="submit"
+              >
+                ایجاد پیش‌نویس
+              </KoochButton>
+            </>
+          }
+          onOpenChange={(open) => {
+            if (!open && !creating) setCreateOpen(false);
+          }}
+          open={createOpen}
+          title="افزودن اقامتگاه"
+        >
+          <form
+            className="grid gap-5"
+            id="admin-create-property-form"
+            onSubmit={createDraftProperty}
+          >
+            <KoochCard padding="sm" variant="muted">
+              <div className="grid gap-4">
+                <div className="flex flex-wrap gap-2">
+                  <KoochButton
+                    onClick={() =>
+                      setCreateForm({
+                        ...createForm,
+                        ownerMode: "existing-owner",
+                      })
+                    }
+                    type="button"
+                    variant={
+                      createForm.ownerMode === "existing-owner"
+                        ? "primary"
+                        : "outline"
+                    }
+                  >
+                    انتخاب مالک موجود
+                  </KoochButton>
+                  <KoochButton
+                    onClick={() =>
+                      setCreateForm({ ...createForm, ownerMode: "new-owner" })
+                    }
+                    type="button"
+                    variant={
+                      createForm.ownerMode === "new-owner"
+                        ? "primary"
+                        : "outline"
+                    }
+                  >
+                    ایجاد مالک جدید
+                  </KoochButton>
+                </div>
+
+                {createForm.ownerMode === "existing-owner" ? (
+                  <KoochField
+                    helperText="مالک بعدا می‌تواند از پنل مالک، اقامتگاه را تکمیل کند."
+                    label="مالک اقامتگاه"
+                    required
+                  >
+                    <KoochSelect
+                      onChange={(event) =>
+                        setCreateForm({
+                          ...createForm,
+                          ownerId: event.target.value,
+                        })
+                      }
+                      required
+                      value={createForm.ownerId}
+                    >
+                      <option value="">انتخاب مالک</option>
+                      {ownerOptions.map((owner) => (
+                        <option key={owner.id} value={owner.id}>
+                          {owner.fullName || owner.email} - {owner.email}
+                        </option>
+                      ))}
+                    </KoochSelect>
+                  </KoochField>
+                ) : (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <KoochField label="نام مالک" required>
+                      <KoochInput
+                        onChange={(event) =>
+                          setCreateForm({
+                            ...createForm,
+                            ownerFirstName: event.target.value,
+                          })
+                        }
+                        required
+                        value={createForm.ownerFirstName}
+                      />
+                    </KoochField>
+                    <KoochField label="نام خانوادگی مالک" required>
+                      <KoochInput
+                        onChange={(event) =>
+                          setCreateForm({
+                            ...createForm,
+                            ownerLastName: event.target.value,
+                          })
+                        }
+                        required
+                        value={createForm.ownerLastName}
+                      />
+                    </KoochField>
+                    <KoochField label="ایمیل مالک" required>
+                      <KoochInput
+                        dir="ltr"
+                        onChange={(event) =>
+                          setCreateForm({
+                            ...createForm,
+                            ownerEmail: event.target.value,
+                          })
+                        }
+                        required
+                        type="email"
+                        value={createForm.ownerEmail}
+                      />
+                    </KoochField>
+                    <KoochField label="رمز عبور اولیه" required>
+                      <KoochInput
+                        dir="ltr"
+                        minLength={8}
+                        onChange={(event) =>
+                          setCreateForm({
+                            ...createForm,
+                            ownerPassword: event.target.value,
+                          })
+                        }
+                        required
+                        type="password"
+                        value={createForm.ownerPassword}
+                      />
+                    </KoochField>
+                    <KoochField label="شماره تماس">
+                      <KoochInput
+                        dir="ltr"
+                        onChange={(event) =>
+                          setCreateForm({
+                            ...createForm,
+                            ownerPhoneNumber: event.target.value,
+                          })
+                        }
+                        value={createForm.ownerPhoneNumber}
+                      />
+                    </KoochField>
+                  </div>
+                )}
+              </div>
+            </KoochCard>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <KoochField label="نام اقامتگاه" required>
+                <KoochInput
+                  onChange={(event) =>
+                    setCreateForm({ ...createForm, name: event.target.value })
+                  }
+                  required
+                  value={createForm.name}
+                />
+              </KoochField>
+              <KoochField label="نام انگلیسی / اسلاگ">
+                <KoochInput
+                  dir="ltr"
+                  onChange={(event) =>
+                    setCreateForm({
+                      ...createForm,
+                      englishName: event.target.value,
+                    })
+                  }
+                  value={createForm.englishName}
+                />
+              </KoochField>
+              <KoochField label="نوع اقامتگاه">
+                <KoochSelect
+                  onChange={(event) =>
+                    setCreateForm({
+                      ...createForm,
+                      type: event.target.value as PropertyType,
+                    })
+                  }
+                  value={createForm.type}
+                >
+                  {propertyTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {propertyTypeLabels[type]}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+              <KoochField label="مدل موجودی">
+                <KoochSelect
+                  onChange={(event) =>
+                    setCreateForm({
+                      ...createForm,
+                      inventoryMode: event.target.value as InventoryMode,
+                    })
+                  }
+                  value={createForm.inventoryMode}
+                >
+                  <option value="NamedRooms">اتاق‌های نام‌دار</option>
+                  <option value="TypeBasedInventory">
+                    موجودی بر اساس نوع اتاق
+                  </option>
+                </KoochSelect>
+              </KoochField>
+              <KoochField label="شهر" required>
+                <KoochInput
+                  onChange={(event) =>
+                    setCreateForm({ ...createForm, city: event.target.value })
+                  }
+                  required
+                  value={createForm.city}
+                />
+              </KoochField>
+              <KoochField className="md:col-span-2" label="آدرس" required>
+                <KoochInput
+                  onChange={(event) =>
+                    setCreateForm({
+                      ...createForm,
+                      address: event.target.value,
+                    })
+                  }
+                  required
+                  value={createForm.address}
+                />
+              </KoochField>
+              <KoochField className="md:col-span-2" label="توضیح کوتاه">
+                <KoochTextarea
+                  onChange={(event) =>
+                    setCreateForm({
+                      ...createForm,
+                      description: event.target.value,
+                    })
+                  }
+                  value={createForm.description}
+                />
+              </KoochField>
+            </div>
+          </form>
+        </KoochDialog>
       </main>
     </AdminLayout>
   );
