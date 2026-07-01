@@ -31,6 +31,15 @@ public class OwnerPricingController(IRoomDailyPriceService pricingService) : Aut
         return Ok(await pricingService.BulkUpdateAsync(user.UserId, user.Role, propertyId, request, cancellationToken));
     }
 
+    [HttpPost("copy")]
+    [ProducesResponseType<IReadOnlyList<RoomDailyPriceResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<RoomDailyPriceResponse>>> Copy(
+        int propertyId, CopyRoomDailyPriceRequest request, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await pricingService.CopyAsync(user.UserId, user.Role, propertyId, request, cancellationToken));
+    }
+
     [HttpGet("history")]
     [ProducesResponseType<IReadOnlyList<RoomDailyPriceHistoryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<RoomDailyPriceHistoryResponse>>> History(

@@ -105,6 +105,79 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
         return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
     }
 
+    public async Task<IReadOnlyList<RoomDailyPriceResponse>> CopyAsync(
+        int userId, UserRole role, int propertyId, CopyRoomDailyPriceRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
+        if (request.Items.Count == 0) throw new ArgumentException("حداقل یک خانه قیمت انتخاب کنید.");
+        if (request.SourceGuestType == request.DestinationGuestType)
+            throw new ArgumentException("نوع مهمان مبدا و مقصد باید متفاوت باشد.");
+
+        var items = request.Items.DistinctBy(item => (item.RoomTypeId, item.Date)).ToList();
+        var dates = items.Select(item => item.Date).Distinct().OrderBy(date => date).ToArray();
+        ValidateDateRange(dates.First(), dates.Last());
+
+        var roomTypeIds = items.Select(item => item.RoomTypeId).Distinct().ToArray();
+        var validRoomTypeCount = await dbContext.RoomTypes.CountAsync(roomType =>
+            roomType.PropertyId == propertyId && roomType.IsActive && roomTypeIds.Contains(roomType.Id), cancellationToken);
+        if (validRoomTypeCount != roomTypeIds.Length) throw new KeyNotFoundException("یک یا چند نوع اتاق پیدا نشد.");
+
+        var sourcePrices = await dbContext.RoomDailyPrices.AsNoTracking()
+            .Where(price =>
+                roomTypeIds.Contains(price.RoomTypeId) &&
+                dates.Contains(price.Date) &&
+                price.GuestType == request.SourceGuestType)
+            .ToDictionaryAsync(price => (price.RoomTypeId, price.Date), cancellationToken);
+
+        var destinationPrices = await dbContext.RoomDailyPrices
+            .Where(price =>
+                roomTypeIds.Contains(price.RoomTypeId) &&
+                dates.Contains(price.Date) &&
+                price.GuestType == request.DestinationGuestType)
+            .ToDictionaryAsync(price => (price.RoomTypeId, price.Date), cancellationToken);
+
+        var updated = new List<RoomDailyPrice>();
+        var historyCandidates = new List<PriceHistoryChange>();
+
+        foreach (var item in items.OrderBy(item => item.RoomTypeId).ThenBy(item => item.Date))
+        {
+            if (!sourcePrices.TryGetValue((item.RoomTypeId, item.Date), out var sourcePrice)) continue;
+
+            var destinationPrice = destinationPrices.GetValueOrDefault((item.RoomTypeId, item.Date));
+            var oldBasePrice = destinationPrice?.BasePrice ?? 0;
+            if (destinationPrice is null)
+            {
+                destinationPrice = new RoomDailyPrice
+                {
+                    RoomTypeId = item.RoomTypeId,
+                    Date = item.Date,
+                    GuestType = request.DestinationGuestType
+                };
+                dbContext.RoomDailyPrices.Add(destinationPrice);
+            }
+
+            if (oldBasePrice != sourcePrice.BasePrice)
+            {
+                historyCandidates.Add(new PriceHistoryChange(
+                    item.RoomTypeId,
+                    item.Date,
+                    request.DestinationGuestType,
+                    oldBasePrice,
+                    sourcePrice.BasePrice));
+            }
+
+            destinationPrice.GuestType = request.DestinationGuestType;
+            destinationPrice.BasePrice = sourcePrice.BasePrice;
+            updated.Add(destinationPrice);
+        }
+
+        dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(propertyId, userId, historyCandidates));
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
+    }
+
     public async Task<IReadOnlyList<RoomDailyPriceHistoryResponse>> GetHistoryAsync(
         int userId,
         UserRole role,
@@ -151,8 +224,7 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
 
     private async Task EnsureCanManageAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken)
     {
-        if (!await propertyAccessService.CanManagePropertyAsync(userId, role, propertyId, cancellationToken) &&
-            !await propertyAccessService.CanManageRoomsAsync(userId, role, propertyId, cancellationToken))
+        if (!await propertyAccessService.CanManagePricingAsync(userId, role, propertyId, cancellationToken))
             throw new UnauthorizedAccessException("اجازه مدیریت قیمت‌های این اقامتگاه را ندارید.");
     }
 

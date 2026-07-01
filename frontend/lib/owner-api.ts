@@ -355,6 +355,12 @@ export interface PropertyPricingResponse {
   roomTypes: PricingRoomTypeResponse[];
 }
 
+export interface CopyRoomDailyPriceRequest {
+  sourceGuestType: PricingGuestType;
+  destinationGuestType: PricingGuestType;
+  items: { roomTypeId: number; date: string }[];
+}
+
 export interface PropertyCompletionResponse {
   propertyId: number;
   completionPercentage: number;

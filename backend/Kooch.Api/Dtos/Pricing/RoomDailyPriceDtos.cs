@@ -34,6 +34,13 @@ public class BulkRoomDailyPriceRequest
     public decimal BasePrice { get; set; }
 }
 
+public class CopyRoomDailyPriceRequest
+{
+    public PricingGuestType SourceGuestType { get; set; } = PricingGuestType.Iranian;
+    public PricingGuestType DestinationGuestType { get; set; } = PricingGuestType.Foreign;
+    public IReadOnlyList<RoomDailyPriceCellRequest> Items { get; set; } = [];
+}
+
 public class RoomDailyPriceCellRequest
 {
     public int RoomTypeId { get; set; }

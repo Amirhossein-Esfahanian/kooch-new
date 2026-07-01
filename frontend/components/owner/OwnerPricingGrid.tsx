@@ -3,9 +3,12 @@
 import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
+import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import {
   apiRequest,
+  CopyRoomDailyPriceRequest,
   PricingGuestType,
   PropertyPricingResponse,
   PropertyResponse,
@@ -104,6 +107,28 @@ const pricingGuestTypeLabels: Record<PricingGuestType, string> = {
   Foreign: "خارجی",
 };
 
+type CopyPricingDirection = "IranianToForeign" | "ForeignToIranian";
+
+const copyPricingDirectionOptions: {
+  value: CopyPricingDirection;
+  label: string;
+  source: PricingGuestType;
+  destination: PricingGuestType;
+}[] = [
+  {
+    value: "IranianToForeign",
+    label: "از ایرانی به خارجی",
+    source: "Iranian",
+    destination: "Foreign",
+  },
+  {
+    value: "ForeignToIranian",
+    label: "از خارجی به ایرانی",
+    source: "Foreign",
+    destination: "Iranian",
+  },
+];
+
 function PriceHistoryValues({
   basePrice,
   currencyLabel,
@@ -182,6 +207,7 @@ export function OwnerPricingGrid({
   context?: "admin" | "owner";
   propertyId: number;
 }) {
+  const router = useRouter();
   const [activeMonth, setActiveMonth] = useState(() =>
     dayjs().calendar("jalali").format("YYYY-MM"),
   );
@@ -206,6 +232,19 @@ export function OwnerPricingGrid({
   const outlierResolverRef = useRef<((confirmed: boolean) => void) | null>(
     null,
   );
+  const [bulkReviewDialogOpen, setBulkReviewDialogOpen] = useState(false);
+  const [bulkReviewPayload, setBulkReviewPayload] =
+    useState<CalendarRangeApplyPayload | null>(null);
+  const bulkReviewResolverRef = useRef<((confirmed: boolean) => void) | null>(
+    null,
+  );
+  const [copyDialogOpen, setCopyDialogOpen] = useState(false);
+  const [copyPayload, setCopyPayload] =
+    useState<CalendarRangeApplyPayload | null>(null);
+  const [copyDirection, setCopyDirection] =
+    useState<CopyPricingDirection>("IranianToForeign");
+  const [copyLoading, setCopyLoading] = useState(false);
+  const [copyError, setCopyError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const monthStart = useMemo(
@@ -263,6 +302,18 @@ export function OwnerPricingGrid({
     context === "admin"
       ? `/admin/properties/${propertyId}?step=7`
       : `/owner/properties/${propertyId}?step=7`;
+  const roomsHref =
+    context === "admin"
+      ? `/admin/properties/${propertyId}/rooms`
+      : `/owner/properties/${propertyId}/rooms`;
+  const hasLoadedPricing = pricing !== null;
+  const hasRooms = rows.length > 0;
+  const hasPriceInSelectedRange = rows.some((row) =>
+    row.days.some((day) => day.id != null && Number(day.basePrice) > 0),
+  );
+  const shouldShowNoRoomsState = hasLoadedPricing && !hasRooms;
+  const shouldShowNoPricingWarning =
+    hasLoadedPricing && hasRooms && !hasPriceInSelectedRange;
 
   useEffect(() => {
     loadMonth().catch((caught: Error) => setError(caught.message));
@@ -403,7 +454,7 @@ export function OwnerPricingGrid({
             ...current,
           ],
     );
-    setMessage("قیمت‌ها با موفقیت ذخیره شدند.");
+    // setMessage("قیمت‌ها با موفقیت ذخیره شدند.");
   }
 
   async function openHistory() {
@@ -440,10 +491,156 @@ export function OwnerPricingGrid({
     });
   }
 
+  function getBulkReviewDetails(payload: CalendarRangeApplyPayload | null) {
+    if (!payload) {
+      return {
+        affectedDays: 0,
+        dateRangeLabel: "-",
+        priceLabel: "-",
+        rangeCount: 0,
+        roomNames: "-",
+      };
+    }
+    const selectedRoomIds = new Set(
+      payload.items.map((item) => String(item.rowId)),
+    );
+    const selectedDates = Array.from(
+      new Set(payload.items.map((item) => item.date)),
+    ).sort();
+    const roomNames = rows
+      .filter((row) => selectedRoomIds.has(String(row.id)))
+      .map((row) => row.label);
+    const firstDate = selectedDates[0] ?? payload.startDate;
+    const lastDate = selectedDates[selectedDates.length - 1] ?? payload.endDate;
+
+    return {
+      affectedDays: selectedDates.length,
+      dateRangeLabel:
+        firstDate === lastDate
+          ? formatIsoDate(firstDate)
+          : `${formatIsoDate(firstDate)} تا ${formatIsoDate(lastDate)}`,
+      priceLabel: formatPriceWithCurrency(
+        payload.basePrice ?? 0,
+        currencyLabel,
+      ),
+      rangeCount: payload.selectionRangeCount ?? 1,
+      roomNames: roomNames.length > 0 ? roomNames.join("، ") : "-",
+    };
+  }
+
+  function shouldReviewBulkApply(payload: CalendarRangeApplyPayload) {
+    const affectedDays = new Set(payload.items.map((item) => item.date)).size;
+    return affectedDays > 14 || (payload.selectionRangeCount ?? 1) > 3;
+  }
+
+  function resolveBulkReviewConfirmation(confirmed: boolean) {
+    bulkReviewResolverRef.current?.(confirmed);
+    bulkReviewResolverRef.current = null;
+    setBulkReviewDialogOpen(false);
+    setBulkReviewPayload(null);
+  }
+
+  function confirmBulkReview(payload: CalendarRangeApplyPayload) {
+    if (!shouldReviewBulkApply(payload)) return true;
+    return new Promise<boolean>((resolve) => {
+      bulkReviewResolverRef.current = resolve;
+      setBulkReviewPayload(payload);
+      setBulkReviewDialogOpen(true);
+    });
+  }
+
+  async function confirmPriceApply(payload: CalendarRangeApplyPayload) {
+    const outlierConfirmed = await confirmOutlierPrice(payload);
+    if (!outlierConfirmed) return false;
+    return confirmBulkReview(payload);
+  }
+
+  function openCopyPricingDialog(payload: CalendarRangeApplyPayload) {
+    setCopyPayload(payload);
+    setCopyError("");
+    setCopyDirection(
+      activeGuestType === "Iranian" ? "IranianToForeign" : "ForeignToIranian",
+    );
+    setCopyDialogOpen(true);
+  }
+
+  async function confirmCopyPricing() {
+    if (!copyPayload) return;
+    const direction =
+      copyPricingDirectionOptions.find(
+        (option) => option.value === copyDirection,
+      ) ?? copyPricingDirectionOptions[0];
+    const request: CopyRoomDailyPriceRequest = {
+      sourceGuestType: direction.source,
+      destinationGuestType: direction.destination,
+      items: copyPayload.items.map((item) => ({
+        roomTypeId: Number(item.rowId),
+        date: item.date,
+      })),
+    };
+
+    setCopyLoading(true);
+    setCopyError("");
+    try {
+      const updated = await apiRequest<RoomDailyPriceResponse[]>(
+        `/owner/properties/${propertyId}/pricing/copy`,
+        {
+          method: "POST",
+          body: JSON.stringify(request),
+        },
+      );
+      if (direction.destination === activeGuestType) {
+        const updateMap = new Map(
+          updated.map((item) => [cellKey(item.roomTypeId, item.date), item]),
+        );
+        setPricing(
+          (current) =>
+            current && {
+              ...current,
+              guestType: activeGuestType,
+              roomTypes: current.roomTypes.map((roomType) => ({
+                ...roomType,
+                days: roomType.days.map(
+                  (day) =>
+                    updateMap.get(cellKey(roomType.roomTypeId, day.date)) ??
+                    day,
+                ),
+              })),
+            },
+        );
+      }
+      setMessage(
+        updated.length > 0
+          ? "کپی قیمت‌ها با موفقیت انجام شد."
+          : "برای بازه انتخاب‌شده قیمت روزانه‌ای در مبدا پیدا نشد.",
+      );
+      toast.success(
+        updated.length > 0
+          ? "کپی قیمت‌ها با موفقیت انجام شد."
+          : "برای بازه انتخاب‌شده قیمت روزانه‌ای در مبدا پیدا نشد.",
+      );
+      setCopyDialogOpen(false);
+      setCopyPayload(null);
+    } catch (caught) {
+      setCopyError(
+        caught instanceof Error ? caught.message : "کپی قیمت‌ها انجام نشد.",
+      );
+      toast.error(
+        caught instanceof Error ? caught.message : "کپی قیمت‌ها انجام نشد.",
+        { id: "pricing-copy-error" },
+      );
+      throw caught;
+    } finally {
+      setCopyLoading(false);
+    }
+  }
+
   const monthTitle = monthStart.locale("fa").format("MMMM YYYY");
   const activeGuestTab =
     pricingGuestTabs.find((tab) => tab.value === activeGuestType) ??
     pricingGuestTabs[0];
+  const bulkReviewDetails = getBulkReviewDetails(bulkReviewPayload);
+  const copyReviewDetails = getBulkReviewDetails(copyPayload);
   function changeGuestType(nextGuestType: PricingGuestType) {
     if (nextGuestType === activeGuestType) return;
     setActiveGuestType(nextGuestType);
@@ -562,44 +759,86 @@ export function OwnerPricingGrid({
           </div>
         </KoochAlert>
       )}
-      <div className="mt-5">
-        <CalendarRangeGridEditor
-          days={gridDays}
-          disabledDateResolver={(date) =>
-            dayjs(date).isBefore(dayjs().startOf("day"), "day")
-          }
-          error={error}
-          getCellValue={getCellValue}
-          confirmApplyRange={confirmOutlierPrice}
-          message={message}
-          mode="pricing"
-          onApplyRange={applyPrices}
-          pricingCurrencyLabel={currencyLabel}
-          pricingMaxValue={priceBounds.maximum}
-          pricingMinValue={priceBounds.minimum}
-          quickPricePresets={quickPricePresets}
-          pricingValueResolver={(day) => ({
-            basePrice: day.basePrice,
-          })}
-          renderCell={(_row, _date, day, state) => (
-            <div
-              className={`grid h-full place-items-center px-1 text-[11px] font-black ${
-                state.disabled
-                  ? "bg-muted text-muted-foreground"
-                  : state.selected
-                    ? "bg-primary/15 text-foreground"
-                    : "bg-muted text-foreground"
-              }`}
+      {shouldShowNoRoomsState ? (
+        <KoochCard
+          className="mt-5 flex flex-col items-center justify-center gap-4 border-dashed py-10 text-center"
+          padding="lg"
+        >
+          <div>
+            <h3 className="text-lg font-black text-foreground">
+              ابتدا باید برای این اقامتگاه اتاق تعریف کنید.
+            </h3>
+            <p className="mt-2 text-sm font-semibold text-muted-foreground">
+              بعد از ساخت اتاق‌ها می‌توانید قیمت روزانه را برای هر اتاق ثبت
+              کنید.
+            </p>
+          </div>
+          <KoochButton
+            onClick={() => router.push(roomsHref)}
+            type="button"
+            variant="primary"
+          >
+            رفتن به مدیریت اتاق‌ها
+          </KoochButton>
+        </KoochCard>
+      ) : (
+        <>
+          {shouldShowNoPricingWarning && (
+            <KoochAlert
+              className="mt-5"
+              dir="rtl"
+              title="قیمت ثبت نشده"
+              variant="warning"
             >
-              {formatPrice(day.basePrice)}
-            </div>
+              هنوز قیمتی برای این اقامتگاه ثبت نشده است.
+            </KoochAlert>
           )}
-          rows={rows}
-          key={activeGuestType}
-          valueInputType="number"
-          valueLabel="نرخ اتاق"
-        />
-      </div>
+          {shouldShowNoPricingWarning && (
+            <p className="mt-3 rounded-xl border border-border bg-muted px-4 py-3 text-right text-sm font-semibold text-muted-foreground">
+              برای این بازه هنوز قیمتی ثبت نشده است.
+            </p>
+          )}
+          <div className="mt-5">
+            <CalendarRangeGridEditor
+              days={gridDays}
+              disabledDateResolver={(date) =>
+                dayjs(date).isBefore(dayjs().startOf("day"), "day")
+              }
+              error={error}
+              getCellValue={getCellValue}
+              confirmApplyRange={confirmPriceApply}
+              message={message}
+              mode="pricing"
+              onApplyRange={applyPrices}
+              onCopyPricing={openCopyPricingDialog}
+              pricingCurrencyLabel={currencyLabel}
+              pricingMaxValue={priceBounds.maximum}
+              pricingMinValue={priceBounds.minimum}
+              quickPricePresets={quickPricePresets}
+              pricingValueResolver={(day) => ({
+                basePrice: day.basePrice,
+              })}
+              renderCell={(_row, _date, day, state) => (
+                <div
+                  className={`grid h-full place-items-center px-1 text-[11px] font-black ${
+                    state.disabled
+                      ? "bg-muted text-muted-foreground"
+                      : state.selected
+                        ? "bg-primary/15 text-foreground"
+                        : "bg-muted text-foreground"
+                  }`}
+                >
+                  {formatPrice(day.basePrice)}
+                </div>
+              )}
+              rows={rows}
+              key={activeGuestType}
+              valueInputType="number"
+              valueLabel="نرخ اتاق"
+            />
+          </div>
+        </>
+      )}
 
       <KoochDialog
         description="آخرین تغییرات قیمت اتاق‌ها، جدیدترین در ابتدا."
@@ -674,6 +913,127 @@ export function OwnerPricingGrid({
           </KoochTableBody>
         </KoochTable>
       </KoochDialog>
+
+      <KoochConfirmDialog
+        cancelText="لغو"
+        confirmText="کپی قیمت‌ها"
+        description="قیمت‌های روزانه مبدا برای اتاق‌ها و بازه انتخاب‌شده روی نوع مهمان مقصد کپی می‌شود."
+        disabled={!copyPayload}
+        loading={copyLoading}
+        onConfirm={confirmCopyPricing}
+        onOpenChange={(open) => {
+          setCopyDialogOpen(open);
+          if (!open) {
+            setCopyPayload(null);
+            setCopyError("");
+          }
+        }}
+        open={copyDialogOpen}
+        title="کپی قیمت‌ها"
+        variant="warning"
+      >
+        <div className="space-y-4">
+          <KoochAlert title="فقط قیمت روزانه کپی می‌شود" variant="warning">
+            پروموشن‌ها، کوپن‌ها و قیمت‌های مبدا تغییر نمی‌کنند.
+          </KoochAlert>
+          {copyError && (
+            <KoochAlert title="کپی انجام نشد" variant="destructive">
+              {copyError}
+            </KoochAlert>
+          )}
+          <div className="grid gap-2">
+            {copyPricingDirectionOptions.map((option) => (
+              <KoochButton
+                className="justify-start"
+                key={option.value}
+                onClick={() => setCopyDirection(option.value)}
+                type="button"
+                variant={copyDirection === option.value ? "primary" : "outline"}
+              >
+                {option.label}
+              </KoochButton>
+            ))}
+          </div>
+          <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-right text-sm">
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">اتاق‌ها</dt>
+              <dd className="font-black text-foreground">
+                {copyReviewDetails.roomNames}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">بازه تاریخ</dt>
+              <dd className="font-black text-foreground">
+                {copyReviewDetails.dateRangeLabel}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">
+                تعداد روزهای اثرگرفته
+              </dt>
+              <dd className="font-black text-foreground">
+                {formatPrice(copyReviewDetails.affectedDays)} روز در{" "}
+                {formatPrice(copyReviewDetails.rangeCount)} بازه
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </KoochConfirmDialog>
+
+      <KoochConfirmDialog
+        cancelText="لغو"
+        confirmText="تایید و ذخیره"
+        description="این تغییر روی تعداد زیادی روز یا بازه اعمال می‌شود. لطفا خلاصه را پیش از ذخیره بررسی کنید."
+        onConfirm={() => resolveBulkReviewConfirmation(true)}
+        onOpenChange={(open) => {
+          if (!open) resolveBulkReviewConfirmation(false);
+          else setBulkReviewDialogOpen(true);
+        }}
+        open={bulkReviewDialogOpen}
+        title="بررسی تغییر گروهی قیمت"
+        variant="warning"
+      >
+        <div className="space-y-4">
+          <KoochAlert title="خلاصه تغییرات" variant="default">
+            قیمت انتخاب‌شده بعد از تایید برای همه موارد زیر ثبت می‌شود.
+          </KoochAlert>
+          <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-right text-sm">
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">اتاق‌ها</dt>
+              <dd className="font-black text-foreground">
+                {bulkReviewDetails.roomNames}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">بازه تاریخ</dt>
+              <dd className="font-black text-foreground">
+                {bulkReviewDetails.dateRangeLabel}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">نوع مهمان</dt>
+              <dd className="font-black text-foreground">
+                {pricingGuestTypeLabels[activeGuestType]}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">مبلغ</dt>
+              <dd className="font-black text-foreground">
+                {bulkReviewDetails.priceLabel}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">
+                تعداد روزهای اثرگرفته
+              </dt>
+              <dd className="font-black text-foreground">
+                {formatPrice(bulkReviewDetails.affectedDays)} روز در{" "}
+                {formatPrice(bulkReviewDetails.rangeCount)} بازه
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </KoochConfirmDialog>
 
       <KoochConfirmDialog
         cancelText="انصراف"

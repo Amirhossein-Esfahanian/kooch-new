@@ -45,6 +45,8 @@ export type CalendarRangeApplyPayload = {
   basePrice?: number;
   /** All selected cells. Range selections and scattered multi-select both save through this list. */
   items: { rowId: number | string; date: string }[];
+  /** Number of visible selection groups/ranges, used by parents for review prompts. */
+  selectionRangeCount?: number;
 };
 
 type PricingCellValues = {
@@ -70,6 +72,8 @@ export interface CalendarRangeGridEditorProps<
   ) => ReactNode;
   /** Saves selected cells/range. `items` contains the exact selected cells. */
   onApplyRange: (payload: CalendarRangeApplyPayload) => Promise<void> | void;
+  /** Optional pricing action for copying selected cells between guest types. */
+  onCopyPricing?: (payload: CalendarRangeApplyPayload) => Promise<void> | void;
   /** Optional confirmation gate before saving selected cells/range. */
   confirmApplyRange?: (
     payload: CalendarRangeApplyPayload,
@@ -151,6 +155,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   getCellValue,
   renderCell,
   onApplyRange,
+  onCopyPricing,
   confirmApplyRange,
   mode,
   valueLabel,
@@ -816,6 +821,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       status: mode === "inventory" ? status || undefined : undefined,
       basePrice: mode === "pricing" ? basePrice : undefined,
       items: sortedItems,
+      selectionRangeCount: selectedRanges.length,
     };
 
     if (confirmApplyRange && !(await confirmApplyRange(payload))) {
@@ -837,6 +843,48 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         caught instanceof Error ? caught.message : "ذخیره تغییرات انجام نشد.";
       setLocalError(saveError);
       toast.error(saveError, { id: "calendar-save-error" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function buildSelectionPayload() {
+    const sortedItems = selectedItems
+      .slice()
+      .sort(
+        (first, second) =>
+          String(first.rowId).localeCompare(String(second.rowId)) ||
+          first.date.localeCompare(second.date),
+      );
+    return {
+      rowId: sortedItems[0].rowId,
+      startDate: sortedItems[0].date,
+      endDate: sortedItems[sortedItems.length - 1].date,
+      value:
+        mode === "pricing" ? basePrice : status === "Unavailable" ? 0 : value,
+      status: mode === "inventory" ? status || undefined : undefined,
+      basePrice: mode === "pricing" ? basePrice : undefined,
+      items: sortedItems,
+      selectionRangeCount: selectedRanges.length,
+    } satisfies CalendarRangeApplyPayload;
+  }
+
+  async function copyPricingSelection() {
+    if (!onCopyPricing || mode !== "pricing") return;
+    if (selectedItems.length === 0) {
+      setLocalError("حداقل یک خانه را انتخاب کنید.");
+      return;
+    }
+
+    setSaving(true);
+    setLocalError("");
+    try {
+      await onCopyPricing(buildSelectionPayload());
+    } catch (caught) {
+      const saveError =
+        caught instanceof Error ? caught.message : "کپی قیمت‌ها انجام نشد.";
+      setLocalError(saveError);
+      toast.error(saveError, { id: "calendar-copy-error" });
     } finally {
       setSaving(false);
     }
@@ -1048,6 +1096,16 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
             >
               لغو
             </button>
+            {mode === "pricing" && onCopyPricing && (
+              <button
+                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-black text-foreground transition hover:bg-muted disabled:opacity-60"
+                disabled={saving}
+                onClick={copyPricingSelection}
+                type="button"
+              >
+                کپی قیمت‌ها
+              </button>
+            )}
             <button
               className="rounded-lg border border-primary bg-primary px-5 py-2 text-sm font-black text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
               disabled={saving}
