@@ -10,7 +10,9 @@ export interface QuickPriceSelectorProps {
 }
 
 function formatPrice(price: number) {
-  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(price);
+  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(
+    price,
+  );
 }
 
 export function QuickPriceSelector({
@@ -22,9 +24,12 @@ export function QuickPriceSelector({
   const visiblePrices = prices.slice(0, maxItems);
 
   return (
-    <div className={`grid gap-2 rounded-xl border border-border bg-muted p-3 ${className}`} dir="rtl">
+    <div
+      className={`grid gap-2 rounded-lg border border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] p-2 text-foreground ${className}`}
+      dir="rtl"
+    >
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <span className="text-xs font-black text-muted-foreground">
+        <span className="text-xs font-semibold text-primary-foreground/80">
           قیمت‌های اخیر این اقامتگاه
         </span>
       </div>
