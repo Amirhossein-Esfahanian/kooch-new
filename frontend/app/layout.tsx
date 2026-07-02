@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
 import { Toaster } from "sonner";
+import { iranYekan } from "./fonts";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -16,8 +17,13 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="fa" dir="rtl" suppressHydrationWarning>
-      <body className="min-h-screen antialiased">
+    <html
+      lang="fa"
+      dir="rtl"
+      suppressHydrationWarning
+      className={iranYekan.variable}
+    >
+      <body className="font-sans min-h-screen antialiased">
         <Toaster closeButton dir="rtl" position="top-center" richColors />
         <script
           dangerouslySetInnerHTML={{

@@ -7,6 +7,9 @@ const config: Config = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-iran-yekan)", "Tahoma", "Arial", "sans-serif"],
+      },
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
@@ -38,4 +41,3 @@ const config: Config = {
 };
 
 export default config;
-

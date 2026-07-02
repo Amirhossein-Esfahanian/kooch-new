@@ -86,7 +86,7 @@
   --button-radius: 12px;
   --modal-radius: 20px;
   --shadow-subtle: 0 14px 40px rgb(15 23 42 / 0.08);
-  --font-kooch: "YekanBakh", "IRANYekanX", "IRANSans", sans-serif;
+  --font-kooch: var(--font-iran-yekan), sans-serif;
 }
 
 :root[data-theme="ocean"] {
@@ -399,7 +399,12 @@ a {
   position: absolute;
   inset: 0;
   transform: translateX(-100%);
-  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.55), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgb(255 255 255 / 0.55),
+    transparent
+  );
   animation: media-shimmer 1.35s infinite;
   content: "";
 }

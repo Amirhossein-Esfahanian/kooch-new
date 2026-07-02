@@ -417,7 +417,7 @@ function DashboardShell({
 
   return (
     <div
-      className={`fixed inset-0 z-50 overflow-hidden font-[var(--font-kooch)] ${darkMode ? "dark" : ""} ${
+      className={`fixed inset-0 z-50 overflow-hidden  ${darkMode ? "dark" : ""} ${
         darkMode ? "bg-[#0b0f17] text-slate-100" : "bg-slate-100 text-slate-950"
       }`}
       dir="rtl"
@@ -867,9 +867,7 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
             <span>{label}</span>
             <span className={mutedText(darkMode)}>{value}</span>
           </div>
-          <div
-            className="h-3 overflow-hidden rounded-full bg-muted"
-          >
+          <div className="h-3 overflow-hidden rounded-full bg-muted">
             <div
               className={`h-full rounded-full ${index === 0 ? "bg-[var(--theme-success)]" : index === 1 ? "bg-[var(--theme-warning)]" : "bg-[var(--theme-danger)]"}`}
               style={{ width: value }}
