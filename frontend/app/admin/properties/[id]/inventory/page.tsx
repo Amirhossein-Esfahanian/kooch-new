@@ -31,7 +31,7 @@ export default function AdminInventoryPage() {
           eyebrow="پنل مدیریت"
           title="ظرفیت اتاق‌ها"
         />
-        <OwnerInventoryGrid propertyId={propertyId} />
+        <OwnerInventoryGrid context="admin" propertyId={propertyId} />
       </main>
     </AdminLayout>
   );

@@ -824,8 +824,8 @@ export function OwnerPricingGrid({
                     state.disabled
                       ? "bg-muted text-muted-foreground"
                       : state.selected
-                        ? "bg-primary/15 text-foreground"
-                        : "bg-muted text-foreground"
+                        ? "bg-[var(--theme-primary-soft)] text-foreground"
+                        : "bg-light text-foreground"
                   }`}
                 >
                   {formatPrice(day.basePrice)}

@@ -318,23 +318,27 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
     const values = selectedItems.map((item) => {
       const cellValue = getCellValue(item.rowId as Row["id"], item.date) as {
+        availabilityId?: number | null;
         availableCount?: number;
         status?: AvailabilityStatus;
       };
       return {
+        availabilityId: cellValue.availabilityId,
         availableCount: cellValue.availableCount,
         status: cellValue.status,
       };
     });
 
-    const firstCapacity = values[0]?.availableCount;
-    const capacityMissing = firstCapacity == null;
-    const capacityMixed = values.some(
-      (item) => item.availableCount !== firstCapacity,
+    const allCapacityMissing = values.every(
+      (item) => item.availabilityId == null,
     );
-    setMixedInventoryValue(!capacityMissing && capacityMixed);
+    const firstCapacity = values[0]?.availableCount ?? 1;
+    const capacityMixed =
+      !allCapacityMissing &&
+      values.some((item) => (item.availableCount ?? 1) !== firstCapacity);
+    setMixedInventoryValue(capacityMixed);
     setValue(
-      capacityMissing ? 1 : capacityMixed ? Number.NaN : Number(firstCapacity),
+      allCapacityMissing ? 1 : capacityMixed ? Number.NaN : firstCapacity,
     );
 
     const firstStatus = values[0]?.status;
@@ -835,7 +839,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       clearSelections();
       toast.success(
         mode === "inventory"
-          ? "ظرفیت با موفقیت ذخیره شد"
+          ? "تغییرات ظرفیت ذخیره شد"
           : "تغییرات با موفقیت ذخیره شد",
       );
     } catch (caught) {
@@ -1073,14 +1077,14 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
             )}
           </div>
 
-          {(localError || error || message) && (
+          {(localError || error || (mode !== "inventory" && message)) && (
             <div className="mt-3 grid gap-2">
               {(localError || error) && (
                 <p className="rounded-lg border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
                   {localError || error}
                 </p>
               )}
-              {message && (
+              {mode !== "inventory" && message && (
                 <p className="rounded-lg bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
                   {message}
                 </p>
@@ -1280,6 +1284,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                       range.endDate !== day.date,
                   );
                   const activeSelected = Boolean(
+                    selected &&
                     activeRange?.rowId === row.id &&
                     dayIndex >= activeRange.startIndex &&
                     dayIndex <= activeRange.endIndex,
@@ -1357,7 +1362,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           .map((range) => (
                             <button
                               aria-label={`حذف انتخاب ${selectionLabel(range)}`}
-                              className="absolute left-50% top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded border border-destructive bg-background text-[11px] font-black text-destructive shadow-md hover:bg-muted"
+                              className="absolute left-1/2 top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded border border-destructive bg-background text-[11px] font-black text-destructive shadow-md hover:bg-muted"
                               key={range.id}
                               onClick={(event) => {
                                 event.stopPropagation();

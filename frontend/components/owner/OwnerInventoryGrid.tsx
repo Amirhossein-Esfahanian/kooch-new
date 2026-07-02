@@ -3,7 +3,8 @@
 import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
-import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   apiRequest,
   AvailabilityStatus,
@@ -18,8 +19,10 @@ import {
   CalendarRangeGridCellState,
   CalendarRangeGridEditor,
 } from "@/components/CalendarRangeGridEditor";
+import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 
 dayjs.extend(jalaliday);
 
@@ -73,11 +76,11 @@ function cellColor(
   state: CalendarRangeGridCellState,
 ) {
   if (state.disabled) return "bg-muted text-muted-foreground";
-  if (state.selected) return "bg-primary/15 text-foreground";
-  if (day.status === "OnRequest")
-    return "bg-yellow-50 text-foreground dark:bg-yellow-950/20";
+  if (state.selected) return "bg-[var(--theme-primary-soft)] text-foreground";
   if (day.status === "Unavailable" || day.availableCount === 0)
     return "bg-red-50 text-foreground dark:bg-red-950/20";
+  if (day.status === "OnRequest")
+    return "bg-amber-50 text-foreground dark:bg-amber-400/20";
   return "bg-card text-foreground";
 }
 
@@ -87,7 +90,20 @@ function cellVariant(day: InventoryDayResponse) {
   return "available" as const;
 }
 
-export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
+function statusLabel(status: AvailabilityStatus | undefined) {
+  return (
+    statusOptions.find((option) => option.value === status)?.label ?? "نامشخص"
+  );
+}
+
+export function OwnerInventoryGrid({
+  context = "owner",
+  propertyId,
+}: {
+  context?: "admin" | "owner";
+  propertyId: number;
+}) {
+  const router = useRouter();
   const [activeMonth, setActiveMonth] = useState(() =>
     dayjs().calendar("jalali").format("YYYY-MM"),
   );
@@ -96,6 +112,12 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
   );
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [bulkConfirmOpen, setBulkConfirmOpen] = useState(false);
+  const [bulkConfirmPayload, setBulkConfirmPayload] =
+    useState<CalendarRangeApplyPayload | null>(null);
+  const bulkConfirmResolverRef = useRef<((confirmed: boolean) => void) | null>(
+    null,
+  );
 
   const monthStart = useMemo(
     () => jalaliMonthStart(activeMonth),
@@ -134,6 +156,18 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
       })) ?? [],
     [inventory],
   );
+  const roomsHref =
+    context === "admin"
+      ? `/admin/properties/${propertyId}/rooms`
+      : `/owner/properties/${propertyId}/rooms`;
+  const hasLoadedInventory = inventory !== null;
+  const hasRooms = rows.length > 0;
+  const hasInventoryInSelectedRange = rows.some((row) =>
+    row.days.some((day) => day.availabilityId != null),
+  );
+  const shouldShowNoRoomsState = hasLoadedInventory && !hasRooms;
+  const shouldShowNoInventoryWarning =
+    hasLoadedInventory && hasRooms && !hasInventoryInSelectedRange;
 
   useEffect(() => {
     loadMonth().catch((caught: Error) => setError(caught.message));
@@ -170,6 +204,56 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
         status: "Unavailable" as AvailabilityStatus,
       }
     );
+  }
+
+  function getBulkConfirmDetails(payload: CalendarRangeApplyPayload | null) {
+    if (!payload) {
+      return {
+        affectedDays: 0,
+        capacity: "-",
+        rangeCount: 0,
+        roomNames: "-",
+        status: "-",
+      };
+    }
+
+    const selectedRoomIds = new Set(
+      payload.items.map((item) => String(item.rowId)),
+    );
+    const selectedDates = new Set(payload.items.map((item) => item.date));
+    const roomNames = rows
+      .filter((row) => selectedRoomIds.has(String(row.id)))
+      .map((row) => row.label);
+
+    return {
+      affectedDays: selectedDates.size,
+      capacity:
+        payload.status === "Unavailable" ? "0" : toPersianNumber(payload.value),
+      rangeCount: payload.selectionRangeCount ?? 1,
+      roomNames: roomNames.length > 0 ? roomNames.join("، ") : "-",
+      status: statusLabel(payload.status),
+    };
+  }
+
+  function shouldConfirmBulkApply(payload: CalendarRangeApplyPayload) {
+    const affectedDays = new Set(payload.items.map((item) => item.date)).size;
+    return affectedDays > 14 || (payload.selectionRangeCount ?? 1) > 3;
+  }
+
+  function resolveBulkConfirmation(confirmed: boolean) {
+    bulkConfirmResolverRef.current?.(confirmed);
+    bulkConfirmResolverRef.current = null;
+    setBulkConfirmOpen(false);
+    setBulkConfirmPayload(null);
+  }
+
+  function confirmBulkApply(payload: CalendarRangeApplyPayload) {
+    if (!shouldConfirmBulkApply(payload)) return true;
+    return new Promise<boolean>((resolve) => {
+      bulkConfirmResolverRef.current = resolve;
+      setBulkConfirmPayload(payload);
+      setBulkConfirmOpen(true);
+    });
   }
 
   async function applyRange(payload: CalendarRangeApplyPayload) {
@@ -225,6 +309,7 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
   }
 
   const monthTitle = monthStart.locale("fa").format("MMMM YYYY");
+  const bulkConfirmDetails = getBulkConfirmDetails(bulkConfirmPayload);
 
   return (
     <div className="w-full max-w-full min-w-0 overflow-hidden">
@@ -279,33 +364,118 @@ export function OwnerInventoryGrid({ propertyId }: { propertyId: number }) {
           </p>
         )}
 
-        <div className="mt-5 w-full max-w-full min-w-0 overflow-hidden">
-          <CalendarRangeGridEditor
-            calendarType="jalali"
-            cellStateResolver={(_row, _date, day) => cellVariant(day)}
-            days={gridDays}
-            disabledDateResolver={(date) =>
-              dayjs(date).isBefore(dayjs().startOf("day"), "day")
-            }
-            error={error}
-            getCellValue={getCellValue}
-            maxValueResolver={(row) => row.totalInventory ?? 0}
-            minValueResolver={() => 0}
-            mode="inventory"
-            onApplyRange={applyRange}
-            renderCell={(_row, _date, day, state) => (
-              <div
-                className={`grid h-full place-items-center text-base font-black transition md:text-lg ${cellColor(day, state)}`}
+        {shouldShowNoRoomsState ? (
+          <KoochCard
+            className="mt-5 flex flex-col items-center justify-center gap-4 border-dashed py-10 text-center"
+            padding="lg"
+          >
+            <div>
+              <h3 className="text-lg font-black text-foreground">
+                ابتدا باید برای این اقامتگاه اتاق تعریف کنید.
+              </h3>
+              <p className="mt-2 text-sm font-semibold text-muted-foreground">
+                بعد از ساخت اتاق‌ها می‌توانید ظرفیت روزانه را ثبت کنید.
+              </p>
+            </div>
+            <KoochButton
+              onClick={() => router.push(roomsHref)}
+              type="button"
+              variant="primary"
+            >
+              رفتن به مدیریت اتاق‌ها
+            </KoochButton>
+          </KoochCard>
+        ) : (
+          <>
+            {shouldShowNoInventoryWarning && (
+              <KoochAlert
+                className="mt-5"
+                dir="rtl"
+                title="ظرفیت ثبت نشده"
+                variant="warning"
               >
-                <span>{toPersianNumber(day.availableCount)}</span>
-              </div>
+                هنوز ظرفیتی برای این اقامتگاه ثبت نشده است.
+              </KoochAlert>
             )}
-            rows={rows}
-            statusOptions={statusOptions}
-            valueInputType="number"
-            valueLabel="ظرفیت"
-          />
-        </div>
+            {shouldShowNoInventoryWarning && (
+              <p className="mt-3 rounded-xl border border-border bg-muted px-4 py-3 text-right text-sm font-semibold text-muted-foreground">
+                برای این بازه هنوز ظرفیتی ثبت نشده است.
+              </p>
+            )}
+            <div className="mt-5 w-full max-w-full min-w-0 overflow-hidden">
+              <CalendarRangeGridEditor
+                calendarType="jalali"
+                cellStateResolver={(_row, _date, day) => cellVariant(day)}
+                days={gridDays}
+                disabledDateResolver={(date) =>
+                  dayjs(date).isBefore(dayjs().startOf("day"), "day")
+                }
+                error={error}
+                getCellValue={getCellValue}
+                maxValueResolver={(row) => row.totalInventory ?? 0}
+                minValueResolver={() => 0}
+                mode="inventory"
+                confirmApplyRange={confirmBulkApply}
+                onApplyRange={applyRange}
+                renderCell={(_row, _date, day, state) => (
+                  <div
+                    className={`grid h-full place-items-center text-base font-black transition md:text-lg ${cellColor(day, state)}`}
+                  >
+                    <span>{toPersianNumber(day.availableCount)}</span>
+                  </div>
+                )}
+                rows={rows}
+                statusOptions={statusOptions}
+                valueInputType="number"
+                valueLabel="ظرفیت"
+              />
+            </div>
+          </>
+        )}
+
+        <KoochConfirmDialog
+          cancelText="انصراف"
+          confirmText="تایید و ذخیره"
+          description="این تغییر روی تعداد زیادی روز یا اتاق اعمال می‌شود. آیا مطمئن هستید؟"
+          onConfirm={() => resolveBulkConfirmation(true)}
+          onOpenChange={(open) => {
+            if (!open) resolveBulkConfirmation(false);
+            else setBulkConfirmOpen(true);
+          }}
+          open={bulkConfirmOpen}
+          title="تغییر گروهی ظرفیت"
+          variant="warning"
+        >
+          <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-right text-sm">
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">
+                تعداد روزهای اثرگرفته
+              </dt>
+              <dd className="font-black text-foreground">
+                {toPersianNumber(bulkConfirmDetails.affectedDays)} روز در{" "}
+                {toPersianNumber(bulkConfirmDetails.rangeCount)} بازه
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">اتاق‌ها</dt>
+              <dd className="font-black text-foreground">
+                {bulkConfirmDetails.roomNames}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">وضعیت</dt>
+              <dd className="font-black text-foreground">
+                {bulkConfirmDetails.status}
+              </dd>
+            </div>
+            <div className="grid gap-1">
+              <dt className="font-bold text-muted-foreground">ظرفیت</dt>
+              <dd className="font-black text-foreground">
+                {bulkConfirmDetails.capacity}
+              </dd>
+            </div>
+          </dl>
+        </KoochConfirmDialog>
       </KoochCard>
     </div>
   );

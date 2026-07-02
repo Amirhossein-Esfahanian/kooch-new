@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class AvailabilityService(KoochDbContext dbContext) : IAvailabilityService
+public class AvailabilityService(
+    KoochDbContext dbContext,
+    IPropertyAccessService propertyAccessService) : IAvailabilityService
 {
     public async Task<PropertyInventoryResponse> GetPropertyInventoryAsync(
         int userId,
@@ -369,32 +371,14 @@ public class AvailabilityService(KoochDbContext dbContext) : IAvailabilityServic
         int propertyId,
         CancellationToken cancellationToken)
     {
-        var property = await dbContext.Properties.AsNoTracking()
-            .Where(item => item.Id == propertyId)
-            .Select(item => new { item.Id, item.OwnerId })
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Property not found.");
-
-        var canManage = role switch
+        var propertyExists = await dbContext.Properties.AsNoTracking()
+            .AnyAsync(item => item.Id == propertyId, cancellationToken);
+        if (!propertyExists)
         {
-            UserRole.SuperAdmin => true,
-            UserRole.Owner => property.OwnerId == userId,
-            UserRole.OwnerAssistant => await dbContext.UserPropertyAccesses.AsNoTracking()
-                .AnyAsync(access => access.UserId == userId &&
-                                    access.PropertyId == propertyId &&
-                                    access.IsActive &&
-                                    access.CanManageAvailability,
-                    cancellationToken),
-            UserRole.AdminAssistant => await dbContext.UserPermissions.AsNoTracking()
-                .AnyAsync(permission => permission.UserId == userId &&
-                                        permission.PermissionKey == PermissionKey.ManageAvailability &&
-                                        permission.IsAllowed &&
-                                        (permission.PropertyId == null || permission.PropertyId == propertyId),
-                    cancellationToken),
-            _ => false
-        };
+            throw new KeyNotFoundException("Property not found.");
+        }
 
-        if (!canManage)
+        if (!await propertyAccessService.CanManageAvailabilityAsync(userId, role, propertyId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You cannot manage availability for this property.");
         }
@@ -412,26 +396,7 @@ public class AvailabilityService(KoochDbContext dbContext) : IAvailabilityServic
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Room type not found.");
 
-        var canManage = role switch
-        {
-            UserRole.SuperAdmin => true,
-            UserRole.Owner => roomType.Property.OwnerId == userId,
-            UserRole.OwnerAssistant => await dbContext.UserPropertyAccesses.AsNoTracking()
-                .AnyAsync(access => access.UserId == userId &&
-                                    access.PropertyId == roomType.PropertyId &&
-                                    access.IsActive &&
-                                    access.CanManageAvailability,
-                    cancellationToken),
-            UserRole.AdminAssistant => await dbContext.UserPermissions.AsNoTracking()
-                .AnyAsync(permission => permission.UserId == userId &&
-                                        permission.PermissionKey == PermissionKey.ManageAvailability &&
-                                        permission.IsAllowed &&
-                                        (permission.PropertyId == null || permission.PropertyId == roomType.PropertyId),
-                    cancellationToken),
-            _ => false
-        };
-
-        if (!canManage)
+        if (!await propertyAccessService.CanManageAvailabilityAsync(userId, role, roomType.PropertyId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You cannot manage availability for this room type.");
         }

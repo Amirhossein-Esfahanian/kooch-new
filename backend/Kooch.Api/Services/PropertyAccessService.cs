@@ -67,6 +67,41 @@ public class PropertyAccessService(
                        cancellationToken);
     }
 
+    public async Task<bool> CanManageAvailabilityAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default)
+    {
+        if (role == UserRole.SuperAdmin)
+        {
+            return true;
+        }
+
+        if (role == UserRole.Owner)
+        {
+            return await dbContext.Properties.AsNoTracking()
+                .AnyAsync(property => property.Id == propertyId && property.OwnerId == userId, cancellationToken);
+        }
+
+        if (role == UserRole.AdminAssistant)
+        {
+            return await permissionService.HasPermissionAsync(
+                userId,
+                PermissionKey.ManageAvailability,
+                propertyId,
+                cancellationToken);
+        }
+
+        return role == UserRole.OwnerAssistant &&
+               await dbContext.UserPropertyAccesses.AsNoTracking()
+                   .AnyAsync(access => access.UserId == userId &&
+                                       access.PropertyId == propertyId &&
+                                       access.IsActive &&
+                                       access.CanManageAvailability,
+                       cancellationToken);
+    }
+
     public async Task<bool> CanManagePricingAsync(
         int userId,
         UserRole role,
