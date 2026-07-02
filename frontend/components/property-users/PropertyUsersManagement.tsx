@@ -9,6 +9,11 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochInput, KoochSelect } from "@/components/KoochFormControls";
 import {
+  createRolePermissionMatrix,
+  normalizePermissionMatrix,
+  PermissionMatrix,
+} from "@/components/PermissionMatrix";
+import {
   KoochTable,
   KoochTableBody,
   KoochTableCell,
@@ -19,6 +24,9 @@ import {
 } from "@/components/KoochTable";
 import {
   apiRequest,
+  getAuthRole,
+  getAuthUserId,
+  PermissionMatrixValue,
   PropertyUserResponse,
   PropertyUserRole,
   PropertyUserStatus,
@@ -42,15 +50,17 @@ const roleLabels: Record<PropertyUserRole, string> = {
 };
 
 const statusOptions: Array<{ value: PropertyUserStatus; label: string }> = [
-  { value: "PendingInvitation", label: "در انتظار دعوت" },
+  { value: "Pending", label: "در انتظار" },
   { value: "Active", label: "فعال" },
   { value: "Suspended", label: "تعلیق‌شده" },
+  { value: "Inactive", label: "غیرفعال" },
 ];
 
 const statusLabels: Record<PropertyUserStatus, string> = {
-  PendingInvitation: "در انتظار دعوت",
+  Pending: "در انتظار",
   Active: "فعال",
   Suspended: "تعلیق‌شده",
+  Inactive: "غیرفعال",
 };
 
 type PropertyUserForm = {
@@ -61,6 +71,7 @@ type PropertyUserForm = {
   status: PropertyUserStatus;
   role: Exclude<PropertyUserRole, "PropertyOwner">;
   isActive: boolean;
+  permissions: PermissionMatrixValue;
 };
 
 const emptyForm: PropertyUserForm = {
@@ -68,14 +79,16 @@ const emptyForm: PropertyUserForm = {
   mobile: "",
   email: "",
   username: "",
-  status: "PendingInvitation",
+  status: "Pending",
   role: "Manager",
   isActive: false,
+  permissions: createRolePermissionMatrix("Manager"),
 };
 
 function statusVariant(status: PropertyUserStatus) {
   if (status === "Active") return "success" as const;
-  if (status === "PendingInvitation") return "warning" as const;
+  if (status === "Pending") return "warning" as const;
+  if (status === "Inactive") return "muted" as const;
   return "destructive" as const;
 }
 
@@ -88,7 +101,32 @@ function toForm(user: PropertyUserResponse): PropertyUserForm {
     status: user.status,
     role: user.role === "PropertyOwner" ? "Manager" : user.role,
     isActive: user.isActive,
+    permissions: normalizePermissionMatrix(user.permissions),
   };
+}
+
+function roleRank(role: PropertyUserRole) {
+  const ranks: Record<PropertyUserRole, number> = {
+    PropertyOwner: 100,
+    Manager: 80,
+    Accounting: 60,
+    Reception: 50,
+    Housekeeping: 40,
+    Custom: 10,
+  };
+  return ranks[role] ?? 0;
+}
+
+function formatOptionalDate(value?: string | null) {
+  if (!value) return "ثبت نشده";
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "ثبت نشده";
+
+  return new Intl.DateTimeFormat("fa-IR", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(date);
 }
 
 export function PropertyUsersManagement({
@@ -105,12 +143,51 @@ export function PropertyUsersManagement({
   const [editingUser, setEditingUser] = useState<PropertyUserResponse | null>(
     null,
   );
+  const [activityUser, setActivityUser] = useState<PropertyUserResponse | null>(
+    null,
+  );
   const [form, setForm] = useState<PropertyUserForm>(emptyForm);
 
   const ownerCount = useMemo(
     () => users.filter((user) => user.role === "PropertyOwner").length,
     [users],
   );
+  const currentUserId = getAuthUserId();
+  const authRole = getAuthRole();
+  const actorUser = useMemo(
+    () => users.find((user) => user.userId === currentUserId) ?? null,
+    [currentUserId, users],
+  );
+  const actorPropertyRole = useMemo<PropertyUserRole>(() => {
+    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+      return "PropertyOwner";
+    }
+    return actorUser?.role ?? "Custom";
+  }, [actorUser, authRole]);
+  const availableRoleOptions = useMemo(
+    () =>
+      roleOptions.filter(
+        (role) => roleRank(role.value) <= roleRank(actorPropertyRole),
+      ),
+    [actorPropertyRole],
+  );
+
+  function canManageRole(role: PropertyUserRole) {
+    return roleRank(role) <= roleRank(actorPropertyRole);
+  }
+
+  function hasUserPermission(action: "view" | "create" | "edit" | "delete") {
+    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+      return true;
+    }
+
+    return Boolean(actorUser?.permissions?.Users?.[action]);
+  }
+
+  function hierarchyError(message = "امکان مدیریت نقش بالاتر وجود ندارد.") {
+    setError(message);
+    toast.error(message);
+  }
 
   async function load() {
     setError("");
@@ -129,11 +206,22 @@ export function PropertyUsersManagement({
 
   function openCreate() {
     setEditingUser(null);
-    setForm(emptyForm);
+    const defaultRole =
+      (availableRoleOptions[0]?.value as PropertyUserForm["role"] | undefined) ??
+      "Custom";
+    setForm({
+      ...emptyForm,
+      role: defaultRole,
+      permissions: createRolePermissionMatrix(defaultRole),
+    });
     setDialogOpen(true);
   }
 
   function openEdit(user: PropertyUserResponse) {
+    if (!canManageRole(user.role)) {
+      hierarchyError("شما نمی‌توانید کاربری با نقش بالاتر را ویرایش کنید.");
+      return;
+    }
     setEditingUser(user);
     setForm(toForm(user));
     setDialogOpen(true);
@@ -144,6 +232,14 @@ export function PropertyUsersManagement({
     setSaving(true);
     setError("");
     try {
+      if (!canManageRole(form.role)) {
+        hierarchyError("شما نمی‌توانید این نقش را برای کاربر تنظیم کنید.");
+        return;
+      }
+      if (editingUser && !canManageRole(editingUser.role)) {
+        hierarchyError("شما نمی‌توانید کاربری با نقش بالاتر را ویرایش کنید.");
+        return;
+      }
       const body = editingUser
         ? {
             ...form,
@@ -156,8 +252,9 @@ export function PropertyUsersManagement({
             email: form.email,
             username: null,
             role: form.role,
-            status: "PendingInvitation",
+            status: "Pending",
             isActive: false,
+            permissions: form.permissions,
           };
       const saved = await apiRequest<PropertyUserResponse>(
         editingUser
@@ -185,14 +282,46 @@ export function PropertyUsersManagement({
     }
   }
 
-  async function deleteUser(user: PropertyUserResponse) {
-    await apiRequest(`/owner/properties/${propertyId}/users/${user.userId}`, {
-      method: "DELETE",
-    });
-    setUsers((current) =>
-      current.filter((item) => item.userId !== user.userId),
-    );
-    toast.success("کاربر از اقامتگاه حذف شد");
+  async function changeUserStatus(
+    user: PropertyUserResponse,
+    status: Exclude<PropertyUserStatus, "Pending">,
+    keepDialogOpenOnError = false,
+  ) {
+    if (!canManageRole(user.role)) {
+      hierarchyError("شما نمی‌توانید وضعیت کاربری با نقش بالاتر را تغییر دهید.");
+      return;
+    }
+    try {
+      const action = {
+        Active: "activate",
+        Suspended: "suspend",
+        Inactive: "deactivate",
+      }[status];
+      const saved = await apiRequest<PropertyUserResponse>(
+        `/owner/properties/${propertyId}/users/${user.userId}/${action}`,
+        {
+          method: "PUT",
+        },
+      );
+      setUsers((current) =>
+        current.map((item) => (item.userId === saved.userId ? saved : item)),
+      );
+      toast.success(
+        status === "Active"
+          ? "کاربر فعال شد"
+          : status === "Suspended"
+            ? "کاربر تعلیق شد"
+            : "کاربر غیرفعال شد",
+      );
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "تغییر وضعیت کاربر انجام نشد.";
+      setError(message);
+      toast.error(message);
+      if (keepDialogOpenOnError) {
+        throw caught;
+      }
+    }
   }
 
   return (
@@ -206,9 +335,11 @@ export function PropertyUsersManagement({
             برای هر اقامتگاه یک مالک اصلی و چند کاربر عملیاتی تعریف کنید.
           </p>
         </div>
-        <KoochButton onClick={openCreate} type="button" variant="primary">
-          افزودن کاربر
-        </KoochButton>
+        {hasUserPermission("create") && (
+          <KoochButton onClick={openCreate} type="button" variant="primary">
+            افزودن کاربر
+          </KoochButton>
+        )}
       </div>
 
       {error && (
@@ -270,7 +401,7 @@ export function PropertyUsersManagement({
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="flex flex-wrap gap-2">
-                      {user.role !== "PropertyOwner" && (
+                      {user.role !== "PropertyOwner" && canManageRole(user.role) && hasUserPermission("edit") && (
                         <KoochButton
                           onClick={() => openEdit(user)}
                           size="sm"
@@ -280,24 +411,56 @@ export function PropertyUsersManagement({
                           ویرایش
                         </KoochButton>
                       )}
-                      {user.canRemove && (
-                        <KoochConfirmDialog
-                          cancelText="انصراف"
-                          confirmText="حذف"
-                          description="این کاربر از این اقامتگاه حذف می‌شود. آیا مطمئن هستید؟"
-                          onConfirm={() => deleteUser(user)}
-                          title="حذف کاربر"
-                          trigger={
+                      <KoochButton
+                        onClick={() => setActivityUser(user)}
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        فعالیت
+                      </KoochButton>
+                      {user.canRemove && canManageRole(user.role) && (
+                        <>
+                          {user.status !== "Active" && hasUserPermission("edit") && (
                             <KoochButton
+                              onClick={() => changeUserStatus(user, "Active")}
                               size="sm"
                               type="button"
-                              variant="destructive"
+                              variant="primary"
                             >
-                              حذف
+                              فعال‌سازی
                             </KoochButton>
-                          }
-                          variant="destructive"
-                        />
+                          )}
+                          {user.status === "Active" && hasUserPermission("edit") && (
+                            <KoochButton
+                              onClick={() => changeUserStatus(user, "Suspended")}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              تعلیق
+                            </KoochButton>
+                          )}
+                          {user.status !== "Inactive" && hasUserPermission("delete") && (
+                            <KoochConfirmDialog
+                              cancelText="انصراف"
+                              confirmText="غیرفعال‌سازی"
+                              description="این کاربر غیرفعال می‌شود اما اطلاعات او حذف نخواهد شد. آیا مطمئن هستید؟"
+                              onConfirm={() => changeUserStatus(user, "Inactive", true)}
+                              title="غیرفعال‌سازی کاربر"
+                              trigger={
+                                <KoochButton
+                                  size="sm"
+                                  type="button"
+                                  variant="destructive"
+                                >
+                                  غیرفعال‌سازی
+                                </KoochButton>
+                              }
+                              variant="destructive"
+                            />
+                          )}
+                        </>
                       )}
                     </div>
                   </KoochTableCell>
@@ -363,16 +526,34 @@ export function PropertyUsersManagement({
               setForm((current) => ({
                 ...current,
                 role: event.target.value as PropertyUserForm["role"],
+                permissions: createRolePermissionMatrix(event.target.value),
               }))
             }
             value={form.role}
           >
-            {roleOptions.map((role) => (
+            {availableRoleOptions.map((role) => (
               <option key={role.value} value={role.value}>
                 {role.label}
               </option>
             ))}
           </KoochSelect>
+          <div className="grid gap-2">
+            <div>
+              <h3 className="text-sm font-black text-foreground">
+                سطح دسترسی
+              </h3>
+              <p className="mt-1 text-xs text-muted-foreground">
+                دسترسی‌های این کاربر را برای بخش‌های مختلف اقامتگاه تنظیم کنید.
+              </p>
+            </div>
+            <PermissionMatrix
+              disabled={!hasUserPermission("edit")}
+              onChange={(permissions) =>
+                setForm((current) => ({ ...current, permissions }))
+              }
+              value={form.permissions}
+            />
+          </div>
           {editingUser && (
             <>
               <KoochInput
@@ -420,6 +601,77 @@ export function PropertyUsersManagement({
           )}
         </form>
       </KoochDialog>
+
+      <KoochDialog
+        footer={
+          <KoochButton
+            onClick={() => setActivityUser(null)}
+            type="button"
+            variant="outline"
+          >
+            بستن
+          </KoochButton>
+        }
+        onOpenChange={(open) => {
+          if (!open) setActivityUser(null);
+        }}
+        open={Boolean(activityUser)}
+        size="md"
+        title="فعالیت کاربر"
+      >
+        {activityUser && (
+          <div className="grid gap-4">
+            <div className="rounded-lg border border-border bg-muted p-4">
+              <p className="text-lg font-black text-foreground">
+                {activityUser.fullName || "-"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground" dir="ltr">
+                {activityUser.email}
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ReadOnlyActivityItem
+                label="Last login"
+                value={formatOptionalDate(activityUser.lastLoginAtUtc)}
+              />
+              <ReadOnlyActivityItem
+                label="Last activity"
+                value={formatOptionalDate(activityUser.lastActivityAtUtc)}
+              />
+              <ReadOnlyActivityItem
+                label="Created date"
+                value={formatOptionalDate(activityUser.createdAtUtc)}
+              />
+              <ReadOnlyActivityItem
+                label="Invitation accepted"
+                value={formatOptionalDate(activityUser.invitationAcceptedAtUtc)}
+              />
+              <ReadOnlyActivityItem
+                label="Status"
+                value={statusLabels[activityUser.status]}
+              />
+            </div>
+          </div>
+        )}
+      </KoochDialog>
     </KoochCard>
+  );
+}
+
+function ReadOnlyActivityItem({
+  label,
+  value,
+}: {
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border bg-card p-4">
+      <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
+        {label}
+      </p>
+      <p className="mt-2 text-sm font-bold text-foreground">{value}</p>
+    </div>
   );
 }

@@ -15,4 +15,9 @@ public class PropertyUserResponse
     public PropertyUserRole Role { get; set; }
     public bool IsActive { get; set; }
     public bool CanRemove { get; set; }
+    public PermissionMatrixDto Permissions { get; set; } = [];
+    public DateTime? LastLoginAtUtc { get; set; }
+    public DateTime? LastActivityAtUtc { get; set; }
+    public DateTime? CreatedAtUtc { get; set; }
+    public DateTime? InvitationAcceptedAtUtc { get; set; }
 }

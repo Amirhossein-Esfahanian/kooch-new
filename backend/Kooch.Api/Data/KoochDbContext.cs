@@ -47,6 +47,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<SiteSetting> SiteSettings => Set<SiteSetting>();
     public DbSet<RoomDailyPrice> RoomDailyPrices => Set<RoomDailyPrice>();
     public DbSet<RoomDailyPriceHistory> RoomDailyPriceHistory => Set<RoomDailyPriceHistory>();
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<CouponUsage> CouponUsages => Set<CouponUsage>();
 
@@ -66,6 +67,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureRooms(modelBuilder);
         ConfigureAvailability(modelBuilder);
         ConfigureRoomDailyPrices(modelBuilder);
+        ConfigureAuditLogs(modelBuilder);
         ConfigureCoupons(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigurePayments(modelBuilder);
@@ -211,6 +213,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(access => access.IsActive).HasDefaultValue(true);
             entity.Property(access => access.Status).HasDefaultValue(PropertyUserStatus.Active);
             entity.Property(access => access.PropertyRole).HasDefaultValue(PropertyUserRole.Manager);
+            entity.Property(access => access.PermissionMatrixJson).HasDefaultValue("{}");
             entity.HasIndex(access => new { access.UserId, access.PropertyId }).IsUnique();
             entity.HasOne(access => access.User)
                 .WithMany(user => user.UserPropertyAccesses)
@@ -537,6 +540,31 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasForeignKey(usage => usage.UserId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(usage => usage.Reservation).WithMany()
                 .HasForeignKey(usage => usage.ReservationId).OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureAuditLogs(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AuditLog>(entity =>
+        {
+            entity.Property(log => log.Action)
+                .HasConversion<string>()
+                .HasMaxLength(60)
+                .IsRequired();
+            entity.Property(log => log.EntityType).HasMaxLength(100).IsRequired();
+            entity.Property(log => log.EntityName).HasMaxLength(300);
+            entity.Property(log => log.Description).HasMaxLength(1000);
+            entity.HasIndex(log => new { log.PropertyId, log.OccurredAtUtc });
+            entity.HasIndex(log => new { log.UserId, log.OccurredAtUtc });
+            entity.HasIndex(log => new { log.EntityType, log.EntityId });
+            entity.HasOne(log => log.User)
+                .WithMany()
+                .HasForeignKey(log => log.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(log => log.Property)
+                .WithMany()
+                .HasForeignKey(log => log.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 

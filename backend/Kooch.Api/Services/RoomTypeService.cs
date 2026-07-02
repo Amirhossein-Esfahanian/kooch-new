@@ -7,7 +7,8 @@ namespace Kooch.Api.Services;
 
 public class RoomTypeService(
     KoochDbContext dbContext,
-    IPropertyAccessService propertyAccessService) : IRoomTypeService
+    IPropertyAccessService propertyAccessService,
+    IAuditLogService auditLogService) : IRoomTypeService
 {
     public async Task<RoomTypeResponse> CreateRoomTypeAsync(
         int userId,
@@ -57,6 +58,12 @@ public class RoomTypeService(
         };
 
         dbContext.RoomTypes.Add(roomType);
+        auditLogService.Add(
+            userId,
+            AuditAction.RoomCreated,
+            "RoomType",
+            propertyId: propertyId,
+            entityName: roomType.Name);
         await dbContext.SaveChangesAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(englishName))
         {
@@ -177,6 +184,13 @@ public class RoomTypeService(
         roomType.DeletedByUserId = userId;
         roomType.IsActive = false;
 
+        auditLogService.Add(
+            userId,
+            AuditAction.RoomDeleted,
+            "RoomType",
+            roomType.Id,
+            roomType.PropertyId,
+            roomType.Name);
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 

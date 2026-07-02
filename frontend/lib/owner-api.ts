@@ -55,7 +55,7 @@ export interface PropertyResponse {
 
 export type PropertyStatus = "Draft" | "PendingReview" | "Approved" | "Rejected" | "Suspended";
 export type UserRole = "SuperAdmin" | "AdminAssistant" | "Owner" | "OwnerAssistant" | "Client";
-export type PropertyUserStatus = "PendingInvitation" | "Active" | "Suspended";
+export type PropertyUserStatus = "Pending" | "Active" | "Suspended" | "Inactive";
 export type PropertyUserRole =
   | "PropertyOwner"
   | "Manager"
@@ -63,6 +63,25 @@ export type PropertyUserRole =
   | "Accounting"
   | "Housekeeping"
   | "Custom";
+
+export type PermissionGroup =
+  | "Dashboard"
+  | "Properties"
+  | "Rooms"
+  | "Pricing"
+  | "Inventory"
+  | "Bookings"
+  | "Reviews"
+  | "Users"
+  | "Financial"
+  | "Reports"
+  | "Settings";
+
+export type PermissionAction = "view" | "create" | "edit" | "delete" | "export";
+
+export type PermissionActions = Record<PermissionAction, boolean>;
+
+export type PermissionMatrixValue = Record<PermissionGroup, PermissionActions>;
 
 export interface PropertyUserResponse {
   id: number;
@@ -76,6 +95,33 @@ export interface PropertyUserResponse {
   role: PropertyUserRole;
   isActive: boolean;
   canRemove: boolean;
+  permissions: PermissionMatrixValue;
+  lastLoginAtUtc?: string | null;
+  lastActivityAtUtc?: string | null;
+  createdAtUtc?: string | null;
+  invitationAcceptedAtUtc?: string | null;
+}
+
+export type AuditAction =
+  | "PriceChanged"
+  | "InventoryChanged"
+  | "RoomCreated"
+  | "RoomDeleted"
+  | "BookingConfirmed"
+  | "BookingCancelled";
+
+export interface AuditLogResponse {
+  id: number;
+  userId: number;
+  user: string;
+  action: AuditAction;
+  propertyId: number | null;
+  property: string | null;
+  time: string;
+  entity: string;
+  entityId: number | null;
+  entityName: string | null;
+  description: string | null;
 }
 
 export interface AdminDashboardResponse {
@@ -491,6 +537,29 @@ export function setAuthUser(role: string, fullName?: string) {
 
 export function getAuthRole() {
   return typeof window === "undefined" ? null : localStorage.getItem(userRoleKey);
+}
+
+export function getAuthUserId() {
+  const token = getToken();
+  if (!token) return null;
+  try {
+    const payload = token.split(".")[1];
+    if (!payload) return null;
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(
+      normalized.length + ((4 - (normalized.length % 4)) % 4),
+      "=",
+    );
+    const decoded = JSON.parse(window.atob(padded));
+    const id =
+      decoded.nameid ??
+      decoded.sub ??
+      decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"];
+    const numericId = Number(id);
+    return Number.isFinite(numericId) ? numericId : null;
+  } catch {
+    return null;
+  }
 }
 
 export function getAuthName() {

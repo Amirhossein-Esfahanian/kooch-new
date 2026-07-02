@@ -12,120 +12,82 @@ public class PropertyAccessService(
         int userId,
         UserRole role,
         int propertyId,
-        CancellationToken cancellationToken = default)
-    {
-        if (await HasFullRoleAccessAsync(userId, role, propertyId, cancellationToken))
-        {
-            return true;
-        }
+        CancellationToken cancellationToken = default) =>
+        await HasAnyPropertyPermissionAsync(
+            userId,
+            role,
+            propertyId,
+            [
+                "dashboard.view",
+                "property.view",
+                "rooms.view",
+                "pricing.view",
+                "inventory.view",
+                "bookings.view",
+                "reviews.view",
+                "users.view",
+                "financial.view",
+                "reports.view",
+                "settings.view"
+            ],
+            cancellationToken);
 
-        return role == UserRole.OwnerAssistant &&
-               await dbContext.UserPropertyAccesses.AsNoTracking()
-                   .AnyAsync(access => access.UserId == userId &&
-                                       access.PropertyId == propertyId &&
-                                       access.IsActive,
-                       cancellationToken);
-    }
-
-    public async Task<bool> CanManagePropertyAsync(
+    public Task<bool> CanManagePropertyAsync(
         int userId,
         UserRole role,
         int propertyId,
-        CancellationToken cancellationToken = default)
-    {
-        if (await HasFullRoleAccessAsync(userId, role, propertyId, cancellationToken))
-        {
-            return true;
-        }
+        CancellationToken cancellationToken = default) =>
+        HasPropertyPermissionAsync(userId, role, propertyId, "property.edit", cancellationToken);
 
-        return role == UserRole.OwnerAssistant &&
-               await dbContext.UserPropertyAccesses.AsNoTracking()
-                   .AnyAsync(access => access.UserId == userId &&
-                                       access.PropertyId == propertyId &&
-                                       access.IsActive &&
-                                       access.CanManageProperty,
-                       cancellationToken);
-    }
-
-    public async Task<bool> CanManageRoomsAsync(
+    public Task<bool> CanManageRoomsAsync(
         int userId,
         UserRole role,
         int propertyId,
-        CancellationToken cancellationToken = default)
-    {
-        if (await HasFullRoleAccessAsync(userId, role, propertyId, cancellationToken))
-        {
-            return true;
-        }
+        CancellationToken cancellationToken = default) =>
+        HasAnyPropertyPermissionAsync(
+            userId,
+            role,
+            propertyId,
+            ["rooms.create", "rooms.edit", "rooms.delete"],
+            cancellationToken);
 
-        return role == UserRole.OwnerAssistant &&
-               await dbContext.UserPropertyAccesses.AsNoTracking()
-                   .AnyAsync(access => access.UserId == userId &&
-                                       access.PropertyId == propertyId &&
-                                       access.IsActive &&
-                                       access.CanManageRooms,
-                       cancellationToken);
-    }
-
-    public async Task<bool> CanManageAvailabilityAsync(
+    public Task<bool> CanManageAvailabilityAsync(
         int userId,
         UserRole role,
         int propertyId,
-        CancellationToken cancellationToken = default)
-    {
-        if (role == UserRole.SuperAdmin)
-        {
-            return true;
-        }
+        CancellationToken cancellationToken = default) =>
+        HasPropertyPermissionAsync(userId, role, propertyId, "inventory.edit", cancellationToken);
 
-        if (role == UserRole.Owner)
-        {
-            return await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == userId, cancellationToken);
-        }
-
-        if (role == UserRole.AdminAssistant)
-        {
-            return await permissionService.HasPermissionAsync(
-                userId,
-                PermissionKey.ManageAvailability,
-                propertyId,
-                cancellationToken);
-        }
-
-        return role == UserRole.OwnerAssistant &&
-               await dbContext.UserPropertyAccesses.AsNoTracking()
-                   .AnyAsync(access => access.UserId == userId &&
-                                       access.PropertyId == propertyId &&
-                                       access.IsActive &&
-                                       access.CanManageAvailability,
-                       cancellationToken);
-    }
-
-    public async Task<bool> CanManagePricingAsync(
+    public Task<bool> CanManagePricingAsync(
         int userId,
         UserRole role,
         int propertyId,
-        CancellationToken cancellationToken = default)
-    {
-        if (await HasFullRoleAccessAsync(userId, role, propertyId, cancellationToken))
-        {
-            return true;
-        }
+        CancellationToken cancellationToken = default) =>
+        HasPropertyPermissionAsync(userId, role, propertyId, "pricing.edit", cancellationToken);
 
-        return role == UserRole.OwnerAssistant &&
-               await dbContext.UserPropertyAccesses.AsNoTracking()
-                   .AnyAsync(access => access.UserId == userId &&
-                                       access.PropertyId == propertyId &&
-                                       access.IsActive &&
-                                       access.CanManagePricing,
-                       cancellationToken);
-    }
-
-    private async Task<bool> HasFullRoleAccessAsync(
+    private async Task<bool> HasAnyPropertyPermissionAsync(
         int userId,
         UserRole role,
         int propertyId,
+        IReadOnlyCollection<string> permissionKeys,
+        CancellationToken cancellationToken)
+    {
+        foreach (var permissionKey in permissionKeys)
+        {
+            if (await HasPropertyPermissionAsync(userId, role, propertyId, permissionKey, cancellationToken))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private async Task<bool> HasPropertyPermissionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        string permissionKey,
         CancellationToken cancellationToken)
     {
         if (role == UserRole.SuperAdmin)
@@ -133,17 +95,18 @@ public class PropertyAccessService(
             return true;
         }
 
+        if (role == UserRole.AdminAssistant)
+        {
+            return true;
+        }
+
         if (role == UserRole.Owner)
         {
             return await dbContext.Properties.AsNoTracking()
                 .AnyAsync(property => property.Id == propertyId && property.OwnerId == userId, cancellationToken);
         }
 
-        return role == UserRole.AdminAssistant &&
-               await permissionService.HasPermissionAsync(
-                   userId,
-                   PermissionKey.ManageProperties,
-                   propertyId,
-                   cancellationToken);
+        return role == UserRole.OwnerAssistant &&
+               await permissionService.CanAsync(userId, propertyId, permissionKey, cancellationToken);
     }
 }

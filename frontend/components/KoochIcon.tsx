@@ -4,6 +4,7 @@ const koochIcons = {
   edit: "/svgs/edit.svg",
   capacity: "/svgs/bed-bunk.svg",
   price: "/svgs/tags.svg",
+  audit: "/svgs/list.svg",
   suspend: "/svgs/ban.svg",
   view: "/svgs/eye.svg",
 

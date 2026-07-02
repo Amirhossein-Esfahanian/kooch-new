@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
 import { ownerPropertyKey } from "@/lib/owner-api";
 
 type DashboardMenuItem = {
@@ -133,7 +134,7 @@ function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
       href: propertyId ? `${base}/users` : fallbackHref,
     },
     {
-      label: "سوابق تغییرات نرخی",
+      label: "سوابق عملیات",
       icon: "/svgs/list.svg",
       href: propertyId ? `${base}/change-logs` : fallbackHref,
     },
@@ -623,11 +624,25 @@ function DashboardHeader({
   onSidebarToggle: () => void;
   profileMenuOpen: boolean;
 }) {
+  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+
+  function handleProfileMenuAction(item: string) {
+    onProfileMenuClose();
+
+    if (item === "خروج از حساب") {
+      logout();
+      return;
+    }
+
+    setProfileDialogOpen(true);
+  }
+
   return (
-    <header
-      className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
-    >
-      <div className="flex flex-wrap items-center gap-3">
+    <>
+      <header
+        className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
+      >
+        <div className="flex flex-wrap items-center gap-3">
         <button
           className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
           onClick={onSidebarToggle}
@@ -727,7 +742,7 @@ function DashboardHeader({
                       darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
                     } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
                     key={item}
-                    onClick={logout}
+                    onClick={() => handleProfileMenuAction(item)}
                     role="menuitem"
                     type="button"
                   >
@@ -737,9 +752,14 @@ function DashboardHeader({
               )}
             </div>
           )}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
+      <KoochUserProfileDialog
+        onOpenChange={setProfileDialogOpen}
+        open={profileDialogOpen}
+      />
+    </>
   );
 }
 

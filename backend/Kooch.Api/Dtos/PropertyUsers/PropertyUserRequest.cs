@@ -24,4 +24,5 @@ public class PropertyUserRequest
     public PropertyUserRole Role { get; set; } = PropertyUserRole.Manager;
 
     public bool IsActive { get; set; } = true;
+    public PermissionMatrixDto? Permissions { get; set; }
 }

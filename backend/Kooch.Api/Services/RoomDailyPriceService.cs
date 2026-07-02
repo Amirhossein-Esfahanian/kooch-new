@@ -6,7 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessService propertyAccessService)
+public class RoomDailyPriceService(
+    KoochDbContext dbContext,
+    IPropertyAccessService propertyAccessService,
+    IAuditLogService auditLogService)
     : IRoomDailyPriceService
 {
     public async Task<PropertyPricingResponse> GetAsync(
@@ -100,6 +103,7 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
         }
 
         dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(propertyId, userId, historyCandidates));
+        AddPriceAudit(userId, propertyId, request.GuestType, historyCandidates);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
@@ -173,6 +177,7 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
         }
 
         dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(propertyId, userId, historyCandidates));
+        AddPriceAudit(userId, propertyId, request.DestinationGuestType, historyCandidates);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
@@ -348,4 +353,24 @@ public class RoomDailyPriceService(KoochDbContext dbContext, IPropertyAccessServ
         PricingGuestType GuestType,
         decimal OldBasePrice,
         decimal NewBasePrice);
+
+    private void AddPriceAudit(
+        int userId,
+        int propertyId,
+        PricingGuestType guestType,
+        IReadOnlyCollection<PriceHistoryChange> changes)
+    {
+        if (changes.Count == 0) return;
+
+        var from = changes.Min(change => change.Date);
+        var to = changes.Max(change => change.Date);
+        var roomCount = changes.Select(change => change.RoomTypeId).Distinct().Count();
+        auditLogService.Add(
+            userId,
+            AuditAction.PriceChanged,
+            "RoomDailyPrice",
+            propertyId: propertyId,
+            entityName: $"{roomCount} room type(s)",
+            description: $"{changes.Count} price cell(s), {guestType}, {from:yyyy-MM-dd} to {to:yyyy-MM-dd}");
+    }
 }

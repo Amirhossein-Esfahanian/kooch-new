@@ -419,6 +419,13 @@ export default function AdminPropertiesPage() {
                       >
                         <KoochIcon name="price" />
                       </Link>
+                      <Link
+                        className={actionLinkClass}
+                        href={`/admin/properties/${property.id}/change-logs`}
+                        title="سوابق عملیات"
+                      >
+                        <KoochIcon name="audit" />
+                      </Link>
                       <KoochButton
                         disabled={workingId === property.id}
                         onClick={() => setStatus(property.id, "Suspended")}

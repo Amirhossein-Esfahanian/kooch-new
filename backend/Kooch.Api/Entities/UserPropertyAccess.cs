@@ -15,6 +15,7 @@ public class UserPropertyAccess : BaseEntity
     public bool CanViewReports { get; set; }
     public PropertyUserStatus Status { get; set; } = PropertyUserStatus.Active;
     public PropertyUserRole PropertyRole { get; set; } = PropertyUserRole.Manager;
+    public string PermissionMatrixJson { get; set; } = "{}";
     public bool IsActive { get; set; } = true;
 
     public User User { get; set; } = null!;

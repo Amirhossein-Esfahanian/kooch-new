@@ -46,6 +46,7 @@ builder.Services.AddScoped<IRoomService, RoomService>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
 builder.Services.AddScoped<IRoomDailyPriceService, RoomDailyPriceService>();
 builder.Services.AddScoped<IPropertyUserService, PropertyUserService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IPromotionService, PromotionService>();
 builder.Services.AddSingleton<PricingService>();
 builder.Services.AddScoped<CouponValidationService>();

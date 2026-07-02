@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.PropertyUsers;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -54,5 +55,56 @@ public class PropertyUsersController(IPropertyUserService propertyUserService) :
         var user = GetCurrentUser();
         await propertyUserService.DeleteUserAsync(user.UserId, user.Role, propertyId, userId, cancellationToken);
         return NoContent();
+    }
+
+    [HttpPut("{userId:int}/activate")]
+    [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyUserResponse>> Activate(
+        int propertyId,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.SetStatusAsync(
+            user.UserId,
+            user.Role,
+            propertyId,
+            userId,
+            PropertyUserStatus.Active,
+            cancellationToken));
+    }
+
+    [HttpPut("{userId:int}/suspend")]
+    [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyUserResponse>> Suspend(
+        int propertyId,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.SetStatusAsync(
+            user.UserId,
+            user.Role,
+            propertyId,
+            userId,
+            PropertyUserStatus.Suspended,
+            cancellationToken));
+    }
+
+    [HttpPut("{userId:int}/deactivate")]
+    [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyUserResponse>> Deactivate(
+        int propertyId,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.SetStatusAsync(
+            user.UserId,
+            user.Role,
+            propertyId,
+            userId,
+            PropertyUserStatus.Inactive,
+            cancellationToken));
     }
 }
