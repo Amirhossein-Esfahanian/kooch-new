@@ -55,6 +55,28 @@ export interface PropertyResponse {
 
 export type PropertyStatus = "Draft" | "PendingReview" | "Approved" | "Rejected" | "Suspended";
 export type UserRole = "SuperAdmin" | "AdminAssistant" | "Owner" | "OwnerAssistant" | "Client";
+export type PropertyUserStatus = "PendingInvitation" | "Active" | "Suspended";
+export type PropertyUserRole =
+  | "PropertyOwner"
+  | "Manager"
+  | "Reception"
+  | "Accounting"
+  | "Housekeeping"
+  | "Custom";
+
+export interface PropertyUserResponse {
+  id: number;
+  userId: number;
+  propertyId: number;
+  fullName: string;
+  mobile: string | null;
+  email: string;
+  username: string;
+  status: PropertyUserStatus;
+  role: PropertyUserRole;
+  isActive: boolean;
+  canRemove: boolean;
+}
 
 export interface AdminDashboardResponse {
   totalProperties: number;

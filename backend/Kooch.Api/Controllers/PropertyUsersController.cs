@@ -1,0 +1,58 @@
+using Kooch.Api.Authentication;
+using Kooch.Api.Dtos.PropertyUsers;
+using Kooch.Api.Services;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Kooch.Api.Controllers;
+
+[ApiController]
+[OwnerAuthorize]
+[Route("api/owner/properties/{propertyId:int}/users")]
+public class PropertyUsersController(IPropertyUserService propertyUserService) : AuthenticatedControllerBase
+{
+    [HttpGet]
+    [ProducesResponseType<IReadOnlyList<PropertyUserResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<PropertyUserResponse>>> Get(
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.GetUsersAsync(user.UserId, user.Role, propertyId, cancellationToken));
+    }
+
+    [HttpPost]
+    [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<PropertyUserResponse>> Create(
+        int propertyId,
+        PropertyUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        var created = await propertyUserService.CreateUserAsync(user.UserId, user.Role, propertyId, request, cancellationToken);
+        return CreatedAtAction(nameof(Get), new { propertyId }, created);
+    }
+
+    [HttpPut("{userId:int}")]
+    [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyUserResponse>> Update(
+        int propertyId,
+        int userId,
+        PropertyUserRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.UpdateUserAsync(user.UserId, user.Role, propertyId, userId, request, cancellationToken));
+    }
+
+    [HttpDelete("{userId:int}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    public async Task<IActionResult> Delete(
+        int propertyId,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        await propertyUserService.DeleteUserAsync(user.UserId, user.Role, propertyId, userId, cancellationToken);
+        return NoContent();
+    }
+}

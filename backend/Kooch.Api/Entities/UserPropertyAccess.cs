@@ -13,6 +13,8 @@ public class UserPropertyAccess : BaseEntity
     public bool CanManageReviews { get; set; }
     public bool CanManageNotifications { get; set; }
     public bool CanViewReports { get; set; }
+    public PropertyUserStatus Status { get; set; } = PropertyUserStatus.Active;
+    public PropertyUserRole PropertyRole { get; set; } = PropertyUserRole.Manager;
     public bool IsActive { get; set; } = true;
 
     public User User { get; set; } = null!;

@@ -115,6 +115,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(user => user.FirstName).HasMaxLength(100).IsRequired();
             entity.Property(user => user.LastName).HasMaxLength(100).IsRequired();
             entity.Property(user => user.Email).HasMaxLength(320).IsRequired();
+            entity.Property(user => user.Username).HasMaxLength(100);
             entity.Property(user => user.PasswordHash).HasMaxLength(500).IsRequired();
             entity.Property(user => user.PhoneNumber).HasMaxLength(30);
             entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
@@ -208,6 +209,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<UserPropertyAccess>(entity =>
         {
             entity.Property(access => access.IsActive).HasDefaultValue(true);
+            entity.Property(access => access.Status).HasDefaultValue(PropertyUserStatus.Active);
+            entity.Property(access => access.PropertyRole).HasDefaultValue(PropertyUserRole.Manager);
             entity.HasIndex(access => new { access.UserId, access.PropertyId }).IsUnique();
             entity.HasOne(access => access.User)
                 .WithMany(user => user.UserPropertyAccesses)

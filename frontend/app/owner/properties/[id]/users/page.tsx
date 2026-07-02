@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { PropertyUsersManagement } from "@/components/property-users/PropertyUsersManagement";
 import {
   apiRequest,
   getToken,
@@ -54,23 +55,19 @@ export default function OwnerUsersPage() {
           }
           description={property?.name ?? "در حال بارگذاری..."}
           eyebrow="اقامتگاه فعال"
-          title="کاربران"
+          title="مدیریت کاربران"
         />
 
         {error && (
-          <KoochCard className="border-destructive/30 bg-destructive/10 text-destructive" padding="sm">
+          <KoochCard
+            className="border-destructive/30 bg-destructive/10 text-destructive"
+            padding="sm"
+          >
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
         )}
 
-        <KoochCard variant="elevated">
-          <h2 className="text-xl font-black text-foreground">
-            کاربران اقامتگاه
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            مدیریت کارکنان این اقامتگاه بعداً به این بخش اضافه می‌شود.
-          </p>
-        </KoochCard>
+        <PropertyUsersManagement context="owner" propertyId={propertyId} />
       </main>
     </OwnerLayout>
   );

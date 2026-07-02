@@ -1,6 +1,8 @@
 namespace Kooch.Api.Entities;
 
 public enum UserRole { SuperAdmin, AdminAssistant, Owner, OwnerAssistant, Client }
+public enum PropertyUserStatus { PendingInvitation, Active, Suspended }
+public enum PropertyUserRole { PropertyOwner, Manager, Reception, Accounting, Housekeeping, Custom }
 public enum PermissionKey
 {
     ManageUsers,
