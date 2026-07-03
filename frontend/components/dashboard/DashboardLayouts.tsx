@@ -1,13 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
-import { ownerPropertyKey } from "@/lib/owner-api";
+import { apiRequest, ownerPropertyKey, PropertyResponse } from "@/lib/owner-api";
 
 type DashboardMenuItem = {
   href: string;
@@ -308,11 +308,16 @@ export function OwnerLayout({
   children: ReactNode | ((darkMode: boolean) => ReactNode);
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [storedPropertyId, setStoredPropertyId] = useState<
     string | undefined
   >();
+  const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const propertyId =
     getOwnerPropertyIdFromPathname(pathname) ?? storedPropertyId;
+  const currentProperty = properties.find(
+    (property) => property.id.toString() === propertyId,
+  );
 
   useEffect(() => {
     const pathPropertyId = getOwnerPropertyIdFromPathname(pathname);
@@ -326,8 +331,34 @@ export function OwnerLayout({
     setStoredPropertyId(savedPropertyId);
   }, [pathname]);
 
+  useEffect(() => {
+    apiRequest<PropertyResponse[]>("/owner/properties")
+      .then((items) => setProperties(items))
+      .catch(() => setProperties([]));
+  }, []);
+
+  function switchProperty(nextPropertyId: string) {
+    if (!nextPropertyId) {
+      router.push("/owner/select-property");
+      return;
+    }
+
+    localStorage.setItem(ownerPropertyKey, nextPropertyId);
+    setStoredPropertyId(nextPropertyId);
+    router.push(`/owner/properties/${nextPropertyId}/dashboard`);
+  }
+
   return (
-    <DashboardShell menuItems={getOwnerMenuItems(propertyId)}>
+    <DashboardShell
+      currentWorkspaceId={propertyId}
+      menuItems={getOwnerMenuItems(propertyId)}
+      onWorkspaceChange={switchProperty}
+      workspaceLabel={currentProperty?.name ?? "انتخاب اقامتگاه"}
+      workspaceOptions={properties.map((property) => ({
+        id: property.id.toString(),
+        name: property.name,
+      }))}
+    >
       {children}
     </DashboardShell>
   );
@@ -387,10 +418,18 @@ export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
 
 function DashboardShell({
   children,
+  currentWorkspaceId,
   menuItems,
+  onWorkspaceChange,
+  workspaceLabel = "پنل مدیریت",
+  workspaceOptions = [],
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
+  currentWorkspaceId?: string;
   menuItems: DashboardMenuItem[];
+  onWorkspaceChange?: (workspaceId: string) => void;
+  workspaceLabel?: string;
+  workspaceOptions?: { id: string; name: string }[];
 }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -434,11 +473,15 @@ function DashboardShell({
       <div className="flex h-full">
         <DashboardSidebar
           collapsed={collapsed}
+          currentWorkspaceId={currentWorkspaceId}
           darkMode={darkMode}
           menuItems={menuItems}
           mobileOpen={mobileSidebarOpen}
           onCollapse={() => setCollapsed((value) => !value)}
           onMobileClose={() => setMobileSidebarOpen(false)}
+          onWorkspaceChange={onWorkspaceChange}
+          workspaceLabel={workspaceLabel}
+          workspaceOptions={workspaceOptions}
         />
         <div className="flex min-w-0 flex-1 flex-col">
           <DashboardHeader
@@ -484,18 +527,26 @@ function logout() {
 
 function DashboardSidebar({
   collapsed,
+  currentWorkspaceId,
   darkMode,
   menuItems,
   mobileOpen,
   onCollapse,
   onMobileClose,
+  onWorkspaceChange,
+  workspaceLabel,
+  workspaceOptions,
 }: {
   collapsed: boolean;
+  currentWorkspaceId?: string;
   darkMode: boolean;
   menuItems: DashboardMenuItem[];
   mobileOpen: boolean;
   onCollapse: () => void;
   onMobileClose: () => void;
+  onWorkspaceChange?: (workspaceId: string) => void;
+  workspaceLabel: string;
+  workspaceOptions: { id: string; name: string }[];
 }) {
   const pathname = usePathname();
 
@@ -516,8 +567,11 @@ function DashboardSidebar({
               کوچ
             </div>
             {!collapsed && (
-              <div className="min-w-0">
+              <div className="min-w-0 [&>p:last-child]:hidden">
                 <p className="text-sm font-black">Kooch</p>
+                <p className={`truncate ${mutedText(darkMode)}`}>
+                  {workspaceLabel}
+                </p>
                 <p className={mutedText(darkMode)}>داشبورد نمونه</p>
               </div>
             )}
@@ -545,6 +599,25 @@ function DashboardSidebar({
             </button>
           </div>
         </div>
+
+        {!collapsed && workspaceOptions.length > 1 && onWorkspaceChange && (
+          <select
+            className={`mt-4 h-10 w-full rounded-lg border px-3 text-sm font-bold outline-none transition focus:border-[var(--theme-primary)] ${
+              darkMode
+                ? "border-white/10 bg-white/5 text-slate-100"
+                : "border-slate-300 bg-white text-slate-900"
+            }`}
+            onChange={(event) => onWorkspaceChange(event.target.value)}
+            value={currentWorkspaceId ?? ""}
+          >
+            <option value="">انتخاب اقامتگاه</option>
+            {workspaceOptions.map((workspace) => (
+              <option key={workspace.id} value={workspace.id}>
+                {workspace.name}
+              </option>
+            ))}
+          </select>
+        )}
 
         <nav className="mt-6 grid gap-1">
           {menuItems.map((item) => {
@@ -587,7 +660,7 @@ function DashboardSidebar({
         </nav>
 
         <div
-          className={`mt-auto rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"}`}
+          className={`mt-auto hidden rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"}`}
         >
           {!collapsed ? (
             <>

@@ -111,40 +111,25 @@ public class PropertyUserService(
         }
 
         var email = NormalizeEmail(invitation.Email);
+        var mobile = NormalizeMobile(invitation.Mobile);
+        await EnsureUniqueIdentityAsync(email, mobile, null, cancellationToken);
         var username = CleanOptional(invitation.Username) ?? email;
         var name = SplitFullName(invitation.FullName);
-        var user = await dbContext.Users.IgnoreQueryFilters()
-            .SingleOrDefaultAsync(item => item.Email == email, cancellationToken);
-
-        if (user is null)
+        var user = new User
         {
-            user = new User
-            {
-                FirstName = name.FirstName,
-                LastName = name.LastName,
-                Email = email,
-                Username = username,
-                PhoneNumber = CleanOptional(invitation.Mobile),
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
-                Role = UserRole.OwnerAssistant,
-                ParentUserId = currentUserId,
-                IsActive = false,
-                PasswordSetupRequired = true
-            };
-            dbContext.Users.Add(user);
-            await dbContext.SaveChangesAsync(cancellationToken);
-        }
-        else
-        {
-            await EnsureUserCanBeAssignedAsync(user.Id, propertyId, cancellationToken);
-            user.FirstName = name.FirstName;
-            user.LastName = name.LastName;
-            user.Username = username;
-            user.PhoneNumber = CleanOptional(invitation.Mobile);
-            user.Role = UserRole.OwnerAssistant;
-            user.IsActive = false;
-            user.PasswordSetupRequired = true;
-        }
+            FirstName = name.FirstName,
+            LastName = name.LastName,
+            Email = email,
+            Username = username,
+            PhoneNumber = mobile,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
+            Role = UserRole.OwnerAssistant,
+            ParentUserId = currentUserId,
+            IsActive = false,
+            PasswordSetupRequired = true
+        };
+        dbContext.Users.Add(user);
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         var access = await dbContext.UserPropertyAccesses
             .SingleOrDefaultAsync(item => item.UserId == user.Id && item.PropertyId == propertyId, cancellationToken);
@@ -212,18 +197,15 @@ public class PropertyUserService(
             cancellationToken);
 
         var email = NormalizeEmail(request.Email);
-        if (await dbContext.Users.IgnoreQueryFilters()
-                .AnyAsync(user => user.Email == email && user.Id != userId, cancellationToken))
-        {
-            throw new InvalidOperationException("An account with this email already exists.");
-        }
+        var mobile = NormalizeMobile(request.Mobile);
+        await EnsureUniqueIdentityAsync(email, mobile, userId, cancellationToken);
 
         var name = SplitFullName(request.FullName);
         access.User.FirstName = name.FirstName;
         access.User.LastName = name.LastName;
         access.User.Email = email;
         access.User.Username = CleanOptional(request.Username) ?? email;
-        access.User.PhoneNumber = CleanOptional(request.Mobile);
+        access.User.PhoneNumber = mobile;
         access.User.IsActive = request.IsActive && request.Status == PropertyUserStatus.Active;
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
@@ -305,15 +287,19 @@ public class PropertyUserService(
         var allowed = currentRole switch
         {
             UserRole.SuperAdmin => true,
-            UserRole.Owner => await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == currentUserId, cancellationToken),
             UserRole.AdminAssistant => true,
-            UserRole.OwnerAssistant => await permissionService.CanAsync(
+            UserRole.Owner => await dbContext.Properties.AsNoTracking()
+                .AnyAsync(property => property.Id == propertyId && property.OwnerId == currentUserId, cancellationToken) ||
+                await permissionService.CanAsync(
+                    currentUserId,
+                    propertyId,
+                    permissionKey,
+                    cancellationToken),
+            _ => await permissionService.CanAsync(
                 currentUserId,
                 propertyId,
                 permissionKey,
-                cancellationToken),
-            _ => false
+                cancellationToken)
         };
 
         if (!allowed)
@@ -660,4 +646,82 @@ public class PropertyUserService(
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private async Task EnsureUniqueIdentityAsync(
+        string email,
+        string? mobile,
+        int? currentUserId,
+        CancellationToken cancellationToken)
+    {
+        if (await dbContext.Users.IgnoreQueryFilters()
+                .AnyAsync(user => user.Email == email &&
+                                  (!currentUserId.HasValue || user.Id != currentUserId.Value),
+                    cancellationToken))
+        {
+            throw new ArgumentException("این ایمیل قبلاً ثبت شده است.");
+        }
+
+        if (string.IsNullOrWhiteSpace(mobile))
+        {
+            return;
+        }
+
+        var mobileVariants = BuildMobileVariants(mobile);
+        if (await dbContext.Users.IgnoreQueryFilters()
+                .AnyAsync(user => user.PhoneNumber != null &&
+                                  mobileVariants.Contains(user.PhoneNumber) &&
+                                  (!currentUserId.HasValue || user.Id != currentUserId.Value),
+                    cancellationToken))
+        {
+            throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+        }
+    }
+
+    private static string? NormalizeMobile(string? mobile)
+    {
+        if (string.IsNullOrWhiteSpace(mobile)) return null;
+
+        var builder = new System.Text.StringBuilder();
+        foreach (var character in mobile.Trim())
+        {
+            var normalized = character switch
+            {
+                >= '۰' and <= '۹' => (char)('0' + character - '۰'),
+                >= '٠' and <= '٩' => (char)('0' + character - '٠'),
+                _ => character
+            };
+            if (char.IsDigit(normalized) || normalized == '+')
+            {
+                builder.Append(normalized);
+            }
+        }
+
+        var value = builder.ToString();
+        if (value.StartsWith("0098", StringComparison.Ordinal))
+        {
+            value = $"0{value[4..]}";
+        }
+        else if (value.StartsWith("+98", StringComparison.Ordinal))
+        {
+            value = $"0{value[3..]}";
+        }
+        else if (value.StartsWith("98", StringComparison.Ordinal) && value.Length == 12)
+        {
+            value = $"0{value[2..]}";
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string[] BuildMobileVariants(string mobile)
+    {
+        var variants = new HashSet<string> { mobile };
+        if (mobile.StartsWith('0') && mobile.Length > 1)
+        {
+            variants.Add($"+98{mobile[1..]}");
+            variants.Add($"98{mobile[1..]}");
+            variants.Add($"0098{mobile[1..]}");
+        }
+
+        return variants.ToArray();
+    }
 }

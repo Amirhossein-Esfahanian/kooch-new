@@ -100,13 +100,13 @@ public class PropertyAccessService(
             return true;
         }
 
-        if (role == UserRole.Owner)
+        if (role == UserRole.Owner &&
+            await dbContext.Properties.AsNoTracking()
+                .AnyAsync(property => property.Id == propertyId && property.OwnerId == userId, cancellationToken))
         {
-            return await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == userId, cancellationToken);
+            return true;
         }
 
-        return role == UserRole.OwnerAssistant &&
-               await permissionService.CanAsync(userId, propertyId, permissionKey, cancellationToken);
+        return await permissionService.CanAsync(userId, propertyId, permissionKey, cancellationToken);
     }
 }

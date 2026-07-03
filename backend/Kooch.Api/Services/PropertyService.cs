@@ -149,9 +149,16 @@ public class PropertyService(
         query = role switch
         {
             UserRole.SuperAdmin => query,
-            UserRole.Owner => query.Where(property => property.OwnerId == userId),
-            UserRole.OwnerAssistant => query.Where(property => property.UserPropertyAccesses
-                .Any(access => access.UserId == userId && access.IsActive)),
+            UserRole.Owner => query.Where(property => property.OwnerId == userId ||
+                property.UserPropertyAccesses.Any(access =>
+                    access.UserId == userId &&
+                    access.IsActive &&
+                    access.Status == PropertyUserStatus.Active)),
+            UserRole.OwnerAssistant or UserRole.Client => query.Where(property => property.UserPropertyAccesses
+                .Any(access =>
+                    access.UserId == userId &&
+                    access.IsActive &&
+                    access.Status == PropertyUserStatus.Active)),
             UserRole.AdminAssistant => await HasGlobalManagePermissionAsync(userId, cancellationToken)
                 ? query
                 : query.Where(property => property.UserPermissions.Any(permission =>

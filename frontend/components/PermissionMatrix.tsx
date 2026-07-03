@@ -113,10 +113,12 @@ export function normalizePermissionMatrix(
 
 export function PermissionMatrix({
   disabled = false,
+  isActionDisabled,
   onChange,
   value,
 }: {
   disabled?: boolean;
+  isActionDisabled?: (group: PermissionGroup, action: PermissionAction) => boolean;
   onChange: (value: PermissionMatrixValue) => void;
   value: PermissionMatrixValue;
 }) {
@@ -157,7 +159,7 @@ export function PermissionMatrix({
                   <td className="px-4 py-3 text-center" key={action.key}>
                     <KoochCheckbox
                       checked={Boolean(value[group.key]?.[action.key])}
-                      disabled={disabled}
+                      disabled={disabled || isActionDisabled?.(group.key, action.key)}
                       onChange={(event) =>
                         update(group.key, action.key, event.target.checked)
                       }

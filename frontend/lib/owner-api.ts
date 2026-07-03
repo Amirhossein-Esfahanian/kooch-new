@@ -145,11 +145,22 @@ export interface AdminUserResponse {
   role: UserRole;
   parentUserId: number | null;
   parentUserName: string | null;
+  propertyId: number | null;
+  propertyName: string | null;
+  properties: AdminUserPropertyAccessResponse[];
   isActive: boolean;
   passwordSetupRequired: boolean;
   createdAtUtc: string;
   invitationAcceptedAtUtc?: string | null;
   temporarySetupLink?: string | null;
+}
+
+export interface AdminUserPropertyAccessResponse {
+  propertyId: number;
+  propertyName: string;
+  status: PropertyUserStatus;
+  role: PropertyUserRole;
+  isActive: boolean;
 }
 
 export interface RoomTypeResponse {

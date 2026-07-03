@@ -59,7 +59,7 @@ export default function SelectOwnerPropertyPage() {
             هنوز اقامتگاهی برای شما ثبت نشده است.
           </p>
           <Link
-            className="mt-5 inline-flex rounded-xl bg-blue-600 px-5 py-3 font-black text-white hover:bg-blue-700"
+            className="hidden"
             href="/owner/properties/new"
           >
             افزودن اقامتگاه جدید

@@ -10,6 +10,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
     public DbSet<PasswordSetupToken> PasswordSetupTokens => Set<PasswordSetupToken>();
+    public DbSet<MobileOtpCode> MobileOtpCodes => Set<MobileOtpCode>();
     public DbSet<UserPropertyAccess> UserPropertyAccesses => Set<UserPropertyAccess>();
     public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
@@ -56,6 +57,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         ConfigureUsers(modelBuilder);
         ConfigurePasswordSetupTokens(modelBuilder);
+        ConfigureMobileOtpCodes(modelBuilder);
         ConfigurePermissions(modelBuilder);
         ConfigureUserPropertyAccesses(modelBuilder);
         ConfigureNotifications(modelBuilder);
@@ -125,6 +127,9 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(user => user.PasswordSetupRequired).HasDefaultValue(false);
             entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
             entity.HasIndex(user => user.Email).IsUnique();
+            entity.HasIndex(user => user.PhoneNumber)
+                .IsUnique()
+                .HasFilter("[PhoneNumber] IS NOT NULL AND [PhoneNumber] <> ''");
             entity.HasOne(user => user.ParentUser)
                 .WithMany(user => user.Children)
                 .HasForeignKey(user => user.ParentUserId)
@@ -142,6 +147,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(token => token.User)
                 .WithMany(user => user.PasswordSetupTokens)
                 .HasForeignKey(token => token.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+    }
+
+    private static void ConfigureMobileOtpCodes(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<MobileOtpCode>(entity =>
+        {
+            entity.Property(code => code.Mobile).HasMaxLength(30).IsRequired();
+            entity.Property(code => code.CodeHash).HasMaxLength(128).IsRequired();
+            entity.HasIndex(code => new { code.Mobile, code.CreatedAtUtc });
+            entity.HasIndex(code => new { code.Mobile, code.UsedAtUtc, code.ExpiresAtUtc });
+            entity.HasOne(code => code.User)
+                .WithMany()
+                .HasForeignKey(code => code.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
     }

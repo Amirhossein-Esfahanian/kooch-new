@@ -10,6 +10,8 @@ import { KoochDialog } from "@/components/KoochDialog";
 import { KoochInput, KoochSelect } from "@/components/KoochFormControls";
 import {
   createRolePermissionMatrix,
+  permissionActions,
+  permissionGroups,
   normalizePermissionMatrix,
   PermissionMatrix,
 } from "@/components/PermissionMatrix";
@@ -27,6 +29,9 @@ import {
   getAuthRole,
   getAuthUserId,
   PermissionMatrixValue,
+  PermissionAction,
+  PermissionGroup,
+  PropertyResponse,
   PropertyUserResponse,
   PropertyUserRole,
   PropertyUserStatus,
@@ -148,6 +153,7 @@ export function PropertyUsersManagement({
   );
   const [setupLink, setSetupLink] = useState("");
   const [form, setForm] = useState<PropertyUserForm>(emptyForm);
+  const [propertyName, setPropertyName] = useState("");
 
   const ownerCount = useMemo(
     () => users.filter((user) => user.role === "PropertyOwner").length,
@@ -185,6 +191,31 @@ export function PropertyUsersManagement({
     return Boolean(actorUser?.permissions?.Users?.[action]);
   }
 
+  function canGrantPermission(group: PermissionGroup, action: PermissionAction) {
+    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+      return true;
+    }
+
+    return Boolean(actorUser?.permissions?.[group]?.[action]);
+  }
+
+  function clampPermissions(matrix: PermissionMatrixValue) {
+    const normalized = normalizePermissionMatrix(matrix);
+    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+      return normalized;
+    }
+
+    const next = normalizePermissionMatrix(null);
+    permissionGroups.forEach((group) => {
+      permissionActions.forEach((action) => {
+        next[group.key][action.key] =
+          Boolean(normalized[group.key]?.[action.key]) &&
+          canGrantPermission(group.key, action.key);
+      });
+    });
+    return next;
+  }
+
   function hierarchyError(message = "امکان مدیریت نقش بالاتر وجود ندارد.") {
     setError(message);
     toast.error(message);
@@ -192,11 +223,16 @@ export function PropertyUsersManagement({
 
   async function load() {
     setError("");
-    setUsers(
-      await apiRequest<PropertyUserResponse[]>(
+    const [property, userItems] = await Promise.all([
+      apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`).catch(
+        () => null,
+      ),
+      apiRequest<PropertyUserResponse[]>(
         `/owner/properties/${propertyId}/users`,
       ),
-    );
+    ]);
+    setPropertyName(property?.name ?? "");
+    setUsers(userItems);
   }
 
   useEffect(() => {
@@ -213,7 +249,7 @@ export function PropertyUsersManagement({
     setForm({
       ...emptyForm,
       role: defaultRole,
-      permissions: createRolePermissionMatrix(defaultRole),
+      permissions: clampPermissions(createRolePermissionMatrix(defaultRole)),
     });
     setDialogOpen(true);
   }
@@ -224,7 +260,10 @@ export function PropertyUsersManagement({
       return;
     }
     setEditingUser(user);
-    setForm(toForm(user));
+    setForm({
+      ...toForm(user),
+      permissions: clampPermissions(toForm(user).permissions),
+    });
     setDialogOpen(true);
   }
 
@@ -255,7 +294,7 @@ export function PropertyUsersManagement({
             role: form.role,
             status: "Pending",
             isActive: false,
-            permissions: form.permissions,
+            permissions: clampPermissions(form.permissions),
           };
       const saved = await apiRequest<PropertyUserResponse>(
         editingUser
@@ -526,6 +565,17 @@ export function PropertyUsersManagement({
           id="property-user-form"
           onSubmit={submit}
         >
+          <KoochCard className="border-primary/20 bg-primary/10" padding="sm">
+            <p className="text-xs font-black text-muted-foreground">
+              اقامتگاه فعلی
+            </p>
+            <p className="mt-1 text-sm font-black text-foreground">
+              {propertyName || "این اقامتگاه"}
+            </p>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              کاربر جدید فقط به همین اقامتگاه اضافه می‌شود.
+            </p>
+          </KoochCard>
           <KoochInput
             onChange={(event) =>
               setForm((current) => ({ ...current, fullName: event.target.value }))
@@ -557,13 +607,17 @@ export function PropertyUsersManagement({
               setForm((current) => ({
                 ...current,
                 role: event.target.value as PropertyUserForm["role"],
-                permissions: createRolePermissionMatrix(event.target.value),
+                permissions: clampPermissions(createRolePermissionMatrix(event.target.value)),
               }))
             }
             value={form.role}
           >
-            {availableRoleOptions.map((role) => (
-              <option key={role.value} value={role.value}>
+            {roleOptions.map((role) => (
+              <option
+                disabled={!availableRoleOptions.some((item) => item.value === role.value)}
+                key={role.value}
+                value={role.value}
+              >
                 {role.label}
               </option>
             ))}
@@ -578,9 +632,13 @@ export function PropertyUsersManagement({
               </p>
             </div>
             <PermissionMatrix
-              disabled={!hasUserPermission("edit")}
+              disabled={!hasUserPermission(editingUser ? "edit" : "create")}
+              isActionDisabled={(group, action) => !canGrantPermission(group, action)}
               onChange={(permissions) =>
-                setForm((current) => ({ ...current, permissions }))
+                setForm((current) => ({
+                  ...current,
+                  permissions: clampPermissions(permissions),
+                }))
               }
               value={form.permissions}
             />
