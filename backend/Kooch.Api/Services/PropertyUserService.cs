@@ -2,13 +2,16 @@ using Kooch.Api.Data;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 using System.Text.Json;
 
 namespace Kooch.Api.Services;
 
 public class PropertyUserService(
     KoochDbContext dbContext,
-    IPermissionService permissionService) : IPropertyUserService
+    IPermissionService permissionService,
+    IAuthService authService,
+    IHostEnvironment appEnvironment) : IPropertyUserService
 {
     public async Task<IReadOnlyList<PropertyUserResponse>> GetUsersAsync(
         int currentUserId,
@@ -47,9 +50,11 @@ public class PropertyUserService(
                 Status = access.Status,
                 Role = access.PropertyRole,
                 IsActive = access.IsActive && access.User.IsActive,
+                PasswordSetupRequired = access.User.PasswordSetupRequired,
                 CanRemove = true,
                 Permissions = DeserializeMatrix(access.PermissionMatrixJson),
                 CreatedAtUtc = access.User.CreatedAtUtc,
+                InvitationAcceptedAtUtc = access.User.InvitationAcceptedAtUtc,
                 LastActivityAtUtc = dbContext.AuditLogs
                     .Where(log => log.PropertyId == propertyId && log.UserId == access.UserId)
                     .Max(log => (DateTime?)log.OccurredAtUtc)
@@ -123,7 +128,8 @@ public class PropertyUserService(
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
                 Role = UserRole.OwnerAssistant,
                 ParentUserId = currentUserId,
-                IsActive = false
+                IsActive = false,
+                PasswordSetupRequired = true
             };
             dbContext.Users.Add(user);
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -137,6 +143,7 @@ public class PropertyUserService(
             user.PhoneNumber = CleanOptional(invitation.Mobile);
             user.Role = UserRole.OwnerAssistant;
             user.IsActive = false;
+            user.PasswordSetupRequired = true;
         }
 
         var access = await dbContext.UserPropertyAccesses
@@ -153,8 +160,14 @@ public class PropertyUserService(
 
         ApplyRequest(access, invitation);
         await dbContext.SaveChangesAsync(cancellationToken);
-        return (await GetUsersAsync(currentUserId, currentRole, propertyId, cancellationToken))
+        var setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
+        var response = (await GetUsersAsync(currentUserId, currentRole, propertyId, cancellationToken))
             .Single(item => item.UserId == user.Id);
+        if (appEnvironment.IsDevelopment())
+        {
+            response.TemporarySetupLink = setupLink;
+        }
+        return response;
     }
 
     public async Task<PropertyUserResponse> UpdateUserAsync(
@@ -423,9 +436,11 @@ public class PropertyUserService(
             Status = owner.IsActive ? PropertyUserStatus.Active : PropertyUserStatus.Suspended,
             Role = PropertyUserRole.PropertyOwner,
             IsActive = owner.IsActive,
+            PasswordSetupRequired = owner.PasswordSetupRequired,
             CanRemove = false,
             Permissions = BuildOwnerMatrix(),
             CreatedAtUtc = owner.CreatedAtUtc,
+            InvitationAcceptedAtUtc = owner.InvitationAcceptedAtUtc,
             LastActivityAtUtc = lastActivityAtUtc
         };
     }

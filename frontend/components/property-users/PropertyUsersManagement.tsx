@@ -146,6 +146,7 @@ export function PropertyUsersManagement({
   const [activityUser, setActivityUser] = useState<PropertyUserResponse | null>(
     null,
   );
+  const [setupLink, setSetupLink] = useState("");
   const [form, setForm] = useState<PropertyUserForm>(emptyForm);
 
   const ownerCount = useMemo(
@@ -270,6 +271,13 @@ export function PropertyUsersManagement({
           ? current.map((item) => (item.userId === saved.userId ? saved : item))
           : [...current, saved],
       );
+      if (
+        !editingUser &&
+        saved.temporarySetupLink &&
+        process.env.NODE_ENV !== "production"
+      ) {
+        setSetupLink(saved.temporarySetupLink);
+      }
       setDialogOpen(false);
       toast.success(editingUser ? "کاربر اقامتگاه ذخیره شد" : "دعوت کاربر ثبت شد");
     } catch (caught) {
@@ -345,6 +353,29 @@ export function PropertyUsersManagement({
       {error && (
         <div className="mx-5 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm font-semibold text-destructive">
           {error}
+        </div>
+      )}
+
+      {setupLink && process.env.NODE_ENV !== "production" && (
+        <div className="mx-5 rounded-lg border border-primary/30 bg-primary/10 p-3">
+          <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+            <div>
+              <p className="text-sm font-black text-foreground">
+                لینک تنظیم رمز عبور آماده است.
+              </p>
+              <p className="mt-1 break-all text-xs text-muted-foreground" dir="ltr">
+                {setupLink}
+              </p>
+            </div>
+            <KoochButton
+              onClick={() => window.open(setupLink, "_blank", "noopener,noreferrer")}
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              مشاهده لینک تنظیم رمز
+            </KoochButton>
+          </div>
         </div>
       )}
 

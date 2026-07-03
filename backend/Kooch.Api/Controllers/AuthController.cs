@@ -48,6 +48,29 @@ public class AuthController(IAuthService authService) : ControllerBase
             : Ok(response);
     }
 
+    [HttpPost("set-password")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<IActionResult> SetPassword(
+        SetPasswordRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await authService.SetPasswordAsync(request, cancellationToken);
+            return NoContent();
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
+
     [Authorize]
     [HttpGet("me")]
     [ProducesResponseType<CurrentUserResponse>(StatusCodes.Status200OK)]

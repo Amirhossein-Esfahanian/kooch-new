@@ -2,12 +2,15 @@ using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Hosting;
 
 namespace Kooch.Api.Services;
 
 public class AdminUserService(
     KoochDbContext dbContext,
-    IPermissionService permissionService) : IAdminUserService
+    IPermissionService permissionService,
+    IAuthService authService,
+    IHostEnvironment appEnvironment) : IAdminUserService
 {
     public async Task<IReadOnlyList<AdminUserResponse>> GetUsersAsync(
         int currentUserId,
@@ -50,10 +53,6 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, request.PropertyId, cancellationToken);
-        if (string.IsNullOrWhiteSpace(request.Password))
-        {
-            throw new ArgumentException("Password is required.");
-        }
 
         var email = NormalizeEmail(request.Email);
         if (await dbContext.Users.IgnoreQueryFilters().AnyAsync(user => user.Email == email, cancellationToken))
@@ -67,16 +66,23 @@ public class AdminUserService(
             LastName = request.LastName.Trim(),
             Email = email,
             PhoneNumber = CleanOptional(request.PhoneNumber),
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
             Role = request.Role,
             ParentUserId = currentRole == UserRole.SuperAdmin ? request.ParentUserId : currentUserId,
-            IsActive = true
+            IsActive = false,
+            PasswordSetupRequired = true
         };
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
         await UpsertPropertyAccessAsync(user.Id, request.PropertyId, request.Role, cancellationToken);
-        return await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
+        var setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
+        var response = await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
+        if (appEnvironment.IsDevelopment())
+        {
+            response.TemporarySetupLink = setupLink;
+        }
+        return response;
     }
 
     public async Task<AdminUserResponse> UpdateUserAsync(
@@ -114,6 +120,7 @@ public class AdminUserService(
         if (!string.IsNullOrWhiteSpace(request.Password))
         {
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            user.PasswordSetupRequired = false;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -236,12 +243,14 @@ public class AdminUserService(
                 CanManageRooms = true,
                 CanManageAvailability = true,
                 CanManagePricing = true,
-                IsActive = true
+                IsActive = false,
+                Status = PropertyUserStatus.Pending
             });
         }
         else
         {
-            access.IsActive = true;
+            access.IsActive = false;
+            access.Status = PropertyUserStatus.Pending;
             access.CanManageProperty = true;
             access.CanManageRooms = true;
             access.CanManageAvailability = true;
@@ -263,7 +272,9 @@ public class AdminUserService(
             ParentUserId = user.ParentUserId,
             ParentUserName = user.ParentUser == null ? null : (user.ParentUser.FirstName + " " + user.ParentUser.LastName).Trim(),
             IsActive = user.IsActive,
-            CreatedAtUtc = user.CreatedAtUtc
+            PasswordSetupRequired = user.PasswordSetupRequired,
+            CreatedAtUtc = user.CreatedAtUtc,
+            InvitationAcceptedAtUtc = user.InvitationAcceptedAtUtc
         });
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();

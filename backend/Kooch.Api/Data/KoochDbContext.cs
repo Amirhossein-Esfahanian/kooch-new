@@ -9,6 +9,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<User> Users => Set<User>();
     public DbSet<Permission> Permissions => Set<Permission>();
     public DbSet<UserPermission> UserPermissions => Set<UserPermission>();
+    public DbSet<PasswordSetupToken> PasswordSetupTokens => Set<PasswordSetupToken>();
     public DbSet<UserPropertyAccess> UserPropertyAccesses => Set<UserPropertyAccess>();
     public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
@@ -54,6 +55,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         ConfigureUsers(modelBuilder);
+        ConfigurePasswordSetupTokens(modelBuilder);
         ConfigurePermissions(modelBuilder);
         ConfigureUserPropertyAccesses(modelBuilder);
         ConfigureNotifications(modelBuilder);
@@ -120,12 +122,27 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(user => user.Username).HasMaxLength(100);
             entity.Property(user => user.PasswordHash).HasMaxLength(500).IsRequired();
             entity.Property(user => user.PhoneNumber).HasMaxLength(30);
+            entity.Property(user => user.PasswordSetupRequired).HasDefaultValue(false);
             entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
             entity.HasIndex(user => user.Email).IsUnique();
             entity.HasOne(user => user.ParentUser)
                 .WithMany(user => user.Children)
                 .HasForeignKey(user => user.ParentUserId)
                 .OnDelete(DeleteBehavior.Restrict);
+        });
+    }
+
+    private static void ConfigurePasswordSetupTokens(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PasswordSetupToken>(entity =>
+        {
+            entity.Property(token => token.TokenHash).HasMaxLength(128).IsRequired();
+            entity.HasIndex(token => token.TokenHash).IsUnique();
+            entity.HasIndex(token => new { token.UserId, token.UsedAtUtc, token.ExpiresAtUtc });
+            entity.HasOne(token => token.User)
+                .WithMany(user => user.PasswordSetupTokens)
+                .HasForeignKey(token => token.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

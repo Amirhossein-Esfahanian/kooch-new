@@ -94,12 +94,14 @@ export interface PropertyUserResponse {
   status: PropertyUserStatus;
   role: PropertyUserRole;
   isActive: boolean;
+  passwordSetupRequired: boolean;
   canRemove: boolean;
   permissions: PermissionMatrixValue;
   lastLoginAtUtc?: string | null;
   lastActivityAtUtc?: string | null;
   createdAtUtc?: string | null;
   invitationAcceptedAtUtc?: string | null;
+  temporarySetupLink?: string | null;
 }
 
 export type AuditAction =
@@ -144,7 +146,10 @@ export interface AdminUserResponse {
   parentUserId: number | null;
   parentUserName: string | null;
   isActive: boolean;
+  passwordSetupRequired: boolean;
   createdAtUtc: string;
+  invitationAcceptedAtUtc?: string | null;
+  temporarySetupLink?: string | null;
 }
 
 export interface RoomTypeResponse {

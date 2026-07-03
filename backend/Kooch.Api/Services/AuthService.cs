@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
 using Kooch.Api.Authentication;
@@ -58,12 +59,83 @@ public class AuthService(
         var user = await dbContext.Users
             .SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
 
-        if (user is null || !user.IsActive || !IsValidPassword(request.Password, user.PasswordHash))
+        if (user is null ||
+            !user.IsActive ||
+            user.PasswordSetupRequired ||
+            !IsValidPassword(request.Password, user.PasswordHash))
         {
             return null;
         }
 
         return CreateAuthResponse(user);
+    }
+
+    public async Task<string> CreatePasswordSetupTokenAsync(
+        int userId,
+        CancellationToken cancellationToken = default)
+    {
+        var userExists = await dbContext.Users.IgnoreQueryFilters()
+            .AnyAsync(user => user.Id == userId, cancellationToken);
+        if (!userExists)
+        {
+            throw new KeyNotFoundException("User not found.");
+        }
+
+        var rawToken = CreateRawToken();
+        dbContext.PasswordSetupTokens.Add(new PasswordSetupToken
+        {
+            UserId = userId,
+            TokenHash = HashToken(rawToken),
+            ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return $"/set-password?token={Uri.EscapeDataString(rawToken)}";
+    }
+
+    public async Task SetPasswordAsync(
+        SetPasswordRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.NewPassword != request.ConfirmPassword)
+        {
+            throw new ArgumentException("Password confirmation does not match.");
+        }
+
+        ValidatePasswordStrength(request.NewPassword);
+        var tokenHash = HashToken(request.Token);
+        var now = DateTime.UtcNow;
+        var setupToken = await dbContext.PasswordSetupTokens
+            .Include(token => token.User)
+            .SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken)
+            ?? throw new InvalidOperationException("Password setup token is invalid.");
+
+        if (setupToken.UsedAtUtc.HasValue)
+        {
+            throw new InvalidOperationException("Password setup token has already been used.");
+        }
+
+        if (setupToken.ExpiresAtUtc <= now)
+        {
+            throw new InvalidOperationException("Password setup token has expired.");
+        }
+
+        setupToken.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        setupToken.User.PasswordSetupRequired = false;
+        setupToken.User.InvitationAcceptedAtUtc = now;
+        setupToken.User.IsActive = true;
+        setupToken.UsedAtUtc = now;
+
+        var propertyAccesses = await dbContext.UserPropertyAccesses
+            .Where(access => access.UserId == setupToken.UserId &&
+                             access.Status == PropertyUserStatus.Pending)
+            .ToListAsync(cancellationToken);
+        foreach (var access in propertyAccesses)
+        {
+            access.Status = PropertyUserStatus.Active;
+            access.IsActive = true;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
     }
 
     public async Task<CurrentUserResponse?> GetCurrentUserAsync(
@@ -133,6 +205,34 @@ public class AuthService(
         catch (BCrypt.Net.SaltParseException)
         {
             return false;
+        }
+    }
+
+    private static string CreateRawToken()
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        RandomNumberGenerator.Fill(bytes);
+        return Convert.ToBase64String(bytes)
+            .Replace("+", "-", StringComparison.Ordinal)
+            .Replace("/", "_", StringComparison.Ordinal)
+            .TrimEnd('=');
+    }
+
+    private static string HashToken(string rawToken)
+    {
+        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(rawToken.Trim()));
+        return Convert.ToHexString(bytes);
+    }
+
+    private static void ValidatePasswordStrength(string password)
+    {
+        if (password.Length < 8 ||
+            !password.Any(char.IsUpper) ||
+            !password.Any(char.IsLower) ||
+            !password.Any(char.IsDigit))
+        {
+            throw new ArgumentException(
+                "Password must be at least 8 characters and include uppercase, lowercase, and a number.");
         }
     }
 }

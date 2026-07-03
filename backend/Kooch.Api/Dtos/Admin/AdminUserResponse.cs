@@ -14,5 +14,8 @@ public class AdminUserResponse
     public int? ParentUserId { get; set; }
     public string? ParentUserName { get; set; }
     public bool IsActive { get; set; }
+    public bool PasswordSetupRequired { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    public DateTime? InvitationAcceptedAtUtc { get; set; }
+    public string? TemporarySetupLink { get; set; }
 }

@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -63,6 +64,7 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [setupLink, setSetupLink] = useState("");
 
   async function load() {
     setUsers(await apiRequest<AdminUserResponse[]>("/admin/users"));
@@ -102,20 +104,28 @@ export default function AdminUsersPage() {
         lastName: form.lastName,
         email: form.email,
         phoneNumber: form.phoneNumber || null,
-        password: form.password || null,
+        password: form.id && form.password ? form.password : null,
         role: form.role,
         parentUserId: form.parentUserId ? Number(form.parentUserId) : null,
         propertyId: form.propertyId ? Number(form.propertyId) : null,
       };
-      await apiRequest<AdminUserResponse>(
+      const saved = await apiRequest<AdminUserResponse>(
         form.id ? `/admin/users/${form.id}` : "/admin/users",
         {
           method: form.id ? "PUT" : "POST",
           body: JSON.stringify(body),
         },
       );
+      if (
+        !form.id &&
+        saved.temporarySetupLink &&
+        process.env.NODE_ENV !== "production"
+      ) {
+        setSetupLink(saved.temporarySetupLink);
+      }
       setForm(emptyForm);
       await load();
+      toast.success(form.id ? "کاربر ذخیره شد" : "دعوت کاربر ثبت شد");
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "ذخیره کاربر انجام نشد.",
@@ -158,6 +168,29 @@ export default function AdminUsersPage() {
           </KoochCard>
         )}
 
+        {setupLink && process.env.NODE_ENV !== "production" && (
+          <KoochCard className="border-primary/30 bg-primary/10" padding="sm">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <p className="text-sm font-black text-foreground">
+                  لینک تنظیم رمز عبور آماده است.
+                </p>
+                <p className="mt-1 break-all text-xs text-muted-foreground" dir="ltr">
+                  {setupLink}
+                </p>
+              </div>
+              <KoochButton
+                onClick={() => window.open(setupLink, "_blank", "noopener,noreferrer")}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                مشاهده لینک تنظیم رمز
+              </KoochButton>
+            </div>
+          </KoochCard>
+        )}
+
         <KoochCard padding="none" variant="elevated">
           <form className="grid gap-4 p-5" onSubmit={submit}>
             <h2 className="text-xl font-black text-foreground">
@@ -181,7 +214,7 @@ export default function AdminUsersPage() {
                 value={form.lastName}
               />
               <KoochInput
-                className="text-left"
+                className={form.id ? "text-left" : "hidden"}
                 dir="ltr"
                 onChange={(event) =>
                   setForm({ ...form, email: event.target.value })
@@ -208,7 +241,7 @@ export default function AdminUsersPage() {
                   setForm({ ...form, password: event.target.value })
                 }
                 placeholder={form.id ? "رمز جدید اختیاری" : "رمز عبور"}
-                required={!form.id}
+                disabled={!form.id}
                 type="password"
                 value={form.password}
               />

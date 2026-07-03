@@ -118,6 +118,7 @@ export default function AdminPropertiesPage() {
     useState<CreatePropertyForm>(emptyCreateForm);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
+  const [setupLink, setSetupLink] = useState("");
 
   const ownerOptions = useMemo(
     () =>
@@ -203,7 +204,7 @@ export default function AdminPropertiesPage() {
       if (!createForm.ownerId) {
         throw new Error("مالک اقامتگاه را انتخاب کنید.");
       }
-      return Number(createForm.ownerId);
+      return { ownerId: Number(createForm.ownerId), setupLink: null };
     }
 
     const createdOwner = await apiRequest<AdminUserResponse>("/admin/users", {
@@ -213,14 +214,18 @@ export default function AdminPropertiesPage() {
         lastName: createForm.ownerLastName.trim(),
         email: createForm.ownerEmail.trim(),
         phoneNumber: createForm.ownerPhoneNumber.trim() || null,
-        password: createForm.ownerPassword,
+        password: null,
         role: "Owner" satisfies UserRole,
         parentUserId: null,
         propertyId: null,
       }),
     });
     setUsers((current) => [...current, createdOwner]);
-    return createdOwner.id;
+    const ownerSetupLink = createdOwner.temporarySetupLink ?? null;
+    if (ownerSetupLink && process.env.NODE_ENV !== "production") {
+      setSetupLink(ownerSetupLink);
+    }
+    return { ownerId: createdOwner.id, setupLink: ownerSetupLink };
   }
 
   async function createDraftProperty(event: FormEvent<HTMLFormElement>) {
@@ -241,23 +246,20 @@ export default function AdminPropertiesPage() {
       createForm.ownerMode === "new-owner" &&
       (!createForm.ownerFirstName.trim() ||
         !createForm.ownerLastName.trim() ||
-        !createForm.ownerEmail.trim() ||
-        createForm.ownerPassword.length < 8)
+        !createForm.ownerEmail.trim())
     ) {
-      toast.error(
-        "برای مالک جدید، نام، ایمیل و رمز حداقل ۸ کاراکتری لازم است.",
-      );
+      toast.error("برای مالک جدید، نام و ایمیل لازم است.");
       return;
     }
 
     setCreating(true);
     setError("");
     try {
-      const ownerId = await createOwnerIfNeeded();
+      const owner = await createOwnerIfNeeded();
       const created = await apiRequest<PropertyResponse>("/admin/properties", {
         method: "POST",
         body: JSON.stringify({
-          ownerId,
+          ownerId: owner.ownerId,
           destinationId: resolveDestinationId(createForm.city),
           name: createForm.name.trim(),
           englishName: createForm.englishName.trim() || null,
@@ -278,7 +280,9 @@ export default function AdminPropertiesPage() {
       setCreateOpen(false);
       setCreateForm(emptyCreateForm);
       await load();
-      router.push(`/admin/properties/${created.id}`);
+      if (!owner.setupLink || process.env.NODE_ENV === "production") {
+        router.push(`/admin/properties/${created.id}`);
+      }
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "ایجاد اقامتگاه انجام نشد.";
@@ -309,6 +313,29 @@ export default function AdminPropertiesPage() {
             variant="elevated"
           >
             <p className="text-sm font-semibold">{error}</p>
+          </KoochCard>
+        )}
+
+        {setupLink && process.env.NODE_ENV !== "production" && (
+          <KoochCard className="border-primary/30 bg-primary/10" padding="sm">
+            <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <p className="text-sm font-black text-foreground">
+                  لینک تنظیم رمز عبور مالک آماده است.
+                </p>
+                <p className="mt-1 break-all text-xs text-muted-foreground" dir="ltr">
+                  {setupLink}
+                </p>
+              </div>
+              <KoochButton
+                onClick={() => window.open(setupLink, "_blank", "noopener,noreferrer")}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                مشاهده لینک تنظیم رمز
+              </KoochButton>
+            </div>
           </KoochCard>
         )}
 
@@ -585,7 +612,7 @@ export default function AdminPropertiesPage() {
                         value={createForm.ownerEmail}
                       />
                     </KoochField>
-                    <KoochField label="رمز عبور اولیه" required>
+                    <KoochField className="hidden" label="رمز عبور اولیه">
                       <KoochInput
                         dir="ltr"
                         minLength={8}
@@ -595,7 +622,6 @@ export default function AdminPropertiesPage() {
                             ownerPassword: event.target.value,
                           })
                         }
-                        required
                         type="password"
                         value={createForm.ownerPassword}
                       />
