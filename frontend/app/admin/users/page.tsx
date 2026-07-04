@@ -9,7 +9,11 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
-import { KoochField, KoochInput, KoochSelect } from "@/components/KoochFormControls";
+import {
+  KoochField,
+  KoochInput,
+  KoochSelect,
+} from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   KoochTable,
@@ -107,7 +111,9 @@ export default function AdminUsersPage() {
   const selectedProperties = useMemo(
     () =>
       form.propertyIds
-        .map((id) => properties.find((property) => property.id.toString() === id))
+        .map((id) =>
+          properties.find((property) => property.id.toString() === id),
+        )
         .filter((property): property is PropertyResponse => Boolean(property)),
     [form.propertyIds, properties],
   );
@@ -191,7 +197,9 @@ export default function AdminUsersPage() {
             password: form.id && form.password ? form.password : null,
             role: form.role,
             parentUserId: null,
-            propertyId: form.propertyIds[0] ? Number(form.propertyIds[0]) : null,
+            propertyId: form.propertyIds[0]
+              ? Number(form.propertyIds[0])
+              : null,
             propertyIds: form.propertyIds.map((id) => Number(id)),
           }),
         },
@@ -266,7 +274,7 @@ export default function AdminUsersPage() {
               افزودن کاربر
             </KoochButton>
           }
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="مدیریت کاربران"
         />
 
@@ -340,7 +348,10 @@ export default function AdminUsersPage() {
                       {user.email}
                     </p>
                     {user.phoneNumber && (
-                      <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
+                      <p
+                        className="mt-1 text-xs text-muted-foreground"
+                        dir="ltr"
+                      >
                         {user.phoneNumber}
                       </p>
                     )}
@@ -356,7 +367,7 @@ export default function AdminUsersPage() {
                         ))}
                       </div>
                     ) : (
-                      user.propertyName ?? "-"
+                      (user.propertyName ?? "-")
                     )}
                   </KoochTableCell>
                   <KoochTableCell>
@@ -425,7 +436,11 @@ export default function AdminUsersPage() {
               >
                 لغو
               </KoochButton>
-              <KoochButton form="admin-user-form" loading={saving} type="submit">
+              <KoochButton
+                form="admin-user-form"
+                loading={saving}
+                type="submit"
+              >
                 ذخیره
               </KoochButton>
             </>
@@ -514,7 +529,9 @@ export default function AdminUsersPage() {
                     setForm((current) => ({
                       ...current,
                       role: event.target.value as UserRole,
-                      propertyIds: isGlobalAdminRole(event.target.value as UserRole)
+                      propertyIds: isGlobalAdminRole(
+                        event.target.value as UserRole,
+                      )
                         ? []
                         : current.propertyIds,
                     }))
@@ -531,64 +548,67 @@ export default function AdminUsersPage() {
             </div>
 
             {!isGlobalAdminRole(form.role) && (
-            <KoochCard padding="sm" variant="muted">
-              <div className="grid gap-3">
-                <div>
-                  <p className="text-sm font-black text-foreground">
-                    اتصال به اقامتگاه
-                  </p>
-                  <p className="mt-1 text-xs leading-6 text-muted-foreground">
-                    برای نقش‌های سراسری این بخش می‌تواند خالی بماند. برای همکار
-                    مالک، اقامتگاه را با نام انتخاب کنید.
-                  </p>
-                </div>
-                <KoochInput
-                  onChange={(event) => setPropertySearch(event.target.value)}
-                  placeholder="جستجوی نام اقامتگاه، شهر یا مالک"
-                  value={propertySearch}
-                />
-                <KoochSelect
-                  onChange={(event) => addPropertyAccess(event.target.value)}
-                  value=""
-                >
-                  <option value="">بدون اقامتگاه / دسترسی سراسری</option>
-                  {filteredProperties
-                    .filter(
-                      (property) =>
-                        !form.propertyIds.includes(property.id.toString()),
-                    )
-                    .map((property) => (
-                      <option key={property.id} value={property.id}>
-                        {property.name} - {property.city} - {property.ownerName}
-                      </option>
-                    ))}
-                </KoochSelect>
-                {selectedProperties.length > 0 ? (
-                  <div className="flex flex-wrap gap-2">
-                    {selectedProperties.map((property) => (
-                      <span
-                        className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-bold text-card-foreground"
-                        key={property.id}
-                      >
-                        {property.name}
-                        <button
-                          className="text-muted-foreground transition hover:text-destructive"
-                          onClick={() => removePropertyAccess(property.id.toString())}
-                          type="button"
-                          aria-label={`حذف دسترسی ${property.name}`}
-                        >
-                          ×
-                        </button>
-                      </span>
-                    ))}
+              <KoochCard padding="sm" variant="muted">
+                <div className="grid gap-3">
+                  <div>
+                    <p className="text-sm font-black text-foreground">
+                      اتصال به اقامتگاه
+                    </p>
+                    <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                      برای نقش‌های سراسری این بخش می‌تواند خالی بماند. برای
+                      همکار مالک، اقامتگاه را با نام انتخاب کنید.
+                    </p>
                   </div>
-                ) : (
-                  <p className="text-xs font-bold text-destructive">
-                    حداقل یک اقامتگاه انتخاب کنید.
-                  </p>
-                )}
-              </div>
-            </KoochCard>
+                  <KoochInput
+                    onChange={(event) => setPropertySearch(event.target.value)}
+                    placeholder="جستجوی نام اقامتگاه، شهر یا مالک"
+                    value={propertySearch}
+                  />
+                  <KoochSelect
+                    onChange={(event) => addPropertyAccess(event.target.value)}
+                    value=""
+                  >
+                    <option value="">بدون اقامتگاه / دسترسی سراسری</option>
+                    {filteredProperties
+                      .filter(
+                        (property) =>
+                          !form.propertyIds.includes(property.id.toString()),
+                      )
+                      .map((property) => (
+                        <option key={property.id} value={property.id}>
+                          {property.name} - {property.city} -{" "}
+                          {property.ownerName}
+                        </option>
+                      ))}
+                  </KoochSelect>
+                  {selectedProperties.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {selectedProperties.map((property) => (
+                        <span
+                          className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-bold text-card-foreground"
+                          key={property.id}
+                        >
+                          {property.name}
+                          <button
+                            className="text-muted-foreground transition hover:text-destructive"
+                            onClick={() =>
+                              removePropertyAccess(property.id.toString())
+                            }
+                            type="button"
+                            aria-label={`حذف دسترسی ${property.name}`}
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs font-bold text-destructive">
+                      حداقل یک اقامتگاه انتخاب کنید.
+                    </p>
+                  )}
+                </div>
+              </KoochCard>
             )}
           </form>
         </KoochDialog>

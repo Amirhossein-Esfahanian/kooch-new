@@ -14,7 +14,7 @@ export default function AdminReservationSettingsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           description="تنظیمات عمومی رزرو در تنظیمات سایت نگهداری می‌شود."
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="تنظیمات رزرو"
         />
 
@@ -23,9 +23,9 @@ export default function AdminReservationSettingsPage() {
             تنظیمات رزرو از تنظیمات سایت مدیریت می‌شود
           </h2>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
-            حداقل قیمت، حداکثر قیمت و درصدهای کمیسیون فقط در بخش تنظیمات سایت قابل
-            ویرایش هستند. پشتیبانی از override کمیسیون برای هر اقامتگاه در آینده
-            اضافه می‌شود.
+            حداقل قیمت، حداکثر قیمت و درصدهای کمیسیون فقط در بخش تنظیمات سایت
+            قابل ویرایش هستند. پشتیبانی از override کمیسیون برای هر اقامتگاه در
+            آینده اضافه می‌شود.
           </p>
           <Link
             className={`${linkButtonClass} mt-5 border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}

@@ -18,7 +18,10 @@ export default function AdminPricingPage() {
         <KoochPageHeader
           actions={
             <>
-              <Link className={headerLinkClass} href={`/admin/properties/${propertyId}`}>
+              <Link
+                className={headerLinkClass}
+                href={`/admin/properties/${propertyId}`}
+              >
                 بازگشت به ویرایش اقامتگاه
               </Link>
               <Link className={headerLinkClass} href="/admin/properties">
@@ -27,7 +30,7 @@ export default function AdminPricingPage() {
             </>
           }
           description="مدیریت قیمت روزانه اتاق‌ها در بستر پنل مدیریت"
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="قیمت‌گذاری اتاق‌ها"
         />
         <OwnerPricingGrid context="admin" propertyId={propertyId} />

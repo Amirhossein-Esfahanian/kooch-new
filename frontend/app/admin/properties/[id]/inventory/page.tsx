@@ -19,7 +19,10 @@ export default function AdminInventoryPage() {
         <KoochPageHeader
           actions={
             <>
-              <Link className={headerLinkClass} href={`/admin/properties/${propertyId}`}>
+              <Link
+                className={headerLinkClass}
+                href={`/admin/properties/${propertyId}`}
+              >
                 بازگشت به ویرایش اقامتگاه
               </Link>
               <Link className={headerLinkClass} href="/admin/properties">
@@ -28,7 +31,7 @@ export default function AdminInventoryPage() {
             </>
           }
           description="مدیریت ظرفیت روزانه اتاق‌ها در بستر پنل مدیریت"
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="ظرفیت اتاق‌ها"
         />
         <OwnerInventoryGrid context="admin" propertyId={propertyId} />

@@ -299,11 +299,12 @@ export default function AdminPropertiesPage() {
         <KoochPageHeader
           actions={
             <KoochButton onClick={openCreateDialog} type="button">
+              <KoochIcon name="plus"></KoochIcon>
               افزودن اقامتگاه
             </KoochButton>
           }
           description="اقامتگاه‌ها، وضعیت بررسی، ظرفیت و قیمت‌گذاری را از همین صفحه مدیریت کنید."
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="مدیریت اقامتگاه‌ها"
         />
 
@@ -323,12 +324,17 @@ export default function AdminPropertiesPage() {
                 <p className="text-sm font-black text-foreground">
                   لینک تنظیم رمز عبور مالک آماده است.
                 </p>
-                <p className="mt-1 break-all text-xs text-muted-foreground" dir="ltr">
+                <p
+                  className="mt-1 break-all text-xs text-muted-foreground"
+                  dir="ltr"
+                >
                   {setupLink}
                 </p>
               </div>
               <KoochButton
-                onClick={() => window.open(setupLink, "_blank", "noopener,noreferrer")}
+                onClick={() =>
+                  window.open(setupLink, "_blank", "noopener,noreferrer")
+                }
                 size="sm"
                 type="button"
                 variant="outline"

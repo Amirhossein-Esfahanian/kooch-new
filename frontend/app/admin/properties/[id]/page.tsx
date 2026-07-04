@@ -47,7 +47,7 @@ export default function AdminPropertyEditPage() {
             </>
           }
           description="ویرایش اطلاعات اقامتگاه در همان جریان مرحله‌ای مالک."
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="ویرایش اقامتگاه"
         />
         <PricingSettingsWarning

@@ -349,7 +349,7 @@ export default function AdminSiteSettingsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           description="تنظیمات عمومی، برند، تصاویر و مقادیر مرکزی سایت را مدیریت کنید."
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="تنظیمات سایت"
         />
         {loading && (

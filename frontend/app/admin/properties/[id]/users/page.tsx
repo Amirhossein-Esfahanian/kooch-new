@@ -30,7 +30,7 @@ export default function AdminPropertyUsersPage() {
             </>
           }
           description="تعریف و مدیریت کاربران عملیاتی همین اقامتگاه"
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="مدیریت کاربران"
         />
         <PropertyUsersManagement context="admin" propertyId={propertyId} />

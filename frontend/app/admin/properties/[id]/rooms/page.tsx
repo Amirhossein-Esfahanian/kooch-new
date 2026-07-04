@@ -17,7 +17,10 @@ export default function AdminPropertyRoomsPage() {
         <KoochPageHeader
           actions={
             <>
-              <Link className={headerLinkClass} href={`/admin/properties/${propertyId}`}>
+              <Link
+                className={headerLinkClass}
+                href={`/admin/properties/${propertyId}`}
+              >
                 بازگشت به ویرایش اقامتگاه
               </Link>
               <Link className={headerLinkClass} href="/admin/properties">
@@ -26,7 +29,7 @@ export default function AdminPropertyRoomsPage() {
             </>
           }
           description="ایجاد، ویرایش، فعال‌سازی و مدیریت تصاویر اتاق‌ها"
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="مدیریت اتاق‌ها"
         />
         <RoomManagement propertyId={propertyId} />

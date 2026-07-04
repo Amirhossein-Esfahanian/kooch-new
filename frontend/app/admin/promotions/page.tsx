@@ -10,7 +10,7 @@ export default function AdminPromotionsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           description="قالب‌های مدیریتی و پروموشن‌های اقامتگاه‌ها را مدیریت کنید."
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="مدیریت پروموشن‌ها"
         />
         <PromotionWorkspace admin />
