@@ -20,6 +20,7 @@ import {
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import { KoochIcon } from "../KoochIcon";
 
 const promotionTypes: { value: PromotionType; label: string }[] = [
   { value: "PercentageDiscount", label: "تخفیف درصدی" },
@@ -393,7 +394,8 @@ export function PromotionWorkspace({
       <KoochCard variant="elevated">
         <div className="flex flex-wrap items-center gap-3">
           <KoochButton onClick={openNew} type="button">
-            + پروموشن جدید
+            <KoochIcon name="plus"></KoochIcon>
+            پروموشن جدید
           </KoochButton>
           <KoochInput
             className="min-w-52 flex-1"
@@ -450,12 +452,16 @@ export function PromotionWorkspace({
       {loading && (
         <KoochCard className="text-center" padding="lg" variant="elevated">
           <p className="text-sm text-muted-foreground">
-          در حال بارگذاری پروموشن‌ها...
+            در حال بارگذاری پروموشن‌ها...
           </p>
         </KoochCard>
       )}
       {!loading && !filtered.length && (
-        <KoochCard className="border-dashed text-center" padding="lg" variant="elevated">
+        <KoochCard
+          className="border-dashed text-center"
+          padding="lg"
+          variant="elevated"
+        >
           <p className="text-sm text-muted-foreground">
             پروموشنی با این فیلتر پیدا نشد.
           </p>
@@ -537,7 +543,9 @@ export function PromotionWorkspace({
                 </dd>
               </div>
               <div>
-                <dt className="text-xs text-muted-foreground">اتاق‌های انتخاب‌شده</dt>
+                <dt className="text-xs text-muted-foreground">
+                  اتاق‌های انتخاب‌شده
+                </dt>
                 <dd>{promotion.roomTypes.length} اتاق</dd>
               </div>
               <div>
@@ -632,295 +640,296 @@ export function PromotionWorkspace({
         title={editing ? "ویرایش پروموشن" : "پروموشن جدید"}
       >
         <form className="grid gap-4" id="promotion-form" onSubmit={submit}>
-<div className="grid gap-4 sm:grid-cols-2">
-          {admin && (
-            <div className="rounded-xl border border-border bg-muted p-3 text-sm font-bold text-muted-foreground sm:col-span-2">
-              این پروموشن به عنوان قالب مدیریتی قابل انتشار در کتابخانه
-              مالک‌ها ساخته می‌شود.
-            </div>
-          )}
-          <label className="grid gap-2 text-sm font-bold sm:col-span-2">
-            عنوان
-            <KoochInput
-              maxLength={150}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  title: event.target.value,
-                }))
-              }
-              required
-              value={draft.title}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold">
-            نوع پروموشن
-            <KoochSelect
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  type: event.target.value as PromotionType,
-                }))
-              }
-              value={draft.type}
-            >
-              {promotionTypes.map((type) => (
-                <option key={type.value} value={type.value}>
-                  {type.label}
-                </option>
-              ))}
-            </KoochSelect>
-          </label>
-          {(draft.type === "PercentageDiscount" ||
-            draft.type === "LastMinute") && (
-            <label className="grid gap-2 text-sm font-bold">
-              درصد تخفیف
+          <div className="grid gap-4 sm:grid-cols-2">
+            {admin && (
+              <div className="rounded-xl border border-border bg-muted p-3 text-sm font-bold text-muted-foreground sm:col-span-2">
+                این پروموشن به عنوان قالب مدیریتی قابل انتشار در کتابخانه
+                مالک‌ها ساخته می‌شود.
+              </div>
+            )}
+            <label className="grid gap-2 text-sm font-bold sm:col-span-2">
+              عنوان
               <KoochInput
-                max="100"
-                min="0"
+                maxLength={150}
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    percentage: event.target.value,
+                    title: event.target.value,
                   }))
                 }
-                type="number"
-                value={draft.percentage}
+                required
+                value={draft.title}
               />
             </label>
-          )}
-          {draft.type === "FixedAmountDiscount" && (
             <label className="grid gap-2 text-sm font-bold">
-              مبلغ تخفیف
-              <KoochInput
-                min="0"
+              نوع پروموشن
+              <KoochSelect
                 onChange={(event) =>
                   setDraft((current) => ({
                     ...current,
-                    amount: event.target.value,
+                    type: event.target.value as PromotionType,
                   }))
                 }
-                type="number"
-                value={draft.amount}
-              />
-            </label>
-          )}
-          {draft.type === "LastMinute" && (
-            <label className="grid gap-2 text-sm font-bold">
-              حداکثر روز مانده تا ورود
-              <KoochInput
-                min="0"
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    lastMinuteDays: event.target.value,
-                  }))
-                }
-                type="number"
-                value={draft.lastMinuteDays}
-              />
-            </label>
-          )}
-          <div className="sm:col-span-2">
-            <KoochDatePicker
-              calendarType="jalali"
-              controlClassName={dateControlClass}
-              labels={{ start: "تاریخ شروع", end: "تاریخ پایان", rangeTitle: "انتخاب بازه پروموشن" }}
-              labelsAbove
-              mode="range"
-              onChange={(nextValue) =>
-                setDraft((current) => ({
-                  ...current,
-                  startDate: nextValue.startDate ?? current.startDate,
-                  endDate: nextValue.endDate ?? current.endDate,
-                }))
-              }
-              placeholderEnd="انتخاب تاریخ پایان"
-              placeholderStart="انتخاب تاریخ شروع"
-              value={{ startDate: draft.startDate, endDate: draft.endDate }}
-            />
-          </div>
-          <label className="grid gap-2 text-sm font-bold sm:col-span-2">
-            توضیحات داخلی
-            <KoochTextarea
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  internalDescription: event.target.value,
-                }))
-              }
-              rows={2}
-              value={draft.internalDescription}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold sm:col-span-2">
-            توضیحات عمومی
-            <KoochTextarea
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  publicDescription: event.target.value,
-                }))
-              }
-              rows={2}
-              value={draft.publicDescription}
-            />
-          </label>
-          {draft.type === "Informational" && (
-            <div className="rounded-xl border border-border bg-muted p-3 text-sm font-bold leading-6 text-muted-foreground sm:col-span-2">
-              مثال: با ۳ شب اقامت، گشت رایگان · با ۲ شب اقامت، ناهار رایگان
-            </div>
-          )}
-          <label className="grid gap-2 text-sm font-bold">
-            آیکن اختیاری
-            <KoochInput
-              maxLength={20}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  optionalIcon: event.target.value,
-                }))
-              }
-              placeholder="🎁"
-              value={draft.optionalIcon}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold">
-            رنگ بج
-            <KoochInput
-              maxLength={40}
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  badgeColor: event.target.value,
-                }))
-              }
-              placeholder="#2563eb"
-              value={draft.badgeColor}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold">
-            حداقل شب اقامت
-            <KoochInput
-              min="0"
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  minimumStayNights: event.target.value,
-                }))
-              }
-              type="number"
-              value={draft.minimumStayNights}
-            />
-          </label>
-          <label className="grid gap-2 text-sm font-bold">
-            حداقل مهمان
-            <KoochInput
-              min="0"
-              onChange={(event) =>
-                setDraft((current) => ({
-                  ...current,
-                  minimumGuests: event.target.value,
-                }))
-              }
-              type="number"
-              value={draft.minimumGuests}
-            />
-          </label>
-        </div>
-        <fieldset className="mt-5">
-          <legend className="mb-2 text-sm font-black">روزهای هفته</legend>
-          <div className="flex flex-wrap gap-2">
-            {weekdays.map((day) => (
-              <label
-                className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-primary bg-muted text-foreground" : "border-border text-muted-foreground"}`}
-                key={day.value}
+                value={draft.type}
               >
-                <input
-                  checked={draft.weekdays.includes(day.value)}
-                  className="sr-only"
-                  onChange={() =>
+                {promotionTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </KoochSelect>
+            </label>
+            {(draft.type === "PercentageDiscount" ||
+              draft.type === "LastMinute") && (
+              <label className="grid gap-2 text-sm font-bold">
+                درصد تخفیف
+                <KoochInput
+                  max="100"
+                  min="0"
+                  onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
-                      weekdays: current.weekdays.includes(day.value)
-                        ? current.weekdays.filter(
-                            (item) => item !== day.value,
-                          )
-                        : [...current.weekdays, day.value],
+                      percentage: event.target.value,
                     }))
                   }
-                  type="checkbox"
+                  type="number"
+                  value={draft.percentage}
                 />
-                {day.label}
               </label>
-            ))}
+            )}
+            {draft.type === "FixedAmountDiscount" && (
+              <label className="grid gap-2 text-sm font-bold">
+                مبلغ تخفیف
+                <KoochInput
+                  min="0"
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      amount: event.target.value,
+                    }))
+                  }
+                  type="number"
+                  value={draft.amount}
+                />
+              </label>
+            )}
+            {draft.type === "LastMinute" && (
+              <label className="grid gap-2 text-sm font-bold">
+                حداکثر روز مانده تا ورود
+                <KoochInput
+                  min="0"
+                  onChange={(event) =>
+                    setDraft((current) => ({
+                      ...current,
+                      lastMinuteDays: event.target.value,
+                    }))
+                  }
+                  type="number"
+                  value={draft.lastMinuteDays}
+                />
+              </label>
+            )}
+            <div className="sm:col-span-2">
+              <KoochDatePicker
+                calendarType="jalali"
+                controlClassName={dateControlClass}
+                labels={{
+                  start: "تاریخ شروع",
+                  end: "تاریخ پایان",
+                  rangeTitle: "انتخاب بازه پروموشن",
+                }}
+                labelsAbove
+                mode="range"
+                onChange={(nextValue) =>
+                  setDraft((current) => ({
+                    ...current,
+                    startDate: nextValue.startDate ?? current.startDate,
+                    endDate: nextValue.endDate ?? current.endDate,
+                  }))
+                }
+                placeholderEnd="انتخاب تاریخ پایان"
+                placeholderStart="انتخاب تاریخ شروع"
+                value={{ startDate: draft.startDate, endDate: draft.endDate }}
+              />
+            </div>
+            <label className="grid gap-2 text-sm font-bold sm:col-span-2">
+              توضیحات داخلی
+              <KoochTextarea
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    internalDescription: event.target.value,
+                  }))
+                }
+                rows={2}
+                value={draft.internalDescription}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-bold sm:col-span-2">
+              توضیحات عمومی
+              <KoochTextarea
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    publicDescription: event.target.value,
+                  }))
+                }
+                rows={2}
+                value={draft.publicDescription}
+              />
+            </label>
+            {draft.type === "Informational" && (
+              <div className="rounded-xl border border-border bg-muted p-3 text-sm font-bold leading-6 text-muted-foreground sm:col-span-2">
+                مثال: با ۳ شب اقامت، گشت رایگان · با ۲ شب اقامت، ناهار رایگان
+              </div>
+            )}
+            <label className="grid gap-2 text-sm font-bold">
+              آیکن اختیاری
+              <KoochInput
+                maxLength={20}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    optionalIcon: event.target.value,
+                  }))
+                }
+                placeholder="🎁"
+                value={draft.optionalIcon}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-bold">
+              رنگ بج
+              <KoochInput
+                maxLength={40}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    badgeColor: event.target.value,
+                  }))
+                }
+                placeholder="#2563eb"
+                value={draft.badgeColor}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-bold">
+              حداقل شب اقامت
+              <KoochInput
+                min="0"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    minimumStayNights: event.target.value,
+                  }))
+                }
+                type="number"
+                value={draft.minimumStayNights}
+              />
+            </label>
+            <label className="grid gap-2 text-sm font-bold">
+              حداقل مهمان
+              <KoochInput
+                min="0"
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    minimumGuests: event.target.value,
+                  }))
+                }
+                type="number"
+                value={draft.minimumGuests}
+              />
+            </label>
           </div>
-        </fieldset>
-        {!admin && (
           <fieldset className="mt-5">
-            <legend className="mb-2 text-sm font-black">
-              اتاق‌های منتخب
-            </legend>
-            <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-border bg-background p-3 sm:grid-cols-2">
-              {rooms.map((room) => (
+            <legend className="mb-2 text-sm font-black">روزهای هفته</legend>
+            <div className="flex flex-wrap gap-2">
+              {weekdays.map((day) => (
                 <label
-                  className="flex items-center gap-2 text-sm font-bold"
-                  key={room.id}
+                  className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold ${draft.weekdays.includes(day.value) ? "border-primary bg-muted text-foreground" : "border-border text-muted-foreground"}`}
+                  key={day.value}
                 >
                   <input
-                    checked={draft.roomTypeIds.includes(room.id)}
+                    checked={draft.weekdays.includes(day.value)}
+                    className="sr-only"
                     onChange={() =>
                       setDraft((current) => ({
                         ...current,
-                        roomTypeIds: current.roomTypeIds.includes(room.id)
-                          ? current.roomTypeIds.filter(
-                              (id) => id !== room.id,
+                        weekdays: current.weekdays.includes(day.value)
+                          ? current.weekdays.filter(
+                              (item) => item !== day.value,
                             )
-                          : [...current.roomTypeIds, room.id],
+                          : [...current.weekdays, day.value],
                       }))
                     }
                     type="checkbox"
                   />
-                  {room.name}
+                  {day.label}
                 </label>
               ))}
-              {!rooms.length && (
-                <p className="text-sm text-muted-foreground">
-                  اتاق فعالی برای این اقامتگاه وجود ندارد.
-                </p>
-              )}
             </div>
           </fieldset>
-        )}
-        <label className="mt-5 flex items-center gap-2 text-sm font-bold">
-          <input
-            checked={draft.isActive}
-            onChange={(event) =>
-              setDraft((current) => ({
-                ...current,
-                isActive: event.target.checked,
-              }))
-            }
-            type="checkbox"
-          />
-          پروموشن فعال باشد
-        </label>
-        {admin && (
-          <label className="mt-3 flex items-center gap-2 text-sm font-bold">
+          {!admin && (
+            <fieldset className="mt-5">
+              <legend className="mb-2 text-sm font-black">
+                اتاق‌های منتخب
+              </legend>
+              <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-border bg-background p-3 sm:grid-cols-2">
+                {rooms.map((room) => (
+                  <label
+                    className="flex items-center gap-2 text-sm font-bold"
+                    key={room.id}
+                  >
+                    <input
+                      checked={draft.roomTypeIds.includes(room.id)}
+                      onChange={() =>
+                        setDraft((current) => ({
+                          ...current,
+                          roomTypeIds: current.roomTypeIds.includes(room.id)
+                            ? current.roomTypeIds.filter((id) => id !== room.id)
+                            : [...current.roomTypeIds, room.id],
+                        }))
+                      }
+                      type="checkbox"
+                    />
+                    {room.name}
+                  </label>
+                ))}
+                {!rooms.length && (
+                  <p className="text-sm text-muted-foreground">
+                    اتاق فعالی برای این اقامتگاه وجود ندارد.
+                  </p>
+                )}
+              </div>
+            </fieldset>
+          )}
+          <label className="mt-5 flex items-center gap-2 text-sm font-bold">
             <input
-              checked={draft.isPublished}
+              checked={draft.isActive}
               onChange={(event) =>
                 setDraft((current) => ({
                   ...current,
-                  isPublished: event.target.checked,
+                  isActive: event.target.checked,
                 }))
               }
               type="checkbox"
             />
-            انتشار در کتابخانه مالک‌ها
+            پروموشن فعال باشد
           </label>
-        )}
-
+          {admin && (
+            <label className="mt-3 flex items-center gap-2 text-sm font-bold">
+              <input
+                checked={draft.isPublished}
+                onChange={(event) =>
+                  setDraft((current) => ({
+                    ...current,
+                    isPublished: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              انتشار در کتابخانه مالک‌ها
+            </label>
+          )}
         </form>
       </KoochDialog>
     </div>

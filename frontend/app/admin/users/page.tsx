@@ -31,6 +31,7 @@ import {
   PropertyResponse,
   UserRole,
 } from "@/lib/owner-api";
+import { KoochIcon } from "../../../components/KoochIcon";
 
 const roles: UserRole[] = [
   "SuperAdmin",
@@ -47,6 +48,9 @@ const roleLabels: Record<UserRole, string> = {
   OwnerAssistant: "همکار مالک",
   Client: "مسافر",
 };
+
+type UserRoleFilter = "all" | UserRole;
+type UserStatusFilter = "all" | "active" | "inactive" | "passwordSetupRequired";
 
 type UserForm = {
   id: number | null;
@@ -69,6 +73,14 @@ const emptyForm: UserForm = {
   role: "Client",
   propertyIds: [],
 };
+
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("ي", "ی")
+    .replaceAll("ك", "ک");
+}
 
 function isGlobalAdminRole(role: UserRole) {
   return role === "SuperAdmin" || role === "AdminAssistant";
@@ -96,15 +108,20 @@ export default function AdminUsersPage() {
   const [propertySearch, setPropertySearch] = useState("");
   const [error, setError] = useState("");
   const [setupLink, setSetupLink] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
+  const [propertyFilter, setPropertyFilter] = useState("all");
 
   const filteredProperties = useMemo(() => {
-    const query = propertySearch.trim().toLocaleLowerCase();
+    const query = normalizeSearchText(propertySearch);
+
     if (!query) return properties;
 
     return properties.filter((property) =>
       [property.name, property.englishName, property.city, property.ownerName]
-        .filter(Boolean)
-        .some((value) => value!.toLocaleLowerCase().includes(query)),
+        .map(normalizeSearchText)
+        .some((value) => value.includes(query)),
     );
   }, [properties, propertySearch]);
 
@@ -118,11 +135,63 @@ export default function AdminUsersPage() {
     [form.propertyIds, properties],
   );
 
+  const filteredUsers = useMemo(() => {
+    const query = normalizeSearchText(searchTerm);
+
+    return users.filter((user) => {
+      const userPropertyIds =
+        user.properties?.map((property) => property.propertyId.toString()) ??
+        (user.propertyId ? [user.propertyId.toString()] : []);
+
+      const userPropertyNames =
+        user.properties?.map((property) => property.propertyName) ??
+        (user.propertyName ? [user.propertyName] : []);
+
+      const matchesSearch =
+        !query ||
+        [
+          user.fullName,
+          user.firstName,
+          user.lastName,
+          user.email,
+          user.phoneNumber,
+          roleLabels[user.role],
+          statusLabel(user),
+          ...userPropertyNames,
+        ]
+          .map(normalizeSearchText)
+          .some((value) => value.includes(query));
+
+      const matchesRole = roleFilter === "all" || user.role === roleFilter;
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" &&
+          user.isActive &&
+          !user.passwordSetupRequired) ||
+        (statusFilter === "inactive" && !user.isActive) ||
+        (statusFilter === "passwordSetupRequired" &&
+          user.passwordSetupRequired);
+
+      const matchesProperty =
+        propertyFilter === "all" || userPropertyIds.includes(propertyFilter);
+
+      return matchesSearch && matchesRole && matchesStatus && matchesProperty;
+    });
+  }, [propertyFilter, roleFilter, searchTerm, statusFilter, users]);
+
+  const hasActiveFilters =
+    Boolean(searchTerm.trim()) ||
+    roleFilter !== "all" ||
+    statusFilter !== "all" ||
+    propertyFilter !== "all";
+
   async function load() {
     const [userItems, propertyItems] = await Promise.all([
       apiRequest<AdminUserResponse[]>("/admin/users"),
       apiRequest<PropertyResponse[]>("/admin/properties").catch(() => []),
     ]);
+
     setUsers(userItems);
     setProperties(propertyItems);
   }
@@ -140,6 +209,13 @@ export default function AdminUsersPage() {
       })
       .finally(() => setLoading(false));
   }, [router]);
+
+  function resetFilters() {
+    setSearchTerm("");
+    setRoleFilter("all");
+    setStatusFilter("all");
+    setPropertyFilter("all");
+  }
 
   function openCreate() {
     setForm(emptyForm);
@@ -175,6 +251,7 @@ export default function AdminUsersPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     if (!isGlobalAdminRole(form.role) && form.propertyIds.length === 0) {
       const message = "برای این کاربر حداقل یک اقامتگاه انتخاب کنید.";
       setError(message);
@@ -184,6 +261,7 @@ export default function AdminUsersPage() {
 
     setSaving(true);
     setError("");
+
     try {
       const saved = await apiRequest<AdminUserResponse>(
         form.id ? `/admin/users/${form.id}` : "/admin/users",
@@ -228,20 +306,24 @@ export default function AdminUsersPage() {
 
   async function setActive(user: AdminUserResponse, active: boolean) {
     setError("");
+
     try {
       const updated = await apiRequest<AdminUserResponse>(
         `/admin/users/${user.id}/${active ? "activate" : "deactivate"}`,
         { method: "PUT" },
       );
+
       setUsers((current) =>
         current.map((item) => (item.id === user.id ? updated : item)),
       );
+
       toast.success(active ? "کاربر فعال شد" : "کاربر غیرفعال شد");
     } catch (caught) {
       const message =
         caught instanceof Error
           ? caught.message
           : "تغییر وضعیت کاربر انجام نشد.";
+
       setError(message);
       toast.error(message);
       throw caught;
@@ -250,6 +332,7 @@ export default function AdminUsersPage() {
 
   function addPropertyAccess(propertyId: string) {
     if (!propertyId) return;
+
     setForm((current) => ({
       ...current,
       propertyIds: current.propertyIds.includes(propertyId)
@@ -267,10 +350,11 @@ export default function AdminUsersPage() {
 
   return (
     <AdminLayout>
-      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+      <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
           actions={
             <KoochButton onClick={openCreate} type="button">
+              <KoochIcon name="plus" />
               افزودن کاربر
             </KoochButton>
           }
@@ -315,115 +399,214 @@ export default function AdminUsersPage() {
           </KoochCard>
         )}
 
-        <KoochTable>
-          <KoochTableHeader>
-            <KoochTableRow>
-              <KoochTableHead className="w-14">ردیف</KoochTableHead>
-              <KoochTableHead>کاربر</KoochTableHead>
-              <KoochTableHead>نقش</KoochTableHead>
-              <KoochTableHead>اقامتگاه</KoochTableHead>
-              <KoochTableHead>وضعیت</KoochTableHead>
-              <KoochTableHead>تاریخ ایجاد</KoochTableHead>
-              <KoochTableHead>عملیات</KoochTableHead>
-            </KoochTableRow>
-          </KoochTableHeader>
-          <KoochTableBody>
-            {loading ? (
-              <KoochTableEmpty colSpan={7}>در حال بارگذاری...</KoochTableEmpty>
-            ) : users.length === 0 ? (
-              <KoochTableEmpty colSpan={7}>
-                هنوز کاربری ثبت نشده است.
-              </KoochTableEmpty>
-            ) : (
-              users.map((user, index) => (
-                <KoochTableRow key={user.id}>
-                  <KoochTableCell className="font-bold text-muted-foreground">
-                    {index + 1}
-                  </KoochTableCell>
-                  <KoochTableCell>
-                    <p className="font-black text-foreground">
-                      {user.fullName || user.email}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
-                      {user.email}
-                    </p>
-                    {user.phoneNumber && (
+        {!loading && users.length > 0 && (
+          <KoochCard
+            className="min-w-0 max-w-full"
+            padding="sm"
+            variant="elevated"
+          >
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_190px_190px_220px_auto] xl:items-end">
+              <KoochField label="جستجو">
+                <KoochInput
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="نام، ایمیل، شماره تماس، نقش، اقامتگاه..."
+                  value={searchTerm}
+                />
+              </KoochField>
+
+              <KoochField label="نقش">
+                <KoochSelect
+                  onChange={(event) =>
+                    setRoleFilter(event.target.value as UserRoleFilter)
+                  }
+                  value={roleFilter}
+                >
+                  <option value="all">همه نقش‌ها</option>
+                  {roles.map((role) => (
+                    <option key={role} value={role}>
+                      {roleLabels[role]}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+
+              <KoochField label="وضعیت">
+                <KoochSelect
+                  onChange={(event) =>
+                    setStatusFilter(event.target.value as UserStatusFilter)
+                  }
+                  value={statusFilter}
+                >
+                  <option value="all">همه وضعیت‌ها</option>
+                  <option value="active">فعال</option>
+                  <option value="inactive">غیرفعال</option>
+                  <option value="passwordSetupRequired">
+                    در انتظار تنظیم رمز
+                  </option>
+                </KoochSelect>
+              </KoochField>
+
+              <KoochField label="اقامتگاه">
+                <KoochSelect
+                  onChange={(event) => setPropertyFilter(event.target.value)}
+                  value={propertyFilter}
+                >
+                  <option value="all">همه اقامتگاه‌ها</option>
+                  {properties.map((property) => (
+                    <option key={property.id} value={property.id.toString()}>
+                      {property.name}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <KoochButton
+                  disabled={!hasActiveFilters}
+                  onClick={resetFilters}
+                  type="button"
+                  variant="outline"
+                >
+                  حذف فیلترها
+                </KoochButton>
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-sm text-muted-foreground">
+              <span>
+                نمایش {filteredUsers.length.toLocaleString("fa-IR")} از{" "}
+                {users.length.toLocaleString("fa-IR")} کاربر
+              </span>
+
+              {hasActiveFilters && (
+                <span className="rounded-md bg-amber-300 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-200 dark:text-amber-900">
+                  فیلتر فعال است
+                </span>
+              )}
+            </div>
+          </KoochCard>
+        )}
+        <div className="min-w-0 max-w-full">
+          <KoochTable>
+            <KoochTableHeader>
+              <KoochTableRow>
+                <KoochTableHead className="w-14">ردیف</KoochTableHead>
+                <KoochTableHead>کاربر</KoochTableHead>
+                <KoochTableHead>شماره تماس</KoochTableHead>
+                <KoochTableHead>نقش</KoochTableHead>
+                <KoochTableHead>اقامتگاه</KoochTableHead>
+                <KoochTableHead>وضعیت</KoochTableHead>
+                <KoochTableHead>عملیات</KoochTableHead>
+              </KoochTableRow>
+            </KoochTableHeader>
+
+            <KoochTableBody>
+              {loading ? (
+                <KoochTableEmpty colSpan={7}>
+                  در حال بارگذاری...
+                </KoochTableEmpty>
+              ) : users.length === 0 ? (
+                <KoochTableEmpty colSpan={7}>
+                  هنوز کاربری ثبت نشده است.
+                </KoochTableEmpty>
+              ) : filteredUsers.length === 0 ? (
+                <KoochTableEmpty colSpan={7}>
+                  موردی با فیلترهای انتخاب‌شده پیدا نشد.
+                </KoochTableEmpty>
+              ) : (
+                filteredUsers.map((user, index) => (
+                  <KoochTableRow key={user.id}>
+                    <KoochTableCell className="font-bold text-muted-foreground">
+                      {index + 1}
+                    </KoochTableCell>
+
+                    <KoochTableCell>
+                      <p className="font-black text-foreground">
+                        {user.fullName || user.email}
+                      </p>
                       <p
                         className="mt-1 text-xs text-muted-foreground"
                         dir="ltr"
                       >
-                        {user.phoneNumber}
+                        {user.email}
                       </p>
-                    )}
-                  </KoochTableCell>
-                  <KoochTableCell>{roleLabels[user.role]}</KoochTableCell>
-                  <KoochTableCell className="text-muted-foreground">
-                    {user.properties?.length ? (
-                      <div className="flex flex-wrap gap-1.5">
-                        {user.properties.map((property) => (
-                          <KoochBadge key={property.propertyId} variant="muted">
-                            {property.propertyName}
-                          </KoochBadge>
-                        ))}
-                      </div>
-                    ) : (
-                      (user.propertyName ?? "-")
-                    )}
-                  </KoochTableCell>
-                  <KoochTableCell>
-                    <KoochBadge variant={statusVariant(user)}>
-                      {statusLabel(user)}
-                    </KoochBadge>
-                  </KoochTableCell>
-                  <KoochTableCell className="text-xs text-muted-foreground">
-                    {new Date(user.createdAtUtc).toLocaleDateString("fa-IR")}
-                  </KoochTableCell>
-                  <KoochTableCell>
-                    <div className="flex flex-wrap gap-2">
-                      <KoochButton
-                        onClick={() => openEdit(user)}
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        ویرایش
-                      </KoochButton>
-                      {user.isActive ? (
-                        <KoochConfirmDialog
-                          cancelText="انصراف"
-                          confirmText="غیرفعال شود"
-                          description="این کاربر غیرفعال می‌شود. آیا مطمئن هستید؟"
-                          onConfirm={() => setActive(user, false)}
-                          title="غیرفعال‌سازی کاربر"
-                          trigger={
-                            <KoochButton
-                              size="sm"
-                              type="button"
-                              variant="destructive"
+                    </KoochTableCell>
+
+                    <KoochTableCell>{user.phoneNumber}</KoochTableCell>
+                    <KoochTableCell>{roleLabels[user.role]}</KoochTableCell>
+
+                    <KoochTableCell className="text-muted-foreground">
+                      {user.properties?.length ? (
+                        <div className="flex flex-wrap gap-1.5">
+                          {user.properties.map((property) => (
+                            <KoochBadge
+                              key={property.propertyId}
+                              variant="muted"
                             >
-                              غیرفعال
-                            </KoochButton>
-                          }
-                          variant="destructive"
-                        />
+                              {property.propertyName}
+                            </KoochBadge>
+                          ))}
+                        </div>
                       ) : (
+                        (user.propertyName ?? "-")
+                      )}
+                    </KoochTableCell>
+
+                    <KoochTableCell>
+                      <KoochBadge variant={statusVariant(user)}>
+                        {statusLabel(user)}
+                      </KoochBadge>
+                    </KoochTableCell>
+
+                    <KoochTableCell>
+                      <div className="flex flex-wrap gap-2">
                         <KoochButton
-                          onClick={() => setActive(user, true)}
+                          title="ویرایش کاربر"
+                          onClick={() => openEdit(user)}
                           size="sm"
                           type="button"
-                          variant="ghost"
+                          variant="outline"
                         >
-                          فعال
+                          <KoochIcon name="edit" />
                         </KoochButton>
-                      )}
-                    </div>
-                  </KoochTableCell>
-                </KoochTableRow>
-              ))
-            )}
-          </KoochTableBody>
-        </KoochTable>
 
+                        {user.isActive ? (
+                          <KoochConfirmDialog
+                            cancelText="انصراف"
+                            confirmText="غیرفعال شود"
+                            description="این کاربر غیرفعال می‌شود. آیا مطمئن هستید؟"
+                            onConfirm={() => setActive(user, false)}
+                            title="غیرفعال‌سازی کاربر"
+                            trigger={
+                              <KoochButton
+                                title="غیرفعال‌سازی کاربر"
+                                size="sm"
+                                type="button"
+                                variant="destructive"
+                              >
+                                <KoochIcon name="suspend" />{" "}
+                              </KoochButton>
+                            }
+                            variant="destructive"
+                          />
+                        ) : (
+                          <KoochButton
+                            onClick={() => setActive(user, true)}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            فعال
+                          </KoochButton>
+                        )}
+                      </div>
+                    </KoochTableCell>
+                  </KoochTableRow>
+                ))
+              )}
+            </KoochTableBody>
+          </KoochTable>
+        </div>
         <KoochDialog
           closeDisabled={saving}
           footer={
@@ -466,6 +649,7 @@ export default function AdminUsersPage() {
                   value={form.firstName}
                 />
               </KoochField>
+
               <KoochField label="نام خانوادگی" required>
                 <KoochInput
                   onChange={(event) =>
@@ -478,6 +662,7 @@ export default function AdminUsersPage() {
                   value={form.lastName}
                 />
               </KoochField>
+
               <KoochField label="ایمیل" required>
                 <KoochInput
                   dir="ltr"
@@ -492,6 +677,7 @@ export default function AdminUsersPage() {
                   value={form.email}
                 />
               </KoochField>
+
               <KoochField label="شماره تماس">
                 <KoochInput
                   dir="ltr"
@@ -504,6 +690,7 @@ export default function AdminUsersPage() {
                   value={form.phoneNumber}
                 />
               </KoochField>
+
               {form.id && (
                 <KoochField
                   helperText="برای تغییر ندادن رمز، این فیلد را خالی بگذارید."
@@ -523,6 +710,7 @@ export default function AdminUsersPage() {
                   />
                 </KoochField>
               )}
+
               <KoochField label="نقش" required>
                 <KoochSelect
                   onChange={(event) =>
@@ -559,11 +747,13 @@ export default function AdminUsersPage() {
                       همکار مالک، اقامتگاه را با نام انتخاب کنید.
                     </p>
                   </div>
+
                   <KoochInput
                     onChange={(event) => setPropertySearch(event.target.value)}
                     placeholder="جستجوی نام اقامتگاه، شهر یا مالک"
                     value={propertySearch}
                   />
+
                   <KoochSelect
                     onChange={(event) => addPropertyAccess(event.target.value)}
                     value=""
@@ -581,6 +771,7 @@ export default function AdminUsersPage() {
                         </option>
                       ))}
                   </KoochSelect>
+
                   {selectedProperties.length > 0 ? (
                     <div className="flex flex-wrap gap-2">
                       {selectedProperties.map((property) => (
@@ -590,12 +781,12 @@ export default function AdminUsersPage() {
                         >
                           {property.name}
                           <button
+                            aria-label={`حذف دسترسی ${property.name}`}
                             className="text-muted-foreground transition hover:text-destructive"
                             onClick={() =>
                               removePropertyAccess(property.id.toString())
                             }
                             type="button"
-                            aria-label={`حذف دسترسی ${property.name}`}
                           >
                             ×
                           </button>

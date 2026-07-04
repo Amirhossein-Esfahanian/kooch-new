@@ -205,7 +205,10 @@ const privateBathroomAmenitySlugs = new Set([
   "private-toilet",
 ]);
 
-const sharedBathroomAmenitySlugs = new Set(["shared-bathroom", "shared-toilet"]);
+const sharedBathroomAmenitySlugs = new Set([
+  "shared-bathroom",
+  "shared-toilet",
+]);
 
 function isPrivateBathroomAmenity(amenity: AmenityResponse) {
   return privateBathroomAmenitySlugs.has(amenity.slug);
@@ -868,7 +871,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   }
 
   return (
-    <div className="grid gap-5">
+    <div className="grid w-full min-w-0 max-w-full gap-5 overflow-x-hidden">
       {error && (
         <KoochCard
           className="border-destructive text-destructive"
@@ -878,9 +881,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         </KoochCard>
       )}
 
-      <KoochCard variant="elevated">
+      <KoochCard className="min-w-0 max-w-full" variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <h2 className="text-xl font-black text-foreground">
               مدیریت اتاق‌ها
             </h2>
@@ -895,7 +898,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
         </div>
       </KoochCard>
 
-      <KoochCard variant="elevated">
+      <KoochCard className="min-w-0 max-w-full" variant="elevated">
         <h2 className="text-xl font-black text-foreground">اتاق‌های ثبت‌شده</h2>
         {loading && (
           <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">
@@ -903,7 +906,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           </p>
         )}
         {!loading && roomTypes.length > 0 && (
-          <div className="mt-5">
+          <div className="mt-5 min-w-0 max-w-full">
             <KoochTable>
               <KoochTableHeader>
                 <KoochTableRow>

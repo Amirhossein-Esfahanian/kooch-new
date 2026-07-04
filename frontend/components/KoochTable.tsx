@@ -16,9 +16,12 @@ export type KoochTableProps = TableHTMLAttributes<HTMLTableElement> & {
 
 export function KoochTable({ className = "", ...props }: KoochTableProps) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-card text-card-foreground">
+    <div className="min-w-0 max-w-full overflow-x-auto rounded-lg border border-border bg-card text-card-foreground">
       <table
-        className={joinClasses("w-full min-w-[900px] border-collapse text-right text-sm", className)}
+        className={joinClasses(
+          "w-full min-w-[900px] border-collapse text-right text-sm",
+          className,
+        )}
         dir="rtl"
         {...props}
       />
@@ -53,20 +56,25 @@ export function KoochTableBody({
   className = "",
   ...props
 }: KoochTableBodyProps) {
-  return <tbody className={joinClasses("divide-y divide-border", className)} {...props} />;
+  return (
+    <tbody
+      className={joinClasses("divide-y divide-border", className)}
+      {...props}
+    />
+  );
 }
 
 export type KoochTableRowProps = HTMLAttributes<HTMLTableRowElement> & {
   className?: string;
 };
 
-export function KoochTableRow({ className = "", ...props }: KoochTableRowProps) {
+export function KoochTableRow({
+  className = "",
+  ...props
+}: KoochTableRowProps) {
   return (
     <tr
-      className={joinClasses(
-        "transition-colors hover:bg-muted/70",
-        className,
-      )}
+      className={joinClasses("transition-colors hover:bg-muted/70", className)}
       {...props}
     />
   );
@@ -82,7 +90,10 @@ export function KoochTableHead({
 }: KoochTableHeadProps) {
   return (
     <th
-      className={joinClasses("whitespace-nowrap px-4 py-3 text-right align-middle", className)}
+      className={joinClasses(
+        "whitespace-nowrap px-4 py-3 text-right align-middle",
+        className,
+      )}
       scope="col"
       {...props}
     />
@@ -99,7 +110,10 @@ export function KoochTableCell({
 }: KoochTableCellProps) {
   return (
     <td
-      className={joinClasses("px-4 py-3 align-middle text-foreground", className)}
+      className={joinClasses(
+        "px-4 py-3 align-middle text-foreground",
+        className,
+      )}
       {...props}
     />
   );

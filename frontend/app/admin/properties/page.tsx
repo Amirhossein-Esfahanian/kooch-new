@@ -15,11 +15,11 @@ import {
 } from "@/components/KoochFormControls";
 import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 import {
   KoochTable,
   KoochTableBody,
   KoochTableCell,
+  KoochTableEmpty,
   KoochTableHead,
   KoochTableHeader,
   KoochTableRow,
@@ -30,7 +30,6 @@ import {
   AdminUserResponse,
   getToken,
   InventoryMode,
-  PropertyCompletionResponse,
   PropertyResponse,
   PropertyStatus,
   propertyTypes,
@@ -38,7 +37,6 @@ import {
   resolveDestinationId,
   UserRole,
 } from "@/lib/owner-api";
-import { propertyCompletionHref } from "@/lib/property-completion";
 
 const statuses: PropertyStatus[] = [
   "Draft",
@@ -69,6 +67,8 @@ const propertyTypeLabels: Record<PropertyType, string> = {
 };
 
 type AdminCreateMode = "existing-owner" | "new-owner";
+type PropertyStatusFilter = "all" | PropertyStatus;
+type PropertyTypeFilter = "all" | PropertyType;
 
 type CreatePropertyForm = {
   ownerMode: AdminCreateMode;
@@ -104,12 +104,17 @@ const emptyCreateForm: CreatePropertyForm = {
   inventoryMode: "NamedRooms",
 };
 
+function normalizeSearchText(value: unknown) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replaceAll("ي", "ی")
+    .replaceAll("ك", "ک");
+}
+
 export default function AdminPropertiesPage() {
   const router = useRouter();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
-  const [completions, setCompletions] = useState<
-    Record<number, PropertyCompletionResponse>
-  >({});
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
   const [users, setUsers] = useState<AdminUserResponse[]>([]);
@@ -119,6 +124,9 @@ export default function AdminPropertiesPage() {
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [setupLink, setSetupLink] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<PropertyStatusFilter>("all");
+  const [typeFilter, setTypeFilter] = useState<PropertyTypeFilter>("all");
 
   const ownerOptions = useMemo(
     () =>
@@ -130,26 +138,48 @@ export default function AdminPropertiesPage() {
     [users],
   );
 
+  const filteredProperties = useMemo(() => {
+    const normalizedSearch = normalizeSearchText(searchTerm);
+
+    return properties.filter((property) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        [
+          property.name,
+          property.englishName,
+          property.city,
+          property.ownerName,
+          property.ownerEmail,
+          property.ownerId,
+          // property.slug,
+          // statusLabels[property.status],
+          propertyTypeLabels[property.type],
+        ]
+          .map(normalizeSearchText)
+          .some((value) => value.includes(normalizedSearch));
+
+      const matchesStatus =
+        statusFilter === "all" || property.status === statusFilter;
+
+      const matchesType = typeFilter === "all" || property.type === typeFilter;
+
+      return matchesSearch && matchesStatus && matchesType;
+    });
+  }, [properties, searchTerm, statusFilter, typeFilter]);
+
+  const hasActiveFilters =
+    Boolean(searchTerm.trim()) ||
+    statusFilter !== "all" ||
+    typeFilter !== "all";
+
   const load = useCallback(async () => {
     const [propertyItems, userItems] = await Promise.all([
       apiRequest<PropertyResponse[]>("/admin/properties"),
       apiRequest<AdminUserResponse[]>("/admin/users").catch(() => []),
     ]);
+
     setProperties(propertyItems);
     setUsers(userItems);
-    const completionEntries = await Promise.all(
-      propertyItems.map(async (property) => {
-        const completion = await apiRequest<PropertyCompletionResponse>(
-          `/admin/properties/${property.id}/completion`,
-        ).catch(() => null);
-        return [property.id, completion] as const;
-      }),
-    );
-    setCompletions(
-      Object.fromEntries(
-        completionEntries.filter(([, completion]) => completion),
-      ) as Record<number, PropertyCompletionResponse>,
-    );
   }, []);
 
   useEffect(() => {
@@ -157,28 +187,31 @@ export default function AdminPropertiesPage() {
       router.replace("/login");
       return;
     }
+
     load()
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
   }, [load, router]);
 
+  function resetFilters() {
+    setSearchTerm("");
+    setStatusFilter("all");
+    setTypeFilter("all");
+  }
+
   async function setStatus(id: number, status: PropertyStatus) {
     setWorkingId(id);
     setError("");
+
     try {
       const updated = await apiRequest<PropertyResponse>(
         `/admin/properties/${id}/status`,
         { method: "PUT", body: JSON.stringify({ status }) },
       );
-      const completion = await apiRequest<PropertyCompletionResponse>(
-        `/admin/properties/${id}/completion`,
-      ).catch(() => null);
+
       setProperties((current) =>
         current.map((property) => (property.id === id ? updated : property)),
       );
-      if (completion) {
-        setCompletions((current) => ({ ...current, [id]: completion }));
-      }
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -204,6 +237,7 @@ export default function AdminPropertiesPage() {
       if (!createForm.ownerId) {
         throw new Error("مالک اقامتگاه را انتخاب کنید.");
       }
+
       return { ownerId: Number(createForm.ownerId), setupLink: null };
     }
 
@@ -220,28 +254,36 @@ export default function AdminPropertiesPage() {
         propertyId: null,
       }),
     });
+
     setUsers((current) => [...current, createdOwner]);
+
     const ownerSetupLink = createdOwner.temporarySetupLink ?? null;
+
     if (ownerSetupLink && process.env.NODE_ENV !== "production") {
       setSetupLink(ownerSetupLink);
     }
+
     return { ownerId: createdOwner.id, setupLink: ownerSetupLink };
   }
 
   async function createDraftProperty(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
     if (!createForm.name.trim()) {
       toast.error("نام اقامتگاه را وارد کنید.");
       return;
     }
+
     if (!createForm.city.trim()) {
       toast.error("شهر را وارد کنید.");
       return;
     }
+
     if (!createForm.address.trim()) {
       toast.error("آدرس را وارد کنید.");
       return;
     }
+
     if (
       createForm.ownerMode === "new-owner" &&
       (!createForm.ownerFirstName.trim() ||
@@ -254,8 +296,10 @@ export default function AdminPropertiesPage() {
 
     setCreating(true);
     setError("");
+
     try {
       const owner = await createOwnerIfNeeded();
+
       const created = await apiRequest<PropertyResponse>("/admin/properties", {
         method: "POST",
         body: JSON.stringify({
@@ -276,16 +320,19 @@ export default function AdminPropertiesPage() {
           hasElevator: false,
         }),
       });
+
       toast.success("اقامتگاه پیش‌نویس ایجاد شد.");
       setCreateOpen(false);
       setCreateForm(emptyCreateForm);
       await load();
+
       if (!owner.setupLink || process.env.NODE_ENV === "production") {
         router.push(`/admin/properties/${created.id}`);
       }
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "ایجاد اقامتگاه انجام نشد.";
+
       setError(message);
       toast.error(message);
     } finally {
@@ -299,7 +346,7 @@ export default function AdminPropertiesPage() {
         <KoochPageHeader
           actions={
             <KoochButton onClick={openCreateDialog} type="button">
-              <KoochIcon name="plus"></KoochIcon>
+              <KoochIcon name="plus" />
               افزودن اقامتگاه
             </KoochButton>
           }
@@ -364,127 +411,200 @@ export default function AdminPropertiesPage() {
         )}
 
         {!loading && properties.length > 0 && (
-          <KoochTable>
-            <KoochTableHeader>
-              <KoochTableRow>
-                <KoochTableHead className="w-14">ردیف</KoochTableHead>
-                <KoochTableHead>نام</KoochTableHead>
-                <KoochTableHead>شهر</KoochTableHead>
-                <KoochTableHead>مالک</KoochTableHead>
-                <KoochTableHead>وضعیت</KoochTableHead>
-                <KoochTableHead>تاریخ ایجاد</KoochTableHead>
-                <KoochTableHead className="min-w-[280px]">
-                  عملیات
-                </KoochTableHead>
-              </KoochTableRow>
-            </KoochTableHeader>
-            <KoochTableBody>
-              {properties.map((property, index) => (
-                <KoochTableRow key={property.id}>
-                  <KoochTableCell className="font-bold text-muted-foreground">
-                    {index + 1}
-                  </KoochTableCell>
-                  <KoochTableCell>
-                    <p className="font-black text-foreground">
-                      {property.name}
-                    </p>
-                    {property.englishName && (
-                      <p className="text-xs text-muted-foreground" dir="ltr">
-                        {property.englishName}
-                      </p>
-                    )}
-                  </KoochTableCell>
-                  <KoochTableCell>{property.city}</KoochTableCell>
-                  <KoochTableCell className="text-muted-foreground">
-                    {property.ownerName || property.ownerId}
-                    <br />
-                    <span className="text-xs text-muted-foreground">
-                      {property.ownerEmail}
-                    </span>
-                  </KoochTableCell>
-                  <KoochTableCell>
-                    <KoochSelect
-                      disabled={workingId === property.id}
-                      onChange={(event) =>
-                        setStatus(
-                          property.id,
-                          event.target.value as PropertyStatus,
-                        )
-                      }
-                      value={property.status}
-                    >
-                      {statuses.map((status) => (
-                        <option key={status} value={status}>
-                          {statusLabels[status]}
-                        </option>
-                      ))}
-                    </KoochSelect>
-                  </KoochTableCell>
-                  <KoochTableCell className="text-xs text-muted-foreground">
-                    {new Date(property.createdAtUtc).toLocaleDateString(
-                      "fa-IR",
-                    )}
-                  </KoochTableCell>
-                  <KoochTableCell>
-                    <div className="flex flex-wrap gap-2">
-                      <Link
-                        className={actionLinkClass}
-                        href={`/admin/properties/${property.id}`}
-                        title="ویرایش"
-                      >
-                        <KoochIcon name="edit" />
-                      </Link>
-                      <Link
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="تعیین ظرفیت"
-                        className={actionLinkClass}
-                        href={`/admin/properties/${property.id}/inventory`}
-                      >
-                        <KoochIcon name="capacity" />
-                      </Link>
-                      <Link
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        title="تعیین قیمت"
-                        className={actionLinkClass}
-                        href={`/admin/properties/${property.id}/pricing`}
-                      >
-                        <KoochIcon name="price" />
-                      </Link>
-                      <Link
-                        className={actionLinkClass}
-                        href={`/admin/properties/${property.id}/change-logs`}
-                        title="سوابق عملیات"
-                      >
-                        <KoochIcon name="audit" />
-                      </Link>
-                      <KoochButton
-                        disabled={workingId === property.id}
-                        onClick={() => setStatus(property.id, "Suspended")}
-                        size="sm"
-                        variant="outline"
-                        title="تعلیق اقامتگاه"
-                      >
-                        <KoochIcon name="suspend" />
-                      </KoochButton>
-                      {property.status === "Approved" && (
-                        <Link
-                          className={actionLinkClass}
-                          title="نمایش در سایت"
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          href={`/properties/${property.slug}`}
-                        >
-                          <KoochIcon name="view" />
-                        </Link>
-                      )}
-                    </div>
-                  </KoochTableCell>
+          <>
+            <KoochCard padding="sm" variant="elevated">
+              <div className="grid gap-4 lg:grid-cols-[minmax(260px,1fr)_220px_220px_auto] lg:items-end">
+                <KoochField label="جستجو">
+                  <KoochInput
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    placeholder="نام اقامتگاه، مالک، ایمیل، شهر..."
+                    value={searchTerm}
+                  />
+                </KoochField>
+
+                <KoochField label="وضعیت">
+                  <KoochSelect
+                    onChange={(event) =>
+                      setStatusFilter(
+                        event.target.value as PropertyStatusFilter,
+                      )
+                    }
+                    value={statusFilter}
+                  >
+                    <option value="all">همه وضعیت‌ها</option>
+                    {statuses.map((status) => (
+                      <option key={status} value={status}>
+                        {statusLabels[status]}
+                      </option>
+                    ))}
+                  </KoochSelect>
+                </KoochField>
+
+                <KoochField label="نوع اقامتگاه">
+                  <KoochSelect
+                    onChange={(event) =>
+                      setTypeFilter(event.target.value as PropertyTypeFilter)
+                    }
+                    value={typeFilter}
+                  >
+                    <option value="all">همه نوع‌ها</option>
+                    {propertyTypes.map((type) => (
+                      <option key={type} value={type}>
+                        {propertyTypeLabels[type]}
+                      </option>
+                    ))}
+                  </KoochSelect>
+                </KoochField>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <KoochButton
+                    disabled={!hasActiveFilters}
+                    onClick={resetFilters}
+                    type="button"
+                    variant="outline"
+                  >
+                    حذف فیلترها
+                  </KoochButton>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-sm text-muted-foreground">
+                <span>
+                  نمایش {filteredProperties.length.toLocaleString("fa-IR")} از{" "}
+                  {properties.length.toLocaleString("fa-IR")} اقامتگاه
+                </span>
+
+                {hasActiveFilters && (
+                  <span className="rounded-md bg-amber-300 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-200 dark:text-primary-foreground">
+                    فیلتر فعال است
+                  </span>
+                )}
+              </div>
+            </KoochCard>
+
+            <KoochTable>
+              <KoochTableHeader>
+                <KoochTableRow>
+                  <KoochTableHead className="w-14">ردیف</KoochTableHead>
+                  <KoochTableHead>نام</KoochTableHead>
+                  <KoochTableHead>مالک</KoochTableHead>
+                  <KoochTableHead>وضعیت</KoochTableHead>
+                  <KoochTableHead className="min-w-[280px]">
+                    عملیات
+                  </KoochTableHead>
                 </KoochTableRow>
-              ))}
-            </KoochTableBody>
-          </KoochTable>
+              </KoochTableHeader>
+
+              <KoochTableBody>
+                {filteredProperties.length === 0 ? (
+                  <KoochTableEmpty colSpan={5}>
+                    موردی با فیلترهای انتخاب‌شده پیدا نشد.
+                  </KoochTableEmpty>
+                ) : (
+                  filteredProperties.map((property, index) => (
+                    <KoochTableRow key={property.id}>
+                      <KoochTableCell className="font-bold text-muted-foreground">
+                        {index + 1}
+                      </KoochTableCell>
+
+                      <KoochTableCell>
+                        <p className="font-black text-foreground">
+                          {property.name}
+                        </p>
+                        {property.englishName && (
+                          <p
+                            className="text-xs text-muted-foreground"
+                            dir="ltr"
+                          >
+                            {property.englishName}
+                          </p>
+                        )}
+                      </KoochTableCell>
+
+                      <KoochTableCell className="text-muted-foreground">
+                        {property.ownerName || property.ownerId}
+                        <br />
+                        <span className="text-xs text-muted-foreground">
+                          {property.ownerEmail}
+                        </span>
+                      </KoochTableCell>
+
+                      <KoochTableCell>
+                        <KoochSelect
+                          disabled={workingId === property.id}
+                          onChange={(event) =>
+                            setStatus(
+                              property.id,
+                              event.target.value as PropertyStatus,
+                            )
+                          }
+                          value={property.status}
+                        >
+                          {statuses.map((status) => (
+                            <option key={status} value={status}>
+                              {statusLabels[status]}
+                            </option>
+                          ))}
+                        </KoochSelect>
+                      </KoochTableCell>
+
+                      <KoochTableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Link
+                            className={actionLinkClass}
+                            href={`/admin/properties/${property.id}`}
+                            title="ویرایش"
+                          >
+                            <KoochIcon name="edit" />
+                          </Link>
+
+                          <Link
+                            className={actionLinkClass}
+                            href={`/admin/properties/${property.id}/inventory`}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                            title="تعیین ظرفیت"
+                          >
+                            <KoochIcon name="capacity" />
+                          </Link>
+
+                          <Link
+                            className={actionLinkClass}
+                            href={`/admin/properties/${property.id}/pricing`}
+                            rel="noopener noreferrer"
+                            target="_blank"
+                            title="تعیین قیمت"
+                          >
+                            <KoochIcon name="price" />
+                          </Link>
+
+                          <Link
+                            className={actionLinkClass}
+                            href={`/admin/properties/${property.id}/change-logs`}
+                            title="سوابق عملیات"
+                          >
+                            <KoochIcon name="audit" />
+                          </Link>
+
+                          {property.status === "Approved" && (
+                            <Link
+                              className={actionLinkClass}
+                              href={`/properties/${property.slug}`}
+                              rel="noopener noreferrer"
+                              target="_blank"
+                              title="نمایش در سایت"
+                            >
+                              <KoochIcon name="view" />
+                            </Link>
+                          )}
+                        </div>
+                      </KoochTableCell>
+                    </KoochTableRow>
+                  ))
+                )}
+              </KoochTableBody>
+            </KoochTable>
+          </>
         )}
 
         <KoochDialog
@@ -539,6 +659,7 @@ export default function AdminPropertiesPage() {
                   >
                     انتخاب مالک موجود
                   </KoochButton>
+
                   <KoochButton
                     onClick={() =>
                       setCreateForm({ ...createForm, ownerMode: "new-owner" })
@@ -592,6 +713,7 @@ export default function AdminPropertiesPage() {
                         value={createForm.ownerFirstName}
                       />
                     </KoochField>
+
                     <KoochField label="نام خانوادگی مالک" required>
                       <KoochInput
                         onChange={(event) =>
@@ -604,6 +726,7 @@ export default function AdminPropertiesPage() {
                         value={createForm.ownerLastName}
                       />
                     </KoochField>
+
                     <KoochField label="ایمیل مالک" required>
                       <KoochInput
                         dir="ltr"
@@ -618,6 +741,7 @@ export default function AdminPropertiesPage() {
                         value={createForm.ownerEmail}
                       />
                     </KoochField>
+
                     <KoochField className="hidden" label="رمز عبور اولیه">
                       <KoochInput
                         dir="ltr"
@@ -632,6 +756,7 @@ export default function AdminPropertiesPage() {
                         value={createForm.ownerPassword}
                       />
                     </KoochField>
+
                     <KoochField label="شماره تماس">
                       <KoochInput
                         dir="ltr"
@@ -659,6 +784,7 @@ export default function AdminPropertiesPage() {
                   value={createForm.name}
                 />
               </KoochField>
+
               <KoochField label="نام انگلیسی / اسلاگ">
                 <KoochInput
                   dir="ltr"
@@ -671,6 +797,7 @@ export default function AdminPropertiesPage() {
                   value={createForm.englishName}
                 />
               </KoochField>
+
               <KoochField label="نوع اقامتگاه">
                 <KoochSelect
                   onChange={(event) =>
@@ -688,6 +815,7 @@ export default function AdminPropertiesPage() {
                   ))}
                 </KoochSelect>
               </KoochField>
+
               <KoochField label="مدل موجودی">
                 <KoochSelect
                   onChange={(event) =>
@@ -704,6 +832,7 @@ export default function AdminPropertiesPage() {
                   </option>
                 </KoochSelect>
               </KoochField>
+
               <KoochField label="شهر" required>
                 <KoochInput
                   onChange={(event) =>
@@ -713,6 +842,7 @@ export default function AdminPropertiesPage() {
                   value={createForm.city}
                 />
               </KoochField>
+
               <KoochField className="md:col-span-2" label="آدرس" required>
                 <KoochInput
                   onChange={(event) =>
@@ -725,6 +855,7 @@ export default function AdminPropertiesPage() {
                   value={createForm.address}
                 />
               </KoochField>
+
               <KoochField className="md:col-span-2" label="توضیح کوتاه">
                 <KoochTextarea
                   onChange={(event) =>
