@@ -47,34 +47,34 @@ export const KoochButton = forwardRef<HTMLButtonElement, KoochButtonProps>(
     },
     ref,
   ) {
-  const isDisabled = disabled || loading;
+    const isDisabled = disabled || loading;
 
-  return (
-    <button
-      className={[
-        "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold transition disabled:pointer-events-none disabled:opacity-60",
-        "focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background",
-        variantClass[variant],
-        sizeClass[size],
-        className,
-      ]
-        .filter(Boolean)
-        .join(" ")}
-      disabled={isDisabled}
-      ref={ref}
-      type={type}
-      {...props}
-    >
-      {loading && (
-        <span
-          aria-hidden="true"
-          className="h-4 w-4 animate-spin rounded border-2 border-current border-t-transparent"
-        />
-      )}
-      {!loading && leftIcon}
-      {children}
-      {!loading && rightIcon}
-    </button>
-  );
+    return (
+      <button
+        className={[
+          "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold transition disabled:pointer-events-none disabled:opacity-60",
+          "focus:outline-none  focus:ring-ring  focus:ring-offset-background",
+          variantClass[variant],
+          sizeClass[size],
+          className,
+        ]
+          .filter(Boolean)
+          .join(" ")}
+        disabled={isDisabled}
+        ref={ref}
+        type={type}
+        {...props}
+      >
+        {loading && (
+          <span
+            aria-hidden="true"
+            className="h-4 w-4 animate-spin rounded border-2 border-current border-t-transparent"
+          />
+        )}
+        {!loading && leftIcon}
+        {children}
+        {!loading && rightIcon}
+      </button>
+    );
   },
 );

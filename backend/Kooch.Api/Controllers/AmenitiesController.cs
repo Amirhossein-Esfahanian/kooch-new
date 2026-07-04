@@ -217,5 +217,3 @@ public class AmenitiesController(
         }
     }
 }
-
-public sealed record AmenitySvgUploadResponse(string Path);

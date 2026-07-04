@@ -2,12 +2,17 @@ import type { CSSProperties } from "react";
 
 const koochIcons = {
   edit: "/svgs/edit.svg",
+  delete: "/svgs/trash-alt.svg",
+  listl: "/svgs/list-l.svg",
+  editl: "/svgs/edit-l.svg",
+  deletel: "/svgs/trash-alt-l.svg",
   capacity: "/svgs/bed-bunk.svg",
   price: "/svgs/tags.svg",
   audit: "/svgs/list.svg",
   suspend: "/svgs/ban.svg",
   view: "/svgs/eye.svg",
-
+  plus: "/svgs/plus-circle.svg",
+  minus: "/svgs/minus-circle.svg",
   notification: "/svgs/bell-l.svg",
   logout: "/svgs/left-from-bracket-l.svg",
   account: "/svgs/user-circle-l.svg",

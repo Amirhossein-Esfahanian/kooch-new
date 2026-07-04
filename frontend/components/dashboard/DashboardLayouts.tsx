@@ -7,7 +7,12 @@ import type { ReactNode } from "react";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
-import { apiRequest, ownerPropertyKey, PropertyResponse } from "@/lib/owner-api";
+import {
+  apiRequest,
+  ownerPropertyKey,
+  PropertyResponse,
+} from "@/lib/owner-api";
+import { KoochIcon } from "../KoochIcon";
 
 type DashboardMenuItem = {
   href: string;
@@ -587,7 +592,7 @@ function DashboardSidebar({
               type="button"
               aria-label="جمع کردن منو"
             >
-              ☰
+              <MenuIcon icon={menuIcons.menu} />
             </button>
             <button
               className={`grid h-9 w-9 place-items-center rounded-lg border text-sm md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-300 bg-white"}`}
@@ -595,7 +600,7 @@ function DashboardSidebar({
               type="button"
               aria-label="بستن منو"
             >
-              ×
+              <MenuIcon icon={menuIcons.close} />
             </button>
           </div>
         </div>
@@ -698,6 +703,34 @@ function DashboardHeader({
   profileMenuOpen: boolean;
 }) {
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [userName, setUserName] = useState("مدیر کوچ");
+  useEffect(() => {
+    const savedName = localStorage.getItem("kooch_user_name");
+
+    if (savedName) {
+      setUserName(savedName);
+      return;
+    }
+
+    const rawUser = localStorage.getItem("user");
+
+    if (!rawUser) {
+      return;
+    }
+
+    try {
+      const parsedUser = JSON.parse(rawUser);
+      setUserName(
+        parsedUser.name ??
+          parsedUser.fullName ??
+          parsedUser.displayName ??
+          parsedUser.email ??
+          "مدیر کوچ",
+      );
+    } catch {
+      setUserName(rawUser);
+    }
+  }, []);
 
   function handleProfileMenuAction(item: string) {
     onProfileMenuClose();
@@ -716,115 +749,115 @@ function DashboardHeader({
         className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
       >
         <div className="flex flex-wrap items-center gap-3">
-        <button
-          className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          onClick={onSidebarToggle}
-          type="button"
-          aria-label="نمایش منو"
-        >
-          ☰
-        </button>
-        <div
-          className={`hidden text-xs font-bold sm:block ${mutedText(darkMode)}`}
-        >
-          خانه / داشبوردها / نمونه پنل کوچ
-        </div>
-        <div
-          className={`mr-auto flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-        >
-          <span className={mutedText(darkMode)}>⌕</span>
-          <input
-            className="w-full border-0 bg-transparent p-0 text-sm outline-none"
-            placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
-            type="search"
-          />
-        </div>
-        <HeaderIcon
-          active={activeDrawer === "messages"}
-          darkMode={darkMode}
-          label="پیام‌ها"
-          onClick={() => onDrawerToggle("messages")}
-        >
-          <MenuIcon icon={menuIcons.messages} />
-        </HeaderIcon>
-        <HeaderIcon
-          active={activeDrawer === "notifications"}
-          darkMode={darkMode}
-          label="اعلان‌ها"
-          onClick={() => onDrawerToggle("notifications")}
-        >
-          <MenuIcon icon={menuIcons.notification} />
-
-          {/* come back here */}
-        </HeaderIcon>
-        <button
-          className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          onClick={onThemeToggle}
-          type="button"
-          aria-label="تغییر حالت روشن و تیره"
-        >
-          {darkMode ? (
-            <MenuIcon icon={menuIcons.light} />
-          ) : (
-            <MenuIcon icon={menuIcons.dark} />
-          )}
-        </button>
-        <div className="relative">
-          {profileMenuOpen && (
-            <button
-              className="fixed inset-0 z-[60] cursor-default"
-              onClick={onProfileMenuClose}
-              type="button"
-              aria-label="بستن منوی پروفایل"
-            />
-          )}
           <button
-            className={`relative z-[80] flex items-center gap-2 rounded-xl border px-2 py-1.5 transition hover:border-[var(--theme-primary)] ${
-              profileMenuOpen
-                ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)]"
-                : darkMode
-                  ? "border-white/10 bg-white/5"
-                  : "border-slate-200 bg-slate-50"
-            }`}
-            onClick={onProfileMenuToggle}
+            className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+            onClick={onSidebarToggle}
             type="button"
-            aria-expanded={profileMenuOpen}
-            aria-haspopup="menu"
+            aria-label="نمایش منو"
           >
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-black text-white">
-              ک
-            </span>
-            <span className="hidden text-sm font-black lg:inline">
-              مدیر کوچ
-            </span>
-            <span className={mutedText(darkMode)}>⌄</span>
+            ☰
           </button>
-          {profileMenuOpen && (
-            <div
-              className={`absolute left-0 top-12 z-[90] w-52 overflow-hidden rounded-xl border p-1 text-sm font-bold shadow-2xl ${
-                darkMode
-                  ? "border-white/10 bg-[#111720] text-slate-100"
-                  : "border-slate-200 bg-white text-slate-800"
+          <div
+            className={`hidden text-xs font-bold sm:block ${mutedText(darkMode)}`}
+          >
+            خانه / داشبوردها / نمونه پنل کوچ
+          </div>
+          <div
+            className={`mr-auto flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+          >
+            <span className={mutedText(darkMode)}>⌕</span>
+            <input
+              className="w-full border-0 bg-transparent p-0 text-sm outline-none"
+              placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
+              type="search"
+            />
+          </div>
+          <HeaderIcon
+            active={activeDrawer === "messages"}
+            darkMode={darkMode}
+            label="پیام‌ها"
+            onClick={() => onDrawerToggle("messages")}
+          >
+            <MenuIcon icon={menuIcons.messages} />
+          </HeaderIcon>
+          <HeaderIcon
+            active={activeDrawer === "notifications"}
+            darkMode={darkMode}
+            label="اعلان‌ها"
+            onClick={() => onDrawerToggle("notifications")}
+          >
+            <MenuIcon icon={menuIcons.notification} />
+
+            {/* come back here */}
+          </HeaderIcon>
+          <button
+            className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+            onClick={onThemeToggle}
+            type="button"
+            aria-label="تغییر حالت روشن و تیره"
+          >
+            {darkMode ? (
+              <MenuIcon icon={menuIcons.light} />
+            ) : (
+              <MenuIcon icon={menuIcons.dark} />
+            )}
+          </button>
+          <div className="relative">
+            {profileMenuOpen && (
+              <button
+                className="fixed inset-0 z-[60] cursor-default"
+                onClick={onProfileMenuClose}
+                type="button"
+                aria-label="بستن منوی پروفایل"
+              />
+            )}
+            <button
+              className={`relative z-[80] flex items-center gap-2 rounded-xl border px-2 py-1.5 transition hover:border-[var(--theme-primary)] ${
+                profileMenuOpen
+                  ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)]"
+                  : darkMode
+                    ? "border-white/10 bg-white/5"
+                    : "border-slate-200 bg-slate-50"
               }`}
-              role="menu"
+              onClick={onProfileMenuToggle}
+              type="button"
+              aria-expanded={profileMenuOpen}
+              aria-haspopup="menu"
             >
-              {["مشاهده پروفایل", "تنظیمات حساب", "خروج از حساب"].map(
-                (item) => (
-                  <button
-                    className={`block w-full rounded-lg px-3 py-2 text-right transition ${
-                      darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
-                    } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
-                    key={item}
-                    onClick={() => handleProfileMenuAction(item)}
-                    role="menuitem"
-                    type="button"
-                  >
-                    {item}
-                  </button>
-                ),
-              )}
-            </div>
-          )}
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-black text-white">
+                {userName.charAt(0)}
+              </span>
+              <span className="hidden text-sm font-bold lg:inline">
+                {userName}
+              </span>
+              <span className={mutedText(darkMode)}>v</span>
+            </button>
+            {profileMenuOpen && (
+              <div
+                className={`absolute left-0 top-12 z-[90] w-52 overflow-hidden rounded-xl border p-1 text-sm font-bold shadow-2xl ${
+                  darkMode
+                    ? "border-white/10 bg-[#111720] text-slate-100"
+                    : "border-slate-200 bg-white text-slate-800"
+                }`}
+                role="menu"
+              >
+                {["مشاهده پروفایل", "تنظیمات حساب", "خروج از حساب"].map(
+                  (item) => (
+                    <button
+                      className={`block w-full rounded-lg px-3 py-2 text-right transition ${
+                        darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
+                      } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
+                      key={item}
+                      onClick={() => handleProfileMenuAction(item)}
+                      role="menuitem"
+                      type="button"
+                    >
+                      {item}
+                    </button>
+                  ),
+                )}
+              </div>
+            )}
           </div>
         </div>
       </header>

@@ -33,7 +33,7 @@ export function KoochCard({
   return (
     <section
       className={[
-        "rounded-xl border border-border text-card-foreground",
+        "rounded-lg border border-border text-card-foreground",
         paddingClass[padding],
         variantClass[variant],
         className,

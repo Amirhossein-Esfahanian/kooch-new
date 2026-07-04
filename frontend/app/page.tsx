@@ -109,7 +109,9 @@ export default function HomePage() {
   useEffect(() => {
     document.title = settingValue(settings, "site.defaultSeoTitle");
     const description = settingValue(settings, "site.defaultSeoDescription");
-    let metaDescription = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    let metaDescription = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]',
+    );
     if (!metaDescription) {
       metaDescription = document.createElement("meta");
       metaDescription.name = "description";
@@ -210,7 +212,12 @@ export default function HomePage() {
                     <p className="mt-3 line-clamp-2 min-h-10 text-sm leading-5 text-slate-600">
                       {property.description}
                     </p>
-                    <PromotionCards className="mt-4" compact maxItems={1} promotions={property.promotions} />
+                    <PromotionCards
+                      className="mt-4"
+                      compact
+                      maxItems={1}
+                      promotions={property.promotions}
+                    />
                     <div className="mt-5 flex items-end justify-between gap-3">
                       <div>
                         <p className="text-xs text-slate-400">قیمت از</p>

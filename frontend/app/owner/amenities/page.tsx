@@ -9,7 +9,7 @@ export default function AmenityManagementPage() {
     <OwnerLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader eyebrow="پنل مالک" title="مدیریت امکانات" />
-        <AmenityManagement />
+        <AmenityManagement mode="owner" />
       </main>
     </OwnerLayout>
   );

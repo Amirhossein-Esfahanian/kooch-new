@@ -9,7 +9,7 @@ export default function AdminAmenityManagementPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader eyebrow="پنل مدیریت" title="مدیریت امکانات" />
-        <AmenityManagement />
+        <AmenityManagement mode="admin" />
       </main>
     </AdminLayout>
   );
