@@ -37,6 +37,13 @@ const statusOptions = [
   { value: "Unavailable" as const, label: "ناموجود" },
   { value: "OnRequest" as const, label: "نیازمند استعلام" },
 ];
+function shortWeekdayLabel(value: string) {
+  return value.trim().slice(0, 1);
+}
+
+function toPersianDigits(value: string | number) {
+  return String(value).replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
+}
 
 function toPersianNumber(value: string | number) {
   return new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
@@ -134,10 +141,13 @@ export function OwnerInventoryGrid({
     () =>
       monthDays.map((date) => {
         const iso = toIso(date);
+        const weekday = date.locale("fa").format("ddd");
+
         return {
           date: iso,
-          label: date.locale("fa").format("D"),
-          weekday: date.locale("fa").format("ddd"),
+          label: toPersianDigits(date.locale("fa").format("D")),
+          weekday,
+          weekdayShort: shortWeekdayLabel(weekday),
           isToday: iso === dayjs().format("YYYY-MM-DD"),
         };
       }),
@@ -308,7 +318,9 @@ export function OwnerInventoryGrid({
     );
   }
 
-  const monthTitle = monthStart.locale("fa").format("MMMM YYYY");
+  const monthTitle = toPersianDigits(
+    monthStart.locale("fa").format("MMMM YYYY"),
+  );
   const bulkConfirmDetails = getBulkConfirmDetails(bulkConfirmPayload);
 
   return (
@@ -419,7 +431,7 @@ export function OwnerInventoryGrid({
                 onApplyRange={applyRange}
                 renderCell={(_row, _date, day, state) => (
                   <div
-                    className={`grid h-full place-items-center text-base font-black transition md:text-lg ${cellColor(day, state)}`}
+                    className={`grid h-full place-items-center text-xs font-semibold transition sm:text-sm md:text-base lg:text-lg ${cellColor(day, state)}`}
                   >
                     <span>{toPersianNumber(day.availableCount)}</span>
                   </div>

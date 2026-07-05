@@ -24,6 +24,7 @@ export type CalendarGridDay = {
   date: string;
   label: string;
   weekday: string;
+  weekdayShort?: string;
   isToday?: boolean;
 };
 
@@ -932,7 +933,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         >
           <button
             aria-label="کوچک‌کردن پنل ویرایش"
-            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded border border-border text-lg font-black leading-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded border border-border text-lg font-bold leading-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             onClick={() => setIsMinimized(true)}
             title="کوچک‌ کردن"
             type="button"
@@ -943,7 +944,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           </button>
           <div className="flex items-start justify-between gap-3 pr-9">
             <div>
-              <h3 className="font-black text-foreground">
+              <h3 className="font-bold text-foreground">
                 {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش بازه"}
               </h3>
               <p className="mt-1 text-xs font-semibold text-muted-foreground">
@@ -1000,7 +1001,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                         }
                       />
                       {pricingCurrencyLabel && (
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-black text-muted-foreground">
+                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
                           {pricingCurrencyLabel}
                         </span>
                       )}
@@ -1052,7 +1053,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 <div className="grid gap-2 sm:grid-cols-3">
                   {statusOptions?.map((option) => (
                     <button
-                      className={`min-h-5 rounded-lg border px-3  text-sm font-black transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                      className={`min-h-5 rounded-lg border px-3  text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                         status === option.value
                           ? "border-primary bg-primary text-primary-foreground shadow-sm"
                           : "border-border bg-background text-foreground hover:bg-muted"
@@ -1115,7 +1116,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
             </button>
             {mode === "pricing" && onCopyPricing && (
               <button
-                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-black text-foreground transition hover:bg-muted disabled:opacity-60"
+                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition hover:bg-muted disabled:opacity-60"
                 disabled={saving}
                 onClick={copyPricingSelection}
                 type="button"
@@ -1124,7 +1125,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
               </button>
             )}
             <button
-              className="rounded-lg border border-primary bg-primary px-5 py-2 text-sm font-black text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
+              className="rounded-lg border border-primary bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
               disabled={saving}
               onClick={applySelection}
               type="button"
@@ -1150,7 +1151,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                 { value: "single" as const, label: "انتخاب تکی" },
               ].map((option) => (
                 <button
-                  className={`rounded-lg px-3 py-1.5 text-sm font-black transition ${selectionMode === option.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-bold transition ${selectionMode === option.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                   key={option.value}
                   onClick={() => changeSelectionMode(option.value)}
                   type="button"
@@ -1165,7 +1166,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           </span>
           {selectedRanges.length > 0 && (
             <button
-              className="rounded-lg border border-destructive bg-background px-3 py-2 text-xs font-black text-destructive transition hover:bg-muted"
+              className="rounded-lg border border-destructive bg-background px-3 py-2 text-xs font-bold text-destructive transition hover:bg-muted"
               onClick={clearSelections}
               type="button"
             >
@@ -1176,7 +1177,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         {selectedRanges.length > 0 && isMinimized && (
           <button
             aria-label="بازکردن پنل ویرایش"
-            className="grid h-12 w-32 place-items-center rounded-md bg-primary text-primary-foreground shadow-lg ring-1 ring-black/5 transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            className="grid h-12 w-32 place-items-center rounded-md bg-primary text-primary-foreground shadow-lg ring-1 ring-bold/5 transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
             onClick={() => setIsMinimized(false)}
             title="بازکردن پنل ویرایش"
             type="button"
@@ -1215,27 +1216,32 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
         <table className="min-w-max border-collapse bg-card text-sm text-foreground">
           <thead>
             <tr>
-              <th className="sticky right-0 z-30 min-w-[180px] border border-border bg-card p-3 text-right shadow-sm">
-                اتاق / تاریخ
+              <th className="sticky right-0 z-30 w-20 min-w-20 max-w-20 border border-border bg-card p-1 text-right text-[10px] shadow-sm sm:w-32 sm:min-w-32 sm:max-w-32 sm:p-2 sm:text-xs md:w-[180px] md:min-w-[180px] md:max-w-[180px] md:p-3">
+                <span>اتاق / تاریخ</span>
               </th>
               {days.map((day, dayIndex) => {
                 const disabled = dayDisabled(dayIndex);
                 return (
                   <th
-                    className={`min-w-[68px] border border-border p-0 text-center ${disabled ? "bg-muted text-muted-foreground" : "bg-card"} ${day.isToday ? "ring-2 ring-ring" : ""}`}
+                    className={`w-8 min-w-8 max-w-8 border border-border p-0 text-center sm:min-w-12 md:min-w-[68px] ${disabled ? "bg-muted text-muted-foreground" : "bg-card"} ${day.isToday ? "ring-2 ring-ring" : ""}`}
                     key={day.date}
                   >
                     <button
-                      className={`h-full w-full px-2 py-2 ${disabled ? "cursor-not-allowed text-muted-foreground" : "hover:bg-muted"}`}
+                      className={`h-full w-full px-0 py-1 sm:px-2 sm:py-2 ${disabled ? "cursor-not-allowed text-muted-foreground" : "hover:bg-muted"}`}
                       disabled={disabled}
                       onClick={() => toggleColumn(dayIndex)}
                       type="button"
                     >
-                      <span className="block text-[11px] font-bold text-muted-foreground">
+                      <span className="hidden text-[11px] font-semibold text-muted-foreground sm:block">
                         {day.weekday}
                       </span>
+
+                      <span className="block text-[10px] font-medium text-muted-foreground sm:hidden">
+                        {day.weekdayShort ?? day.weekday.trim().slice(0, 1)}
+                      </span>
+
                       <span
-                        className={`block text-base font-black ${disabled ? "text-muted-foreground" : "text-foreground"}`}
+                        className={`block text-xs font-semibold sm:text-sm md:text-base ${disabled ? "text-muted-foreground" : "text-foreground"}`}
                       >
                         {day.label}
                       </span>
@@ -1248,13 +1254,13 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           <tbody>
             {rows.map((row) => (
               <tr key={row.id}>
-                <th className="sticky right-0 z-30 min-w-[180px] border border-border bg-card p-0 text-right align-middle shadow-sm">
+                <th className="sticky right-0 z-30 w-20 min-w-20 max-w-20 overflow-hidden border border-border bg-card p-0 text-right align-middle shadow-sm sm:w-32 sm:min-w-32 sm:max-w-32 md:w-[180px] md:min-w-[180px] md:max-w-[180px]">
                   <button
-                    className="h-full w-full px-3 py-2 text-right hover:bg-muted"
+                    className="h-full w-full overflow-hidden px-1 py-1.5 text-right hover:bg-muted sm:px-2 sm:py-2 md:px-3"
                     onClick={() => toggleRow(row)}
                     type="button"
                   >
-                    <span className="block font-black text-foreground">
+                    <span className="block max-w-full whitespace-normal break-words text-[10px] font-medium leading-4 text-foreground sm:text-xs sm:leading-5 md:text-sm md:font-semibold">
                       {row.label}
                     </span>
                   </button>
@@ -1313,7 +1319,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
                   return (
                     <td
-                      className={`relative h-10 min-w-[68px] select-none border border-border p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-muted text-muted-foreground" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected && !disabled ? "bg-primary/15 shadow-inner ring-1 ring-inset ring-primary" : ""}`}
+                      className={`relative h-8 w-8 min-w-8 max-w-8 select-none border border-border p-0 text-center md:h-11 ${disabled ? "cursor-not-allowed bg-muted text-muted-foreground" : dragTarget ? "cursor-ew-resize" : "cursor-pointer"} ${selected && !disabled ? "bg-primary/15 shadow-inner ring-1 ring-inset ring-primary" : ""}`}
                       data-calendar-selected={selected ? "true" : undefined}
                       data-calendar-active-selected={
                         activeSelected ? "true" : undefined
@@ -1322,7 +1328,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                       onPointerEnter={() => extendHandle(row.id, dayIndex)}
                     >
                       <button
-                        className={`h-full w-full ${disabled ? "cursor-not-allowed" : dragTarget ? "cursor-ew-resize" : ""}`}
+                        className={`h-full w-full text-xs sm:text-sm ${disabled ? "cursor-not-allowed" : dragTarget ? "cursor-ew-resize" : ""}`}
                         disabled={disabled}
                         onClick={() => toggleCell(row.id, dayIndex)}
                         type="button"
@@ -1375,7 +1381,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           .map((range) => (
                             <button
                               aria-label={`حذف انتخاب ${selectionLabel(range)}`}
-                              className="absolute left-1/2 top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded border border-destructive bg-background text-[11px] font-black text-destructive shadow-md hover:bg-muted"
+                              className="absolute left-1/2 top-0 z-20 grid h-5 w-5 -translate-x-1/2 -translate-y-1/2 place-items-center rounded border border-destructive bg-background text-[11px] font-bold text-destructive shadow-md hover:bg-muted"
                               key={range.id}
                               onClick={(event) => {
                                 event.stopPropagation();
