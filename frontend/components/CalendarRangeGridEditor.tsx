@@ -1175,37 +1175,39 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           )}
         </div>
         {selectedRanges.length > 0 && isMinimized && (
-          <button
-            aria-label="بازکردن پنل ویرایش"
-            className="grid h-12 w-32 place-items-center rounded-md bg-primary text-primary-foreground shadow-lg ring-1 ring-bold/5 transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            onClick={() => setIsMinimized(false)}
-            title="بازکردن پنل ویرایش"
-            type="button"
-          >
-            <svg
-              aria-hidden="true"
-              className="h-5 w-5"
-              fill="none"
-              viewBox="0 0 24 24"
+          <div className="fixed bottom-4 left-1/2 z-[80] flex -translate-x-1/2 items-center ">
+            <button
+              aria-label="بازکردن پنل ویرایش"
+              className="grid h-12   w-32 place-items-center rounded-md bg-primary text-primary-foreground shadow-lg backdrop-blur ring-bold/5 transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              onClick={() => setIsMinimized(false)}
+              title="بازکردن پنل ویرایش"
+              type="button"
             >
-              <path
-                d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-              />
-              <path
-                d="m13.5 6.5 4 4"
-                stroke="currentColor"
-                strokeLinecap="round"
-                strokeWidth="2"
-              />
-            </svg>
-            <span className="text-xs font-normal text-primary-foreground">
-              {toPersianNumber(selectedCount)} روز انتخاب شده
-            </span>
-          </button>
+              <svg
+                aria-hidden="true"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+                <path
+                  d="m13.5 6.5 4 4"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="2"
+                />
+              </svg>
+              <span className="text-xs font-normal text-primary-foreground">
+                {toPersianNumber(selectedCount)} روز انتخاب شده
+              </span>
+            </button>
+          </div>
         )}
       </div>
       {editorPanel &&

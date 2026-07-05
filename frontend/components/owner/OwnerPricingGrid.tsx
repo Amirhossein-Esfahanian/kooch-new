@@ -21,6 +21,7 @@ import {
   CalendarRangeApplyPayload,
   CalendarRangeGridEditor,
 } from "@/components/CalendarRangeGridEditor";
+import RoomPricingMatrixEditor from "@/components/pricing/RoomPricingMatrixEditor";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
@@ -247,6 +248,7 @@ export function OwnerPricingGrid({
   const [copyError, setCopyError] = useState("");
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [usePricingMatrix, setUsePricingMatrix] = useState(false);
   const monthStart = useMemo(
     () => jalaliMonthStart(activeMonth),
     [activeMonth],
@@ -654,9 +656,12 @@ export function OwnerPricingGrid({
     }
   }
   return (
-    <KoochCard className="min-w-0" variant="elevated">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
+    <KoochCard
+      className="min-w-0 max-w-full overflow-hidden"
+      variant="elevated"
+    >
+      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+        <div className="min-w-0">
           <h2 className="text-xl font-black text-foreground">
             مدیریت قیمت روزانه
           </h2>
@@ -664,8 +669,10 @@ export function OwnerPricingGrid({
             روزها و اتاق‌ها را انتخاب کنید و نرخ‌ها را به‌صورت گروهی تغییر دهید.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+
+        <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap sm:justify-end">
           <KoochButton
+            className="w-full sm:w-auto"
             onClick={openHistory}
             size="sm"
             type="button"
@@ -673,28 +680,47 @@ export function OwnerPricingGrid({
           >
             مشاهده سوابق تغییر قیمت
           </KoochButton>
+
+          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
+            <KoochButton
+              className="w-full sm:w-auto"
+              onClick={() =>
+                setActiveMonth(
+                  monthStart.subtract(1, "month").format("YYYY-MM"),
+                )
+              }
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              ماه قبل
+            </KoochButton>
+
+            <strong className="min-w-0 rounded-lg bg-muted px-3 py-2 text-center text-sm text-foreground sm:min-w-32">
+              {monthTitle}
+            </strong>
+
+            <KoochButton
+              className="w-full sm:w-auto"
+              onClick={() =>
+                setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))
+              }
+              size="sm"
+              type="button"
+              variant="outline"
+            >
+              ماه بعد
+            </KoochButton>
+          </div>
+
           <KoochButton
-            onClick={() =>
-              setActiveMonth(monthStart.subtract(1, "month").format("YYYY-MM"))
-            }
+            className="w-full sm:w-auto"
+            onClick={() => setUsePricingMatrix((s) => !s)}
             size="sm"
             type="button"
-            variant="outline"
+            variant={usePricingMatrix ? "primary" : "outline"}
           >
-            ماه قبل
-          </KoochButton>
-          <strong className="min-w-32 rounded-xl bg-muted px-4 py-2 text-center text-foreground">
-            {monthTitle}
-          </strong>
-          <KoochButton
-            onClick={() =>
-              setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))
-            }
-            size="sm"
-            type="button"
-            variant="outline"
-          >
-            ماه بعد
+            {usePricingMatrix ? "برگشت به جدول قبلی" : "نمایش جدول آزمایشی"}
           </KoochButton>
         </div>
       </div>
@@ -799,43 +825,64 @@ export function OwnerPricingGrid({
             </p>
           )}
           <div className="mt-5">
-            <CalendarRangeGridEditor
-              days={gridDays}
-              disabledDateResolver={(date) =>
-                dayjs(date).isBefore(dayjs().startOf("day"), "day")
-              }
-              error={error}
-              getCellValue={getCellValue}
-              confirmApplyRange={confirmPriceApply}
-              message={message}
-              mode="pricing"
-              onApplyRange={applyPrices}
-              onCopyPricing={openCopyPricingDialog}
-              pricingCurrencyLabel={currencyLabel}
-              pricingMaxValue={priceBounds.maximum}
-              pricingMinValue={priceBounds.minimum}
-              quickPricePresets={quickPricePresets}
-              pricingValueResolver={(day) => ({
-                basePrice: day.basePrice,
-              })}
-              renderCell={(_row, _date, day, state) => (
-                <div
-                  className={`grid h-full place-items-center px-1 text-[11px] font-black ${
-                    state.disabled
-                      ? "bg-muted text-muted-foreground"
-                      : state.selected
-                        ? "bg-[var(--theme-primary-soft)] text-foreground"
-                        : "bg-light text-foreground"
-                  }`}
-                >
-                  {formatPrice(day.basePrice)}
-                </div>
-              )}
-              rows={rows}
-              key={activeGuestType}
-              valueInputType="number"
-              valueLabel="نرخ اتاق"
-            />
+            {usePricingMatrix ? (
+              <RoomPricingMatrixEditor
+                rows={rows}
+                days={gridDays}
+                getCellValue={getCellValue}
+                onApplyRange={applyPrices}
+                pricingCurrencyLabel={currencyLabel}
+                pricingMaxValue={priceBounds.maximum}
+                pricingMinValue={priceBounds.minimum}
+                quickPricePresets={quickPricePresets}
+                pricingValueResolver={(day) => ({ basePrice: day.basePrice })}
+                pricingCellSize="w-28 h-12"
+                dayColumnSize="w-36"
+                disabledDateResolver={(date) =>
+                  dayjs(date).isBefore(dayjs().startOf("day"), "day")
+                }
+                childPrice={property?.childPrice}
+                extraGuestPrice={property?.extraGuestPrice}
+              />
+            ) : (
+              <CalendarRangeGridEditor
+                days={gridDays}
+                disabledDateResolver={(date) =>
+                  dayjs(date).isBefore(dayjs().startOf("day"), "day")
+                }
+                error={error}
+                getCellValue={getCellValue}
+                confirmApplyRange={confirmPriceApply}
+                message={message}
+                mode="pricing"
+                onApplyRange={applyPrices}
+                onCopyPricing={openCopyPricingDialog}
+                pricingCurrencyLabel={currencyLabel}
+                pricingMaxValue={priceBounds.maximum}
+                pricingMinValue={priceBounds.minimum}
+                quickPricePresets={quickPricePresets}
+                pricingValueResolver={(day) => ({
+                  basePrice: day.basePrice,
+                })}
+                renderCell={(_row, _date, day, state) => (
+                  <div
+                    className={`grid h-full place-items-center px-1 text-[11px] font-black ${
+                      state.disabled
+                        ? "bg-muted text-muted-foreground"
+                        : state.selected
+                          ? "bg-[var(--theme-primary-soft)] text-foreground"
+                          : "bg-light text-foreground"
+                    }`}
+                  >
+                    {formatPrice(day.basePrice)}
+                  </div>
+                )}
+                rows={rows}
+                key={activeGuestType}
+                valueInputType="number"
+                valueLabel="نرخ اتاق"
+              />
+            )}
           </div>
         </>
       )}
