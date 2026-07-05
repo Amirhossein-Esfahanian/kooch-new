@@ -25,6 +25,35 @@ function formatPrice(value: number) {
   );
 }
 
+function toPersianNumber(value: string | number) {
+  return new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
+    Number(value),
+  );
+}
+
+function toPersianDigits(value: string | number) {
+  return String(value).replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
+}
+
+function normalizeDigits(value: string) {
+  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
+  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+
+  return value
+    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)));
+}
+
+function parsePriceInput(value: string) {
+  const normalized = normalizeDigits(value)
+    .replace(/[٬,\s]/g, "")
+    .replace(/[^\d.-]/g, "");
+
+  if (normalized === "") return "";
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : "";
+}
+
 export interface RoomPricingMatrixEditorProps<
   RowType extends PricingMatrixRoom,
 > {
@@ -69,12 +98,6 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   const [pendingValue, setPendingValue] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
-  function toPersianNumber(value: string | number) {
-    return new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
-      Number(value),
-    );
-  }
-
   const selectedItems = useMemo(() => Array.from(selection), [selection]);
   const selectedCells = useMemo(() => {
     return selectedItems
@@ -91,6 +114,27 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   const selectedDayCount = useMemo(() => {
     return new Set(selectedCells.map((cell) => cell.date)).size;
   }, [selectedCells]);
+
+  const selectedDateRangeLabel = useMemo(() => {
+    const sortedDates = selectedCells.map((cell) => cell.date).sort();
+    if (!sortedDates.length) return "";
+
+    const dayByDate = new Map(days.map((day) => [day.date, day]));
+
+    function formatSelectedDate(date: string) {
+      const day = dayByDate.get(date);
+      if (!day) return toPersianDigits(date);
+
+      return `${toPersianDigits(day.label)} ${day.weekday}`.trim();
+    }
+
+    const first = formatSelectedDate(sortedDates[0]);
+    const last = formatSelectedDate(sortedDates[sortedDates.length - 1]);
+
+    return sortedDates[0] === sortedDates[sortedDates.length - 1]
+      ? first
+      : `${first} تا ${last}`;
+  }, [days, selectedCells]);
 
   const selectedValues = useMemo(() => {
     return selectedCells
@@ -118,6 +162,12 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
       setEditorValue("");
     }
   }, [currentPrefillValue, hasMixedValues, selectedValues.length]);
+
+  useEffect(() => {
+    if (selectedItems.length === 0) {
+      setPanelOpen(false);
+    }
+  }, [selectedItems.length]);
 
   function keyFor(roomId: number | string, date: string) {
     return `${roomId}|${date}`;
@@ -179,16 +229,29 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   }
 
   function buildPayloadForApply(value: number): CalendarRangeApplyPayload {
-    const items = selectedItems.map((k) => {
-      const [roomId, date] = k.split("|");
-      return { rowId: isNaN(Number(roomId)) ? roomId : Number(roomId), date };
-    });
-    const dates = items.map((i) => i.date).sort();
+    const items = selectedItems
+      .map((key) => {
+        const [roomId, date] = key.split("|");
+        return {
+          rowId: isNaN(Number(roomId)) ? roomId : Number(roomId),
+          date,
+        };
+      })
+      .filter((item) => Boolean(item.date))
+      .sort(
+        (first, second) =>
+          String(first.rowId).localeCompare(String(second.rowId)) ||
+          first.date.localeCompare(second.date),
+      );
+
+    const dates = items.map((item) => item.date).sort();
+
     return {
-      rowId: items.length > 0 ? items[0].rowId : rows[0]?.id,
-      startDate: dates[0] ?? days[0]?.date,
-      endDate: dates[dates.length - 1] ?? days[days.length - 1]?.date,
+      rowId: items[0]?.rowId ?? rows[0]?.id ?? "",
+      startDate: dates[0] ?? days[0]?.date ?? "",
+      endDate: dates[dates.length - 1] ?? days[days.length - 1]?.date ?? "",
       value,
+      basePrice: value,
       items,
       selectionRangeCount: items.length,
     } satisfies CalendarRangeApplyPayload;
@@ -199,8 +262,11 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     const payload = buildPayloadForApply(value);
     try {
       await onApplyRange(payload);
-      toast.success(`قیمت برای ${selectedItems.length} سلول اعمال شد.`);
+      toast.success(
+        `قیمت برای ${toPersianNumber(selectedItems.length)} سلول اعمال شد.`,
+      );
       clearSelections();
+      setPanelOpen(false);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "اعمال قیمت با خطا مواجه شد.";
@@ -235,24 +301,28 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="text-sm text-muted-foreground">
           {selectedItems.length > 0
-            ? `${selectedDayCount} روز انتخاب شده`
+            ? `${toPersianNumber(selectedDayCount)} روز انتخاب شده`
             : "برای ویرایش قیمت، سلول‌هایی را انتخاب کنید."}
         </div>
       </div>
 
       {!panelOpen && selectedItems.length > 0 && (
-        <div className="fixed bottom-4 left-1/2 z-[80] flex -translate-x-1/2 items-center gap-2 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur">
-          <span className="text-sm font-black text-foreground">
-            {selectedDayCount} روز انتخاب شده
-          </span>
-          <KoochButton
-            onClick={() => setPanelOpen(true)}
-            type="button"
-            variant="primary"
-            size="sm"
-          >
-            ویرایش قیمت
-          </KoochButton>
+        <div className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex max-w-md justify-center px-3">
+          <div className="flex w-full items-center justify-between gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur">
+            <span className="min-w-0 truncate text-sm font-black text-foreground">
+              {toPersianNumber(selectedItems.length)} خانه /{" "}
+              {toPersianNumber(selectedDayCount)} روز انتخاب شده
+            </span>
+
+            <KoochButton
+              onClick={() => setPanelOpen(true)}
+              size="sm"
+              type="button"
+              variant="primary"
+            >
+              ویرایش قیمت
+            </KoochButton>
+          </div>
         </div>
       )}
 
@@ -295,7 +365,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                       <span
                         className={`block text-xs font-bold ${isDisabled ? "text-muted-foreground" : "text-foreground"} sm:text-sm`}
                       >
-                        {d.label}
+                        {toPersianDigits(d.label)}
                       </span>
                       <span
                         className={`block text-[10px] font-medium ${isDisabled ? "text-muted-foreground/70" : "text-muted-foreground"} sm:text-xs`}
@@ -343,7 +413,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                             <div className="text-[10px] text-muted-foreground">
                               {typeof cellInventory === "number"
                                 ? toPersianNumber(cellInventory)
-                                : cellInventory}
+                                : toPersianDigits(cellInventory)}
                             </div>
                           </button>
                         </td>
@@ -370,13 +440,12 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   {selectedItems.length > 0
-                    ? `${selectedDayCount} روز انتخاب شده`
+                    ? `${toPersianNumber(selectedDayCount)} روز انتخاب شده`
                     : "برای اعمال قیمت، ابتدا سلول‌هایی را انتخاب کنید."}
                 </p>
                 {selectedCells.length > 0 && (
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {selectedCells[0].date} تا{" "}
-                    {selectedCells[selectedCells.length - 1].date}
+                    {selectedDateRangeLabel}
                   </p>
                 )}
               </div>
@@ -401,12 +470,11 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                 </KoochButton>
                 <KoochButton
                   onClick={() => {
-                    const parsedValue = Number(editorValue);
                     if (
                       typeof editorValue === "number" &&
-                      Number.isFinite(parsedValue)
+                      Number.isFinite(editorValue)
                     ) {
-                      void handleApply(parsedValue);
+                      void handleApply(editorValue);
                     }
                   }}
                   disabled={selectedItems.length === 0 || editorValue === ""}
@@ -443,12 +511,15 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                       </label>
                       <input
                         id="matrix-price-input"
-                        type="number"
-                        value={editorValue}
-                        onChange={(e) =>
-                          setEditorValue(
-                            e.target.value === "" ? "" : Number(e.target.value),
-                          )
+                        inputMode="numeric"
+                        type="text"
+                        value={
+                          typeof editorValue === "number"
+                            ? formatPrice(editorValue)
+                            : ""
+                        }
+                        onChange={(event) =>
+                          setEditorValue(parsePriceInput(event.target.value))
                         }
                         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
                         placeholder="قیمت"

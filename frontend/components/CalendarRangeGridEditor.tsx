@@ -13,6 +13,8 @@ import { createPortal } from "react-dom";
 import { AvailabilityStatus } from "@/lib/owner-api";
 import { toast } from "sonner";
 import { QuickPriceSelector } from "@/components/pricing/QuickPriceSelector";
+import { KoochButton } from "./KoochButton";
+import { KoochCard } from "./KoochCard";
 
 export type CalendarGridRow = {
   id: number | string;
@@ -134,10 +136,34 @@ type SelectedRange = {
 type SelectionMode = "range" | "single";
 type DragTarget = { selectionId: string; edge: "start" | "end" } | null;
 
+function toPersianDigits(value: string | number) {
+  return String(value)
+    .replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)])
+    .replace(/[٠-٩]/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"["٠١٢٣٤٥٦٧٨٩".indexOf(digit)]);
+}
+
+function toEnglishDigits(value: string) {
+  return value
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+}
+
 function toPersianNumber(value: string | number) {
   return new Intl.NumberFormat("fa-IR", { useGrouping: false }).format(
     Number(value),
   );
+}
+
+function formatPrice(value: number) {
+  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(
+    value,
+  );
+}
+
+function parseNumberInput(value: string) {
+  const normalized = toEnglishDigits(value).replace(/[^0-9.-]/g, "");
+  if (normalized.trim() === "") return Number.NaN;
+  return Number(normalized);
 }
 
 function keyOf(rowId: number | string, date: string) {
@@ -772,7 +798,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           (price) => price < pricingMinValue || price > pricingMaxValue,
         )
       )
-        return `مبلغ‌ها باید بین ${toPersianNumber(pricingMinValue)} و ${toPersianNumber(pricingMaxValue)} باشند.`;
+        return `مبلغ‌ها باید بین ${formatPrice(pricingMinValue)} و ${formatPrice(pricingMaxValue)} باشند.`;
       return "";
     }
     const selectedRows = new Set(selectedItems.map((item) => item.rowId));
@@ -901,8 +927,8 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const endDay = days.find((day) => day.date === range.endDate);
     const dates =
       range.startDate === range.endDate
-        ? (startDay?.label ?? range.startDate)
-        : `${startDay?.label ?? range.startDate}–${endDay?.label ?? range.endDate}`;
+        ? toPersianDigits(startDay?.label ?? range.startDate)
+        : `${toPersianDigits(startDay?.label ?? range.startDate)}–${toPersianDigits(endDay?.label ?? range.endDate)}`;
     return `${row?.label ?? range.roomTypeId} | ${dates}`;
   }
 
@@ -917,46 +943,215 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
   const editorPanel =
     selectedCount > 0 && activeRow ? (
-      <>
-        <div
-          aria-hidden={isMinimized}
-          className={`fixed inset-x-3 bottom-3 z-50 rounded-2xl border border-border p-4 shadow-2xl transition-all duration-[250ms] ease-out md:inset-x-auto md:bottom-auto md:w-[360px] ${inventoryPanelTone} ${
-            isMinimized
-              ? "pointer-events-none invisible scale-95 opacity-0"
-              : "visible scale-100 opacity-100"
-          }`}
-          ref={popupRef}
-          style={{
-            left: isDesktop ? popupPosition.left : undefined,
-            top: isDesktop ? popupPosition.top : undefined,
-          }}
+      <div
+        aria-hidden={isMinimized}
+        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3 transition-all duration-[250ms] ease-out ${
+          isMinimized
+            ? "pointer-events-none invisible translate-y-4 scale-95 opacity-0"
+            : "visible translate-y-0 scale-100 opacity-100"
+        }`}
+      >
+        <KoochCard
+          className={`w-full min-w-0 border-border/70 shadow-lg ${inventoryPanelTone}`}
+          variant="elevated"
         >
-          <button
-            aria-label="کوچک‌کردن پنل ویرایش"
-            className="absolute right-3 top-3 grid h-8 w-8 place-items-center rounded border border-border text-lg font-bold leading-none text-muted-foreground transition hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            onClick={() => setIsMinimized(true)}
-            title="کوچک‌ کردن"
-            type="button"
-          >
-            <span aria-hidden="true" className="relative top-[1px]">
-              —
-            </span>
-          </button>
-          <div className="flex items-start justify-between gap-3 pr-9">
-            <div>
-              <h3 className="font-bold text-foreground">
-                {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش بازه"}
-              </h3>
-              <p className="mt-1 text-xs font-semibold text-muted-foreground">
-                {toPersianNumber(selectedCount)} خانه در{" "}
-                {toPersianNumber(selectedRanges.length)} بازه انتخاب شده
-              </p>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <KoochButton
+                onClick={() => setIsMinimized(true)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                -
+              </KoochButton>
+
+              <div className="min-w-0">
+                <h3 className="text-lg font-black text-foreground">
+                  {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
+                </h3>
+
+                <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                  {toPersianNumber(selectedCount)} خانه در{" "}
+                  {toPersianNumber(selectedRanges.length)} بازه انتخاب شده
+                </p>
+              </div>
             </div>
           </div>
 
-          <div className="mt-5 flex flex-col gap-4">
-            {mode === "pricing" ? (
-              <>
+          <div
+            className={`mt-4 grid gap-3 ${
+              mode === "pricing"
+                ? "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start"
+                : ""
+            }`}
+          >
+            <div className="min-w-0 space-y-3">
+              {mode === "pricing" ? (
+                <>
+                  <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold text-muted-foreground">
+                          قیمت انتخاب‌شده
+                        </p>
+
+                        <p className="mt-1 text-sm font-black text-foreground">
+                          {mixedPricingFields.basePrice
+                            ? "مقادیر انتخاب‌شده متفاوت هستند"
+                            : Number.isFinite(basePrice)
+                              ? `${formatPrice(basePrice)} ${
+                                  pricingCurrencyLabel || ""
+                                }`
+                              : "قیمت را وارد کنید"}
+                        </p>
+                      </div>
+
+                      <label className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
+                        نرخ اتاق
+                        <span className="relative mt-1 block">
+                          <input
+                            className={`w-full rounded-lg border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                              pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"
+                            }`}
+                            inputMode="numeric"
+                            onChange={(event) => {
+                              setBasePrice(
+                                parseNumberInput(event.target.value),
+                              );
+                              setMixedPricingFields((current) => ({
+                                ...current,
+                                basePrice: false,
+                              }));
+                            }}
+                            onFocus={(event) => event.currentTarget.select()}
+                            type="text"
+                            value={
+                              Number.isFinite(basePrice)
+                                ? formatPrice(basePrice)
+                                : ""
+                            }
+                          />
+
+                          {pricingCurrencyLabel && (
+                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+                              {pricingCurrencyLabel}
+                            </span>
+                          )}
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                    <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
+                      {valueLabel}
+
+                      <input
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        disabled={status === "Unavailable"}
+                        min={
+                          activeRow
+                            ? (minValueResolver?.(activeRow as Row) ?? 0)
+                            : 0
+                        }
+                        inputMode={
+                          valueInputType === "number" ? "numeric" : undefined
+                        }
+                        onChange={(event) => {
+                          setValue(parseNumberInput(event.target.value));
+                          setMixedInventoryValue(false);
+                        }}
+                        type={
+                          valueInputType === "number" ? "text" : valueInputType
+                        }
+                        value={
+                          status === "Unavailable"
+                            ? toPersianNumber(0)
+                            : Number.isFinite(value)
+                              ? toPersianNumber(value)
+                              : ""
+                        }
+                      />
+
+                      {mixedInventoryValue && (
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          ظرفیت روزهای انتخاب‌شده متفاوت است
+                        </span>
+                      )}
+                    </label>
+                  </div>
+
+                  {statusOptions && (
+                    <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                      <div className="flex flex-col gap-2 text-sm font-bold text-foreground">
+                        <span>وضعیت</span>
+
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {statusOptions.map((option) => (
+                            <button
+                              className={`min-h-5 rounded-lg border px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                                status === option.value
+                                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                  : "border-border bg-background text-foreground hover:bg-muted"
+                              }`}
+                              key={option.value}
+                              onClick={() => {
+                                setStatus(option.value);
+                                setMixedInventoryStatus(false);
+                                setMixedInventoryValue(false);
+
+                                if (option.value === "Unavailable") {
+                                  setValue(0);
+                                  return;
+                                }
+
+                                if (
+                                  option.value === "Available" ||
+                                  option.value === "OnRequest"
+                                ) {
+                                  setValue(1);
+                                }
+                              }}
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {mixedInventoryStatus && (
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            وضعیت روزهای انتخاب‌شده متفاوت است
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {(localError || error || (mode !== "inventory" && message)) && (
+                <div className="grid gap-2">
+                  {(localError || error) && (
+                    <p className="rounded-lg border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
+                      {localError || error}
+                    </p>
+                  )}
+
+                  {mode !== "inventory" && message && (
+                    <p className="rounded-lg bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
+                      {message}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {mode === "pricing" && (
+              <div className="w-full min-w-0 space-y-3 lg:w-[18rem]">
                 <QuickPriceSelector
                   onSelect={(price) => {
                     setBasePrice(price);
@@ -967,174 +1162,48 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                   }}
                   prices={quickPricePresets}
                 />
-                {[
-                  {
-                    key: "basePrice" as const,
-                    label: "نرخ اتاق",
-                    fieldValue: basePrice,
-                    update: setBasePrice,
-                  },
-                ].map((field) => (
-                  <label
-                    className="flex flex-col gap-2 text-sm font-bold text-foreground"
-                    key={field.label}
-                  >
-                    {field.label}
-                    <span className="relative">
-                      <input
-                        className={`w-full rounded-lg border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"}`}
-                        max={pricingMaxValue}
-                        min={pricingMinValue}
-                        onChange={(event) =>
-                          field.update(
-                            event.target.value === ""
-                              ? Number.NaN
-                              : Number(event.target.value),
-                          )
-                        }
-                        onFocus={(event) => event.currentTarget.select()}
-                        type="number"
-                        value={
-                          Number.isFinite(field.fieldValue)
-                            ? field.fieldValue
-                            : ""
-                        }
-                      />
-                      {pricingCurrencyLabel && (
-                        <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                          {pricingCurrencyLabel}
-                        </span>
-                      )}
-                    </span>
-                    {mixedPricingFields[field.key] && (
-                      <span className="text-xs font-semibold text-muted-foreground">
-                        مقادیر انتخاب‌شده متفاوت هستند.
-                      </span>
-                    )}
-                  </label>
-                ))}
-              </>
-            ) : (
-              <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                {valueLabel}
-                <input
-                  className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                  disabled={status === "Unavailable"}
-                  min={
-                    activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0
-                  }
-                  onChange={(event) => {
-                    setValue(
-                      event.target.value === ""
-                        ? Number.NaN
-                        : Number(event.target.value),
-                    );
-                    setMixedInventoryValue(false);
-                  }}
-                  type={valueInputType}
-                  value={
-                    status === "Unavailable"
-                      ? 0
-                      : Number.isFinite(value)
-                        ? value
-                        : ""
-                  }
-                />
-                {mixedInventoryValue && (
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    ظرفیت روزهای انتخاب‌شده متفاوت است
-                  </span>
-                )}
-              </label>
-            )}
-            {mode === "inventory" && statusOptions && (
-              <div className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                <span>وضعیت</span>
-                <div className="grid gap-2 sm:grid-cols-3">
-                  {statusOptions?.map((option) => (
-                    <button
-                      className={`min-h-5 rounded-lg border px-3  text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                        status === option.value
-                          ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                          : "border-border bg-background text-foreground hover:bg-muted"
-                      }`}
-                      key={option.value}
-                      onClick={() => {
-                        setStatus(option.value);
-                        setMixedInventoryStatus(false);
-                        setMixedInventoryValue(false);
 
-                        if (option.value === "Unavailable") {
-                          setValue(0);
-                          return;
-                        }
-
-                        if (
-                          option.value === "Available" ||
-                          option.value === "OnRequest"
-                        ) {
-                          setValue(1);
-                        }
-                      }}
-                      type="button"
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-                {mixedInventoryStatus && (
-                  <span className="text-xs font-semibold text-muted-foreground">
-                    وضعیت روزهای انتخاب‌شده متفاوت است
-                  </span>
+                {mixedPricingFields.basePrice && (
+                  <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                    چند سلول با قیمت‌های متفاوت انتخاب شده‌اند. قیمت جدید برای
+                    همه سلول‌های انتخاب‌شده اعمال می‌شود.
+                  </p>
                 )}
               </div>
             )}
           </div>
 
-          {(localError || error || (mode !== "inventory" && message)) && (
-            <div className="mt-3 grid gap-2">
-              {(localError || error) && (
-                <p className="rounded-lg border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
-                  {localError || error}
-                </p>
-              )}
-              {mode !== "inventory" && message && (
-                <p className="rounded-lg bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
-                  {message}
-                </p>
-              )}
-            </div>
-          )}
-
-          <div className="mt-4 flex justify-center gap-2 pt-3">
-            <button
-              className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition hover:bg-muted"
+          <div className="mt-4 flex flex-wrap items-center justify-start gap-2 border-t border-border/70 pt-3">
+            <KoochButton
               onClick={clearSelections}
               type="button"
+              variant="outline"
             >
-              لغو
-            </button>
+              انصراف
+            </KoochButton>
+
             {mode === "pricing" && onCopyPricing && (
-              <button
-                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-bold text-foreground transition hover:bg-muted disabled:opacity-60"
+              <KoochButton
                 disabled={saving}
                 onClick={copyPricingSelection}
                 type="button"
+                variant="outline"
               >
                 کپی قیمت‌ها
-              </button>
+              </KoochButton>
             )}
-            <button
-              className="rounded-lg border border-primary bg-primary px-5 py-2 text-sm font-bold text-primary-foreground hover:bg-[var(--primary-hover)] disabled:opacity-60"
+
+            <KoochButton
               disabled={saving}
               onClick={applySelection}
               type="button"
+              variant="primary"
             >
               {saving ? "در حال ذخیره..." : "ذخیره"}
-            </button>
+            </KoochButton>
           </div>
-        </div>
-      </>
+        </KoochCard>
+      </div>
     ) : null;
 
   return (
@@ -1245,7 +1314,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                       <span
                         className={`block text-xs font-semibold sm:text-sm md:text-base ${disabled ? "text-muted-foreground" : "text-foreground"}`}
                       >
-                        {day.label}
+                        {toPersianDigits(day.label)}
                       </span>
                     </button>
                   </th>
