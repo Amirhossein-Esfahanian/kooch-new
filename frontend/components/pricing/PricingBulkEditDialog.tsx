@@ -1,13 +1,6 @@
 ﻿"use client";
 
-import {
-  ReactElement,
-  ReactNode,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -161,120 +154,6 @@ function sameRoomId(first: RoomId, second: RoomId) {
   return String(first) === String(second);
 }
 
-function dateLikeToString(value: unknown): string {
-  if (!value) return "";
-
-  if (typeof value === "string") return value;
-
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return value.toISOString().slice(0, 10);
-  }
-
-  if (typeof value === "object") {
-    const candidate = value as Record<string, unknown>;
-
-    if (typeof candidate.format === "function") {
-      try {
-        const formatted = (candidate.format as (format?: string) => string)(
-          "YYYY-MM-DD",
-        );
-        if (formatted) return formatted;
-      } catch {
-        // Ignore non-dayjs/moment values.
-      }
-    }
-
-    if (typeof candidate.toDate === "function") {
-      try {
-        const date = (candidate.toDate as () => Date)();
-        if (date instanceof Date && !Number.isNaN(date.getTime())) {
-          return date.toISOString().slice(0, 10);
-        }
-      } catch {
-        // Ignore invalid date-like values.
-      }
-    }
-
-    if (
-      typeof candidate.year === "number" &&
-      typeof candidate.month === "number"
-    ) {
-      const day = typeof candidate.day === "number" ? candidate.day : 1;
-      const month = candidate.month > 12 ? candidate.month : candidate.month;
-      return `${candidate.year}-${String(month).padStart(2, "0")}-${String(
-        day,
-      ).padStart(2, "0")}`;
-    }
-  }
-
-  return "";
-}
-
-function dateStringToDate(value: string): Date | null {
-  if (!value) return null;
-  const normalized = normalizeDigits(value).trim();
-  const date = new Date(`${normalized}T00:00:00`);
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function formatDateForDisplay(value: string) {
-  if (!value) return "";
-  const date = dateStringToDate(value);
-  if (!date) return value;
-  return new Intl.DateTimeFormat("fa-IR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
-function formatDateRangeForDisplay(startDate: string, endDate: string) {
-  if (!startDate && !endDate) return "انتخاب بازه تاریخ";
-  if (startDate && !endDate) return `از ${formatDateForDisplay(startDate)}`;
-  if (!startDate && endDate) return `تا ${formatDateForDisplay(endDate)}`;
-  if (startDate === endDate) return formatDateForDisplay(startDate);
-  return `${formatDateForDisplay(startDate)} تا ${formatDateForDisplay(endDate)}`;
-}
-
-function extractDateRange(value: unknown): { from: string; to: string } {
-  if (!value) return { from: "", to: "" };
-
-  if (Array.isArray(value)) {
-    return {
-      from: dateLikeToString(value[0]),
-      to: dateLikeToString(value[1]),
-    };
-  }
-
-  if (typeof value !== "object") {
-    return { from: dateLikeToString(value), to: dateLikeToString(value) };
-  }
-
-  const range = value as Record<string, unknown>;
-
-  const from =
-    range.from ??
-    range.start ??
-    range.startDate ??
-    range.start_date ??
-    range.fromDate ??
-    range.dateFrom ??
-    range[0];
-  const to =
-    range.to ??
-    range.end ??
-    range.endDate ??
-    range.end_date ??
-    range.toDate ??
-    range.dateTo ??
-    range[1];
-
-  return {
-    from: dateLikeToString(from),
-    to: dateLikeToString(to),
-  };
-}
-
 function usePortalDarkMode() {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
@@ -323,24 +202,6 @@ function fallbackDateFields({
   onStartDateChange,
   onEndDateChange,
 }: PricingBulkDateRangeRenderProps) {
-  const startDisplay = startDate
-    ? formatDateForDisplay(startDate)
-    : "انتخاب تاریخ";
-  const endDisplay = endDate ? formatDateForDisplay(endDate) : "انتخاب تاریخ";
-
-  const DateRangePicker = KoochDatePicker as unknown as (props: {
-    mode: "range";
-    value: { from: Date | string | null; to: Date | string | null };
-    onChange: (value: unknown) => void;
-    required?: boolean;
-    label?: string;
-    placeholder?: string;
-    displayValue?: string;
-    inputValue?: string;
-    selectedLabel?: string;
-    className?: string;
-  }) => ReactElement;
-
   return (
     <div className="grid gap-2 text-sm font-bold text-foreground">
       <span>
@@ -451,12 +312,6 @@ export function PricingBulkEditDialog({
     [rooms, selectedRoomIds],
   );
 
-  const selectedRoomLabels = useMemo(() => {
-    if (selectedRooms.length === 0) return "اتاقی انتخاب نشده است";
-    if (selectedRooms.length === 1) return selectedRooms[0].label;
-    return `${toPersianNumber(selectedRooms.length)} اتاق انتخاب شده`;
-  }, [selectedRooms]);
-
   useEffect(() => {
     setRoomPriceInputs((current) => {
       const next: Record<string, string> = {};
@@ -482,8 +337,6 @@ export function PricingBulkEditDialog({
   }, [allRoomsPriceInput, selectedRooms]);
 
   function resetForm() {
-    setStartDate(initialStartDate);
-    setEndDate(initialEndDate);
     setSelectedRoomIds(initialSelectedRoomIds);
     setSelectedWeekdays(weekdayOptions.map((weekday) => weekday.value));
     setAllRoomsPriceInput("");

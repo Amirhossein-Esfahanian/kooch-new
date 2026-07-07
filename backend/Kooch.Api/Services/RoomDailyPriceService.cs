@@ -12,6 +12,8 @@ public class RoomDailyPriceService(
     IAuditLogService auditLogService)
     : IRoomDailyPriceService
 {
+    private const string PastPriceDateMessage = "امکان تغییر قیمت روزهای گذشته وجود ندارد.";
+
     public async Task<PropertyPricingResponse> GetAsync(
         int userId, UserRole role, int propertyId, DateOnly from, DateOnly to,
         PricingGuestType guestType,
@@ -68,6 +70,7 @@ public class RoomDailyPriceService(
         ValidatePrice(request.BasePrice, minimum, maximum);
 
         var items = request.Items.DistinctBy(item => (item.RoomTypeId, item.Date)).ToList();
+        EnsureNoPastDates(items.Select(item => item.Date));
         var roomTypeIds = items.Select(item => item.RoomTypeId).Distinct().ToArray();
         var validRoomTypeCount = await dbContext.RoomTypes.CountAsync(roomType =>
             roomType.PropertyId == propertyId && roomType.IsActive && roomTypeIds.Contains(roomType.Id), cancellationToken);
@@ -120,6 +123,7 @@ public class RoomDailyPriceService(
 
         var items = request.Items.DistinctBy(item => (item.RoomTypeId, item.Date)).ToList();
         var dates = items.Select(item => item.Date).Distinct().OrderBy(date => date).ToArray();
+        EnsureNoPastDates(dates);
         ValidateDateRange(dates.First(), dates.Last());
 
         var roomTypeIds = items.Select(item => item.RoomTypeId).Distinct().ToArray();
@@ -253,6 +257,15 @@ public class RoomDailyPriceService(
     private static void ValidateDateRange(DateOnly from, DateOnly to)
     {
         if (to < from || to.DayNumber - from.DayNumber > 62) throw new ArgumentException("بازه تاریخ قیمت معتبر نیست.");
+    }
+
+    private static void EnsureNoPastDates(IEnumerable<DateOnly> dates)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        if (dates.Any(date => date < today))
+        {
+            throw new ArgumentException(PastPriceDateMessage);
+        }
     }
 
     private static IEnumerable<DateOnly> Dates(DateOnly from, DateOnly to)
