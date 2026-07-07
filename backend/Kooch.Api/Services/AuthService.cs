@@ -269,7 +269,8 @@ public class AuthService(
 
     private AuthResponse CreateAuthResponse(User user)
     {
-        var expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.ExpiresMinutes);
+        // var expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.ExpiresMinutes);
+        var expiresAtUtc = DateTime.UtcNow.AddDays(_jwtOptions.AccessTokenExpirationDays);
         return new AuthResponse
         {
             Token = GenerateJwtToken(user, expiresAtUtc),

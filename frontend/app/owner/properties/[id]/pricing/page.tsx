@@ -44,7 +44,10 @@ export default function OwnerPricingPage() {
                 تغییر اقامتگاه
               </Link>
               {property?.slug && (
-                <Link className={headerLinkClass} href={`/properties/${property.slug}`}>
+                <Link
+                  className={headerLinkClass}
+                  href={`/properties/${property.slug}`}
+                >
                   مشاهده صفحه عمومی
                 </Link>
               )}
@@ -54,11 +57,11 @@ export default function OwnerPricingPage() {
           eyebrow="اقامتگاه فعال"
           title="قیمت‌گذاری اتاق‌ها"
         />
-        {error && (
+        {/* {error && (
           <KoochCard className="border-destructive text-destructive" variant="elevated">
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
-        )}
+        )} */}
         <OwnerPricingGrid propertyId={propertyId} />
       </main>
     </OwnerLayout>

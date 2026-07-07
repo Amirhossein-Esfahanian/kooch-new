@@ -872,14 +872,14 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
 
   return (
     <div className="grid w-full min-w-0 max-w-full gap-5 overflow-x-hidden">
-      {error && (
+      {/* {error && (
         <KoochCard
           className="border-destructive text-destructive"
           variant="elevated"
         >
           <p className="text-sm font-semibold">{error}</p>
         </KoochCard>
-      )}
+      )} */}
 
       <KoochCard className="min-w-0 max-w-full" variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">

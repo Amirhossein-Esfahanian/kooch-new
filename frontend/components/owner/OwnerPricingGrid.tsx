@@ -22,6 +22,10 @@ import {
   CalendarRangeGridEditor,
 } from "@/components/CalendarRangeGridEditor";
 import RoomPricingMatrixEditor from "@/components/pricing/RoomPricingMatrixEditor";
+import PricingBulkEditDialog, {
+  PricingBulkEditPayload,
+  PricingBulkRoom,
+} from "@/components/pricing/PricingBulkEditDialog";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
@@ -79,6 +83,34 @@ function formatDateTime(value: string) {
 }
 function formatIsoDate(value: string) {
   return dayjs(value).calendar("jalali").locale("fa").format("YYYY/MM/DD");
+}
+function getDatesInWeekdays(
+  startDate: string,
+  endDate: string,
+  weekdays: PricingBulkEditPayload["weekdays"],
+) {
+  const dayIndexToWeekday = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ] as const;
+  const selectedWeekdays = new Set<string>(weekdays);
+  const dates: string[] = [];
+  let cursor = dayjs(startDate).startOf("day");
+  const end = dayjs(endDate).startOf("day");
+
+  while (cursor.isBefore(end) || cursor.isSame(end, "day")) {
+    if (selectedWeekdays.has(dayIndexToWeekday[cursor.day()])) {
+      dates.push(cursor.format("YYYY-MM-DD"));
+    }
+    cursor = cursor.add(1, "day");
+  }
+
+  return dates;
 }
 function formatPriceWithCurrency(value: number, currencyLabel: string) {
   return `${formatPrice(value)}${currencyLabel ? ` ${currencyLabel}` : ""}`;
@@ -249,6 +281,8 @@ export function OwnerPricingGrid({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [usePricingMatrix, setUsePricingMatrix] = useState(false);
+  const [bulkEditOpen, setBulkEditOpen] = useState(false);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const monthStart = useMemo(
     () => jalaliMonthStart(activeMonth),
     [activeMonth],
@@ -282,6 +316,15 @@ export function OwnerPricingGrid({
         days: roomType.days,
       })) ?? [],
     [pricing],
+  );
+  const bulkRooms = useMemo<PricingBulkRoom[]>(
+    () =>
+      rows.map((row) => ({
+        id: row.id,
+        label: row.label,
+        basePrice: row.days.find((day) => Number(day.basePrice) > 0)?.basePrice,
+      })),
+    [rows],
   );
   const quickPricePresets = useMemo(
     () =>
@@ -457,6 +500,125 @@ export function OwnerPricingGrid({
           ],
     );
     // setMessage("قیمت‌ها با موفقیت ذخیره شدند.");
+  }
+
+  async function handleBulkEditSubmit(payload: PricingBulkEditPayload) {
+    const dates = getDatesInWeekdays(
+      payload.startDate,
+      payload.endDate,
+      payload.weekdays,
+    );
+
+    if (dates.length === 0) {
+      toast.error("در این بازه، روزی مطابق روزهای هفته انتخاب‌شده وجود ندارد.");
+      return;
+    }
+
+    const savePayloads = payload.roomPrices.map((roomPrice) => ({
+      rowId: roomPrice.roomId,
+      startDate: dates[0],
+      endDate: dates[dates.length - 1],
+      value: roomPrice.basePrice,
+      basePrice: roomPrice.basePrice,
+      items: dates.map((date) => ({
+        rowId: roomPrice.roomId,
+        date,
+      })),
+      selectionRangeCount: 1,
+    })) satisfies CalendarRangeApplyPayload[];
+
+    for (const savePayload of savePayloads) {
+      const confirmed = await confirmPriceApply(savePayload);
+      if (!confirmed) return;
+    }
+
+    setBulkSaving(true);
+    setError("");
+    setMessage("");
+    try {
+      const updatedGroups = await Promise.all(
+        savePayloads.map((savePayload) =>
+          apiRequest<RoomDailyPriceResponse[]>(
+            `/owner/properties/${propertyId}/pricing/bulk-cells`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                items: savePayload.items.map((item) => ({
+                  roomTypeId: Number(item.rowId),
+                  date: item.date,
+                })),
+                guestType: activeGuestType,
+                basePrice: savePayload.basePrice ?? 0,
+              }),
+            },
+          ),
+        ),
+      );
+      const updated = updatedGroups.flat();
+      const updateMap = new Map(
+        updated.map((item) => [cellKey(item.roomTypeId, item.date), item]),
+      );
+
+      setPricing(
+        (current) =>
+          current && {
+            ...current,
+            guestType: activeGuestType,
+            roomTypes: current.roomTypes.map((roomType) => ({
+              ...roomType,
+              days: roomType.days.map(
+                (day) =>
+                  updateMap.get(cellKey(roomType.roomTypeId, day.date)) ?? day,
+              ),
+            })),
+          },
+      );
+
+      const submittedPrices = uniqueRecentPrices(
+        payload.roomPrices.map((roomPrice) => roomPrice.basePrice),
+      );
+      const nextQuickPrices = uniqueRecentPrices([
+        ...submittedPrices,
+        ...storedQuickPrices,
+      ]);
+      setStoredQuickPrices(nextQuickPrices);
+      writeStoredQuickPrices(propertyId, nextQuickPrices);
+
+      setQuickPriceHistory((current) => [
+        ...payload.roomPrices.map((roomPrice, index) => ({
+          id: -Date.now() - index,
+          propertyId,
+          roomId: Number(roomPrice.roomId),
+          roomName: roomPrice.roomLabel,
+          guestType: activeGuestType,
+          affectedDateFrom: dates[0],
+          affectedDateTo: dates[dates.length - 1],
+          oldBasePrice: 0,
+          newBasePrice: roomPrice.basePrice,
+          oldChildPrice: 0,
+          newChildPrice: 0,
+          oldExtraGuestPrice: 0,
+          newExtraGuestPrice: 0,
+          changedByUserId: 0,
+          user: "",
+          dateTime: new Date().toISOString(),
+        })),
+        ...current,
+      ]);
+
+      setBulkEditOpen(false);
+      setMessage("قیمت‌گذاری گروهی با موفقیت ذخیره شد.");
+      toast.success("قیمت‌گذاری گروهی با موفقیت ذخیره شد.");
+    } catch (caught) {
+      const saveError =
+        caught instanceof Error
+          ? caught.message
+          : "ذخیره قیمت‌گذاری گروهی انجام نشد.";
+      setError(saveError);
+      toast.error(saveError, { id: "pricing-bulk-edit-error" });
+    } finally {
+      setBulkSaving(false);
+    }
   }
 
   async function openHistory() {
@@ -681,6 +843,17 @@ export function OwnerPricingGrid({
             مشاهده سوابق تغییر قیمت
           </KoochButton>
 
+          <KoochButton
+            className="w-full sm:w-auto"
+            disabled={!hasRooms}
+            onClick={() => setBulkEditOpen(true)}
+            size="sm"
+            type="button"
+            variant="primary"
+          >
+            قیمت‌گذاری گروهی
+          </KoochButton>
+
           <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
             <KoochButton
               className="w-full sm:w-auto"
@@ -886,6 +1059,21 @@ export function OwnerPricingGrid({
           </div>
         </>
       )}
+
+      <PricingBulkEditDialog
+        initialEndDate={
+          monthDays.length ? toIso(monthDays[monthDays.length - 1]) : ""
+        }
+        initialStartDate={monthDays.length ? toIso(monthDays[0]) : ""}
+        onOpenChange={setBulkEditOpen}
+        onSubmit={handleBulkEditSubmit}
+        open={bulkEditOpen}
+        pricingCurrencyLabel={currencyLabel || "تومان"}
+        pricingMaxValue={priceBounds.maximum}
+        pricingMinValue={priceBounds.minimum}
+        rooms={bulkRooms}
+        saving={bulkSaving}
+      />
 
       <KoochDialog
         description="آخرین تغییرات قیمت اتاق‌ها، جدیدترین در ابتدا."

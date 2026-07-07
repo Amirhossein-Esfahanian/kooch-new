@@ -967,7 +967,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
               </KoochButton>
 
               <div className="min-w-0">
-                <h3 className="text-lg font-black text-foreground">
+                <h3 className="text-lg font-bold text-foreground">
                   {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
                 </h3>
 
@@ -1092,7 +1092,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                         <div className="grid gap-2 sm:grid-cols-3">
                           {statusOptions.map((option) => (
                             <button
-                              className={`min-h-5 rounded-lg border px-3 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                              className={`min-h-6 rounded border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                                 status === option.value
                                   ? "border-primary bg-primary text-primary-foreground shadow-sm"
                                   : "border-border bg-background text-foreground hover:bg-muted"

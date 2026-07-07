@@ -53,9 +53,23 @@ export interface PropertyResponse {
   extraGuestPrice: number | null;
 }
 
-export type PropertyStatus = "Draft" | "PendingReview" | "Approved" | "Rejected" | "Suspended";
-export type UserRole = "SuperAdmin" | "AdminAssistant" | "Owner" | "OwnerAssistant" | "Client";
-export type PropertyUserStatus = "Pending" | "Active" | "Suspended" | "Inactive";
+export type PropertyStatus =
+  | "Draft"
+  | "PendingReview"
+  | "Approved"
+  | "Rejected"
+  | "Suspended";
+export type UserRole =
+  | "SuperAdmin"
+  | "AdminAssistant"
+  | "Owner"
+  | "OwnerAssistant"
+  | "Client";
+export type PropertyUserStatus =
+  | "Pending"
+  | "Active"
+  | "Suspended"
+  | "Inactive";
 export type PropertyUserRole =
   | "PropertyOwner"
   | "Manager"
@@ -309,7 +323,12 @@ export interface PropertyAmenityResponse {
   categoryName: string;
 }
 
-export type NearbyPlaceCategory = "Attraction" | "Transport" | "Landmark" | "Market" | "Other";
+export type NearbyPlaceCategory =
+  | "Attraction"
+  | "Transport"
+  | "Landmark"
+  | "Market"
+  | "Other";
 export type PropertyViewType =
   | "CourtyardView"
   | "GardenView"
@@ -552,7 +571,9 @@ export function setAuthUser(role: string, fullName?: string) {
 }
 
 export function getAuthRole() {
-  return typeof window === "undefined" ? null : localStorage.getItem(userRoleKey);
+  return typeof window === "undefined"
+    ? null
+    : localStorage.getItem(userRoleKey);
 }
 
 export function getAuthUserId() {
@@ -570,7 +591,9 @@ export function getAuthUserId() {
     const id =
       decoded.nameid ??
       decoded.sub ??
-      decoded["http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"];
+      decoded[
+        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"
+      ];
     const numericId = Number(id);
     return Number.isFinite(numericId) ? numericId : null;
   } catch {
@@ -579,7 +602,9 @@ export function getAuthUserId() {
 }
 
 export function getAuthName() {
-  return typeof window === "undefined" ? null : localStorage.getItem(userNameKey);
+  return typeof window === "undefined"
+    ? null
+    : localStorage.getItem(userNameKey);
 }
 
 export function setWorkspace(workspace: KoochWorkspace) {
@@ -587,7 +612,9 @@ export function setWorkspace(workspace: KoochWorkspace) {
 }
 
 export function getWorkspace() {
-  return typeof window === "undefined" ? null : localStorage.getItem(workspaceKey);
+  return typeof window === "undefined"
+    ? null
+    : localStorage.getItem(workspaceKey);
 }
 
 export function clearToken() {
@@ -615,7 +642,7 @@ export async function apiRequest<T>(
 
   if (response.status === 401) {
     clearToken();
-    throw new Error("Please log in again.");
+    throw new Error("نشست شما منقضی شده است. لطفاً دوباره وارد شوید.");
   }
 
   if (!response.ok) {

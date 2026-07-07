@@ -355,14 +355,14 @@ export default function AdminPropertiesPage() {
           title="مدیریت اقامتگاه‌ها"
         />
 
-        {error && (
+        {/* {error && (
           <KoochCard
             className="border-destructive text-destructive"
             variant="elevated"
           >
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
-        )}
+        )} */}
 
         {setupLink && process.env.NODE_ENV !== "production" && (
           <KoochCard className="border-primary/30 bg-primary/10" padding="sm">

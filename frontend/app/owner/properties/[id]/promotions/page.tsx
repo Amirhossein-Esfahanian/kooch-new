@@ -44,7 +44,10 @@ export default function OwnerPromotionsPage() {
                 تغییر اقامتگاه
               </Link>
               {property?.slug && (
-                <Link className={headerLinkClass} href={`/properties/${property.slug}`}>
+                <Link
+                  className={headerLinkClass}
+                  href={`/properties/${property.slug}`}
+                >
                   مشاهده صفحه عمومی
                 </Link>
               )}
@@ -54,11 +57,11 @@ export default function OwnerPromotionsPage() {
           eyebrow="اقامتگاه فعال"
           title="پروموشن‌ها"
         />
-        {error && (
+        {/* {error && (
           <KoochCard className="border-destructive text-destructive" variant="elevated">
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
-        )}
+        )} */}
         <PromotionWorkspace propertyId={propertyId} />
       </main>
     </OwnerLayout>
