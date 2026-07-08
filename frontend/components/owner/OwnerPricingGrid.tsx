@@ -47,6 +47,7 @@ import {
   isOutlierPrice,
   PricingSettingsWarning,
 } from "@/components/pricing/PricingWarnings";
+import { getCheckInCheckoutDates, parseLocalIsoDate } from "@/lib/date-utils";
 
 dayjs.extend(jalaliday);
 
@@ -99,18 +100,10 @@ function getDatesInWeekdays(
     "Saturday",
   ] as const;
   const selectedWeekdays = new Set<string>(weekdays);
-  const dates: string[] = [];
-  let cursor = dayjs(startDate).startOf("day");
-  const end = dayjs(endDate).startOf("day");
 
-  while (cursor.isBefore(end) || cursor.isSame(end, "day")) {
-    if (selectedWeekdays.has(dayIndexToWeekday[cursor.day()])) {
-      dates.push(cursor.format("YYYY-MM-DD"));
-    }
-    cursor = cursor.add(1, "day");
-  }
-
-  return dates;
+  return getCheckInCheckoutDates(startDate, endDate).filter((date) =>
+    selectedWeekdays.has(dayIndexToWeekday[parseLocalIsoDate(date).getDay()]),
+  );
 }
 function formatPriceWithCurrency(value: number, currencyLabel: string) {
   return `${formatPrice(value)}${currencyLabel ? ` ${currencyLabel}` : ""}`;
@@ -1061,10 +1054,6 @@ export function OwnerPricingGrid({
       )}
 
       <PricingBulkEditDialog
-        initialEndDate={
-          monthDays.length ? toIso(monthDays[monthDays.length - 1]) : ""
-        }
-        initialStartDate={monthDays.length ? toIso(monthDays[0]) : ""}
         onOpenChange={setBulkEditOpen}
         onSubmit={handleBulkEditSubmit}
         open={bulkEditOpen}

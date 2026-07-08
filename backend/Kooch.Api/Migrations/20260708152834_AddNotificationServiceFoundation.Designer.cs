@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260708152834_AddNotificationServiceFoundation")]
+    partial class AddNotificationServiceFoundation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2061,21 +2064,12 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("AdultCount")
                         .HasColumnType("int");
 
-                    b.Property<DateTime?>("ApprovedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("ApprovedByUserId")
-                        .HasColumnType("int");
-
                     b.Property<decimal>("BaseAmount")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime?>("CancelledAtUtc")
                         .HasColumnType("datetime2");
-
-                    b.Property<int?>("CancelledByUserId")
-                        .HasColumnType("int");
 
                     b.Property<DateOnly>("CheckInDate")
                         .HasColumnType("date");
@@ -2140,9 +2134,6 @@ namespace Kooch.Api.Migrations
                     b.Property<DateTime?>("PaidAtUtc")
                         .HasColumnType("datetime2");
 
-                    b.Property<DateTime?>("PaymentExpiresAtUtc")
-                        .HasColumnType("datetime2");
-
                     b.Property<int>("PropertyId")
                         .HasColumnType("int");
 
@@ -2187,10 +2178,6 @@ namespace Kooch.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("ApprovedByUserId");
-
-                    b.HasIndex("CancelledByUserId");
-
                     b.HasIndex("ClientId");
 
                     b.HasIndex("GuestId");
@@ -2206,8 +2193,6 @@ namespace Kooch.Api.Migrations
                     b.HasIndex("Status");
 
                     b.HasIndex("Status", "HoldUntilUtc");
-
-                    b.HasIndex("Status", "PaymentExpiresAtUtc");
 
                     b.HasIndex("PropertyId", "CheckInDate", "CheckOutDate");
 
@@ -3668,16 +3653,6 @@ namespace Kooch.Api.Migrations
 
             modelBuilder.Entity("Kooch.Api.Entities.Reservation", b =>
                 {
-                    b.HasOne("Kooch.Api.Entities.User", "ApprovedByUser")
-                        .WithMany()
-                        .HasForeignKey("ApprovedByUserId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
-                    b.HasOne("Kooch.Api.Entities.User", "CancelledByUser")
-                        .WithMany()
-                        .HasForeignKey("CancelledByUserId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("Kooch.Api.Entities.User", "Client")
                         .WithMany("Reservations")
                         .HasForeignKey("ClientId")
@@ -3710,10 +3685,6 @@ namespace Kooch.Api.Migrations
                         .HasForeignKey("RoomTypeId")
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
-
-                    b.Navigation("ApprovedByUser");
-
-                    b.Navigation("CancelledByUser");
 
                     b.Navigation("Client");
 

@@ -10,6 +10,7 @@ import {
   PropertyPricingResponse,
   PropertyResponse,
 } from "@/lib/owner-api";
+import { formatLocalIsoDate } from "@/lib/date-utils";
 
 export type PricingWarningKey = "missingChildPrice" | "missingExtraGuestPrice";
 
@@ -18,15 +19,11 @@ export type PropertyPriceBounds = {
   maximum: number | null;
 };
 
-function toIsoDate(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
 function currentMonthRange() {
   const now = new Date();
-  const from = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const to = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0));
-  return { from: toIsoDate(from), to: toIsoDate(to) };
+  const from = new Date(now.getFullYear(), now.getMonth(), 1);
+  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  return { from: formatLocalIsoDate(from), to: formatLocalIsoDate(to) };
 }
 
 function positivePrices(pricing: PropertyPricingResponse | null) {

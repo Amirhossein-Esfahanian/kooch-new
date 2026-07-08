@@ -2,7 +2,9 @@ namespace Kooch.Api.Entities;
 
 public class Reservation : BaseEntity
 {
+    public string? ReservationNumber { get; set; }
     public int ClientId { get; set; }
+    public int? GuestId { get; set; }
     public int PropertyId { get; set; }
     public int RoomTypeId { get; set; }
     public int? RoomId { get; set; }
@@ -22,13 +24,20 @@ public class Reservation : BaseEntity
     public ReservationSource Source { get; set; }
     public string? GuestNote { get; set; }
     public DateTime? HoldUntilUtc { get; set; }
+    public DateTime? ApprovedAtUtc { get; set; }
+    public int? ApprovedByUserId { get; set; }
+    public DateTime? PaymentExpiresAtUtc { get; set; }
     public DateTime? PaidAtUtc { get; set; }
     public DateTime? ConfirmedAtUtc { get; set; }
     public DateTime? CancelledAtUtc { get; set; }
+    public int? CancelledByUserId { get; set; }
     public DateTime? ExpiredAtUtc { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
     public User Client { get; set; } = null!;
+    public User? ApprovedByUser { get; set; }
+    public User? CancelledByUser { get; set; }
+    public Guest? Guest { get; set; }
     public Property Property { get; set; } = null!;
     public RoomType RoomType { get; set; } = null!;
     public Room? Room { get; set; }

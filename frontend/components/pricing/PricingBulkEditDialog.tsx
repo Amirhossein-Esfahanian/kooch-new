@@ -8,9 +8,14 @@ import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import {
   KoochCheckbox,
-  KoochInput,
   KoochMultiSelect,
 } from "@/components/KoochFormControls";
+import {
+  formatLocalIsoDate,
+  getExclusiveRangeLength,
+  isBeforeLocalIsoDate,
+  isSameOrAfterLocalIsoDate,
+} from "@/lib/date-utils";
 
 type RoomId = number | string;
 
@@ -202,10 +207,13 @@ function fallbackDateFields({
   onStartDateChange,
   onEndDateChange,
 }: PricingBulkDateRangeRenderProps) {
+  const selectedNights = getExclusiveRangeLength(startDate, endDate);
+  const selectedNightsLabel = selectedNights.toLocaleString("fa-IR");
+
   return (
     <div className="grid gap-2 text-sm font-bold text-foreground">
       <span>
-        بازه تاریخ<span className="text-destructive"> *</span>
+        بازه ورود و خروج<span className="text-destructive"> *</span>
       </span>
 
       <div className="relative">
@@ -220,24 +228,31 @@ function fallbackDateFields({
             onEndDateChange(value.endDate ?? "");
           }}
           labels={{
-            start: " ",
-            end: " ",
+            start: "ورود",
+            end: "خروج",
             rangeTitle: "انتخاب بازه قیمت‌گذاری",
             today: "برو به امروز",
             gregorian: "تقویم میلادی",
             jalali: "تقویم شمسی",
           }}
-          placeholderStart="تاریخ شروع"
-          placeholderEnd="تاریخ پایان"
+          placeholderStart="تاریخ ورود"
+          placeholderEnd="تاریخ خروج"
           confirmText="تایید بازه"
           cancelText="انصراف"
           calendarType="jalali"
           disablePastDates
+          minDate={formatLocalIsoDate(new Date())}
           labelsAbove={true}
           showFieldLabels
           controlClassName="grid h-9 rounded-lg border border-border bg-background px-3 py-1.5 text-right text-sm transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
         />
       </div>
+
+      {startDate && endDate && selectedNights > 0 && (
+        <p className="text-xs font-medium text-muted-foreground">
+          {selectedNightsLabel} شب انتخاب شده است. تاریخ خروج محاسبه نمی‌شود.
+        </p>
+      )}
     </div>
   );
 }
@@ -450,9 +465,15 @@ export function PricingBulkEditDialog({
   }
 
   function validate() {
-    if (!startDate) return "تاریخ شروع را انتخاب کنید.";
-    if (!endDate) return "تاریخ پایان را انتخاب کنید.";
-    if (startDate > endDate) return "تاریخ پایان نباید قبل از تاریخ شروع باشد.";
+    if (!startDate) return "تاریخ ورود را انتخاب کنید.";
+    if (!endDate) return "تاریخ خروج را انتخاب کنید.";
+    if (isSameOrAfterLocalIsoDate(startDate, endDate)) {
+      return "تاریخ خروج باید بعد از تاریخ ورود باشد.";
+    }
+    const today = formatLocalIsoDate(new Date());
+    if (isBeforeLocalIsoDate(startDate, today)) {
+      return "امکان تغییر قیمت روزهای گذشته وجود ندارد.";
+    }
     if (selectedRoomIds.length === 0) return "حداقل یک اتاق را انتخاب کنید.";
     if (selectedWeekdays.length === 0)
       return "حداقل یک روز هفته را انتخاب کنید.";

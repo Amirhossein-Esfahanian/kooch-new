@@ -18,6 +18,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<RoomType> RoomTypes => Set<RoomType>();
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<Availability> Availabilities => Set<Availability>();
+    public DbSet<Guest> Guests => Set<Guest>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Review> Reviews => Set<Review>();
@@ -73,6 +74,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureRoomDailyPrices(modelBuilder);
         ConfigureAuditLogs(modelBuilder);
         ConfigureCoupons(modelBuilder);
+        ConfigureGuests(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigurePayments(modelBuilder);
         ConfigureReviews(modelBuilder);
@@ -224,13 +226,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<NotificationLog>(entity =>
         {
             entity.Property(log => log.Recipient).HasMaxLength(500).IsRequired();
+            entity.Property(log => log.Mobile).HasMaxLength(30);
+            entity.Property(log => log.Email).HasMaxLength(320);
+            entity.Property(log => log.Subject).HasMaxLength(500);
             entity.Property(log => log.Message).HasMaxLength(4000).IsRequired();
-            entity.Property(log => log.ErrorMessage).HasMaxLength(4000);
+            entity.Property(log => log.DataJson).HasMaxLength(4000);
+            entity.Property(log => log.Error).HasMaxLength(4000);
             entity.HasIndex(log => log.Status);
             entity.HasIndex(log => log.SentAtUtc);
-            entity.HasOne(log => log.User)
+            entity.HasOne(log => log.RecipientUser)
                 .WithMany(user => user.NotificationLogs)
-                .HasForeignKey(log => log.UserId)
+                .HasForeignKey(log => log.RecipientUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(log => log.RecipientGuest)
+                .WithMany(guest => guest.NotificationLogs)
+                .HasForeignKey(log => log.RecipientGuestId)
                 .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(log => log.Property)
                 .WithMany(property => property.NotificationLogs)
@@ -616,6 +626,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(reservation => reservation.ServiceFeeAmount).HasPrecision(18, 2);
             entity.Property(reservation => reservation.FinalAmount).HasPrecision(18, 2);
             entity.Property(reservation => reservation.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(reservation => reservation.ReservationNumber).HasMaxLength(32);
             entity.Property(reservation => reservation.GuestNote).HasMaxLength(2000);
             entity.Property(reservation => reservation.RowVersion).IsRowVersion();
             entity.HasIndex(reservation => new
@@ -632,11 +643,28 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 reservation.Status
             });
             entity.HasIndex(reservation => reservation.ClientId);
+            entity.HasIndex(reservation => reservation.GuestId);
+            entity.HasIndex(reservation => reservation.ReservationNumber)
+                .IsUnique()
+                .HasFilter("[ReservationNumber] IS NOT NULL AND [ReservationNumber] <> ''");
             entity.HasIndex(reservation => reservation.Status);
             entity.HasIndex(reservation => new { reservation.Status, reservation.HoldUntilUtc });
+            entity.HasIndex(reservation => new { reservation.Status, reservation.PaymentExpiresAtUtc });
             entity.HasOne(reservation => reservation.Client)
                 .WithMany(user => user.Reservations)
                 .HasForeignKey(reservation => reservation.ClientId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(reservation => reservation.ApprovedByUser)
+                .WithMany()
+                .HasForeignKey(reservation => reservation.ApprovedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(reservation => reservation.CancelledByUser)
+                .WithMany()
+                .HasForeignKey(reservation => reservation.CancelledByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(reservation => reservation.Guest)
+                .WithMany(guest => guest.Reservations)
+                .HasForeignKey(reservation => reservation.GuestId)
                 .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(reservation => reservation.Property)
                 .WithMany(property => property.Reservations)
@@ -654,6 +682,29 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(ratePlan => ratePlan.Reservations)
                 .HasForeignKey(reservation => reservation.RatePlanId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureGuests(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<Guest>(entity =>
+        {
+            entity.Property(guest => guest.FirstName).HasMaxLength(100).IsRequired();
+            entity.Property(guest => guest.LastName).HasMaxLength(100).IsRequired();
+            entity.Property(guest => guest.Mobile).HasMaxLength(30);
+            entity.Property(guest => guest.NormalizedMobile).HasMaxLength(30);
+            entity.Property(guest => guest.Email).HasMaxLength(320);
+            entity.Property(guest => guest.NormalizedEmail).HasMaxLength(320);
+            entity.Property(guest => guest.NationalCode).HasMaxLength(20);
+            entity.Property(guest => guest.PassportNumber).HasMaxLength(50);
+            entity.Property(guest => guest.Nationality).HasMaxLength(100);
+            entity.Property(guest => guest.Gender).HasMaxLength(50);
+            entity.Property(guest => guest.Address).HasMaxLength(1000);
+            entity.Property(guest => guest.Notes).HasMaxLength(2000);
+            entity.HasIndex(guest => guest.NormalizedMobile);
+            entity.HasIndex(guest => guest.NormalizedEmail);
+            entity.HasIndex(guest => guest.NationalCode);
+            entity.HasIndex(guest => guest.PassportNumber);
         });
     }
 
