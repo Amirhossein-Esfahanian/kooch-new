@@ -1,9 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
-import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
+import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import {
@@ -14,21 +12,17 @@ import {
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   ReservationTable,
-  ReservationTableItem,
-  ReservationTableStatus,
+  type ReservationTableItem,
+  type ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
-import {
-  apiRequest,
-  getToken,
-  ownerPropertyKey,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { apiRequest, type PropertyResponse } from "@/lib/owner-api";
 import { toast } from "sonner";
 
 type ReservationStatusFilter = "" | ReservationTableStatus;
 
 interface ReservationListQuery {
+  propertyId: string;
   status: ReservationStatusFilter;
   checkInFrom: string;
   checkInTo: string;
@@ -45,13 +39,11 @@ interface PagedResult<T> {
 
 const pageSize = 10;
 
-const headerLinkClass =
-  "inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
-
 const statusOptions: Array<{ value: ReservationStatusFilter; label: string }> = [
   { value: "", label: "همه وضعیت‌ها" },
   { value: "Pending", label: "در انتظار" },
   { value: "PendingApproval", label: "در انتظار تایید" },
+  { value: "OnHold", label: "در انتظار بررسی" },
   { value: "ApprovedAwaitingPayment", label: "در انتظار پرداخت" },
   { value: "Confirmed", label: "تایید شده" },
   { value: "Paid", label: "پرداخت شده" },
@@ -60,22 +52,20 @@ const statusOptions: Array<{ value: ReservationStatusFilter; label: string }> = 
 ];
 
 const initialFilters: ReservationListQuery = {
+  propertyId: "",
   status: "",
   checkInFrom: "",
   checkInTo: "",
   guestSearch: "",
 };
 
-function buildReservationsPath(
-  propertyId: number,
-  filters: ReservationListQuery,
-  page: number,
-) {
+function buildReservationsPath(filters: ReservationListQuery, page: number) {
   const params = new URLSearchParams({
     page: page.toString(),
     pageSize: pageSize.toString(),
   });
 
+  if (filters.propertyId) params.set("propertyId", filters.propertyId);
   if (filters.status) params.set("status", filters.status);
   if (filters.checkInFrom) params.set("checkInFrom", filters.checkInFrom);
   if (filters.checkInTo) params.set("checkInTo", filters.checkInTo);
@@ -83,13 +73,11 @@ function buildReservationsPath(
     params.set("guestSearch", filters.guestSearch.trim());
   }
 
-  return `/owner/properties/${propertyId}/reservations?${params.toString()}`;
+  return `/admin/reservations?${params.toString()}`;
 }
 
-export default function OwnerReservationsPage() {
-  const propertyId = Number(useParams<{ id: string }>().id);
-  const router = useRouter();
-  const [property, setProperty] = useState<PropertyResponse | null>(null);
+export default function AdminReservationsPage() {
+  const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [reservations, setReservations] = useState<ReservationTableItem[]>([]);
   const [selectedReservationState, setSelectedReservation] =
     useState<ReservationTableItem | null>(null);
@@ -109,31 +97,26 @@ export default function OwnerReservationsPage() {
 
     try {
       const response = await apiRequest<PagedResult<ReservationTableItem>>(
-        buildReservationsPath(propertyId, filters, currentPage),
+        buildReservationsPath(filters, currentPage),
       );
       setReservations(response.items);
       setTotalPages(response.totalPages);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "خطا در دریافت رزروها.");
+      setError(
+        caught instanceof Error ? caught.message : "خطا در دریافت رزروها.",
+      );
     } finally {
       setLoading(false);
     }
-  }, [currentPage, filters, propertyId]);
+  }, [currentPage, filters]);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-
-    localStorage.setItem(ownerPropertyKey, propertyId.toString());
-    apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`)
-      .then(setProperty)
-      .catch((caught: Error) => setError(caught.message));
-  }, [propertyId, router]);
+    apiRequest<PropertyResponse[]>("/admin/properties")
+      .then(setProperties)
+      .catch(() => setProperties([]));
+  }, []);
 
   useEffect(() => {
-    if (!getToken()) return;
     void loadReservations();
   }, [loadReservations]);
 
@@ -160,7 +143,7 @@ export default function OwnerReservationsPage() {
 
     try {
       const details = await apiRequest<ReservationTableItem>(
-        `/owner/properties/${propertyId}/reservations/${reservationId}`,
+        `/admin/reservations/${reservationId}`,
       );
       setSelectedReservation(details);
     } catch (caught) {
@@ -181,7 +164,7 @@ export default function OwnerReservationsPage() {
 
     try {
       const approved = await apiRequest<ReservationTableItem>(
-        `/owner/properties/${propertyId}/reservations/${reservationId}/approve`,
+        `/admin/reservations/${reservationId}/approve`,
         { method: "PUT" },
       );
       setSelectedReservation((current) => {
@@ -201,19 +184,11 @@ export default function OwnerReservationsPage() {
   }
 
   return (
-    <OwnerLayout>
+    <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
-          actions={
-            <Link
-              className={headerLinkClass}
-              href={`/owner/properties/${propertyId}/dashboard`}
-            >
-              بازگشت به داشبورد
-            </Link>
-          }
-          description={property?.name ?? "در حال بارگذاری..."}
-          eyebrow="اقامتگاه فعال"
+          description="فهرست رزروهای ثبت‌شده در همه اقامتگاه‌ها"
+          eyebrow="مدیریت"
           title="رزروها"
         />
 
@@ -228,9 +203,28 @@ export default function OwnerReservationsPage() {
 
         <KoochCard padding="sm" variant="elevated">
           <form
-            className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_1.4fr_auto]"
+            className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1.2fr_1fr_1fr_1fr_1.4fr_auto]"
             onSubmit={applyFilters}
           >
+            <KoochField label="اقامتگاه">
+              <KoochSelect
+                onChange={(event) =>
+                  setDraftFilters((current) => ({
+                    ...current,
+                    propertyId: event.target.value,
+                  }))
+                }
+                value={draftFilters.propertyId}
+              >
+                <option value="">همه اقامتگاه‌ها</option>
+                {properties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.name}
+                  </option>
+                ))}
+              </KoochSelect>
+            </KoochField>
+
             <KoochField label="وضعیت">
               <KoochSelect
                 onChange={(event) =>
@@ -300,9 +294,9 @@ export default function OwnerReservationsPage() {
         </KoochCard>
 
         <ReservationTable
-          context="owner"
+          context="admin"
           currentPage={currentPage}
-          emptyMessage="هنوز رزروی برای این اقامتگاه ثبت نشده است."
+          emptyMessage="هنوز رزروی ثبت نشده است."
           loading={loading}
           onApprove={approveReservation}
           onPageChange={setCurrentPage}
@@ -327,6 +321,6 @@ export default function OwnerReservationsPage() {
           </p>
         )}
       </main>
-    </OwnerLayout>
+    </AdminLayout>
   );
 }
