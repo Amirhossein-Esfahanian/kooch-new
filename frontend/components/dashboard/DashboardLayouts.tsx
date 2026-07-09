@@ -9,6 +9,8 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
 import {
   apiRequest,
+  getAuthRole,
+  getToken,
   ownerPropertyKey,
   PropertyResponse,
 } from "@/lib/owner-api";
@@ -48,6 +50,7 @@ const adminMenuItems: DashboardMenuItem[] = [
     href: "/admin/properties",
   },
   { label: "مدیریت کاربران", icon: "/svgs/users.svg", href: "/admin/users" },
+  { label: "مدیریت مهمان‌ها", icon: "/svgs/users.svg", href: "/admin/guests" },
   {
     label: "مدیریت امکانات",
     icon: "/svgs/folder-gear.svg",
@@ -129,6 +132,11 @@ function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
       href: propertyId ? `${base}/reservations` : fallbackHref,
     },
     {
+      label: "مهمان‌ها",
+      icon: "/svgs/users.svg",
+      href: propertyId ? `${base}/guests` : fallbackHref,
+    },
+    {
       label: "نظرات",
       icon: "/svgs/comment.svg",
       href: propertyId ? `${base}/reviews` : fallbackHref,
@@ -154,6 +162,48 @@ function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
 function getOwnerPropertyIdFromPathname(pathname: string) {
   const match = pathname.match(/^\/owner\/properties\/([^/]+)/);
   return match?.[1];
+}
+
+function isAdminRole(role: string | null) {
+  return role === "SuperAdmin" || role === "AdminAssistant";
+}
+
+function isOwnerPanelRole(role: string | null) {
+  return [
+    "Owner",
+    "OwnerAssistant",
+    "PropertyOwner",
+    "Manager",
+    "Reception",
+    "Accounting",
+    "Housekeeping",
+    "Custom",
+  ].includes(role ?? "");
+}
+
+async function redirectToOwnerPanel(router: ReturnType<typeof useRouter>) {
+  const properties = await apiRequest<PropertyResponse[]>("/owner/properties");
+
+  if (properties.length === 1) {
+    const propertyId = properties[0].id.toString();
+    localStorage.setItem(ownerPropertyKey, propertyId);
+    router.replace(`/owner/properties/${propertyId}/dashboard`);
+    return;
+  }
+
+  router.replace(
+    properties.length > 1 ? "/owner/select-property" : "/owner/properties",
+  );
+}
+
+function hasOwnerPropertyAccess(
+  properties: PropertyResponse[],
+  propertyId?: string,
+) {
+  return Boolean(
+    propertyId &&
+      properties.some((property) => property.id.toString() === propertyId),
+  );
 }
 
 const stats = [
@@ -304,6 +354,44 @@ export function AdminLayout({
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
 }) {
+  const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function guardAdminRoute() {
+      const token = getToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const role = getAuthRole();
+      if (isAdminRole(role)) {
+        if (!cancelled) setAuthorized(true);
+        return;
+      }
+
+      if (isOwnerPanelRole(role)) {
+        await redirectToOwnerPanel(router);
+        return;
+      }
+
+      router.replace("/");
+    }
+
+    guardAdminRoute().catch(() => {
+      if (!cancelled) router.replace("/");
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [router]);
+
+  if (!authorized) return null;
+
   return <DashboardShell menuItems={adminMenuItems}>{children}</DashboardShell>;
 }
 
@@ -314,6 +402,7 @@ export function OwnerLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
+  const [authorized, setAuthorized] = useState(false);
   const [storedPropertyId, setStoredPropertyId] = useState<
     string | undefined
   >();
@@ -325,22 +414,70 @@ export function OwnerLayout({
   );
 
   useEffect(() => {
-    const pathPropertyId = getOwnerPropertyIdFromPathname(pathname);
+    let cancelled = false;
 
-    if (pathPropertyId) {
-      setStoredPropertyId(pathPropertyId);
-      return;
+    async function guardOwnerRoute() {
+      const token = getToken();
+      if (!token) {
+        router.replace("/login");
+        return;
+      }
+
+      const role = getAuthRole();
+      if (isAdminRole(role)) {
+        router.replace("/admin");
+        return;
+      }
+
+      if (!isOwnerPanelRole(role)) {
+        router.replace("/");
+        return;
+      }
+
+      const propertyItems = await apiRequest<PropertyResponse[]>(
+        "/owner/properties",
+      );
+
+      if (cancelled) return;
+
+      if (propertyItems.length === 0) {
+        router.replace("/");
+        return;
+      }
+
+      const pathPropertyId = getOwnerPropertyIdFromPathname(pathname);
+      if (pathPropertyId && !hasOwnerPropertyAccess(propertyItems, pathPropertyId)) {
+        router.replace("/");
+        return;
+      }
+
+      const savedPropertyId =
+        localStorage.getItem(ownerPropertyKey) ?? undefined;
+      const nextPropertyId =
+        pathPropertyId ??
+        (hasOwnerPropertyAccess(propertyItems, savedPropertyId)
+          ? savedPropertyId
+          : propertyItems.length === 1
+            ? propertyItems[0].id.toString()
+            : undefined);
+
+      if (nextPropertyId) {
+        localStorage.setItem(ownerPropertyKey, nextPropertyId);
+      }
+
+      setStoredPropertyId(nextPropertyId);
+      setProperties(propertyItems);
+      setAuthorized(true);
     }
 
-    const savedPropertyId = localStorage.getItem(ownerPropertyKey) ?? undefined;
-    setStoredPropertyId(savedPropertyId);
-  }, [pathname]);
+    guardOwnerRoute().catch(() => {
+      if (!cancelled) router.replace("/");
+    });
 
-  useEffect(() => {
-    apiRequest<PropertyResponse[]>("/owner/properties")
-      .then((items) => setProperties(items))
-      .catch(() => setProperties([]));
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, router]);
 
   function switchProperty(nextPropertyId: string) {
     if (!nextPropertyId) {
@@ -352,6 +489,8 @@ export function OwnerLayout({
     setStoredPropertyId(nextPropertyId);
     router.push(`/owner/properties/${nextPropertyId}/dashboard`);
   }
+
+  if (!authorized) return null;
 
   return (
     <DashboardShell

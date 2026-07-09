@@ -81,6 +81,14 @@ function initials(name: string) {
   return cleanName ? cleanName.slice(0, 2) : "ک";
 }
 
+function validatePassword(password: string) {
+  if (password.length < 8 || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "رمز عبور باید حداقل ۸ کاراکتر و شامل حرف کوچک انگلیسی و عدد باشد.";
+  }
+
+  return "";
+}
+
 export function KoochUserProfileDialog({
   onOpenChange,
   open,
@@ -109,8 +117,9 @@ export function KoochUserProfileDialog({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (form.password && form.password.length < 8) {
-      toast.error("رمز عبور باید حداقل ۸ کاراکتر باشد.");
+    const passwordError = form.password ? validatePassword(form.password) : "";
+    if (passwordError) {
+      toast.error(passwordError);
       return;
     }
 
@@ -230,7 +239,10 @@ export function KoochUserProfileDialog({
               <option value="ar">العربية</option>
             </KoochSelect>
           </KoochField>
-          <KoochField label="Password">
+          <KoochField
+            helperText="حداقل ۸ کاراکتر، شامل حرف کوچک انگلیسی و عدد."
+            label="Password"
+          >
             <KoochInput
               autoComplete="new-password"
               onChange={(event) => update("password", event.target.value)}

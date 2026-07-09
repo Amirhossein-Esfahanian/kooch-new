@@ -97,6 +97,14 @@ function statusLabel(user: AdminUserResponse) {
   return user.isActive ? "فعال" : "غیرفعال";
 }
 
+function validatePassword(password: string) {
+  if (password.length < 8 || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "رمز عبور باید حداقل ۸ کاراکتر و شامل حرف کوچک انگلیسی و عدد باشد.";
+  }
+
+  return "";
+}
+
 export default function AdminUsersPage() {
   const router = useRouter();
   const [users, setUsers] = useState<AdminUserResponse[]>([]);
@@ -259,6 +267,13 @@ export default function AdminUsersPage() {
       return;
     }
 
+    const passwordError = form.password ? validatePassword(form.password) : "";
+    if (passwordError) {
+      setError(passwordError);
+      toast.error(passwordError);
+      return;
+    }
+
     setSaving(true);
     setError("");
 
@@ -272,7 +287,7 @@ export default function AdminUsersPage() {
             lastName: form.lastName,
             email: form.email,
             phoneNumber: form.phoneNumber || null,
-            password: form.id && form.password ? form.password : null,
+            password: form.password ? form.password : null,
             role: form.role,
             parentUserId: null,
             propertyId: form.propertyIds[0]
@@ -691,10 +706,14 @@ export default function AdminUsersPage() {
                 />
               </KoochField>
 
-              {form.id && (
+              <>
                 <KoochField
-                  helperText="برای تغییر ندادن رمز، این فیلد را خالی بگذارید."
-                  label="رمز جدید اختیاری"
+                  helperText={
+                    form.id
+                      ? "برای تغییر ندادن رمز، این فیلد را خالی بگذارید. حداقل ۸ کاراکتر، شامل حرف کوچک انگلیسی و عدد."
+                      : "اگر خالی بماند لینک تنظیم رمز عبور ساخته می‌شود. حداقل ۸ کاراکتر، شامل حرف کوچک انگلیسی و عدد."
+                  }
+                  label={form.id ? "رمز جدید اختیاری" : "رمز اولیه اختیاری"}
                 >
                   <KoochInput
                     dir="ltr"
@@ -709,7 +728,7 @@ export default function AdminUsersPage() {
                     value={form.password}
                   />
                 </KoochField>
-              )}
+              </>
 
               <KoochField label="نقش" required>
                 <KoochSelect

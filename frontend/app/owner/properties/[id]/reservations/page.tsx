@@ -18,6 +18,7 @@ import {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
+import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import {
   apiRequest,
   getToken,
@@ -205,12 +206,19 @@ export default function OwnerReservationsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           actions={
-            <Link
-              className={headerLinkClass}
-              href={`/owner/properties/${propertyId}/dashboard`}
-            >
-              بازگشت به داشبورد
-            </Link>
+            <div className="flex flex-wrap items-center gap-2">
+              <ManualReservationDialog
+                context="owner"
+                fixedPropertyId={propertyId}
+                onCreated={loadReservations}
+              />
+              <Link
+                className={headerLinkClass}
+                href={`/owner/properties/${propertyId}/dashboard`}
+              >
+                بازگشت به داشبورد
+              </Link>
+            </div>
           }
           description={property?.name ?? "در حال بارگذاری..."}
           eyebrow="اقامتگاه فعال"

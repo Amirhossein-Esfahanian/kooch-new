@@ -61,6 +61,11 @@ public class AdminUserService(
         var email = NormalizeEmail(request.Email);
         var mobile = NormalizeMobile(request.PhoneNumber);
         await EnsureUniqueIdentityAsync(email, mobile, null, cancellationToken);
+        var hasPassword = !string.IsNullOrWhiteSpace(request.Password);
+        if (hasPassword)
+        {
+            PasswordPolicy.Validate(request.Password!);
+        }
 
         var user = new User
         {
@@ -68,21 +73,24 @@ public class AdminUserService(
             LastName = request.LastName.Trim(),
             Email = email,
             PhoneNumber = mobile,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(hasPassword ? request.Password! : Guid.NewGuid().ToString("N")),
             Role = request.Role,
             ParentUserId = currentRole == UserRole.SuperAdmin ? request.ParentUserId : currentUserId,
-            IsActive = false,
-            PasswordSetupRequired = true
+            IsActive = hasPassword,
+            PasswordSetupRequired = !hasPassword
         };
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
         await SyncPropertyAccessAsync(user, propertyIds, cancellationToken);
-        var setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
         var response = await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
-        if (appEnvironment.IsDevelopment())
+        if (!hasPassword)
         {
-            response.TemporarySetupLink = setupLink;
+            var setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
+            if (appEnvironment.IsDevelopment())
+            {
+                response.TemporarySetupLink = setupLink;
+            }
         }
         return response;
     }
@@ -121,8 +129,10 @@ public class AdminUserService(
         user.ParentUserId = currentRole == UserRole.SuperAdmin ? request.ParentUserId : user.ParentUserId ?? currentUserId;
         if (!string.IsNullOrWhiteSpace(request.Password))
         {
+            PasswordPolicy.Validate(request.Password);
             user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
             user.PasswordSetupRequired = false;
+            user.IsActive = true;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

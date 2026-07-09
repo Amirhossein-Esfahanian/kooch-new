@@ -12,7 +12,7 @@ public class AuthController(IAuthService authService) : ControllerBase
 {
     [HttpPost("register")]
     [AllowAnonymous]
-    [ProducesResponseType<AuthResponse>(StatusCodes.Status201Created)]
+    [ProducesResponseType<RequestOtpResponse>(StatusCodes.Status201Created)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AuthResponse>> Register(
@@ -44,7 +44,7 @@ public class AuthController(IAuthService authService) : ControllerBase
     {
         var response = await authService.LoginAsync(request, cancellationToken);
         return response is null
-            ? Unauthorized(new { message = "Invalid email or password." })
+            ? Unauthorized(new { message = "Email/mobile or password is incorrect." })
             : Ok(response);
     }
 

@@ -16,43 +16,49 @@ namespace Kooch.Api.Services;
 public class AuthService(
     KoochDbContext dbContext,
     IOptions<JwtOptions> jwtOptions,
-    IHostEnvironment appEnvironment) : IAuthService
+    IHostEnvironment appEnvironment,
+    INotificationService notificationService) : IAuthService
 {
     private readonly JwtOptions _jwtOptions = jwtOptions.Value;
     private static readonly TimeSpan OtpLifetime = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan OtpRequestCooldown = TimeSpan.FromSeconds(60);
+    private const string InternalEmailDomain = "mobile.kooch.local";
 
-    public async Task<AuthResponse> RegisterAsync(
+    public async Task<RequestOtpResponse> RegisterAsync(
         RegisterRequest request,
         CancellationToken cancellationToken = default)
     {
-        var role = request.Role ?? UserRole.Client;
-        if (role is not UserRole.Client and not UserRole.Owner)
+        if (request.Password != request.ConfirmPassword)
         {
-            throw new ArgumentException("Public registration is limited to Client or Owner roles.");
+            throw new ArgumentException("Password confirmation does not match.");
         }
 
-        var email = NormalizeEmail(request.Email);
-        if (await dbContext.Users.IgnoreQueryFilters()
-            .AnyAsync(user => user.Email == email, cancellationToken))
+        PasswordPolicy.Validate(request.Password);
+        var mobile = NormalizeMobile(request.Mobile)
+            ?? throw new ArgumentException("Mobile number is required.");
+        var email = NormalizeOptionalEmail(request.Email);
+
+        await EnsureUniqueMobileAsync(mobile, null, cancellationToken);
+        if (!string.IsNullOrWhiteSpace(email))
         {
-            throw new ArgumentException("این ایمیل قبلاً ثبت شده است.");
+            await EnsureUniqueEmailAsync(email, null, cancellationToken);
         }
 
         var user = new User
         {
             FirstName = request.FirstName.Trim(),
             LastName = request.LastName.Trim(),
-            Email = email,
+            Email = email ?? CreateInternalEmail(mobile),
+            PhoneNumber = mobile,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-            Role = role,
-            IsActive = true
+            Role = UserRole.Client,
+            IsActive = false
         };
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        return CreateAuthResponse(user);
+        return await CreateAndSendOtpAsync(user, mobile, cancellationToken);
     }
 
     public async Task<AuthResponse?> LoginAsync(
@@ -84,39 +90,12 @@ public class AuthService(
         var user = await FindUserByMobileAsync(mobile, cancellationToken)
             ?? throw new InvalidOperationException("No active account was found for this mobile number.");
 
-        if (!user.IsActive || user.PasswordSetupRequired)
+        if (user.PasswordSetupRequired || (!user.IsActive && user.Role != UserRole.Client))
         {
             throw new InvalidOperationException("This account cannot use OTP login yet.");
         }
 
-        var now = DateTime.UtcNow;
-        var recentRequestExists = await dbContext.MobileOtpCodes
-            .AnyAsync(code => code.Mobile == mobile &&
-                              code.CreatedAtUtc >= now.Subtract(OtpRequestCooldown) &&
-                              code.UsedAtUtc == null,
-                cancellationToken);
-        if (recentRequestExists)
-        {
-            throw new InvalidOperationException("Please wait before requesting another OTP code.");
-        }
-
-        var rawCode = CreateOtpCode();
-        var expiresAtUtc = now.Add(OtpLifetime);
-        dbContext.MobileOtpCodes.Add(new MobileOtpCode
-        {
-            UserId = user.Id,
-            Mobile = mobile,
-            CodeHash = HashToken($"{mobile}:{rawCode}"),
-            ExpiresAtUtc = expiresAtUtc
-        });
-        await dbContext.SaveChangesAsync(cancellationToken);
-
-        return new RequestOtpResponse
-        {
-            Sent = true,
-            ExpiresAtUtc = expiresAtUtc,
-            DevOtpCode = appEnvironment.IsDevelopment() ? rawCode : null
-        };
+        return await CreateAndSendOtpAsync(user, mobile, cancellationToken);
     }
 
     public async Task<AuthResponse?> VerifyOtpAsync(
@@ -146,13 +125,22 @@ public class AuthService(
         if (otp is null ||
             otp.UsedAtUtc.HasValue ||
             otp.ExpiresAtUtc <= now ||
-            !otp.User.IsActive ||
             otp.User.PasswordSetupRequired)
         {
             return null;
         }
 
-        otp.UsedAtUtc = now;
+        var activeOtps = await dbContext.MobileOtpCodes
+            .Where(item => item.Mobile == mobile &&
+                           item.UsedAtUtc == null &&
+                           item.ExpiresAtUtc > now)
+            .ToListAsync(cancellationToken);
+        foreach (var activeOtp in activeOtps)
+        {
+            activeOtp.UsedAtUtc = now;
+        }
+
+        otp.User.IsActive = true;
         await dbContext.SaveChangesAsync(cancellationToken);
         return CreateAuthResponse(otp.User);
     }
@@ -161,9 +149,9 @@ public class AuthService(
         int userId,
         CancellationToken cancellationToken = default)
     {
-        var userExists = await dbContext.Users.IgnoreQueryFilters()
-            .AnyAsync(user => user.Id == userId, cancellationToken);
-        if (!userExists)
+        var user = await dbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(user => user.Id == userId, cancellationToken);
+        if (user is null)
         {
             throw new KeyNotFoundException("User not found.");
         }
@@ -176,7 +164,19 @@ public class AuthService(
             ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
         });
         await dbContext.SaveChangesAsync(cancellationToken);
-        return $"/set-password?token={Uri.EscapeDataString(rawToken)}";
+        var setupLink = $"/set-password?token={Uri.EscapeDataString(rawToken)}";
+        await notificationService.SendAsync(new NotificationRequest
+        {
+            EventType = NotificationEventType.PasswordSetupRequested,
+            RecipientUserId = user.Id,
+            Mobile = user.PhoneNumber,
+            Email = IsInternalEmail(user.Email) ? null : user.Email,
+            Subject = "Password setup requested",
+            Message = "Password setup requested.",
+            DataJson = $$"""{"setupLink":"{{setupLink}}"}""",
+            Channels = NotificationChannel.InApp | NotificationChannel.Sms | NotificationChannel.Email
+        }, cancellationToken);
+        return setupLink;
     }
 
     public async Task SetPasswordAsync(
@@ -188,7 +188,7 @@ public class AuthService(
             throw new ArgumentException("Password confirmation does not match.");
         }
 
-        ValidatePasswordStrength(request.NewPassword);
+        PasswordPolicy.Validate(request.NewPassword);
         var tokenHash = HashToken(request.Token);
         var now = DateTime.UtcNow;
         var setupToken = await dbContext.PasswordSetupTokens
@@ -235,7 +235,7 @@ public class AuthService(
             {
                 UserId = user.Id,
                 FullName = (user.FirstName + " " + user.LastName).Trim(),
-                Email = user.Email,
+                Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
                 Role = user.Role
             })
             .SingleOrDefaultAsync(cancellationToken);
@@ -248,7 +248,7 @@ public class AuthService(
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
-            new Claim(ClaimTypes.Email, user.Email),
+            new Claim(ClaimTypes.Email, IsInternalEmail(user.Email) ? string.Empty : user.Email),
             new Claim(ClaimTypes.Role, user.Role.ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
@@ -277,12 +277,100 @@ public class AuthService(
             ExpiresAtUtc = expiresAtUtc,
             UserId = user.Id,
             FullName = $"{user.FirstName} {user.LastName}".Trim(),
-            Email = user.Email,
+            Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
             Role = user.Role
         };
     }
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+
+    private static string? NormalizeOptionalEmail(string? email) =>
+        string.IsNullOrWhiteSpace(email) ? null : NormalizeEmail(email);
+
+    private static string CreateInternalEmail(string mobile) =>
+        $"{mobile}@{InternalEmailDomain}";
+
+    private static bool IsInternalEmail(string? email) =>
+        email?.EndsWith($"@{InternalEmailDomain}", StringComparison.OrdinalIgnoreCase) == true;
+
+    private async Task EnsureUniqueEmailAsync(
+        string email,
+        int? excludedUserId,
+        CancellationToken cancellationToken)
+    {
+        if (await dbContext.Users.IgnoreQueryFilters()
+            .AnyAsync(user => user.Email == email &&
+                              (!excludedUserId.HasValue || user.Id != excludedUserId.Value),
+                cancellationToken))
+        {
+            throw new ArgumentException("این ایمیل قبلاً ثبت شده است.");
+        }
+    }
+
+    private async Task EnsureUniqueMobileAsync(
+        string mobile,
+        int? excludedUserId,
+        CancellationToken cancellationToken)
+    {
+        var variants = BuildMobileVariants(mobile);
+        if (await dbContext.Users.IgnoreQueryFilters()
+            .AnyAsync(user => user.PhoneNumber != null &&
+                              variants.Contains(user.PhoneNumber) &&
+                              (!excludedUserId.HasValue || user.Id != excludedUserId.Value),
+                cancellationToken))
+        {
+            throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+        }
+    }
+
+    private async Task<RequestOtpResponse> CreateAndSendOtpAsync(
+        User user,
+        string mobile,
+        CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var recentRequestExists = await dbContext.MobileOtpCodes
+            .AnyAsync(code => code.Mobile == mobile &&
+                              code.CreatedAtUtc >= now.Subtract(OtpRequestCooldown) &&
+                              code.UsedAtUtc == null,
+                cancellationToken);
+        if (recentRequestExists)
+        {
+            throw new InvalidOperationException("Please wait before requesting another OTP code.");
+        }
+
+        var rawCode = CreateOtpCode();
+        var expiresAtUtc = now.Add(OtpLifetime);
+        dbContext.MobileOtpCodes.Add(new MobileOtpCode
+        {
+            UserId = user.Id,
+            Mobile = mobile,
+            CodeHash = HashToken($"{mobile}:{rawCode}"),
+            ExpiresAtUtc = expiresAtUtc
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        await notificationService.SendAsync(new NotificationRequest
+        {
+            EventType = NotificationEventType.OtpRequested,
+            RecipientUserId = user.Id,
+            Mobile = mobile,
+            Email = IsInternalEmail(user.Email) ? null : user.Email,
+            Subject = "OTP requested",
+            Message = "OTP requested.",
+            DataJson = appEnvironment.IsDevelopment()
+                ? $$"""{"devOtpCode":"{{rawCode}}","expiresAtUtc":"{{expiresAtUtc:O}}"}"""
+                : $$"""{"expiresAtUtc":"{{expiresAtUtc:O}}"}""",
+            Channels = NotificationChannel.InApp | NotificationChannel.Sms
+        }, cancellationToken);
+
+        return new RequestOtpResponse
+        {
+            Sent = true,
+            ExpiresAtUtc = expiresAtUtc,
+            DevOtpCode = appEnvironment.IsDevelopment() ? rawCode : null
+        };
+    }
 
     private async Task<User?> FindUserByIdentifierAsync(
         string identifier,
@@ -410,15 +498,4 @@ public class AuthService(
             _ => character
         };
 
-    private static void ValidatePasswordStrength(string password)
-    {
-        if (password.Length < 8 ||
-            !password.Any(char.IsUpper) ||
-            !password.Any(char.IsLower) ||
-            !password.Any(char.IsDigit))
-        {
-            throw new ArgumentException(
-                "Password must be at least 8 characters and include uppercase, lowercase, and a number.");
-        }
-    }
 }

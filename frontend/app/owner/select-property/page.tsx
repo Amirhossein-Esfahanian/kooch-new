@@ -5,10 +5,28 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import {
   apiRequest,
+  getAuthRole,
   getToken,
   ownerPropertyKey,
   PropertyResponse,
 } from "@/lib/owner-api";
+
+function isAdminRole(role: string | null) {
+  return role === "SuperAdmin" || role === "AdminAssistant";
+}
+
+function isOwnerPanelRole(role: string | null) {
+  return [
+    "Owner",
+    "OwnerAssistant",
+    "PropertyOwner",
+    "Manager",
+    "Reception",
+    "Accounting",
+    "Housekeeping",
+    "Custom",
+  ].includes(role ?? "");
+}
 
 export default function SelectOwnerPropertyPage() {
   const router = useRouter();
@@ -21,8 +39,25 @@ export default function SelectOwnerPropertyPage() {
       router.replace("/login");
       return;
     }
+
+    const role = getAuthRole();
+    if (isAdminRole(role)) {
+      router.replace("/admin");
+      return;
+    }
+
+    if (!isOwnerPanelRole(role)) {
+      router.replace("/");
+      return;
+    }
+
     apiRequest<PropertyResponse[]>("/owner/properties")
       .then((items) => {
+        if (items.length === 0) {
+          router.replace("/");
+          return;
+        }
+
         if (items.length === 1) {
           localStorage.setItem(ownerPropertyKey, items[0].id.toString());
           router.replace(`/owner/properties/${items[0].id}/dashboard`);

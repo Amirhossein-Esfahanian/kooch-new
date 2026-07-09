@@ -228,18 +228,6 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
 
   return (
     <div className="grid gap-4" dir="rtl">
-      {context === "owner" && (
-        <KoochCard
-          className="border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-100"
-          padding="sm"
-        >
-          <p className="text-sm font-semibold leading-7">
-            تا زمان اتصال مهمان‌ها به رزروها، لیست مهمان‌های این اقامتگاه برای
-            امنیت خالی نمایش داده می‌شود.
-          </p>
-        </KoochCard>
-      )}
-
       <KoochCard padding="md">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <form className="flex flex-1 flex-col gap-2 sm:flex-row" onSubmit={handleSearch}>

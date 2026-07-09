@@ -16,6 +16,7 @@ import {
   type ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
+import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import { apiRequest, type PropertyResponse } from "@/lib/owner-api";
 import { toast } from "sonner";
 
@@ -187,6 +188,9 @@ export default function AdminReservationsPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          actions={
+            <ManualReservationDialog context="admin" onCreated={loadReservations} />
+          }
           description="فهرست رزروهای ثبت‌شده در همه اقامتگاه‌ها"
           eyebrow="مدیریت"
           title="رزروها"

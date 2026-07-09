@@ -28,6 +28,14 @@ function SetPasswordFallback() {
   );
 }
 
+function validatePassword(password: string) {
+  if (password.length < 8 || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+    return "رمز عبور باید حداقل ۸ کاراکتر و شامل حرف کوچک انگلیسی و عدد باشد.";
+  }
+
+  return "";
+}
+
 function SetPasswordForm() {
   const searchParams = useSearchParams();
   const token = useMemo(() => searchParams.get("token") ?? "", [searchParams]);
@@ -43,6 +51,20 @@ function SetPasswordForm() {
 
     if (!token) {
       const message = "لینک تنظیم رمز عبور معتبر نیست.";
+      setError(message);
+      toast.error(message);
+      return;
+    }
+
+    const passwordError = validatePassword(newPassword);
+    if (passwordError) {
+      setError(passwordError);
+      toast.error(passwordError);
+      return;
+    }
+
+    if (newPassword !== confirmPassword) {
+      const message = "تکرار رمز عبور با رمز عبور یکسان نیست.";
       setError(message);
       toast.error(message);
       return;
@@ -113,7 +135,7 @@ function SetPasswordForm() {
         ) : (
           <form className="grid gap-4" onSubmit={submit}>
             <KoochField
-              helperText="حداقل ۸ کاراکتر همراه با حرف بزرگ، حرف کوچک و عدد."
+              helperText="حداقل ۸ کاراکتر، شامل حرف کوچک انگلیسی و عدد."
               label="رمز عبور جدید"
               required
             >

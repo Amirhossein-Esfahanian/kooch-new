@@ -6,7 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace Kooch.Api.Controllers;
 
 [ApiController]
-[OwnerAuthorize]
+[AdminAuthorize]
 [Route("api/admin/users")]
 public class AdminUsersController(IAdminUserService userService) : AuthenticatedControllerBase
 {
