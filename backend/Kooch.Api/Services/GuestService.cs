@@ -10,6 +10,8 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
 {
     private const string DuplicateGuestMessage = "مهمانی با این اطلاعات قبلاً ثبت شده است.";
 
+    private const string DefaultNationality = "ایران";
+
     public async Task<GuestResponse> GetAsync(int id, CancellationToken cancellationToken = default)
     {
         var guest = await dbContext.Guests.AsNoTracking()
@@ -83,6 +85,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
 
         var guest = new Guest();
         Apply(guest, normalized);
+        guest.UserId = await FindLinkablePassengerUserIdAsync(normalized, null, cancellationToken);
 
         dbContext.Guests.Add(guest);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -103,6 +106,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         await EnsureNoDuplicateAsync(normalized, id, cancellationToken);
 
         Apply(guest, normalized);
+        guest.UserId = await FindLinkablePassengerUserIdAsync(normalized, id, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Map(guest);
@@ -143,6 +147,17 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
                 cancellationToken);
 
         if (duplicateExists)
+        {
+            throw new ArgumentException(DuplicateGuestMessage);
+        }
+
+        var matchingUser = await FindMatchingUserAsync(input, cancellationToken);
+        if (matchingUser is not null &&
+            (matchingUser.Role != UserRole.Client ||
+             await dbContext.Guests.AsNoTracking().AnyAsync(guest =>
+                     guest.UserId == matchingUser.Id &&
+                     (!currentGuestId.HasValue || guest.Id != currentGuestId.Value),
+                 cancellationToken)))
         {
             throw new ArgumentException(DuplicateGuestMessage);
         }
@@ -188,7 +203,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         guest.NormalizedEmail = input.NormalizedEmail;
         guest.NationalCode = input.NationalCode;
         guest.PassportNumber = input.PassportNumber;
-        guest.Nationality = input.Nationality;
+        guest.Nationality = input.Nationality ?? DefaultNationality;
         guest.BirthDate = input.BirthDate;
         guest.Gender = input.Gender;
         guest.Address = input.Address;
@@ -222,6 +237,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
     private static GuestResponse Map(Guest guest) => new()
     {
         Id = guest.Id,
+        UserId = guest.UserId,
         FirstName = GuestNormalization.NormalizeText(guest.FirstName),
         LastName = GuestNormalization.NormalizeText(guest.LastName),
         FullName = guest.FullName,
@@ -229,7 +245,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         Email = guest.Email,
         NationalCode = guest.NationalCode,
         PassportNumber = guest.PassportNumber,
-        Nationality = guest.Nationality,
+        Nationality = guest.Nationality ?? DefaultNationality,
         BirthDate = guest.BirthDate,
         Gender = guest.Gender,
         Address = guest.Address,
@@ -249,4 +265,50 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         string? Gender,
         string? Address,
         string? Notes);
+
+    private async Task<int?> FindLinkablePassengerUserIdAsync(
+        NormalizedGuestInput input,
+        int? currentGuestId,
+        CancellationToken cancellationToken)
+    {
+        var user = await FindMatchingUserAsync(input, cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        if (user.Role != UserRole.Client)
+        {
+            throw new ArgumentException(DuplicateGuestMessage);
+        }
+
+        var linkedToAnotherGuest = await dbContext.Guests.AsNoTracking()
+            .AnyAsync(guest =>
+                    guest.UserId == user.Id &&
+                    (!currentGuestId.HasValue || guest.Id != currentGuestId.Value),
+                cancellationToken);
+        if (linkedToAnotherGuest)
+        {
+            throw new ArgumentException(DuplicateGuestMessage);
+        }
+
+        return user.Id;
+    }
+
+    private async Task<User?> FindMatchingUserAsync(
+        NormalizedGuestInput input,
+        CancellationToken cancellationToken)
+    {
+        if (input.NormalizedMobile is null && input.NormalizedEmail is null)
+        {
+            return null;
+        }
+
+        return await dbContext.Users.IgnoreQueryFilters()
+            .AsNoTracking()
+            .FirstOrDefaultAsync(user =>
+                    (input.NormalizedMobile != null && user.PhoneNumber == input.NormalizedMobile) ||
+                    (input.NormalizedEmail != null && user.Email == input.NormalizedEmail),
+                cancellationToken);
+    }
 }

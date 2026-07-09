@@ -701,10 +701,17 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(guest => guest.Gender).HasMaxLength(50);
             entity.Property(guest => guest.Address).HasMaxLength(1000);
             entity.Property(guest => guest.Notes).HasMaxLength(2000);
+            entity.HasIndex(guest => guest.UserId)
+                .IsUnique()
+                .HasFilter("[UserId] IS NOT NULL");
             entity.HasIndex(guest => guest.NormalizedMobile);
             entity.HasIndex(guest => guest.NormalizedEmail);
             entity.HasIndex(guest => guest.NationalCode);
             entity.HasIndex(guest => guest.PassportNumber);
+            entity.HasOne(guest => guest.User)
+                .WithOne(user => user.Guest)
+                .HasForeignKey<Guest>(guest => guest.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
         });
     }
 

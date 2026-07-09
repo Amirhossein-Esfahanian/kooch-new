@@ -6,6 +6,7 @@ namespace Kooch.Api.Dtos.Guests;
 public class GuestResponse
 {
     public int Id { get; set; }
+    public int? UserId { get; set; }
     public string? FirstName { get; set; }
     public string? LastName { get; set; }
     public string FullName { get; set; } = string.Empty;

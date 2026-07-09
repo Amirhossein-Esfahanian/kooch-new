@@ -662,6 +662,12 @@ public class PropertyUserService(
 
         if (string.IsNullOrWhiteSpace(mobile))
         {
+            if (await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
+            {
+                throw new ArgumentException("Guest with this email already exists.");
+            }
+
             return;
         }
 
@@ -673,6 +679,14 @@ public class PropertyUserService(
                     cancellationToken))
         {
             throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+        }
+        if (await dbContext.Guests.AsNoTracking()
+            .AnyAsync(guest =>
+                    guest.NormalizedEmail == email ||
+                    guest.NormalizedMobile == mobile,
+                cancellationToken))
+        {
+            throw new ArgumentException("Guest with this mobile or email already exists.");
         }
     }
 

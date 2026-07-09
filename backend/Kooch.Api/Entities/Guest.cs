@@ -4,6 +4,7 @@ namespace Kooch.Api.Entities;
 
 public class Guest : BaseEntity
 {
+    public int? UserId { get; set; }
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public string? Mobile { get; set; }
@@ -17,6 +18,7 @@ public class Guest : BaseEntity
     public string? Gender { get; set; }
     public string? Address { get; set; }
     public string? Notes { get; set; }
+    public User? User { get; set; }
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
 

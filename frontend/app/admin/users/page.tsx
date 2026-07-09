@@ -38,7 +38,6 @@ const roles: UserRole[] = [
   "AdminAssistant",
   "Owner",
   "OwnerAssistant",
-  "Client",
 ];
 
 const roleLabels: Record<UserRole, string> = {
@@ -70,7 +69,7 @@ const emptyForm: UserForm = {
   email: "",
   phoneNumber: "",
   password: "",
-  role: "Client",
+  role: "Owner",
   propertyIds: [],
 };
 

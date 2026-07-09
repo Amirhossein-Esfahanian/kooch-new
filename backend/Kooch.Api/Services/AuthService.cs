@@ -43,6 +43,7 @@ public class AuthService(
         {
             await EnsureUniqueEmailAsync(email, null, cancellationToken);
         }
+        await EnsurePassengerGuestCanBeLinkedAsync(mobile, email, cancellationToken);
 
         var user = new User
         {
@@ -57,6 +58,7 @@ public class AuthService(
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await CreateOrLinkGuestForPassengerAsync(user, mobile, email, cancellationToken);
 
         return await CreateAndSendOtpAsync(user, mobile, cancellationToken);
     }
@@ -370,6 +372,68 @@ public class AuthService(
             ExpiresAtUtc = expiresAtUtc,
             DevOtpCode = appEnvironment.IsDevelopment() ? rawCode : null
         };
+    }
+
+    private async Task CreateOrLinkGuestForPassengerAsync(
+        User user,
+        string mobile,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        var guest = await dbContext.Guests
+            .FirstOrDefaultAsync(item =>
+                    item.NormalizedMobile == mobile ||
+                    (email != null && item.NormalizedEmail == email),
+                cancellationToken);
+
+        if (guest is not null)
+        {
+            if (guest.UserId.HasValue && guest.UserId.Value != user.Id)
+            {
+                throw new ArgumentException("A guest already exists for this mobile or email.");
+            }
+
+            guest.UserId = user.Id;
+            guest.FirstName = string.IsNullOrWhiteSpace(guest.FirstName) ? user.FirstName : guest.FirstName;
+            guest.LastName = string.IsNullOrWhiteSpace(guest.LastName) ? user.LastName : guest.LastName;
+            guest.Mobile ??= mobile;
+            guest.NormalizedMobile ??= mobile;
+            guest.Email ??= email;
+            guest.NormalizedEmail ??= email;
+            guest.Nationality ??= "ایران";
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return;
+        }
+
+        dbContext.Guests.Add(new Guest
+        {
+            UserId = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Mobile = mobile,
+            NormalizedMobile = mobile,
+            Email = email,
+            NormalizedEmail = email,
+            Nationality = "ایران"
+        });
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task EnsurePassengerGuestCanBeLinkedAsync(
+        string mobile,
+        string? email,
+        CancellationToken cancellationToken)
+    {
+        var linkedGuestExists = await dbContext.Guests.AsNoTracking()
+            .AnyAsync(guest =>
+                    (guest.NormalizedMobile == mobile ||
+                     (email != null && guest.NormalizedEmail == email)) &&
+                    guest.UserId != null,
+                cancellationToken);
+        if (linkedGuestExists)
+        {
+            throw new ArgumentException("A passenger account already exists for this guest.");
+        }
     }
 
     private async Task<User?> FindUserByIdentifierAsync(

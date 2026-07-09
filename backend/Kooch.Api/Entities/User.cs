@@ -26,4 +26,5 @@ public class User : BaseEntity
     public ICollection<Property> OwnedProperties { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
+    public Guest? Guest { get; set; }
 }

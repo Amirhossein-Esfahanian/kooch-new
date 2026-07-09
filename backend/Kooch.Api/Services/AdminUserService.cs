@@ -55,6 +55,11 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         var propertyIds = GetRequestedPropertyIds(request);
+        if (request.Role == UserRole.Client)
+        {
+            throw new UnauthorizedAccessException("Passenger accounts must be created from public registration or booking flow.");
+        }
+
         await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
         EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
 
@@ -103,10 +108,15 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         var propertyIds = GetRequestedPropertyIds(request);
-        await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
-        EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
         var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
+        if (request.Role == UserRole.Client && user.Role != UserRole.Client)
+        {
+            throw new UnauthorizedAccessException("Passenger accounts must be created from public registration or booking flow.");
+        }
+
+        await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
+        EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
         if (currentRole is UserRole.Owner or UserRole.OwnerAssistant && user.ParentUserId != currentUserId)
         {
             throw new UnauthorizedAccessException("You cannot edit this user.");
@@ -195,7 +205,7 @@ public class AdminUserService(
         if (currentRole == UserRole.AdminAssistant)
         {
             var canManageUsers = await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageUsers, null, cancellationToken);
-            var allowed = targetRole is UserRole.Owner or UserRole.OwnerAssistant or UserRole.Client ||
+            var allowed = targetRole is UserRole.Owner or UserRole.OwnerAssistant ||
                           targetRole == UserRole.AdminAssistant && canManageUsers;
             if (allowed && (targetRole != UserRole.AdminAssistant || canManageUsers))
             {
@@ -205,9 +215,9 @@ public class AdminUserService(
 
         if (currentRole == UserRole.Owner)
         {
-            if (targetRole is not UserRole.OwnerAssistant and not UserRole.Client)
+            if (targetRole is not UserRole.OwnerAssistant)
             {
-                throw new UnauthorizedAccessException("Owners can only create owner assistants or clients.");
+                throw new UnauthorizedAccessException("Owners can only create owner assistants.");
             }
 
             if (propertyIds.Count > 0)
@@ -227,7 +237,7 @@ public class AdminUserService(
             var canManageStaff = propertyIds.Count > 0
                 ? await CanManageStaffForAllPropertiesAsync(currentUserId, propertyIds, cancellationToken)
                 : await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageStaff, null, cancellationToken);
-            if (canManageStaff && targetRole is UserRole.OwnerAssistant or UserRole.Client)
+            if (canManageStaff && targetRole is UserRole.OwnerAssistant)
             {
                 return;
             }
@@ -415,6 +425,12 @@ public class AdminUserService(
 
         if (string.IsNullOrWhiteSpace(mobile))
         {
+            if (await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
+            {
+                throw new ArgumentException("Guest with this email already exists.");
+            }
+
             return;
         }
 
@@ -426,6 +442,14 @@ public class AdminUserService(
                     cancellationToken))
         {
             throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+        }
+        if (await dbContext.Guests.AsNoTracking()
+            .AnyAsync(guest =>
+                    guest.NormalizedEmail == email ||
+                    guest.NormalizedMobile == mobile,
+                cancellationToken))
+        {
+            throw new ArgumentException("Guest with this mobile or email already exists.");
         }
     }
 
