@@ -65,15 +65,31 @@ public class ReservationService(
         var guest = await dbContext.Guests.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
             ?? throw new KeyNotFoundException("Guest not found.");
+        var selectedRoomIds = request.RoomIds.Distinct().ToList();
+        var roomCount = selectedRoomIds.Count > 0 ? selectedRoomIds.Count : request.RoomCount;
+
+        if (selectedRoomIds.Count > 0)
+        {
+            var validRoomCount = await dbContext.Rooms.AsNoTracking()
+                .CountAsync(room =>
+                        selectedRoomIds.Contains(room.Id) &&
+                        room.RoomTypeId == request.RoomTypeId &&
+                        room.IsActive,
+                    cancellationToken);
+            if (validRoomCount != selectedRoomIds.Count)
+            {
+                throw new ArgumentException("One or more selected rooms are invalid.");
+            }
+        }
 
         var availability = await availabilityService.GetAvailabilityAsync(
             request.PropertyId,
             request.RoomTypeId,
             request.CheckInDate,
             request.CheckOutDate,
-            request.RoomCount,
+            roomCount,
             cancellationToken);
-        ValidateAvailabilityForCreate(availability, request.RoomCount);
+        ValidateAvailabilityForCreate(availability, roomCount);
 
         var pricePreview = await pricingService.PreviewReservationPriceAsync(
             new ReservationPricePreviewRequest
@@ -85,7 +101,7 @@ public class ReservationService(
                 Adults = request.Adults,
                 Children = request.Children,
                 Infants = request.Infants,
-                RoomCount = request.RoomCount,
+                RoomCount = roomCount,
                 GuestType = request.GuestType
             },
             cancellationToken);
@@ -99,6 +115,7 @@ public class ReservationService(
             GuestId = request.GuestId,
             PropertyId = request.PropertyId,
             RoomTypeId = request.RoomTypeId,
+            RoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : null,
             CheckInDate = request.CheckInDate,
             CheckOutDate = request.CheckOutDate,
             AdultCount = request.Adults,
@@ -110,7 +127,7 @@ public class ReservationService(
             ServiceFeeAmount = pricePreview.ServiceFeeAmount,
             FinalAmount = pricePreview.FinalAmount,
             Currency = pricePreview.Currency,
-            Status = isOnRequest ? ReservationStatus.PendingApproval : ReservationStatus.Pending,
+            Status = ResolveCreateStatus(request.Status, isOnRequest, currentUser.Role),
             Source = GetReservationSource(currentUser.Role),
             GuestNote = request.Notes
         };
@@ -159,6 +176,40 @@ public class ReservationService(
                 reservation,
                 NotificationEventType.ReservationApprovedAwaitingPayment,
                 $"Reservation {reservation.ReservationNumber} was approved and is awaiting payment."),
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+    }
+
+    public async Task<ReservationResponse> CancelAsync(
+        int reservationId,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default)
+    {
+        var reservation = await dbContext.Reservations
+            .Include(item => item.Property)
+            .Include(item => item.RoomType)
+            .Include(item => item.Guest)
+            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+
+        if (reservation.Status is not ReservationStatus.PendingApproval and not ReservationStatus.OnHold)
+        {
+            throw new InvalidOperationException("Only on-request reservations awaiting review can be cancelled from this action.");
+        }
+
+        reservation.Status = ReservationStatus.Cancelled;
+        reservation.CancelledAtUtc = DateTime.UtcNow;
+        reservation.CancelledByUserId = currentUser.UserId;
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await notificationService.SendAsync(
+            CreateReservationNotificationRequest(
+                reservation,
+                NotificationEventType.ReservationCancelled,
+                $"Reservation {reservation.ReservationNumber} was cancelled."),
             cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -238,6 +289,20 @@ public class ReservationService(
             ? ReservationSource.OwnerManual
             : ReservationSource.AdminCreated;
 
+    private static ReservationStatus ResolveCreateStatus(
+        ReservationStatus? requestedStatus,
+        bool isOnRequest,
+        UserRole role)
+    {
+        var defaultStatus = isOnRequest ? ReservationStatus.PendingApproval : ReservationStatus.Pending;
+        if (requestedStatus is null || role is not (UserRole.SuperAdmin or UserRole.AdminAssistant))
+        {
+            return defaultStatus;
+        }
+
+        return requestedStatus.Value;
+    }
+
     private IQueryable<Reservation> ReservationQuery() =>
         dbContext.Reservations
             .AsNoTracking()
@@ -275,6 +340,9 @@ public class ReservationService(
                 Children = reservation.ChildCount,
                 TotalPrice = reservation.TotalPrice,
                 FinalAmount = reservation.FinalAmount,
+                PaidAmount = reservation.Payments
+                    .Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0,
                 Currency = reservation.Currency,
                 Status = reservation.Status,
                 Source = reservation.Source,
@@ -313,21 +381,58 @@ public class ReservationService(
             query = query.Where(reservation => reservation.Status == filters.Status.Value);
         }
 
+        if (!string.IsNullOrWhiteSpace(filters.ReservationNumber))
+        {
+            var reservationNumber = filters.ReservationNumber.Trim();
+            query = query.Where(reservation =>
+                reservation.ReservationNumber != null &&
+                reservation.ReservationNumber.Contains(reservationNumber));
+        }
+
         if (filters.RoomTypeId.HasValue)
         {
             query = query.Where(reservation => reservation.RoomTypeId == filters.RoomTypeId.Value);
+        }
+
+        if (filters.RoomId.HasValue)
+        {
+            query = query.Where(reservation => reservation.RoomId == filters.RoomId.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filters.RoomSearch))
+        {
+            var search = filters.RoomSearch.Trim();
+            query = query.Where(reservation =>
+                reservation.RoomType.Name.Contains(search) ||
+                reservation.Room != null &&
+                (reservation.Room.Name.Contains(search) ||
+                 reservation.Room.EnglishName != null && reservation.Room.EnglishName.Contains(search)));
         }
 
         if (!string.IsNullOrWhiteSpace(filters.GuestSearch))
         {
             var search = filters.GuestSearch.Trim();
             query = query.Where(reservation =>
-                reservation.ReservationNumber != null && reservation.ReservationNumber.Contains(search) ||
                 reservation.Guest != null &&
                 (reservation.Guest.FirstName.Contains(search) ||
                  reservation.Guest.LastName.Contains(search) ||
                  reservation.Guest.Mobile != null && reservation.Guest.Mobile.Contains(search) ||
                  reservation.Guest.Email != null && reservation.Guest.Email.Contains(search)));
+        }
+
+        if (filters.BookingMode.HasValue)
+        {
+            query = filters.BookingMode.Value == ReservationBookingModeFilter.OnRequest
+                ? query.Where(reservation =>
+                    reservation.Status == ReservationStatus.PendingApproval ||
+                    reservation.Status == ReservationStatus.OnHold ||
+                    reservation.Status == ReservationStatus.ApprovedAwaitingPayment ||
+                    reservation.Status == ReservationStatus.PaymentExpired)
+                : query.Where(reservation =>
+                    reservation.Status != ReservationStatus.PendingApproval &&
+                    reservation.Status != ReservationStatus.OnHold &&
+                    reservation.Status != ReservationStatus.ApprovedAwaitingPayment &&
+                    reservation.Status != ReservationStatus.PaymentExpired);
         }
 
         if (filters.CheckInFrom.HasValue)
@@ -340,6 +445,16 @@ public class ReservationService(
             query = query.Where(reservation => reservation.CheckInDate <= filters.CheckInTo.Value);
         }
 
+        if (filters.CheckOutFrom.HasValue)
+        {
+            query = query.Where(reservation => reservation.CheckOutDate >= filters.CheckOutFrom.Value);
+        }
+
+        if (filters.CheckOutTo.HasValue)
+        {
+            query = query.Where(reservation => reservation.CheckOutDate <= filters.CheckOutTo.Value);
+        }
+
         if (filters.CreatedFrom.HasValue)
         {
             query = query.Where(reservation => reservation.CreatedAtUtc >= filters.CreatedFrom.Value);
@@ -347,7 +462,87 @@ public class ReservationService(
 
         if (filters.CreatedTo.HasValue)
         {
-            query = query.Where(reservation => reservation.CreatedAtUtc <= filters.CreatedTo.Value);
+            var createdTo = filters.CreatedTo.Value.TimeOfDay == TimeSpan.Zero
+                ? filters.CreatedTo.Value.Date.AddDays(1).AddTicks(-1)
+                : filters.CreatedTo.Value;
+            query = query.Where(reservation => reservation.CreatedAtUtc <= createdTo);
+        }
+
+        if (filters.TotalPriceMin.HasValue)
+        {
+            query = query.Where(reservation => reservation.FinalAmount >= filters.TotalPriceMin.Value);
+        }
+
+        if (filters.TotalPriceMax.HasValue)
+        {
+            query = query.Where(reservation => reservation.FinalAmount <= filters.TotalPriceMax.Value);
+        }
+
+        if (filters.PaidAmountMin.HasValue)
+        {
+            query = query.Where(reservation =>
+                (reservation.Payments
+                    .Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) >= filters.PaidAmountMin.Value);
+        }
+
+        if (filters.PaidAmountMax.HasValue)
+        {
+            query = query.Where(reservation =>
+                (reservation.Payments
+                    .Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) <= filters.PaidAmountMax.Value);
+        }
+
+        if (filters.RemainingAmountMin.HasValue)
+        {
+            query = query.Where(reservation =>
+                reservation.FinalAmount - (reservation.Payments
+                    .Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) >= filters.RemainingAmountMin.Value);
+        }
+
+        if (filters.RemainingAmountMax.HasValue)
+        {
+            query = query.Where(reservation =>
+                reservation.FinalAmount - (reservation.Payments
+                    .Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) <= filters.RemainingAmountMax.Value);
+        }
+
+        if (filters.Source.HasValue)
+        {
+            query = query.Where(reservation => reservation.Source == filters.Source.Value);
+        }
+
+        if (!string.IsNullOrWhiteSpace(filters.CreatedBy))
+        {
+            var search = filters.CreatedBy.Trim();
+            query = query.Where(reservation =>
+                reservation.Client.FirstName.Contains(search) ||
+                reservation.Client.LastName.Contains(search) ||
+                reservation.Client.Email.Contains(search) ||
+                reservation.Client.PhoneNumber != null && reservation.Client.PhoneNumber.Contains(search));
+        }
+
+        if (filters.PaymentStatus.HasValue)
+        {
+            query = query.Where(reservation =>
+                reservation.Payments.Any(payment => payment.Status == filters.PaymentStatus.Value));
+        }
+
+        if (filters.PaymentDeadlineFrom.HasValue)
+        {
+            query = query.Where(reservation =>
+                reservation.PaymentExpiresAtUtc.HasValue &&
+                reservation.PaymentExpiresAtUtc.Value >= filters.PaymentDeadlineFrom.Value);
+        }
+
+        if (filters.PaymentDeadlineTo.HasValue)
+        {
+            query = query.Where(reservation =>
+                reservation.PaymentExpiresAtUtc.HasValue &&
+                reservation.PaymentExpiresAtUtc.Value <= filters.PaymentDeadlineTo.Value);
         }
 
         return query;
@@ -394,6 +589,9 @@ public class ReservationService(
             RoomCount = 1,
             FinalAmount = reservation.FinalAmount,
             TotalPrice = reservation.TotalPrice,
+            PaidAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
+                ? reservation.FinalAmount
+                : 0,
             RemainingAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
                 ? 0
                 : reservation.FinalAmount,
@@ -429,7 +627,8 @@ public class ReservationService(
             RoomCount = 1,
             TotalPrice = row.TotalPrice,
             FinalAmount = row.FinalAmount,
-            RemainingAmount = row.PaidAtUtc.HasValue || row.Status == ReservationStatus.Paid ? 0 : row.FinalAmount,
+            PaidAmount = row.PaidAmount,
+            RemainingAmount = Math.Max(0, row.FinalAmount - row.PaidAmount),
             Currency = row.Currency,
             Status = row.Status,
             Source = row.Source,
@@ -496,9 +695,12 @@ public class ReservationService(
             Adults = reservation.AdultCount,
             Children = reservation.ChildCount,
             Infants = request.Infants,
-            RoomCount = request.RoomCount,
+            RoomCount = pricePreview.RoomCount,
             GuestType = request.GuestType,
             TotalPrice = reservation.TotalPrice,
+            PaidAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
+                ? reservation.FinalAmount
+                : 0,
             BaseAmount = reservation.BaseAmount,
             DiscountAmount = reservation.DiscountAmount,
             ExtraGuestAmount = reservation.ExtraGuestAmount,
@@ -579,6 +781,9 @@ public class ReservationService(
             Infants = 0,
             RoomCount = 1,
             TotalPrice = reservation.TotalPrice,
+            PaidAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
+                ? reservation.FinalAmount
+                : 0,
             BaseAmount = reservation.BaseAmount,
             DiscountAmount = reservation.DiscountAmount,
             ExtraGuestAmount = reservation.ExtraGuestAmount,
@@ -622,6 +827,7 @@ public class ReservationService(
         public int Children { get; set; }
         public decimal TotalPrice { get; set; }
         public decimal FinalAmount { get; set; }
+        public decimal PaidAmount { get; set; }
         public string Currency { get; set; } = "IRR";
         public ReservationStatus Status { get; set; }
         public ReservationSource Source { get; set; }

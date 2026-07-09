@@ -14,6 +14,7 @@ import type {
 interface ReservationDetailsDialogProps {
   loading?: boolean;
   onApprove?: (reservation: ReservationTableItem) => void | Promise<void>;
+  onCancel?: (reservation: ReservationTableItem) => void | Promise<void>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   reservation: ReservationTableItem | null;
@@ -60,6 +61,10 @@ function statusVariant(status?: ReservationTableStatus) {
 }
 
 function canApprove(status?: ReservationTableStatus) {
+  return status === "PendingApproval" || status === "OnHold";
+}
+
+function canCancel(status?: ReservationTableStatus) {
   return status === "PendingApproval" || status === "OnHold";
 }
 
@@ -121,6 +126,7 @@ function DetailSection({
 export function ReservationDetailsDialog({
   loading = false,
   onApprove,
+  onCancel,
   onOpenChange,
   open,
   reservation,
@@ -154,12 +160,23 @@ export function ReservationDetailsDialog({
           {reservation && onApprove && canApprove(reservation.status) && (
             <KoochConfirmDialog
               cancelText="انصراف"
-              confirmText="تایید درخواست"
-              description="با تایید این درخواست، رزرو برای مدت ۱۰ دقیقه آماده پرداخت می‌شود و برای مهمان اطلاع‌رسانی ثبت خواهد شد."
+              confirmText="ارسال لینک پرداخت"
+              description="با ارسال لینک پرداخت، رزرو برای مدت ۱۰ دقیقه آماده پرداخت می‌شود و اطلاع‌رسانی برای مهمان ثبت خواهد شد."
               onConfirm={() => onApprove(reservation)}
-              title="تایید درخواست رزرو"
-              trigger={<KoochButton>تایید درخواست</KoochButton>}
+              title="ارسال لینک پرداخت"
+              trigger={<KoochButton>ارسال لینک پرداخت</KoochButton>}
               variant="warning"
+            />
+          )}
+          {reservation && onCancel && canCancel(reservation.status) && (
+            <KoochConfirmDialog
+              cancelText="انصراف"
+              confirmText="لغو رزرو"
+              description="این رزرو لغو می‌شود و اطلاع‌رسانی لغو برای مهمان ثبت خواهد شد."
+              onConfirm={() => onCancel(reservation)}
+              title="لغو رزرو"
+              trigger={<KoochButton variant="destructive">لغو</KoochButton>}
+              variant="destructive"
             />
           )}
         </>

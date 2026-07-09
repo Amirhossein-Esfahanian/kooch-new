@@ -132,11 +132,6 @@ function getOwnerMenuItems(propertyId?: string): DashboardMenuItem[] {
       href: propertyId ? `${base}/reservations` : fallbackHref,
     },
     {
-      label: "مهمان‌ها",
-      icon: "/svgs/users.svg",
-      href: propertyId ? `${base}/guests` : fallbackHref,
-    },
-    {
       label: "نظرات",
       icon: "/svgs/comment.svg",
       href: propertyId ? `${base}/reviews` : fallbackHref,

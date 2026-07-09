@@ -22,7 +22,7 @@ export default function AdminGuestsPage() {
           eyebrow="مدیریت داخلی"
           title="مدیریت مهمان‌ها"
         />
-        <GuestManagement context="admin" />
+        <GuestManagement />
       </main>
     </AdminLayout>
   );

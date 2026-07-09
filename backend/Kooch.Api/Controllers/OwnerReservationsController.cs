@@ -41,10 +41,8 @@ public class OwnerReservationsController(
         ReservationCreateRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsurePermissionAsync(propertyId, "bookings.create", cancellationToken);
-        request.PropertyId = propertyId;
-        var reservation = await reservationService.CreateAsync(request, GetCurrentUser(), cancellationToken);
-        return CreatedAtAction(nameof(GetById), new { propertyId, id = reservation.Id }, reservation);
+        await Task.CompletedTask;
+        throw new UnauthorizedAccessException("Owner reservation creation is disabled.");
     }
 
     [HttpPut("{id:int}/approve")]
@@ -57,6 +55,18 @@ public class OwnerReservationsController(
         await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
         await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
         return Ok(await reservationService.ApproveAsync(id, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPut("{id:int}/cancel")]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> Cancel(
+        int propertyId,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
+        await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
+        return Ok(await reservationService.CancelAsync(id, GetCurrentUser(), cancellationToken));
     }
 
     private async Task EnsurePermissionAsync(

@@ -9,8 +9,11 @@ import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
+  KoochMultiSelect,
+  KoochSearchableSelect,
   KoochSelect,
   KoochTextarea,
+  type KoochSearchableSelectOption,
 } from "@/components/KoochFormControls";
 import type { GuestResponse } from "@/components/guests/GuestManagement";
 import {
@@ -18,6 +21,7 @@ import {
   type AvailabilityResponse,
   type PricingGuestType,
   type PropertyResponse,
+  type RoomResponse,
   type RoomTypeResponse,
 } from "@/lib/owner-api";
 import { KoochDatePicker } from "../KoochDatePicker";
@@ -43,6 +47,7 @@ type GuestDraft = {
 type ReservationDraft = {
   propertyId: string;
   roomTypeId: string;
+  roomIds: string[];
   guestId: string;
   guestSearch: string;
   checkInDate: string;
@@ -50,8 +55,8 @@ type ReservationDraft = {
   adults: string;
   children: string;
   infants: string;
-  roomCount: string;
   guestType: PricingGuestType;
+  status: string;
   notes: string;
 };
 
@@ -68,6 +73,7 @@ const emptyGuestDraft: GuestDraft = {
 const initialDraft: ReservationDraft = {
   propertyId: "",
   roomTypeId: "",
+  roomIds: [],
   guestId: "",
   guestSearch: "",
   checkInDate: "",
@@ -75,8 +81,8 @@ const initialDraft: ReservationDraft = {
   adults: "1",
   children: "0",
   infants: "0",
-  roomCount: "1",
   guestType: "Iranian",
+  status: "Pending",
   notes: "",
 };
 
@@ -107,6 +113,26 @@ function previousDate(value: string) {
 function formatMoney(value: number | null | undefined, currency = "IRR") {
   if (value === null || value === undefined) return "-";
   return `${new Intl.NumberFormat("fa-IR").format(value)} ${currency}`;
+}
+
+function formatAge(value: number) {
+  return new Intl.NumberFormat("fa-IR").format(value);
+}
+
+function buildChildHelper(property: PropertyResponse | undefined) {
+  if (property?.freeChildAgeLimit === null || property?.freeChildAgeLimit === undefined) {
+    return "قوانین سنی کودک برای این اقامتگاه ثبت نشده است.";
+  }
+
+  return `کودک: از ${formatAge(property.freeChildAgeLimit)} سال به بالا طبق قوانین اقامتگاه محاسبه می‌شود.`;
+}
+
+function buildInfantHelper(property: PropertyResponse | undefined) {
+  if (property?.freeChildAgeLimit === null || property?.freeChildAgeLimit === undefined) {
+    return "قوانین سنی نوزاد برای این اقامتگاه ثبت نشده است.";
+  }
+
+  return `نوزاد: زیر ${formatAge(property.freeChildAgeLimit)} سال.`;
 }
 
 function guestName(guest: GuestResponse) {
@@ -141,26 +167,109 @@ export function ManualReservationDialog({
   });
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
+  const [rooms, setRooms] = useState<RoomResponse[]>([]);
   const [guests, setGuests] = useState<GuestResponse[]>([]);
   const [availability, setAvailability] = useState<AvailabilityResponse[]>([]);
   const [guestDraft, setGuestDraft] = useState<GuestDraft>(emptyGuestDraft);
-  const [showGuestForm, setShowGuestForm] = useState(false);
+  const [guestDialogOpen, setGuestDialogOpen] = useState(false);
   const [loadingMeta, setLoadingMeta] = useState(false);
   const [savingGuest, setSavingGuest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const selectedPropertyId = Number(draft.propertyId);
+  const selectedProperty = properties.find(
+    (property) => property.id === selectedPropertyId,
+  );
   const selectedRoomType = roomTypes.find(
     (roomType) => roomType.id.toString() === draft.roomTypeId,
   );
   const nightsCount = daysBetween(draft.checkInDate, draft.checkOutDate);
-  const roomCount = toPositiveInt(draft.roomCount, 1);
+  const selectedRoomCount = draft.roomIds.length;
   const hasOnRequest = availability.some((day) => day.status === "OnRequest");
   const basePrice =
     availability.length > 0
-      ? availability.reduce((sum, day) => sum + (day.price || 0), 0) * roomCount
-      : nightsCount * roomCount * (selectedRoomType?.basePrice ?? 0);
+      ? availability.reduce((sum, day) => sum + (day.price || 0), 0) *
+        selectedRoomCount
+      : nightsCount * selectedRoomCount * (selectedRoomType?.basePrice ?? 0);
   const totalPrice = basePrice;
+  const propertyOptions = useMemo(
+    () =>
+      properties.map((property) => ({
+        value: property.id,
+        label: property.name,
+        searchText: property.name,
+      })),
+    [properties],
+  );
+  const roomTypeOptions = useMemo(
+    () =>
+      roomTypes.map((roomType) => ({
+        value: roomType.id,
+        label: roomType.name,
+        description: formatMoney(roomType.basePrice),
+        searchText: `${roomType.name} ${roomType.basePrice ?? ""}`,
+      })),
+    [roomTypes],
+  );
+  const roomOptions = useMemo(
+    () =>
+      rooms
+        .filter((room) => room.isActive)
+        .map((room) => ({
+          value: room.id,
+          label: room.name,
+          description: room.floorNumber
+            ? `طبقه ${new Intl.NumberFormat("fa-IR").format(room.floorNumber)}`
+            : room.englishName,
+          searchText: [room.name, room.englishName, room.description, room.notes]
+            .filter(Boolean)
+            .join(" "),
+        })),
+    [rooms],
+  );
+  const guestOptions = useMemo(() => {
+    const options: KoochSearchableSelectOption[] = guests.map((guest) => {
+      const name = guestName(guest);
+      const description = guest.mobile ?? guest.email ?? "-";
+
+      return {
+        value: guest.id,
+        label: name,
+        description,
+        searchText: [
+          name,
+          guest.mobile,
+          guest.email,
+          guest.nationalCode,
+          guest.passportNumber,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      };
+    });
+
+    if (
+      draft.guestId &&
+      !options.some((option) => option.value.toString() === draft.guestId)
+    ) {
+      options.unshift({
+        value: draft.guestId,
+        label: draft.guestSearch || `#${draft.guestId}`,
+        description: "",
+        searchText: draft.guestSearch,
+      });
+    }
+
+    return options;
+  }, [draft.guestId, draft.guestSearch, guests]);
+  const reservationStatusOptions = [
+    { value: "Pending", label: "در انتظار" },
+    { value: "PendingApproval", label: "در انتظار تایید" },
+    { value: "ApprovedAwaitingPayment", label: "در انتظار پرداخت" },
+    { value: "Confirmed", label: "تایید شده" },
+    { value: "Paid", label: "پرداخت شده" },
+    { value: "Cancelled", label: "لغو شده" },
+  ];
 
   const guestBasePath = useMemo(() => {
     if (context === "admin") return "/admin/guests";
@@ -183,15 +292,23 @@ export function ManualReservationDialog({
       propertyId: fixedPropertyId?.toString() ?? current.propertyId,
     }));
     setGuestDraft(emptyGuestDraft);
-    setShowGuestForm(false);
+    setGuestDialogOpen(false);
     setAvailability([]);
 
     if (context === "admin") {
       apiRequest<PropertyResponse[]>("/admin/properties")
         .then(setProperties)
         .catch(() => setProperties([]));
+    } else if (fixedPropertyId) {
+      apiRequest<PropertyResponse>(`/owner/properties/${fixedPropertyId}`)
+        .then((property) => setProperties([property]))
+        .catch(() => setProperties([]));
     }
   }, [context, fixedPropertyId, open]);
+
+  useEffect(() => {
+    setDraft((current) => ({ ...current, roomIds: [] }));
+  }, [draft.roomTypeId, draft.checkInDate, draft.checkOutDate]);
 
   useEffect(() => {
     if (!open || !selectedPropertyId) {
@@ -209,6 +326,17 @@ export function ManualReservationDialog({
       .catch(() => setRoomTypes([]))
       .finally(() => setLoadingMeta(false));
   }, [open, selectedPropertyId]);
+
+  useEffect(() => {
+    if (!open || !draft.roomTypeId) {
+      setRooms([]);
+      return;
+    }
+
+    apiRequest<RoomResponse[]>(`/owner/room-types/${draft.roomTypeId}/rooms`)
+      .then((items) => setRooms(items.filter((room) => room.isActive)))
+      .catch(() => setRooms([]));
+  }, [draft.roomTypeId, open]);
 
   useEffect(() => {
     if (!open || !guestBasePath || draft.guestSearch.trim().length < 2) {
@@ -274,7 +402,7 @@ export function ManualReservationDialog({
         guestSearch: guestName(guest),
       }));
       setGuestDraft(emptyGuestDraft);
-      setShowGuestForm(false);
+      setGuestDialogOpen(false);
       toast.success("مهمان اضافه شد.");
     } catch (caught) {
       toast.error(
@@ -289,7 +417,12 @@ export function ManualReservationDialog({
     event.preventDefault();
 
     if (!selectedPropertyId || !draft.roomTypeId || !draft.guestId) {
-      toast.error("اقامتگاه، اتاق و مهمان را انتخاب کنید.");
+      toast.error("اقامتگاه، نوع اتاق و مهمان را انتخاب کنید.");
+      return;
+    }
+
+    if (draft.roomIds.length === 0) {
+      toast.error("حداقل یک اتاق را انتخاب کنید.");
       return;
     }
 
@@ -316,8 +449,10 @@ export function ManualReservationDialog({
           adults: toPositiveInt(draft.adults, 1),
           children: toNonNegativeInt(draft.children),
           infants: toNonNegativeInt(draft.infants),
-          roomCount,
+          roomCount: draft.roomIds.length,
+          roomIds: draft.roomIds.map((id) => Number(id)),
           guestType: draft.guestType,
+          status: context === "admin" ? draft.status : undefined,
           notes: draft.notes.trim() || null,
         }),
       });
@@ -368,95 +503,115 @@ export function ManualReservationDialog({
           <div className="grid gap-4 md:grid-cols-2">
             {context === "admin" && (
               <KoochField label="اقامتگاه" required>
-                <KoochSelect
-                  onChange={(event) => {
-                    updateDraft("propertyId", event.target.value);
+                <KoochSearchableSelect
+                  emptyText="اقامتگاهی پیدا نشد."
+                  onChange={(value) => {
+                    updateDraft("propertyId", value);
                     updateDraft("roomTypeId", "");
+                    setDraft((current) => ({ ...current, roomIds: [] }));
                   }}
+                  options={propertyOptions}
+                  placeholder="انتخاب اقامتگاه"
+                  searchPlaceholder="جستجوی اقامتگاه..."
                   value={draft.propertyId}
-                >
-                  <option value="">انتخاب اقامتگاه</option>
-                  {properties.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.name}
-                    </option>
-                  ))}
-                </KoochSelect>
+                />
               </KoochField>
             )}
 
-            <KoochField label="اتاق" required>
-              <KoochSelect
+            <KoochField label="نوع اتاق" required>
+              <KoochSearchableSelect
                 disabled={!selectedPropertyId || loadingMeta}
-                onChange={(event) =>
-                  updateDraft("roomTypeId", event.target.value)
-                }
+                emptyText="نوع اتاقی پیدا نشد."
+                onChange={(value) => updateDraft("roomTypeId", value)}
+                options={roomTypeOptions}
+                placeholder={loadingMeta ? "در حال بارگذاری..." : "انتخاب نوع اتاق"}
+                searchPlaceholder="جستجوی نوع اتاق..."
                 value={draft.roomTypeId}
-              >
-                <option value="">انتخاب اتاق</option>
-                {roomTypes.map((roomType) => (
-                  <option key={roomType.id} value={roomType.id}>
-                    {roomType.name}
-                  </option>
-                ))}
-              </KoochSelect>
-            </KoochField>
-
-            <KoochField label="جستجوی مهمان" required>
-              <KoochInput
-                onChange={(event) => {
-                  updateDraft("guestSearch", event.target.value);
-                  updateDraft("guestId", "");
-                }}
-                placeholder="نام، موبایل یا ایمیل"
-                value={draft.guestSearch}
               />
             </KoochField>
 
-            <KoochField label="مهمان">
-              <KoochSelect
-                onChange={(event) => {
-                  if (event.target.value === "new") {
-                    setShowGuestForm(true);
-                    updateDraft("guestId", "");
-                    return;
+            <KoochField
+              className="md:col-span-2"
+              label="مهمان"
+              required
+            >
+              <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                <KoochSearchableSelect
+                  emptyText={
+                    draft.guestSearch.trim().length < 2
+                      ? "برای جستجوی مهمان حداقل دو حرف وارد کنید."
+                      : "مهمانی پیدا نشد."
                   }
+                  onChange={(value) => {
+                    updateDraft("guestId", value);
+                    const guest = guests.find(
+                      (item) => item.id.toString() === value,
+                    );
+                    if (guest) updateDraft("guestSearch", guestName(guest));
+                  }}
+                  onSearchChange={(query) => updateDraft("guestSearch", query)}
+                  options={guestOptions}
+                  placeholder="انتخاب مهمان"
+                  searchPlaceholder="نام، موبایل یا ایمیل"
+                  value={draft.guestId}
+                />
+                {context === "admin" && (
+                  <KoochButton
+                    onClick={() => setGuestDialogOpen(true)}
+                    type="button"
+                    variant="outline"
+                  >
+                    افزودن مهمان
+                  </KoochButton>
+                )}
+              </div>
+            </KoochField>
 
-                  updateDraft("guestId", event.target.value);
-                  const guest = guests.find(
-                    (item) => item.id.toString() === event.target.value,
-                  );
-                  if (guest) updateDraft("guestSearch", guestName(guest));
+            <KoochField className="md:col-span-2" label="بازه اقامت" required>
+              <KoochDatePicker
+                labels={{ start: "ورود", end: "خروج" }}
+                mode="range"
+                onChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    checkInDate: value.startDate ?? "",
+                    checkOutDate: value.endDate ?? "",
+                    roomIds: [],
+                  }))
+                }
+                placeholderEnd="تاریخ خروج"
+                placeholderStart="تاریخ ورود"
+                showFieldLabels
+                value={{
+                  startDate: draft.checkInDate || null,
+                  endDate: draft.checkOutDate || null,
                 }}
-                value={draft.guestId}
-              >
-                <option value="">انتخاب مهمان</option>
-                {guests.map((guest) => (
-                  <option key={guest.id} value={guest.id}>
-                    {guestName(guest)} - {guest.mobile ?? guest.email ?? "-"}
-                  </option>
-                ))}
-                <option value="new">افزودن مهمان جدید</option>
-              </KoochSelect>
-            </KoochField>
-
-            <KoochField label="تاریخ ورود" required>
-              <KoochInput
-                onChange={(event) =>
-                  updateDraft("checkInDate", event.target.value)
-                }
-                type="date"
-                value={draft.checkInDate}
               />
+              {nightsCount > 0 && (
+                <p className="text-xs font-bold text-muted-foreground">
+                  تعداد شب: {new Intl.NumberFormat("fa-IR").format(nightsCount)}
+                </p>
+              )}
             </KoochField>
 
-            <KoochField label="تاریخ خروج" required>
-              <KoochInput
-                onChange={(event) =>
-                  updateDraft("checkOutDate", event.target.value)
+            <KoochField className="md:col-span-2" label="اتاق‌ها" required>
+              <KoochMultiSelect
+                disabled={!draft.roomTypeId || nightsCount <= 0}
+                emptyText="اتاق فعالی برای این نوع اتاق پیدا نشد."
+                onChange={(value) =>
+                  setDraft((current) => ({
+                    ...current,
+                    roomIds: value.map(String),
+                  }))
                 }
-                type="date"
-                value={draft.checkOutDate}
+                options={roomOptions}
+                placeholder={
+                  nightsCount <= 0
+                    ? "ابتدا بازه اقامت را انتخاب کنید"
+                    : "انتخاب اتاق‌ها"
+                }
+                searchPlaceholder="جستجوی اتاق..."
+                value={draft.roomIds}
               />
             </KoochField>
 
@@ -469,7 +624,10 @@ export function ManualReservationDialog({
               />
             </KoochField>
 
-            <KoochField label="کودک">
+            <KoochField
+              helperText={buildChildHelper(selectedProperty)}
+              label="کودک"
+            >
               <KoochInput
                 min={0}
                 onChange={(event) =>
@@ -480,23 +638,15 @@ export function ManualReservationDialog({
               />
             </KoochField>
 
-            <KoochField label="نوزاد">
+            <KoochField
+              helperText={buildInfantHelper(selectedProperty)}
+              label="نوزاد"
+            >
               <KoochInput
                 min={0}
                 onChange={(event) => updateDraft("infants", event.target.value)}
                 type="number"
                 value={draft.infants}
-              />
-            </KoochField>
-
-            <KoochField label="تعداد اتاق">
-              <KoochInput
-                min={1}
-                onChange={(event) =>
-                  updateDraft("roomCount", event.target.value)
-                }
-                type="number"
-                value={draft.roomCount}
               />
             </KoochField>
 
@@ -514,95 +664,22 @@ export function ManualReservationDialog({
                 <option value="Foreign">خارجی</option>
               </KoochSelect>
             </KoochField>
-          </div>
 
-          {showGuestForm && (
-            <KoochCard className="grid gap-4" padding="sm" variant="elevated">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <h3 className="text-sm font-black text-foreground">
-                  افزودن مهمان جدید
-                </h3>
-                <KoochButton
-                  onClick={() => setShowGuestForm(false)}
-                  size="sm"
-                  type="button"
-                  variant="ghost"
+            {context === "admin" && (
+              <KoochField label="وضعیت رزرو">
+                <KoochSelect
+                  onChange={(event) => updateDraft("status", event.target.value)}
+                  value={draft.status}
                 >
-                  بستن
-                </KoochButton>
-              </div>
-              <div className="grid gap-3 md:grid-cols-2">
-                <KoochField label="نام">
-                  <KoochInput
-                    onChange={(event) =>
-                      updateGuestDraft("firstName", event.target.value)
-                    }
-                    value={guestDraft.firstName}
-                  />
-                </KoochField>
-                <KoochField label="نام خانوادگی">
-                  <KoochInput
-                    onChange={(event) =>
-                      updateGuestDraft("lastName", event.target.value)
-                    }
-                    value={guestDraft.lastName}
-                  />
-                </KoochField>
-                <KoochField label="موبایل">
-                  <KoochInput
-                    onChange={(event) =>
-                      updateGuestDraft("mobile", event.target.value)
-                    }
-                    value={guestDraft.mobile}
-                  />
-                </KoochField>
-                <KoochField label="ایمیل">
-                  <KoochInput
-                    dir="ltr"
-                    onChange={(event) =>
-                      updateGuestDraft("email", event.target.value)
-                    }
-                    type="email"
-                    value={guestDraft.email}
-                  />
-                </KoochField>
-                <KoochField label="کد ملی">
-                  <KoochInput
-                    onChange={(event) =>
-                      updateGuestDraft("nationalCode", event.target.value)
-                    }
-                    value={guestDraft.nationalCode}
-                  />
-                </KoochField>
-                <KoochField label="شماره پاسپورت">
-                  <KoochInput
-                    dir="ltr"
-                    onChange={(event) =>
-                      updateGuestDraft("passportNumber", event.target.value)
-                    }
-                    value={guestDraft.passportNumber}
-                  />
-                </KoochField>
-                <KoochField label="ملیت">
-                  <KoochInput
-                    onChange={(event) =>
-                      updateGuestDraft("nationality", event.target.value)
-                    }
-                    value={guestDraft.nationality}
-                  />
-                </KoochField>
-              </div>
-              <div>
-                <KoochButton
-                  loading={savingGuest}
-                  onClick={addGuest}
-                  type="button"
-                >
-                  ذخیره مهمان
-                </KoochButton>
-              </div>
-            </KoochCard>
-          )}
+                  {reservationStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+            )}
+          </div>
 
           {hasOnRequest && (
             <KoochAlert title="نیازمند تایید" variant="warning">
@@ -616,6 +693,10 @@ export function ManualReservationDialog({
             <div className="grid gap-3 text-sm md:grid-cols-3">
               <span>
                 تعداد شب: {new Intl.NumberFormat("fa-IR").format(nightsCount)}
+              </span>
+              <span>
+                تعداد اتاق:{" "}
+                {new Intl.NumberFormat("fa-IR").format(selectedRoomCount)}
               </span>
               <span>قیمت پایه: {formatMoney(basePrice)}</span>
               <span>هزینه کودک: {formatMoney(0)}</span>
@@ -635,6 +716,96 @@ export function ManualReservationDialog({
             />
           </KoochField>
         </form>
+      </KoochDialog>
+
+      <KoochDialog
+        footer={
+          <>
+            <KoochButton
+              disabled={savingGuest}
+              onClick={() => setGuestDialogOpen(false)}
+              type="button"
+              variant="outline"
+            >
+              انصراف
+            </KoochButton>
+            <KoochButton
+              loading={savingGuest}
+              onClick={addGuest}
+              type="button"
+            >
+              ذخیره مهمان
+            </KoochButton>
+          </>
+        }
+        onOpenChange={setGuestDialogOpen}
+        open={guestDialogOpen}
+        title="افزودن مهمان"
+      >
+        <div className="grid gap-4" dir="rtl">
+          <div className="grid gap-4 md:grid-cols-2">
+            <KoochField label="نام">
+              <KoochInput
+                onChange={(event) =>
+                  updateGuestDraft("firstName", event.target.value)
+                }
+                value={guestDraft.firstName}
+              />
+            </KoochField>
+            <KoochField label="نام خانوادگی">
+              <KoochInput
+                onChange={(event) =>
+                  updateGuestDraft("lastName", event.target.value)
+                }
+                value={guestDraft.lastName}
+              />
+            </KoochField>
+            <KoochField label="موبایل">
+              <KoochInput
+                inputMode="tel"
+                onChange={(event) =>
+                  updateGuestDraft("mobile", event.target.value)
+                }
+                value={guestDraft.mobile}
+              />
+            </KoochField>
+            <KoochField label="ایمیل">
+              <KoochInput
+                dir="ltr"
+                onChange={(event) =>
+                  updateGuestDraft("email", event.target.value)
+                }
+                type="email"
+                value={guestDraft.email}
+              />
+            </KoochField>
+            <KoochField label="کد ملی">
+              <KoochInput
+                onChange={(event) =>
+                  updateGuestDraft("nationalCode", event.target.value)
+                }
+                value={guestDraft.nationalCode}
+              />
+            </KoochField>
+            <KoochField label="شماره پاسپورت">
+              <KoochInput
+                dir="ltr"
+                onChange={(event) =>
+                  updateGuestDraft("passportNumber", event.target.value)
+                }
+                value={guestDraft.passportNumber}
+              />
+            </KoochField>
+            <KoochField label="ملیت">
+              <KoochInput
+                onChange={(event) =>
+                  updateGuestDraft("nationality", event.target.value)
+                }
+                value={guestDraft.nationality}
+              />
+            </KoochField>
+          </div>
+        </div>
       </KoochDialog>
     </>
   );

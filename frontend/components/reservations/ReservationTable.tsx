@@ -127,6 +127,10 @@ function canApprove(status: ReservationTableStatus) {
   return status === "PendingApproval" || status === "OnHold";
 }
 
+function canCancel(status: ReservationTableStatus) {
+  return status === "PendingApproval" || status === "OnHold";
+}
+
 function formatDate(value: string) {
   if (!value) return "-";
 
@@ -251,26 +255,32 @@ export function ReservationTable({
                       {canApprove(reservation.status) && (
                         <KoochConfirmDialog
                           cancelText="انصراف"
-                          confirmText="تایید درخواست"
-                          description="با تایید این درخواست، رزرو برای مدت ۱۰ دقیقه آماده پرداخت می‌شود و برای مهمان اطلاع‌رسانی ثبت خواهد شد."
+                          confirmText="ارسال لینک پرداخت"
+                          description="با ارسال لینک پرداخت، رزرو برای مدت ۱۰ دقیقه آماده پرداخت می‌شود و اطلاع‌رسانی برای مهمان ثبت خواهد شد."
                           onConfirm={() => onApprove(reservation)}
-                          title="تایید درخواست رزرو"
+                          title="ارسال لینک پرداخت"
                           trigger={
                             <KoochButton size="sm">
-                              تایید درخواست
+                              ارسال لینک پرداخت
                             </KoochButton>
                           }
                           variant="warning"
                         />
                       )}
-                      {onCancel && (
-                        <KoochButton
-                          onClick={() => onCancel(reservation)}
-                          size="sm"
+                      {onCancel && canCancel(reservation.status) && (
+                        <KoochConfirmDialog
+                          cancelText="انصراف"
+                          confirmText="لغو رزرو"
+                          description="این رزرو لغو می‌شود و اطلاع‌رسانی لغو برای مهمان ثبت خواهد شد."
+                          onConfirm={() => onCancel(reservation)}
+                          title="لغو رزرو"
+                          trigger={
+                            <KoochButton size="sm" variant="destructive">
+                              لغو
+                            </KoochButton>
+                          }
                           variant="destructive"
-                        >
-                          لغو
-                        </KoochButton>
+                        />
                       )}
                     </div>
                   </KoochTableCell>

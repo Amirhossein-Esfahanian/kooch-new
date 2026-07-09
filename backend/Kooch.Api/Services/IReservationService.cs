@@ -29,6 +29,11 @@ public interface IReservationService
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default);
 
+    Task<ReservationResponse> CancelAsync(
+        int reservationId,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default);
+
     Task<bool> ExpirePaymentWindowAsync(
         int reservationId,
         CancellationToken cancellationToken = default);

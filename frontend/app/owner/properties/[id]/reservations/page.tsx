@@ -18,7 +18,6 @@ import {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
-import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import {
   apiRequest,
   getToken,
@@ -102,6 +101,7 @@ export default function OwnerReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [approvingId, setApprovingId] = useState<number | null>(null);
+  const [cancellingId, setCancellingId] = useState<number | null>(null);
   const [error, setError] = useState("");
 
   const loadReservations = useCallback(async () => {
@@ -190,14 +190,42 @@ export default function OwnerReservationsPage() {
         return currentId === reservationId ? approved : current;
       });
       await loadReservations();
-      toast.success("درخواست رزرو تایید شد.");
+      toast.success("لینک پرداخت برای رزرو ثبت شد.");
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "خطا در تایید رزرو.";
+        caught instanceof Error ? caught.message : "خطا در ارسال لینک پرداخت.";
       setError(message);
       toast.error(message);
     } finally {
       setApprovingId(null);
+    }
+  }
+
+  async function cancelReservation(reservation: ReservationTableItem) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+
+    setCancellingId(reservationId);
+    setError("");
+
+    try {
+      const cancelled = await apiRequest<ReservationTableItem>(
+        `/owner/properties/${propertyId}/reservations/${reservationId}/cancel`,
+        { method: "PUT" },
+      );
+      setSelectedReservation((current) => {
+        const currentId = current?.reservationId ?? current?.id;
+        return currentId === reservationId ? cancelled : current;
+      });
+      await loadReservations();
+      toast.success("رزرو لغو شد.");
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setCancellingId(null);
     }
   }
 
@@ -206,19 +234,12 @@ export default function OwnerReservationsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <ManualReservationDialog
-                context="owner"
-                fixedPropertyId={propertyId}
-                onCreated={loadReservations}
-              />
-              <Link
-                className={headerLinkClass}
-                href={`/owner/properties/${propertyId}/dashboard`}
-              >
-                بازگشت به داشبورد
-              </Link>
-            </div>
+            <Link
+              className={headerLinkClass}
+              href={`/owner/properties/${propertyId}/dashboard`}
+            >
+              بازگشت به داشبورد
+            </Link>
           }
           description={property?.name ?? "در حال بارگذاری..."}
           eyebrow="اقامتگاه فعال"
@@ -313,6 +334,7 @@ export default function OwnerReservationsPage() {
           emptyMessage="هنوز رزروی برای این اقامتگاه ثبت نشده است."
           loading={loading}
           onApprove={approveReservation}
+          onCancel={cancelReservation}
           onPageChange={setCurrentPage}
           onView={viewReservation}
           reservations={reservations}
@@ -322,6 +344,7 @@ export default function OwnerReservationsPage() {
         <ReservationDetailsDialog
           loading={detailsLoading}
           onApprove={approveReservation}
+          onCancel={cancelReservation}
           onOpenChange={(open) => {
             if (!open) setSelectedReservation(null);
           }}
@@ -331,7 +354,12 @@ export default function OwnerReservationsPage() {
 
         {approvingId && (
           <p className="text-xs font-semibold text-muted-foreground">
-            در حال تایید رزرو...
+            در حال ارسال لینک پرداخت...
+          </p>
+        )}
+        {cancellingId && (
+          <p className="text-xs font-semibold text-muted-foreground">
+            در حال لغو رزرو...
           </p>
         )}
       </main>

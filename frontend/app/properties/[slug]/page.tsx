@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { GuestSelector, GuestSelectorValue } from "@/components/GuestSelector";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
@@ -54,15 +55,43 @@ const availabilityLabels: Record<string, string> = {
   OnRequest: "نیازمند استعلام",
 };
 
+function readPositiveNumber(value: string | null, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function readGuestParams(searchParams: Pick<URLSearchParams, "get">): GuestSelectorValue {
+  const children = Math.max(0, readPositiveNumber(searchParams.get("children"), 0));
+  const childAges = (searchParams.get("childAges") ?? "")
+    .split(",")
+    .filter(Boolean)
+    .map((age) => Number(age))
+    .filter((age) => Number.isFinite(age))
+    .slice(0, children);
+
+  while (childAges.length < children) childAges.push(5);
+
+  return {
+    rooms: readPositiveNumber(searchParams.get("rooms"), 1),
+    adults: readPositiveNumber(searchParams.get("adults") ?? searchParams.get("guests"), 2),
+    children,
+    childAges,
+  };
+}
+
 export default function PublicPropertyPage() {
   const { slug } = useParams<{ slug: string }>();
+  const searchParams = useSearchParams();
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [bookingDates, setBookingDates] = useState<{ startDate: string | null; endDate: string | null }>({
-    startDate: null,
-    endDate: null,
+    startDate: searchParams.get("checkIn"),
+    endDate: searchParams.get("checkOut"),
   });
+  const [bookingGuests, setBookingGuests] = useState<GuestSelectorValue>(() =>
+    readGuestParams(searchParams),
+  );
 
   useEffect(() => {
     if (!slug) return;
@@ -84,6 +113,14 @@ export default function PublicPropertyPage() {
     }
     meta.content = description;
   }, [property]);
+
+  useEffect(() => {
+    setBookingDates({
+      startDate: searchParams.get("checkIn"),
+      endDate: searchParams.get("checkOut"),
+    });
+    setBookingGuests(readGuestParams(searchParams));
+  }, [searchParams]);
 
   const groupedAmenities = useMemo(() => {
     const groups = new Map<string, PublicProperty["amenities"]>();
@@ -133,11 +170,13 @@ export default function PublicPropertyPage() {
     Included: "صبحانه رایگان",
     Paid: "صبحانه با هزینه",
   }[property.breakfastOption];
+  const resultQuery = searchParams.toString();
+  const resultsHref = resultQuery ? `/properties?${resultQuery}` : "/properties";
 
   return (
     <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
       <div className="mx-auto max-w-7xl">
-        <Link className="text-sm font-bold text-blue-700" href="/properties">
+        <Link className="text-sm font-bold text-blue-700" href={resultsHref}>
           بازگشت به نتایج جست‌وجو
         </Link>
 
@@ -369,7 +408,13 @@ export default function PublicPropertyPage() {
                 placeholderStart="انتخاب ورود"
                 value={bookingDates}
               />
-              <label className="grid gap-1 text-xs font-bold">
+              <GuestSelector
+                controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs"
+                label="ØªØ¹Ø¯Ø§Ø¯ Ù…Ù‡Ù…Ø§Ù†"
+                onChange={setBookingGuests}
+                value={bookingGuests}
+              />
+              <label className="hidden">
                 تعداد مهمان
                 <input className="rounded-lg border px-3 py-2.5" defaultValue="2" min="1" type="number" />
               </label>

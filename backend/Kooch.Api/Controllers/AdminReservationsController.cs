@@ -46,4 +46,13 @@ public class AdminReservationsController(IReservationService reservationService)
     {
         return Ok(await reservationService.ApproveAsync(id, GetCurrentUser(), cancellationToken));
     }
+
+    [HttpPut("{id:int}/cancel")]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> Cancel(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationService.CancelAsync(id, GetCurrentUser(), cancellationToken));
+    }
 }

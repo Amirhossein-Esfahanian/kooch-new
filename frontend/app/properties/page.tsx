@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { fetchPublicApi, formatPrice, PublicProperty } from "@/lib/public-properties";
@@ -111,6 +111,14 @@ function propertyBadge(type: string) {
   return typeLabels[type] ?? type.replace(/([A-Z])/g, " $1").trim();
 }
 
+function isInstantAvailable(property: ResultProperty) {
+  return property.availabilityStatusSummary === "Available";
+}
+
+function isOnRequest(property: ResultProperty) {
+  return property.availabilityStatusSummary === "OnRequest";
+}
+
 export default function PropertiesPage() {
   return (
     <Suspense fallback={<PageLoading />}>
@@ -120,6 +128,7 @@ export default function PropertiesPage() {
 }
 
 function PropertiesContent() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const [properties, setProperties] = useState<ResultProperty[]>([]);
   const [loading, setLoading] = useState(true);
@@ -132,6 +141,11 @@ function PropertiesContent() {
   const rooms = Number(searchParams.get("rooms") ?? 1);
   const adults = Number(searchParams.get("adults") ?? searchParams.get("guests") ?? 2);
   const children = Number(searchParams.get("children") ?? 0);
+  const minPrice = searchParams.get("minPrice") ?? "";
+  const maxPrice = searchParams.get("maxPrice") ?? "";
+  const propertyTypes = searchParams.getAll("propertyType");
+  const bookingMode = searchParams.get("bookingMode") ?? "";
+  const availability = searchParams.get("availability") ?? "";
   const childAges = (searchParams.get("childAges") ?? "")
     .split(",")
     .filter(Boolean)
@@ -161,16 +175,42 @@ function PropertiesContent() {
       .finally(() => setLoading(false));
   }, [adults, checkIn, checkOut, children, childAges.join(","), city, q, rooms]);
 
-  const detailQuery = new URLSearchParams();
-  if (q) detailQuery.set("q", q);
-  detailQuery.set("city", city);
-  if (checkIn) detailQuery.set("checkIn", checkIn);
-  if (checkOut) detailQuery.set("checkOut", checkOut);
-  detailQuery.set("rooms", Math.max(1, rooms).toString());
-  detailQuery.set("adults", Math.max(1, adults).toString());
-  detailQuery.set("children", Math.max(0, children).toString());
-  if (childAges.length) detailQuery.set("childAges", childAges.join(","));
-  const detailQueryText = detailQuery.toString();
+  const detailQueryText = searchParams.toString();
+  const visibleProperties = useMemo(() => {
+    const min = minPrice ? Number(minPrice) : null;
+    const max = maxPrice ? Number(maxPrice) : null;
+
+    return properties.filter((property) => {
+      const price = property.startingPrice ?? 0;
+      if (min !== null && Number.isFinite(min) && price < min) return false;
+      if (max !== null && Number.isFinite(max) && price > max) return false;
+      if (propertyTypes.length > 0 && !propertyTypes.includes(property.propertyType)) return false;
+      if (bookingMode === "instant" && !isInstantAvailable(property)) return false;
+      if (bookingMode === "request" && !isOnRequest(property)) return false;
+      if (availability && property.availabilityStatusSummary !== availability) return false;
+      return true;
+    });
+  }, [availability, bookingMode, maxPrice, minPrice, properties, propertyTypes]);
+
+  function updateUrlParam(key: string, value: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    if (value) next.set(key, value);
+    else next.delete(key);
+    const text = next.toString();
+    router.replace(text ? `/properties?${text}` : "/properties", { scroll: false });
+  }
+
+  function toggleMultiParam(key: string, value: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    const values = next.getAll(key);
+    next.delete(key);
+    const nextValues = values.includes(value)
+      ? values.filter((item) => item !== value)
+      : [...values, value];
+    nextValues.forEach((item) => next.append(key, item));
+    const text = next.toString();
+    router.replace(text ? `/properties?${text}` : "/properties", { scroll: false });
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
@@ -204,7 +244,7 @@ function PropertiesContent() {
           </div>
           <div className="flex items-center gap-3">
             <span className="text-sm font-semibold text-slate-500">
-              {loading ? "در حال بارگذاری..." : `${properties.length} اقامتگاه`}
+              {loading ? "در حال بارگذاری..." : `${visibleProperties.length} اقامتگاه`}
             </span>
             <button
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold lg:hidden"
@@ -222,8 +262,46 @@ function PropertiesContent() {
           </p>
         )}
 
-        <div className="mt-7 grid gap-7 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <aside className={`${filtersOpen ? "block" : "hidden"} h-fit rounded-xl border border-slate-200 bg-white p-5 lg:sticky lg:top-40 lg:block`}>
+        <section className="mt-7 rounded-xl border border-slate-200 bg-white p-4">
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              Ø­Ø¯Ø§Ù‚Ù„ Ù‚ÛŒÙ…Øª
+              <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onChange={(event) => updateUrlParam("minPrice", event.target.value)} type="number" value={minPrice} />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              Ø­Ø¯Ø§Ú©Ø«Ø± Ù‚ÛŒÙ…Øª
+              <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onChange={(event) => updateUrlParam("maxPrice", event.target.value)} type="number" value={maxPrice} />
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              Ù†ÙˆØ¹ Ø±Ø²Ø±Ùˆ
+              <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" onChange={(event) => updateUrlParam("bookingMode", event.target.value)} value={bookingMode}>
+                <option value="">Ù‡Ù…Ù‡</option>
+                <option value="instant">Ø±Ø²Ø±Ùˆ Ø¢Ù†ÛŒ</option>
+                <option value="request">Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ ØªØ§ÛŒÛŒØ¯</option>
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-slate-700">
+              Ù…ÙˆØ¬ÙˆØ¯ÛŒ
+              <select className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm" onChange={(event) => updateUrlParam("availability", event.target.value)} value={availability}>
+                <option value="">Ù‡Ù…Ù‡</option>
+                <option value="Available">Ù…ÙˆØ¬ÙˆØ¯</option>
+                <option value="OnRequest">Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ø§Ø³ØªØ¹Ù„Ø§Ù…</option>
+                <option value="Unknown">Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ø¨Ø±Ø±Ø³ÛŒ</option>
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {Object.entries(typeLabels).map(([value, label]) => (
+              <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-600" key={value}>
+                <input checked={propertyTypes.includes(value)} className="h-4 w-4 accent-blue-600" onChange={() => toggleMultiParam("propertyType", value)} type="checkbox" />
+                {label}
+              </label>
+            ))}
+          </div>
+        </section>
+
+        <div className="mt-7 grid gap-7">
+          <aside className="hidden">
             <h2 className="text-lg font-black">فیلتر نتایج</h2>
             <fieldset className="mt-5 border-t border-slate-100 pt-5">
               <legend className="font-bold">محدوده قیمت</legend>
@@ -251,13 +329,13 @@ function PropertiesContent() {
           <section>
             {loading ? (
               <PageLoading compact />
-            ) : properties.length === 0 ? (
+            ) : visibleProperties.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-600">
                 هیچ اقامتگاهی با این شرایط پیدا نشد.
               </div>
             ) : (
               <div className="grid gap-5">
-                {properties.map((property) => {
+                {visibleProperties.map((property) => {
                   const roomCount = property.matchingRoomTypesCount || property.roomTypes.length;
                   const detailHref = `/properties/${property.slug}${detailQueryText ? `?${detailQueryText}` : ""}`;
 

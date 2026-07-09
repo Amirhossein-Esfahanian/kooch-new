@@ -24,6 +24,7 @@ public class ReservationListItemResponse
     public int RoomCount { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal FinalAmount { get; set; }
+    public decimal PaidAmount { get; set; }
     public decimal RemainingAmount { get; set; }
     public string Currency { get; set; } = "IRR";
     public ReservationStatus Status { get; set; }
@@ -61,16 +62,39 @@ public class ReservationResponse : ReservationListItemResponse
 public class ReservationListQuery
 {
     public int? PropertyId { get; set; }
+    public string? ReservationNumber { get; set; }
     public ReservationStatus? Status { get; set; }
     public int? RoomTypeId { get; set; }
+    public int? RoomId { get; set; }
+    public string? RoomSearch { get; set; }
     public string? GuestSearch { get; set; }
+    public ReservationBookingModeFilter? BookingMode { get; set; }
     public DateOnly? CheckInFrom { get; set; }
     public DateOnly? CheckInTo { get; set; }
+    public DateOnly? CheckOutFrom { get; set; }
+    public DateOnly? CheckOutTo { get; set; }
     public DateTime? CreatedFrom { get; set; }
     public DateTime? CreatedTo { get; set; }
+    public decimal? TotalPriceMin { get; set; }
+    public decimal? TotalPriceMax { get; set; }
+    public decimal? PaidAmountMin { get; set; }
+    public decimal? PaidAmountMax { get; set; }
+    public decimal? RemainingAmountMin { get; set; }
+    public decimal? RemainingAmountMax { get; set; }
+    public ReservationSource? Source { get; set; }
+    public string? CreatedBy { get; set; }
+    public PaymentStatus? PaymentStatus { get; set; }
+    public DateTime? PaymentDeadlineFrom { get; set; }
+    public DateTime? PaymentDeadlineTo { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 25;
     public string? Sort { get; set; }
+}
+
+public enum ReservationBookingModeFilter
+{
+    Instant,
+    OnRequest
 }
 
 public class PagedResult<T>
@@ -107,6 +131,10 @@ public class ReservationCreateRequest : IValidatableObject
 
     [Range(1, 100)]
     public int RoomCount { get; set; } = 1;
+
+    public IReadOnlyList<int> RoomIds { get; set; } = [];
+
+    public ReservationStatus? Status { get; set; }
 
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
 

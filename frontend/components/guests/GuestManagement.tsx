@@ -54,11 +54,6 @@ type GuestForm = {
   notes: string;
 };
 
-type GuestManagementProps = {
-  context: "admin" | "owner";
-  propertyId?: number;
-};
-
 const emptyForm: GuestForm = {
   id: null,
   firstName: "",
@@ -114,7 +109,32 @@ function toForm(guest: GuestResponse): GuestForm {
   };
 }
 
-export function GuestManagement({ context, propertyId }: GuestManagementProps) {
+function normalizeSearch(value: string | null | undefined) {
+  return (value ?? "").trim().toLocaleLowerCase("fa-IR");
+}
+
+function guestMatchesSearch(guest: GuestResponse, search: string) {
+  const term = normalizeSearch(search);
+  if (!term) return true;
+
+  return [
+    guest.id.toString(),
+    guest.firstName,
+    guest.lastName,
+    guest.fullName,
+    guest.mobile,
+    guest.email,
+    guest.nationalCode,
+    guest.passportNumber,
+    guest.nationality,
+    guest.birthDate,
+    guest.gender,
+    guest.address,
+    guest.notes,
+  ].some((value) => normalizeSearch(value).includes(term));
+}
+
+export function GuestManagement() {
   const [guests, setGuests] = useState<GuestResponse[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -123,16 +143,13 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<GuestForm>(emptyForm);
 
-  const basePath = useMemo(() => {
-    if (context === "admin") return "/admin/guests";
-    return `/owner/properties/${propertyId}/guests`;
-  }, [context, propertyId]);
-
-  const canDelete = context === "admin";
+  const basePath = "/admin/guests";
+  const visibleGuests = useMemo(
+    () => guests.filter((guest) => guestMatchesSearch(guest, search)),
+    [guests, search],
+  );
 
   async function loadGuests(nextSearch = search) {
-    if (context === "owner" && !propertyId) return;
-
     setLoading(true);
     try {
       const data = await apiRequest<GuestResponse[]>(
@@ -169,7 +186,7 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    await loadGuests(search);
+    await loadGuests("");
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -212,8 +229,6 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
   }
 
   async function deleteGuest(guest: GuestResponse) {
-    if (!canDelete) return;
-
     setDeleteLoading(true);
     try {
       await apiRequest<void>(`${basePath}/${guest.id}`, { method: "DELETE" });
@@ -261,10 +276,10 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
         <KoochTableBody>
           {loading ? (
             <KoochTableEmpty colSpan={8}>در حال بارگذاری...</KoochTableEmpty>
-          ) : guests.length === 0 ? (
+          ) : visibleGuests.length === 0 ? (
             <KoochTableEmpty colSpan={8}>مهمانی پیدا نشد.</KoochTableEmpty>
           ) : (
-            guests.map((guest, index) => (
+            visibleGuests.map((guest, index) => (
               <KoochTableRow key={guest.id}>
                 <KoochTableCell className="font-bold text-muted-foreground">
                   {(index + 1).toLocaleString("fa-IR")}
@@ -286,22 +301,20 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
                     >
                       ویرایش
                     </KoochButton>
-                    {canDelete && (
-                      <KoochConfirmDialog
-                        cancelText="انصراف"
-                        confirmText="حذف"
-                        description="این مهمان به صورت نرم حذف می‌شود و از لیست فعال خارج خواهد شد."
-                        loading={deleteLoading}
-                        onConfirm={() => deleteGuest(guest)}
-                        title="حذف مهمان"
-                        trigger={
-                          <KoochButton size="sm" variant="destructive">
-                            حذف
-                          </KoochButton>
-                        }
-                        variant="destructive"
-                      />
-                    )}
+                    <KoochConfirmDialog
+                      cancelText="انصراف"
+                      confirmText="حذف"
+                      description="این مهمان به صورت نرم حذف می‌شود و از لیست فعال خارج خواهد شد."
+                      loading={deleteLoading}
+                      onConfirm={() => deleteGuest(guest)}
+                      title="حذف مهمان"
+                      trigger={
+                        <KoochButton size="sm" variant="destructive">
+                          حذف
+                        </KoochButton>
+                      }
+                      variant="destructive"
+                    />
                   </div>
                 </KoochTableCell>
               </KoochTableRow>
@@ -339,87 +352,87 @@ export function GuestManagement({ context, propertyId }: GuestManagementProps) {
           onSubmit={handleSubmit}
         >
           <div className="grid gap-4 md:grid-cols-2">
-            <KoochField label="نام" required>
-              <KoochInput
-                onChange={(event) => updateForm("firstName", event.target.value)}
-                value={form.firstName}
-              />
-            </KoochField>
-            <KoochField label="نام خانوادگی" required>
-              <KoochInput
-                onChange={(event) => updateForm("lastName", event.target.value)}
-                value={form.lastName}
-              />
-            </KoochField>
-            <KoochField label="موبایل">
-              <KoochInput
-                inputMode="tel"
-                onChange={(event) => updateForm("mobile", event.target.value)}
-                value={form.mobile}
-              />
-            </KoochField>
-            <KoochField label="ایمیل">
-              <KoochInput
-                dir="ltr"
-                onChange={(event) => updateForm("email", event.target.value)}
-                type="email"
-                value={form.email}
-              />
-            </KoochField>
-            <KoochField label="کد ملی">
-              <KoochInput
-                onChange={(event) => updateForm("nationalCode", event.target.value)}
-                value={form.nationalCode}
-              />
-            </KoochField>
-            <KoochField label="شماره پاسپورت">
-              <KoochInput
-                dir="ltr"
-                onChange={(event) => updateForm("passportNumber", event.target.value)}
-                value={form.passportNumber}
-              />
-            </KoochField>
-            <KoochField label="ملیت">
-              <KoochInput
-                onChange={(event) => updateForm("nationality", event.target.value)}
-                value={form.nationality}
-              />
-            </KoochField>
-            <KoochField label="تاریخ تولد">
-              <KoochInput
-                onChange={(event) => updateForm("birthDate", event.target.value)}
-                type="date"
-                value={form.birthDate}
-              />
-            </KoochField>
-            <KoochField label="جنسیت">
-              <KoochSelect
-                onChange={(event) => updateForm("gender", event.target.value)}
-                value={form.gender}
-              >
-                <option value="">انتخاب نشده</option>
-                <option value="Female">زن</option>
-                <option value="Male">مرد</option>
-                <option value="Other">سایر</option>
-              </KoochSelect>
-            </KoochField>
+              <KoochField label="نام" required>
+                <KoochInput
+                  onChange={(event) => updateForm("firstName", event.target.value)}
+                  value={form.firstName}
+                />
+              </KoochField>
+              <KoochField label="نام خانوادگی" required>
+                <KoochInput
+                  onChange={(event) => updateForm("lastName", event.target.value)}
+                  value={form.lastName}
+                />
+              </KoochField>
+              <KoochField label="موبایل">
+                <KoochInput
+                  inputMode="tel"
+                  onChange={(event) => updateForm("mobile", event.target.value)}
+                  value={form.mobile}
+                />
+              </KoochField>
+              <KoochField label="ایمیل">
+                <KoochInput
+                  dir="ltr"
+                  onChange={(event) => updateForm("email", event.target.value)}
+                  type="email"
+                  value={form.email}
+                />
+              </KoochField>
+              <KoochField label="کد ملی">
+                <KoochInput
+                  onChange={(event) => updateForm("nationalCode", event.target.value)}
+                  value={form.nationalCode}
+                />
+              </KoochField>
+              <KoochField label="شماره پاسپورت">
+                <KoochInput
+                  dir="ltr"
+                  onChange={(event) => updateForm("passportNumber", event.target.value)}
+                  value={form.passportNumber}
+                />
+              </KoochField>
+              <KoochField label="ملیت">
+                <KoochInput
+                  onChange={(event) => updateForm("nationality", event.target.value)}
+                  value={form.nationality}
+                />
+              </KoochField>
+              <KoochField label="تاریخ تولد">
+                <KoochInput
+                  onChange={(event) => updateForm("birthDate", event.target.value)}
+                  type="date"
+                  value={form.birthDate}
+                />
+              </KoochField>
+              <KoochField label="جنسیت">
+                <KoochSelect
+                  onChange={(event) => updateForm("gender", event.target.value)}
+                  value={form.gender}
+                >
+                  <option value="">انتخاب نشده</option>
+                  <option value="Female">زن</option>
+                  <option value="Male">مرد</option>
+                  <option value="Other">سایر</option>
+                </KoochSelect>
+              </KoochField>
           </div>
 
-          <KoochField label="آدرس">
-            <KoochTextarea
-              onChange={(event) => updateForm("address", event.target.value)}
-              rows={3}
-              value={form.address}
-            />
-          </KoochField>
+            <KoochField label="آدرس">
+              <KoochTextarea
+                onChange={(event) => updateForm("address", event.target.value)}
+                rows={3}
+                value={form.address}
+              />
+            </KoochField>
 
-          <KoochField label="یادداشت">
-            <KoochTextarea
-              onChange={(event) => updateForm("notes", event.target.value)}
-              rows={3}
-              value={form.notes}
-            />
-          </KoochField>
+            <KoochField label="یادداشت">
+              <KoochTextarea
+                onChange={(event) => updateForm("notes", event.target.value)}
+                rows={3}
+                value={form.notes}
+              />
+            </KoochField>
         </form>
       </KoochDialog>
     </div>
