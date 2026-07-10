@@ -84,7 +84,8 @@ public enum NotificationEventType
     ReservationPaymentExpired = 9,
     UserInvitationCreated = 10,
     PasswordSetupRequested = 11,
-    OtpRequested = 12
+    OtpRequested = 12,
+    ReservationPaymentLinkCreated = 13
 }
 [Flags]
 public enum NotificationChannel

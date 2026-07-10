@@ -20,9 +20,7 @@ public class OwnerGuestsController(
         CancellationToken cancellationToken)
     {
         await EnsureCanViewAsync(propertyId, cancellationToken);
-
-        // Guests are not property-scoped until reservations connect guests to properties.
-        return Ok(Array.Empty<GuestResponse>());
+        return Ok(await guestService.SearchAsync(query, cancellationToken));
     }
 
     [HttpGet("{id:int}")]
@@ -43,7 +41,7 @@ public class OwnerGuestsController(
         GuestCreateRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsureCanEditBookingsAsync(propertyId, cancellationToken);
+        await EnsureCanCreateBookingsAsync(propertyId, cancellationToken);
         var guest = await guestService.CreateAsync(request, cancellationToken);
         return StatusCode(StatusCodes.Status201Created, guest);
     }
@@ -75,6 +73,15 @@ public class OwnerGuestsController(
         if (!await permissionService.CanAsync(user.UserId, propertyId, "bookings.edit", cancellationToken))
         {
             throw new UnauthorizedAccessException("You cannot access this property's guests.");
+        }
+    }
+
+    private async Task EnsureCanCreateBookingsAsync(int propertyId, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        if (!await permissionService.CanAsync(user.UserId, propertyId, "bookings.create", cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot create guests for this property's reservations.");
         }
     }
 }

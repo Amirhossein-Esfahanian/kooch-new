@@ -57,6 +57,7 @@ builder.Services.AddScoped<IReservationStatusWorkflow, ReservationStatusWorkflow
 builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabilityService>();
 builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddSingleton<PricingService>();
 builder.Services.AddScoped<CouponValidationService>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
@@ -90,6 +91,8 @@ builder.Services.AddAuthorization(options =>
             UserRole.AdminAssistant.ToString(),
             UserRole.Owner.ToString(),
             UserRole.OwnerAssistant.ToString()));
+    options.AddPolicy(AuthorizationPolicies.ClientUsers, policy =>
+        policy.RequireRole(UserRole.Client.ToString()));
 });
 
 builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())

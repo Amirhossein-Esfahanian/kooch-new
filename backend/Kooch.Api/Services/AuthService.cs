@@ -80,7 +80,7 @@ public class AuthService(
             return null;
         }
 
-        return CreateAuthResponse(user);
+        return await CreateAuthResponseAsync(user, cancellationToken);
     }
 
     public async Task<RequestOtpResponse> RequestOtpAsync(
@@ -144,7 +144,7 @@ public class AuthService(
 
         otp.User.IsActive = true;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return CreateAuthResponse(otp.User);
+        return await CreateAuthResponseAsync(otp.User, cancellationToken);
     }
 
     public async Task<string> CreatePasswordSetupTokenAsync(
@@ -236,6 +236,7 @@ public class AuthService(
             .Select(user => new CurrentUserResponse
             {
                 UserId = user.Id,
+                GuestId = user.Guest == null ? null : user.Guest.Id,
                 FullName = (user.FirstName + " " + user.LastName).Trim(),
                 Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
                 Role = user.Role
@@ -269,8 +270,11 @@ public class AuthService(
         return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    private AuthResponse CreateAuthResponse(User user)
+    private async Task<AuthResponse> CreateAuthResponseAsync(
+        User user,
+        CancellationToken cancellationToken)
     {
+        var guestId = await ResolvePassengerGuestIdAsync(user, cancellationToken);
         // var expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.ExpiresMinutes);
         var expiresAtUtc = DateTime.UtcNow.AddDays(_jwtOptions.AccessTokenExpirationDays);
         return new AuthResponse
@@ -278,6 +282,7 @@ public class AuthService(
             Token = GenerateJwtToken(user, expiresAtUtc),
             ExpiresAtUtc = expiresAtUtc,
             UserId = user.Id,
+            GuestId = guestId,
             FullName = $"{user.FirstName} {user.LastName}".Trim(),
             Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
             Role = user.Role
@@ -380,11 +385,15 @@ public class AuthService(
         string? email,
         CancellationToken cancellationToken)
     {
-        var guest = await dbContext.Guests
-            .FirstOrDefaultAsync(item =>
-                    item.NormalizedMobile == mobile ||
-                    (email != null && item.NormalizedEmail == email),
-                cancellationToken);
+        var (guest, hasConflict) = await FindPassengerGuestLinkCandidateAsync(
+            mobile,
+            email,
+            user.Id,
+            cancellationToken);
+        if (hasConflict)
+        {
+            throw new ArgumentException("A guest already exists for this mobile or email.");
+        }
 
         if (guest is not null)
         {
@@ -424,16 +433,119 @@ public class AuthService(
         string? email,
         CancellationToken cancellationToken)
     {
-        var linkedGuestExists = await dbContext.Guests.AsNoTracking()
-            .AnyAsync(guest =>
-                    (guest.NormalizedMobile == mobile ||
-                     (email != null && guest.NormalizedEmail == email)) &&
-                    guest.UserId != null,
-                cancellationToken);
-        if (linkedGuestExists)
+        var (_, hasConflict) = await FindPassengerGuestLinkCandidateAsync(
+            mobile,
+            email,
+            null,
+            cancellationToken);
+        if (hasConflict)
         {
             throw new ArgumentException("A passenger account already exists for this guest.");
         }
+    }
+
+    private async Task<int?> ResolvePassengerGuestIdAsync(
+        User user,
+        CancellationToken cancellationToken)
+    {
+        if (user.Role != UserRole.Client)
+        {
+            return null;
+        }
+
+        var linkedGuestId = await dbContext.Guests
+            .Where(guest => guest.UserId == user.Id)
+            .Select(guest => (int?)guest.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (linkedGuestId.HasValue)
+        {
+            return linkedGuestId.Value;
+        }
+
+        var mobile = NormalizeMobile(user.PhoneNumber);
+        var email = IsInternalEmail(user.Email) ? null : NormalizeOptionalEmail(user.Email);
+        if (mobile is null && email is null)
+        {
+            return null;
+        }
+
+        var (guest, hasConflict) = await FindPassengerGuestLinkCandidateAsync(
+            mobile,
+            email,
+            user.Id,
+            cancellationToken);
+        if (hasConflict)
+        {
+            return null;
+        }
+
+        if (guest is not null)
+        {
+            guest.UserId = user.Id;
+            guest.FirstName = string.IsNullOrWhiteSpace(guest.FirstName) ? user.FirstName : guest.FirstName;
+            guest.LastName = string.IsNullOrWhiteSpace(guest.LastName) ? user.LastName : guest.LastName;
+            guest.Mobile ??= mobile;
+            guest.NormalizedMobile ??= mobile;
+            guest.Email ??= email;
+            guest.NormalizedEmail ??= email;
+            guest.Nationality ??= "Ø§ÛŒØ±Ø§Ù†";
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return guest.Id;
+        }
+
+        var newGuest = new Guest
+        {
+            UserId = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Mobile = mobile,
+            NormalizedMobile = mobile,
+            Email = email,
+            NormalizedEmail = email,
+            Nationality = "Ø§ÛŒØ±Ø§Ù†"
+        };
+        dbContext.Guests.Add(newGuest);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return newGuest.Id;
+    }
+
+    private async Task<(Guest? Guest, bool HasConflict)> FindPassengerGuestLinkCandidateAsync(
+        string? mobile,
+        string? email,
+        int? userId,
+        CancellationToken cancellationToken)
+    {
+        if (mobile is null && email is null)
+        {
+            return (null, false);
+        }
+
+        var guests = await dbContext.Guests
+            .Where(guest =>
+                (mobile != null && guest.NormalizedMobile == mobile) ||
+                (email != null && guest.NormalizedEmail == email))
+            .ToListAsync(cancellationToken);
+        if (guests.Count == 0)
+        {
+            return (null, false);
+        }
+
+        if (userId.HasValue)
+        {
+            var alreadyLinked = guests.SingleOrDefault(guest => guest.UserId == userId.Value);
+            if (alreadyLinked is not null)
+            {
+                return (alreadyLinked, false);
+            }
+        }
+
+        if (guests.Any(guest => guest.UserId.HasValue) ||
+            guests.Select(guest => guest.Id).Distinct().Count() > 1)
+        {
+            return (null, true);
+        }
+
+        return (guests[0], false);
     }
 
     private async Task<User?> FindUserByIdentifierAsync(

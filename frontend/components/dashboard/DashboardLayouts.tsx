@@ -66,6 +66,11 @@ const adminMenuItems: DashboardMenuItem[] = [
     icon: "/svgs/square-sliders.svg",
     href: "/admin/reservation-settings",
   },
+  {
+    label: "مدیریت رزروها",
+    icon: "/svgs/address-card.svg",
+    href: "/admin/reservations",
+  },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
   { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports" },
   { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },

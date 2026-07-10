@@ -41,8 +41,10 @@ public class OwnerReservationsController(
         ReservationCreateRequest request,
         CancellationToken cancellationToken)
     {
-        await Task.CompletedTask;
-        throw new UnauthorizedAccessException("Owner reservation creation is disabled.");
+        await EnsurePermissionAsync(propertyId, "bookings.create", cancellationToken);
+        request.PropertyId = propertyId;
+        var reservation = await reservationService.CreateAsync(request, GetCurrentUser(), cancellationToken);
+        return CreatedAtAction(nameof(GetById), new { propertyId, id = reservation.Id }, reservation);
     }
 
     [HttpPut("{id:int}/approve")]
@@ -67,6 +69,43 @@ public class OwnerReservationsController(
         await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
         await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
         return Ok(await reservationService.CancelAsync(id, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPut("{id:int}/status")]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> UpdateStatus(
+        int propertyId,
+        int id,
+        ReservationStatusUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
+        await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
+        return Ok(await reservationService.UpdateStatusAsync(id, request, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPost("{id:int}/payment-link")]
+    [ProducesResponseType<ReservationPaymentLinkResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationPaymentLinkResponse>> GeneratePaymentLink(
+        int propertyId,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
+        await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
+        return Ok(await reservationService.GeneratePaymentLinkAsync(id, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPost("{id:int}/payment-link/send")]
+    [ProducesResponseType<ReservationPaymentLinkResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationPaymentLinkResponse>> SendPaymentLink(
+        int propertyId,
+        int id,
+        CancellationToken cancellationToken)
+    {
+        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
+        await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
+        return Ok(await reservationService.SendPaymentLinkAsync(id, GetCurrentUser(), cancellationToken));
     }
 
     private async Task EnsurePermissionAsync(

@@ -31,6 +31,8 @@ public class ReservationListItemResponse
     public ReservationSource Source { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    public bool IsPaymentExpired { get; set; }
+    public int? RemainingPaymentSeconds { get; set; }
 
     public string GuestName
     {
@@ -44,8 +46,13 @@ public class ReservationResponse : ReservationListItemResponse
     public int? RoomId { get; set; }
     public int? RatePlanId { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
+    public string? GuestEmail { get; set; }
+    public string? GuestNationalCode { get; set; }
+    public string? GuestPassportNumber { get; set; }
+    public string? GuestNationality { get; set; }
     public decimal BaseAmount { get; set; }
     public decimal DiscountAmount { get; set; }
+    public decimal CouponDiscountAmount { get; set; }
     public decimal ExtraGuestAmount { get; set; }
     public decimal ServiceFeeAmount { get; set; }
     public decimal ChildAmount { get; set; }
@@ -53,10 +60,18 @@ public class ReservationResponse : ReservationListItemResponse
     public decimal PayableAmount { get; set; }
     public string? Notes { get; set; }
     public DateTime? HoldUntilUtc { get; set; }
+    public int? CreatedByUserId { get; set; }
+    public string? CreatedBy { get; set; }
+    public DateTime? ApprovedAtUtc { get; set; }
+    public int? ApprovedByUserId { get; set; }
+    public string? ApprovedBy { get; set; }
     public DateTime? PaidAtUtc { get; set; }
     public DateTime? ConfirmedAtUtc { get; set; }
     public DateTime? CancelledAtUtc { get; set; }
     public DateTime? ExpiredAtUtc { get; set; }
+    public int? ChangedByUserId { get; set; }
+    public DateTime? ChangedAtUtc { get; set; }
+    public IReadOnlyList<ReservationStatus> AllowedStatusTransitions { get; set; } = [];
 }
 
 public class ReservationListQuery
@@ -194,6 +209,15 @@ public class ReservationStatusUpdateRequest
 
     [MaxLength(1000)]
     public string? Notes { get; set; }
+}
+
+public class ReservationPaymentLinkResponse
+{
+    public int ReservationId { get; set; }
+    public string ReservationNumber { get; set; } = string.Empty;
+    public string PaymentLink { get; set; } = string.Empty;
+    public string? DevPaymentLink { get; set; }
+    public DateTime ExpiresAtUtc { get; set; }
 }
 
 public class ReservationPricePreviewRequest : IValidatableObject

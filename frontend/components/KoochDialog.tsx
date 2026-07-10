@@ -132,7 +132,7 @@ export function KoochDialog({
         {footer && (
           <footer
             className={joinClasses(
-              "sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-border bg-card px-6 py-4 shadow-[0_-10px_20px_rgb(15_23_42/0.06)] sm:flex-row sm:justify-start dark:shadow-[0_-10px_20px_rgb(0_0_0/0.28)]",
+              "sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-border bg-card px-6 py-4  sm:flex-row sm:justify-start bg-muted ",
               footerClassName,
             )}
             data-slot="dialog-footer"

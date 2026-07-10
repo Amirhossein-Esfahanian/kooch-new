@@ -10,38 +10,25 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             [ReservationStatus.Pending] = new HashSet<ReservationStatus>
             {
                 ReservationStatus.Confirmed,
-                ReservationStatus.Rejected,
-                ReservationStatus.Cancelled,
-                ReservationStatus.Expired
+                ReservationStatus.Cancelled
             },
             [ReservationStatus.Confirmed] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.Paid,
                 ReservationStatus.Cancelled,
                 ReservationStatus.Completed
             },
             [ReservationStatus.Paid] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.Completed,
                 ReservationStatus.Cancelled
             },
-            [ReservationStatus.OnHold] = new HashSet<ReservationStatus>
-            {
-                ReservationStatus.PendingApproval,
-                ReservationStatus.Cancelled,
-                ReservationStatus.Expired
-            },
+            [ReservationStatus.OnHold] = new HashSet<ReservationStatus>(),
             [ReservationStatus.PendingApproval] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.ApprovedAwaitingPayment,
-                ReservationStatus.Cancelled,
-                ReservationStatus.Rejected,
-                ReservationStatus.Expired
+                ReservationStatus.ApprovedAwaitingPayment
             },
             [ReservationStatus.ApprovedAwaitingPayment] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.Paid,
-                ReservationStatus.Cancelled,
+                ReservationStatus.Confirmed,
                 ReservationStatus.PaymentExpired
             },
             [ReservationStatus.Completed] = new HashSet<ReservationStatus>(),
@@ -50,6 +37,13 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             [ReservationStatus.Expired] = new HashSet<ReservationStatus>(),
             [ReservationStatus.PaymentExpired] = new HashSet<ReservationStatus>()
         };
+
+    public IReadOnlyCollection<ReservationStatus> GetAllowedTransitions(ReservationStatus from)
+    {
+        return AllowedTransitions.TryGetValue(from, out var allowedStatuses)
+            ? allowedStatuses.ToArray()
+            : Array.Empty<ReservationStatus>();
+    }
 
     public bool CanTransition(ReservationStatus from, ReservationStatus to)
     {
@@ -65,7 +59,7 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
         }
 
         throw new InvalidOperationException(
-            $"Reservation status cannot change from {GetStatusLabel(from)} to {GetStatusLabel(to)}.");
+            $"Invalid reservation status transition from {GetStatusLabel(from)} to {GetStatusLabel(to)}.");
     }
 
     private static string GetStatusLabel(ReservationStatus status) =>

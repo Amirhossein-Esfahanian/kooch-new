@@ -45,6 +45,9 @@ export interface ReservationTableItem {
   guestMobile?: string | null;
   guestEmail?: string | null;
   email?: string | null;
+  guestNationalCode?: string | null;
+  guestPassportNumber?: string | null;
+  guestNationality?: string | null;
   checkInDate: string;
   checkOutDate: string;
   nightsCount?: number | null;
@@ -53,6 +56,16 @@ export interface ReservationTableItem {
   infants?: number | null;
   roomCount?: number | null;
   status: ReservationTableStatus;
+  source?: string | null;
+  createdAtUtc?: string | null;
+  createdByUserId?: number | null;
+  createdBy?: string | null;
+  approvedAtUtc?: string | null;
+  approvedByUserId?: number | null;
+  approvedBy?: string | null;
+  changedAtUtc?: string | null;
+  changedByUserId?: number | null;
+  allowedStatusTransitions?: ReservationTableStatus[];
   baseAmount?: number | null;
   basePrice?: number | null;
   childAmount?: number | null;
@@ -61,6 +74,7 @@ export interface ReservationTableItem {
   extraGuestCharge?: number | null;
   discountAmount?: number | null;
   promotionDiscount?: number | null;
+  couponDiscountAmount?: number | null;
   totalPrice?: number | null;
   finalAmount?: number | null;
   paidAmount?: number | null;
@@ -68,14 +82,17 @@ export interface ReservationTableItem {
   remainingAmount?: number | null;
   currency?: string | null;
   paymentExpiresAtUtc?: string | null;
+  isPaymentExpired?: boolean | null;
+  remainingPaymentSeconds?: number | null;
 }
 
 interface ReservationTableProps {
   reservations: ReservationTableItem[];
   loading: boolean;
+  onSendPaymentLink?: (
+    reservation: ReservationTableItem,
+  ) => void | Promise<void>;
   onView: (reservation: ReservationTableItem) => void;
-  onApprove: (reservation: ReservationTableItem) => void;
-  onCancel?: (reservation: ReservationTableItem) => void;
   onPageChange: (page: number) => void;
   currentPage: number;
   totalPages: number;
@@ -123,14 +140,6 @@ function statusVariant(status: ReservationTableStatus) {
   return "muted" as const;
 }
 
-function canApprove(status: ReservationTableStatus) {
-  return status === "PendingApproval" || status === "OnHold";
-}
-
-function canCancel(status: ReservationTableStatus) {
-  return status === "PendingApproval" || status === "OnHold";
-}
-
 function formatDate(value: string) {
   if (!value) return "-";
 
@@ -152,15 +161,32 @@ function formatMoney(value?: number | null, currency?: string | null) {
 }
 
 function rowKey(reservation: ReservationTableItem) {
-  return reservation.reservationId ?? reservation.id ?? reservation.reservationNumber;
+  return (
+    reservation.reservationId ?? reservation.id ?? reservation.reservationNumber
+  );
+}
+
+function isUnpaidReservation(reservation: ReservationTableItem) {
+  if (typeof reservation.remainingAmount === "number") {
+    return reservation.remainingAmount > 0;
+  }
+
+  const totalAmount = reservation.totalPrice ?? reservation.finalAmount;
+  if (
+    typeof totalAmount === "number" &&
+    typeof reservation.paidAmount === "number"
+  ) {
+    return reservation.paidAmount < totalAmount;
+  }
+
+  return reservation.status !== "Paid";
 }
 
 export function ReservationTable({
   reservations,
   loading,
+  onSendPaymentLink,
   onView,
-  onApprove,
-  onCancel,
   onPageChange,
   currentPage,
   totalPages,
@@ -192,7 +218,9 @@ export function ReservationTable({
 
         <KoochTableBody>
           {loading ? (
-            <KoochTableEmpty colSpan={colSpan}>در حال بارگذاری...</KoochTableEmpty>
+            <KoochTableEmpty colSpan={colSpan}>
+              در حال بارگذاری...
+            </KoochTableEmpty>
           ) : reservations.length === 0 ? (
             <KoochTableEmpty colSpan={colSpan}>{emptyMessage}</KoochTableEmpty>
           ) : (
@@ -203,22 +231,27 @@ export function ReservationTable({
                 reservation.roomTypeName ?? reservation.roomName ?? "-";
               const totalPrice =
                 reservation.totalPrice ?? reservation.finalAmount ?? null;
-
+              const canSendPaymentLink =
+                reservation.status === "ApprovedAwaitingPayment" &&
+                !reservation.isPaymentExpired &&
+                isUnpaidReservation(reservation);
               return (
                 <KoochTableRow key={rowKey(reservation)}>
-                  <KoochTableCell className="font-black">
+                  <KoochTableCell className="font-semibold">
                     {reservation.reservationNumber || "-"}
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="grid gap-1">
-                      <span className="font-semibold">{guestName}</span>
+                      <span className="font-normal">{guestName}</span>
                       <span className="text-xs text-muted-foreground">
                         {reservation.guestMobile ?? "-"}
                       </span>
                     </div>
                   </KoochTableCell>
                   {showProperty && (
-                    <KoochTableCell>{reservation.propertyName ?? "-"}</KoochTableCell>
+                    <KoochTableCell>
+                      {reservation.propertyName ?? "-"}
+                    </KoochTableCell>
                   )}
                   <KoochTableCell>{roomName}</KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap">
@@ -237,11 +270,14 @@ export function ReservationTable({
                       </div>
                     )}
                   </KoochTableCell>
-                  <KoochTableCell className="whitespace-nowrap font-semibold">
+                  <KoochTableCell className="whitespace-nowrap ">
                     {formatMoney(totalPrice, reservation.currency)}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap">
-                    {formatMoney(reservation.remainingAmount, reservation.currency)}
+                    {formatMoney(
+                      reservation.remainingAmount,
+                      reservation.currency,
+                    )}
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="flex flex-wrap items-center gap-2">
@@ -250,36 +286,21 @@ export function ReservationTable({
                         size="sm"
                         variant="outline"
                       >
-                        مشاهده جزئیات
+                        جزئیات
                       </KoochButton>
-                      {canApprove(reservation.status) && (
+                      {onSendPaymentLink && canSendPaymentLink && (
                         <KoochConfirmDialog
                           cancelText="انصراف"
                           confirmText="ارسال لینک پرداخت"
-                          description="با ارسال لینک پرداخت، رزرو برای مدت ۱۰ دقیقه آماده پرداخت می‌شود و اطلاع‌رسانی برای مهمان ثبت خواهد شد."
-                          onConfirm={() => onApprove(reservation)}
+                          description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
+                          onConfirm={() => onSendPaymentLink(reservation)}
                           title="ارسال لینک پرداخت"
                           trigger={
-                            <KoochButton size="sm">
+                            <KoochButton size="sm" variant="outline">
                               ارسال لینک پرداخت
                             </KoochButton>
                           }
                           variant="warning"
-                        />
-                      )}
-                      {onCancel && canCancel(reservation.status) && (
-                        <KoochConfirmDialog
-                          cancelText="انصراف"
-                          confirmText="لغو رزرو"
-                          description="این رزرو لغو می‌شود و اطلاع‌رسانی لغو برای مهمان ثبت خواهد شد."
-                          onConfirm={() => onCancel(reservation)}
-                          title="لغو رزرو"
-                          trigger={
-                            <KoochButton size="sm" variant="destructive">
-                              لغو
-                            </KoochButton>
-                          }
-                          variant="destructive"
                         />
                       )}
                     </div>

@@ -120,7 +120,10 @@ function formatAge(value: number) {
 }
 
 function buildChildHelper(property: PropertyResponse | undefined) {
-  if (property?.freeChildAgeLimit === null || property?.freeChildAgeLimit === undefined) {
+  if (
+    property?.freeChildAgeLimit === null ||
+    property?.freeChildAgeLimit === undefined
+  ) {
     return "قوانین سنی کودک برای این اقامتگاه ثبت نشده است.";
   }
 
@@ -128,7 +131,10 @@ function buildChildHelper(property: PropertyResponse | undefined) {
 }
 
 function buildInfantHelper(property: PropertyResponse | undefined) {
-  if (property?.freeChildAgeLimit === null || property?.freeChildAgeLimit === undefined) {
+  if (
+    property?.freeChildAgeLimit === null ||
+    property?.freeChildAgeLimit === undefined
+  ) {
     return "قوانین سنی نوزاد برای این اقامتگاه ثبت نشده است.";
   }
 
@@ -221,7 +227,12 @@ export function ManualReservationDialog({
           description: room.floorNumber
             ? `طبقه ${new Intl.NumberFormat("fa-IR").format(room.floorNumber)}`
             : room.englishName,
-          searchText: [room.name, room.englishName, room.description, room.notes]
+          searchText: [
+            room.name,
+            room.englishName,
+            room.description,
+            room.notes,
+          ]
             .filter(Boolean)
             .join(" "),
         })),
@@ -524,17 +535,15 @@ export function ManualReservationDialog({
                 emptyText="نوع اتاقی پیدا نشد."
                 onChange={(value) => updateDraft("roomTypeId", value)}
                 options={roomTypeOptions}
-                placeholder={loadingMeta ? "در حال بارگذاری..." : "انتخاب نوع اتاق"}
+                placeholder={
+                  loadingMeta ? "در حال بارگذاری..." : "انتخاب نوع اتاق"
+                }
                 searchPlaceholder="جستجوی نوع اتاق..."
                 value={draft.roomTypeId}
               />
             </KoochField>
 
-            <KoochField
-              className="md:col-span-2"
-              label="مهمان"
-              required
-            >
+            <KoochField className="md:col-span-2" label="مهمان" required>
               <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                 <KoochSearchableSelect
                   emptyText={
@@ -579,8 +588,8 @@ export function ManualReservationDialog({
                     roomIds: [],
                   }))
                 }
-                placeholderEnd="تاریخ خروج"
-                placeholderStart="تاریخ ورود"
+                placeholderEnd=""
+                placeholderStart=""
                 showFieldLabels
                 value={{
                   startDate: draft.checkInDate || null,
@@ -668,7 +677,9 @@ export function ManualReservationDialog({
             {context === "admin" && (
               <KoochField label="وضعیت رزرو">
                 <KoochSelect
-                  onChange={(event) => updateDraft("status", event.target.value)}
+                  onChange={(event) =>
+                    updateDraft("status", event.target.value)
+                  }
                   value={draft.status}
                 >
                   {reservationStatusOptions.map((option) => (
@@ -729,11 +740,7 @@ export function ManualReservationDialog({
             >
               انصراف
             </KoochButton>
-            <KoochButton
-              loading={savingGuest}
-              onClick={addGuest}
-              type="button"
-            >
+            <KoochButton loading={savingGuest} onClick={addGuest} type="button">
               ذخیره مهمان
             </KoochButton>
           </>
@@ -741,6 +748,7 @@ export function ManualReservationDialog({
         onOpenChange={setGuestDialogOpen}
         open={guestDialogOpen}
         title="افزودن مهمان"
+        size="md"
       >
         <div className="grid gap-4" dir="rtl">
           <div className="grid gap-4 md:grid-cols-2">

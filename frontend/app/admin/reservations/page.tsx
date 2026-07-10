@@ -73,6 +73,14 @@ interface PagedResult<T> {
   totalPages: number;
 }
 
+interface ReservationPaymentLinkResponse {
+  reservationId: number;
+  reservationNumber: string;
+  paymentLink: string;
+  devPaymentLink?: string | null;
+  expiresAtUtc: string;
+}
+
 const pageSize = 10;
 
 const statusOptions: Array<{ value: ReservationStatusFilter; label: string }> = [
@@ -172,8 +180,10 @@ export default function AdminReservationsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
-  const [approvingId, setApprovingId] = useState<number | null>(null);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
+  const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<number | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const propertyOptions = useMemo(
@@ -323,59 +333,73 @@ export default function AdminReservationsPage() {
     }
   }
 
-  async function approveReservation(reservation: ReservationTableItem) {
+  async function updateReservationStatus(
+    reservation: ReservationTableItem,
+    status: ReservationTableStatus,
+  ) {
     const reservationId = reservation.reservationId ?? reservation.id;
     if (!reservationId) return;
 
-    setApprovingId(reservationId);
+    setStatusChangingId(reservationId);
     setError("");
 
     try {
-      const approved = await apiRequest<ReservationTableItem>(
-        `/admin/reservations/${reservationId}/approve`,
-        { method: "PUT" },
+      const updated = await apiRequest<ReservationTableItem>(
+        `/admin/reservations/${reservationId}/status`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status }),
+        },
       );
       setSelectedReservation((current) => {
         const currentId = current?.reservationId ?? current?.id;
-        return currentId === reservationId ? approved : current;
+        return currentId === reservationId ? updated : current;
       });
       await loadReservations();
-      toast.success("لینک پرداخت برای رزرو ثبت شد.");
+      toast.success("وضعیت رزرو به‌روزرسانی شد.");
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "خطا در ارسال لینک پرداخت.";
+        caught instanceof Error
+          ? caught.message
+          : "خطا در به‌روزرسانی وضعیت رزرو.";
       setError(message);
       toast.error(message);
     } finally {
-      setApprovingId(null);
+      setStatusChangingId(null);
     }
   }
 
-  async function cancelReservation(reservation: ReservationTableItem) {
+  async function sendPaymentLink(reservation: ReservationTableItem) {
     const reservationId = reservation.reservationId ?? reservation.id;
     if (!reservationId) return;
 
-    setCancellingId(reservationId);
+    setPaymentLinkSendingId(reservationId);
     setError("");
 
     try {
-      const cancelled = await apiRequest<ReservationTableItem>(
-        `/admin/reservations/${reservationId}/cancel`,
-        { method: "PUT" },
+      const response = await apiRequest<ReservationPaymentLinkResponse>(
+        `/admin/reservations/${reservationId}/payment-link/send`,
+        { method: "POST" },
       );
-      setSelectedReservation((current) => {
-        const currentId = current?.reservationId ?? current?.id;
-        return currentId === reservationId ? cancelled : current;
-      });
       await loadReservations();
-      toast.success("رزرو لغو شد.");
+
+      const devLink = response.devPaymentLink ?? response.paymentLink;
+      if (process.env.NODE_ENV !== "production" && devLink) {
+        toast.success("لینک پرداخت ثبت شد.", {
+          description: devLink,
+        });
+      } else {
+        toast.success("لینک پرداخت برای مهمان ثبت شد.");
+      }
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
+        caught instanceof Error
+          ? caught.message
+          : "خطا در ارسال لینک پرداخت.";
       setError(message);
       toast.error(message);
     } finally {
-      setCancellingId(null);
+      setPaymentLinkSendingId(null);
     }
   }
 
@@ -806,9 +830,8 @@ export default function AdminReservationsPage() {
           currentPage={currentPage}
           emptyMessage="هنوز رزروی ثبت نشده است."
           loading={loading}
-          onApprove={approveReservation}
-          onCancel={cancelReservation}
           onPageChange={setCurrentPage}
+          onSendPaymentLink={sendPaymentLink}
           onView={viewReservation}
           reservations={reservations}
           totalPages={totalPages}
@@ -816,8 +839,8 @@ export default function AdminReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
-          onApprove={approveReservation}
-          onCancel={cancelReservation}
+          onSendPaymentLink={sendPaymentLink}
+          onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {
             if (!open) setSelectedReservation(null);
           }}
@@ -825,14 +848,14 @@ export default function AdminReservationsPage() {
           reservation={selectedReservationState}
         />
 
-        {approvingId && (
+        {statusChangingId && (
           <p className="text-xs font-semibold text-muted-foreground">
-            در حال ارسال لینک پرداخت...
+            در حال به‌روزرسانی وضعیت رزرو...
           </p>
         )}
-        {cancellingId && (
+        {paymentLinkSendingId && (
           <p className="text-xs font-semibold text-muted-foreground">
-            در حال لغو رزرو...
+            در حال ارسال لینک پرداخت...
           </p>
         )}
       </main>

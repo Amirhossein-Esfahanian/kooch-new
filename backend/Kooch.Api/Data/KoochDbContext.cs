@@ -20,6 +20,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Availability> Availabilities => Set<Availability>();
     public DbSet<Guest> Guests => Set<Guest>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
+    public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
@@ -76,6 +77,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureCoupons(modelBuilder);
         ConfigureGuests(modelBuilder);
         ConfigureReservations(modelBuilder);
+        ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureAmenities(modelBuilder);
@@ -727,6 +729,20 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(reservation => reservation.Payments)
                 .HasForeignKey(payment => payment.ReservationId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureReservationPaymentLinkTokens(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReservationPaymentLinkToken>(entity =>
+        {
+            entity.Property(token => token.TokenHash).HasMaxLength(128).IsRequired();
+            entity.HasIndex(token => token.TokenHash).IsUnique();
+            entity.HasIndex(token => new { token.ReservationId, token.UsedAtUtc, token.ExpiresAtUtc });
+            entity.HasOne(token => token.Reservation)
+                .WithMany(reservation => reservation.PaymentLinkTokens)
+                .HasForeignKey(token => token.ReservationId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
     }
 

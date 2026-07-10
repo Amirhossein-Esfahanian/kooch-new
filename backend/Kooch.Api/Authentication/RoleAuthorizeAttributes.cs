@@ -7,3 +7,5 @@ public sealed class SuperAdminAuthorizeAttribute() : AuthorizeAttribute(Authoriz
 public sealed class AdminAuthorizeAttribute() : AuthorizeAttribute(AuthorizationPolicies.AdminUsers);
 
 public sealed class OwnerAuthorizeAttribute() : AuthorizeAttribute(AuthorizationPolicies.OwnerUsers);
+
+public sealed class ClientAuthorizeAttribute() : AuthorizeAttribute(AuthorizationPolicies.ClientUsers);

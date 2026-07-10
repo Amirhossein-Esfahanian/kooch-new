@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260710071135_AddReservationStatusChangeAudit")]
+    partial class AddReservationStatusChangeAudit
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -2229,59 +2232,6 @@ namespace Kooch.Api.Migrations
                     b.ToTable("Reservations");
                 });
 
-            modelBuilder.Entity("Kooch.Api.Entities.ReservationPaymentLinkToken", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("DeletedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("DeletedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime>("ExpiresAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("ReservationId")
-                        .HasColumnType("int");
-
-                    b.Property<string>("TokenHash")
-                        .IsRequired()
-                        .HasMaxLength(128)
-                        .HasColumnType("nvarchar(128)");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UsedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("TokenHash")
-                        .IsUnique();
-
-                    b.HasIndex("ReservationId", "UsedAtUtc", "ExpiresAtUtc");
-
-                    b.ToTable("ReservationPaymentLinkTokens");
-                });
-
             modelBuilder.Entity("Kooch.Api.Entities.Review", b =>
                 {
                     b.Property<int>("Id")
@@ -3804,17 +3754,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("RoomType");
                 });
 
-            modelBuilder.Entity("Kooch.Api.Entities.ReservationPaymentLinkToken", b =>
-                {
-                    b.HasOne("Kooch.Api.Entities.Reservation", "Reservation")
-                        .WithMany("PaymentLinkTokens")
-                        .HasForeignKey("ReservationId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Reservation");
-                });
-
             modelBuilder.Entity("Kooch.Api.Entities.Review", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.User", "Client")
@@ -4144,8 +4083,6 @@ namespace Kooch.Api.Migrations
             modelBuilder.Entity("Kooch.Api.Entities.Reservation", b =>
                 {
                     b.Navigation("NotificationLogs");
-
-                    b.Navigation("PaymentLinkTokens");
 
                     b.Navigation("Payments");
 

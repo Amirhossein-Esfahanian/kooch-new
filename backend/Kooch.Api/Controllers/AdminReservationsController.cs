@@ -55,4 +55,32 @@ public class AdminReservationsController(IReservationService reservationService)
     {
         return Ok(await reservationService.CancelAsync(id, GetCurrentUser(), cancellationToken));
     }
+
+    [HttpPut("{id:int}/status")]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> UpdateStatus(
+        int id,
+        ReservationStatusUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationService.UpdateStatusAsync(id, request, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPost("{id:int}/payment-link")]
+    [ProducesResponseType<ReservationPaymentLinkResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationPaymentLinkResponse>> GeneratePaymentLink(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationService.GeneratePaymentLinkAsync(id, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPost("{id:int}/payment-link/send")]
+    [ProducesResponseType<ReservationPaymentLinkResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationPaymentLinkResponse>> SendPaymentLink(
+        int id,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationService.SendPaymentLinkAsync(id, GetCurrentUser(), cancellationToken));
+    }
 }

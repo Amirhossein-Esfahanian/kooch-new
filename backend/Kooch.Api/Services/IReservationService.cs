@@ -19,6 +19,21 @@ public interface IReservationService
         int? propertyId = null,
         CancellationToken cancellationToken = default);
 
+    Task<PagedResult<ReservationListItemResponse>> SearchByGuestUserAsync(
+        int userId,
+        ReservationListQuery query,
+        CancellationToken cancellationToken = default);
+
+    Task<ReservationResponse> GetByIdForGuestUserAsync(
+        int userId,
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
+    Task<ReservationResponse> GetByNumberForGuestUserAsync(
+        int userId,
+        string reservationNumber,
+        CancellationToken cancellationToken = default);
+
     Task<ReservationResponse> CreateAsync(
         ReservationCreateRequest request,
         (int UserId, UserRole Role) currentUser,
@@ -30,6 +45,22 @@ public interface IReservationService
         CancellationToken cancellationToken = default);
 
     Task<ReservationResponse> CancelAsync(
+        int reservationId,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default);
+
+    Task<ReservationResponse> UpdateStatusAsync(
+        int reservationId,
+        ReservationStatusUpdateRequest request,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default);
+
+    Task<ReservationPaymentLinkResponse> GeneratePaymentLinkAsync(
+        int reservationId,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default);
+
+    Task<ReservationPaymentLinkResponse> SendPaymentLinkAsync(
         int reservationId,
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default);

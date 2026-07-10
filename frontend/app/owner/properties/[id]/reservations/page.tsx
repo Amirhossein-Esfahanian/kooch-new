@@ -18,6 +18,7 @@ import {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
+import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import {
   apiRequest,
   getToken,
@@ -41,6 +42,14 @@ interface PagedResult<T> {
   page: number;
   pageSize: number;
   totalPages: number;
+}
+
+interface ReservationPaymentLinkResponse {
+  reservationId: number;
+  reservationNumber: string;
+  paymentLink: string;
+  devPaymentLink?: string | null;
+  expiresAtUtc: string;
 }
 
 const pageSize = 10;
@@ -100,8 +109,10 @@ export default function OwnerReservationsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
-  const [approvingId, setApprovingId] = useState<number | null>(null);
-  const [cancellingId, setCancellingId] = useState<number | null>(null);
+  const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
+  const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<number | null>(
+    null,
+  );
   const [error, setError] = useState("");
 
   const loadReservations = useCallback(async () => {
@@ -173,59 +184,73 @@ export default function OwnerReservationsPage() {
     }
   }
 
-  async function approveReservation(reservation: ReservationTableItem) {
+  async function updateReservationStatus(
+    reservation: ReservationTableItem,
+    status: ReservationTableStatus,
+  ) {
     const reservationId = reservation.reservationId ?? reservation.id;
     if (!reservationId) return;
 
-    setApprovingId(reservationId);
+    setStatusChangingId(reservationId);
     setError("");
 
     try {
-      const approved = await apiRequest<ReservationTableItem>(
-        `/owner/properties/${propertyId}/reservations/${reservationId}/approve`,
-        { method: "PUT" },
+      const updated = await apiRequest<ReservationTableItem>(
+        `/owner/properties/${propertyId}/reservations/${reservationId}/status`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status }),
+        },
       );
       setSelectedReservation((current) => {
         const currentId = current?.reservationId ?? current?.id;
-        return currentId === reservationId ? approved : current;
+        return currentId === reservationId ? updated : current;
       });
       await loadReservations();
-      toast.success("لینک پرداخت برای رزرو ثبت شد.");
+      toast.success("وضعیت رزرو به‌روزرسانی شد.");
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "خطا در ارسال لینک پرداخت.";
+        caught instanceof Error
+          ? caught.message
+          : "خطا در به‌روزرسانی وضعیت رزرو.";
       setError(message);
       toast.error(message);
     } finally {
-      setApprovingId(null);
+      setStatusChangingId(null);
     }
   }
 
-  async function cancelReservation(reservation: ReservationTableItem) {
+  async function sendPaymentLink(reservation: ReservationTableItem) {
     const reservationId = reservation.reservationId ?? reservation.id;
     if (!reservationId) return;
 
-    setCancellingId(reservationId);
+    setPaymentLinkSendingId(reservationId);
     setError("");
 
     try {
-      const cancelled = await apiRequest<ReservationTableItem>(
-        `/owner/properties/${propertyId}/reservations/${reservationId}/cancel`,
-        { method: "PUT" },
+      const response = await apiRequest<ReservationPaymentLinkResponse>(
+        `/owner/properties/${propertyId}/reservations/${reservationId}/payment-link/send`,
+        { method: "POST" },
       );
-      setSelectedReservation((current) => {
-        const currentId = current?.reservationId ?? current?.id;
-        return currentId === reservationId ? cancelled : current;
-      });
       await loadReservations();
-      toast.success("رزرو لغو شد.");
+
+      const devLink = response.devPaymentLink ?? response.paymentLink;
+      if (process.env.NODE_ENV !== "production" && devLink) {
+        toast.success("لینک پرداخت ثبت شد.", {
+          description: devLink,
+        });
+      } else {
+        toast.success("لینک پرداخت برای مهمان ثبت شد.");
+      }
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
+        caught instanceof Error
+          ? caught.message
+          : "خطا در ارسال لینک پرداخت.";
       setError(message);
       toast.error(message);
     } finally {
-      setCancellingId(null);
+      setPaymentLinkSendingId(null);
     }
   }
 
@@ -234,12 +259,19 @@ export default function OwnerReservationsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           actions={
+            <div className="flex flex-wrap items-center gap-2">
+              <ManualReservationDialog
+                context="owner"
+                fixedPropertyId={propertyId}
+                onCreated={loadReservations}
+              />
             <Link
               className={headerLinkClass}
               href={`/owner/properties/${propertyId}/dashboard`}
             >
               بازگشت به داشبورد
             </Link>
+            </div>
           }
           description={property?.name ?? "در حال بارگذاری..."}
           eyebrow="اقامتگاه فعال"
@@ -333,9 +365,8 @@ export default function OwnerReservationsPage() {
           currentPage={currentPage}
           emptyMessage="هنوز رزروی برای این اقامتگاه ثبت نشده است."
           loading={loading}
-          onApprove={approveReservation}
-          onCancel={cancelReservation}
           onPageChange={setCurrentPage}
+          onSendPaymentLink={sendPaymentLink}
           onView={viewReservation}
           reservations={reservations}
           totalPages={totalPages}
@@ -343,8 +374,8 @@ export default function OwnerReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
-          onApprove={approveReservation}
-          onCancel={cancelReservation}
+          onSendPaymentLink={sendPaymentLink}
+          onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {
             if (!open) setSelectedReservation(null);
           }}
@@ -352,14 +383,14 @@ export default function OwnerReservationsPage() {
           reservation={selectedReservationState}
         />
 
-        {approvingId && (
+        {statusChangingId && (
           <p className="text-xs font-semibold text-muted-foreground">
-            در حال ارسال لینک پرداخت...
+            در حال به‌روزرسانی وضعیت رزرو...
           </p>
         )}
-        {cancellingId && (
+        {paymentLinkSendingId && (
           <p className="text-xs font-semibold text-muted-foreground">
-            در حال لغو رزرو...
+            در حال ارسال لینک پرداخت...
           </p>
         )}
       </main>

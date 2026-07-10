@@ -32,6 +32,8 @@ public class Reservation : BaseEntity
     public DateTime? CancelledAtUtc { get; set; }
     public int? CancelledByUserId { get; set; }
     public DateTime? ExpiredAtUtc { get; set; }
+    public int? ChangedByUserId { get; set; }
+    public DateTime? ChangedAtUtc { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
     public User Client { get; set; } = null!;
@@ -43,6 +45,7 @@ public class Reservation : BaseEntity
     public Room? Room { get; set; }
     public RatePlan? RatePlan { get; set; }
     public ICollection<Payment> Payments { get; set; } = [];
+    public ICollection<ReservationPaymentLinkToken> PaymentLinkTokens { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
 }
