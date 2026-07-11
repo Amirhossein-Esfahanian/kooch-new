@@ -58,6 +58,10 @@ const settingDisplayLabels: Record<string, string> = {
   ReservationCommissionPercent: "ReservationCommissionPercent",
   ReferralCommissionPercent: "ReferralCommissionPercent",
   CommissionType3Percent: "CommissionType3Percent",
+  "reservation.freeChildMaxAge": "حداکثر سن کودک رایگان",
+  "reservation.halfPriceChildMinAge": "حداقل سن کودک نیم‌بها",
+  "reservation.halfPriceChildMaxAge": "حداکثر سن کودک نیم‌بها",
+  "reservation.halfPriceChildRate": "درصد کودک نیم‌بها",
 };
 
 const priceSettingKeys = ["pricing.minPrice", "pricing.maxPrice"] as const;

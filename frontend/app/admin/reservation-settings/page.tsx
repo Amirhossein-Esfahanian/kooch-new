@@ -1,38 +1,230 @@
 "use client";
 
-import Link from "next/link";
+import { FormEvent, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { apiRequest, getToken } from "@/lib/owner-api";
 
-const linkButtonClass =
-  "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
+type ReservationSettingsResponse = {
+  freeChildMaxAge: number | null;
+  halfPriceChildMinAge: number | null;
+  halfPriceChildMaxAge: number | null;
+  halfPriceChildRate: number;
+};
+
+type ReservationSettingsDraft = {
+  freeChildMaxAge: string;
+  halfPriceChildMinAge: string;
+  halfPriceChildMaxAge: string;
+  halfPriceChildRate: string;
+};
+
+const emptyDraft: ReservationSettingsDraft = {
+  freeChildMaxAge: "",
+  halfPriceChildMinAge: "",
+  halfPriceChildMaxAge: "",
+  halfPriceChildRate: "50",
+};
+
+function toDraft(settings: ReservationSettingsResponse): ReservationSettingsDraft {
+  return {
+    freeChildMaxAge:
+      settings.freeChildMaxAge === null ? "" : String(settings.freeChildMaxAge),
+    halfPriceChildMinAge:
+      settings.halfPriceChildMinAge === null
+        ? ""
+        : String(settings.halfPriceChildMinAge),
+    halfPriceChildMaxAge:
+      settings.halfPriceChildMaxAge === null
+        ? ""
+        : String(settings.halfPriceChildMaxAge),
+    halfPriceChildRate: String(settings.halfPriceChildRate),
+  };
+}
+
+function optionalAge(value: string) {
+  return value.trim() === "" ? null : Number(value);
+}
 
 export default function AdminReservationSettingsPage() {
+  const router = useRouter();
+  const [draft, setDraft] = useState<ReservationSettingsDraft>(emptyDraft);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!getToken()) {
+      router.replace("/login");
+      return;
+    }
+
+    apiRequest<ReservationSettingsResponse>("/admin/reservation-settings")
+      .then((settings) => setDraft(toDraft(settings)))
+      .catch((caught: Error) =>
+        toast.error(caught.message || "تنظیمات رزرو بارگذاری نشد"),
+      )
+      .finally(() => setLoading(false));
+  }, [router]);
+
+  function update(key: keyof ReservationSettingsDraft, value: string) {
+    setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function validate() {
+    const freeChildMaxAge = optionalAge(draft.freeChildMaxAge);
+    const halfPriceChildMinAge = optionalAge(draft.halfPriceChildMinAge);
+    const halfPriceChildMaxAge = optionalAge(draft.halfPriceChildMaxAge);
+    const halfPriceChildRate = Number(draft.halfPriceChildRate);
+    const ages = [
+      freeChildMaxAge,
+      halfPriceChildMinAge,
+      halfPriceChildMaxAge,
+    ];
+
+    if (
+      ages.some((age) => age !== null && (!Number.isFinite(age) || age < 0 || age > 17))
+    ) {
+      toast.error("سن کودک باید بین ۰ تا ۱۷ سال باشد");
+      return null;
+    }
+
+    if (
+      halfPriceChildMinAge !== null &&
+      halfPriceChildMaxAge !== null &&
+      halfPriceChildMinAge > halfPriceChildMaxAge
+    ) {
+      toast.error("حداقل سن نیم‌بها نمی‌تواند بیشتر از حداکثر سن باشد");
+      return null;
+    }
+
+    if (
+      !Number.isFinite(halfPriceChildRate) ||
+      halfPriceChildRate < 0 ||
+      halfPriceChildRate > 100
+    ) {
+      toast.error("درصد کودک نیم‌بها باید بین ۰ تا ۱۰۰ باشد");
+      return null;
+    }
+
+    return {
+      freeChildMaxAge,
+      halfPriceChildMinAge,
+      halfPriceChildMaxAge,
+      halfPriceChildRate,
+    };
+  }
+
+  async function save(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = validate();
+    if (!payload) return;
+
+    setSaving(true);
+    try {
+      const updated = await apiRequest<ReservationSettingsResponse>(
+        "/admin/reservation-settings",
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
+      setDraft(toDraft(updated));
+      toast.success("تنظیمات رزرو ذخیره شد");
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error ? caught.message : "ذخیره تنظیمات رزرو ناموفق بود",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
-          description="تنظیمات عمومی رزرو در تنظیمات سایت نگهداری می‌شود."
+          description="قوانین پیش‌فرض کودک زمانی استفاده می‌شوند که اقامتگاه قانون اختصاصی ثبت نکرده باشد."
           eyebrow=""
           title="تنظیمات رزرو"
         />
 
         <KoochCard variant="elevated">
-          <h2 className="text-xl font-black text-foreground">
-            تنظیمات رزرو از تنظیمات سایت مدیریت می‌شود
-          </h2>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
-            حداقل قیمت، حداکثر قیمت و درصدهای کمیسیون فقط در بخش تنظیمات سایت
-            قابل ویرایش هستند. پشتیبانی از override کمیسیون برای هر اقامتگاه در
-            آینده اضافه می‌شود.
-          </p>
-          <Link
-            className={`${linkButtonClass} mt-5 border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
-            href="/admin/site-settings"
-          >
-            رفتن به تنظیمات سایت
-          </Link>
+          {loading ? (
+            <p className="text-sm text-muted-foreground">
+              در حال بارگذاری تنظیمات رزرو...
+            </p>
+          ) : (
+            <form className="grid gap-5" onSubmit={save}>
+              <div className="grid gap-4 md:grid-cols-2">
+                <KoochField
+                  helperText="کودکان تا این سن با قانون رایگان پیش‌فرض بررسی می‌شوند."
+                  label="حداکثر سن کودک رایگان"
+                >
+                  <KoochInput
+                    max={17}
+                    min={0}
+                    onChange={(event) =>
+                      update("freeChildMaxAge", event.target.value)
+                    }
+                    type="number"
+                    value={draft.freeChildMaxAge}
+                  />
+                </KoochField>
+
+                <KoochField
+                  helperText="برای نیم‌بها مقدار ۵۰ را وارد کنید."
+                  label="درصد کودک نیم‌بها"
+                  required
+                >
+                  <KoochInput
+                    max={100}
+                    min={0}
+                    onChange={(event) =>
+                      update("halfPriceChildRate", event.target.value)
+                    }
+                    step="0.01"
+                    type="number"
+                    value={draft.halfPriceChildRate}
+                  />
+                </KoochField>
+
+                <KoochField label="حداقل سن کودک نیم‌بها">
+                  <KoochInput
+                    max={17}
+                    min={0}
+                    onChange={(event) =>
+                      update("halfPriceChildMinAge", event.target.value)
+                    }
+                    type="number"
+                    value={draft.halfPriceChildMinAge}
+                  />
+                </KoochField>
+
+                <KoochField label="حداکثر سن کودک نیم‌بها">
+                  <KoochInput
+                    max={17}
+                    min={0}
+                    onChange={(event) =>
+                      update("halfPriceChildMaxAge", event.target.value)
+                    }
+                    type="number"
+                    value={draft.halfPriceChildMaxAge}
+                  />
+                </KoochField>
+              </div>
+
+              <div className="flex justify-end">
+                <KoochButton disabled={saving} loading={saving} type="submit">
+                  ذخیره تنظیمات
+                </KoochButton>
+              </div>
+            </form>
+          )}
         </KoochCard>
       </main>
     </AdminLayout>

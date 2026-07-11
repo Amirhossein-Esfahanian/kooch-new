@@ -38,14 +38,20 @@ export type KoochDateRangePickerProps = BaseDatePickerProps & {
   mode: "range";
   value: SharedDateRangeValue;
   onChange: (value: SharedDateRangeValue) => void;
+  openOnDialog?: boolean;
   placeholderStart?: string;
   placeholderEnd?: string;
   labels?: SharedDateLabels;
   labelsAbove?: boolean;
   showFieldLabels?: boolean;
+  dialogContentClassName?: string;
+  dialogBodyClassName?: string;
+  dialogFooterClassName?: string;
 };
 
-export type KoochDatePickerProps = KoochSingleDatePickerProps | KoochDateRangePickerProps;
+export type KoochDatePickerProps =
+  | KoochSingleDatePickerProps
+  | KoochDateRangePickerProps;
 
 export function KoochDatePicker(props: KoochDatePickerProps) {
   if (props.mode === "single") {

@@ -7,7 +7,8 @@ namespace Kooch.Api.Services;
 
 public class ReservationPricingService(
     KoochDbContext dbContext,
-    PricingService pricingService) : IReservationPricingService
+    PricingService pricingService,
+    IChildPricingRuleResolver childPricingRuleResolver) : IReservationPricingService
 {
     public async Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
         ReservationPricePreviewRequest request,
@@ -44,6 +45,17 @@ public class ReservationPricingService(
             .ToListAsync(cancellationToken);
 
         var bookingDate = DateOnly.FromDateTime(DateTime.UtcNow);
+        var childRules = childPricingRuleResolver.Resolve(
+            roomType.Property.FreeChildAgeLimit,
+            roomType.Property.MaxFreeChildren,
+            roomType.Property.ChildPrice,
+            await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken));
+        var occupancy = childPricingRuleResolver.ResolveOccupancy(
+            request.ChildAges,
+            request.Children,
+            childRules);
+        var pricedAdults = request.Adults + occupancy.AdultEquivalentGuests;
+        ValidateExtraGuestRules(roomType, request.RoomCount, pricedAdults);
         var nightSnapshots = new List<ReservationNightPriceSnapshot>();
 
         foreach (var night in nights)
@@ -51,12 +63,12 @@ public class ReservationPricingService(
             var basePrice = prices.GetValueOrDefault(night)?.BasePrice ?? roomType.BasePrice ?? 0;
             var calculation = pricingService.CalculateNightPrice(
                 roomType.MaxAdults * request.RoomCount,
-                roomType.MaxChildren * request.RoomCount,
+                0,
                 basePrice * request.RoomCount,
-                roomType.Property.ChildPrice ?? 0,
+                childPricingRuleResolver.ResolveChildPrice(basePrice, childRules),
                 roomType.Property.ExtraGuestPrice ?? 0,
-                request.Adults,
-                request.Children);
+                pricedAdults,
+                occupancy.ChargeableChildren);
             var promotionCalculation = pricingService.CalculateFinalPrice(
                 calculation.TotalPrice,
                 roomType.Id,
@@ -83,9 +95,8 @@ public class ReservationPricingService(
             CheckInDate = request.CheckInDate,
             CheckOutDate = request.CheckOutDate,
             NightsCount = nightSnapshots.Count,
-            Adults = request.Adults,
-            Children = request.Children,
-            Infants = request.Infants,
+            Adults = pricedAdults,
+            Children = occupancy.CountedChildren,
             RoomCount = request.RoomCount,
             BaseAmount = nightSnapshots.Sum(item => item.BasePrice),
             ChildAmount = nightSnapshots.Sum(item => item.ChildAmount),
@@ -104,9 +115,37 @@ public class ReservationPricingService(
             throw new ArgumentException("بازه تاریخ نامعتبر است");
         }
 
-        if (request.RoomCount <= 0 || request.Adults < 0 || request.Children < 0 || request.Infants < 0)
+        if (request.RoomCount <= 0 || request.Adults <= 0 || request.Children < 0)
         {
             throw new ArgumentException("اطلاعات مهمان یا تعداد اتاق معتبر نیست.");
+        }
+        if (request.ChildAges.Any(age => age < 0 || age > 120))
+        {
+            throw new ArgumentException("Child ages are invalid.");
+        }
+    }
+
+    private static void ValidateExtraGuestRules(RoomType roomType, int roomCount, int adults)
+    {
+        var baseAdultCapacity = roomType.MaxAdults * roomCount;
+        var extraAdultCapacity = roomType.AllowExtraGuest
+            ? roomType.MaxExtraGuests * roomCount
+            : 0;
+        var maxAdultCapacity = baseAdultCapacity + extraAdultCapacity;
+
+        if (adults <= baseAdultCapacity)
+        {
+            return;
+        }
+
+        if (!roomType.AllowExtraGuest)
+        {
+            throw new InvalidOperationException("This room does not accept extra guests.");
+        }
+
+        if (adults > maxAdultCapacity)
+        {
+            throw new InvalidOperationException("Extra guests exceed this room's configured limit.");
         }
     }
 

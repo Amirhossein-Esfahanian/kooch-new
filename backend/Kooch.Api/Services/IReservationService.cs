@@ -39,6 +39,12 @@ public interface IReservationService
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default);
 
+    Task<ReservationResponse> UpdateAsync(
+        int reservationId,
+        ReservationUpdateRequest request,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default);
+
     Task<ReservationResponse> ApproveAsync(
         int reservationId,
         (int UserId, UserRole Role) currentUser,

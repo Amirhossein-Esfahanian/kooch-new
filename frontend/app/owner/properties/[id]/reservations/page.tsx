@@ -18,7 +18,6 @@ import {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
-import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import {
   apiRequest,
   getToken,
@@ -260,11 +259,6 @@ export default function OwnerReservationsPage() {
         <KoochPageHeader
           actions={
             <div className="flex flex-wrap items-center gap-2">
-              <ManualReservationDialog
-                context="owner"
-                fixedPropertyId={propertyId}
-                onCreated={loadReservations}
-              />
             <Link
               className={headerLinkClass}
               href={`/owner/properties/${propertyId}/dashboard`}

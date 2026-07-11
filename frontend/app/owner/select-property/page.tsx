@@ -25,6 +25,7 @@ function isOwnerPanelRole(role: string | null) {
     "Accounting",
     "Housekeeping",
     "Custom",
+    "Client",
   ].includes(role ?? "");
 }
 

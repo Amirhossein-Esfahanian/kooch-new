@@ -178,6 +178,7 @@ function isOwnerPanelRole(role: string | null) {
     "Accounting",
     "Housekeeping",
     "Custom",
+    "Client",
   ].includes(role ?? "");
 }
 
@@ -191,9 +192,7 @@ async function redirectToOwnerPanel(router: ReturnType<typeof useRouter>) {
     return;
   }
 
-  router.replace(
-    properties.length > 1 ? "/owner/select-property" : "/owner/properties",
-  );
+  router.replace(properties.length > 1 ? "/owner/select-property" : "/");
 }
 
 function hasOwnerPropertyAccess(

@@ -236,7 +236,6 @@ export default function AccountReservationDetailsPage() {
                 value={formatNumber(reservation.adults)}
               />
               <DetailItem label="کودک" value={formatNumber(reservation.children)} />
-              <DetailItem label="نوزاد" value={formatNumber(reservation.infants)} />
             </DetailSection>
 
             <DetailSection title="مالی">

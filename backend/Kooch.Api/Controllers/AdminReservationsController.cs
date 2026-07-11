@@ -8,7 +8,9 @@ namespace Kooch.Api.Controllers;
 [ApiController]
 [AdminAuthorize]
 [Route("api/admin/reservations")]
-public class AdminReservationsController(IReservationService reservationService) : AuthenticatedControllerBase
+public class AdminReservationsController(
+    IReservationService reservationService,
+    IReservationPricingService reservationPricingService) : AuthenticatedControllerBase
 {
     [HttpGet]
     [ProducesResponseType<PagedResult<ReservationListItemResponse>>(StatusCodes.Status200OK)]
@@ -36,6 +38,25 @@ public class AdminReservationsController(IReservationService reservationService)
     {
         var reservation = await reservationService.CreateAsync(request, GetCurrentUser(), cancellationToken);
         return CreatedAtAction(nameof(GetById), new { id = reservation.Id }, reservation);
+    }
+
+    [HttpPut("{id:int}")]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> Update(
+        int id,
+        ReservationUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationService.UpdateAsync(id, request, GetCurrentUser(), cancellationToken));
+    }
+
+    [HttpPost("price-preview")]
+    [ProducesResponseType<ReservationPricePreviewResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationPricePreviewResponse>> PreviewPrice(
+        ReservationPricePreviewRequest request,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationPricingService.PreviewReservationPriceAsync(request, cancellationToken));
     }
 
     [HttpPut("{id:int}/approve")]

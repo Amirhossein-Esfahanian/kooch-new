@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
+import { KoochDialog } from "@/components/KoochDialog";
 
 dayjs.extend(jalaliday);
 
@@ -24,6 +25,9 @@ export interface SharedDateLabels {
 }
 
 export interface SharedDateRangePickerProps {
+  dialogContentClassName?: string;
+  dialogBodyClassName?: string;
+  dialogFooterClassName?: string;
   /** Confirmed value. Dates must be Gregorian ISO strings: YYYY-MM-DD. */
   value: SharedDateRangeValue;
   /** Called only after confirm; returns Gregorian ISO strings. */
@@ -56,6 +60,8 @@ export interface SharedDateRangePickerProps {
   showFieldLabels?: boolean;
   /** Extra classes for field buttons. */
   controlClassName?: string;
+  /** Open the calendar panel inside KoochDialog instead of the inline popover. */
+  openOnDialog?: boolean;
 }
 
 type ActiveField = "startDate" | "endDate";
@@ -204,6 +210,10 @@ export function SharedDateRangePicker({
   labelsAbove = false,
   showFieldLabels = true,
   controlClassName,
+  openOnDialog = false,
+  dialogContentClassName = "",
+  dialogBodyClassName = "",
+  dialogFooterClassName = "",
 }: SharedDateRangePickerProps) {
   const text = {
     start: labels?.start ?? "تاریخ رفت",
@@ -231,13 +241,15 @@ export function SharedDateRangePicker({
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);
   useEffect(() => {
+    if (openOnDialog) return;
+
     function onPointerDown(event: PointerEvent) {
       if (!wrapperRef.current?.contains(event.target as Node))
         setActiveField(null);
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, []);
+  }, [openOnDialog]);
 
   const months = useMemo(
     () => [
@@ -310,6 +322,181 @@ export function SharedDateRangePicker({
     );
   }
 
+  const pickerPanel = (
+    <div
+      className={
+        openOnDialog
+          ? "text-card-foreground"
+          : "absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-2xl sm:w-[680px]"
+      }
+    >
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          {/* <p className="text-xs font-semibold text-muted-foreground">
+                مبدا · مقصد
+              </p> */}
+          <p className="mt-1 text-sm font-semibold text-foreground">
+            {toPersianDigits(text.rangeTitle)}
+          </p>
+        </div>
+        {showGregorianToggle && (
+          <button
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              const nextCalendar =
+                activeCalendar === "jalali" ? "gregorian" : "jalali";
+              setActiveCalendar(nextCalendar);
+              setVisibleMonth(
+                asCalendar(
+                  tempStartDate ? dayjs(tempStartDate) : visibleMonth,
+                  nextCalendar,
+                ).startOf("month"),
+              );
+            }}
+            type="button"
+          >
+            {toPersianDigits(
+              activeCalendar === "jalali" ? text.gregorian : text.jalali,
+            )}
+          </button>
+        )}
+      </div>
+      <div
+        className="mb-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3"
+        dir="rtl"
+      >
+        <button
+          aria-label="ماه قبل"
+          className="grid h-9 w-9 place-items-center rounded-full border border-border text-lg font-bold text-foreground hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+          onClick={() =>
+            setVisibleMonth((current) =>
+              asCalendar(current, activeCalendar)
+                .add(-1, "month")
+                .startOf("month"),
+            )
+          }
+          type="button"
+        >
+          ‹
+        </button>
+
+        <div className="grid min-w-0 gap-5 text-center sm:grid-cols-2">
+          {months.map((month, monthIndex) => (
+            <h3
+              className={`truncate text-base font-bold text-foreground ${
+                monthIndex === 1 ? "hidden sm:block" : ""
+              }`}
+              key={`${activeCalendar}-title-${month.format("YYYY-MM")}-${monthIndex}`}
+            >
+              {monthTitle(month, activeCalendar)}
+            </h3>
+          ))}
+        </div>
+
+        <button
+          aria-label="ماه بعد"
+          className="grid h-9 w-9 place-items-center rounded-full border border-border text-lg font-semibold text-foreground hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+          onClick={() =>
+            setVisibleMonth((current) =>
+              asCalendar(current, activeCalendar)
+                .add(1, "month")
+                .startOf("month"),
+            )
+          }
+          type="button"
+        >
+          ›
+        </button>
+      </div>
+      <div className="grid gap-5 sm:grid-cols-2">
+        {months.map((month, monthIndex) => (
+          <section
+            className={monthIndex === 1 ? "hidden sm:block" : ""}
+            key={`${activeCalendar}-${month.format("YYYY-MM")}-${monthIndex}`}
+          >
+            <div className="grid grid-cols-7 text-center text-xs font-semibold text-muted-foreground">
+              {weekdayLabels.map((weekday) => (
+                <span className="py-1" key={toPersianDigits(weekday)}>
+                  {toPersianDigits(weekday)}
+                </span>
+              ))}
+            </div>
+            <div className="mt-1 grid grid-cols-7">
+              {buildMonthDays(month, activeCalendar).map((date, index) => {
+                if (!date)
+                  return <span className="h-10" key={`empty-${index}`} />;
+                const iso = toIso(date);
+                const disabled = isDisabled(
+                  date,
+                  disablePastDates,
+                  minDate,
+                  maxDate,
+                  disabledDates,
+                );
+                const isRangeStart = tempStartDate === iso;
+                const isRangeEnd = tempEndDate === iso;
+                const inRange = isBetween(iso, tempStartDate, tempEndDate);
+                const selected = isRangeStart || isRangeEnd;
+                const today = iso === dayjs().format(isoFormat);
+                return (
+                  <div
+                    className={`h-10 ${inRange || selected ? "bg-[var(--theme-primary-soft)]" : ""} ${isRangeStart ? "rounded-r-[4px]" : ""} ${isRangeEnd ? "rounded-l-[4px]" : ""}`}
+                    key={iso}
+                  >
+                    <button
+                      className={`h-10 w-full text-sm font-semibold transition ${selected ? "rounded-[4px] bg-[var(--theme-primary)] text-primary-foreground shadow-sm" : inRange ? "text-[var(--theme-primary-text)] hover:bg-[var(--theme-primary-soft)]" : today ? "rounded-[4px] border border-[var(--theme-primary)] text-[var(--theme-primary-text)]" : "rounded-[4px] text-foreground hover:bg-[var(--theme-primary-soft)]"} ${disabled ? "cursor-not-allowed text-muted-foreground opacity-40 hover:bg-transparent" : ""}`}
+                      disabled={disabled}
+                      onClick={() => selectDay(date)}
+                      type="button"
+                    >
+                      {toPersianDigits(
+                        asCalendar(date, activeCalendar).format("D"),
+                      )}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        ))}
+      </div>
+      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
+        <div className="flex gap-2">
+          <button
+            className="rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!tempStartDate || !tempEndDate}
+            onClick={() => {
+              if (!tempStartDate || !tempEndDate) return;
+              onChange({ startDate: tempStartDate, endDate: tempEndDate });
+              setActiveField(null);
+            }}
+            type="button"
+          >
+            {toPersianDigits(confirmText)}
+          </button>
+          <button
+            className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+            onClick={() => setActiveField(null)}
+            type="button"
+          >
+            {toPersianDigits(cancelText)}
+          </button>
+        </div>
+        <button
+          className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
+          onClick={() =>
+            setVisibleMonth(
+              asCalendar(dayjs(), activeCalendar).startOf("month"),
+            )
+          }
+          type="button"
+        >
+          {toPersianDigits(text.today)}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="relative" ref={wrapperRef} dir="rtl">
       <div className="grid gap-3 sm:grid-cols-2">
@@ -321,173 +508,21 @@ export function SharedDateRangePicker({
         )}
         {renderDateButton("endDate", text.end, value.endDate, placeholderEnd)}
       </div>
-      {isOpen && (
-        <div className="absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-2xl sm:w-[680px]">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              {/* <p className="text-xs font-semibold text-muted-foreground">
-                مبدا · مقصد
-              </p> */}
-              <p className="mt-1 text-sm font-semibold text-foreground">
-                {toPersianDigits(text.rangeTitle)}
-              </p>
-            </div>
-            {showGregorianToggle && (
-              <button
-                className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
-                onClick={() => {
-                  const nextCalendar =
-                    activeCalendar === "jalali" ? "gregorian" : "jalali";
-                  setActiveCalendar(nextCalendar);
-                  setVisibleMonth(
-                    asCalendar(
-                      tempStartDate ? dayjs(tempStartDate) : visibleMonth,
-                      nextCalendar,
-                    ).startOf("month"),
-                  );
-                }}
-                type="button"
-              >
-                {toPersianDigits(
-                  activeCalendar === "jalali" ? text.gregorian : text.jalali,
-                )}
-              </button>
-            )}
-          </div>
-          <div
-            className="mb-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3"
-            dir="rtl"
-          >
-            <button
-              aria-label="ماه قبل"
-              className="grid h-9 w-9 place-items-center rounded-full border border-border text-lg font-bold text-foreground hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
-              onClick={() =>
-                setVisibleMonth((current) =>
-                  asCalendar(current, activeCalendar)
-                    .add(-1, "month")
-                    .startOf("month"),
-                )
-              }
-              type="button"
-            >
-              ‹
-            </button>
-
-            <div className="grid min-w-0 gap-5 text-center sm:grid-cols-2">
-              {months.map((month, monthIndex) => (
-                <h3
-                  className={`truncate text-base font-bold text-foreground ${
-                    monthIndex === 1 ? "hidden sm:block" : ""
-                  }`}
-                  key={`${activeCalendar}-title-${month.format("YYYY-MM")}-${monthIndex}`}
-                >
-                  {monthTitle(month, activeCalendar)}
-                </h3>
-              ))}
-            </div>
-
-            <button
-              aria-label="ماه بعد"
-              className="grid h-9 w-9 place-items-center rounded-full border border-border text-lg font-semibold text-foreground hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
-              onClick={() =>
-                setVisibleMonth((current) =>
-                  asCalendar(current, activeCalendar)
-                    .add(1, "month")
-                    .startOf("month"),
-                )
-              }
-              type="button"
-            >
-              ›
-            </button>
-          </div>
-          <div className="grid gap-5 sm:grid-cols-2">
-            {months.map((month, monthIndex) => (
-              <section
-                className={monthIndex === 1 ? "hidden sm:block" : ""}
-                key={`${activeCalendar}-${month.format("YYYY-MM")}-${monthIndex}`}
-              >
-                <div className="grid grid-cols-7 text-center text-xs font-semibold text-muted-foreground">
-                  {weekdayLabels.map((weekday) => (
-                    <span className="py-1" key={toPersianDigits(weekday)}>
-                      {toPersianDigits(weekday)}
-                    </span>
-                  ))}
-                </div>
-                <div className="mt-1 grid grid-cols-7">
-                  {buildMonthDays(month, activeCalendar).map((date, index) => {
-                    if (!date)
-                      return <span className="h-10" key={`empty-${index}`} />;
-                    const iso = toIso(date);
-                    const disabled = isDisabled(
-                      date,
-                      disablePastDates,
-                      minDate,
-                      maxDate,
-                      disabledDates,
-                    );
-                    const isRangeStart = tempStartDate === iso;
-                    const isRangeEnd = tempEndDate === iso;
-                    const inRange = isBetween(iso, tempStartDate, tempEndDate);
-                    const selected = isRangeStart || isRangeEnd;
-                    const today = iso === dayjs().format(isoFormat);
-                    return (
-                      <div
-                        className={`h-10 ${inRange || selected ? "bg-[var(--theme-primary-soft)]" : ""} ${isRangeStart ? "rounded-r-[4px]" : ""} ${isRangeEnd ? "rounded-l-[4px]" : ""}`}
-                        key={iso}
-                      >
-                        <button
-                          className={`h-10 w-full text-sm font-semibold transition ${selected ? "rounded-[4px] bg-[var(--theme-primary)] text-primary-foreground shadow-sm" : inRange ? "text-[var(--theme-primary-text)] hover:bg-[var(--theme-primary-soft)]" : today ? "rounded-[4px] border border-[var(--theme-primary)] text-[var(--theme-primary-text)]" : "rounded-[4px] text-foreground hover:bg-[var(--theme-primary-soft)]"} ${disabled ? "cursor-not-allowed text-muted-foreground opacity-40 hover:bg-transparent" : ""}`}
-                          disabled={disabled}
-                          onClick={() => selectDay(date)}
-                          type="button"
-                        >
-                          {toPersianDigits(
-                            asCalendar(date, activeCalendar).format("D"),
-                          )}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </section>
-            ))}
-          </div>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-            <div className="flex gap-2">
-              <button
-                className="rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!tempStartDate || !tempEndDate}
-                onClick={() => {
-                  if (!tempStartDate || !tempEndDate) return;
-                  onChange({ startDate: tempStartDate, endDate: tempEndDate });
-                  setActiveField(null);
-                }}
-                type="button"
-              >
-                {toPersianDigits(confirmText)}
-              </button>
-              <button
-                className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
-                onClick={() => setActiveField(null)}
-                type="button"
-              >
-                {toPersianDigits(cancelText)}
-              </button>
-            </div>
-            <button
-              className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
-              onClick={() =>
-                setVisibleMonth(
-                  asCalendar(dayjs(), activeCalendar).startOf("month"),
-                )
-              }
-              type="button"
-            >
-              {toPersianDigits(text.today)}
-            </button>
-          </div>
-        </div>
+      {isOpen && !openOnDialog && pickerPanel}
+      {openOnDialog && (
+        <KoochDialog
+          contentClassName={dialogContentClassName}
+          footerClassName={dialogFooterClassName}
+          bodyClassName={`px-4 py-4 sm:px-6 ${dialogBodyClassName}`}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen) setActiveField(null);
+          }}
+          open={isOpen}
+          size="md"
+          title={toPersianDigits(text.rangeTitle)}
+        >
+          {pickerPanel}
+        </KoochDialog>
       )}
     </div>
   );

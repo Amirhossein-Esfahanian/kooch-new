@@ -14,7 +14,8 @@ import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 
 export type KoochConfirmDialogVariant =
-  | "default"
+  | "information"
+  | "question"
   | "warning"
   | "destructive"
   | "success";
@@ -41,11 +42,22 @@ function joinClasses(...classes: Array<string | false | null | undefined>) {
 
 const variantTone: Record<
   KoochConfirmDialogVariant,
-  { confirmClassName: string; icon: string; iconClassName: string; titleClassName: string }
+  {
+    confirmClassName: string;
+    icon: string;
+    iconClassName: string;
+    titleClassName: string;
+  }
 > = {
-  default: {
+  information: {
     confirmClassName: "",
     icon: "/svgs/info.svg",
+    iconClassName: "bg-primary",
+    titleClassName: "text-foreground",
+  },
+  question: {
+    confirmClassName: "",
+    icon: "/svgs/circle-question.svg",
     iconClassName: "bg-primary",
     titleClassName: "text-foreground",
   },
@@ -88,7 +100,7 @@ export function KoochConfirmDialog({
   open,
   title,
   trigger,
-  variant = "default",
+  variant = "information",
 }: KoochConfirmDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
@@ -165,22 +177,18 @@ export function KoochConfirmDialog({
   }, [isOpen]);
 
   const triggerNode =
-    trigger && isValidElement(trigger)
-      ? cloneElement(trigger as ReactElement<TriggerElementProps>, {
-          onClick: (event: React.MouseEvent) => {
-            (trigger as ReactElement<TriggerElementProps>).props.onClick?.(
-              event,
-            );
-            if (!event.defaultPrevented) setDialogOpen(true);
-          },
-        })
-      : trigger
-        ? (
-            <button onClick={() => setDialogOpen(true)} type="button">
-              {trigger}
-            </button>
-          )
-        : null;
+    trigger && isValidElement(trigger) ? (
+      cloneElement(trigger as ReactElement<TriggerElementProps>, {
+        onClick: (event: React.MouseEvent) => {
+          (trigger as ReactElement<TriggerElementProps>).props.onClick?.(event);
+          if (!event.defaultPrevented) setDialogOpen(true);
+        },
+      })
+    ) : trigger ? (
+      <button onClick={() => setDialogOpen(true)} type="button">
+        {trigger}
+      </button>
+    ) : null;
 
   const dialog = isOpen ? (
     <>
@@ -239,15 +247,6 @@ export function KoochConfirmDialog({
 
         <footer className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-start">
           <KoochButton
-            className="w-full sm:w-auto"
-            onClick={closeDialog}
-            ref={cancelButtonRef}
-            type="button"
-            variant="outline"
-          >
-            {cancelText}
-          </KoochButton>
-          <KoochButton
             className={joinClasses("w-full sm:w-auto", tone.confirmClassName)}
             disabled={actionDisabled}
             loading={isBusy}
@@ -256,6 +255,15 @@ export function KoochConfirmDialog({
             variant={variant === "destructive" ? "destructive" : "primary"}
           >
             {confirmText}
+          </KoochButton>
+          <KoochButton
+            className="w-full sm:w-auto"
+            onClick={closeDialog}
+            ref={cancelButtonRef}
+            type="button"
+            variant="outline"
+          >
+            {cancelText}
           </KoochButton>
         </footer>
       </section>

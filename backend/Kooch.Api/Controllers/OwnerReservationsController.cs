@@ -36,15 +36,12 @@ public class OwnerReservationsController(
 
     [HttpPost]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status201Created)]
-    public async Task<ActionResult<ReservationResponse>> Create(
+    public ActionResult<ReservationResponse> Create(
         int propertyId,
         ReservationCreateRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsurePermissionAsync(propertyId, "bookings.create", cancellationToken);
-        request.PropertyId = propertyId;
-        var reservation = await reservationService.CreateAsync(request, GetCurrentUser(), cancellationToken);
-        return CreatedAtAction(nameof(GetById), new { propertyId, id = reservation.Id }, reservation);
+        throw new UnauthorizedAccessException("Only admin users can manually create reservations.");
     }
 
     [HttpPut("{id:int}/approve")]

@@ -12,6 +12,8 @@ public class ReservationListItemResponse
     public string PropertyName { get; set; } = string.Empty;
     public int RoomTypeId { get; set; }
     public string RoomTypeName { get; set; } = string.Empty;
+    public int? RoomId { get; set; }
+    public string? RoomName { get; set; }
     public int? GuestId { get; set; }
     public string GuestFullName { get; set; } = string.Empty;
     public string? GuestMobile { get; set; }
@@ -20,7 +22,6 @@ public class ReservationListItemResponse
     public int NightsCount { get; set; }
     public int Adults { get; set; }
     public int Children { get; set; }
-    public int Infants { get; set; }
     public int RoomCount { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal FinalAmount { get; set; }
@@ -43,7 +44,6 @@ public class ReservationListItemResponse
 
 public class ReservationResponse : ReservationListItemResponse
 {
-    public int? RoomId { get; set; }
     public int? RatePlanId { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
     public string? GuestEmail { get; set; }
@@ -141,8 +141,7 @@ public class ReservationCreateRequest : IValidatableObject
     [Range(0, 100)]
     public int Children { get; set; }
 
-    [Range(0, 100)]
-    public int Infants { get; set; }
+    public IReadOnlyList<int> ChildAges { get; set; } = [];
 
     [Range(1, 100)]
     public int RoomCount { get; set; } = 1;
@@ -170,6 +169,9 @@ public class ReservationCreateRequest : IValidatableObject
 public class ReservationUpdateRequest : IValidatableObject
 {
     [Range(1, int.MaxValue)]
+    public int RoomTypeId { get; set; }
+
+    [Range(1, int.MaxValue)]
     public int GuestId { get; set; }
 
     public DateOnly CheckInDate { get; set; }
@@ -181,11 +183,12 @@ public class ReservationUpdateRequest : IValidatableObject
     [Range(0, 100)]
     public int Children { get; set; }
 
-    [Range(0, 100)]
-    public int Infants { get; set; }
+    public IReadOnlyList<int> ChildAges { get; set; } = [];
 
     [Range(1, 100)]
     public int RoomCount { get; set; } = 1;
+
+    public IReadOnlyList<int> RoomIds { get; set; } = [];
 
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
 
@@ -237,8 +240,7 @@ public class ReservationPricePreviewRequest : IValidatableObject
     [Range(0, 100)]
     public int Children { get; set; }
 
-    [Range(0, 100)]
-    public int Infants { get; set; }
+    public IReadOnlyList<int> ChildAges { get; set; } = [];
 
     [Range(1, 100)]
     public int RoomCount { get; set; } = 1;
@@ -266,7 +268,6 @@ public class ReservationPricePreviewResponse
     public int NightsCount { get; set; }
     public int Adults { get; set; }
     public int Children { get; set; }
-    public int Infants { get; set; }
     public int RoomCount { get; set; }
     public decimal BaseAmount { get; set; }
     public decimal DiscountAmount { get; set; }

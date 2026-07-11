@@ -27,7 +27,6 @@ export interface AccountReservation {
   nightsCount: number;
   adults: number;
   children: number;
-  infants: number;
   roomCount: number;
   totalPrice: number;
   finalAmount: number;

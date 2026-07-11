@@ -10,7 +10,8 @@ public class PropertyService(
     KoochDbContext dbContext,
     IPropertyAccessService propertyAccessService,
     IPermissionService permissionService,
-    IPropertyCompletionService propertyCompletionService) : IPropertyService
+    IPropertyCompletionService propertyCompletionService,
+    IChildPricingRuleResolver childPricingRuleResolver) : IPropertyService
 {
     public async Task<PropertyResponse> CreatePropertyAsync(
         int userId,
@@ -316,14 +317,22 @@ public class PropertyService(
 
         var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0)
             .ToListAsync(cancellationToken);
+        var globalChildRules = await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken);
 
         foreach (var property in properties)
         {
-            var effectiveChildren = CountCapacityChildren(parsedChildAges, requestedChildren, property.FreeChildAgeLimit, property.MaxFreeChildren);
+            var childRules = childPricingRuleResolver.Resolve(
+                property.FreeChildAgeLimit,
+                property.MaxFreeChildren,
+                null,
+                globalChildRules);
+            var occupancy = childPricingRuleResolver.ResolveOccupancy(parsedChildAges, requestedChildren, childRules);
+            var effectiveAdults = minAdults + occupancy.AdultEquivalentGuests;
+            var effectiveChildren = occupancy.ChargeableChildren;
             var matchingRoomTypes = property.RoomTypes
                 .Where(roomType =>
                     roomType.TotalInventory > 0 &&
-                    roomType.MaxAdults >= minAdults &&
+                    (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) >= effectiveAdults &&
                     roomType.MaxChildren >= effectiveChildren)
                 .Select(roomType => new PublicRoomTypeSummaryResponse
                 {

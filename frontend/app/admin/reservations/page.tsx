@@ -173,6 +173,8 @@ export default function AdminReservationsPage() {
   const [reservations, setReservations] = useState<ReservationTableItem[]>([]);
   const [selectedReservationState, setSelectedReservation] =
     useState<ReservationTableItem | null>(null);
+  const [editingReservation, setEditingReservation] =
+    useState<ReservationTableItem | null>(null);
   const [draftFilters, setDraftFilters] =
     useState<ReservationListQuery>(initialFilters);
   const [filters, setFilters] = useState<ReservationListQuery>(initialFilters);
@@ -328,6 +330,31 @@ export default function AdminReservationsPage() {
       setError(
         caught instanceof Error ? caught.message : "خطا در دریافت جزئیات رزرو.",
       );
+    } finally {
+      setDetailsLoading(false);
+    }
+  }
+
+  async function editReservation(reservation: ReservationTableItem) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+
+    setDetailsLoading(true);
+    setError("");
+
+    try {
+      const details = await apiRequest<ReservationTableItem>(
+        `/admin/reservations/${reservationId}`,
+      );
+      setSelectedReservation(null);
+      setEditingReservation(details);
+    } catch (caught) {
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : "Ø®Ø·Ø§ Ø¯Ø± Ø¯Ø±ÛŒØ§ÙØª Ø¬Ø²Ø¦ÛŒØ§Øª Ø±Ø²Ø±Ùˆ.";
+      setError(message);
+      toast.error(message);
     } finally {
       setDetailsLoading(false);
     }
@@ -830,6 +857,7 @@ export default function AdminReservationsPage() {
           currentPage={currentPage}
           emptyMessage="هنوز رزروی ثبت نشده است."
           loading={loading}
+          onEdit={editReservation}
           onPageChange={setCurrentPage}
           onSendPaymentLink={sendPaymentLink}
           onView={viewReservation}
@@ -839,6 +867,7 @@ export default function AdminReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
+          onEdit={editReservation}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {
@@ -846,6 +875,17 @@ export default function AdminReservationsPage() {
           }}
           open={Boolean(selectedReservationState)}
           reservation={selectedReservationState}
+        />
+
+        <ManualReservationDialog
+          context="admin"
+          mode="edit"
+          onCreated={loadReservations}
+          onOpenChange={(open) => {
+            if (!open) setEditingReservation(null);
+          }}
+          open={Boolean(editingReservation)}
+          reservation={editingReservation}
         />
 
         {statusChangingId && (

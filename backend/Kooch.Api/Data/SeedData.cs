@@ -103,7 +103,11 @@ public static class SeedData
             SiteSettingSeed("pricing.currencyLabel", "تومان", SiteSettingType.Text, "Pricing", "واحد پول قیمت‌گذاری", "این برچسب کنار ورودی‌های قیمت نمایش داده می‌شود.", 30),
             SiteSettingSeed("ReservationCommissionPercent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون رزرو", null, 10),
             SiteSettingSeed("ReferralCommissionPercent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون معرفی", null, 20),
-            SiteSettingSeed("CommissionType3Percent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون نوع سوم", null, 30)
+            SiteSettingSeed("CommissionType3Percent", "0", SiteSettingType.Number, "Reservation", "درصد کمیسیون نوع سوم", null, 30),
+            SiteSettingSeed("reservation.freeChildMaxAge", "6", SiteSettingType.Number, "Reservation", "حداکثر سن کودک رایگان", "اگر اقامتگاه قانون کودک خود را نداشته باشد از این مقدار استفاده می‌شود.", 40),
+            SiteSettingSeed("reservation.halfPriceChildMinAge", "7", SiteSettingType.Number, "Reservation", "حداقل سن کودک نیم‌بها", null, 50),
+            SiteSettingSeed("reservation.halfPriceChildMaxAge", "12", SiteSettingType.Number, "Reservation", "حداکثر سن کودک نیم‌بها", null, 60),
+            SiteSettingSeed("reservation.halfPriceChildRate", "50", SiteSettingType.Number, "Reservation", "درصد محاسبه کودک نیم‌بها", "۵۰ یعنی نصف قیمت پایه.", 70)
         };
 
         var existing = await dbContext.SiteSettings.IgnoreQueryFilters().ToListAsync();

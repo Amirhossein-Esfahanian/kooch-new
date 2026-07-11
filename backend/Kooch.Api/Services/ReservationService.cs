@@ -181,7 +181,7 @@ public class ReservationService(
                 CheckOutDate = request.CheckOutDate,
                 Adults = request.Adults,
                 Children = request.Children,
-                Infants = request.Infants,
+                ChildAges = request.ChildAges,
                 RoomCount = roomCount,
                 GuestType = request.GuestType
             },
@@ -199,8 +199,8 @@ public class ReservationService(
             RoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : null,
             CheckInDate = request.CheckInDate,
             CheckOutDate = request.CheckOutDate,
-            AdultCount = request.Adults,
-            ChildCount = request.Children,
+            AdultCount = pricePreview.Adults,
+            ChildCount = pricePreview.Children,
             TotalPrice = pricePreview.FinalAmount,
             BaseAmount = pricePreview.BaseAmount,
             DiscountAmount = pricePreview.DiscountAmount,
@@ -225,6 +225,119 @@ public class ReservationService(
         await transaction.CommitAsync(cancellationToken);
 
         return ToResponse(reservation, property, roomType, guest, request, pricePreview);
+    }
+
+    public async Task<ReservationResponse> UpdateAsync(
+        int reservationId,
+        ReservationUpdateRequest request,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureAdminUser(currentUser.Role);
+        ValidateDateRange(request.CheckInDate, request.CheckOutDate);
+
+        var reservation = await dbContext.Reservations
+            .Include(item => item.Property)
+            .Include(item => item.RoomType)
+            .Include(item => item.Room)
+            .Include(item => item.Guest)
+            .Include(item => item.Client)
+            .Include(item => item.ApprovedByUser)
+            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+
+        if (IsLockedForFullEdit(reservation.Status))
+        {
+            EnsureLockedReservationOnlyNotes(reservation, request);
+            reservation.GuestNote = request.Notes;
+            reservation.UpdatedAtUtc = DateTime.UtcNow;
+            reservation.UpdatedByUserId = currentUser.UserId;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        }
+
+        var roomType = await dbContext.RoomTypes.AsNoTracking()
+            .SingleOrDefaultAsync(item =>
+                    item.Id == request.RoomTypeId &&
+                    item.PropertyId == reservation.PropertyId &&
+                    item.IsActive,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("Room type not found.");
+
+        var guest = await dbContext.Guests.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
+            ?? throw new KeyNotFoundException("Guest not found.");
+
+        var selectedRoomIds = request.RoomIds.Distinct().ToList();
+        var roomCount = selectedRoomIds.Count > 0 ? selectedRoomIds.Count : request.RoomCount;
+
+        if (selectedRoomIds.Count > 0)
+        {
+            var validRoomCount = await dbContext.Rooms.AsNoTracking()
+                .CountAsync(room =>
+                        selectedRoomIds.Contains(room.Id) &&
+                        room.RoomTypeId == request.RoomTypeId &&
+                        room.IsActive,
+                    cancellationToken);
+
+            if (validRoomCount != selectedRoomIds.Count)
+            {
+                throw new ArgumentException("One or more selected rooms are invalid.");
+            }
+        }
+
+        var availability = await availabilityService.GetAvailabilityAsync(
+            reservation.PropertyId,
+            request.RoomTypeId,
+            request.CheckInDate,
+            request.CheckOutDate,
+            roomCount,
+            cancellationToken);
+        ValidateAvailabilityForCreate(availability, roomCount);
+
+        var pricePreview = await pricingService.PreviewReservationPriceAsync(
+            new ReservationPricePreviewRequest
+            {
+                PropertyId = reservation.PropertyId,
+                RoomTypeId = request.RoomTypeId,
+                CheckInDate = request.CheckInDate,
+                CheckOutDate = request.CheckOutDate,
+                Adults = request.Adults,
+                Children = request.Children,
+                ChildAges = request.ChildAges,
+                RoomCount = roomCount,
+                GuestType = request.GuestType
+            },
+            cancellationToken);
+
+        reservation.GuestId = request.GuestId;
+        reservation.RoomTypeId = request.RoomTypeId;
+        reservation.RoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : null;
+        reservation.CheckInDate = request.CheckInDate;
+        reservation.CheckOutDate = request.CheckOutDate;
+        reservation.AdultCount = pricePreview.Adults;
+        reservation.ChildCount = pricePreview.Children;
+        reservation.TotalPrice = pricePreview.FinalAmount;
+        reservation.BaseAmount = pricePreview.BaseAmount;
+        reservation.DiscountAmount = pricePreview.DiscountAmount;
+        reservation.ExtraGuestAmount = pricePreview.ExtraGuestAmount;
+        reservation.ServiceFeeAmount = pricePreview.ServiceFeeAmount;
+        reservation.FinalAmount = pricePreview.FinalAmount;
+        reservation.Currency = pricePreview.Currency;
+        reservation.GuestNote = request.Notes;
+        reservation.ChangedAtUtc = DateTime.UtcNow;
+        reservation.ChangedByUserId = currentUser.UserId;
+        reservation.UpdatedAtUtc = reservation.ChangedAtUtc;
+        reservation.UpdatedByUserId = currentUser.UserId;
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        var response = ToResponse(reservation, reservation.Property, roomType, guest);
+        response.GuestType = request.GuestType;
+        response.RoomCount = pricePreview.RoomCount;
+        response.ChildAmount = pricePreview.ChildAmount;
+        response.TaxAmount = pricePreview.TaxAmount;
+        return response;
     }
 
     public async Task<ReservationResponse> ApproveAsync(
@@ -512,6 +625,39 @@ public class ReservationService(
         }
     }
 
+    private static void EnsureAdminUser(UserRole role)
+    {
+        if (role is not (UserRole.SuperAdmin or UserRole.AdminAssistant))
+        {
+            throw new UnauthorizedAccessException("Only admin users can edit reservations.");
+        }
+    }
+
+    private static bool IsLockedForFullEdit(ReservationStatus status) =>
+        status is ReservationStatus.Confirmed or ReservationStatus.Paid or ReservationStatus.Completed;
+
+    private static void EnsureLockedReservationOnlyNotes(
+        Reservation reservation,
+        ReservationUpdateRequest request)
+    {
+        var selectedRoomIds = request.RoomIds.Distinct().ToList();
+        var selectedRoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : (int?)null;
+
+        var changesRestrictedFields =
+            request.GuestId != reservation.GuestId ||
+            request.RoomTypeId != reservation.RoomTypeId ||
+            selectedRoomId != reservation.RoomId ||
+            request.CheckInDate != reservation.CheckInDate ||
+            request.CheckOutDate != reservation.CheckOutDate ||
+            request.Adults != reservation.AdultCount ||
+            request.Children != reservation.ChildCount;
+
+        if (changesRestrictedFields)
+        {
+            throw new InvalidOperationException("Paid or confirmed reservations can only update notes.");
+        }
+    }
+
     private static ReservationSource GetReservationSource(UserRole role) =>
         role is UserRole.Owner or UserRole.OwnerAssistant
             ? ReservationSource.OwnerManual
@@ -536,6 +682,7 @@ public class ReservationService(
             .AsNoTracking()
             .Include(item => item.Property)
             .Include(item => item.RoomType)
+            .Include(item => item.Room)
             .Include(item => item.Guest)
             .Include(item => item.Client)
             .Include(item => item.ApprovedByUser);
@@ -561,6 +708,8 @@ public class ReservationService(
                 PropertyName = reservation.Property.Name,
                 RoomTypeId = reservation.RoomTypeId,
                 RoomTypeName = reservation.RoomType.Name,
+                RoomId = reservation.RoomId,
+                RoomName = reservation.Room == null ? null : reservation.Room.Name,
                 GuestId = reservation.GuestId,
                 GuestFirstName = reservation.Guest == null ? null : reservation.Guest.FirstName,
                 GuestLastName = reservation.Guest == null ? null : reservation.Guest.LastName,
@@ -815,6 +964,8 @@ public class ReservationService(
             PropertyName = reservation.Property.Name,
             RoomTypeId = reservation.RoomTypeId,
             RoomTypeName = reservation.RoomType.Name,
+            RoomId = reservation.RoomId,
+            RoomName = reservation.Room?.Name,
             GuestId = reservation.GuestId,
             GuestFullName = reservation.Guest?.FullName ?? string.Empty,
             GuestMobile = reservation.Guest?.Mobile,
@@ -823,7 +974,6 @@ public class ReservationService(
             NightsCount = reservation.CheckOutDate.DayNumber - reservation.CheckInDate.DayNumber,
             Adults = reservation.AdultCount,
             Children = reservation.ChildCount,
-            Infants = 0,
             RoomCount = 1,
             FinalAmount = reservation.FinalAmount,
             TotalPrice = reservation.TotalPrice,
@@ -860,6 +1010,8 @@ public class ReservationService(
             PropertyName = row.PropertyName,
             RoomTypeId = row.RoomTypeId,
             RoomTypeName = row.RoomTypeName,
+            RoomId = row.RoomId,
+            RoomName = row.RoomName,
             GuestId = row.GuestId,
             GuestFullName = guestName,
             GuestMobile = row.GuestMobile,
@@ -868,7 +1020,6 @@ public class ReservationService(
             NightsCount = row.CheckOutDate.DayNumber - row.CheckInDate.DayNumber,
             Adults = row.Adults,
             Children = row.Children,
-            Infants = 0,
             RoomCount = 1,
             TotalPrice = row.TotalPrice,
             FinalAmount = row.FinalAmount,
@@ -933,6 +1084,8 @@ public class ReservationService(
             PropertyName = property.Name,
             RoomTypeId = reservation.RoomTypeId,
             RoomTypeName = roomType.Name,
+            RoomId = reservation.RoomId,
+            RoomName = reservation.Room?.Name,
             GuestId = reservation.GuestId,
             GuestFullName = guest.FullName,
             GuestMobile = guest.Mobile,
@@ -945,7 +1098,6 @@ public class ReservationService(
             NightsCount = reservation.CheckOutDate.DayNumber - reservation.CheckInDate.DayNumber,
             Adults = reservation.AdultCount,
             Children = reservation.ChildCount,
-            Infants = request.Infants,
             RoomCount = pricePreview.RoomCount,
             GuestType = request.GuestType,
             TotalPrice = reservation.TotalPrice,
@@ -1130,6 +1282,8 @@ public class ReservationService(
             PropertyName = property.Name,
             RoomTypeId = reservation.RoomTypeId,
             RoomTypeName = roomType.Name,
+            RoomId = reservation.RoomId,
+            RoomName = reservation.Room?.Name,
             GuestId = reservation.GuestId,
             GuestFullName = guest?.FullName ?? string.Empty,
             GuestMobile = guest?.Mobile,
@@ -1142,7 +1296,6 @@ public class ReservationService(
             NightsCount = reservation.CheckOutDate.DayNumber - reservation.CheckInDate.DayNumber,
             Adults = reservation.AdultCount,
             Children = reservation.ChildCount,
-            Infants = 0,
             RoomCount = 1,
             TotalPrice = reservation.TotalPrice,
             PaidAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
@@ -1197,6 +1350,8 @@ public class ReservationService(
         public string PropertyName { get; set; } = string.Empty;
         public int RoomTypeId { get; set; }
         public string RoomTypeName { get; set; } = string.Empty;
+        public int? RoomId { get; set; }
+        public string? RoomName { get; set; }
         public int? GuestId { get; set; }
         public string? GuestFirstName { get; set; }
         public string? GuestLastName { get; set; }

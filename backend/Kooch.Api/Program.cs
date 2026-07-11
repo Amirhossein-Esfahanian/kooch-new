@@ -58,9 +58,11 @@ builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabil
 builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IChildPricingRuleResolver, ChildPricingRuleResolver>();
 builder.Services.AddSingleton<PricingService>();
 builder.Services.AddScoped<CouponValidationService>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
+builder.Services.AddScoped<IAuthorizationHandler, OwnerPanelAccessAuthorizationHandler>();
 builder.Services.AddSingleton<IAuthorizationPolicyProvider, PermissionPolicyProvider>();
 
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -86,11 +88,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AuthorizationPolicies.AdminUsers, policy =>
         policy.RequireRole(UserRole.SuperAdmin.ToString(), UserRole.AdminAssistant.ToString()));
     options.AddPolicy(AuthorizationPolicies.OwnerUsers, policy =>
-        policy.RequireRole(
-            UserRole.SuperAdmin.ToString(),
-            UserRole.AdminAssistant.ToString(),
-            UserRole.Owner.ToString(),
-            UserRole.OwnerAssistant.ToString()));
+        policy.Requirements.Add(new OwnerPanelAccessRequirement()));
     options.AddPolicy(AuthorizationPolicies.ClientUsers, policy =>
         policy.RequireRole(UserRole.Client.ToString()));
 });

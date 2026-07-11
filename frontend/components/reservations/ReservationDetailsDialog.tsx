@@ -13,6 +13,7 @@ import type {
 
 interface ReservationDetailsDialogProps {
   loading?: boolean;
+  onEdit?: (reservation: ReservationTableItem) => void;
   onSendPaymentLink?: (reservation: ReservationTableItem) => void | Promise<void>;
   onStatusChange?: (
     reservation: ReservationTableItem,
@@ -209,6 +210,7 @@ function DetailSection({
 
 export function ReservationDetailsDialog({
   loading = false,
+  onEdit,
   onSendPaymentLink,
   onStatusChange,
   onOpenChange,
@@ -294,6 +296,11 @@ export function ReservationDetailsDialog({
       description={reservation?.reservationNumber ?? undefined}
       footer={
         <>
+          {reservation && onEdit && (
+            <KoochButton onClick={() => onEdit(reservation)} variant="outline">
+              ÙˆÛŒØ±Ø§ÛŒØ´
+            </KoochButton>
+          )}
           {reservation &&
             onSendPaymentLink &&
             canSendPaymentLink && (
@@ -427,7 +434,6 @@ export function ReservationDetailsDialog({
             />
             <DetailItem label="بزرگسال" value={formatNumber(reservation.adults)} />
             <DetailItem label="کودک" value={formatNumber(reservation.children)} />
-            <DetailItem label="نوزاد" value={formatNumber(reservation.infants)} />
             <DetailItem
               label="تعداد اتاق"
               value={formatNumber(reservation.roomCount)}

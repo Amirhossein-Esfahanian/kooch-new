@@ -69,7 +69,7 @@ export function AuthPage() {
       return;
     }
 
-    if (response.role === "Owner" || response.role === "OwnerAssistant") {
+    try {
       const properties = await apiRequest<PropertyResponse[]>("/owner/properties");
       if (properties.length === 1) {
         localStorage.setItem(ownerPropertyKey, properties[0].id.toString());
@@ -77,8 +77,12 @@ export function AuthPage() {
         return;
       }
 
-      router.push("/owner/select-property");
-      return;
+      if (properties.length > 1) {
+        router.push("/owner/select-property");
+        return;
+      }
+    } catch {
+      // Guests and users without property access continue to the public site.
     }
 
     router.push("/");
