@@ -29,3 +29,18 @@ public class ReservationPaymentPlaceholderResponse
     public string Message { get; set; } = string.Empty;
     public string? PlaceholderReference { get; set; }
 }
+
+public class PaymentConfirmationRequest
+{
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = "IRR";
+    public string? Provider { get; set; }
+    public string TransactionReference { get; set; } = string.Empty;
+}
+
+public class PaymentConfirmationResponse
+{
+    public int ReservationId { get; set; }
+    public ReservationStatus ReservationStatus { get; set; }
+    public bool CapacityClaimed { get; set; }
+}

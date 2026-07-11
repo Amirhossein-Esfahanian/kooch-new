@@ -14,7 +14,9 @@ import type {
 interface ReservationDetailsDialogProps {
   loading?: boolean;
   onEdit?: (reservation: ReservationTableItem) => void;
-  onSendPaymentLink?: (reservation: ReservationTableItem) => void | Promise<void>;
+  onSendPaymentLink?: (
+    reservation: ReservationTableItem,
+  ) => void | Promise<void>;
   onStatusChange?: (
     reservation: ReservationTableItem,
     status: ReservationTableStatus,
@@ -178,13 +180,7 @@ function isUnpaidReservation(reservation: ReservationTableItem) {
   return reservation.status !== "Paid";
 }
 
-function DetailItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
+function DetailItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="grid gap-1 rounded-md border border-border bg-background px-3 py-2">
       <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>
@@ -254,7 +250,7 @@ export function ReservationDetailsDialog({
     expiryRefreshStartedRef.current = false;
     setRemainingPaymentSeconds(
       shouldShowPaymentCountdown
-        ? reservation?.remainingPaymentSeconds ?? null
+        ? (reservation?.remainingPaymentSeconds ?? null)
         : null,
     );
   }, [
@@ -298,26 +294,22 @@ export function ReservationDetailsDialog({
         <>
           {reservation && onEdit && (
             <KoochButton onClick={() => onEdit(reservation)} variant="outline">
-              ÙˆÛŒØ±Ø§ÛŒØ´
+              ویرایش
             </KoochButton>
           )}
-          {reservation &&
-            onSendPaymentLink &&
-            canSendPaymentLink && (
-              <KoochConfirmDialog
-                cancelText="انصراف"
-                confirmText="ارسال لینک پرداخت"
-                description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
-                onConfirm={() => onSendPaymentLink(reservation)}
-                title="ارسال لینک پرداخت"
-                trigger={
-                  <KoochButton variant="outline">
-                    ارسال لینک پرداخت
-                  </KoochButton>
-                }
-                variant="warning"
-              />
-            )}
+          {reservation && onSendPaymentLink && canSendPaymentLink && (
+            <KoochConfirmDialog
+              cancelText="انصراف"
+              confirmText="ارسال لینک پرداخت"
+              description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
+              onConfirm={() => onSendPaymentLink(reservation)}
+              title="ارسال لینک پرداخت"
+              trigger={
+                <KoochButton variant="outline">ارسال لینک پرداخت</KoochButton>
+              }
+              variant="warning"
+            />
+          )}
           {reservation &&
             onStatusChange &&
             statusActions.map((nextStatus) => {
@@ -404,10 +396,7 @@ export function ReservationDetailsDialog({
             <DetailItem label="نام کامل" value={guestName} />
             <DetailItem label="موبایل" value={reservation.guestMobile ?? "-"} />
             <DetailItem label="ایمیل" value={guestEmail} />
-            <DetailItem
-              label="کد ملی / شماره پاسپورت"
-              value={identityNumber}
-            />
+            <DetailItem label="کد ملی / شماره پاسپورت" value={identityNumber} />
             <DetailItem
               label="ملیت"
               value={reservation.guestNationality ?? "-"}
@@ -432,8 +421,14 @@ export function ReservationDetailsDialog({
               label="تعداد شب"
               value={formatNumber(reservation.nightsCount)}
             />
-            <DetailItem label="بزرگسال" value={formatNumber(reservation.adults)} />
-            <DetailItem label="کودک" value={formatNumber(reservation.children)} />
+            <DetailItem
+              label="بزرگسال"
+              value={formatNumber(reservation.adults)}
+            />
+            <DetailItem
+              label="کودک"
+              value={formatNumber(reservation.children)}
+            />
             <DetailItem
               label="تعداد اتاق"
               value={formatNumber(reservation.roomCount)}
@@ -471,7 +466,10 @@ export function ReservationDetailsDialog({
             />
             <DetailItem
               label="باقی‌مانده"
-              value={formatMoney(reservation.remainingAmount, reservation.currency)}
+              value={formatMoney(
+                reservation.remainingAmount,
+                reservation.currency,
+              )}
             />
             <DetailItem label="واحد پول" value={reservation.currency ?? "-"} />
           </DetailSection>
@@ -501,7 +499,8 @@ export function ReservationDetailsDialog({
                         : "warning"
                     }
                   >
-                    {reservation.isPaymentExpired || remainingPaymentSeconds === 0
+                    {reservation.isPaymentExpired ||
+                    remainingPaymentSeconds === 0
                       ? "مهلت پرداخت تمام شده است."
                       : formatDuration(remainingPaymentSeconds)}
                   </KoochBadge>

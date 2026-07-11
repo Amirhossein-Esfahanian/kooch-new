@@ -60,8 +60,13 @@ function readPositiveNumber(value: string | null, fallback: number) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function readGuestParams(searchParams: Pick<URLSearchParams, "get">): GuestSelectorValue {
-  const children = Math.max(0, readPositiveNumber(searchParams.get("children"), 0));
+function readGuestParams(
+  searchParams: Pick<URLSearchParams, "get">,
+): GuestSelectorValue {
+  const children = Math.max(
+    0,
+    readPositiveNumber(searchParams.get("children"), 0),
+  );
   const childAges = (searchParams.get("childAges") ?? "")
     .split(",")
     .filter(Boolean)
@@ -73,7 +78,10 @@ function readGuestParams(searchParams: Pick<URLSearchParams, "get">): GuestSelec
 
   return {
     rooms: readPositiveNumber(searchParams.get("rooms"), 1),
-    adults: readPositiveNumber(searchParams.get("adults") ?? searchParams.get("guests"), 2),
+    adults: readPositiveNumber(
+      searchParams.get("adults") ?? searchParams.get("guests"),
+      2,
+    ),
     children,
     childAges,
   };
@@ -85,7 +93,10 @@ export default function PublicPropertyPage() {
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [bookingDates, setBookingDates] = useState<{ startDate: string | null; endDate: string | null }>({
+  const [bookingDates, setBookingDates] = useState<{
+    startDate: string | null;
+    endDate: string | null;
+  }>({
     startDate: searchParams.get("checkIn"),
     endDate: searchParams.get("checkOut"),
   });
@@ -105,7 +116,9 @@ export default function PublicPropertyPage() {
     if (!property) return;
     document.title = property.seoTitle || property.name;
     const description = property.seoDescription || property.description;
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
+    let meta = document.querySelector<HTMLMetaElement>(
+      'meta[name="description"]',
+    );
     if (!meta) {
       meta = document.createElement("meta");
       meta.name = "description";
@@ -134,8 +147,7 @@ export default function PublicPropertyPage() {
   }, [property]);
 
   if (loading) return <PageMessage>در حال بارگذاری اقامتگاه...</PageMessage>;
-  if (error || !property)
-    return <PageMessage error="اقامتگاه پیدا نشد." />;
+  if (error || !property) return <PageMessage error="اقامتگاه پیدا نشد." />;
 
   const gallery = property.images.length
     ? property.images
@@ -171,7 +183,9 @@ export default function PublicPropertyPage() {
     Paid: "صبحانه با هزینه",
   }[property.breakfastOption];
   const resultQuery = searchParams.toString();
-  const resultsHref = resultQuery ? `/properties?${resultQuery}` : "/properties";
+  const resultsHref = resultQuery
+    ? `/properties?${resultQuery}`
+    : "/properties";
 
   return (
     <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
@@ -183,7 +197,10 @@ export default function PublicPropertyPage() {
         <header className="mt-5 flex flex-wrap items-start justify-between gap-5">
           <div>
             <div className="flex gap-2">
-              <Badge>{propertyTypeLabels[property.propertyType] ?? property.propertyType}</Badge>
+              <Badge>
+                {propertyTypeLabels[property.propertyType] ??
+                  property.propertyType}
+              </Badge>
               <Badge green>تایید شده</Badge>
               <Badge>{breakfastLabel}</Badge>
             </div>
@@ -214,7 +231,11 @@ export default function PublicPropertyPage() {
         />
 
         <section className="relative mt-7 grid h-[430px] grid-cols-2 grid-rows-2 gap-2 overflow-hidden rounded-2xl md:grid-cols-4">
-          <Gallery image={gallery[0]} className="col-span-2 row-span-2" name={property.name} />
+          <Gallery
+            image={gallery[0]}
+            className="col-span-2 row-span-2"
+            name={property.name}
+          />
           {[1, 2, 3, 4].map((index) => (
             <Gallery
               image={gallery[index] ?? gallery[0]}
@@ -236,11 +257,38 @@ export default function PublicPropertyPage() {
             <section>
               <h2 className="text-2xl font-black">اطلاعات سریع</h2>
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                <Highlight title="ساعت ورود" value={property.checkInTime?.slice(0, 5) ?? "ثبت نشده"} />
-                <Highlight title="ساعت خروج" value={property.checkOutTime?.slice(0, 5) ?? "ثبت نشده"} />
-                <Highlight title="صبحانه" value={property.breakfastOption === "Paid" && property.breakfastPrice != null ? `${breakfastLabel} (${formatPrice(property.breakfastPrice)})` : breakfastLabel} />
-                <Highlight title="نوع اقامتگاه" value={propertyTypeLabels[property.propertyType] ?? property.propertyType} />
-                <Highlight title="نوع رزرو" value={property.isInstantBooking ? "رزرو آنی" : "نیازمند تایید میزبان"} />
+                <Highlight
+                  title="ساعت ورود"
+                  value={property.checkInTime?.slice(0, 5) ?? "ثبت نشده"}
+                />
+                <Highlight
+                  title="ساعت خروج"
+                  value={property.checkOutTime?.slice(0, 5) ?? "ثبت نشده"}
+                />
+                <Highlight
+                  title="صبحانه"
+                  value={
+                    property.breakfastOption === "Paid" &&
+                    property.breakfastPrice != null
+                      ? `${breakfastLabel} (${formatPrice(property.breakfastPrice)})`
+                      : breakfastLabel
+                  }
+                />
+                <Highlight
+                  title="نوع اقامتگاه"
+                  value={
+                    propertyTypeLabels[property.propertyType] ??
+                    property.propertyType
+                  }
+                />
+                <Highlight
+                  title="نوع رزرو"
+                  value={
+                    property.isInstantBooking
+                      ? "رزرو آنی"
+                      : "نیازمند تایید میزبان"
+                  }
+                />
               </div>
             </section>
 
@@ -265,7 +313,10 @@ export default function PublicPropertyPage() {
                 <h2 className="text-2xl font-black">فضاهای مشترک</h2>
                 <div className="mt-5 grid gap-3 sm:grid-cols-2">
                   {property.commonAreas.map((area) => (
-                    <article className="rounded-xl border bg-white p-5" key={area.id}>
+                    <article
+                      className="rounded-xl border bg-white p-5"
+                      key={area.id}
+                    >
                       <h3 className="font-black">{area.name}</h3>
                       {area.description && (
                         <p className="mt-2 text-sm leading-7 text-slate-600">
@@ -283,7 +334,10 @@ export default function PublicPropertyPage() {
                 <h2 className="text-2xl font-black">چشم‌اندازها</h2>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {property.views.map((view) => (
-                    <span className="rounded-full border bg-white px-3 py-1.5 text-sm font-bold" key={view}>
+                    <span
+                      className="rounded-full border bg-white px-3 py-1.5 text-sm font-bold"
+                      key={view}
+                    >
                       {viewLabels[view] ?? view}
                     </span>
                   ))}
@@ -296,9 +350,16 @@ export default function PublicPropertyPage() {
                 <h2 className="text-2xl font-black">دسترسی‌پذیری</h2>
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
                   {accessibility.map(([label, value]) => (
-                    <article className="rounded-xl border bg-white p-4" key={String(label)}>
-                      <p className="text-sm font-bold text-slate-500">{label}</p>
-                      <p className={`mt-2 font-black ${value ? "text-green-700" : "text-slate-500"}`}>
+                    <article
+                      className="rounded-xl border bg-white p-4"
+                      key={String(label)}
+                    >
+                      <p className="text-sm font-bold text-slate-500">
+                        {label}
+                      </p>
+                      <p
+                        className={`mt-2 font-black ${value ? "text-green-700" : "text-slate-500"}`}
+                      >
                         {value ? "دارد" : "ندارد"}
                       </p>
                     </article>
@@ -312,11 +373,17 @@ export default function PublicPropertyPage() {
               {groupedAmenities.length ? (
                 <div className="mt-5 grid gap-4 sm:grid-cols-2">
                   {groupedAmenities.map(([category, amenities]) => (
-                    <article className="rounded-xl border bg-white p-5" key={category}>
+                    <article
+                      className="rounded-xl border bg-white p-5"
+                      key={category}
+                    >
                       <h3 className="font-black">{category}</h3>
                       <div className="mt-3 flex flex-wrap gap-2">
                         {amenities.map((amenity) => (
-                          <span className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold" key={amenity.id}>
+                          <span
+                            className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold"
+                            key={amenity.id}
+                          >
                             {amenity.name}
                           </span>
                         ))}
@@ -363,10 +430,14 @@ export default function PublicPropertyPage() {
                         <tr className="border-t" key={place.id}>
                           <td className="p-3 font-bold">{place.title}</td>
                           <td className="p-3">
-                            {place.walkingMinutes != null ? `${place.walkingMinutes} دقیقه` : "-"}
+                            {place.walkingMinutes != null
+                              ? `${place.walkingMinutes} دقیقه`
+                              : "-"}
                           </td>
                           <td className="p-3">
-                            {place.drivingMinutes != null ? `${place.drivingMinutes} دقیقه` : "-"}
+                            {place.drivingMinutes != null
+                              ? `${place.drivingMinutes} دقیقه`
+                              : "-"}
                           </td>
                         </tr>
                       ))}
@@ -382,7 +453,9 @@ export default function PublicPropertyPage() {
               <h2 className="text-2xl font-black">موقعیت</h2>
               <div className="mt-4 grid min-h-64 place-items-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 text-center">
                 <div>
-                  <strong className="text-blue-800">نقشه به‌زودی اضافه می‌شود</strong>
+                  <strong className="text-blue-800">
+                    نقشه به‌زودی اضافه می‌شود
+                  </strong>
                   <p className="mt-2 text-sm text-blue-700">{property.city}</p>
                 </div>
               </div>
@@ -400,7 +473,11 @@ export default function PublicPropertyPage() {
                 calendarType="jalali"
                 controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs"
                 disablePastDates
-                labels={{ start: "تاریخ ورود", end: "تاریخ خروج", rangeTitle: "انتخاب تاریخ اقامت" }}
+                labels={{
+                  start: "تاریخ ورود",
+                  end: "تاریخ خروج",
+                  rangeTitle: "انتخاب تاریخ اقامت",
+                }}
                 labelsAbove
                 mode="range"
                 onChange={setBookingDates}
@@ -410,16 +487,24 @@ export default function PublicPropertyPage() {
               />
               <GuestSelector
                 controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs"
-                label="ØªØ¹Ø¯Ø§Ø¯ Ù…Ù‡Ù…Ø§Ù†"
+                label="تعداد مهمان"
                 onChange={setBookingGuests}
                 value={bookingGuests}
               />
               <label className="hidden">
                 تعداد مهمان
-                <input className="rounded-lg border px-3 py-2.5" defaultValue="2" min="1" type="number" />
+                <input
+                  className="rounded-lg border px-3 py-2.5"
+                  defaultValue="2"
+                  min="1"
+                  type="number"
+                />
               </label>
             </div>
-            <button className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 font-black text-white" type="button">
+            <button
+              className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 font-black text-white"
+              type="button"
+            >
               بررسی موجودی
             </button>
             <p className="mt-3 text-center text-xs text-slate-400">
@@ -490,7 +575,10 @@ function RoomTypeCard({
           {roomType.amenities.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
               {roomType.amenities.map((amenity) => (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold" key={amenity.id}>
+                <span
+                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold"
+                  key={amenity.id}
+                >
                   {amenity.name}
                 </span>
               ))}
@@ -596,7 +684,10 @@ function PageMessage({
       {error ? (
         <>
           <p className="rounded-xl bg-red-50 p-6 text-red-700">{error}</p>
-          <Link className="mt-5 inline-block font-bold text-blue-700" href="/properties">
+          <Link
+            className="mt-5 inline-block font-bold text-blue-700"
+            href="/properties"
+          >
             بازگشت به اقامتگاه‌ها
           </Link>
         </>

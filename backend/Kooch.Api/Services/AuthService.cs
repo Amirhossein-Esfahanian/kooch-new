@@ -488,7 +488,7 @@ public class AuthService(
             guest.NormalizedMobile ??= mobile;
             guest.Email ??= email;
             guest.NormalizedEmail ??= email;
-            guest.Nationality ??= "Ø§ÛŒØ±Ø§Ù†";
+            guest.Nationality ??= "ایران";
             await dbContext.SaveChangesAsync(cancellationToken);
             return guest.Id;
         }
@@ -502,7 +502,7 @@ public class AuthService(
             NormalizedMobile = mobile,
             Email = email,
             NormalizedEmail = email,
-            Nationality = "Ø§ÛŒØ±Ø§Ù†"
+            Nationality = "ایران"
         };
         dbContext.Guests.Add(newGuest);
         await dbContext.SaveChangesAsync(cancellationToken);

@@ -112,6 +112,17 @@ public enum ReservationBookingModeFilter
     OnRequest
 }
 
+public class AvailableRoomResponse
+{
+    public int Id { get; set; }
+    public int RoomTypeId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public int Capacity { get; set; }
+    public bool AllowExtraGuest { get; set; }
+    public int MaxExtraGuests { get; set; }
+    public ReservationBookingModeFilter BookingMode { get; set; }
+}
+
 public class PagedResult<T>
 {
     public IReadOnlyList<T> Items { get; set; } = [];

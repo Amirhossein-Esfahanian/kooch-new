@@ -58,6 +58,7 @@
   --popover: #ffffff;
   --popover-foreground: #0f172a;
   --destructive: #dc2626;
+  --destructive-soft: #ff00000e;
   --destructive-foreground: #ffffff;
   --ring: #93c5fd;
   --theme-primary: var(--primary);

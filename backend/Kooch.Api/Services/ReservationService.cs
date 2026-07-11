@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -213,7 +214,23 @@ public class ReservationService(
             GuestNote = request.Notes
         };
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        await LockRoomTypeAsync(request.RoomTypeId, cancellationToken);
+        availability = await availabilityService.GetAvailabilityAsync(
+            request.PropertyId,
+            request.RoomTypeId,
+            request.CheckInDate,
+            request.CheckOutDate,
+            roomCount,
+            cancellationToken);
+        ValidateAvailabilityForCreate(availability, roomCount);
+        await ValidateFinalCapacityAsync(
+            request,
+            selectedRoomIds,
+            cancellationToken);
 
         dbContext.Reservations.Add(reservation);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -624,6 +641,46 @@ public class ReservationService(
             }
         }
     }
+
+    private async Task LockRoomTypeAsync(int roomTypeId, CancellationToken cancellationToken)
+    {
+        await dbContext.RoomTypes
+            .FromSqlInterpolated($"SELECT * FROM RoomTypes WITH (UPDLOCK, HOLDLOCK) WHERE Id = {roomTypeId}")
+            .AsNoTracking()
+            .SingleAsync(cancellationToken);
+    }
+
+    private async Task ValidateFinalCapacityAsync(
+        ReservationCreateRequest request,
+        IReadOnlyCollection<int> selectedRoomIds,
+        CancellationToken cancellationToken)
+    {
+        var overlappingReservations = await dbContext.Reservations.AsNoTracking()
+            .Where(reservation =>
+                reservation.RoomTypeId == request.RoomTypeId &&
+                reservation.CheckInDate < request.CheckOutDate &&
+                reservation.CheckOutDate > request.CheckInDate &&
+                (reservation.Status == ReservationStatus.Confirmed ||
+                 reservation.Status == ReservationStatus.Paid) &&
+                reservation.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
+            .Select(reservation => new
+            {
+                reservation.RoomId,
+                reservation.CheckInDate,
+                reservation.CheckOutDate
+            })
+            .ToListAsync(cancellationToken);
+
+        if (selectedRoomIds.Count > 0 && overlappingReservations.Any(reservation =>
+                reservation.RoomId.HasValue && selectedRoomIds.Contains(reservation.RoomId.Value)))
+        {
+            throw CapacityChangedException();
+        }
+
+    }
+
+    private static InvalidOperationException CapacityChangedException() =>
+        new("Availability changed. There is no longer enough capacity for the selected dates.");
 
     private static void EnsureAdminUser(UserRole role)
     {

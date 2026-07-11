@@ -1,9 +1,16 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Dtos.Reservations;
 
 namespace Kooch.Api.Services;
 
 public interface IReservationAvailabilityService
 {
+    Task<IReadOnlyList<AvailableRoomResponse>> GetAvailableRoomsAsync(
+        int propertyId,
+        DateOnly checkInDate,
+        DateOnly checkOutDate,
+        CancellationToken cancellationToken = default);
+
     Task<ReservationAvailabilityResult> GetAvailabilityAsync(
         int propertyId,
         int roomTypeId,

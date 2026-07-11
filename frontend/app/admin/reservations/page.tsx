@@ -35,7 +35,12 @@ type ReservationSourceFilter =
   | "PhoneReferral"
   | "AdminCreated"
   | "ExternalChannel";
-type PaymentStatusFilter = "" | "Pending" | "Successful" | "Failed" | "Refunded";
+type PaymentStatusFilter =
+  | ""
+  | "Pending"
+  | "Successful"
+  | "Failed"
+  | "Refunded";
 
 interface ReservationListQuery {
   propertyId: string;
@@ -83,17 +88,18 @@ interface ReservationPaymentLinkResponse {
 
 const pageSize = 10;
 
-const statusOptions: Array<{ value: ReservationStatusFilter; label: string }> = [
-  { value: "", label: "همه وضعیت‌ها" },
-  { value: "Pending", label: "در انتظار" },
-  { value: "PendingApproval", label: "در انتظار تایید" },
-  { value: "OnHold", label: "در انتظار بررسی" },
-  { value: "ApprovedAwaitingPayment", label: "در انتظار پرداخت" },
-  { value: "Confirmed", label: "تایید شده" },
-  { value: "Paid", label: "پرداخت شده" },
-  { value: "Cancelled", label: "لغو شده" },
-  { value: "PaymentExpired", label: "مهلت پرداخت گذشته" },
-];
+const statusOptions: Array<{ value: ReservationStatusFilter; label: string }> =
+  [
+    { value: "", label: "همه وضعیت‌ها" },
+    { value: "Pending", label: "در انتظار" },
+    { value: "PendingApproval", label: "در انتظار تایید" },
+    { value: "OnHold", label: "در انتظار بررسی" },
+    { value: "ApprovedAwaitingPayment", label: "در انتظار پرداخت" },
+    { value: "Confirmed", label: "تایید شده" },
+    { value: "Paid", label: "پرداخت شده" },
+    { value: "Cancelled", label: "لغو شده" },
+    { value: "PaymentExpired", label: "مهلت پرداخت گذشته" },
+  ];
 
 const initialFilters: ReservationListQuery = {
   propertyId: "",
@@ -146,14 +152,15 @@ const bookingModeOptions: Array<{
   { value: "OnRequest", label: "درخواستی" },
 ];
 
-const sourceOptions: Array<{ value: ReservationSourceFilter; label: string }> = [
-  { value: "", label: "همه منابع" },
-  { value: "Website", label: "وب‌سایت" },
-  { value: "OwnerManual", label: "ثبت مالک" },
-  { value: "PhoneReferral", label: "ارجاع تلفنی" },
-  { value: "AdminCreated", label: "ثبت ادمین" },
-  { value: "ExternalChannel", label: "کانال بیرونی" },
-];
+const sourceOptions: Array<{ value: ReservationSourceFilter; label: string }> =
+  [
+    { value: "", label: "همه منابع" },
+    { value: "Website", label: "وب‌سایت" },
+    { value: "OwnerManual", label: "ثبت مالک" },
+    { value: "PhoneReferral", label: "ارجاع تلفنی" },
+    { value: "AdminCreated", label: "ثبت ادمین" },
+    { value: "ExternalChannel", label: "کانال بیرونی" },
+  ];
 
 const paymentStatusOptions: Array<{
   value: PaymentStatusFilter;
@@ -183,9 +190,9 @@ export default function AdminReservationsPage() {
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
   const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
-  const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<number | null>(
-    null,
-  );
+  const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<
+    number | null
+  >(null);
   const [error, setError] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const propertyOptions = useMemo(
@@ -271,7 +278,9 @@ export default function AdminReservationsPage() {
       return;
     }
 
-    apiRequest<RoomResponse[]>(`/owner/room-types/${draftFilters.roomTypeId}/rooms`)
+    apiRequest<RoomResponse[]>(
+      `/owner/room-types/${draftFilters.roomTypeId}/rooms`,
+    )
       .then(setRooms)
       .catch(() => setRooms([]));
   }, [draftFilters.roomTypeId]);
@@ -350,9 +359,7 @@ export default function AdminReservationsPage() {
       setEditingReservation(details);
     } catch (caught) {
       const message =
-        caught instanceof Error
-          ? caught.message
-          : "Ø®Ø·Ø§ Ø¯Ø± Ø¯Ø±ÛŒØ§ÙØª Ø¬Ø²Ø¦ÛŒØ§Øª Ø±Ø²Ø±Ùˆ.";
+        caught instanceof Error ? caught.message : "خطا در دریافت جزئیات رزرو.";
       setError(message);
       toast.error(message);
     } finally {
@@ -420,9 +427,7 @@ export default function AdminReservationsPage() {
       }
     } catch (caught) {
       const message =
-        caught instanceof Error
-          ? caught.message
-          : "خطا در ارسال لینک پرداخت.";
+        caught instanceof Error ? caught.message : "خطا در ارسال لینک پرداخت.";
       setError(message);
       toast.error(message);
     } finally {
@@ -435,7 +440,10 @@ export default function AdminReservationsPage() {
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           actions={
-            <ManualReservationDialog context="admin" onCreated={loadReservations} />
+            <ManualReservationDialog
+              context="admin"
+              onCreated={loadReservations}
+            />
           }
           description="فهرست رزروهای ثبت‌شده در همه اقامتگاه‌ها"
           eyebrow="مدیریت"
@@ -455,7 +463,9 @@ export default function AdminReservationsPage() {
           <form className="grid gap-4" onSubmit={applyFilters}>
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <p className="text-sm font-bold text-foreground">فیلترهای رزرو</p>
+                <p className="text-sm font-bold text-foreground">
+                  فیلترهای رزرو
+                </p>
                 <p className="text-xs text-muted-foreground">
                   {activeFilterCount > 0
                     ? `${activeFilterCount} فیلتر فعال است.`
@@ -473,7 +483,11 @@ export default function AdminReservationsPage() {
                 <KoochButton loading={loading} type="submit">
                   اعمال
                 </KoochButton>
-                <KoochButton onClick={clearFilters} type="button" variant="outline">
+                <KoochButton
+                  onClick={clearFilters}
+                  type="button"
+                  variant="outline"
+                >
                   پاکسازی
                 </KoochButton>
               </div>
@@ -809,7 +823,8 @@ export default function AdminReservationsPage() {
                     onChange={(event) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        paymentStatus: event.target.value as PaymentStatusFilter,
+                        paymentStatus: event.target
+                          .value as PaymentStatusFilter,
                       }))
                     }
                     value={draftFilters.paymentStatus}

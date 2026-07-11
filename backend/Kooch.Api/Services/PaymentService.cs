@@ -1,3 +1,4 @@
+using System.Data;
 using System.Security.Cryptography;
 using System.Text;
 using Kooch.Api.Data;
@@ -9,6 +10,154 @@ namespace Kooch.Api.Services;
 
 public class PaymentService(KoochDbContext dbContext) : IPaymentService
 {
+    public async Task<PaymentConfirmationResponse> ConfirmSuccessfulPaymentAsync(
+        int reservationId,
+        PaymentConfirmationRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        if (request.Amount <= 0 ||
+            string.IsNullOrWhiteSpace(request.TransactionReference) ||
+            string.IsNullOrWhiteSpace(request.Currency) ||
+            request.Currency.Trim().Length != 3)
+        {
+            throw new ArgumentException("A positive payment amount and transaction reference are required.");
+        }
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+
+        var roomTypeId = await dbContext.Reservations.AsNoTracking()
+            .Where(reservation => reservation.Id == reservationId)
+            .Select(reservation => (int?)reservation.RoomTypeId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+
+        var roomType = await dbContext.RoomTypes
+            .FromSqlInterpolated($"SELECT * FROM RoomTypes WITH (UPDLOCK, HOLDLOCK) WHERE Id = {roomTypeId}")
+            .AsNoTracking()
+            .SingleAsync(cancellationToken);
+
+        var reservation = await dbContext.Reservations
+            .SingleAsync(item => item.Id == reservationId, cancellationToken);
+        var normalizedReference = request.TransactionReference.Trim();
+        var existingPayment = await dbContext.Payments.AsNoTracking()
+            .SingleOrDefaultAsync(payment =>
+                    payment.TransactionReference == normalizedReference &&
+                    payment.Status == PaymentStatus.Successful,
+                cancellationToken);
+        if (existingPayment is not null)
+        {
+            if (existingPayment.ReservationId != reservation.Id)
+            {
+                throw new InvalidOperationException("Transaction reference is already assigned to another reservation.");
+            }
+
+            await transaction.CommitAsync(cancellationToken);
+            return new PaymentConfirmationResponse
+            {
+                ReservationId = reservation.Id,
+                ReservationStatus = reservation.Status,
+                CapacityClaimed = reservation.Status is ReservationStatus.Confirmed or ReservationStatus.Paid
+            };
+        }
+
+        if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment)
+        {
+            throw new InvalidOperationException("Reservation is not awaiting payment confirmation.");
+        }
+
+        var previouslyPaidAmount = await dbContext.Payments.AsNoTracking()
+            .Where(payment =>
+                payment.ReservationId == reservation.Id &&
+                payment.Status == PaymentStatus.Successful)
+            .SumAsync(payment => (decimal?)payment.Amount, cancellationToken) ?? 0;
+        if (previouslyPaidAmount + request.Amount < reservation.FinalAmount)
+        {
+            throw new InvalidOperationException("Successful payment does not cover the reservation balance.");
+        }
+
+        var availabilityRows = await dbContext.Availabilities.AsNoTracking()
+            .Where(availability =>
+                availability.RoomTypeId == roomTypeId &&
+                availability.Date >= reservation.CheckInDate &&
+                availability.Date < reservation.CheckOutDate)
+            .ToDictionaryAsync(availability => availability.Date, cancellationToken);
+        var claimedReservations = await dbContext.Reservations.AsNoTracking()
+            .Where(item =>
+                item.Id != reservation.Id &&
+                item.RoomTypeId == roomTypeId &&
+                item.CheckInDate < reservation.CheckOutDate &&
+                item.CheckOutDate > reservation.CheckInDate &&
+                (item.Status == ReservationStatus.Confirmed || item.Status == ReservationStatus.Paid) &&
+                item.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
+            .Select(item => new { item.RoomId, item.CheckInDate, item.CheckOutDate })
+            .ToListAsync(cancellationToken);
+
+        var capacityExists = true;
+        if (reservation.RoomId.HasValue && claimedReservations.Any(item => item.RoomId == reservation.RoomId))
+        {
+            capacityExists = false;
+        }
+
+        for (var date = reservation.CheckInDate; date < reservation.CheckOutDate; date = date.AddDays(1))
+        {
+            availabilityRows.TryGetValue(date, out var availability);
+            var configuredCapacity = availability?.AvailableCount ?? roomType.TotalInventory;
+            var claimedCount = claimedReservations.Count(item =>
+                item.CheckInDate <= date && item.CheckOutDate > date);
+            if (availability?.IsClosed == true ||
+                availability?.Status == AvailabilityStatus.Unavailable ||
+                configuredCapacity - claimedCount <= 0)
+            {
+                capacityExists = false;
+                break;
+            }
+        }
+
+        var now = DateTime.UtcNow;
+        dbContext.Payments.Add(new Payment
+        {
+            ReservationId = reservation.Id,
+            Amount = request.Amount,
+            Currency = request.Currency.Trim(),
+            Provider = request.Provider?.Trim(),
+            TransactionReference = normalizedReference,
+            Status = PaymentStatus.Successful,
+            PaidAtUtc = now
+        });
+
+        reservation.PaidAtUtc = now;
+        reservation.ChangedAtUtc = now;
+        if (capacityExists)
+        {
+            reservation.Status = ReservationStatus.Confirmed;
+            reservation.ConfirmedAtUtc = now;
+        }
+        else
+        {
+            reservation.Status = ReservationStatus.CapacityLost;
+        }
+
+        var activeTokens = await dbContext.ReservationPaymentLinkTokens
+            .Where(token => token.ReservationId == reservation.Id && token.UsedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var token in activeTokens)
+        {
+            token.UsedAtUtc = now;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return new PaymentConfirmationResponse
+        {
+            ReservationId = reservation.Id,
+            ReservationStatus = reservation.Status,
+            CapacityClaimed = capacityExists
+        };
+    }
+
     public async Task<ReservationPaymentPreparationResponse> GetReservationPaymentPreparationAsync(
         string reservationNumber,
         string? rawToken,

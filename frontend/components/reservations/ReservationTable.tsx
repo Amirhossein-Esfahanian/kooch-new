@@ -103,17 +103,17 @@ interface ReservationTableProps {
 }
 
 const statusLabels: Record<string, string> = {
-  Pending: "Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø±",
-  Confirmed: "ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡",
-  Rejected: "Ø±Ø¯ Ø´Ø¯Ù‡",
-  Cancelled: "Ù„ØºÙˆ Ø´Ø¯Ù‡",
-  Paid: "Ù¾Ø±Ø¯Ø§Ø®Øª Ø´Ø¯Ù‡",
-  Completed: "ØªÚ©Ù…ÛŒÙ„ Ø´Ø¯Ù‡",
-  OnHold: "Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ù†Ú¯Ù‡Ø¯Ø§Ø±ÛŒ",
-  Expired: "Ù…Ù†Ù‚Ø¶ÛŒ Ø´Ø¯Ù‡",
-  PendingApproval: "Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± ØªØ§ÛŒÛŒØ¯",
-  ApprovedAwaitingPayment: "Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ù¾Ø±Ø¯Ø§Ø®Øª",
-  PaymentExpired: "Ù…Ù‡Ù„Øª Ù¾Ø±Ø¯Ø§Ø®Øª Ú¯Ø°Ø´ØªÙ‡",
+  Pending: "در انتظار",
+  Confirmed: "تایید شده",
+  Rejected: "رد شده",
+  Cancelled: "لغو شده",
+  Paid: "پرداخت شده",
+  Completed: "تکمیل شده",
+  OnHold: "در انتظار نگهداری",
+  Expired: "منقضی شده",
+  PendingApproval: "در انتظار تایید",
+  ApprovedAwaitingPayment: "در انتظار پرداخت",
+  PaymentExpired: "مهلت پرداخت گذشته",
 };
 
 function statusVariant(status: ReservationTableStatus) {
@@ -194,7 +194,7 @@ export function ReservationTable({
   currentPage,
   totalPages,
   context,
-  emptyMessage = "Ø±Ø²Ø±ÙˆÛŒ Ø¨Ø±Ø§ÛŒ Ù†Ù…Ø§ÛŒØ´ ÙˆØ¬ÙˆØ¯ Ù†Ø¯Ø§Ø±Ø¯.",
+  emptyMessage = "رزروی برای نمایش وجود ندارد.",
 }: ReservationTableProps) {
   const showProperty = context === "admin";
   const colSpan = showProperty ? 10 : 9;
@@ -206,23 +206,23 @@ export function ReservationTable({
       <KoochTable>
         <KoochTableHeader>
           <KoochTableRow>
-            <KoochTableHead>Ø´Ù…Ø§Ø±Ù‡ Ø±Ø²Ø±Ùˆ</KoochTableHead>
-            <KoochTableHead>Ù…Ù‡Ù…Ø§Ù†</KoochTableHead>
-            {showProperty && <KoochTableHead>Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡</KoochTableHead>}
-            <KoochTableHead>Ø§ØªØ§Ù‚</KoochTableHead>
-            <KoochTableHead>ÙˆØ±ÙˆØ¯</KoochTableHead>
-            <KoochTableHead>Ø®Ø±ÙˆØ¬</KoochTableHead>
-            <KoochTableHead>ÙˆØ¶Ø¹ÛŒØª</KoochTableHead>
-            <KoochTableHead>Ù…Ø¨Ù„Øº Ú©Ù„</KoochTableHead>
-            <KoochTableHead>Ø¨Ø§Ù‚ÛŒâ€ŒÙ…Ø§Ù†Ø¯Ù‡</KoochTableHead>
-            <KoochTableHead>Ø¹Ù…Ù„ÛŒØ§Øª</KoochTableHead>
+            <KoochTableHead>شماره رزرو</KoochTableHead>
+            <KoochTableHead>مهمان</KoochTableHead>
+            {showProperty && <KoochTableHead>اقامتگاه</KoochTableHead>}
+            <KoochTableHead>اتاق</KoochTableHead>
+            <KoochTableHead>ورود</KoochTableHead>
+            <KoochTableHead>خروج</KoochTableHead>
+            <KoochTableHead>وضعیت</KoochTableHead>
+            <KoochTableHead>مبلغ کل</KoochTableHead>
+            <KoochTableHead>باقی‌مانده</KoochTableHead>
+            <KoochTableHead>عملیات</KoochTableHead>
           </KoochTableRow>
         </KoochTableHeader>
 
         <KoochTableBody>
           {loading ? (
             <KoochTableEmpty colSpan={colSpan}>
-              Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø§Ø±Ú¯Ø°Ø§Ø±ÛŒ...
+              در حال بارگذاری...
             </KoochTableEmpty>
           ) : reservations.length === 0 ? (
             <KoochTableEmpty colSpan={colSpan}>{emptyMessage}</KoochTableEmpty>
@@ -240,12 +240,12 @@ export function ReservationTable({
                 isUnpaidReservation(reservation);
               return (
                 <KoochTableRow key={rowKey(reservation)}>
-                  <KoochTableCell className="font-semibold">
+                  <KoochTableCell className="font-semibold text-xs">
                     {reservation.reservationNumber || "-"}
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="grid gap-1">
-                      <span className="font-normal">{guestName}</span>
+                      <span className="font-semibold text-xs">{guestName}</span>
                       <span className="text-xs text-muted-foreground">
                         {reservation.guestMobile ?? "-"}
                       </span>
@@ -256,11 +256,13 @@ export function ReservationTable({
                       {reservation.propertyName ?? "-"}
                     </KoochTableCell>
                   )}
-                  <KoochTableCell>{roomName}</KoochTableCell>
-                  <KoochTableCell className="whitespace-nowrap">
+                  <KoochTableCell className="text-xs font-semibold">
+                    {roomName}
+                  </KoochTableCell>
+                  <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
                     {formatDate(reservation.checkInDate)}
                   </KoochTableCell>
-                  <KoochTableCell className="whitespace-nowrap">
+                  <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
                     {formatDate(reservation.checkOutDate)}
                   </KoochTableCell>
                   <KoochTableCell>
@@ -268,15 +270,15 @@ export function ReservationTable({
                       {statusLabels[reservation.status] ?? reservation.status}
                     </KoochBadge>
                     {reservation.paymentExpiresAtUtc && (
-                      <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="mt-1 text-xs  text-muted-foreground">
                         {formatDate(reservation.paymentExpiresAtUtc)}
                       </div>
                     )}
                   </KoochTableCell>
-                  <KoochTableCell className="whitespace-nowrap ">
+                  <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
                     {formatMoney(totalPrice, reservation.currency)}
                   </KoochTableCell>
-                  <KoochTableCell className="whitespace-nowrap">
+                  <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
                     {formatMoney(
                       reservation.remainingAmount,
                       reservation.currency,
@@ -289,7 +291,7 @@ export function ReservationTable({
                         size="sm"
                         variant="outline"
                       >
-                        Ø¬Ø²Ø¦ÛŒØ§Øª
+                        جزئیات
                       </KoochButton>
                       {context === "admin" && onEdit && (
                         <KoochButton
@@ -302,14 +304,14 @@ export function ReservationTable({
                       )}
                       {onSendPaymentLink && canSendPaymentLink && (
                         <KoochConfirmDialog
-                          cancelText="Ø§Ù†ØµØ±Ø§Ù"
-                          confirmText="Ø§Ø±Ø³Ø§Ù„ Ù„ÛŒÙ†Ú© Ù¾Ø±Ø¯Ø§Ø®Øª"
-                          description="Ù„ÛŒÙ†Ú© Ù¾Ø±Ø¯Ø§Ø®Øª Ø¬Ø¯ÛŒØ¯ Ø³Ø§Ø®ØªÙ‡ Ù…ÛŒâ€ŒØ´ÙˆØ¯ØŒ Ù„ÛŒÙ†Ú©â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„ Ù‚Ø¨Ù„ÛŒ Ø¨Ø§Ø·Ù„ Ù…ÛŒâ€ŒØ´ÙˆÙ†Ø¯ Ùˆ Ø§Ø·Ù„Ø§Ø¹â€ŒØ±Ø³Ø§Ù†ÛŒ Ù¾ÛŒØ§Ù…Ú© Ùˆ Ø§ÛŒÙ…ÛŒÙ„ ÙÙ‚Ø· Ø¯Ø± Ù„Ø§Ú¯ Ø«Ø¨Øª Ø®ÙˆØ§Ù‡Ø¯ Ø´Ø¯."
+                          cancelText="انصراف"
+                          confirmText="ارسال لینک پرداخت"
+                          description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
                           onConfirm={() => onSendPaymentLink(reservation)}
-                          title="Ø§Ø±Ø³Ø§Ù„ Ù„ÛŒÙ†Ú© Ù¾Ø±Ø¯Ø§Ø®Øª"
+                          title="ارسال لینک پرداخت"
                           trigger={
                             <KoochButton size="sm" variant="outline">
-                              Ø§Ø±Ø³Ø§Ù„ Ù„ÛŒÙ†Ú© Ù¾Ø±Ø¯Ø§Ø®Øª
+                              ارسال لینک پرداخت
                             </KoochButton>
                           }
                           variant="warning"
@@ -327,7 +329,7 @@ export function ReservationTable({
       {totalPages > 1 && (
         <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground">
           <span>
-            ØµÙØ­Ù‡ {new Intl.NumberFormat("fa-IR").format(currentPage)} Ø§Ø²{" "}
+            صفحه {new Intl.NumberFormat("fa-IR").format(currentPage)} از{" "}
             {new Intl.NumberFormat("fa-IR").format(totalPages)}
           </span>
           <div className="flex items-center gap-2">
@@ -337,7 +339,7 @@ export function ReservationTable({
               size="sm"
               variant="outline"
             >
-              Ù‚Ø¨Ù„ÛŒ
+              قبلی
             </KoochButton>
             <KoochButton
               disabled={!hasNext || loading}
@@ -345,7 +347,7 @@ export function ReservationTable({
               size="sm"
               variant="outline"
             >
-              Ø¨Ø¹Ø¯ÛŒ
+              بعدی
             </KoochButton>
           </div>
         </div>
@@ -353,4 +355,3 @@ export function ReservationTable({
     </div>
   );
 }
-

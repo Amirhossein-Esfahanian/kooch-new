@@ -82,7 +82,10 @@ export default function AccountReservationsPage() {
   }, [loadReservations, router]);
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8" dir="rtl">
+    <main
+      className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8"
+      dir="rtl"
+    >
       <div className="mx-auto grid max-w-6xl gap-5">
         <KoochPageHeader
           actions={
@@ -134,7 +137,7 @@ export default function AccountReservationsPage() {
                 const eligible = isPaymentEligible(reservation);
                 return (
                   <KoochTableRow key={reservation.reservationId}>
-                    <KoochTableCell className="font-black">
+                    <KoochTableCell className="font-semibold">
                       {reservation.reservationNumber}
                     </KoochTableCell>
                     <KoochTableCell>{reservation.propertyName}</KoochTableCell>
@@ -157,7 +160,10 @@ export default function AccountReservationsPage() {
                       )}
                     </KoochTableCell>
                     <KoochTableCell className="whitespace-nowrap">
-                      {formatMoney(reservation.remainingAmount, reservation.currency)}
+                      {formatMoney(
+                        reservation.remainingAmount,
+                        reservation.currency,
+                      )}
                     </KoochTableCell>
                     <KoochTableCell>
                       {reservation.status === "ApprovedAwaitingPayment" ? (
@@ -167,7 +173,9 @@ export default function AccountReservationsPage() {
                           >
                             {reservation.isPaymentExpired
                               ? "مهلت گذشته"
-                              : formatDuration(reservation.remainingPaymentSeconds)}
+                              : formatDuration(
+                                  reservation.remainingPaymentSeconds,
+                                )}
                           </KoochBadge>
                           {reservation.paymentExpiresAtUtc && (
                             <span className="text-xs text-muted-foreground">

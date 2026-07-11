@@ -10,8 +10,24 @@ namespace Kooch.Api.Controllers;
 [Route("api/admin/reservations")]
 public class AdminReservationsController(
     IReservationService reservationService,
-    IReservationPricingService reservationPricingService) : AuthenticatedControllerBase
+    IReservationPricingService reservationPricingService,
+    IReservationAvailabilityService reservationAvailabilityService) : AuthenticatedControllerBase
 {
+    [HttpGet("available-rooms")]
+    [ProducesResponseType<IReadOnlyList<AvailableRoomResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<AvailableRoomResponse>>> GetAvailableRooms(
+        [FromQuery] int propertyId,
+        [FromQuery] DateOnly checkInDate,
+        [FromQuery] DateOnly checkOutDate,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationAvailabilityService.GetAvailableRoomsAsync(
+            propertyId,
+            checkInDate,
+            checkOutDate,
+            cancellationToken));
+    }
+
     [HttpGet]
     [ProducesResponseType<PagedResult<ReservationListItemResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<ReservationListItemResponse>>> GetAll(

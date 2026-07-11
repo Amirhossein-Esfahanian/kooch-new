@@ -35,7 +35,14 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             [ReservationStatus.Cancelled] = new HashSet<ReservationStatus>(),
             [ReservationStatus.Rejected] = new HashSet<ReservationStatus>(),
             [ReservationStatus.Expired] = new HashSet<ReservationStatus>(),
-            [ReservationStatus.PaymentExpired] = new HashSet<ReservationStatus>()
+            [ReservationStatus.PaymentExpired] = new HashSet<ReservationStatus>(),
+            [ReservationStatus.Draft] = new HashSet<ReservationStatus>
+            {
+                ReservationStatus.PendingApproval,
+                ReservationStatus.ApprovedAwaitingPayment,
+                ReservationStatus.Cancelled
+            },
+            [ReservationStatus.CapacityLost] = new HashSet<ReservationStatus>()
         };
 
     public IReadOnlyCollection<ReservationStatus> GetAllowedTransitions(ReservationStatus from)
@@ -76,6 +83,8 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             ReservationStatus.PendingApproval => "Pending approval",
             ReservationStatus.ApprovedAwaitingPayment => "Approved awaiting payment",
             ReservationStatus.PaymentExpired => "Payment expired",
+            ReservationStatus.Draft => "Draft",
+            ReservationStatus.CapacityLost => "Capacity lost",
             _ => status.ToString()
         };
 }

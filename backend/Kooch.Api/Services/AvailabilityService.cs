@@ -145,6 +145,7 @@ public class AvailabilityService(
             effectiveCount,
             request.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var claimedCounts = await GetClaimedCountsAsync(roomTypeIds, dates.Min(), dates.Max(), cancellationToken);
         return updated
             .OrderBy(item => item.Date)
             .ThenBy(item => item.RoomTypeId)
@@ -153,8 +154,8 @@ public class AvailabilityService(
                 AvailabilityId = item.Id,
                 RoomTypeId = item.RoomTypeId,
                 Date = item.Date,
-                AvailableCount = item.AvailableCount,
-                Status = item.Status
+                AvailableCount = Math.Max(0, item.AvailableCount - claimedCounts.GetValueOrDefault((item.RoomTypeId, item.Date))),
+                Status = EffectiveStatus(item.Status, item.AvailableCount - claimedCounts.GetValueOrDefault((item.RoomTypeId, item.Date)))
             })
             .ToList();
     }
@@ -190,14 +191,22 @@ public class AvailabilityService(
             request.AvailableCount,
             request.AvailableCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var claimedCount = (await GetClaimedCountsAsync(
+            [roomType.Id],
+            request.Date,
+            request.Date,
+            cancellationToken)).GetValueOrDefault((roomType.Id, request.Date));
+        var effectiveCount = Math.Max(0, request.AvailableCount - claimedCount);
 
         return new InventoryDayResponse
         {
             AvailabilityId = availability?.Id,
             RoomTypeId = roomType.Id,
             Date = request.Date,
-            AvailableCount = request.AvailableCount,
-            Status = request.AvailableCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available
+            AvailableCount = effectiveCount,
+            Status = EffectiveStatus(
+                request.AvailableCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available,
+                effectiveCount)
         };
     }
 
@@ -229,14 +238,20 @@ public class AvailabilityService(
             availability.AvailableCount,
             availability.Status);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var claimedCount = (await GetClaimedCountsAsync(
+            [availability.RoomTypeId],
+            availability.Date,
+            availability.Date,
+            cancellationToken)).GetValueOrDefault((availability.RoomTypeId, availability.Date));
+        var effectiveCount = Math.Max(0, availability.AvailableCount - claimedCount);
 
         return new InventoryDayResponse
         {
             AvailabilityId = availability.Id,
             RoomTypeId = availability.RoomTypeId,
             Date = availability.Date,
-            AvailableCount = availability.AvailableCount,
-            Status = availability.Status
+            AvailableCount = effectiveCount,
+            Status = EffectiveStatus(availability.Status, effectiveCount)
         };
     }
 
@@ -251,23 +266,31 @@ public class AvailabilityService(
         ValidateDateRange(from, to);
         await EnsureCanManageAsync(userId, role, roomTypeId, cancellationToken);
 
-        return await dbContext.Availabilities.AsNoTracking()
+        var rows = await dbContext.Availabilities.AsNoTracking()
             .Where(availability => availability.RoomTypeId == roomTypeId &&
                                    availability.Date >= from &&
                                    availability.Date <= to)
             .OrderBy(availability => availability.Date)
-            .Select(availability => new AvailabilityResponse
-            {
-                Id = availability.Id,
-                RoomTypeId = availability.RoomTypeId,
-                Date = availability.Date,
-                Price = availability.Price,
-                OriginalPrice = availability.OriginalPrice,
-                AvailableCount = availability.AvailableCount,
-                Status = availability.Status,
-                MinNightsOverride = availability.MinNightsOverride
-            })
             .ToListAsync(cancellationToken);
+        var claimedCounts = await GetClaimedCountsAsync([roomTypeId], from, to, cancellationToken);
+        return rows.Select(availability =>
+            {
+                var effectiveCount = Math.Max(
+                    0,
+                    availability.AvailableCount - claimedCounts.GetValueOrDefault((availability.RoomTypeId, availability.Date)));
+                return new AvailabilityResponse
+                {
+                    Id = availability.Id,
+                    RoomTypeId = availability.RoomTypeId,
+                    Date = availability.Date,
+                    Price = availability.Price,
+                    OriginalPrice = availability.OriginalPrice,
+                    AvailableCount = effectiveCount,
+                    Status = EffectiveStatus(availability.Status, effectiveCount),
+                    MinNightsOverride = availability.MinNightsOverride
+                };
+            })
+            .ToList();
     }
 
     public async Task<IReadOnlyList<AvailabilityResponse>> SetAsync(
@@ -350,6 +373,7 @@ public class AvailabilityService(
                                    availability.Date <= monthEnd)
             .ToListAsync(cancellationToken);
         var availabilityMap = availabilityRows.ToDictionary(row => (row.RoomTypeId, row.Date));
+        var claimedCounts = await GetClaimedCountsAsync(roomTypeIds, monthStart, monthEnd, cancellationToken);
         var days = Enumerable.Range(0, monthEnd.DayNumber - monthStart.DayNumber + 1)
             .Select(offset => monthStart.AddDays(offset))
             .ToList();
@@ -369,14 +393,19 @@ public class AvailabilityService(
                 Days = days.Select(date =>
                 {
                     availabilityMap.TryGetValue((roomType.Id, date), out var availability);
-                    var count = availability?.AvailableCount ?? Math.Max(0, roomType.TotalInventory);
+                    var configuredCount = availability?.AvailableCount ?? Math.Max(0, roomType.TotalInventory);
+                    var count = Math.Max(
+                        0,
+                        configuredCount - claimedCounts.GetValueOrDefault((roomType.Id, date)));
                     return new InventoryDayResponse
                     {
                         AvailabilityId = availability?.Id,
                         RoomTypeId = roomType.Id,
                         Date = date,
                         AvailableCount = count,
-                        Status = availability?.Status ?? (count == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available)
+                        Status = EffectiveStatus(
+                            availability?.Status ?? (configuredCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available),
+                            count)
                     };
                 }).ToList()
             }).ToList()
@@ -406,6 +435,46 @@ public class AvailabilityService(
         availability.IsClosed = availability.Status == AvailabilityStatus.Unavailable;
         return availability;
     }
+
+    private async Task<Dictionary<(int RoomTypeId, DateOnly Date), int>> GetClaimedCountsAsync(
+        IReadOnlyCollection<int> roomTypeIds,
+        DateOnly from,
+        DateOnly to,
+        CancellationToken cancellationToken)
+    {
+        var reservations = await dbContext.Reservations.AsNoTracking()
+            .Where(reservation =>
+                roomTypeIds.Contains(reservation.RoomTypeId) &&
+                reservation.CheckInDate <= to &&
+                reservation.CheckOutDate > from &&
+                (reservation.Status == ReservationStatus.Confirmed ||
+                 reservation.Status == ReservationStatus.Paid) &&
+                reservation.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
+            .Select(reservation => new
+            {
+                reservation.RoomTypeId,
+                reservation.CheckInDate,
+                reservation.CheckOutDate
+            })
+            .ToListAsync(cancellationToken);
+
+        var counts = new Dictionary<(int RoomTypeId, DateOnly Date), int>();
+        foreach (var reservation in reservations)
+        {
+            var firstDate = reservation.CheckInDate < from ? from : reservation.CheckInDate;
+            var lastDate = reservation.CheckOutDate > to.AddDays(1) ? to.AddDays(1) : reservation.CheckOutDate;
+            for (var date = firstDate; date < lastDate; date = date.AddDays(1))
+            {
+                var key = (reservation.RoomTypeId, date);
+                counts[key] = counts.GetValueOrDefault(key) + 1;
+            }
+        }
+
+        return counts;
+    }
+
+    private static AvailabilityStatus EffectiveStatus(AvailabilityStatus configuredStatus, int effectiveCount) =>
+        effectiveCount <= 0 ? AvailabilityStatus.Unavailable : configuredStatus;
 
     private async Task EnsureCanManagePropertyAsync(
         int userId,

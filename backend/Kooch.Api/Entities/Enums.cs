@@ -44,7 +44,9 @@ public enum ReservationStatus
     Expired = 7,
     PendingApproval = 8,
     ApprovedAwaitingPayment = 9,
-    PaymentExpired = 10
+    PaymentExpired = 10,
+    Draft = 11,
+    CapacityLost = 12
 }
 public enum ReservationSource { Website, OwnerManual, PhoneReferral, AdminCreated, ExternalChannel }
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
