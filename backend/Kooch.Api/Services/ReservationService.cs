@@ -16,6 +16,7 @@ public class ReservationService(
     IReservationNumberGenerator reservationNumberGenerator,
     INotificationService notificationService,
     IReservationStatusWorkflow statusWorkflow,
+    IEffectiveAvailabilityService effectiveAvailabilityService,
     IHostEnvironment hostEnvironment) : IReservationService
 {
     public async Task<PagedResult<ReservationListItemResponse>> SearchAsync(
@@ -130,39 +131,35 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
+        EnsureAdminUser(currentUser.Role);
         ValidateDateRange(request.CheckInDate, request.CheckOutDate);
+        ValidateNoInfantData(request);
 
         var property = await dbContext.Properties.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == request.PropertyId, cancellationToken)
             ?? throw new KeyNotFoundException("Property not found.");
 
-        var roomType = await dbContext.RoomTypes.AsNoTracking()
-            .SingleOrDefaultAsync(item =>
-                    item.Id == request.RoomTypeId &&
-                    item.PropertyId == request.PropertyId &&
-                    item.IsActive,
-                cancellationToken)
-            ?? throw new KeyNotFoundException("Room type not found.");
+        var room = await dbContext.Rooms.AsNoTracking()
+            .Include(item => item.RoomType)
+            .SingleOrDefaultAsync(item => item.Id == request.RoomId && item.IsActive, cancellationToken)
+            ?? throw new KeyNotFoundException("Room not found.");
+        if (room.RoomType.PropertyId != request.PropertyId)
+        {
+            throw new ArgumentException("Selected room does not belong to the selected property.");
+        }
+        if (!room.RoomType.IsActive)
+        {
+            throw new KeyNotFoundException("Room type not found.");
+        }
+
+        var roomType = room.RoomType;
+        request.RoomTypeId = roomType.Id;
 
         var guest = await dbContext.Guests.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
             ?? throw new KeyNotFoundException("Guest not found.");
-        var selectedRoomIds = request.RoomIds.Distinct().ToList();
-        var roomCount = selectedRoomIds.Count > 0 ? selectedRoomIds.Count : request.RoomCount;
-
-        if (selectedRoomIds.Count > 0)
-        {
-            var validRoomCount = await dbContext.Rooms.AsNoTracking()
-                .CountAsync(room =>
-                        selectedRoomIds.Contains(room.Id) &&
-                        room.RoomTypeId == request.RoomTypeId &&
-                        room.IsActive,
-                    cancellationToken);
-            if (validRoomCount != selectedRoomIds.Count)
-            {
-                throw new ArgumentException("One or more selected rooms are invalid.");
-            }
-        }
+        var selectedRoomIds = new List<int> { room.Id };
+        const int roomCount = 1;
 
         var availability = await availabilityService.GetAvailabilityAsync(
             request.PropertyId,
@@ -197,7 +194,7 @@ public class ReservationService(
             GuestId = request.GuestId,
             PropertyId = request.PropertyId,
             RoomTypeId = request.RoomTypeId,
-            RoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : null,
+            RoomId = room.Id,
             CheckInDate = request.CheckInDate,
             CheckOutDate = request.CheckOutDate,
             AdultCount = pricePreview.Adults,
@@ -430,6 +427,7 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
+        EnsureAdminUser(currentUser.Role);
         var reservation = await dbContext.Reservations
             .Include(item => item.Property)
             .Include(item => item.RoomType)
@@ -497,6 +495,7 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
+        EnsureAdminUser(currentUser.Role);
         var reservation = await dbContext.Reservations
             .Include(item => item.Payments)
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
@@ -616,6 +615,16 @@ public class ReservationService(
         }
     }
 
+    private static void ValidateNoInfantData(ReservationCreateRequest request)
+    {
+        if (request.Infants.HasValue ||
+            request.InfantCount.HasValue ||
+            request.InfantAges is not null)
+        {
+            throw new ArgumentException("Infant data is not supported for new reservations.");
+        }
+    }
+
     private static void ValidateAvailabilityForCreate(ReservationAvailabilityResult availability, int roomCount)
     {
         if (availability.Nights.Count == 0)
@@ -655,28 +664,16 @@ public class ReservationService(
         IReadOnlyCollection<int> selectedRoomIds,
         CancellationToken cancellationToken)
     {
-        var overlappingReservations = await dbContext.Reservations.AsNoTracking()
-            .Where(reservation =>
-                reservation.RoomTypeId == request.RoomTypeId &&
-                reservation.CheckInDate < request.CheckOutDate &&
-                reservation.CheckOutDate > request.CheckInDate &&
-                (reservation.Status == ReservationStatus.Confirmed ||
-                 reservation.Status == ReservationStatus.Paid) &&
-                reservation.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
-            .Select(reservation => new
-            {
-                reservation.RoomId,
-                reservation.CheckInDate,
-                reservation.CheckOutDate
-            })
-            .ToListAsync(cancellationToken);
-
-        if (selectedRoomIds.Count > 0 && overlappingReservations.Any(reservation =>
-                reservation.RoomId.HasValue && selectedRoomIds.Contains(reservation.RoomId.Value)))
+        var effectiveAvailability = await effectiveAvailabilityService.GetRangeAsync(
+            [request.RoomTypeId],
+            request.CheckInDate,
+            request.CheckOutDate,
+            cancellationToken: cancellationToken);
+        var claimedRoomIds = effectiveAvailability[request.RoomTypeId].ClaimedRoomIds;
+        if (selectedRoomIds.Any(claimedRoomIds.Contains))
         {
             throw CapacityChangedException();
         }
-
     }
 
     private static InvalidOperationException CapacityChangedException() =>
@@ -686,7 +683,7 @@ public class ReservationService(
     {
         if (role is not (UserRole.SuperAdmin or UserRole.AdminAssistant))
         {
-            throw new UnauthorizedAccessException("Only admin users can edit reservations.");
+            throw new UnauthorizedAccessException("Only admin or admin-assistant users can modify reservations.");
         }
     }
 

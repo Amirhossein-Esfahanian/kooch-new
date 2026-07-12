@@ -137,8 +137,10 @@ public class ReservationCreateRequest : IValidatableObject
     [Range(1, int.MaxValue)]
     public int PropertyId { get; set; }
 
-    [Range(1, int.MaxValue)]
     public int RoomTypeId { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int RoomId { get; set; }
 
     [Range(1, int.MaxValue)]
     public int GuestId { get; set; }
@@ -158,6 +160,10 @@ public class ReservationCreateRequest : IValidatableObject
     public int RoomCount { get; set; } = 1;
 
     public IReadOnlyList<int> RoomIds { get; set; } = [];
+
+    public int? Infants { get; set; }
+    public int? InfantCount { get; set; }
+    public IReadOnlyList<int>? InfantAges { get; set; }
 
     public ReservationStatus? Status { get; set; }
 

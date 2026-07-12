@@ -10,7 +10,6 @@ import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
-  KoochMultiSelect,
   KoochSearchableSelect,
   KoochSelect,
   KoochTextarea,
@@ -18,10 +17,10 @@ import {
 } from "@/components/KoochFormControls";
 import type { GuestResponse } from "@/components/guests/GuestManagement";
 import {
+  ApiRequestError,
   apiRequest,
   type PricingGuestType,
   type PropertyResponse,
-  type RoomTypeResponse,
 } from "@/lib/owner-api";
 import { KoochDatePicker } from "../KoochDatePicker";
 import type { ReservationTableItem } from "./ReservationTable";
@@ -75,21 +74,36 @@ type ReservationPricePreviewResponse = {
   currency: string;
 };
 
-type ReservationSettingsResponse = {
+type EffectiveReservationRules = {
+  propertyId: number;
+  roomTypeId: number;
+  baseCapacity: number;
+  extraGuestAllowed: boolean;
+  maxExtraGuests: number;
+  extraGuestPrice: number;
   freeChildMaxAge: number | null;
   halfPriceChildMinAge: number | null;
   halfPriceChildMaxAge: number | null;
-  halfPriceChildRate: number;
+  childPrice: number | null;
+  childRate: number;
+  ruleSource: "Property" | "SiteDefault";
 };
 
 type AvailableRoomResponse = {
-  id: number;
+  roomId: number;
+  roomName: string;
+  baseCapacity: number;
   roomTypeId: number;
-  name: string;
-  capacity: number;
-  allowExtraGuest: boolean;
+  extraGuestAllowed: boolean;
   maxExtraGuests: number;
   bookingMode: "Instant" | "OnRequest";
+};
+
+type AvailableRoomApiResponse = Partial<AvailableRoomResponse> & {
+  id?: number;
+  name?: string;
+  capacity?: number;
+  allowExtraGuest?: boolean;
 };
 
 type ChildRuleSummary = {
@@ -199,91 +213,35 @@ function formatPercent(value: number) {
   return new Intl.NumberFormat("fa-IR").format(value);
 }
 
-function optionalNumber(value: string | null | undefined) {
-  if (value === null || value === undefined || value.trim() === "") return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function reservationSettingsFromPublic(
-  settings: Record<string, string>,
-): ReservationSettingsResponse {
+function buildChildRuleSummary(rules: EffectiveReservationRules): ChildRuleSummary {
   return {
-    freeChildMaxAge: optionalNumber(settings["reservation.freeChildMaxAge"]),
-    halfPriceChildMinAge: optionalNumber(
-      settings["reservation.halfPriceChildMinAge"],
-    ),
-    halfPriceChildMaxAge: optionalNumber(
-      settings["reservation.halfPriceChildMaxAge"],
-    ),
-    halfPriceChildRate:
-      optionalNumber(settings["reservation.halfPriceChildRate"]) ?? 50,
-  };
-}
-
-function buildChildHelper(
-  property: PropertyResponse | undefined,
-  globalSettings: ReservationSettingsResponse | null,
-) {
-  if (
-    property?.freeChildAgeLimit !== null &&
-    property?.freeChildAgeLimit !== undefined
-  ) {
-    return `کودک: تا ${formatAge(property.freeChildAgeLimit)} سال طبق قوانین اختصاصی اقامتگاه بررسی می‌شود.`;
-  }
-
-  if (
-    globalSettings?.freeChildMaxAge !== null &&
-    globalSettings?.freeChildMaxAge !== undefined
-  ) {
-    return `کودک: تا ${formatAge(globalSettings.freeChildMaxAge)} سال طبق پیش‌فرض سایت بررسی می‌شود.`;
-  }
-
-  return "قوانین سنی کودک برای این اقامتگاه ثبت نشده است.";
-}
-
-function buildChildRuleSummary(
-  property: PropertyResponse | undefined,
-  globalSettings: ReservationSettingsResponse | null,
-  roomType: RoomTypeResponse | undefined,
-  roomCount: number,
-): ChildRuleSummary {
-  const usesPropertyRule =
-    property?.freeChildAgeLimit !== null &&
-    property?.freeChildAgeLimit !== undefined;
-  const freeChildMaxAge = usesPropertyRule
-    ? property.freeChildAgeLimit
-    : globalSettings?.freeChildMaxAge;
-  const halfPriceMinAge = globalSettings?.halfPriceChildMinAge;
-  const halfPriceMaxAge = globalSettings?.halfPriceChildMaxAge;
-  const childCapacity = roomType ? roomType.maxChildren * roomCount : null;
-  const childPriceSource =
-    property?.childPrice !== null && property?.childPrice !== undefined
-      ? "نرخ کودک اقامتگاه"
-      : "درصد پیش‌فرض سایت";
-
-  return {
-    source: usesPropertyRule ? "تنظیمات اقامتگاه" : "پیش‌فرض سایت",
+    source:
+      rules.ruleSource === "Property" ? "تنظیمات اقامتگاه" : "پیش‌فرض سایت",
     freeChildText:
-      freeChildMaxAge !== null && freeChildMaxAge !== undefined
-        ? `کودک تا ${formatAge(freeChildMaxAge)} سال رایگان است.`
+      rules.freeChildMaxAge !== null
+        ? `کودک تا ${formatAge(rules.freeChildMaxAge)} سال رایگان است.`
         : "سن کودک رایگان ثبت نشده است.",
     childPricingText:
-      halfPriceMinAge !== null &&
-      halfPriceMinAge !== undefined &&
-      halfPriceMaxAge !== null &&
-      halfPriceMaxAge !== undefined
-        ? `از ${formatAge(halfPriceMinAge)} تا ${formatAge(halfPriceMaxAge)} سال با ${childPriceSource} محاسبه می‌شود (${formatPercent(globalSettings?.halfPriceChildRate ?? 50)}٪).`
+      rules.halfPriceChildMinAge !== null &&
+      rules.halfPriceChildMaxAge !== null
+        ? `از ${formatAge(rules.halfPriceChildMinAge)} تا ${formatAge(rules.halfPriceChildMaxAge)} سال با ${rules.childPrice !== null ? formatMoney(rules.childPrice) : `${formatPercent(rules.childRate)}٪ نرخ پایه`} محاسبه می‌شود.`
         : "بازه کودک نیم‌بها در پیش‌فرض سایت کامل نیست.",
     adultText:
-      halfPriceMaxAge !== null && halfPriceMaxAge !== undefined
-        ? `سن بالاتر از ${formatAge(halfPriceMaxAge)} سال به ظرفیت بزرگسال اضافه می‌شود.`
+      rules.halfPriceChildMaxAge !== null
+        ? `سن بالاتر از ${formatAge(rules.halfPriceChildMaxAge)} سال به ظرفیت بزرگسال اضافه می‌شود.`
         : "سن‌های خارج از بازه کودک به ظرفیت بزرگسال اضافه می‌شوند.",
-    roomText:
-      childCapacity !== null
-        ? `ظرفیت کودک اتاق انتخاب‌شده: ${formatAge(childCapacity)}`
-        : "پس از انتخاب اتاق، ظرفیت کودک نمایش داده می‌شود.",
+    roomText: rules.extraGuestAllowed
+      ? `حداکثر ${formatAge(rules.maxExtraGuests)} نفر اضافه با نرخ ${formatMoney(rules.extraGuestPrice)} پذیرفته می‌شود.`
+      : "این اتاق نفر اضافه نمی‌پذیرد.",
   };
+}
+
+function todayIsoDate() {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const day = String(today.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function guestName(guest: GuestResponse) {
@@ -298,6 +256,48 @@ function roomOptionDescription(
   room: AvailableRoomResponse,
 ) {
   return room.bookingMode === "OnRequest" ? "نیازمند تایید" : "رزرو فوری";
+}
+
+function normalizeAvailableRoom(
+  room: AvailableRoomApiResponse,
+): AvailableRoomResponse | null {
+  const roomId = room.roomId ?? room.id;
+  const roomName = room.roomName ?? room.name;
+  const baseCapacity = room.baseCapacity ?? room.capacity;
+  const extraGuestAllowed =
+    room.extraGuestAllowed ?? room.allowExtraGuest ?? false;
+
+  if (
+    !roomId ||
+    !roomName?.trim() ||
+    baseCapacity === undefined ||
+    !room.roomTypeId ||
+    !room.bookingMode
+  ) {
+    return null;
+  }
+
+  return {
+    roomId,
+    roomName: roomName.trim(),
+    roomTypeId: room.roomTypeId,
+    baseCapacity,
+    bookingMode: room.bookingMode,
+    extraGuestAllowed,
+    maxExtraGuests: room.maxExtraGuests ?? 0,
+  };
+}
+
+function isCapacityConflict(error: unknown) {
+  if (error instanceof ApiRequestError && error.status === 409) return true;
+  if (!(error instanceof Error)) return false;
+
+  const message = error.message.toLocaleLowerCase("en-US");
+  return (
+    message.includes("availability changed") ||
+    message.includes("not enough capacity") ||
+    message.includes("capacity lost")
+  );
 }
 
 function buildGuestPayload(guest: GuestDraft) {
@@ -327,7 +327,6 @@ export function ManualReservationDialog({
     propertyId: fixedPropertyId?.toString() ?? "",
   });
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
-  const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [rooms, setRooms] = useState<AvailableRoomResponse[]>([]);
   const [guests, setGuests] = useState<GuestResponse[]>([]);
   const [guestDraft, setGuestDraft] = useState<GuestDraft>(emptyGuestDraft);
@@ -336,13 +335,20 @@ export function ManualReservationDialog({
   const [pricePreview, setPricePreview] =
     useState<ReservationPricePreviewResponse | null>(null);
   const [pricePreviewLoading, setPricePreviewLoading] = useState(false);
-  const [reservationSettings, setReservationSettings] =
-    useState<ReservationSettingsResponse | null>(null);
-  const [loadingMeta, setLoadingMeta] = useState(false);
+  const [effectiveRules, setEffectiveRules] =
+    useState<EffectiveReservationRules | null>(null);
+  const [rulesLoading, setRulesLoading] = useState(false);
+  const [rulesError, setRulesError] = useState("");
   const [loadingRooms, setLoadingRooms] = useState(false);
+  const [availabilityReloadKey, setAvailabilityReloadKey] = useState(0);
   const [savingGuest, setSavingGuest] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const pricePreviewRequestId = useRef(0);
+  const availabilityAbortRef = useRef<AbortController | null>(null);
+  const rulesAbortRef = useRef<AbortController | null>(null);
+  const pricePreviewAbortRef = useRef<AbortController | null>(null);
+  const guestSearchAbortRef = useRef<AbortController | null>(null);
+  const submissionInFlightRef = useRef(false);
   const isEditMode = mode === "edit";
   const dialogOpen = isEditMode ? Boolean(controlledOpen) : open;
   const isLockedEdit =
@@ -360,14 +366,13 @@ export function ManualReservationDialog({
   }
 
   const selectedPropertyId = Number(draft.propertyId);
-  const selectedProperty = properties.find(
-    (property) => property.id === selectedPropertyId,
-  );
   const selectedGuest = guests.find(
     (guest) => guest.id.toString() === draft.guestId,
   );
   const selectedRoomNames = draft.roomIds
-    .map((id) => rooms.find((room) => room.id.toString() === id)?.name)
+    .map((id) =>
+      rooms.find((room) => room.roomId.toString() === id)?.roomName,
+    )
     .filter(Boolean);
   const confirmationRoomNames =
     selectedRoomNames.length > 0
@@ -375,32 +380,26 @@ export function ManualReservationDialog({
       : reservation?.roomName
         ? [reservation.roomName]
         : [];
-  const selectedRoomType = roomTypes.find(
-    (roomType) => roomType.id.toString() === draft.roomTypeId,
-  );
   const nightsCount = daysBetween(draft.checkInDate, draft.checkOutDate);
   const selectedRoomCount = draft.roomIds.length;
-  const selectedRoomBaseAdults = selectedRoomType
-    ? selectedRoomType.maxAdults * selectedRoomCount
+  const selectedRoomBaseAdults = effectiveRules
+    ? effectiveRules.baseCapacity * selectedRoomCount
     : 1;
-  const selectedRoomMaxAdults = selectedRoomType?.allowExtraGuest
+  const selectedRoomMaxAdults = effectiveRules?.extraGuestAllowed
     ? selectedRoomBaseAdults +
-      selectedRoomType.maxExtraGuests * selectedRoomCount
+      effectiveRules.maxExtraGuests * selectedRoomCount
     : selectedRoomBaseAdults;
   const selectedRoomIdsKey = draft.roomIds.join(",");
   const childAgesKey = draft.childAges.join(",");
   const hasValidDateRange = nightsCount > 0;
   const hasOnRequest = draft.roomIds.some(
     (id) =>
-      rooms.find((room) => room.id.toString() === id)?.bookingMode ===
+      rooms.find((room) => room.roomId.toString() === id)?.bookingMode ===
       "OnRequest",
   );
-  const childRuleSummary = buildChildRuleSummary(
-    selectedProperty,
-    reservationSettings,
-    selectedRoomType,
-    selectedRoomCount,
-  );
+  const childRuleSummary = effectiveRules
+    ? buildChildRuleSummary(effectiveRules)
+    : null;
   const confirmationTotal =
     pricePreview?.finalAmount ??
     reservation?.totalPrice ??
@@ -426,10 +425,14 @@ export function ManualReservationDialog({
             room.roomTypeId.toString() === draft.roomTypeId,
         )
         .map((room) => ({
-          value: room.id,
-          label: room.name,
-          description: roomOptionDescription(room),
-          searchText: room.name,
+          value: room.roomId,
+          label: room.roomName,
+          description: (
+            <span className="inline-flex w-fit rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold text-foreground ring-1 ring-inset ring-primary/30">
+              {roomOptionDescription(room)}
+            </span>
+          ),
+          searchText: room.roomName,
         })),
     [draft.roomTypeId, rooms],
   );
@@ -511,27 +514,29 @@ export function ManualReservationDialog({
   }
 
   function updateSelectedRooms(value: string[]) {
+    rulesAbortRef.current?.abort();
+    pricePreviewAbortRef.current?.abort();
     const selectedRooms = value
-      .map((id) => rooms.find((room) => room.id.toString() === id))
+      .map((id) => rooms.find((room) => room.roomId.toString() === id))
       .filter((room): room is AvailableRoomResponse => Boolean(room));
     const roomTypeId = selectedRooms[0]?.roomTypeId?.toString() ?? "";
     const roomIds = roomTypeId
       ? selectedRooms
           .filter((room) => room.roomTypeId.toString() === roomTypeId)
-          .map((room) => room.id.toString())
+          .map((room) => room.roomId.toString())
       : [];
-    const roomType = roomTypes.find(
-      (item) => item.id.toString() === roomTypeId,
-    );
-    const adults = roomType
-      ? Math.max(1, roomType.maxAdults * roomIds.length).toString()
-      : initialDraft.adults;
-
+    setEffectiveRules(null);
+    setRulesError("");
+    setPricePreview(null);
+    setPricePreviewLoading(false);
+    pricePreviewRequestId.current += 1;
     setDraft((current) => ({
       ...current,
       roomTypeId,
       roomIds,
-      adults,
+      adults: initialDraft.adults,
+      children: initialDraft.children,
+      childAges: [],
     }));
   }
 
@@ -550,50 +555,81 @@ export function ManualReservationDialog({
     setConfirmCreateOpen(false);
     setPricePreview(null);
     setPricePreviewLoading(false);
+    setEffectiveRules(null);
+    setRulesLoading(false);
+    setRulesError("");
+    submissionInFlightRef.current = false;
 
     if (context === "admin") {
       apiRequest<PropertyResponse[]>("/admin/properties")
         .then(setProperties)
         .catch(() => setProperties([]));
-      apiRequest<ReservationSettingsResponse>("/admin/reservation-settings")
-        .then(setReservationSettings)
-        .catch(() => setReservationSettings(null));
     } else if (fixedPropertyId) {
       apiRequest<PropertyResponse>(`/owner/properties/${fixedPropertyId}`)
         .then((property) => setProperties([property]))
         .catch(() => setProperties([]));
-      apiRequest<Record<string, string>>("/site-settings/public")
-        .then((settings) =>
-          setReservationSettings(reservationSettingsFromPublic(settings)),
-        )
-        .catch(() => setReservationSettings(null));
     }
   }, [context, dialogOpen, fixedPropertyId, isEditMode, reservation]);
 
   useEffect(() => {
-    if (!dialogOpen || !selectedPropertyId) {
-      setRoomTypes([]);
-      setRooms([]);
+    rulesAbortRef.current?.abort();
+    if (
+      !dialogOpen ||
+      isLockedEdit ||
+      context !== "admin" ||
+      !selectedPropertyId ||
+      !draft.roomTypeId ||
+      selectedRoomCount <= 0
+    ) {
+      setEffectiveRules(null);
+      setRulesLoading(false);
+      setRulesError("");
       return;
     }
 
-    setLoadingMeta(true);
-    apiRequest<RoomTypeResponse[]>(
-      `/owner/properties/${selectedPropertyId}/room-types`,
+    let cancelled = false;
+    const controller = new AbortController();
+    rulesAbortRef.current = controller;
+    const query = new URLSearchParams({
+      propertyId: selectedPropertyId.toString(),
+      roomTypeId: draft.roomTypeId,
+    });
+    setRulesLoading(true);
+    setRulesError("");
+    apiRequest<EffectiveReservationRules>(
+      `/admin/reservations/effective-rules?${query.toString()}`,
+      { signal: controller.signal },
     )
-      .then(async (items) => {
-        const activeRoomTypes = items.filter((roomType) => roomType.isActive);
-        setRoomTypes(activeRoomTypes);
-        setRooms([]);
+      .then((rules) => {
+        if (cancelled) return;
+        setEffectiveRules(rules);
+        setDraft((current) => ({
+          ...current,
+          adults: Math.max(1, rules.baseCapacity * current.roomIds.length).toString(),
+        }));
       })
-      .catch(() => {
-        setRoomTypes([]);
-        setRooms([]);
+      .catch((caught: Error) => {
+        if (cancelled) return;
+        if (caught.name === "AbortError") return;
+        setEffectiveRules(null);
+        setRulesError(caught.message || "قوانین رزرو اتاق بارگذاری نشد.");
       })
-      .finally(() => setLoadingMeta(false));
-  }, [dialogOpen, selectedPropertyId]);
+      .finally(() => {
+        if (!cancelled) setRulesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [context, dialogOpen, draft.roomTypeId, isLockedEdit, selectedPropertyId, selectedRoomCount]);
 
   useEffect(() => {
+    availabilityAbortRef.current?.abort();
+    if (isLockedEdit) {
+      setLoadingRooms(false);
+      return;
+    }
     if (
       !dialogOpen ||
       !selectedPropertyId ||
@@ -616,6 +652,8 @@ export function ManualReservationDialog({
     }
 
     let cancelled = false;
+    const controller = new AbortController();
+    availabilityAbortRef.current = controller;
     const params = new URLSearchParams({
       propertyId: selectedPropertyId.toString(),
       checkInDate: draft.checkInDate,
@@ -626,23 +664,35 @@ export function ManualReservationDialog({
     setPricePreview(null);
     setPricePreviewLoading(false);
     pricePreviewRequestId.current += 1;
-    setDraft((current) => ({
-      ...current,
-      roomTypeId: "",
-      roomIds: [],
-      adults: initialDraft.adults,
-    }));
     setLoadingRooms(true);
-    apiRequest<AvailableRoomResponse[]>(
+    apiRequest<AvailableRoomApiResponse[]>(
       `/admin/reservations/available-rooms?${params.toString()}`,
+      { signal: controller.signal },
     )
       .then((items) => {
         if (!cancelled) {
-          setRooms(items);
+          const availableRooms = items
+            .map(normalizeAvailableRoom)
+            .filter((room): room is AvailableRoomResponse => room !== null);
+          setRooms(availableRooms);
+          setDraft((current) => {
+            const selectedRoomStillAvailable = current.roomIds.every((id) =>
+              availableRooms.some((room) => room.roomId.toString() === id),
+            );
+            return selectedRoomStillAvailable
+              ? current
+              : {
+                  ...current,
+                  roomTypeId: "",
+                  roomIds: [],
+                  adults: initialDraft.adults,
+                };
+          });
         }
       })
-      .catch(() => {
+      .catch((caught: Error) => {
         if (!cancelled) {
+          if (caught.name === "AbortError") return;
           setRooms([]);
         }
       })
@@ -652,6 +702,7 @@ export function ManualReservationDialog({
 
     return () => {
       cancelled = true;
+      controller.abort();
     };
   }, [
     draft.checkInDate,
@@ -659,26 +710,39 @@ export function ManualReservationDialog({
     hasValidDateRange,
     context,
     dialogOpen,
+    isLockedEdit,
     selectedPropertyId,
+    availabilityReloadKey,
   ]);
 
   useEffect(() => {
+    guestSearchAbortRef.current?.abort();
     if (!dialogOpen || !guestBasePath || draft.guestSearch.trim().length < 2) {
       setGuests([]);
       return;
     }
 
     const timer = window.setTimeout(() => {
+      const controller = new AbortController();
+      guestSearchAbortRef.current = controller;
       const query = new URLSearchParams({ query: draft.guestSearch.trim() });
-      apiRequest<GuestResponse[]>(`${guestBasePath}?${query.toString()}`)
+      apiRequest<GuestResponse[]>(`${guestBasePath}?${query.toString()}`, {
+        signal: controller.signal,
+      })
         .then(setGuests)
-        .catch(() => setGuests([]));
+        .catch((caught: Error) => {
+          if (caught.name !== "AbortError") setGuests([]);
+        });
     }, 300);
 
-    return () => window.clearTimeout(timer);
+    return () => {
+      window.clearTimeout(timer);
+      guestSearchAbortRef.current?.abort();
+    };
   }, [dialogOpen, draft.guestSearch, guestBasePath]);
 
   useEffect(() => {
+    pricePreviewAbortRef.current?.abort();
     const requestId = pricePreviewRequestId.current + 1;
     pricePreviewRequestId.current = requestId;
 
@@ -688,6 +752,9 @@ export function ManualReservationDialog({
       isLockedEdit ||
       !selectedPropertyId ||
       !draft.roomTypeId ||
+      !effectiveRules ||
+      rulesLoading ||
+      Boolean(rulesError) ||
       !hasValidDateRange ||
       selectedRoomCount <= 0 ||
       normalizeChildAges(
@@ -702,11 +769,14 @@ export function ManualReservationDialog({
 
     setPricePreview(null);
     setPricePreviewLoading(true);
+    const controller = new AbortController();
+    pricePreviewAbortRef.current = controller;
 
     apiRequest<ReservationPricePreviewResponse>(
       "/admin/reservations/price-preview",
       {
         method: "POST",
+        signal: controller.signal,
         body: JSON.stringify({
           propertyId: selectedPropertyId,
           roomTypeId: Number(draft.roomTypeId),
@@ -728,8 +798,9 @@ export function ManualReservationDialog({
           setPricePreview(preview);
         }
       })
-      .catch(() => {
+      .catch((caught: Error) => {
         if (pricePreviewRequestId.current === requestId) {
+          if (caught.name === "AbortError") return;
           setPricePreview(null);
         }
       })
@@ -738,6 +809,8 @@ export function ManualReservationDialog({
           setPricePreviewLoading(false);
         }
       });
+
+    return () => controller.abort();
   }, [
     context,
     dialogOpen,
@@ -748,11 +821,14 @@ export function ManualReservationDialog({
     draft.children,
     draft.guestType,
     draft.roomTypeId,
+    effectiveRules,
     hasValidDateRange,
     isLockedEdit,
     selectedPropertyId,
     selectedRoomCount,
     selectedRoomIdsKey,
+    rulesError,
+    rulesLoading,
   ]);
 
   async function addGuest() {
@@ -792,6 +868,8 @@ export function ManualReservationDialog({
 
   function submitReservation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (submitting || submissionInFlightRef.current) return;
 
     if (isLockedEdit) {
       setConfirmCreateOpen(true);
@@ -837,8 +915,13 @@ export function ManualReservationDialog({
   }
 
   async function createReservation() {
+    if (submissionInFlightRef.current || submitting || pricePreviewLoading) return;
+    submissionInFlightRef.current = true;
     setSubmitting(true);
     try {
+      if (!isEditMode && context !== "admin") {
+        throw new Error("ایجاد دستی رزرو فقط برای مدیر مجاز است.");
+      }
       const reservationId = reservation?.reservationId ?? reservation?.id;
       const endpoint = isEditMode
         ? `/admin/reservations/${reservationId}`
@@ -855,6 +938,7 @@ export function ManualReservationDialog({
         body: JSON.stringify({
           propertyId: selectedPropertyId,
           roomTypeId: Number(draft.roomTypeId),
+          roomId: Number(draft.roomIds[0]),
           guestId: Number(draft.guestId),
           checkInDate: draft.checkInDate,
           checkOutDate: draft.checkOutDate,
@@ -877,18 +961,44 @@ export function ManualReservationDialog({
       setDialogOpen(false);
       await onCreated();
     } catch (caught) {
+      if (isCapacityConflict(caught)) {
+        availabilityAbortRef.current?.abort();
+        rulesAbortRef.current?.abort();
+        pricePreviewAbortRef.current?.abort();
+        setConfirmCreateOpen(false);
+        setRooms([]);
+        setEffectiveRules(null);
+        setRulesError("");
+        setPricePreview(null);
+        setPricePreviewLoading(false);
+        pricePreviewRequestId.current += 1;
+        setDraft((current) => ({
+          ...current,
+          roomTypeId: "",
+          roomIds: [],
+        }));
+        setAvailabilityReloadKey((current) => current + 1);
+        toast.error(
+          caught instanceof Error
+            ? caught.message
+            : "ظرفیت اتاق تغییر کرده است. لطفاً دوباره اتاق را انتخاب کنید.",
+        );
+        return;
+      }
+
       toast.error(
         caught instanceof Error ? caught.message : "ذخیره رزرو انجام نشد.",
       );
       throw caught;
     } finally {
+      submissionInFlightRef.current = false;
       setSubmitting(false);
     }
   }
 
   return (
     <>
-      {!isEditMode && (
+      {!isEditMode && context === "admin" && (
         <KoochButton onClick={() => setDialogOpen(true)}>
           افزودن رزرو
         </KoochButton>
@@ -906,6 +1016,12 @@ export function ManualReservationDialog({
             </KoochButton>
             <KoochButton
               form="manual-reservation-form"
+              disabled={
+                submitting ||
+                pricePreviewLoading ||
+                rulesLoading ||
+                loadingRooms
+              }
               loading={submitting}
               type="submit"
             >
@@ -923,21 +1039,46 @@ export function ManualReservationDialog({
           id="manual-reservation-form"
           onSubmit={submitReservation}
         >
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-lg border border-border bg-muted p-4 text-sm text-foreground md:col-span-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="font-black">قانون اعمال‌شده کودک</p>
-                <span className="rounded-md border border-border bg-background px-2 py-1 text-xs font-bold text-muted-foreground">
-                  {childRuleSummary.source}
-                </span>
+          {isLockedEdit ? (
+            <KoochAlert title="رزرو پرداخت‌شده یا تاییدشده" variant="warning">
+              اتاق، تاریخ، تعداد مهمان و قیمت این رزرو قابل تغییر نیست. فقط
+              یادداشت داخلی را می‌توانید ویرایش کنید.
+            </KoochAlert>
+          ) : (
+            <>
+              <div className="grid gap-4 md:grid-cols-2">
+            {rulesLoading ? (
+              <KoochCard className="md:col-span-2" padding="sm">
+                <p className="text-sm font-semibold text-muted-foreground">
+                  در حال بارگذاری قوانین اتاق...
+                </p>
+              </KoochCard>
+            ) : rulesError ? (
+              <KoochAlert className="md:col-span-2" title="خطا در قوانین اتاق" variant="destructive">
+                {rulesError}
+              </KoochAlert>
+            ) : childRuleSummary ? (
+              <div className="rounded-lg border border-border bg-muted p-4 text-sm text-foreground md:col-span-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="font-black">قانون اعمال‌شده کودک</p>
+                  <span className="rounded-md border border-border bg-background px-2 py-1 text-xs font-bold text-muted-foreground">
+                    {childRuleSummary.source}
+                  </span>
+                </div>
+                <div className="mt-3 grid gap-2 text-xs font-semibold leading-6 text-muted-foreground md:grid-cols-2">
+                  <p>{childRuleSummary.freeChildText}</p>
+                  <p>{childRuleSummary.childPricingText}</p>
+                  <p>{childRuleSummary.adultText}</p>
+                  <p>{childRuleSummary.roomText}</p>
+                </div>
               </div>
-              <div className="mt-3 grid gap-2 text-xs font-semibold leading-6 text-muted-foreground md:grid-cols-2">
-                <p>{childRuleSummary.freeChildText}</p>
-                <p>{childRuleSummary.childPricingText}</p>
-                <p>{childRuleSummary.adultText}</p>
-                <p>{childRuleSummary.roomText}</p>
-              </div>
-            </div>
+            ) : (
+              <KoochCard className="md:col-span-2" padding="sm">
+                <p className="text-sm font-semibold text-muted-foreground">
+                  برای نمایش قوانین رزرو، ابتدا اتاق را انتخاب کنید.
+                </p>
+              </KoochCard>
+            )}
 
             {context === "admin" && (
               <KoochField label="اقامتگاه" required>
@@ -945,16 +1086,29 @@ export function ManualReservationDialog({
                   disabled={isLockedEdit}
                   emptyText="اقامتگاهی پیدا نشد."
                   onChange={(value) => {
+                    availabilityAbortRef.current?.abort();
+                    rulesAbortRef.current?.abort();
+                    pricePreviewAbortRef.current?.abort();
+                    guestSearchAbortRef.current?.abort();
                     setRooms([]);
+                    setGuests([]);
+                    setEffectiveRules(null);
+                    setRulesError("");
                     setPricePreview(null);
                     setPricePreviewLoading(false);
                     pricePreviewRequestId.current += 1;
                     setDraft((current) => ({
                       ...current,
                       propertyId: value,
+                      guestId: "",
+                      guestSearch: "",
+                      checkInDate: "",
+                      checkOutDate: "",
                       roomTypeId: "",
                       roomIds: [],
                       adults: initialDraft.adults,
+                      children: initialDraft.children,
+                      childAges: [],
                     }));
                   }}
                   options={propertyOptions}
@@ -1003,14 +1157,19 @@ export function ManualReservationDialog({
               <KoochDatePicker
                 labels={{ start: "ورود", end: "خروج" }}
                 mode="range"
-                minDate={isEditMode ? undefined : new Date().toDateString()}
+                minDate={isEditMode ? undefined : todayIsoDate()}
                 openOnDialog
                 dialogContentClassName="!h-auto !max-h-[calc(100vh-2rem)] !grid-rows-[auto_minmax(0,auto)_auto]"
                 dialogBodyClassName="!overflow-visible !py-4"
                 dialogFooterClassName="!py-3 "
                 onChange={(value) => {
                   if (isLockedEdit) return;
+                  availabilityAbortRef.current?.abort();
+                  rulesAbortRef.current?.abort();
+                  pricePreviewAbortRef.current?.abort();
                   setRooms([]);
+                  setEffectiveRules(null);
+                  setRulesError("");
                   setPricePreview(null);
                   setPricePreviewLoading(false);
                   pricePreviewRequestId.current += 1;
@@ -1038,42 +1197,46 @@ export function ManualReservationDialog({
               )}
             </KoochField>
 
-            <KoochField className="md:col-span-2" label="اتاق‌ها" required>
-              <KoochMultiSelect
+            <KoochField className="md:col-span-2" label="اتاق" required>
+              <KoochSearchableSelect
                 disabled={
                   isLockedEdit ||
                   !selectedPropertyId ||
-                  loadingMeta ||
                   loadingRooms ||
                   nightsCount <= 0
                 }
                 emptyText="برای بازه انتخاب‌شده اتاقی موجود نیست."
-                onChange={(value) => updateSelectedRooms(value.map(String))}
+                onChange={(value) => updateSelectedRooms(value ? [value] : [])}
                 options={roomOptions}
                 placeholder={
-                  (loadingMeta || loadingRooms) && hasValidDateRange
+                  loadingRooms && hasValidDateRange
                     ? "در حال بارگذاری..."
                     : nightsCount <= 0
                       ? "ابتدا بازه اقامت را انتخاب کنید"
                       : "انتخاب اتاق‌ها"
                 }
                 searchPlaceholder="جستجوی اتاق..."
-                value={draft.roomIds}
+                value={draft.roomIds[0] ?? ""}
               />
             </KoochField>
 
             <KoochField
               helperText={
-                selectedRoomType?.allowExtraGuest
+                effectiveRules?.extraGuestAllowed
                   ? `ظرفیت پایه: ${new Intl.NumberFormat("fa-IR").format(selectedRoomBaseAdults)}`
-                  : selectedRoomType
-                    ? "This room does not accept extra guests."
+                  : effectiveRules
+                    ? "این اتاق نفر اضافه نمی‌پذیرد."
                     : "ابتدا اتاق را انتخاب کنید."
               }
               label="بزرگسال"
             >
               <KoochInput
-                disabled={isLockedEdit || !selectedRoomType?.allowExtraGuest}
+                disabled={
+                  isLockedEdit ||
+                  rulesLoading ||
+                  Boolean(rulesError) ||
+                  !effectiveRules?.extraGuestAllowed
+                }
                 max={selectedRoomMaxAdults}
                 min={selectedRoomBaseAdults}
                 onChange={(event) => {
@@ -1092,16 +1255,17 @@ export function ManualReservationDialog({
             </KoochField>
 
             <KoochField
-              helperText={buildChildHelper(
-                selectedProperty,
-                reservationSettings,
-              )}
+              helperText={
+                effectiveRules && effectiveRules.freeChildMaxAge !== null
+                  ? `کودک تا ${formatAge(effectiveRules.freeChildMaxAge)} سال رایگان است.`
+                  : "پس از بارگذاری قوانین اتاق، شرایط کودک نمایش داده می‌شود."
+              }
               label="کودک"
             >
               <div className="grid gap-3">
                 <KoochInput
                   min={0}
-                  disabled={isLockedEdit}
+                  disabled={isLockedEdit || rulesLoading || !effectiveRules || Boolean(rulesError)}
                   onChange={(event) => updateChildren(event.target.value)}
                   type="number"
                   value={draft.children}
@@ -1121,7 +1285,12 @@ export function ManualReservationDialog({
                           key={index}
                           max={120}
                           min={0}
-                          disabled={isLockedEdit}
+                          disabled={
+                            isLockedEdit ||
+                            rulesLoading ||
+                            !effectiveRules ||
+                            Boolean(rulesError)
+                          }
                           onChange={(event) =>
                             updateChildAge(index, event.target.value)
                           }
@@ -1229,9 +1398,11 @@ export function ManualReservationDialog({
                 برای محاسبه قیمت، تاریخ و اتاق را انتخاب کنید.
               </p>
             )}
-          </KoochCard>
+              </KoochCard>
+            </>
+          )}
 
-          <KoochField label="یادداشت">
+          <KoochField label="یادداشت داخلی">
             <KoochTextarea
               onChange={(event) => updateDraft("notes", event.target.value)}
               rows={3}
@@ -1251,7 +1422,8 @@ export function ManualReservationDialog({
         title={isEditMode ? "تایید ویرایش رزرو" : "تایید ایجاد رزرو"}
         variant="question"
       >
-        <div className="grid gap-2 text-right text-sm">
+        <KoochAlert title="مرور نهایی رزرو" variant="default">
+          <div className="grid gap-2 text-right text-sm" dir="rtl">
           <div className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">مهمان</span>
             <span className="font-bold text-foreground">
@@ -1286,7 +1458,8 @@ export function ManualReservationDialog({
               {formatMoney(confirmationTotal, confirmationCurrency)}
             </span>
           </div>
-        </div>
+          </div>
+        </KoochAlert>
       </KoochConfirmDialog>
 
       <KoochDialog

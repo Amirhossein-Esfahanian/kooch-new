@@ -8,7 +8,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class PaymentService(KoochDbContext dbContext) : IPaymentService
+public class PaymentService(
+    KoochDbContext dbContext,
+    IEffectiveAvailabilityService effectiveAvailabilityService) : IPaymentService
 {
     public async Task<PaymentConfirmationResponse> ConfirmSuccessfulPaymentAsync(
         int reservationId,
@@ -77,43 +79,16 @@ public class PaymentService(KoochDbContext dbContext) : IPaymentService
             throw new InvalidOperationException("Successful payment does not cover the reservation balance.");
         }
 
-        var availabilityRows = await dbContext.Availabilities.AsNoTracking()
-            .Where(availability =>
-                availability.RoomTypeId == roomTypeId &&
-                availability.Date >= reservation.CheckInDate &&
-                availability.Date < reservation.CheckOutDate)
-            .ToDictionaryAsync(availability => availability.Date, cancellationToken);
-        var claimedReservations = await dbContext.Reservations.AsNoTracking()
-            .Where(item =>
-                item.Id != reservation.Id &&
-                item.RoomTypeId == roomTypeId &&
-                item.CheckInDate < reservation.CheckOutDate &&
-                item.CheckOutDate > reservation.CheckInDate &&
-                (item.Status == ReservationStatus.Confirmed || item.Status == ReservationStatus.Paid) &&
-                item.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
-            .Select(item => new { item.RoomId, item.CheckInDate, item.CheckOutDate })
-            .ToListAsync(cancellationToken);
-
-        var capacityExists = true;
-        if (reservation.RoomId.HasValue && claimedReservations.Any(item => item.RoomId == reservation.RoomId))
-        {
-            capacityExists = false;
-        }
-
-        for (var date = reservation.CheckInDate; date < reservation.CheckOutDate; date = date.AddDays(1))
-        {
-            availabilityRows.TryGetValue(date, out var availability);
-            var configuredCapacity = availability?.AvailableCount ?? roomType.TotalInventory;
-            var claimedCount = claimedReservations.Count(item =>
-                item.CheckInDate <= date && item.CheckOutDate > date);
-            if (availability?.IsClosed == true ||
-                availability?.Status == AvailabilityStatus.Unavailable ||
-                configuredCapacity - claimedCount <= 0)
-            {
-                capacityExists = false;
-                break;
-            }
-        }
+        var effectiveAvailability = await effectiveAvailabilityService.GetRangeAsync(
+            [roomTypeId],
+            reservation.CheckInDate,
+            reservation.CheckOutDate,
+            reservation.Id,
+            cancellationToken);
+        var roomAvailability = effectiveAvailability[roomTypeId];
+        var capacityExists = roomAvailability.HasCapacityForFullRange(1) &&
+                             (!reservation.RoomId.HasValue ||
+                              !roomAvailability.ClaimedRoomIds.Contains(reservation.RoomId.Value));
 
         var now = DateTime.UtcNow;
         dbContext.Payments.Add(new Payment

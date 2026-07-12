@@ -11,8 +11,19 @@ namespace Kooch.Api.Controllers;
 public class AdminReservationsController(
     IReservationService reservationService,
     IReservationPricingService reservationPricingService,
-    IReservationAvailabilityService reservationAvailabilityService) : AuthenticatedControllerBase
+    IReservationAvailabilityService reservationAvailabilityService,
+    IReservationRulesResolver reservationRulesResolver) : AuthenticatedControllerBase
 {
+    [HttpGet("effective-rules")]
+    [ProducesResponseType<EffectiveReservationRules>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<EffectiveReservationRules>> GetEffectiveRules(
+        [FromQuery] int propertyId,
+        [FromQuery] int roomTypeId,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await reservationRulesResolver.ResolveAsync(propertyId, roomTypeId, cancellationToken));
+    }
+
     [HttpGet("available-rooms")]
     [ProducesResponseType<IReadOnlyList<AvailableRoomResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<AvailableRoomResponse>>> GetAvailableRooms(

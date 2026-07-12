@@ -624,6 +624,16 @@ export function clearToken() {
   localStorage.removeItem(workspaceKey);
 }
 
+export class ApiRequestError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiRequestError";
+  }
+}
+
 export async function apiRequest<T>(
   path: string,
   init: RequestInit = {},
@@ -649,8 +659,9 @@ export async function apiRequest<T>(
     const body = (await response.json().catch(() => null)) as {
       message?: string;
     } | null;
-    throw new Error(
+    throw new ApiRequestError(
       body?.message ?? `Request failed with status ${response.status}.`,
+      response.status,
     );
   }
 

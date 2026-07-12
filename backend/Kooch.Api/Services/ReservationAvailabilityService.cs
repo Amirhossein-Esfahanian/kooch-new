@@ -5,7 +5,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class ReservationAvailabilityService(KoochDbContext dbContext) : IReservationAvailabilityService
+public class ReservationAvailabilityService(
+    KoochDbContext dbContext,
+    IEffectiveAvailabilityService effectiveAvailabilityService) : IReservationAvailabilityService
 {
     public async Task<IReadOnlyList<AvailableRoomResponse>> GetAvailableRoomsAsync(
         int propertyId,
@@ -47,60 +49,29 @@ public class ReservationAvailabilityService(KoochDbContext dbContext) : IReserva
             .ToListAsync(cancellationToken);
 
         var roomTypeIds = roomTypes.Select(roomType => roomType.Id).ToArray();
-        var availability = await dbContext.Availabilities.AsNoTracking()
-            .Where(item =>
-                roomTypeIds.Contains(item.RoomTypeId) &&
-                item.Date >= checkInDate &&
-                item.Date < checkOutDate)
-            .ToListAsync(cancellationToken);
-
-        var claimedReservations = await dbContext.Reservations.AsNoTracking()
-            .Where(reservation =>
-                reservation.PropertyId == propertyId &&
-                reservation.CheckInDate < checkOutDate &&
-                reservation.CheckOutDate > checkInDate &&
-                (reservation.Status == ReservationStatus.Confirmed ||
-                 reservation.Status == ReservationStatus.Paid) &&
-                reservation.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
-            .Select(reservation => new
-            {
-                reservation.RoomTypeId,
-                reservation.RoomId,
-                reservation.CheckInDate,
-                reservation.CheckOutDate
-            })
-            .ToListAsync(cancellationToken);
-        var unavailableRoomIds = claimedReservations
-            .Where(item => item.RoomId.HasValue)
-            .Select(item => item.RoomId!.Value)
-            .ToHashSet();
+        var effectiveAvailability = await effectiveAvailabilityService.GetRangeAsync(
+            roomTypeIds,
+            checkInDate,
+            checkOutDate,
+            cancellationToken: cancellationToken);
 
         var result = new List<AvailableRoomResponse>();
         foreach (var roomType in roomTypes)
         {
-            var rows = availability.Where(item => item.RoomTypeId == roomType.Id).ToList();
-            if (rows.Any(item => item.IsClosed || item.Status == AvailabilityStatus.Unavailable || item.AvailableCount <= 0))
+            if (!effectiveAvailability.TryGetValue(roomType.Id, out var roomAvailability) ||
+                !roomAvailability.HasCapacityForFullRange(1))
             {
                 continue;
             }
 
-            var minimumInventory = GetReservationNights(checkInDate, checkOutDate)
-                .Min(date =>
-                {
-                    var configuredCount = rows.FirstOrDefault(item => item.Date == date)?.AvailableCount
-                                          ?? roomType.TotalInventory;
-                    var claimedCount = claimedReservations.Count(item =>
-                        item.RoomTypeId == roomType.Id &&
-                        item.CheckInDate <= date &&
-                        item.CheckOutDate > date);
-                    return Math.Max(0, configuredCount - claimedCount);
-                });
-            var bookingMode = rows.Any(item => item.Status == AvailabilityStatus.OnRequest)
+            var minimumInventory = roomAvailability.Nights.Values.Min(night => night.RemainingCapacity);
+            var bookingMode = roomAvailability.Nights.Values.Any(
+                night => night.ConfiguredStatus == AvailabilityStatus.OnRequest)
                 ? ReservationBookingModeFilter.OnRequest
                 : ReservationBookingModeFilter.Instant;
 
             var availableRooms = roomType.Rooms
-                .Where(room => !unavailableRoomIds.Contains(room.Id))
+                .Where(room => !roomAvailability.ClaimedRoomIds.Contains(room.Id))
                 .Take(minimumInventory);
             result.AddRange(availableRooms.Select(room => new AvailableRoomResponse
             {
@@ -147,30 +118,23 @@ public class ReservationAvailabilityService(KoochDbContext dbContext) : IReserva
                 cancellationToken)
             ?? throw new KeyNotFoundException("Room type not found.");
 
-        var dates = GetReservationNights(checkInDate, checkOutDate).ToList();
-        var availabilityRows = await dbContext.Availabilities.AsNoTracking()
-            .Where(item =>
-                item.RoomTypeId == roomTypeId &&
-                item.Date >= checkInDate &&
-                item.Date < checkOutDate)
-            .ToDictionaryAsync(item => item.Date, cancellationToken);
-        var claimedReservations = await dbContext.Reservations.AsNoTracking()
-            .Where(item =>
-                item.RoomTypeId == roomTypeId &&
-                item.CheckInDate < checkOutDate &&
-                item.CheckOutDate > checkInDate &&
-                (item.Status == ReservationStatus.Confirmed || item.Status == ReservationStatus.Paid) &&
-                item.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
-            .Select(item => new { item.CheckInDate, item.CheckOutDate })
-            .ToListAsync(cancellationToken);
-
-        var nights = dates.Select(date =>
-        {
-            availabilityRows.TryGetValue(date, out var availability);
-            var claimedCount = claimedReservations.Count(item =>
-                item.CheckInDate <= date && item.CheckOutDate > date);
-            return GetNightAvailability(roomType, availability, date, claimedCount);
-        }).ToList();
+        var range = await effectiveAvailabilityService.GetRangeAsync(
+            [roomTypeId],
+            checkInDate,
+            checkOutDate,
+            cancellationToken: cancellationToken);
+        var nights = range[roomTypeId].Nights.Values
+            .OrderBy(night => night.Date)
+            .Select(night => new ReservationNightAvailability
+            {
+                Date = night.Date,
+                Status = night.ConfiguredStatus == AvailabilityStatus.OnRequest
+                    ? AvailabilityStatus.OnRequest
+                    : night.EffectiveStatus,
+                AvailableCount = night.RemainingCapacity,
+                IsClosed = night.IsClosed
+            })
+            .ToList();
 
         return new ReservationAvailabilityResult { Nights = nights };
     }
@@ -195,39 +159,6 @@ public class ReservationAvailabilityService(KoochDbContext dbContext) : IReserva
         {
             ValidateAvailableNight(night, roomCount);
         }
-    }
-
-    private static IEnumerable<DateOnly> GetReservationNights(DateOnly checkInDate, DateOnly checkOutDate)
-    {
-        for (var date = checkInDate; date < checkOutDate; date = date.AddDays(1))
-        {
-            yield return date;
-        }
-    }
-
-    private static ReservationNightAvailability GetNightAvailability(
-        RoomType roomType,
-        Availability? availability,
-        DateOnly date,
-        int claimedCount)
-    {
-        var status = availability?.Status ??
-                     (roomType.TotalInventory > 0 ? AvailabilityStatus.Available : AvailabilityStatus.Unavailable);
-        var capacity = Math.Max(
-            0,
-            (availability?.AvailableCount ?? Math.Max(0, roomType.TotalInventory)) - claimedCount);
-        if (capacity == 0 && status == AvailabilityStatus.Available)
-        {
-            status = AvailabilityStatus.Unavailable;
-        }
-
-        return new ReservationNightAvailability
-        {
-            Date = date,
-            Status = status,
-            AvailableCount = capacity,
-            IsClosed = availability?.IsClosed == true
-        };
     }
 
     private static void ValidateAvailableNight(ReservationNightAvailability night, int roomCount)

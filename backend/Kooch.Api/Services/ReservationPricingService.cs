@@ -8,7 +8,8 @@ namespace Kooch.Api.Services;
 public class ReservationPricingService(
     KoochDbContext dbContext,
     PricingService pricingService,
-    IChildPricingRuleResolver childPricingRuleResolver) : IReservationPricingService
+    IChildPricingRuleResolver childPricingRuleResolver,
+    IReservationRulesResolver reservationRulesResolver) : IReservationPricingService
 {
     public async Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
         ReservationPricePreviewRequest request,
@@ -45,17 +46,21 @@ public class ReservationPricingService(
             .ToListAsync(cancellationToken);
 
         var bookingDate = DateOnly.FromDateTime(DateTime.UtcNow);
-        var childRules = childPricingRuleResolver.Resolve(
-            roomType.Property.FreeChildAgeLimit,
-            roomType.Property.MaxFreeChildren,
-            roomType.Property.ChildPrice,
-            await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken));
+        var effectiveRules = await reservationRulesResolver.ResolveAsync(
+            request.PropertyId,
+            request.RoomTypeId,
+            cancellationToken);
+        var childRules = effectiveRules.ChildPricingRules;
         var occupancy = childPricingRuleResolver.ResolveOccupancy(
             request.ChildAges,
             request.Children,
             childRules);
+        if (occupancy.CountedChildren > effectiveRules.BaseChildCapacity * request.RoomCount)
+        {
+            throw new InvalidOperationException("Children exceed this room's configured capacity.");
+        }
         var pricedAdults = request.Adults + occupancy.AdultEquivalentGuests;
-        ValidateExtraGuestRules(roomType, request.RoomCount, pricedAdults);
+        ValidateExtraGuestRules(effectiveRules, request.RoomCount, pricedAdults);
         var nightSnapshots = new List<ReservationNightPriceSnapshot>();
 
         foreach (var night in nights)
@@ -66,7 +71,7 @@ public class ReservationPricingService(
                 0,
                 basePrice * request.RoomCount,
                 childPricingRuleResolver.ResolveChildPrice(basePrice, childRules),
-                roomType.Property.ExtraGuestPrice ?? 0,
+                effectiveRules.ExtraGuestPrice,
                 pricedAdults,
                 occupancy.ChargeableChildren);
             var promotionCalculation = pricingService.CalculateFinalPrice(
@@ -125,11 +130,11 @@ public class ReservationPricingService(
         }
     }
 
-    private static void ValidateExtraGuestRules(RoomType roomType, int roomCount, int adults)
+    private static void ValidateExtraGuestRules(EffectiveReservationRules rules, int roomCount, int adults)
     {
-        var baseAdultCapacity = roomType.MaxAdults * roomCount;
-        var extraAdultCapacity = roomType.AllowExtraGuest
-            ? roomType.MaxExtraGuests * roomCount
+        var baseAdultCapacity = rules.BaseAdultCapacity * roomCount;
+        var extraAdultCapacity = rules.ExtraGuestAllowed
+            ? rules.MaxExtraGuests * roomCount
             : 0;
         var maxAdultCapacity = baseAdultCapacity + extraAdultCapacity;
 
@@ -138,7 +143,7 @@ public class ReservationPricingService(
             return;
         }
 
-        if (!roomType.AllowExtraGuest)
+        if (!rules.ExtraGuestAllowed)
         {
             throw new InvalidOperationException("This room does not accept extra guests.");
         }
