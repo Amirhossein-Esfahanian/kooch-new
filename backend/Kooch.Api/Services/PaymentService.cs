@@ -59,14 +59,20 @@ public class PaymentService(
             return new PaymentConfirmationResponse
             {
                 ReservationId = reservation.Id,
-                ReservationStatus = reservation.Status,
+                ReservationStatus = ReservationStatusNormalizer.Normalize(reservation.Status),
                 CapacityClaimed = reservation.Status is ReservationStatus.Confirmed or ReservationStatus.Paid
             };
         }
 
+        var now = DateTime.UtcNow;
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment)
         {
             throw new InvalidOperationException("Reservation is not awaiting payment confirmation.");
+        }
+
+        if (reservation.PaymentExpiresAtUtc is null || reservation.PaymentExpiresAtUtc <= now)
+        {
+            throw new InvalidOperationException("Reservation payment window has expired.");
         }
 
         var previouslyPaidAmount = await dbContext.Payments.AsNoTracking()
@@ -90,7 +96,6 @@ public class PaymentService(
                              (!reservation.RoomId.HasValue ||
                               !roomAvailability.ClaimedRoomIds.Contains(reservation.RoomId.Value));
 
-        var now = DateTime.UtcNow;
         dbContext.Payments.Add(new Payment
         {
             ReservationId = reservation.Id,
@@ -128,7 +133,7 @@ public class PaymentService(
         return new PaymentConfirmationResponse
         {
             ReservationId = reservation.Id,
-            ReservationStatus = reservation.Status,
+            ReservationStatus = ReservationStatusNormalizer.Normalize(reservation.Status),
             CapacityClaimed = capacityExists
         };
     }
@@ -266,7 +271,7 @@ public class PaymentService(
             CheckInDate = reservation.CheckInDate,
             CheckOutDate = reservation.CheckOutDate,
             NightsCount = reservation.CheckOutDate.DayNumber - reservation.CheckInDate.DayNumber,
-            Status = reservation.Status,
+            Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             TotalPrice = reservation.FinalAmount,
             PaidAmount = paidAmount,
             RemainingAmount = remainingAmount,

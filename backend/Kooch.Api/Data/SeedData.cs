@@ -107,7 +107,8 @@ public static class SeedData
             SiteSettingSeed("reservation.freeChildMaxAge", "6", SiteSettingType.Number, "Reservation", "حداکثر سن کودک رایگان", "اگر اقامتگاه قانون کودک خود را نداشته باشد از این مقدار استفاده می‌شود.", 40),
             SiteSettingSeed("reservation.halfPriceChildMinAge", "7", SiteSettingType.Number, "Reservation", "حداقل سن کودک نیم‌بها", null, 50),
             SiteSettingSeed("reservation.halfPriceChildMaxAge", "12", SiteSettingType.Number, "Reservation", "حداکثر سن کودک نیم‌بها", null, 60),
-            SiteSettingSeed("reservation.halfPriceChildRate", "50", SiteSettingType.Number, "Reservation", "درصد محاسبه کودک نیم‌بها", "۵۰ یعنی نصف قیمت پایه.", 70)
+            SiteSettingSeed("reservation.halfPriceChildRate", "50", SiteSettingType.Number, "Reservation", "درصد محاسبه کودک نیم‌بها", "۵۰ یعنی نصف قیمت پایه.", 70),
+            SiteSettingSeed("reservation.paymentWindowMinutes", "10", SiteSettingType.Number, "Reservation", "مهلت پرداخت رزرو تاییدشده (دقیقه)", null, 80)
         };
 
         var existing = await dbContext.SiteSettings.IgnoreQueryFilters().ToListAsync();

@@ -194,11 +194,16 @@ export default function OwnerReservationsPage() {
     setError("");
 
     try {
+      const isApproval =
+        reservation.status === "PendingApproval" &&
+        status === "ApprovedAwaitingPayment";
       const updated = await apiRequest<ReservationTableItem>(
-        `/owner/properties/${propertyId}/reservations/${reservationId}/status`,
+        isApproval
+          ? `/owner/properties/${propertyId}/reservations/${reservationId}/approve`
+          : `/owner/properties/${propertyId}/reservations/${reservationId}/status`,
         {
           method: "PUT",
-          body: JSON.stringify({ status }),
+          ...(isApproval ? {} : { body: JSON.stringify({ status }) }),
         },
       );
       setSelectedReservation((current) => {
@@ -367,6 +372,7 @@ export default function OwnerReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
+          onRefresh={viewReservation}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {

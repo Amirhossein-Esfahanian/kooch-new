@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -15,10 +16,15 @@ public class ReservationService(
     IReservationPricingService pricingService,
     IReservationNumberGenerator reservationNumberGenerator,
     INotificationService notificationService,
+    IAuditLogService auditLogService,
+    IPermissionService permissionService,
     IReservationStatusWorkflow statusWorkflow,
     IEffectiveAvailabilityService effectiveAvailabilityService,
     IHostEnvironment hostEnvironment) : IReservationService
 {
+    private const string PaymentWindowMinutesSettingKey = "reservation.paymentWindowMinutes";
+    private const int DefaultPaymentWindowMinutes = 10;
+
     public async Task<PagedResult<ReservationListItemResponse>> SearchAsync(
         ReservationListQuery query,
         CancellationToken cancellationToken = default)
@@ -46,6 +52,7 @@ public class ReservationService(
                 cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
+        reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
@@ -92,6 +99,7 @@ public class ReservationService(
                 cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
+        reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
@@ -120,6 +128,7 @@ public class ReservationService(
                 cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
+        reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
@@ -377,6 +386,25 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
+        var reservation = await dbContext.Reservations.AsNoTracking()
+            .Where(item => item.Id == reservationId)
+            .Select(item => new { item.PropertyId, item.Status })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+
+        if (!await CanApproveAsync(
+                currentUser.UserId,
+                currentUser.Role,
+                reservation.PropertyId,
+                cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot approve this property's reservations.");
+        }
+
+        statusWorkflow.ValidateTransition(
+            reservation.Status,
+            ReservationStatus.ApprovedAwaitingPayment);
+
         return await UpdateStatusAsync(
             reservationId,
             new ReservationStatusUpdateRequest
@@ -438,9 +466,43 @@ public class ReservationService(
         return ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
     }
 
-    public async Task<bool> ExpirePaymentWindowAsync(
+    public Task<bool> ExpirePaymentWindowAsync(
         int reservationId,
+        CancellationToken cancellationToken = default) =>
+        ExpirePaymentWindowAtAsync(reservationId, DateTime.UtcNow, cancellationToken);
+
+    public async Task<int> ExpireApprovedUnpaidReservationsAsync(
         CancellationToken cancellationToken = default)
+    {
+        var now = DateTime.UtcNow;
+        var reservationIds = await dbContext.Reservations.AsNoTracking()
+            .Where(reservation =>
+                reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
+                reservation.PaymentExpiresAtUtc.HasValue &&
+                reservation.PaymentExpiresAtUtc.Value <= now &&
+                !reservation.PaidAtUtc.HasValue &&
+                (reservation.Payments
+                    .Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) < reservation.FinalAmount)
+            .Select(reservation => reservation.Id)
+            .ToListAsync(cancellationToken);
+
+        var expiredCount = 0;
+        foreach (var reservationId in reservationIds)
+        {
+            if (await ExpirePaymentWindowAtAsync(reservationId, now, cancellationToken))
+            {
+                expiredCount++;
+            }
+        }
+
+        return expiredCount;
+    }
+
+    private async Task<bool> ExpirePaymentWindowAtAsync(
+        int reservationId,
+        DateTime now,
+        CancellationToken cancellationToken)
     {
         var reservation = await dbContext.Reservations
             .Include(item => item.Property)
@@ -448,19 +510,26 @@ public class ReservationService(
             .Include(item => item.Guest)
             .Include(item => item.Client)
             .Include(item => item.ApprovedByUser)
+            .Include(item => item.Payments)
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
+        var paidAmount = reservation.Payments
+            .Where(payment => payment.Status == PaymentStatus.Successful)
+            .Sum(payment => payment.Amount);
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment ||
             reservation.PaymentExpiresAtUtc is null ||
-            reservation.PaymentExpiresAtUtc > DateTime.UtcNow)
+            reservation.PaymentExpiresAtUtc > now ||
+            reservation.PaidAtUtc.HasValue ||
+            paidAmount >= reservation.FinalAmount)
         {
             return false;
         }
 
         reservation.Status = ReservationStatus.PaymentExpired;
-        reservation.ExpiredAtUtc = DateTime.UtcNow;
-        reservation.ChangedAtUtc = reservation.ExpiredAtUtc;
+        reservation.ExpiredAtUtc = now;
+        reservation.ChangedAtUtc = now;
+        reservation.ChangedByUserId = null;
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -475,6 +544,19 @@ public class ReservationService(
         return true;
     }
 
+    private async Task<Reservation> ExpireAndReloadIfNeededAsync(
+        Reservation reservation,
+        CancellationToken cancellationToken)
+    {
+        if (!await ExpirePaymentWindowAsync(reservation.Id, cancellationToken))
+        {
+            return reservation;
+        }
+
+        return await ReservationQuery()
+            .SingleAsync(item => item.Id == reservation.Id, cancellationToken);
+    }
+
     public async Task<ReservationResponse> UpdateStatusAsync(
         int reservationId,
         ReservationStatusUpdateRequest request,
@@ -482,7 +564,8 @@ public class ReservationService(
         CancellationToken cancellationToken = default)
     {
         EnsureStatusManager(currentUser.Role);
-        if (request.Status == ReservationStatus.Cancelled)
+        var targetStatus = ReservationStatusNormalizer.Normalize(request.Status);
+        if (targetStatus == ReservationStatus.Cancelled)
         {
             throw new InvalidOperationException("Use the reservation cancellation endpoint to cancel a reservation.");
         }
@@ -496,20 +579,20 @@ public class ReservationService(
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
-        statusWorkflow.ValidateTransition(reservation.Status, request.Status);
+        statusWorkflow.ValidateTransition(reservation.Status, targetStatus);
 
         var now = DateTime.UtcNow;
-        if (request.Status == ReservationStatus.PaymentExpired &&
+        if (targetStatus == ReservationStatus.PaymentExpired &&
             (reservation.PaymentExpiresAtUtc is null || reservation.PaymentExpiresAtUtc > now))
         {
             throw new InvalidOperationException("Payment deadline has not expired yet.");
         }
 
-        reservation.Status = request.Status;
+        reservation.Status = targetStatus;
         reservation.ChangedAtUtc = now;
         reservation.ChangedByUserId = currentUser.UserId;
 
-        switch (request.Status)
+        switch (targetStatus)
         {
             case ReservationStatus.Confirmed:
                 reservation.ConfirmedAtUtc ??= now;
@@ -518,20 +601,28 @@ public class ReservationService(
                 reservation.PaidAtUtc ??= now;
                 reservation.ConfirmedAtUtc ??= now;
                 break;
-            case ReservationStatus.Expired:
             case ReservationStatus.PaymentExpired:
                 reservation.ExpiredAtUtc ??= now;
                 break;
             case ReservationStatus.ApprovedAwaitingPayment:
-                reservation.ApprovedAtUtc ??= now;
-                reservation.ApprovedByUserId ??= currentUser.UserId;
-                reservation.PaymentExpiresAtUtc ??= now.AddMinutes(10);
+                reservation.ApprovedAtUtc = now;
+                reservation.ApprovedByUserId = currentUser.UserId;
+                reservation.PaymentExpiresAtUtc = now.AddMinutes(
+                    await GetPaymentWindowMinutesAsync(cancellationToken));
+                auditLogService.Add(
+                    currentUser.UserId,
+                    AuditAction.BookingApproved,
+                    nameof(Reservation),
+                    reservation.Id,
+                    reservation.PropertyId,
+                    reservation.ReservationNumber,
+                    $"Reservation {reservation.ReservationNumber} was approved and is awaiting payment.");
                 break;
         }
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
-        if (TryGetStatusNotification(request.Status, out var eventType, out var message))
+        if (TryGetStatusNotification(targetStatus, out var eventType, out var message))
         {
             await notificationService.SendAsync(
                 CreateReservationNotificationRequest(
@@ -542,7 +633,9 @@ public class ReservationService(
         }
 
         await transaction.CommitAsync(cancellationToken);
-        return ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
+        return response;
     }
 
     public async Task<ReservationPaymentLinkResponse> GeneratePaymentLinkAsync(
@@ -727,6 +820,44 @@ public class ReservationService(
 
     private static InvalidOperationException CapacityChangedException() =>
         new("Availability changed. There is no longer enough capacity for the selected dates.");
+
+    private async Task<bool> CanApproveAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        if (role is UserRole.SuperAdmin or UserRole.AdminAssistant)
+        {
+            return true;
+        }
+
+        return role is UserRole.Owner or UserRole.OwnerAssistant &&
+               await permissionService.CanAsync(
+                   userId,
+                   propertyId,
+                   "bookings.edit",
+                   cancellationToken);
+    }
+
+    private async Task<int> GetPaymentWindowMinutesAsync(CancellationToken cancellationToken)
+    {
+        var configuredValue = await dbContext.SiteSettings.AsNoTracking()
+            .Where(setting =>
+                setting.IsActive &&
+                setting.Key == PaymentWindowMinutesSettingKey)
+            .Select(setting => setting.Value)
+            .SingleOrDefaultAsync(cancellationToken);
+
+        return int.TryParse(
+                   configuredValue,
+                   NumberStyles.Integer,
+                   CultureInfo.InvariantCulture,
+                   out var minutes) &&
+               minutes is > 0 and <= 10080
+            ? minutes
+            : DefaultPaymentWindowMinutes;
+    }
 
     private static void EnsureAdminUser(UserRole role)
     {
@@ -947,7 +1078,7 @@ public class ReservationService(
                 TimestampUtc = reservation.ChangedAtUtc.Value,
                 ActorUserId = reservation.ChangedByUserId,
                 Actor = ActorName(reservation.ChangedByUserId),
-                Status = reservation.Status
+                Status = ReservationStatusNormalizer.Normalize(reservation.Status)
             });
         }
 
@@ -1016,6 +1147,7 @@ public class ReservationService(
         int? scopedGuestId,
         CancellationToken cancellationToken)
     {
+        await ExpireApprovedUnpaidReservationsAsync(cancellationToken);
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
         var reservations = ApplyFilters(dbContext.Reservations.AsNoTracking(), query, scopedPropertyId, scopedGuestId);
@@ -1088,7 +1220,17 @@ public class ReservationService(
 
         if (filters.Status.HasValue)
         {
-            query = query.Where(reservation => reservation.Status == filters.Status.Value);
+            var status = ReservationStatusNormalizer.Normalize(filters.Status.Value);
+            query = status switch
+            {
+                ReservationStatus.PendingApproval => query.Where(reservation =>
+                    reservation.Status == ReservationStatus.PendingApproval ||
+                    reservation.Status == ReservationStatusNormalizer.LegacyPendingApproval),
+                ReservationStatus.PaymentExpired => query.Where(reservation =>
+                    reservation.Status == ReservationStatus.PaymentExpired ||
+                    reservation.Status == ReservationStatusNormalizer.LegacyPaymentExpired),
+                _ => query.Where(reservation => reservation.Status == status)
+            };
         }
 
         if (!string.IsNullOrWhiteSpace(filters.ReservationNumber))
@@ -1135,14 +1277,18 @@ public class ReservationService(
             query = filters.BookingMode.Value == ReservationBookingModeFilter.OnRequest
                 ? query.Where(reservation =>
                     reservation.Status == ReservationStatus.PendingApproval ||
-                    reservation.Status == ReservationStatus.OnHold ||
+                    reservation.Status == ReservationStatusNormalizer.LegacyPendingApproval ||
                     reservation.Status == ReservationStatus.ApprovedAwaitingPayment ||
-                    reservation.Status == ReservationStatus.PaymentExpired)
+                    reservation.Status == ReservationStatus.PaymentExpired ||
+                    reservation.Status == ReservationStatusNormalizer.LegacyPaymentExpired ||
+                    reservation.Status == ReservationStatus.CapacityLost)
                 : query.Where(reservation =>
                     reservation.Status != ReservationStatus.PendingApproval &&
-                    reservation.Status != ReservationStatus.OnHold &&
+                    reservation.Status != ReservationStatusNormalizer.LegacyPendingApproval &&
                     reservation.Status != ReservationStatus.ApprovedAwaitingPayment &&
-                    reservation.Status != ReservationStatus.PaymentExpired);
+                    reservation.Status != ReservationStatus.PaymentExpired &&
+                    reservation.Status != ReservationStatusNormalizer.LegacyPaymentExpired &&
+                    reservation.Status != ReservationStatus.CapacityLost);
         }
 
         if (filters.CheckInFrom.HasValue)
@@ -1307,7 +1453,7 @@ public class ReservationService(
                 ? 0
                 : reservation.FinalAmount,
             Currency = reservation.Currency,
-            Status = reservation.Status,
+            Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             CreatedAtUtc = reservation.CreatedAtUtc,
             PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
@@ -1349,7 +1495,7 @@ public class ReservationService(
             PaidAmount = row.PaidAmount,
             RemainingAmount = Math.Max(0, row.FinalAmount - row.PaidAmount),
             Currency = row.Currency,
-            Status = row.Status,
+            Status = ReservationStatusNormalizer.Normalize(row.Status),
             Source = row.Source,
             CreatedAtUtc = row.CreatedAtUtc,
             PaymentExpiresAtUtc = row.PaymentExpiresAtUtc,
@@ -1437,11 +1583,11 @@ public class ReservationService(
             RemainingAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
                 ? 0
                 : reservation.FinalAmount,
-            PayableAmount = reservation.Status is ReservationStatus.OnHold or ReservationStatus.PendingApproval
+            PayableAmount = reservation.Status == ReservationStatusNormalizer.LegacyPendingApproval || reservation.Status == ReservationStatus.PendingApproval
                 ? 0
                 : reservation.FinalAmount,
             Currency = reservation.Currency,
-            Status = reservation.Status,
+            Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             Notes = reservation.GuestNote,
             HoldUntilUtc = reservation.HoldUntilUtc,
@@ -1635,11 +1781,11 @@ public class ReservationService(
             RemainingAmount = reservation.PaidAtUtc.HasValue || reservation.Status == ReservationStatus.Paid
                 ? 0
                 : reservation.FinalAmount,
-            PayableAmount = reservation.Status is ReservationStatus.OnHold or ReservationStatus.PendingApproval
+            PayableAmount = reservation.Status == ReservationStatusNormalizer.LegacyPendingApproval || reservation.Status == ReservationStatus.PendingApproval
                 ? 0
                 : reservation.FinalAmount,
             Currency = reservation.Currency,
-            Status = reservation.Status,
+            Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             Notes = reservation.GuestNote,
             HoldUntilUtc = reservation.HoldUntilUtc,

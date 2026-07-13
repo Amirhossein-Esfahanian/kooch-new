@@ -10,7 +10,8 @@ public enum AuditAction
     RoomCreated,
     RoomDeleted,
     BookingConfirmed,
-    BookingCancelled
+    BookingCancelled,
+    BookingApproved
 }
 public enum PermissionKey
 {
@@ -40,8 +41,6 @@ public enum ReservationStatus
     Cancelled = 3,
     Paid = 4,
     Completed = 5,
-    OnHold = 6,
-    Expired = 7,
     PendingApproval = 8,
     ApprovedAwaitingPayment = 9,
     PaymentExpired = 10,

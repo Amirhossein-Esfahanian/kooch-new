@@ -21,20 +21,17 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             {
                 ReservationStatus.Cancelled
             },
-            [ReservationStatus.OnHold] = new HashSet<ReservationStatus>(),
             [ReservationStatus.PendingApproval] = new HashSet<ReservationStatus>
             {
                 ReservationStatus.ApprovedAwaitingPayment
             },
             [ReservationStatus.ApprovedAwaitingPayment] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.Confirmed,
                 ReservationStatus.PaymentExpired
             },
             [ReservationStatus.Completed] = new HashSet<ReservationStatus>(),
             [ReservationStatus.Cancelled] = new HashSet<ReservationStatus>(),
             [ReservationStatus.Rejected] = new HashSet<ReservationStatus>(),
-            [ReservationStatus.Expired] = new HashSet<ReservationStatus>(),
             [ReservationStatus.PaymentExpired] = new HashSet<ReservationStatus>(),
             [ReservationStatus.Draft] = new HashSet<ReservationStatus>
             {
@@ -47,15 +44,18 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
 
     public IReadOnlyCollection<ReservationStatus> GetAllowedTransitions(ReservationStatus from)
     {
-        return AllowedTransitions.TryGetValue(from, out var allowedStatuses)
+        var normalizedFrom = ReservationStatusNormalizer.Normalize(from);
+        return AllowedTransitions.TryGetValue(normalizedFrom, out var allowedStatuses)
             ? allowedStatuses.ToArray()
             : Array.Empty<ReservationStatus>();
     }
 
     public bool CanTransition(ReservationStatus from, ReservationStatus to)
     {
-        return AllowedTransitions.TryGetValue(from, out var allowedStatuses) &&
-               allowedStatuses.Contains(to);
+        var normalizedFrom = ReservationStatusNormalizer.Normalize(from);
+        var normalizedTo = ReservationStatusNormalizer.Normalize(to);
+        return AllowedTransitions.TryGetValue(normalizedFrom, out var allowedStatuses) &&
+               allowedStatuses.Contains(normalizedTo);
     }
 
     public void ValidateTransition(ReservationStatus from, ReservationStatus to)
@@ -78,13 +78,11 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             ReservationStatus.Cancelled => "Cancelled",
             ReservationStatus.Paid => "Paid",
             ReservationStatus.Completed => "Completed",
-            ReservationStatus.OnHold => "On hold",
-            ReservationStatus.Expired => "Expired",
             ReservationStatus.PendingApproval => "Pending approval",
             ReservationStatus.ApprovedAwaitingPayment => "Approved awaiting payment",
             ReservationStatus.PaymentExpired => "Payment expired",
             ReservationStatus.Draft => "Draft",
             ReservationStatus.CapacityLost => "Capacity lost",
-            _ => status.ToString()
+            _ => ReservationStatusNormalizer.Normalize(status).ToString()
         };
 }

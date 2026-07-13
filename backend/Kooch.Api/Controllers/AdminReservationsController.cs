@@ -92,7 +92,6 @@ public class AdminReservationsController(
     }
 
     [HttpPut("{id:int}/approve")]
-    [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationResponse>> Approve(
         int id,
@@ -149,12 +148,17 @@ public class AdminReservationsController(
         CancellationToken cancellationToken)
     {
         var user = GetCurrentUser();
-        if (!await permissionService.HasPermissionAsync(
+        var canManageReservations = await permissionService.HasPermissionAsync(
                 user.UserId,
                 PermissionKey.ManageReservations,
-                cancellationToken: cancellationToken))
+                cancellationToken: cancellationToken);
+        if (!canManageReservations)
         {
-            response.AllowedStatusTransitions = [];
+            response.AllowedStatusTransitions = response.Status == ReservationStatus.PendingApproval
+                ? response.AllowedStatusTransitions
+                    .Where(status => status == ReservationStatus.ApprovedAwaitingPayment)
+                    .ToList()
+                : [];
         }
 
         return response;

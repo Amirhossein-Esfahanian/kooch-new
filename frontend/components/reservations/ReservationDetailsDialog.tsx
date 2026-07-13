@@ -27,6 +27,7 @@ import type {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
 interface ReservationDetailsDialogProps {
   loading?: boolean;
@@ -38,6 +39,7 @@ interface ReservationDetailsDialogProps {
   onSendPaymentLink?: (
     reservation: ReservationTableItem,
   ) => void | Promise<void>;
+  onRefresh?: (reservation: ReservationTableItem) => void | Promise<void>;
   onStatusChange?: (
     reservation: ReservationTableItem,
     status: ReservationTableStatus,
@@ -438,6 +440,7 @@ export function ReservationDetailsDialog({
   loading = false,
   onCancel,
   onEdit,
+  onRefresh,
   onSendPaymentLink,
   onStatusChange,
   onOpenChange,
@@ -468,7 +471,6 @@ export function ReservationDetailsDialog({
   const isReadOnly = reservation?.status === "Cancelled";
   const canCancel =
     !isReadOnly && Boolean(onCancel) && statusActions.includes("Cancelled");
-  const canExpirePayment = statusActions.includes("PaymentExpired");
   const timelineEvents: ReservationTimelineEvent[] =
     reservation?.timeline && reservation.timeline.length > 0
       ? reservation.timeline
@@ -496,12 +498,13 @@ export function ReservationDetailsDialog({
   const [cancellationOpen, setCancellationOpen] = useState(false);
   const [confirmedEditWarningOpen, setConfirmedEditWarningOpen] =
     useState(false);
-  const [remainingPaymentSeconds, setRemainingPaymentSeconds] = useState<
-    number | null
-  >(null);
   const expiryRefreshStartedRef = useRef(false);
   const shouldShowPaymentCountdown =
     reservation?.status === "ApprovedAwaitingPayment";
+  const remainingPaymentSeconds = useReservationPaymentCountdown(
+    shouldShowPaymentCountdown,
+    reservation?.paymentExpiresAtUtc,
+  );
   const canSendPaymentLink =
     reservation !== null &&
     !isReadOnly &&
@@ -511,16 +514,10 @@ export function ReservationDetailsDialog({
 
   useEffect(() => {
     expiryRefreshStartedRef.current = false;
-    setRemainingPaymentSeconds(
-      shouldShowPaymentCountdown
-        ? (reservation?.remainingPaymentSeconds ?? null)
-        : null,
-    );
   }, [
-    reservation?.remainingPaymentSeconds,
+    reservation?.paymentExpiresAtUtc,
     reservation?.reservationId,
     reservation?.id,
-    shouldShowPaymentCountdown,
   ]);
 
   useEffect(() => {
@@ -530,27 +527,17 @@ export function ReservationDetailsDialog({
 
     if (remainingPaymentSeconds <= 0) {
       if (
-        canExpirePayment &&
         reservation &&
-        onStatusChange &&
+        onRefresh &&
         !expiryRefreshStartedRef.current
       ) {
         expiryRefreshStartedRef.current = true;
-        void onStatusChange(reservation, "PaymentExpired");
+        void onRefresh(reservation);
       }
       return;
     }
-
-    const timer = window.setTimeout(() => {
-      setRemainingPaymentSeconds((current) =>
-        current === null ? null : Math.max(0, current - 1),
-      );
-    }, 1000);
-
-    return () => window.clearTimeout(timer);
   }, [
-    onStatusChange,
-    canExpirePayment,
+    onRefresh,
     remainingPaymentSeconds,
     reservation,
     shouldShowPaymentCountdown,

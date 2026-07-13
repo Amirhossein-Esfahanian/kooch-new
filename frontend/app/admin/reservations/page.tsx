@@ -379,11 +379,16 @@ export default function AdminReservationsPage() {
     setError("");
 
     try {
+      const isApproval =
+        reservation.status === "PendingApproval" &&
+        status === "ApprovedAwaitingPayment";
       const updated = await apiRequest<ReservationTableItem>(
-        `/admin/reservations/${reservationId}/status`,
+        isApproval
+          ? `/admin/reservations/${reservationId}/approve`
+          : `/admin/reservations/${reservationId}/status`,
         {
           method: "PUT",
-          body: JSON.stringify({ status }),
+          ...(isApproval ? {} : { body: JSON.stringify({ status }) }),
         },
       );
       setSelectedReservation((current) => {
@@ -918,6 +923,7 @@ export default function AdminReservationsPage() {
           loading={detailsLoading}
           onCancel={cancelReservation}
           onEdit={editReservation}
+          onRefresh={viewReservation}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {

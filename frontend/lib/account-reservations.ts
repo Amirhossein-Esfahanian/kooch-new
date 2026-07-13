@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
 export type AccountReservationStatus =
   | "Pending"
@@ -143,31 +143,8 @@ export function isPaymentEligible(reservation: AccountReservation) {
 }
 
 export function usePaymentCountdown(reservation: AccountReservation | null) {
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
-
-  useEffect(() => {
-    setRemainingSeconds(
-      reservation?.status === "ApprovedAwaitingPayment"
-        ? reservation.remainingPaymentSeconds ?? null
-        : null,
-    );
-  }, [
-    reservation?.remainingPaymentSeconds,
-    reservation?.reservationId,
-    reservation?.status,
-  ]);
-
-  useEffect(() => {
-    if (remainingSeconds === null || remainingSeconds <= 0) return;
-
-    const timer = window.setTimeout(() => {
-      setRemainingSeconds((current) =>
-        current === null ? null : Math.max(0, current - 1),
-      );
-    }, 1000);
-
-    return () => window.clearTimeout(timer);
-  }, [remainingSeconds]);
-
-  return remainingSeconds;
+  return useReservationPaymentCountdown(
+    reservation?.status === "ApprovedAwaitingPayment",
+    reservation?.paymentExpiresAtUtc,
+  );
 }

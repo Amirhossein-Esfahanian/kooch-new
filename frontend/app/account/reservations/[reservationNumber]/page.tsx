@@ -99,6 +99,10 @@ export default function AccountReservationDetailsPage() {
   }, [loadReservation, router]);
 
   useEffect(() => {
+    expiryRefreshStartedRef.current = false;
+  }, [reservation?.paymentExpiresAtUtc, reservation?.reservationId]);
+
+  useEffect(() => {
     if (
       reservation?.status !== "ApprovedAwaitingPayment" ||
       remainingSeconds !== 0 ||
