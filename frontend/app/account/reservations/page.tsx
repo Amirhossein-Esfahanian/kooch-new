@@ -21,11 +21,11 @@ import {
   type PagedResult,
   formatDate,
   formatDuration,
-  formatMoney,
   isPaymentEligible,
   statusLabels,
   statusVariant,
 } from "@/lib/account-reservations";
+import { formatCurrency } from "@/lib/currency";
 import { apiRequest, getAuthRole, getToken } from "@/lib/owner-api";
 
 const pageSize = 10;
@@ -154,16 +154,15 @@ export default function AccountReservationsPage() {
                       </KoochBadge>
                     </KoochTableCell>
                     <KoochTableCell className="whitespace-nowrap font-semibold">
-                      {formatMoney(
+                      {formatCurrency(
                         reservation.totalPrice ?? reservation.finalAmount,
-                        reservation.currency,
+                        { showCurrency: false },
                       )}
                     </KoochTableCell>
                     <KoochTableCell className="whitespace-nowrap">
-                      {formatMoney(
-                        reservation.remainingAmount,
-                        reservation.currency,
-                      )}
+                      {formatCurrency(reservation.remainingAmount, {
+                        showCurrency: false,
+                      })}
                     </KoochTableCell>
                     <KoochTableCell>
                       {reservation.status === "ApprovedAwaitingPayment" ? (

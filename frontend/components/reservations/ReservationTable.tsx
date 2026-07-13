@@ -2,7 +2,7 @@
 
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
-import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
+import { formatCurrency } from "@/lib/currency";
 import {
   KoochTable,
   KoochTableBody,
@@ -28,6 +28,41 @@ export type ReservationTableStatus =
   | "ApprovedAwaitingPayment"
   | "PaymentExpired"
   | string;
+
+export type ReservationCancellationReason =
+  | "GuestRequest"
+  | "NonPayment"
+  | "NoAvailability"
+  | "PropertyRuleConflict"
+  | "DuplicateReservation"
+  | "InvalidGuestInformation"
+  | "PropertyMaintenanceOrForceMajeure"
+  | "AdministrativeCorrection"
+  | "Other";
+
+export interface ReservationCancellationPayload {
+  reason: ReservationCancellationReason;
+  explanation: string;
+}
+
+export type ReservationTimelineEventType =
+  | "Created"
+  | "Updated"
+  | "Approved"
+  | "PaymentLinkCreated"
+  | "Paid"
+  | "StatusChanged"
+  | "Cancelled";
+
+export interface ReservationTimelineEvent {
+  type: ReservationTimelineEventType;
+  timestampUtc: string;
+  actorUserId?: number | null;
+  actor?: string | null;
+  status?: ReservationTableStatus | null;
+  cancellationReason?: ReservationCancellationReason | null;
+  note?: string | null;
+}
 
 export interface ReservationTableItem {
   id?: number;
@@ -66,6 +101,13 @@ export interface ReservationTableItem {
   approvedBy?: string | null;
   changedAtUtc?: string | null;
   changedByUserId?: number | null;
+  paidAtUtc?: string | null;
+  confirmedAtUtc?: string | null;
+  cancelledAtUtc?: string | null;
+  cancelledByUserId?: number | null;
+  cancellationReason?: ReservationCancellationReason | null;
+  cancellationNote?: string | null;
+  expiredAtUtc?: string | null;
   allowedStatusTransitions?: ReservationTableStatus[];
   baseAmount?: number | null;
   basePrice?: number | null;
@@ -76,6 +118,8 @@ export interface ReservationTableItem {
   discountAmount?: number | null;
   promotionDiscount?: number | null;
   couponDiscountAmount?: number | null;
+  serviceFeeAmount?: number | null;
+  taxAmount?: number | null;
   totalPrice?: number | null;
   finalAmount?: number | null;
   paidAmount?: number | null;
@@ -85,15 +129,12 @@ export interface ReservationTableItem {
   paymentExpiresAtUtc?: string | null;
   isPaymentExpired?: boolean | null;
   remainingPaymentSeconds?: number | null;
+  timeline?: ReservationTimelineEvent[];
 }
 
 interface ReservationTableProps {
   reservations: ReservationTableItem[];
   loading: boolean;
-  onSendPaymentLink?: (
-    reservation: ReservationTableItem,
-  ) => void | Promise<void>;
-  onEdit?: (reservation: ReservationTableItem) => void;
   onView: (reservation: ReservationTableItem) => void;
   onPageChange: (page: number) => void;
   currentPage: number;
@@ -155,40 +196,15 @@ function formatDate(value: string) {
   }).format(date);
 }
 
-function formatMoney(value?: number | null, currency?: string | null) {
-  if (value === null || value === undefined) return "-";
-
-  const formatted = new Intl.NumberFormat("fa-IR").format(value);
-  return currency ? `${formatted} ${currency}` : formatted;
-}
-
 function rowKey(reservation: ReservationTableItem) {
   return (
     reservation.reservationId ?? reservation.id ?? reservation.reservationNumber
   );
 }
 
-function isUnpaidReservation(reservation: ReservationTableItem) {
-  if (typeof reservation.remainingAmount === "number") {
-    return reservation.remainingAmount > 0;
-  }
-
-  const totalAmount = reservation.totalPrice ?? reservation.finalAmount;
-  if (
-    typeof totalAmount === "number" &&
-    typeof reservation.paidAmount === "number"
-  ) {
-    return reservation.paidAmount < totalAmount;
-  }
-
-  return reservation.status !== "Paid";
-}
-
 export function ReservationTable({
   reservations,
   loading,
-  onEdit,
-  onSendPaymentLink,
   onView,
   onPageChange,
   currentPage,
@@ -234,10 +250,6 @@ export function ReservationTable({
                 reservation.roomTypeName ?? reservation.roomName ?? "-";
               const totalPrice =
                 reservation.totalPrice ?? reservation.finalAmount ?? null;
-              const canSendPaymentLink =
-                reservation.status === "ApprovedAwaitingPayment" &&
-                !reservation.isPaymentExpired &&
-                isUnpaidReservation(reservation);
               return (
                 <KoochTableRow key={rowKey(reservation)}>
                   <KoochTableCell className="font-semibold text-xs">
@@ -276,48 +288,21 @@ export function ReservationTable({
                     )}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
-                    {formatMoney(totalPrice, reservation.currency)}
+                    {formatCurrency(totalPrice, { showCurrency: false })}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
-                    {formatMoney(
-                      reservation.remainingAmount,
-                      reservation.currency,
-                    )}
+                    {formatCurrency(reservation.remainingAmount, {
+                      showCurrency: false,
+                    })}
                   </KoochTableCell>
                   <KoochTableCell>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <KoochButton
-                        onClick={() => onView(reservation)}
-                        size="sm"
-                        variant="outline"
-                      >
-                        جزئیات
-                      </KoochButton>
-                      {context === "admin" && onEdit && (
-                        <KoochButton
-                          onClick={() => onEdit(reservation)}
-                          size="sm"
-                          variant="outline"
-                        >
-                          ویرایش
-                        </KoochButton>
-                      )}
-                      {onSendPaymentLink && canSendPaymentLink && (
-                        <KoochConfirmDialog
-                          cancelText="انصراف"
-                          confirmText="ارسال لینک پرداخت"
-                          description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
-                          onConfirm={() => onSendPaymentLink(reservation)}
-                          title="ارسال لینک پرداخت"
-                          trigger={
-                            <KoochButton size="sm" variant="outline">
-                              ارسال لینک پرداخت
-                            </KoochButton>
-                          }
-                          variant="warning"
-                        />
-                      )}
-                    </div>
+                    <KoochButton
+                      onClick={() => onView(reservation)}
+                      size="sm"
+                      variant="outline"
+                    >
+                      مشاهده رزرو
+                    </KoochButton>
                   </KoochTableCell>
                 </KoochTableRow>
               );

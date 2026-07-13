@@ -47,6 +47,7 @@ public class ReservationService(
             ?? throw new KeyNotFoundException("Reservation not found.");
 
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
             .Where(usage => usage.ReservationId == reservationId)
             .SumAsync(usage => (decimal?)usage.DiscountAmount, cancellationToken) ?? 0;
@@ -92,6 +93,7 @@ public class ReservationService(
             ?? throw new KeyNotFoundException("Reservation not found.");
 
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
             .Where(usage => usage.ReservationId == reservationId)
             .SumAsync(usage => (decimal?)usage.DiscountAmount, cancellationToken) ?? 0;
@@ -119,6 +121,7 @@ public class ReservationService(
             ?? throw new KeyNotFoundException("Reservation not found.");
 
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
             .Where(usage => usage.ReservationId == reservation.Id)
             .SumAsync(usage => (decimal?)usage.DiscountAmount, cancellationToken) ?? 0;
@@ -133,7 +136,6 @@ public class ReservationService(
     {
         EnsureAdminUser(currentUser.Role);
         ValidateDateRange(request.CheckInDate, request.CheckOutDate);
-        ValidateNoInfantData(request);
 
         var property = await dbContext.Properties.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == request.PropertyId, cancellationToken)
@@ -167,7 +169,8 @@ public class ReservationService(
             request.CheckInDate,
             request.CheckOutDate,
             roomCount,
-            cancellationToken);
+            excludedReservationId: null,
+            cancellationToken: cancellationToken);
         ValidateAvailabilityForCreate(availability, roomCount);
 
         var pricePreview = await pricingService.PreviewReservationPriceAsync(
@@ -206,7 +209,7 @@ public class ReservationService(
             ServiceFeeAmount = pricePreview.ServiceFeeAmount,
             FinalAmount = pricePreview.FinalAmount,
             Currency = pricePreview.Currency,
-            Status = ResolveCreateStatus(request.Status, isOnRequest, currentUser.Role),
+            Status = isOnRequest ? ReservationStatus.PendingApproval : ReservationStatus.Pending,
             Source = GetReservationSource(currentUser.Role),
             GuestNote = request.Notes
         };
@@ -222,12 +225,16 @@ public class ReservationService(
             request.CheckInDate,
             request.CheckOutDate,
             roomCount,
-            cancellationToken);
+            excludedReservationId: null,
+            cancellationToken: cancellationToken);
         ValidateAvailabilityForCreate(availability, roomCount);
         await ValidateFinalCapacityAsync(
-            request,
+            request.RoomTypeId,
+            request.CheckInDate,
+            request.CheckOutDate,
             selectedRoomIds,
-            cancellationToken);
+            excludedReservationId: null,
+            cancellationToken: cancellationToken);
 
         dbContext.Reservations.Add(reservation);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -259,6 +266,11 @@ public class ReservationService(
             .Include(item => item.ApprovedByUser)
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
+
+        if (reservation.Status == ReservationStatus.Cancelled)
+        {
+            throw new InvalidOperationException("Cancelled reservations cannot be edited.");
+        }
 
         if (IsLockedForFullEdit(reservation.Status))
         {
@@ -306,8 +318,16 @@ public class ReservationService(
             request.CheckInDate,
             request.CheckOutDate,
             roomCount,
-            cancellationToken);
+            excludedReservationId: reservationId,
+            cancellationToken: cancellationToken);
         ValidateAvailabilityForCreate(availability, roomCount);
+        await ValidateFinalCapacityAsync(
+            request.RoomTypeId,
+            request.CheckInDate,
+            request.CheckOutDate,
+            selectedRoomIds,
+            excludedReservationId: reservationId,
+            cancellationToken: cancellationToken);
 
         var pricePreview = await pricingService.PreviewReservationPriceAsync(
             new ReservationPricePreviewRequest
@@ -339,9 +359,7 @@ public class ReservationService(
         reservation.FinalAmount = pricePreview.FinalAmount;
         reservation.Currency = pricePreview.Currency;
         reservation.GuestNote = request.Notes;
-        reservation.ChangedAtUtc = DateTime.UtcNow;
-        reservation.ChangedByUserId = currentUser.UserId;
-        reservation.UpdatedAtUtc = reservation.ChangedAtUtc;
+        reservation.UpdatedAtUtc = DateTime.UtcNow;
         reservation.UpdatedByUserId = currentUser.UserId;
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -371,17 +389,53 @@ public class ReservationService(
 
     public async Task<ReservationResponse> CancelAsync(
         int reservationId,
+        ReservationCancellationRequest request,
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        return await UpdateStatusAsync(
-            reservationId,
-            new ReservationStatusUpdateRequest
-            {
-                Status = ReservationStatus.Cancelled
-            },
-            currentUser,
+        EnsureAdminUser(currentUser.Role);
+        if (!request.Reason.HasValue)
+        {
+            throw new ArgumentException("Cancellation reason is required.");
+        }
+
+        var explanation = request.Explanation.Trim();
+        if (string.IsNullOrWhiteSpace(explanation))
+        {
+            throw new ArgumentException("Cancellation explanation is required.");
+        }
+
+        var reservation = await dbContext.Reservations
+            .Include(item => item.Property)
+            .Include(item => item.RoomType)
+            .Include(item => item.Guest)
+            .Include(item => item.Client)
+            .Include(item => item.ApprovedByUser)
+            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+
+        statusWorkflow.ValidateTransition(reservation.Status, ReservationStatus.Cancelled);
+
+        var now = DateTime.UtcNow;
+        reservation.Status = ReservationStatus.Cancelled;
+        reservation.CancellationReason = request.Reason.Value;
+        reservation.CancellationNote = explanation;
+        reservation.CancelledAtUtc = now;
+        reservation.CancelledByUserId = currentUser.UserId;
+        reservation.ChangedAtUtc = now;
+        reservation.ChangedByUserId = currentUser.UserId;
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await notificationService.SendAsync(
+            CreateReservationNotificationRequest(
+                reservation,
+                NotificationEventType.ReservationCancelled,
+                $"Reservation {reservation.ReservationNumber} was cancelled."),
             cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        return ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
     }
 
     public async Task<bool> ExpirePaymentWindowAsync(
@@ -427,7 +481,12 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdminUser(currentUser.Role);
+        EnsureStatusManager(currentUser.Role);
+        if (request.Status == ReservationStatus.Cancelled)
+        {
+            throw new InvalidOperationException("Use the reservation cancellation endpoint to cancel a reservation.");
+        }
+
         var reservation = await dbContext.Reservations
             .Include(item => item.Property)
             .Include(item => item.RoomType)
@@ -458,10 +517,6 @@ public class ReservationService(
             case ReservationStatus.Paid:
                 reservation.PaidAtUtc ??= now;
                 reservation.ConfirmedAtUtc ??= now;
-                break;
-            case ReservationStatus.Cancelled:
-                reservation.CancelledAtUtc ??= now;
-                reservation.CancelledByUserId ??= currentUser.UserId;
                 break;
             case ReservationStatus.Expired:
             case ReservationStatus.PaymentExpired:
@@ -615,16 +670,6 @@ public class ReservationService(
         }
     }
 
-    private static void ValidateNoInfantData(ReservationCreateRequest request)
-    {
-        if (request.Infants.HasValue ||
-            request.InfantCount.HasValue ||
-            request.InfantAges is not null)
-        {
-            throw new ArgumentException("Infant data is not supported for new reservations.");
-        }
-    }
-
     private static void ValidateAvailabilityForCreate(ReservationAvailabilityResult availability, int roomCount)
     {
         if (availability.Nights.Count == 0)
@@ -660,16 +705,20 @@ public class ReservationService(
     }
 
     private async Task ValidateFinalCapacityAsync(
-        ReservationCreateRequest request,
+        int roomTypeId,
+        DateOnly checkInDate,
+        DateOnly checkOutDate,
         IReadOnlyCollection<int> selectedRoomIds,
+        int? excludedReservationId,
         CancellationToken cancellationToken)
     {
         var effectiveAvailability = await effectiveAvailabilityService.GetRangeAsync(
-            [request.RoomTypeId],
-            request.CheckInDate,
-            request.CheckOutDate,
+            [roomTypeId],
+            checkInDate,
+            checkOutDate,
+            excludedReservationId,
             cancellationToken: cancellationToken);
-        var claimedRoomIds = effectiveAvailability[request.RoomTypeId].ClaimedRoomIds;
+        var claimedRoomIds = effectiveAvailability[roomTypeId].ClaimedRoomIds;
         if (selectedRoomIds.Any(claimedRoomIds.Contains))
         {
             throw CapacityChangedException();
@@ -687,8 +736,19 @@ public class ReservationService(
         }
     }
 
+    private static void EnsureStatusManager(UserRole role)
+    {
+        if (role is not (UserRole.SuperAdmin or
+            UserRole.AdminAssistant or
+            UserRole.Owner or
+            UserRole.OwnerAssistant))
+        {
+            throw new UnauthorizedAccessException("You cannot change reservation status.");
+        }
+    }
+
     private static bool IsLockedForFullEdit(ReservationStatus status) =>
-        status is ReservationStatus.Confirmed or ReservationStatus.Paid or ReservationStatus.Completed;
+        status is ReservationStatus.Paid or ReservationStatus.Completed;
 
     private static void EnsureLockedReservationOnlyNotes(
         Reservation reservation,
@@ -717,20 +777,6 @@ public class ReservationService(
             ? ReservationSource.OwnerManual
             : ReservationSource.AdminCreated;
 
-    private static ReservationStatus ResolveCreateStatus(
-        ReservationStatus? requestedStatus,
-        bool isOnRequest,
-        UserRole role)
-    {
-        var defaultStatus = isOnRequest ? ReservationStatus.PendingApproval : ReservationStatus.Pending;
-        if (requestedStatus is null || role is not (UserRole.SuperAdmin or UserRole.AdminAssistant))
-        {
-            return defaultStatus;
-        }
-
-        return requestedStatus.Value;
-    }
-
     private IQueryable<Reservation> ReservationQuery() =>
         dbContext.Reservations
             .AsNoTracking()
@@ -740,6 +786,229 @@ public class ReservationService(
             .Include(item => item.Guest)
             .Include(item => item.Client)
             .Include(item => item.ApprovedByUser);
+
+    private async Task<IReadOnlyList<ReservationTimelineEventResponse>> BuildTimelineAsync(
+        Reservation reservation,
+        CancellationToken cancellationToken)
+    {
+        var paymentLinks = await dbContext.ReservationPaymentLinkTokens.AsNoTracking()
+            .Where(token => token.ReservationId == reservation.Id)
+            .Select(token => new
+            {
+                token.CreatedAtUtc,
+                token.CreatedByUserId
+            })
+            .ToListAsync(cancellationToken);
+        var successfulPayments = await dbContext.Payments.AsNoTracking()
+            .Where(payment =>
+                payment.ReservationId == reservation.Id &&
+                payment.Status == PaymentStatus.Successful)
+            .Select(payment => new
+            {
+                TimestampUtc = payment.PaidAtUtc ?? payment.CreatedAtUtc,
+                payment.CreatedByUserId
+            })
+            .OrderBy(payment => payment.TimestampUtc)
+            .ToListAsync(cancellationToken);
+        var auditLogs = await dbContext.AuditLogs.AsNoTracking()
+            .Where(log =>
+                log.EntityType == nameof(Reservation) &&
+                log.EntityId == reservation.Id &&
+                (log.Action == AuditAction.BookingConfirmed ||
+                 log.Action == AuditAction.BookingCancelled))
+            .Select(log => new
+            {
+                log.Action,
+                log.UserId,
+                log.OccurredAtUtc,
+                log.Description
+            })
+            .ToListAsync(cancellationToken);
+
+        var userIds = paymentLinks
+            .Select(item => item.CreatedByUserId)
+            .Concat(successfulPayments.Select(item => item.CreatedByUserId))
+            .Concat(auditLogs.Select(item => (int?)item.UserId))
+            .Append(reservation.CreatedByUserId ?? reservation.ClientId)
+            .Append(reservation.UpdatedByUserId)
+            .Append(reservation.ChangedByUserId)
+            .Append(reservation.ApprovedByUserId)
+            .Append(reservation.CancelledByUserId)
+            .Where(userId => userId.HasValue)
+            .Select(userId => userId!.Value)
+            .Distinct()
+            .ToList();
+        var actors = await dbContext.Users.AsNoTracking()
+            .Where(user => userIds.Contains(user.Id))
+            .Select(user => new
+            {
+                user.Id,
+                user.FirstName,
+                user.LastName,
+                user.Email
+            })
+            .ToDictionaryAsync(
+                user => user.Id,
+                user => (user.FirstName + " " + user.LastName).Trim() == ""
+                    ? user.Email
+                    : (user.FirstName + " " + user.LastName).Trim(),
+                cancellationToken);
+
+        string? ActorName(int? userId) =>
+            userId.HasValue && actors.TryGetValue(userId.Value, out var actor)
+                ? actor
+                : null;
+
+        var events = new List<ReservationTimelineEventResponse>();
+        var createdByUserId = reservation.CreatedByUserId ?? reservation.ClientId;
+        events.Add(new ReservationTimelineEventResponse
+        {
+            Type = ReservationTimelineEventType.Created,
+            TimestampUtc = reservation.CreatedAtUtc,
+            ActorUserId = createdByUserId,
+            Actor = ActorName(createdByUserId) ?? FormatUserName(reservation.Client)
+        });
+
+        if (reservation.UpdatedAtUtc.HasValue &&
+            reservation.UpdatedAtUtc.Value > reservation.CreatedAtUtc &&
+            !IsLifecycleTimestamp(reservation, reservation.UpdatedAtUtc.Value))
+        {
+            var updatedByUserId = reservation.UpdatedByUserId ?? reservation.ChangedByUserId;
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.Updated,
+                TimestampUtc = reservation.UpdatedAtUtc.Value,
+                ActorUserId = updatedByUserId,
+                Actor = ActorName(updatedByUserId)
+            });
+        }
+
+        if (reservation.ApprovedAtUtc.HasValue)
+        {
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.Approved,
+                TimestampUtc = reservation.ApprovedAtUtc.Value,
+                ActorUserId = reservation.ApprovedByUserId,
+                Actor = ActorName(reservation.ApprovedByUserId) ??
+                        FormatUserName(reservation.ApprovedByUser)
+            });
+        }
+
+        events.AddRange(paymentLinks.Select(link => new ReservationTimelineEventResponse
+        {
+            Type = ReservationTimelineEventType.PaymentLinkCreated,
+            TimestampUtc = link.CreatedAtUtc,
+            ActorUserId = link.CreatedByUserId,
+            Actor = ActorName(link.CreatedByUserId)
+        }));
+
+        if (reservation.PaidAtUtc.HasValue)
+        {
+            var payment = successfulPayments
+                .OrderBy(item => Math.Abs((item.TimestampUtc - reservation.PaidAtUtc.Value).Ticks))
+                .FirstOrDefault();
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.Paid,
+                TimestampUtc = reservation.PaidAtUtc.Value,
+                ActorUserId = payment?.CreatedByUserId,
+                Actor = ActorName(payment?.CreatedByUserId)
+            });
+        }
+
+        if (reservation.ConfirmedAtUtc.HasValue &&
+            !SameTimestamp(reservation.ConfirmedAtUtc.Value, reservation.PaidAtUtc))
+        {
+            var changedByUserId = SameTimestamp(
+                reservation.ConfirmedAtUtc.Value,
+                reservation.ChangedAtUtc)
+                ? reservation.ChangedByUserId
+                : null;
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.StatusChanged,
+                TimestampUtc = reservation.ConfirmedAtUtc.Value,
+                ActorUserId = changedByUserId,
+                Actor = ActorName(changedByUserId),
+                Status = ReservationStatus.Confirmed
+            });
+        }
+
+        if (reservation.ChangedAtUtc.HasValue &&
+            !SameTimestamp(reservation.ChangedAtUtc.Value, reservation.ApprovedAtUtc) &&
+            !SameTimestamp(reservation.ChangedAtUtc.Value, reservation.PaidAtUtc) &&
+            !SameTimestamp(reservation.ChangedAtUtc.Value, reservation.ConfirmedAtUtc) &&
+            !SameTimestamp(reservation.ChangedAtUtc.Value, reservation.CancelledAtUtc))
+        {
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.StatusChanged,
+                TimestampUtc = reservation.ChangedAtUtc.Value,
+                ActorUserId = reservation.ChangedByUserId,
+                Actor = ActorName(reservation.ChangedByUserId),
+                Status = reservation.Status
+            });
+        }
+
+        foreach (var auditLog in auditLogs.Where(log =>
+                     log.Action == AuditAction.BookingConfirmed &&
+                     !events.Any(item =>
+                         item.Type == ReservationTimelineEventType.StatusChanged &&
+                         SameTimestamp(item.TimestampUtc, log.OccurredAtUtc))))
+        {
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.StatusChanged,
+                TimestampUtc = auditLog.OccurredAtUtc,
+                ActorUserId = auditLog.UserId,
+                Actor = ActorName(auditLog.UserId),
+                Status = ReservationStatus.Confirmed,
+                Note = auditLog.Description
+            });
+        }
+
+        if (reservation.CancelledAtUtc.HasValue)
+        {
+            events.Add(new ReservationTimelineEventResponse
+            {
+                Type = ReservationTimelineEventType.Cancelled,
+                TimestampUtc = reservation.CancelledAtUtc.Value,
+                ActorUserId = reservation.CancelledByUserId,
+                Actor = ActorName(reservation.CancelledByUserId),
+                CancellationReason = reservation.CancellationReason,
+                Note = reservation.CancellationNote
+            });
+        }
+        else
+        {
+            events.AddRange(auditLogs
+                .Where(log => log.Action == AuditAction.BookingCancelled)
+                .Select(log => new ReservationTimelineEventResponse
+                {
+                    Type = ReservationTimelineEventType.Cancelled,
+                    TimestampUtc = log.OccurredAtUtc,
+                    ActorUserId = log.UserId,
+                    Actor = ActorName(log.UserId),
+                    Note = log.Description
+                }));
+        }
+
+        return events
+            .OrderBy(item => item.TimestampUtc)
+            .ThenBy(item => item.Type)
+            .ToList();
+    }
+
+    private static bool IsLifecycleTimestamp(Reservation reservation, DateTime timestamp) =>
+        SameTimestamp(timestamp, reservation.ApprovedAtUtc) ||
+        SameTimestamp(timestamp, reservation.PaidAtUtc) ||
+        SameTimestamp(timestamp, reservation.ConfirmedAtUtc) ||
+        SameTimestamp(timestamp, reservation.CancelledAtUtc) ||
+        SameTimestamp(timestamp, reservation.ChangedAtUtc);
+
+    private static bool SameTimestamp(DateTime timestamp, DateTime? other) =>
+        other.HasValue && Math.Abs((timestamp - other.Value).TotalSeconds) < 1;
 
     private async Task<PagedResult<ReservationListItemResponse>> SearchInternalAsync(
         ReservationListQuery query,
@@ -1184,6 +1453,9 @@ public class ReservationService(
             PaidAtUtc = reservation.PaidAtUtc,
             ConfirmedAtUtc = reservation.ConfirmedAtUtc,
             CancelledAtUtc = reservation.CancelledAtUtc,
+            CancelledByUserId = reservation.CancelledByUserId,
+            CancellationReason = reservation.CancellationReason,
+            CancellationNote = reservation.CancellationNote,
             ExpiredAtUtc = reservation.ExpiredAtUtc,
             ChangedAtUtc = reservation.ChangedAtUtc,
             ChangedByUserId = reservation.ChangedByUserId,
@@ -1379,6 +1651,9 @@ public class ReservationService(
             PaidAtUtc = reservation.PaidAtUtc,
             ConfirmedAtUtc = reservation.ConfirmedAtUtc,
             CancelledAtUtc = reservation.CancelledAtUtc,
+            CancelledByUserId = reservation.CancelledByUserId,
+            CancellationReason = reservation.CancellationReason,
+            CancellationNote = reservation.CancellationNote,
             ExpiredAtUtc = reservation.ExpiredAtUtc,
             ChangedAtUtc = reservation.ChangedAtUtc,
             ChangedByUserId = reservation.ChangedByUserId,

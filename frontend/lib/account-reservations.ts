@@ -116,12 +116,6 @@ export function formatDateTime(value?: string | null) {
   }).format(date);
 }
 
-export function formatMoney(value?: number | null, currency?: string | null) {
-  if (value === null || value === undefined) return "-";
-  const formatted = new Intl.NumberFormat("fa-IR").format(value);
-  return currency ? `${formatted} ${currency}` : formatted;
-}
-
 export function formatNumber(value?: number | null) {
   if (value === null || value === undefined) return "-";
   return new Intl.NumberFormat("fa-IR").format(value);

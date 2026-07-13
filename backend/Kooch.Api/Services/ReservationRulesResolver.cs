@@ -35,6 +35,7 @@ public sealed class ReservationRulesResolver(
             PropertyId = propertyId,
             RoomTypeId = roomTypeId,
             BaseCapacity = roomType.MaxAdults,
+            MaxDeclaredChildren = Math.Max(0, roomType.MaxAdults - 1),
             ExtraGuestAllowed = roomType.AllowExtraGuest,
             MaxExtraGuests = roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0,
             ExtraGuestPrice = roomType.Property.ExtraGuestPrice ?? 0,
@@ -47,7 +48,6 @@ public sealed class ReservationRulesResolver(
                 ? ReservationRuleSource.Property
                 : ReservationRuleSource.SiteDefault,
             BaseAdultCapacity = roomType.MaxAdults,
-            BaseChildCapacity = roomType.MaxChildren,
             ChildPricingRules = childRules
         };
     }

@@ -13,6 +13,7 @@ import {
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   ReservationTable,
+  type ReservationCancellationPayload,
   type ReservationTableItem,
   type ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
@@ -398,6 +399,41 @@ export default function AdminReservationsPage() {
           : "خطا در به‌روزرسانی وضعیت رزرو.";
       setError(message);
       toast.error(message);
+    } finally {
+      setStatusChangingId(null);
+    }
+  }
+
+  async function cancelReservation(
+    reservation: ReservationTableItem,
+    cancellation: ReservationCancellationPayload,
+  ) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+
+    setStatusChangingId(reservationId);
+    setError("");
+
+    try {
+      const updated = await apiRequest<ReservationTableItem>(
+        `/admin/reservations/${reservationId}/cancel`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            reason: cancellation.reason,
+            explanation: cancellation.explanation,
+          }),
+        },
+      );
+      setSelectedReservation(updated);
+      await loadReservations();
+      toast.success("رزرو لغو شد.");
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
+      setError(message);
+      toast.error(message);
+      throw caught;
     } finally {
       setStatusChangingId(null);
     }
@@ -872,9 +908,7 @@ export default function AdminReservationsPage() {
           currentPage={currentPage}
           emptyMessage="هنوز رزروی ثبت نشده است."
           loading={loading}
-          onEdit={editReservation}
           onPageChange={setCurrentPage}
-          onSendPaymentLink={sendPaymentLink}
           onView={viewReservation}
           reservations={reservations}
           totalPages={totalPages}
@@ -882,6 +916,7 @@ export default function AdminReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
+          onCancel={cancelReservation}
           onEdit={editReservation}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}

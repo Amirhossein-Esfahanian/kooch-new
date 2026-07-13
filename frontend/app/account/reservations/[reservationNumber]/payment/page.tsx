@@ -12,10 +12,10 @@ import {
   formatDate,
   formatDateTime,
   formatDuration,
-  formatMoney,
   statusLabels,
   statusVariant,
 } from "@/lib/account-reservations";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 
 interface PaymentPreparationResponse {
   isValid: boolean;
@@ -55,6 +55,7 @@ function buildBackendPath(
 }
 
 export default function ReservationPaymentPage() {
+  const currencyLabel = useSiteCurrencyLabel();
   const reservationNumber = decodeURIComponent(
     useParams<{ reservationNumber: string }>().reservationNumber,
   );
@@ -273,14 +274,15 @@ export default function ReservationPaymentPage() {
                 />
                 <SummaryItem
                   label="مبلغ کل"
-                  value={formatMoney(preparation.totalPrice, preparation.currency)}
+                  value={formatCurrency(preparation.totalPrice, {
+                    currencyLabel,
+                  })}
                 />
                 <SummaryItem
                   label="باقی‌مانده"
-                  value={formatMoney(
-                    preparation.remainingAmount,
-                    preparation.currency,
-                  )}
+                  value={formatCurrency(preparation.remainingAmount, {
+                    currencyLabel,
+                  })}
                 />
               </div>
 

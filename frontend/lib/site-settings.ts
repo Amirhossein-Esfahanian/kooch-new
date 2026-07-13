@@ -1,6 +1,7 @@
 export type SiteSettingsMap = Record<string, string>;
 
 export const defaultSiteSettings: SiteSettingsMap = {
+  "pricing.currencyLabel": "تومان",
   "site.name": "کوچ",
   "site.logoUrl": "",
   "site.footerText": "اقامتگاه‌های سنتی و میزبانی محلی در کاشان",

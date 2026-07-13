@@ -360,7 +360,6 @@ export default function OwnerReservationsPage() {
           emptyMessage="هنوز رزروی برای این اقامتگاه ثبت نشده است."
           loading={loading}
           onPageChange={setCurrentPage}
-          onSendPaymentLink={sendPaymentLink}
           onView={viewReservation}
           reservations={reservations}
           totalPages={totalPages}

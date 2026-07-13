@@ -13,6 +13,7 @@ public class ReservationAvailabilityService(
         int propertyId,
         DateOnly checkInDate,
         DateOnly checkOutDate,
+        int? excludedReservationId = null,
         CancellationToken cancellationToken = default)
     {
         if (checkInDate >= checkOutDate)
@@ -53,6 +54,7 @@ public class ReservationAvailabilityService(
             roomTypeIds,
             checkInDate,
             checkOutDate,
+            excludedReservationId,
             cancellationToken: cancellationToken);
 
         var result = new List<AvailableRoomResponse>();
@@ -94,6 +96,7 @@ public class ReservationAvailabilityService(
         DateOnly checkInDate,
         DateOnly checkOutDate,
         int roomCount,
+        int? excludedReservationId = null,
         CancellationToken cancellationToken = default)
     {
         if (checkInDate >= checkOutDate || roomCount <= 0)
@@ -122,6 +125,7 @@ public class ReservationAvailabilityService(
             [roomTypeId],
             checkInDate,
             checkOutDate,
+            excludedReservationId,
             cancellationToken: cancellationToken);
         var nights = range[roomTypeId].Nights.Values
             .OrderBy(night => night.Date)
@@ -153,7 +157,8 @@ public class ReservationAvailabilityService(
             checkInDate,
             checkOutDate,
             roomCount,
-            cancellationToken);
+            excludedReservationId: null,
+            cancellationToken: cancellationToken);
 
         foreach (var night in availability.Nights)
         {

@@ -9,6 +9,7 @@ public interface IReservationAvailabilityService
         int propertyId,
         DateOnly checkInDate,
         DateOnly checkOutDate,
+        int? excludedReservationId = null,
         CancellationToken cancellationToken = default);
 
     Task<ReservationAvailabilityResult> GetAvailabilityAsync(
@@ -17,6 +18,7 @@ public interface IReservationAvailabilityService
         DateOnly checkInDate,
         DateOnly checkOutDate,
         int roomCount,
+        int? excludedReservationId = null,
         CancellationToken cancellationToken = default);
 
     Task ValidateAsync(

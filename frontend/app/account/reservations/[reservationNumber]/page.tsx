@@ -12,13 +12,13 @@ import {
   formatDate,
   formatDateTime,
   formatDuration,
-  formatMoney,
   formatNumber,
   isPaymentEligible,
   statusLabels,
   statusVariant,
   usePaymentCountdown,
 } from "@/lib/account-reservations";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { apiRequest, getAuthRole, getToken } from "@/lib/owner-api";
 
 type DetailItemProps = {
@@ -51,6 +51,7 @@ function DetailSection({
 }
 
 export default function AccountReservationDetailsPage() {
+  const currencyLabel = useSiteCurrencyLabel();
   const router = useRouter();
   const searchParams = useSearchParams();
   const reservationNumber = decodeURIComponent(
@@ -241,23 +242,24 @@ export default function AccountReservationDetailsPage() {
             <DetailSection title="مالی">
               <DetailItem
                 label="مبلغ کل"
-                value={formatMoney(
+                value={formatCurrency(
                   reservation.totalPrice ?? reservation.finalAmount,
-                  reservation.currency,
+                  { currencyLabel },
                 )}
               />
               <DetailItem
                 label="پرداخت‌شده"
-                value={formatMoney(reservation.paidAmount, reservation.currency)}
+                value={formatCurrency(reservation.paidAmount, {
+                  currencyLabel,
+                })}
               />
               <DetailItem
                 label="باقی‌مانده"
-                value={formatMoney(
-                  reservation.remainingAmount,
-                  reservation.currency,
-                )}
+                value={formatCurrency(reservation.remainingAmount, {
+                  currencyLabel,
+                })}
               />
-              <DetailItem label="واحد پول" value={reservation.currency} />
+              <DetailItem label="واحد پول" value={currencyLabel} />
             </DetailSection>
 
             <DetailSection title="پرداخت">

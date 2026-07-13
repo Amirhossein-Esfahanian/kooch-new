@@ -55,12 +55,8 @@ public class ReservationPricingService(
             request.ChildAges,
             request.Children,
             childRules);
-        if (occupancy.CountedChildren > effectiveRules.BaseChildCapacity * request.RoomCount)
-        {
-            throw new InvalidOperationException("Children exceed this room's configured capacity.");
-        }
         var pricedAdults = request.Adults + occupancy.AdultEquivalentGuests;
-        ValidateExtraGuestRules(effectiveRules, request.RoomCount, pricedAdults);
+        ValidateOccupancy(effectiveRules, request, pricedAdults);
         var nightSnapshots = new List<ReservationNightPriceSnapshot>();
 
         foreach (var night in nights)
@@ -124,33 +120,48 @@ public class ReservationPricingService(
         {
             throw new ArgumentException("اطلاعات مهمان یا تعداد اتاق معتبر نیست.");
         }
-        if (request.ChildAges.Any(age => age < 0 || age > 120))
+        if (request.ChildAges.Count != request.Children)
         {
-            throw new ArgumentException("Child ages are invalid.");
+            throw new ArgumentException("سن همه کودکان باید مشخص شود.");
+        }
+        if (request.ChildAges.Any(age => age < 1 || age > 120))
+        {
+            throw new ArgumentException("سن کودک باید حداقل یک سال باشد.");
         }
     }
 
-    private static void ValidateExtraGuestRules(EffectiveReservationRules rules, int roomCount, int adults)
+    private static void ValidateOccupancy(
+        EffectiveReservationRules rules,
+        ReservationPricePreviewRequest request,
+        int adultEquivalentGuests)
     {
-        var baseAdultCapacity = rules.BaseAdultCapacity * roomCount;
+        var baseAdultCapacity = rules.BaseAdultCapacity * request.RoomCount;
         var extraAdultCapacity = rules.ExtraGuestAllowed
-            ? rules.MaxExtraGuests * roomCount
+            ? rules.MaxExtraGuests * request.RoomCount
             : 0;
         var maxAdultCapacity = baseAdultCapacity + extraAdultCapacity;
+        var maxDeclaredChildren = rules.MaxDeclaredChildren * request.RoomCount;
+        var totalOccupancy = request.Adults + request.Children;
 
-        if (adults <= baseAdultCapacity)
+        if (request.Children > maxDeclaredChildren)
         {
-            return;
+            throw new InvalidOperationException("تعداد کودکان از حد مجاز این اتاق بیشتر است.");
         }
 
-        if (!rules.ExtraGuestAllowed)
+        if (adultEquivalentGuests > maxAdultCapacity)
         {
-            throw new InvalidOperationException("This room does not accept extra guests.");
+            throw new InvalidOperationException(
+                rules.ExtraGuestAllowed
+                    ? "تعداد مهمانان معادل بزرگسال از ظرفیت اتاق و نفرات اضافه بیشتر است."
+                    : "تعداد مهمانان معادل بزرگسال از ظرفیت پایه اتاق بیشتر است.");
         }
 
-        if (adults > maxAdultCapacity)
+        if (totalOccupancy > maxAdultCapacity)
         {
-            throw new InvalidOperationException("Extra guests exceed this room's configured limit.");
+            throw new InvalidOperationException(
+                rules.ExtraGuestAllowed
+                    ? "تعداد کل مهمانان از ظرفیت اتاق و نفرات اضافه بیشتر است."
+                    : "تعداد کل مهمانان از ظرفیت پایه اتاق بیشتر است.");
         }
     }
 

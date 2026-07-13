@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Fragment,
   forwardRef,
   useEffect,
   useMemo,
@@ -330,6 +331,7 @@ export type KoochSearchableSelectOption = {
   value: KoochSelectValue;
   label: ReactNode;
   description?: ReactNode;
+  group?: string;
   searchText?: string;
   disabled?: boolean;
 };
@@ -590,44 +592,53 @@ export function KoochSearchableSelect({
                   {emptyText}
                 </p>
               ) : (
-                filteredOptions.map((option) => {
+                filteredOptions.map((option, index) => {
                   const selected = optionMatchesValue(option.value, value);
                   const active =
                     activeOption &&
                     optionMatchesValue(option.value, activeOption.value);
+                  const showGroup =
+                    Boolean(option.group) &&
+                    filteredOptions[index - 1]?.group !== option.group;
 
                   return (
-                    <button
-                      aria-selected={selected}
-                      className={joinClasses(
-                        "flex w-full items-start justify-between gap-3 rounded-lg px-2.5 py-2 text-right text-sm font-semibold transition",
-                        selected
-                          ? "bg-primary/10 text-foreground"
-                          : active
-                            ? "bg-muted text-foreground"
-                            : "hover:bg-muted",
-                        option.disabled &&
-                          "cursor-not-allowed opacity-50 hover:bg-transparent",
+                    <Fragment key={optionKey(option.value)}>
+                      {showGroup && (
+                        <p className="px-2.5 pb-1 pt-2 text-xs font-black text-muted-foreground first:pt-1">
+                          {option.group}
+                        </p>
                       )}
-                      disabled={option.disabled}
-                      key={optionKey(option.value)}
-                      onClick={() => selectOption(option)}
-                      type="button"
-                    >
-                      <span className="grid min-w-0 gap-0.5">
-                        <span className="truncate">{option.label}</span>
-                        {option.description && (
-                          <span className="truncate text-xs font-medium text-muted-foreground">
-                            {option.description}
+                      <button
+                        aria-selected={selected}
+                        className={joinClasses(
+                          "flex w-full items-start justify-between gap-3 rounded-lg px-2.5 py-2 text-right text-sm font-semibold transition",
+                          selected
+                            ? "bg-primary/10 text-foreground"
+                            : active
+                              ? "bg-muted text-foreground"
+                              : "hover:bg-muted",
+                          option.disabled &&
+                            "cursor-not-allowed opacity-50 hover:bg-transparent",
+                        )}
+                        disabled={option.disabled}
+                        onClick={() => selectOption(option)}
+                        type="button"
+                      >
+                        <span className="grid min-w-0 gap-0.5">
+                          <span className="truncate">{option.label}</span>
+                          {option.description && (
+                            <span className="truncate text-xs font-medium text-muted-foreground">
+                              {option.description}
+                            </span>
+                          )}
+                        </span>
+                        {selected && (
+                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-primary bg-primary text-xs font-black text-primary-foreground">
+                            ✓
                           </span>
                         )}
-                      </span>
-                      {selected && (
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-primary bg-primary text-xs font-black text-primary-foreground">
-                          ✓
-                        </span>
-                      )}
-                    </button>
+                      </button>
+                    </Fragment>
                   );
                 })
               )}

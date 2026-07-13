@@ -628,6 +628,7 @@ export class ApiRequestError extends Error {
   constructor(
     message: string,
     public readonly status: number,
+    public readonly body: unknown = null,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -662,6 +663,7 @@ export async function apiRequest<T>(
     throw new ApiRequestError(
       body?.message ?? `Request failed with status ${response.status}.`,
       response.status,
+      body,
     );
   }
 

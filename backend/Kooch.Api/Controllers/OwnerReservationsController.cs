@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Reservations;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -31,7 +32,8 @@ public class OwnerReservationsController(
         CancellationToken cancellationToken)
     {
         await EnsurePermissionAsync(propertyId, "bookings.view", cancellationToken);
-        return Ok(await reservationService.GetByIdAsync(id, propertyId, cancellationToken));
+        var response = await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(propertyId, response, cancellationToken));
     }
 
     [HttpPost]
@@ -51,21 +53,10 @@ public class OwnerReservationsController(
         int id,
         CancellationToken cancellationToken)
     {
-        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
+        await EnsureStatusPermissionAsync(propertyId, cancellationToken);
         await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
-        return Ok(await reservationService.ApproveAsync(id, GetCurrentUser(), cancellationToken));
-    }
-
-    [HttpPut("{id:int}/cancel")]
-    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<ReservationResponse>> Cancel(
-        int propertyId,
-        int id,
-        CancellationToken cancellationToken)
-    {
-        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
-        await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
-        return Ok(await reservationService.CancelAsync(id, GetCurrentUser(), cancellationToken));
+        var response = await reservationService.ApproveAsync(id, GetCurrentUser(), cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(propertyId, response, cancellationToken));
     }
 
     [HttpPut("{id:int}/status")]
@@ -76,9 +67,10 @@ public class OwnerReservationsController(
         ReservationStatusUpdateRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsurePermissionAsync(propertyId, "bookings.edit", cancellationToken);
+        await EnsureStatusPermissionAsync(propertyId, cancellationToken);
         await reservationService.GetByIdAsync(id, propertyId, cancellationToken);
-        return Ok(await reservationService.UpdateStatusAsync(id, request, GetCurrentUser(), cancellationToken));
+        var response = await reservationService.UpdateStatusAsync(id, request, GetCurrentUser(), cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(propertyId, response, cancellationToken));
     }
 
     [HttpPost("{id:int}/payment-link")]
@@ -115,5 +107,49 @@ public class OwnerReservationsController(
         {
             throw new UnauthorizedAccessException("You cannot access this property's reservations.");
         }
+    }
+
+    private async Task<ReservationResponse> FilterStatusTransitionsAsync(
+        int propertyId,
+        ReservationResponse response,
+        CancellationToken cancellationToken)
+    {
+        var canEdit = await CanChangeStatusAsync(propertyId, cancellationToken);
+        response.AllowedStatusTransitions = canEdit
+            ? response.AllowedStatusTransitions
+                .Where(status => status != ReservationStatus.Cancelled)
+                .ToList()
+            : [];
+        return response;
+    }
+
+    private async Task EnsureStatusPermissionAsync(
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        if (!await CanChangeStatusAsync(propertyId, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot change this property's reservation status.");
+        }
+    }
+
+    private async Task<bool> CanChangeStatusAsync(
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        if (user.Role is UserRole.SuperAdmin or UserRole.AdminAssistant)
+        {
+            return await permissionService.HasPermissionAsync(
+                user.UserId,
+                PermissionKey.ManageReservations,
+                cancellationToken: cancellationToken);
+        }
+
+        return await permissionService.CanAsync(
+            user.UserId,
+            propertyId,
+            "bookings.edit",
+            cancellationToken);
     }
 }

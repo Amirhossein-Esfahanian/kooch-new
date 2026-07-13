@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Reservations;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,7 +13,8 @@ public class AdminReservationsController(
     IReservationService reservationService,
     IReservationPricingService reservationPricingService,
     IReservationAvailabilityService reservationAvailabilityService,
-    IReservationRulesResolver reservationRulesResolver) : AuthenticatedControllerBase
+    IReservationRulesResolver reservationRulesResolver,
+    IPermissionService permissionService) : AuthenticatedControllerBase
 {
     [HttpGet("effective-rules")]
     [ProducesResponseType<EffectiveReservationRules>(StatusCodes.Status200OK)]
@@ -30,12 +32,14 @@ public class AdminReservationsController(
         [FromQuery] int propertyId,
         [FromQuery] DateOnly checkInDate,
         [FromQuery] DateOnly checkOutDate,
+        [FromQuery] int? excludeReservationId,
         CancellationToken cancellationToken)
     {
         return Ok(await reservationAvailabilityService.GetAvailableRoomsAsync(
             propertyId,
             checkInDate,
             checkOutDate,
+            excludeReservationId,
             cancellationToken));
     }
 
@@ -54,7 +58,8 @@ public class AdminReservationsController(
         int id,
         CancellationToken cancellationToken)
     {
-        return Ok(await reservationService.GetByIdAsync(id, cancellationToken: cancellationToken));
+        var response = await reservationService.GetByIdAsync(id, cancellationToken: cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
     [HttpPost]
@@ -87,31 +92,38 @@ public class AdminReservationsController(
     }
 
     [HttpPut("{id:int}/approve")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationResponse>> Approve(
         int id,
         CancellationToken cancellationToken)
     {
-        return Ok(await reservationService.ApproveAsync(id, GetCurrentUser(), cancellationToken));
+        var response = await reservationService.ApproveAsync(id, GetCurrentUser(), cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
     [HttpPut("{id:int}/cancel")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationResponse>> Cancel(
         int id,
+        ReservationCancellationRequest request,
         CancellationToken cancellationToken)
     {
-        return Ok(await reservationService.CancelAsync(id, GetCurrentUser(), cancellationToken));
+        var response = await reservationService.CancelAsync(id, request, GetCurrentUser(), cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
     [HttpPut("{id:int}/status")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationResponse>> UpdateStatus(
         int id,
         ReservationStatusUpdateRequest request,
         CancellationToken cancellationToken)
     {
-        return Ok(await reservationService.UpdateStatusAsync(id, request, GetCurrentUser(), cancellationToken));
+        var response = await reservationService.UpdateStatusAsync(id, request, GetCurrentUser(), cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
     [HttpPost("{id:int}/payment-link")]
@@ -130,5 +142,21 @@ public class AdminReservationsController(
         CancellationToken cancellationToken)
     {
         return Ok(await reservationService.SendPaymentLinkAsync(id, GetCurrentUser(), cancellationToken));
+    }
+
+    private async Task<ReservationResponse> FilterStatusTransitionsAsync(
+        ReservationResponse response,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        if (!await permissionService.HasPermissionAsync(
+                user.UserId,
+                PermissionKey.ManageReservations,
+                cancellationToken: cancellationToken))
+        {
+            response.AllowedStatusTransitions = [];
+        }
+
+        return response;
     }
 }

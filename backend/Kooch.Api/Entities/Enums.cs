@@ -49,6 +49,18 @@ public enum ReservationStatus
     CapacityLost = 12
 }
 public enum ReservationSource { Website, OwnerManual, PhoneReferral, AdminCreated, ExternalChannel }
+public enum ReservationCancellationReason
+{
+    GuestRequest,
+    NonPayment,
+    NoAvailability,
+    PropertyRuleConflict,
+    DuplicateReservation,
+    InvalidGuestInformation,
+    PropertyMaintenanceOrForceMajeure,
+    AdministrativeCorrection,
+    Other
+}
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
 public enum AmenityScope { Property, RoomType, Both }
 public enum DiscountType { Percentage, FixedAmount }

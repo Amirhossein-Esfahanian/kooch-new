@@ -3,9 +3,11 @@
 import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   AmenityCategoryResponse,
   AmenityResponse,
+  ApiRequestError,
   apiRequest,
   BreakfastOption,
   getToken,
@@ -42,6 +44,8 @@ const steps = [
   "توضیحات و فضاها",
   "مکان‌های نزدیک",
   "قوانین و زمان‌ها",
+  "کودک و نفر اضافه",
+  "تنظیمات سئو",
   "بازبینی",
 ];
 
@@ -233,7 +237,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [data, setData] = useState<WizardData>(initialData);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [adminStatus, setAdminStatus] = useState<PropertyStatus>("PendingReview");
-  const [adminOwnerId, setAdminOwnerId] = useState("");
   const [amenityCategories, setAmenityCategories] = useState<AmenityCategoryResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
@@ -242,6 +245,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [coverImageId, setCoverImageId] = useState<number | null>(null);
   const [descriptionIds, setDescriptionIds] = useState<Partial<Record<string, number>>>({});
   const [loading, setLoading] = useState(false);
+  const [savingSection, setSavingSection] = useState<string | null>(null);
   const [booting, setBooting] = useState(mode === "edit");
   const [error, setError] = useState("");
 
@@ -275,7 +279,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     setBooting(true);
     Promise.all([
       apiRequest<PropertyResponse>(isAdmin ? `/admin/properties/${propertyId}` : `/owner/properties/${propertyId}`),
-      apiRequest<PropertyCompletionResponse>(`/owner/properties/${propertyId}/completion`),
+      apiRequest<PropertyCompletionResponse>(isAdmin ? `/admin/properties/${propertyId}/completion` : `/owner/properties/${propertyId}/completion`),
       apiRequest<PropertyDescriptionSectionResponse[]>(`/owner/properties/${propertyId}/descriptions`),
       apiRequest<PropertyImageResponse[]>(`/owner/properties/${propertyId}/images`),
       apiRequest<PropertyAmenityResponse[]>(`/owner/properties/${propertyId}/amenities`),
@@ -290,7 +294,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         setRoomTypes(roomTypeItems);
         setCompletion(completionResult);
         setAdminStatus(propertyResult.status as PropertyStatus);
-        setAdminOwnerId(String(propertyResult.ownerId));
         setCoverImageId(images.find((image) => image.isCover)?.id ?? null);
         setDescriptionIds(Object.fromEntries(descriptions.map((section) => [section.sectionType, section.id])));
         const intro = descriptions.find((section) => section.sectionType === "PropertyIntroduction");
@@ -350,6 +353,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     Boolean(data.propertyDescription.trim() || cleanCommonAreas(data.commonAreas).length),
     cleanNearbyPlaces(data.nearbyPlaces).length > 0,
     Boolean(data.checkInTime && data.checkOutTime),
+    Boolean(data.freeChildAgeLimit || data.maxFreeChildren || data.childPrice || data.extraGuestPrice),
+    Boolean(data.seoTitle || data.seoDescription),
     Boolean(property),
   ], [data, property]);
 
@@ -439,13 +444,36 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           [Boolean(data.checkOutTime), "ساعت خروج"],
         ]),
         recommendedMissingItems: recommended([
-          [Boolean(data.freeChildAgeLimit || data.maxFreeChildren), "قانون کودک رایگان"],
+          [data.breakfastOption !== "Paid" || Boolean(data.breakfastPrice), "قیمت صبحانه"],
+        ]),
+      },
+      {
+        key: "financial",
+        label: "کودک و نفر اضافه",
+        targetStepIndex: 8,
+        isComplete: data.freeChildAgeLimit !== "" && data.maxFreeChildren !== "" && Number(data.childPrice) > 0 && Number(data.extraGuestPrice) > 0,
+        missingItems: required([
+          [data.freeChildAgeLimit !== "" && data.maxFreeChildren !== "", "قانون کودک رایگان"],
+          [Number(data.childPrice) > 0, "نرخ کودک"],
+          [Number(data.extraGuestPrice) > 0, "نرخ نفر اضافه"],
+        ]),
+        recommendedMissingItems: [],
+      },
+      {
+        key: "seo",
+        label: "تنظیمات سئو",
+        targetStepIndex: 9,
+        isComplete: true,
+        missingItems: [],
+        recommendedMissingItems: recommended([
+          [Boolean(data.seoTitle.trim()), "عنوان سئو"],
+          [Boolean(data.seoDescription.trim()), "توضیحات سئو"],
         ]),
       },
       {
         key: "review",
         label: "بازبینی",
-        targetStepIndex: 8,
+        targetStepIndex: 10,
         isComplete: Boolean(property),
         missingItems: required([[Boolean(property), "ذخیره اولیه اقامتگاه"]]),
         recommendedMissingItems: [],
@@ -470,7 +498,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       amenities: 3,
       images: 4,
       policies: 7,
-      financial: 7,
+      financial: 8,
     };
     return stepByTarget[actionTarget];
   }
@@ -511,7 +539,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       hasGroundFloorRoom: data.hasGroundFloorRoom,
       hasAccessibleBathroom: data.hasAccessibleBathroom,
     };
-    return isAdmin && property ? { ...payload, ownerId: Number(adminOwnerId || property.ownerId), status: adminStatus } : payload;
+    return payload;
   }
 
   async function saveProperty(description?: string) {
@@ -527,6 +555,17 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     const created = await apiRequest<PropertyResponse>("/owner/properties", { method: "POST", body });
     setProperty(created);
     return created;
+  }
+
+  async function updatePropertySection(section: string, payload: object) {
+    if (!property) throw new Error("ابتدا اقامتگاه را ایجاد کنید.");
+    const base = isAdmin ? "/admin/properties" : "/owner/properties";
+    const updated = await apiRequest<PropertyResponse>(`${base}/${property.id}/sections/${section}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    });
+    setProperty(updated);
+    return updated;
   }
 
   async function saveAmenities(propertyId: number) {
@@ -593,7 +632,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         body: JSON.stringify({ name: area.name.trim(), description: area.description.trim() || null, sortOrder: index + 1 }),
       });
     }
-    await saveProperty(data.propertyDescription.trim());
+    await updatePropertySection("description", { description: data.propertyDescription.trim() });
   }
 
   async function saveNearbyPlaces(propertyId: number) {
@@ -625,21 +664,50 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   }
 
   function validateStep(index = step) {
-    if (index === 0 && (!data.name.trim() || !data.englishName.trim())) return "نام فارسی و انگلیسی را وارد کنید.";
-    if (index === 1 && (!data.city.trim() || !data.address.trim())) return "شهر و نشانی را کامل کنید.";
-    if (index === 2 && Number(data.floors || 0) < 1) return "تعداد طبقات باید حداقل ۱ باشد.";
-    if (index === 7 && (!data.checkInTime || !data.checkOutTime)) return "زمان ورود و خروج را وارد کنید.";
+    if (mode === "create" && index === 0 && (!data.name.trim() || !data.englishName.trim())) return "نام فارسی و انگلیسی را وارد کنید.";
+    if (index === 2 && data.floors !== "" && Number(data.floors) < 1) return "تعداد طبقات باید حداقل ۱ باشد.";
+    if (index === 7 && data.breakfastOption === "Paid" && data.breakfastPrice === "") return "قیمت صبحانه را وارد کنید.";
     return "";
   }
 
   async function saveCurrentStep() {
-    const saved = await saveProperty(step === 5 ? data.propertyDescription.trim() : property?.description ?? data.propertyDescription.trim());
+    if (!property) {
+      const created = await saveProperty(data.propertyDescription.trim());
+      setCompletion(await apiRequest<PropertyCompletionResponse>(`/owner/properties/${created.id}/completion`).catch(() => completion as PropertyCompletionResponse));
+      return created;
+    }
+
+    let saved = property;
+    if (step === 0) saved = await updatePropertySection("basic", {
+      name: data.name.trim(), englishName: data.englishName.trim() || null, type: data.type, inventoryMode: data.inventoryMode,
+    });
+    if (step === 1) saved = await updatePropertySection("location", {
+      destinationId: resolveDestinationId(data.city), address: data.address.trim(), city: data.city.trim(), country: "Iran",
+      latitude: data.latitude === "" ? null : Number(data.latitude), longitude: data.longitude === "" ? null : Number(data.longitude),
+    });
+    if (step === 2) saved = await updatePropertySection("building", {
+      totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea), landAreaM2: data.landArea === "" ? null : Number(data.landArea),
+      floorsCount: data.floors === "" ? null : Number(data.floors), hasElevator: data.hasElevator,
+      isWheelchairAccessible: data.isWheelchairAccessible, hasGroundFloorRoom: data.hasGroundFloorRoom, hasAccessibleBathroom: data.hasAccessibleBathroom,
+    });
     if (step === 3) await saveAmenities(saved.id);
     if (step === 4) await saveImages(saved.id);
     if (step === 5) await saveDescriptions(saved.id);
     if (step === 6) await saveNearbyPlaces(saved.id);
-    if (step === 8 && isAdmin) await saveProperty(data.propertyDescription.trim());
-    setCompletion(await apiRequest<PropertyCompletionResponse>(`/owner/properties/${saved.id}/completion`).catch(() => completion as PropertyCompletionResponse));
+    if (step === 7) saved = await updatePropertySection("rules", {
+      checkInTime: data.checkInTime || null, checkOutTime: data.checkOutTime || null, breakfastOption: data.breakfastOption,
+      breakfastPrice: data.breakfastOption === "Paid" && data.breakfastPrice !== "" ? Number(data.breakfastPrice) : null,
+    });
+    if (step === 8) saved = await updatePropertySection("financial", {
+      freeChildAgeLimit: data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
+      maxFreeChildren: data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
+      childPrice: data.childPrice === "" ? null : Number(data.childPrice), extraGuestPrice: data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
+    });
+    if (step === 9) saved = await updatePropertySection("seo", {
+      seoTitle: data.seoTitle.trim() || null, seoDescription: data.seoDescription.trim() || null,
+    });
+    const completionPath = isAdmin ? `/admin/properties/${saved.id}/completion` : `/owner/properties/${saved.id}/completion`;
+    setCompletion(await apiRequest<PropertyCompletionResponse>(completionPath).catch(() => completion as PropertyCompletionResponse));
     return saved;
   }
 
@@ -650,14 +718,19 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       return;
     }
     setLoading(true);
+    setSavingSection(String(step));
     setError("");
     try {
       await saveCurrentStep();
+      toast.success("این بخش ذخیره شد.");
       setStep((current) => Math.min(current + 1, steps.length - 1));
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "این مرحله ذخیره نشد.");
+      const message = caught instanceof Error ? caught.message : "این مرحله ذخیره نشد.";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
+      setSavingSection(null);
     }
   }
 
@@ -667,11 +740,38 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     setError("");
     try {
       const saved = await saveCurrentStep();
+      toast.success("اطلاعات این بخش ذخیره شد.");
       onDone?.(saved);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "ذخیره نهایی انجام نشد.");
+      const message = caught instanceof Error ? caught.message : "ذخیره نهایی انجام نشد.";
+      setError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function saveAdminStatus() {
+    if (!property || !isAdmin) return;
+    setSavingSection("status");
+    setError("");
+    try {
+      const updated = await apiRequest<PropertyResponse>(`/admin/properties/${property.id}/status`, {
+        method: "PUT",
+        body: JSON.stringify({ status: adminStatus }),
+      });
+      setProperty(updated);
+      toast.success("وضعیت اقامتگاه به‌روزرسانی شد.");
+    } catch (caught) {
+      const body = caught instanceof ApiRequestError
+        ? caught.body as { completion?: PropertyCompletionResponse } | null
+        : null;
+      if (body?.completion) setCompletion(body.completion);
+      const message = caught instanceof Error ? caught.message : "تغییر وضعیت انجام نشد.";
+      setError(message);
+      toast.error(message);
+    } finally {
+      setSavingSection(null);
     }
   }
 
@@ -755,7 +855,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               <label className="grid gap-1 text-sm font-bold">نام انگلیسی<input className={inputClass} dir="ltr" onChange={(event) => update("englishName", event.target.value)} value={data.englishName} /></label>
               <label className="grid gap-1 text-sm font-bold">نوع اقامتگاه<select className={inputClass} onChange={(event) => update("type", event.target.value as PropertyType)} value={data.type}>{propertyTypes.map((type) => <option key={type} value={type}>{propertyTypeLabels[type]}</option>)}</select></label>
               <label className="grid gap-1 text-sm font-bold">مدل موجودی<select className={inputClass} onChange={(event) => update("inventoryMode", event.target.value as InventoryMode)} value={data.inventoryMode}><option value="NamedRooms">اتاق نام‌دار</option><option value="TypeBasedInventory">موجودی تعدادی</option></select></label>
-              {isAdmin && <label className="grid gap-1 text-sm font-bold">وضعیت<select className={inputClass} onChange={(event) => setAdminStatus(event.target.value as PropertyStatus)} value={adminStatus}>{propertyStatusOptions.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}</select></label>}
             </div>
           </section>
         )}
@@ -933,6 +1032,14 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               <label className="grid gap-1 text-sm font-bold">ساعت خروج<input className={inputClass} onChange={(event) => update("checkOutTime", event.target.value)} type="time" value={data.checkOutTime} /></label>
               <label className="grid gap-1 text-sm font-bold">صبحانه<select className={inputClass} onChange={(event) => update("breakfastOption", event.target.value as BreakfastOption)} value={data.breakfastOption}><option value="NoBreakfast">بدون صبحانه</option><option value="Included">صبحانه رایگان</option><option value="Paid">صبحانه با هزینه</option></select></label>
               {data.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-bold">هزینه صبحانه<input className={inputClass} min="0" onChange={(event) => update("breakfastPrice", event.target.value)} type="number" value={data.breakfastPrice} /></label>}
+            </div>
+          </section>
+        )}
+
+        {step === 8 && (
+          <section className={`${cardClass} grid gap-4`}>
+            <h2 className="text-2xl font-black">قوانین کودک و نفر اضافه</h2>
+            <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-bold">سن کودک رایگان تا<input className={inputClass} max="17" min="0" onChange={(event) => update("freeChildAgeLimit", event.target.value)} type="number" value={data.freeChildAgeLimit} /></label>
               <label className="grid gap-1 text-sm font-bold">حداکثر تعداد کودک رایگان<input className={inputClass} min="0" onChange={(event) => update("maxFreeChildren", event.target.value)} type="number" value={data.maxFreeChildren} /></label>
               <KoochField label="نرخ کودک">
@@ -941,14 +1048,40 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               <KoochField label="نرخ نفر اضافه">
                 <KoochInput min="0" onChange={(event) => update("extraGuestPrice", event.target.value)} type="number" value={data.extraGuestPrice} />
               </KoochField>
+            </div>
+          </section>
+        )}
+
+        {step === 9 && (
+          <section className={`${cardClass} grid gap-4`}>
+            <h2 className="text-2xl font-black">تنظیمات سئو</h2>
+            <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-bold md:col-span-2">عنوان سئو<input className={inputClass} onChange={(event) => update("seoTitle", event.target.value)} value={data.seoTitle} /></label>
               <label className="grid gap-1 text-sm font-bold md:col-span-2">توضیح سئو<textarea className={inputClass} onChange={(event) => update("seoDescription", event.target.value)} rows={3} value={data.seoDescription} /></label>
             </div>
           </section>
         )}
 
-        {step === 8 && (
+        {step === 10 && (
           <section className="grid gap-4">
+            {isAdmin && property && (
+              <div className={`${cardClass} grid gap-3 md:grid-cols-[1fr_auto] md:items-end`}>
+                <label className="grid gap-1 text-sm font-bold">
+                  وضعیت اقامتگاه
+                  <select className={inputClass} onChange={(event) => setAdminStatus(event.target.value as PropertyStatus)} value={adminStatus}>
+                    {propertyStatusOptions.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+                  </select>
+                </label>
+                <KoochButton disabled={savingSection === "status"} loading={savingSection === "status"} onClick={saveAdminStatus} type="button">
+                  ذخیره وضعیت
+                </KoochButton>
+                {adminStatus === "Approved" && !completion?.canActivate && (
+                  <p className="rounded-lg bg-[var(--theme-warning-soft)] p-3 text-sm font-bold text-[var(--theme-warning)] md:col-span-2">
+                    برای فعال‌سازی، ابتدا موارد ناقص زیر را تکمیل کنید.
+                  </p>
+                )}
+              </div>
+            )}
             {completion && property && (
               <PropertyCompletionCard
                 completion={completion}
@@ -1033,12 +1166,23 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <KoochButton disabled={step === 0 || loading} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }} type="button" variant="outline">قبلی</KoochButton>
           <div className="flex gap-2">
-            <KoochButton disabled={loading} onClick={async () => {
+            <KoochButton disabled={loading || savingSection !== null} loading={savingSection === String(step)} onClick={async () => {
               setLoading(true);
+              setSavingSection(String(step));
               setError("");
-              try { await saveCurrentStep(); } catch (caught) { setError(caught instanceof Error ? caught.message : "ذخیره انجام نشد."); } finally { setLoading(false); }
+              try {
+                await saveCurrentStep();
+                toast.success("این بخش ذخیره شد.");
+              } catch (caught) {
+                const message = caught instanceof Error ? caught.message : "ذخیره انجام نشد.";
+                setError(message);
+                toast.error(message);
+              } finally {
+                setLoading(false);
+                setSavingSection(null);
+              }
             }} type="button" variant="outline">ذخیره</KoochButton>
-            {step < steps.length - 1 ? <KoochButton disabled={loading} loading={loading} onClick={nextStep} type="button">{loading ? "در حال ذخیره..." : "ذخیره و ادامه"}</KoochButton> : <KoochButton disabled={loading} loading={loading} type="submit">پایان</KoochButton>}
+            {step < steps.length - 1 ? <KoochButton disabled={loading || savingSection !== null} loading={savingSection === String(step)} onClick={nextStep} type="button">ذخیره و ادامه</KoochButton> : <KoochButton disabled={loading || savingSection !== null} loading={loading} type="submit">پایان</KoochButton>}
           </div>
         </div>
       </main>

@@ -2,6 +2,7 @@ using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Entities;
+using Kooch.Api.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
@@ -138,6 +139,124 @@ public class PropertyService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateBasicSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyBasicSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        var englishName = CleanOptional(request.EnglishName);
+        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
+        await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
+
+        property.Name = request.Name.Trim();
+        property.EnglishName = englishName;
+        property.Slug = slug;
+        property.Type = request.Type;
+        property.InventoryMode = request.InventoryMode;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateLocationSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyLocationSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        property.DestinationId = request.DestinationId;
+        property.Address = request.Address.Trim();
+        property.City = request.City.Trim();
+        property.Country = request.Country.Trim();
+        property.Latitude = request.Latitude;
+        property.Longitude = request.Longitude;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateBuildingSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyBuildingSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        property.TotalAreaM2 = request.TotalAreaM2;
+        property.LandAreaM2 = request.LandAreaM2;
+        property.FloorsCount = request.FloorsCount;
+        property.HasElevator = request.HasElevator;
+        property.IsWheelchairAccessible = request.IsWheelchairAccessible;
+        property.HasGroundFloorRoom = request.HasGroundFloorRoom;
+        property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateRulesSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyRulesSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        property.CheckInTime = request.CheckInTime;
+        property.CheckOutTime = request.CheckOutTime;
+        property.BreakfastOption = request.BreakfastOption;
+        property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateFinancialSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyFinancialSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        property.FreeChildAgeLimit = request.FreeChildAgeLimit;
+        property.MaxFreeChildren = request.MaxFreeChildren;
+        property.ChildPrice = request.ChildPrice;
+        property.ExtraGuestPrice = request.ExtraGuestPrice;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateDescriptionSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertyDescriptionSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        property.Description = request.Description.Trim();
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> UpdateSeoSectionAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        UpdatePropertySeoSectionRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        property.SeoTitle = CleanOptional(request.SeoTitle);
+        property.SeoDescription = CleanOptional(request.SeoDescription);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        return await LoadResponseAsync(propertyId, cancellationToken);
     }
 
     public async Task<IReadOnlyList<PropertyResponse>> GetMyPropertiesAsync(
@@ -459,13 +578,23 @@ public class PropertyService(
         var completion = await propertyCompletionService.CalculateAsync(propertyId, cancellationToken);
         if (!completion.CanActivate)
         {
-            var missing = completion.Sections
-                .Where(section => section.Status != PropertyCompletionSectionStatus.Complete)
-                .Select(section => section.Label)
-                .ToArray();
-            throw new InvalidOperationException(
-                $"Property cannot be activated until completion is 100%. Missing sections: {string.Join(", ", missing)}.");
+            throw new PropertyActivationException(completion);
         }
+    }
+
+    private async Task<Property> GetManageableEntityAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var property = await GetEntityAsync(propertyId, cancellationToken);
+        if (!await propertyAccessService.CanManagePropertyAsync(userId, role, propertyId, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot manage this property.");
+        }
+
+        return property;
     }
 
     private async Task<Property> GetEntityAsync(int propertyId, CancellationToken cancellationToken) =>

@@ -40,10 +40,24 @@ public sealed class ChildPricingRuleResolver(KoochDbContext dbContext) : IChildP
         decimal? propertyChildPrice,
         ChildPricingRules globalDefaults)
     {
+        var freeChildMaxAge = propertyFreeChildAgeLimit ?? globalDefaults.FreeChildMaxAge;
+        var halfPriceChildMinAge = propertyFreeChildAgeLimit.HasValue
+            ? propertyFreeChildAgeLimit.Value + 1
+            : globalDefaults.HalfPriceChildMinAge ??
+              (freeChildMaxAge.HasValue ? freeChildMaxAge.Value + 1 : null);
+        var halfPriceChildMaxAge = globalDefaults.HalfPriceChildMaxAge;
+        if (halfPriceChildMinAge.HasValue &&
+            (!halfPriceChildMaxAge.HasValue || halfPriceChildMaxAge < halfPriceChildMinAge))
+        {
+            halfPriceChildMaxAge = halfPriceChildMinAge;
+        }
+
         return globalDefaults with
         {
-            FreeChildMaxAge = propertyFreeChildAgeLimit ?? globalDefaults.FreeChildMaxAge,
+            FreeChildMaxAge = freeChildMaxAge,
             MaxFreeChildren = propertyMaxFreeChildren,
+            HalfPriceChildMinAge = halfPriceChildMinAge,
+            HalfPriceChildMaxAge = halfPriceChildMaxAge,
             PropertyChildPrice = propertyChildPrice
         };
     }
@@ -76,21 +90,17 @@ public sealed class ChildPricingRuleResolver(KoochDbContext dbContext) : IChildP
 
         foreach (var age in ages)
         {
-            if (rules.FreeChildMaxAge.HasValue && age <= rules.FreeChildMaxAge.Value)
+            if (age < halfPriceMinAge)
             {
                 freeChildren++;
             }
-            else if (age <= halfPriceMaxAge && age >= halfPriceMinAge)
+            else if (age <= halfPriceMaxAge)
             {
                 chargeableChildren++;
             }
             else if (age > halfPriceMaxAge)
             {
                 adultEquivalentGuests++;
-            }
-            else
-            {
-                freeChildren++;
             }
         }
 

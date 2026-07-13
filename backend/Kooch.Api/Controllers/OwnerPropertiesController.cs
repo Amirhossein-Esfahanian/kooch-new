@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -52,6 +53,34 @@ public class OwnerPropertiesController(
             user.UserId, user.Role, id, request, cancellationToken));
     }
 
+    [HttpPut("{id:int}/sections/basic")]
+    public Task<ActionResult<PropertyResponse>> UpdateBasic(int id, UpdatePropertyBasicSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateBasicSectionAsync(userId, role, id, request, cancellationToken));
+
+    [HttpPut("{id:int}/sections/location")]
+    public Task<ActionResult<PropertyResponse>> UpdateLocation(int id, UpdatePropertyLocationSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateLocationSectionAsync(userId, role, id, request, cancellationToken));
+
+    [HttpPut("{id:int}/sections/building")]
+    public Task<ActionResult<PropertyResponse>> UpdateBuilding(int id, UpdatePropertyBuildingSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateBuildingSectionAsync(userId, role, id, request, cancellationToken));
+
+    [HttpPut("{id:int}/sections/rules")]
+    public Task<ActionResult<PropertyResponse>> UpdateRules(int id, UpdatePropertyRulesSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateRulesSectionAsync(userId, role, id, request, cancellationToken));
+
+    [HttpPut("{id:int}/sections/financial")]
+    public Task<ActionResult<PropertyResponse>> UpdateFinancial(int id, UpdatePropertyFinancialSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateFinancialSectionAsync(userId, role, id, request, cancellationToken));
+
+    [HttpPut("{id:int}/sections/description")]
+    public Task<ActionResult<PropertyResponse>> UpdateDescription(int id, UpdatePropertyDescriptionSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateDescriptionSectionAsync(userId, role, id, request, cancellationToken));
+
+    [HttpPut("{id:int}/sections/seo")]
+    public Task<ActionResult<PropertyResponse>> UpdateSeo(int id, UpdatePropertySeoSectionRequest request, CancellationToken cancellationToken) =>
+        UpdateSection((userId, role) => propertyService.UpdateSeoSectionAsync(userId, role, id, request, cancellationToken));
+
     [HttpGet("{id:int}/completion")]
     [ProducesResponseType<PropertyCompletionResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PropertyCompletionResponse>> GetCompletion(
@@ -61,5 +90,12 @@ public class OwnerPropertiesController(
         var user = GetCurrentUser();
         return Ok(await propertyCompletionService.GetAsync(
             user.UserId, user.Role, id, cancellationToken));
+    }
+
+    private async Task<ActionResult<PropertyResponse>> UpdateSection(
+        Func<int, UserRole, Task<PropertyResponse>> update)
+    {
+        var user = GetCurrentUser();
+        return Ok(await update(user.UserId, user.Role));
     }
 }

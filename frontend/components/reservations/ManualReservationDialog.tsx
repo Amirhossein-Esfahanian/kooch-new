@@ -22,6 +22,7 @@ import {
   type PricingGuestType,
   type PropertyResponse,
 } from "@/lib/owner-api";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { KoochDatePicker } from "../KoochDatePicker";
 import type { ReservationTableItem } from "./ReservationTable";
 
@@ -59,7 +60,6 @@ type ReservationDraft = {
   children: string;
   childAges: string[];
   guestType: PricingGuestType;
-  status: string;
   notes: string;
 };
 
@@ -78,6 +78,7 @@ type EffectiveReservationRules = {
   propertyId: number;
   roomTypeId: number;
   baseCapacity: number;
+  maxDeclaredChildren: number;
   extraGuestAllowed: boolean;
   maxExtraGuests: number;
   extraGuestPrice: number;
@@ -136,7 +137,6 @@ const initialDraft: ReservationDraft = {
   children: "0",
   childAges: [],
   guestType: "Iranian",
-  status: "Pending",
   notes: "",
 };
 
@@ -164,7 +164,6 @@ function reservationDraft(
     children: Math.max(0, reservation.children ?? 0).toString(),
     childAges: normalizeChildAges([], Math.max(0, reservation.children ?? 0)),
     guestType: reservation.guestType === "Foreign" ? "Foreign" : "Iranian",
-    status: reservation.status || initialDraft.status,
     notes: reservation.notes ?? "",
   };
 }
@@ -200,11 +199,6 @@ function daysBetween(checkInDate: string, checkOutDate: string) {
   return diff > 0 ? Math.round(diff / 86_400_000) : 0;
 }
 
-function formatMoney(value: number | null | undefined, currency = "IRR") {
-  if (value === null || value === undefined) return "-";
-  return `${new Intl.NumberFormat("fa-IR").format(value)} ${currency}`;
-}
-
 function formatAge(value: number) {
   return new Intl.NumberFormat("fa-IR").format(value);
 }
@@ -213,27 +207,55 @@ function formatPercent(value: number) {
   return new Intl.NumberFormat("fa-IR").format(value);
 }
 
-function buildChildRuleSummary(rules: EffectiveReservationRules): ChildRuleSummary {
+function buildChildRuleSummary(
+  rules: EffectiveReservationRules,
+  currencyLabel: string,
+): ChildRuleSummary {
   return {
     source:
       rules.ruleSource === "Property" ? "تنظیمات اقامتگاه" : "پیش‌فرض سایت",
     freeChildText:
-      rules.freeChildMaxAge !== null
-        ? `کودک تا ${formatAge(rules.freeChildMaxAge)} سال رایگان است.`
+      rules.halfPriceChildMinAge !== null
+        ? `از ۱ تا ${formatAge(Math.max(1, rules.halfPriceChildMinAge - 1))} سال رایگان است.`
         : "سن کودک رایگان ثبت نشده است.",
     childPricingText:
       rules.halfPriceChildMinAge !== null &&
       rules.halfPriceChildMaxAge !== null
-        ? `از ${formatAge(rules.halfPriceChildMinAge)} تا ${formatAge(rules.halfPriceChildMaxAge)} سال با ${rules.childPrice !== null ? formatMoney(rules.childPrice) : `${formatPercent(rules.childRate)}٪ نرخ پایه`} محاسبه می‌شود.`
+        ? `از ${formatAge(rules.halfPriceChildMinAge)} تا ${formatAge(rules.halfPriceChildMaxAge)} سال با ${rules.childPrice !== null ? formatCurrency(rules.childPrice, { currencyLabel }) : `${formatPercent(rules.childRate)}٪ نرخ پایه`} محاسبه می‌شود.`
         : "بازه کودک نیم‌بها در پیش‌فرض سایت کامل نیست.",
     adultText:
       rules.halfPriceChildMaxAge !== null
         ? `سن بالاتر از ${formatAge(rules.halfPriceChildMaxAge)} سال به ظرفیت بزرگسال اضافه می‌شود.`
         : "سن‌های خارج از بازه کودک به ظرفیت بزرگسال اضافه می‌شوند.",
     roomText: rules.extraGuestAllowed
-      ? `حداکثر ${formatAge(rules.maxExtraGuests)} نفر اضافه با نرخ ${formatMoney(rules.extraGuestPrice)} پذیرفته می‌شود.`
+      ? `حداکثر ${formatAge(rules.maxExtraGuests)} نفر اضافه با نرخ ${formatCurrency(rules.extraGuestPrice, { currencyLabel })} پذیرفته می‌شود.`
       : "این اتاق نفر اضافه نمی‌پذیرد.",
   };
+}
+
+function childAgeOptions(rules: EffectiveReservationRules) {
+  const halfPriceMinAge =
+    rules.halfPriceChildMinAge ??
+    (rules.freeChildMaxAge !== null ? rules.freeChildMaxAge + 1 : 1);
+  const halfPriceMaxAge = rules.halfPriceChildMaxAge ?? 17;
+  const maximumOptionAge = Math.min(
+    120,
+    Math.max(18, halfPriceMaxAge + 1, (rules.freeChildMaxAge ?? 0) + 1),
+  );
+
+  return Array.from({ length: maximumOptionAge }, (_, index) => {
+    const age = index + 1;
+    const category =
+      age < halfPriceMinAge
+        ? "رایگان"
+        : age <= halfPriceMaxAge
+          ? "نیم‌بها"
+          : age > halfPriceMaxAge
+            ? "بزرگسال"
+            : "رایگان";
+
+    return { age, label: `${formatAge(age)} سال — ${category}` };
+  });
 }
 
 function todayIsoDate() {
@@ -321,6 +343,7 @@ export function ManualReservationDialog({
   open: controlledOpen,
   reservation,
 }: ManualReservationDialogProps) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<ReservationDraft>({
     ...initialDraft,
@@ -335,6 +358,7 @@ export function ManualReservationDialog({
   const [pricePreview, setPricePreview] =
     useState<ReservationPricePreviewResponse | null>(null);
   const [pricePreviewLoading, setPricePreviewLoading] = useState(false);
+  const [pricePreviewError, setPricePreviewError] = useState("");
   const [effectiveRules, setEffectiveRules] =
     useState<EffectiveReservationRules | null>(null);
   const [rulesLoading, setRulesLoading] = useState(false);
@@ -354,7 +378,7 @@ export function ManualReservationDialog({
   const isLockedEdit =
     isEditMode &&
     reservation?.status !== undefined &&
-    ["Confirmed", "Paid", "Completed"].includes(reservation.status);
+    ["Paid", "Completed"].includes(reservation.status);
 
   function setDialogOpen(nextOpen: boolean) {
     if (isEditMode) {
@@ -389,6 +413,9 @@ export function ManualReservationDialog({
     ? selectedRoomBaseAdults +
       effectiveRules.maxExtraGuests * selectedRoomCount
     : selectedRoomBaseAdults;
+  const maxDeclaredChildren = effectiveRules
+    ? effectiveRules.maxDeclaredChildren * selectedRoomCount
+    : 0;
   const selectedRoomIdsKey = draft.roomIds.join(",");
   const childAgesKey = draft.childAges.join(",");
   const hasValidDateRange = nightsCount > 0;
@@ -398,15 +425,98 @@ export function ManualReservationDialog({
       "OnRequest",
   );
   const childRuleSummary = effectiveRules
-    ? buildChildRuleSummary(effectiveRules)
+    ? buildChildRuleSummary(effectiveRules, currencyLabel)
     : null;
+  const availableChildAges = effectiveRules
+    ? childAgeOptions(effectiveRules)
+    : [];
   const confirmationTotal =
     pricePreview?.finalAmount ??
     reservation?.totalPrice ??
     reservation?.finalAmount ??
     null;
-  const confirmationCurrency =
-    pricePreview?.currency ?? reservation?.currency ?? "IRR";
+  const editChangeSummary: Array<{
+    label: string;
+    before: string;
+    after: string;
+  }> = [];
+  if (isEditMode && reservation) {
+    const originalGuestName =
+      reservation.guestName ?? reservation.guestFullName ?? "-";
+    const updatedGuestName = selectedGuest
+      ? guestName(selectedGuest)
+      : draft.guestSearch || "-";
+    const originalRoomName =
+      reservation.roomName ?? reservation.roomTypeName ?? "-";
+    const updatedRoomName =
+      confirmationRoomNames.length > 0
+        ? confirmationRoomNames.join("، ")
+        : "-";
+    const originalGuestCount = `${reservation.adults ?? 0} بزرگسال، ${reservation.children ?? 0} کودک`;
+    const updatedGuestCount = `${toPositiveInt(draft.adults, 1)} بزرگسال، ${toNonNegativeInt(draft.children)} کودک`;
+    const originalTotal = reservation.totalPrice ?? reservation.finalAmount;
+
+    if (draft.guestId !== (reservation.guestId?.toString() ?? "")) {
+      editChangeSummary.push({
+        label: "مهمان",
+        before: originalGuestName,
+        after: updatedGuestName,
+      });
+    }
+    if (
+      draft.roomIds.join(",") !==
+      (reservation.roomId ? reservation.roomId.toString() : "")
+    ) {
+      editChangeSummary.push({
+        label: "اتاق",
+        before: originalRoomName,
+        after: updatedRoomName,
+      });
+    }
+    if (draft.checkInDate !== reservation.checkInDate) {
+      editChangeSummary.push({
+        label: "تاریخ ورود",
+        before: reservation.checkInDate,
+        after: draft.checkInDate,
+      });
+    }
+    if (draft.checkOutDate !== reservation.checkOutDate) {
+      editChangeSummary.push({
+        label: "تاریخ خروج",
+        before: reservation.checkOutDate,
+        after: draft.checkOutDate,
+      });
+    }
+    if (
+      toPositiveInt(draft.adults, 1) !== (reservation.adults ?? 0) ||
+      toNonNegativeInt(draft.children) !== (reservation.children ?? 0)
+    ) {
+      editChangeSummary.push({
+        label: "تعداد مهمان",
+        before: originalGuestCount,
+        after: updatedGuestCount,
+      });
+    }
+    if (
+      pricePreview &&
+      originalTotal !== undefined &&
+      originalTotal !== null &&
+      pricePreview.finalAmount !== originalTotal
+    ) {
+      editChangeSummary.push({
+        label: "مبلغ کل",
+        before: formatCurrency(originalTotal, { currencyLabel }),
+        after: formatCurrency(pricePreview.finalAmount, { currencyLabel }),
+      });
+    }
+    if (draft.notes.trim() !== (reservation.notes ?? "").trim()) {
+      editChangeSummary.push({
+        label: "یادداشت داخلی",
+        before: reservation.notes?.trim() || "-",
+        after: draft.notes.trim() || "-",
+      });
+    }
+  }
   const propertyOptions = useMemo(
     () =>
       properties.map((property) => ({
@@ -418,23 +528,24 @@ export function ManualReservationDialog({
   );
   const roomOptions = useMemo(
     () =>
-      rooms
-        .filter(
-          (room) =>
-            !draft.roomTypeId ||
-            room.roomTypeId.toString() === draft.roomTypeId,
+      [...rooms]
+        .sort(
+          (first, second) =>
+            first.baseCapacity - second.baseCapacity ||
+            first.roomName.localeCompare(second.roomName, "fa"),
         )
         .map((room) => ({
           value: room.roomId,
           label: room.roomName,
+          group: `ظرفیت ${new Intl.NumberFormat("fa-IR").format(room.baseCapacity)} نفر`,
           description: (
             <span className="inline-flex w-fit rounded-md bg-primary/10 px-2 py-0.5 text-xs font-bold text-foreground ring-1 ring-inset ring-primary/30">
               {roomOptionDescription(room)}
             </span>
           ),
-          searchText: room.roomName,
+          searchText: `${room.roomName} ظرفیت ${room.baseCapacity} ${roomOptionDescription(room)}`,
         })),
-    [draft.roomTypeId, rooms],
+    [rooms],
   );
   const guestOptions = useMemo(() => {
     const options: KoochSearchableSelectOption[] = guests.map((guest) => {
@@ -471,15 +582,6 @@ export function ManualReservationDialog({
 
     return options;
   }, [draft.guestId, draft.guestSearch, guests]);
-  const reservationStatusOptions = [
-    { value: "Pending", label: "در انتظار" },
-    { value: "PendingApproval", label: "در انتظار تایید" },
-    { value: "ApprovedAwaitingPayment", label: "در انتظار پرداخت" },
-    { value: "Confirmed", label: "تایید شده" },
-    { value: "Paid", label: "پرداخت شده" },
-    { value: "Cancelled", label: "لغو شده" },
-  ];
-
   const guestBasePath = useMemo(() => {
     if (context === "admin") return "/admin/guests";
     return `/owner/properties/${fixedPropertyId}/guests`;
@@ -490,10 +592,13 @@ export function ManualReservationDialog({
   }
 
   function updateChildren(value: string) {
-    const childrenCount = toNonNegativeInt(value);
+    const childrenCount = Math.min(
+      toNonNegativeInt(value),
+      maxDeclaredChildren,
+    );
     setDraft((current) => ({
       ...current,
-      children: value,
+      children: childrenCount.toString(),
       childAges: normalizeChildAges(current.childAges, childrenCount),
     }));
   }
@@ -555,6 +660,7 @@ export function ManualReservationDialog({
     setConfirmCreateOpen(false);
     setPricePreview(null);
     setPricePreviewLoading(false);
+    setPricePreviewError("");
     setEffectiveRules(null);
     setRulesLoading(false);
     setRulesError("");
@@ -603,10 +709,26 @@ export function ManualReservationDialog({
       .then((rules) => {
         if (cancelled) return;
         setEffectiveRules(rules);
-        setDraft((current) => ({
-          ...current,
-          adults: Math.max(1, rules.baseCapacity * current.roomIds.length).toString(),
-        }));
+        setDraft((current) => {
+          const roomCount = current.roomIds.length;
+          const maximumAdults =
+            rules.baseCapacity * roomCount +
+            (rules.extraGuestAllowed ? rules.maxExtraGuests * roomCount : 0);
+          const children = Math.min(
+            toNonNegativeInt(current.children),
+            rules.maxDeclaredChildren * roomCount,
+          );
+
+          return {
+            ...current,
+            adults: Math.min(
+              Math.max(1, toPositiveInt(current.adults, 1)),
+              maximumAdults,
+            ).toString(),
+            children: children.toString(),
+            childAges: normalizeChildAges(current.childAges, children),
+          };
+        });
       })
       .catch((caught: Error) => {
         if (cancelled) return;
@@ -659,6 +781,10 @@ export function ManualReservationDialog({
       checkInDate: draft.checkInDate,
       checkOutDate: draft.checkOutDate,
     });
+    const reservationId = reservation?.reservationId ?? reservation?.id;
+    if (isEditMode && reservationId) {
+      params.set("excludeReservationId", reservationId.toString());
+    }
 
     setRooms([]);
     setPricePreview(null);
@@ -711,6 +837,9 @@ export function ManualReservationDialog({
     context,
     dialogOpen,
     isLockedEdit,
+    isEditMode,
+    reservation?.id,
+    reservation?.reservationId,
     selectedPropertyId,
     availabilityReloadKey,
   ]);
@@ -764,10 +893,12 @@ export function ManualReservationDialog({
     ) {
       setPricePreview(null);
       setPricePreviewLoading(false);
+      setPricePreviewError("");
       return;
     }
 
     setPricePreview(null);
+    setPricePreviewError("");
     setPricePreviewLoading(true);
     const controller = new AbortController();
     pricePreviewAbortRef.current = controller;
@@ -796,12 +927,16 @@ export function ManualReservationDialog({
       .then((preview) => {
         if (pricePreviewRequestId.current === requestId) {
           setPricePreview(preview);
+          setPricePreviewError("");
         }
       })
       .catch((caught: Error) => {
         if (pricePreviewRequestId.current === requestId) {
           if (caught.name === "AbortError") return;
           setPricePreview(null);
+          setPricePreviewError(
+            caught.message || "ترکیب مهمانان با ظرفیت اتاق سازگار نیست.",
+          );
         }
       })
       .finally(() => {
@@ -907,7 +1042,7 @@ export function ManualReservationDialog({
     }
 
     if (!pricePreview) {
-      toast.error("پیش‌نمایش قیمت آماده نیست.");
+      toast.error(pricePreviewError || "پیش‌نمایش قیمت آماده نیست.");
       return;
     }
 
@@ -951,7 +1086,6 @@ export function ManualReservationDialog({
           roomCount: draft.roomIds.length,
           roomIds: draft.roomIds.map((id) => Number(id)),
           guestType: draft.guestType,
-          status: context === "admin" ? draft.status : undefined,
           notes: draft.notes.trim() || null,
         }),
       });
@@ -1040,7 +1174,7 @@ export function ManualReservationDialog({
           onSubmit={submitReservation}
         >
           {isLockedEdit ? (
-            <KoochAlert title="رزرو پرداخت‌شده یا تاییدشده" variant="warning">
+            <KoochAlert title="رزرو پرداخت‌شده یا تکمیل‌شده" variant="warning">
               اتاق، تاریخ، تعداد مهمان و قیمت این رزرو قابل تغییر نیست. فقط
               یادداشت داخلی را می‌توانید ویرایش کنید.
             </KoochAlert>
@@ -1223,27 +1357,27 @@ export function ManualReservationDialog({
             <KoochField
               helperText={
                 effectiveRules?.extraGuestAllowed
-                  ? `ظرفیت پایه: ${new Intl.NumberFormat("fa-IR").format(selectedRoomBaseAdults)}`
+                  ? `ظرفیت پایه: ${new Intl.NumberFormat("fa-IR").format(selectedRoomBaseAdults)}؛ حداکثر با نفر اضافه: ${new Intl.NumberFormat("fa-IR").format(selectedRoomMaxAdults)}`
                   : effectiveRules
                     ? "این اتاق نفر اضافه نمی‌پذیرد."
                     : "ابتدا اتاق را انتخاب کنید."
               }
-              label="بزرگسال"
+              label="بزرگسالان"
             >
               <KoochInput
                 disabled={
                   isLockedEdit ||
                   rulesLoading ||
                   Boolean(rulesError) ||
-                  !effectiveRules?.extraGuestAllowed
+                  !effectiveRules
                 }
                 max={selectedRoomMaxAdults}
-                min={selectedRoomBaseAdults}
+                min={1}
                 onChange={(event) => {
                   const nextAdults = Math.max(
-                    selectedRoomBaseAdults,
+                    1,
                     Math.min(
-                      toPositiveInt(event.target.value, selectedRoomBaseAdults),
+                      toPositiveInt(event.target.value, 1),
                       selectedRoomMaxAdults,
                     ),
                   );
@@ -1256,14 +1390,15 @@ export function ManualReservationDialog({
 
             <KoochField
               helperText={
-                effectiveRules && effectiveRules.freeChildMaxAge !== null
-                  ? `کودک تا ${formatAge(effectiveRules.freeChildMaxAge)} سال رایگان است.`
+                effectiveRules
+                  ? `حداکثر ${formatAge(maxDeclaredChildren)} کودک؛ سن هر کودک را از فهرست قانون موثر انتخاب کنید.`
                   : "پس از بارگذاری قوانین اتاق، شرایط کودک نمایش داده می‌شود."
               }
-              label="کودک"
+              label="کودکان"
             >
               <div className="grid gap-3">
                 <KoochInput
+                  max={maxDeclaredChildren}
                   min={0}
                   disabled={isLockedEdit || rulesLoading || !effectiveRules || Boolean(rulesError)}
                   onChange={(event) => updateChildren(event.target.value)}
@@ -1280,11 +1415,9 @@ export function ManualReservationDialog({
                         draft.childAges,
                         toNonNegativeInt(draft.children),
                       ).map((age, index) => (
-                        <KoochInput
+                        <KoochSelect
                           aria-label={`سن کودک ${index + 1}`}
                           key={index}
-                          max={120}
-                          min={0}
                           disabled={
                             isLockedEdit ||
                             rulesLoading ||
@@ -1294,10 +1427,17 @@ export function ManualReservationDialog({
                           onChange={(event) =>
                             updateChildAge(index, event.target.value)
                           }
-                          placeholder={`کودک ${new Intl.NumberFormat("fa-IR").format(index + 1)}`}
-                          type="number"
                           value={age}
-                        />
+                        >
+                          <option value="">
+                            {`سن کودک ${new Intl.NumberFormat("fa-IR").format(index + 1)}`}
+                          </option>
+                          {availableChildAges.map((option) => (
+                            <option key={option.age} value={option.age}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </KoochSelect>
                       ))}
                     </div>
                   </div>
@@ -1321,28 +1461,18 @@ export function ManualReservationDialog({
               </KoochSelect>
             </KoochField>
 
-            {context === "admin" && !isEditMode && (
-              <KoochField label="وضعیت رزرو">
-                <KoochSelect
-                  onChange={(event) =>
-                    updateDraft("status", event.target.value)
-                  }
-                  value={draft.status}
-                >
-                  {reservationStatusOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </KoochSelect>
-              </KoochField>
-            )}
           </div>
 
           {hasOnRequest && (
             <KoochAlert title="نیازمند تایید" variant="warning">
               این رزرو نیازمند تایید است و فعلاً پرداخت یا کاهش موجودی انجام
               نمی‌شود.
+            </KoochAlert>
+          )}
+
+          {pricePreviewError && (
+            <KoochAlert title="ظرفیت مهمانان نامعتبر است" variant="destructive">
+              {pricePreviewError}
             </KoochAlert>
           )}
 
@@ -1368,29 +1498,27 @@ export function ManualReservationDialog({
                 </span>
                 <span>
                   قیمت پایه:{" "}
-                  {formatMoney(pricePreview.baseAmount, pricePreview.currency)}
+                  {formatCurrency(pricePreview.baseAmount, { currencyLabel })}
                 </span>
                 <span>
                   هزینه کودک:{" "}
-                  {formatMoney(pricePreview.childAmount, pricePreview.currency)}
+                  {formatCurrency(pricePreview.childAmount, { currencyLabel })}
                 </span>
                 <span>
                   هزینه نفر اضافه:{" "}
-                  {formatMoney(
-                    pricePreview.extraGuestAmount,
-                    pricePreview.currency,
-                  )}
+                  {formatCurrency(pricePreview.extraGuestAmount, {
+                    currencyLabel,
+                  })}
                 </span>
                 <span>
                   تخفیف پروموشن:{" "}
-                  {formatMoney(
-                    pricePreview.discountAmount,
-                    pricePreview.currency,
-                  )}
+                  {formatCurrency(pricePreview.discountAmount, {
+                    currencyLabel,
+                  })}
                 </span>
                 <span className="font-black">
                   مبلغ کل:{" "}
-                  {formatMoney(pricePreview.finalAmount, pricePreview.currency)}
+                  {formatCurrency(pricePreview.finalAmount, { currencyLabel })}
                 </span>
               </div>
             ) : (
@@ -1422,6 +1550,26 @@ export function ManualReservationDialog({
         title={isEditMode ? "تایید ویرایش رزرو" : "تایید ایجاد رزرو"}
         variant="question"
       >
+        {isEditMode && (
+          <KoochAlert title="خلاصه تغییرات نهایی" variant="warning">
+            {editChangeSummary.length > 0 ? (
+              <div className="grid gap-3 text-right" dir="rtl">
+                {editChangeSummary.map((change) => (
+                  <div
+                    className="grid gap-1 border-b border-current/20 pb-2 last:border-0 last:pb-0"
+                    key={change.label}
+                  >
+                    <span className="font-black">{change.label}</span>
+                    <span>قبل: {change.before}</span>
+                    <span>بعد: {change.after}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              "تغییری در اطلاعات رزرو ثبت نشده است."
+            )}
+          </KoochAlert>
+        )}
         <KoochAlert title="مرور نهایی رزرو" variant="default">
           <div className="grid gap-2 text-right text-sm" dir="rtl">
           <div className="flex items-center justify-between gap-4">
@@ -1455,7 +1603,7 @@ export function ManualReservationDialog({
           <div className="flex items-center justify-between gap-4 border-t border-border pt-2">
             <span className="text-muted-foreground">مبلغ کل</span>
             <span className="font-black text-foreground">
-              {formatMoney(confirmationTotal, confirmationCurrency)}
+              {formatCurrency(confirmationTotal, { currencyLabel })}
             </span>
           </div>
           </div>

@@ -9,6 +9,13 @@ public interface IPropertyService
     Task<PropertyResponse> CreatePropertyAsync(int userId, UserRole role, CreatePropertyRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdatePropertyAsync(int userId, UserRole role, int propertyId, UpdatePropertyRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdatePropertyForAdminAsync(int userId, UserRole role, int propertyId, AdminUpdatePropertyRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateBasicSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyBasicSectionRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateLocationSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyLocationSectionRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateBuildingSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyBuildingSectionRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateRulesSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyRulesSectionRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateFinancialSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyFinancialSectionRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateDescriptionSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyDescriptionSectionRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> UpdateSeoSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertySeoSectionRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PropertyResponse>> GetMyPropertiesAsync(int userId, UserRole role, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PropertyResponse>> GetAllForAdminAsync(int userId, UserRole role, CancellationToken cancellationToken = default);
     Task<PropertyResponse> GetPropertyByIdAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);

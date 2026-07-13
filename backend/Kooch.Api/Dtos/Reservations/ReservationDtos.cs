@@ -68,10 +68,36 @@ public class ReservationResponse : ReservationListItemResponse
     public DateTime? PaidAtUtc { get; set; }
     public DateTime? ConfirmedAtUtc { get; set; }
     public DateTime? CancelledAtUtc { get; set; }
+    public int? CancelledByUserId { get; set; }
+    public ReservationCancellationReason? CancellationReason { get; set; }
+    public string? CancellationNote { get; set; }
     public DateTime? ExpiredAtUtc { get; set; }
     public int? ChangedByUserId { get; set; }
     public DateTime? ChangedAtUtc { get; set; }
     public IReadOnlyList<ReservationStatus> AllowedStatusTransitions { get; set; } = [];
+    public IReadOnlyList<ReservationTimelineEventResponse> Timeline { get; set; } = [];
+}
+
+public enum ReservationTimelineEventType
+{
+    Created,
+    Updated,
+    Approved,
+    PaymentLinkCreated,
+    Paid,
+    StatusChanged,
+    Cancelled
+}
+
+public class ReservationTimelineEventResponse
+{
+    public ReservationTimelineEventType Type { get; set; }
+    public DateTime TimestampUtc { get; set; }
+    public int? ActorUserId { get; set; }
+    public string? Actor { get; set; }
+    public ReservationStatus? Status { get; set; }
+    public ReservationCancellationReason? CancellationReason { get; set; }
+    public string? Note { get; set; }
 }
 
 public class ReservationListQuery
@@ -161,12 +187,6 @@ public class ReservationCreateRequest : IValidatableObject
 
     public IReadOnlyList<int> RoomIds { get; set; } = [];
 
-    public int? Infants { get; set; }
-    public int? InfantCount { get; set; }
-    public IReadOnlyList<int>? InfantAges { get; set; }
-
-    public ReservationStatus? Status { get; set; }
-
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
 
     [MaxLength(2000)]
@@ -229,6 +249,17 @@ public class ReservationStatusUpdateRequest
 
     [MaxLength(1000)]
     public string? Notes { get; set; }
+}
+
+public class ReservationCancellationRequest
+{
+    [Required]
+    [EnumDataType(typeof(ReservationCancellationReason))]
+    public ReservationCancellationReason? Reason { get; set; }
+
+    [Required]
+    [MaxLength(2000)]
+    public string Explanation { get; set; } = string.Empty;
 }
 
 public class ReservationPaymentLinkResponse
