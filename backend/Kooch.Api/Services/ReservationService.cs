@@ -18,6 +18,7 @@ public class ReservationService(
     INotificationService notificationService,
     IAuditLogService auditLogService,
     IPermissionService permissionService,
+    IPropertyAuthorizationService propertyAuthorizationService,
     IReservationStatusWorkflow statusWorkflow,
     IEffectiveAvailabilityService effectiveAvailabilityService,
     IHostEnvironment hostEnvironment) : IReservationService
@@ -28,9 +29,26 @@ public class ReservationService(
 
     public async Task<PagedResult<ReservationListItemResponse>> SearchAsync(
         ReservationListQuery query,
+        (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        return await SearchInternalAsync(query, null, null, cancellationToken);
+        var propertyIds = await propertyAuthorizationService.GetAccessiblePropertiesAsync(
+            currentUser.UserId,
+            cancellationToken);
+        var allowedPropertyIds = new List<int>();
+        foreach (var propertyId in propertyIds)
+        {
+            if (await propertyAuthorizationService.HasPropertyPermissionAsync(
+                    currentUser.UserId,
+                    propertyId,
+                    "bookings.view",
+                    cancellationToken))
+            {
+                allowedPropertyIds.Add(propertyId);
+            }
+        }
+
+        return await SearchInternalAsync(query, null, null, allowedPropertyIds, cancellationToken);
     }
 
     public async Task<PagedResult<ReservationListItemResponse>> SearchByPropertyAsync(
@@ -38,7 +56,7 @@ public class ReservationService(
         ReservationListQuery query,
         CancellationToken cancellationToken = default)
     {
-        return await SearchInternalAsync(query, propertyId, null, cancellationToken);
+        return await SearchInternalAsync(query, propertyId, null, null, cancellationToken);
     }
 
     public async Task<ReservationResponse> GetByIdAsync(
@@ -84,7 +102,7 @@ public class ReservationService(
             };
         }
 
-        return await SearchInternalAsync(query, null, guestId.Value, cancellationToken);
+        return await SearchInternalAsync(query, null, guestId.Value, null, cancellationToken);
     }
 
     public async Task<ReservationResponse> GetByIdForGuestUserAsync(
@@ -146,7 +164,11 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdminUser(currentUser.Role);
+        await EnsureAdminReservationPermissionAsync(
+            currentUser,
+            request.PropertyId,
+            "bookings.create",
+            cancellationToken);
         ValidateDateRange(request.CheckInDate, request.CheckOutDate);
 
         var property = await dbContext.Properties.AsNoTracking()
@@ -282,7 +304,6 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdminUser(currentUser.Role);
         ValidateDateRange(request.CheckInDate, request.CheckOutDate);
 
         var reservation = await dbContext.Reservations
@@ -294,6 +315,11 @@ public class ReservationService(
             .Include(item => item.ApprovedByUser)
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
+        await EnsureAdminReservationPermissionAsync(
+            currentUser,
+            reservation.PropertyId,
+            "bookings.edit",
+            cancellationToken);
 
         if (reservation.Status == ReservationStatus.Cancelled)
         {
@@ -459,7 +485,6 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdminUser(currentUser.Role);
         if (!request.Reason.HasValue)
         {
             throw new ArgumentException("Cancellation reason is required.");
@@ -480,6 +505,11 @@ public class ReservationService(
             .Include(item => item.ApprovedByUser)
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
+        await EnsureAdminReservationPermissionAsync(
+            currentUser,
+            reservation.PropertyId,
+            "bookings.cancel",
+            cancellationToken);
 
         statusWorkflow.ValidateTransition(reservation.Status, ReservationStatus.Cancelled);
 
@@ -513,7 +543,6 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        EnsureAdminUser(currentUser.Role);
         if (request.Amount == 0)
         {
             throw new ArgumentException("Manual adjustment must be positive or negative.");
@@ -522,6 +551,11 @@ public class ReservationService(
         var reservation = await ReservationQuery()
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
+        await EnsureAdminReservationPermissionAsync(
+            currentUser,
+            reservation.PropertyId,
+            "bookings.edit",
+            cancellationToken);
 
         if (reservation.Status == ReservationStatus.Cancelled)
         {
@@ -695,7 +729,7 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken)
     {
-        EnsureStatusManager(currentUser.Role);
+        await EnsureStatusManagerAsync(currentUser, reservation.PropertyId, cancellationToken);
         if (targetStatus == ReservationStatus.Cancelled)
         {
             throw new InvalidOperationException("Use the reservation cancellation endpoint to cancel a reservation.");
@@ -843,11 +877,11 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
-        EnsurePaymentLinkManager(currentUser.Role);
         var reservation = await dbContext.Reservations
             .Include(item => item.Payments)
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
+        await EnsurePaymentLinkManagerAsync(currentUser, reservation.PropertyId, cancellationToken);
 
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment)
         {
@@ -1027,17 +1061,11 @@ public class ReservationService(
         int propertyId,
         CancellationToken cancellationToken)
     {
-        if (role is UserRole.SuperAdmin or UserRole.AdminAssistant)
-        {
-            return true;
-        }
-
-        return role is UserRole.Owner or UserRole.OwnerAssistant &&
-               await permissionService.CanAsync(
-                   userId,
-                   propertyId,
-                   "bookings.edit",
-                   cancellationToken);
+        return await permissionService.CanAsync(
+            userId,
+            propertyId,
+            "bookings.edit",
+            cancellationToken);
     }
 
     private async Task<int> GetPaymentWindowMinutesAsync(CancellationToken cancellationToken)
@@ -1059,31 +1087,48 @@ public class ReservationService(
             : DefaultPaymentWindowMinutes;
     }
 
-    private static void EnsureAdminUser(UserRole role)
+    private async Task EnsureAdminReservationPermissionAsync(
+        (int UserId, UserRole Role) currentUser,
+        int propertyId,
+        string permissionKey,
+        CancellationToken cancellationToken)
     {
-        if (role is not (UserRole.SuperAdmin or UserRole.AdminAssistant))
+        if (currentUser.Role is not (UserRole.SuperAdmin or UserRole.AdminAssistant) ||
+            !await permissionService.CanAsync(
+                currentUser.UserId,
+                propertyId,
+                permissionKey,
+                cancellationToken))
         {
             throw new UnauthorizedAccessException("Only admin or admin-assistant users can modify reservations.");
         }
     }
 
-    private static void EnsureStatusManager(UserRole role)
+    private async Task EnsureStatusManagerAsync(
+        (int UserId, UserRole Role) currentUser,
+        int propertyId,
+        CancellationToken cancellationToken)
     {
-        if (role is not (UserRole.SuperAdmin or
-            UserRole.AdminAssistant or
-            UserRole.Owner or
-            UserRole.OwnerAssistant))
+        if (!await permissionService.CanAsync(
+                currentUser.UserId,
+                propertyId,
+                "bookings.edit",
+                cancellationToken))
         {
             throw new UnauthorizedAccessException("You cannot change reservation status.");
         }
     }
 
-    private static void EnsurePaymentLinkManager(UserRole role)
+    private async Task EnsurePaymentLinkManagerAsync(
+        (int UserId, UserRole Role) currentUser,
+        int propertyId,
+        CancellationToken cancellationToken)
     {
-        if (role is not (UserRole.SuperAdmin or
-            UserRole.AdminAssistant or
-            UserRole.Owner or
-            UserRole.OwnerAssistant))
+        if (!await permissionService.CanAsync(
+                currentUser.UserId,
+                propertyId,
+                "bookings.edit",
+                cancellationToken))
         {
             throw new UnauthorizedAccessException("You cannot generate reservation payment links.");
         }
@@ -1388,12 +1433,18 @@ public class ReservationService(
         ReservationListQuery query,
         int? scopedPropertyId,
         int? scopedGuestId,
+        IReadOnlyCollection<int>? allowedPropertyIds,
         CancellationToken cancellationToken)
     {
         await ExpireApprovedUnpaidReservationsAsync(cancellationToken);
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
-        var reservations = ApplyFilters(dbContext.Reservations.AsNoTracking(), query, scopedPropertyId, scopedGuestId);
+        var reservations = ApplyFilters(
+            dbContext.Reservations.AsNoTracking(),
+            query,
+            scopedPropertyId,
+            scopedGuestId,
+            allowedPropertyIds);
         var totalCount = await reservations.CountAsync(cancellationToken);
         var rows = await ApplySort(reservations, query.Sort)
             .Skip((page - 1) * pageSize)
@@ -1446,8 +1497,14 @@ public class ReservationService(
         IQueryable<Reservation> query,
         ReservationListQuery filters,
         int? scopedPropertyId,
-        int? scopedGuestId)
+        int? scopedGuestId,
+        IReadOnlyCollection<int>? allowedPropertyIds)
     {
+        if (allowedPropertyIds is not null)
+        {
+            query = query.Where(reservation => allowedPropertyIds.Contains(reservation.PropertyId));
+        }
+
         if (scopedGuestId.HasValue)
         {
             query = query.Where(reservation => reservation.GuestId == scopedGuestId.Value);

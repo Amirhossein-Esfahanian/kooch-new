@@ -280,7 +280,7 @@ public class AdminUserService(
 
     private static void EnsurePropertyAssignmentIsValid(UserRole role, IReadOnlyCollection<int> propertyIds)
     {
-        if (IsGlobalAdminRole(role))
+        if (role is UserRole.SuperAdmin or UserRole.AdminAssistant)
         {
             return;
         }
@@ -324,16 +324,10 @@ public class AdminUserService(
         var requested = propertyIds.ToHashSet();
         var pending = user.PasswordSetupRequired || !user.IsActive;
 
-        foreach (var access in accesses)
+        foreach (var access in accesses.Where(access => !requested.Contains(access.PropertyId)))
         {
-            if (!requested.Contains(access.PropertyId))
-            {
-                access.IsActive = false;
-                access.Status = PropertyUserStatus.Inactive;
-                continue;
-            }
-
-            ApplyDefaultPropertyAccess(access, pending);
+            access.IsActive = false;
+            access.Status = PropertyUserStatus.Inactive;
         }
 
         var existingPropertyIds = accesses.Select(access => access.PropertyId).ToHashSet();
@@ -381,7 +375,7 @@ public class AdminUserService(
     }
 
     private static bool IsGlobalAdminRole(UserRole role) =>
-        role is UserRole.SuperAdmin or UserRole.AdminAssistant;
+        role == UserRole.SuperAdmin;
 
     private static IReadOnlySet<PermissionKey> ParsePermissions(IReadOnlyList<string>? permissionNames)
     {

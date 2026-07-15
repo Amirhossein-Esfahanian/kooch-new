@@ -2,18 +2,13 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
-import {
-  apiRequest,
-  getAuthRole,
-  getToken,
-  ownerPropertyKey,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { ownerPropertyKey } from "@/lib/owner-api";
 import { KoochIcon } from "../KoochIcon";
 
 type DashboardMenuItem = {
@@ -164,44 +159,14 @@ function getOwnerPropertyIdFromPathname(pathname: string) {
   return match?.[1];
 }
 
-function isAdminRole(role: string | null) {
-  return role === "SuperAdmin" || role === "AdminAssistant";
-}
-
-function isOwnerPanelRole(role: string | null) {
-  return [
-    "Owner",
-    "OwnerAssistant",
-    "PropertyOwner",
-    "Manager",
-    "Reception",
-    "Accounting",
-    "Housekeeping",
-    "Custom",
-    "Client",
-  ].includes(role ?? "");
-}
-
-async function redirectToOwnerPanel(router: ReturnType<typeof useRouter>) {
-  const properties = await apiRequest<PropertyResponse[]>("/owner/properties");
-
-  if (properties.length === 1) {
-    const propertyId = properties[0].id.toString();
-    localStorage.setItem(ownerPropertyKey, propertyId);
-    router.replace(`/owner/properties/${propertyId}/dashboard`);
-    return;
-  }
-
-  router.replace(properties.length > 1 ? "/owner/select-property" : "/");
-}
-
-function hasOwnerPropertyAccess(
-  properties: PropertyResponse[],
-  propertyId?: string,
-) {
-  return Boolean(
-    propertyId &&
-      properties.some((property) => property.id.toString() === propertyId),
+function DashboardAuthorizationLoading() {
+  return (
+    <div
+      className="grid min-h-[50vh] place-items-center px-5 text-sm font-semibold text-muted-foreground"
+      role="status"
+    >
+      در حال بررسی دسترسی...
+    </div>
   );
 }
 
@@ -354,42 +319,58 @@ export function AdminLayout({
   children: ReactNode | ((darkMode: boolean) => ReactNode);
 }) {
   const router = useRouter();
-  const [authorized, setAuthorized] = useState(false);
+  const refreshAttemptedRef = useRef(false);
+  const {
+    authenticated,
+    defaultPropertyId,
+    loading,
+    refreshSession,
+    workspaces,
+  } = useAuthSession();
+  const hasAdminWorkspace = workspaces.includes("admin");
+  const hasOwnerWorkspace = workspaces.includes("owner");
 
   useEffect(() => {
-    let cancelled = false;
+    if (loading) return;
 
-    async function guardAdminRoute() {
-      const token = getToken();
-      if (!token) {
-        router.replace("/login");
-        return;
+    if (!authenticated) {
+      if (!refreshAttemptedRef.current) {
+        refreshAttemptedRef.current = true;
+        void refreshSession({ redirectOnUnauthorized: true }).catch(() => {
+          router.replace("/");
+        });
       }
-
-      const role = getAuthRole();
-      if (isAdminRole(role)) {
-        if (!cancelled) setAuthorized(true);
-        return;
-      }
-
-      if (isOwnerPanelRole(role)) {
-        await redirectToOwnerPanel(router);
-        return;
-      }
-
-      router.replace("/");
+      return;
     }
 
-    guardAdminRoute().catch(() => {
-      if (!cancelled) router.replace("/");
-    });
+    refreshAttemptedRef.current = false;
+    if (hasAdminWorkspace) return;
 
-    return () => {
-      cancelled = true;
-    };
-  }, [router]);
+    if (hasOwnerWorkspace) {
+      if (defaultPropertyId) {
+        localStorage.setItem(ownerPropertyKey, defaultPropertyId.toString());
+        router.replace(`/owner/properties/${defaultPropertyId}`);
+        return;
+      }
 
-  if (!authorized) return null;
+      router.replace("/owner/select-property");
+      return;
+    }
+
+    router.replace("/");
+  }, [
+    authenticated,
+    defaultPropertyId,
+    hasAdminWorkspace,
+    hasOwnerWorkspace,
+    loading,
+    refreshSession,
+    router,
+  ]);
+
+  if (loading || !authenticated || !hasAdminWorkspace) {
+    return <DashboardAuthorizationLoading />;
+  }
 
   return <DashboardShell menuItems={adminMenuItems}>{children}</DashboardShell>;
 }
@@ -401,82 +382,99 @@ export function OwnerLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const [authorized, setAuthorized] = useState(false);
+  const refreshAttemptedRef = useRef(false);
   const [storedPropertyId, setStoredPropertyId] = useState<
     string | undefined
   >();
-  const [properties, setProperties] = useState<PropertyResponse[]>([]);
-  const propertyId =
-    getOwnerPropertyIdFromPathname(pathname) ?? storedPropertyId;
-  const currentProperty = properties.find(
-    (property) => property.id.toString() === propertyId,
+  const {
+    authenticated,
+    defaultPropertyId,
+    loading,
+    propertyMemberships,
+    refreshSession,
+    workspaces,
+  } = useAuthSession();
+  const activeMemberships = useMemo(
+    () =>
+      propertyMemberships.filter(
+        (membership) =>
+          membership.isActive && membership.membershipStatus === "Active",
+      ),
+    [propertyMemberships],
+  );
+  const pathPropertyId = getOwnerPropertyIdFromPathname(pathname);
+  const pathPropertyIsValid = Boolean(
+    !pathPropertyId ||
+      activeMemberships.some(
+        (membership) => membership.propertyId.toString() === pathPropertyId,
+      ),
+  );
+  const hasOwnerWorkspace = workspaces.includes("owner");
+  const propertyId = pathPropertyId ?? storedPropertyId;
+  const currentProperty = activeMemberships.find(
+    (membership) => membership.propertyId.toString() === propertyId,
   );
 
   useEffect(() => {
-    let cancelled = false;
+    if (loading) return;
 
-    async function guardOwnerRoute() {
-      const token = getToken();
-      if (!token) {
-        router.replace("/login");
-        return;
+    if (!authenticated) {
+      if (!refreshAttemptedRef.current) {
+        refreshAttemptedRef.current = true;
+        void refreshSession({ redirectOnUnauthorized: true }).catch(() => {
+          router.replace("/");
+        });
       }
-
-      const role = getAuthRole();
-      if (isAdminRole(role)) {
-        router.replace("/admin");
-        return;
-      }
-
-      if (!isOwnerPanelRole(role)) {
-        router.replace("/");
-        return;
-      }
-
-      const propertyItems = await apiRequest<PropertyResponse[]>(
-        "/owner/properties",
-      );
-
-      if (cancelled) return;
-
-      if (propertyItems.length === 0) {
-        router.replace("/");
-        return;
-      }
-
-      const pathPropertyId = getOwnerPropertyIdFromPathname(pathname);
-      if (pathPropertyId && !hasOwnerPropertyAccess(propertyItems, pathPropertyId)) {
-        router.replace("/");
-        return;
-      }
-
-      const savedPropertyId =
-        localStorage.getItem(ownerPropertyKey) ?? undefined;
-      const nextPropertyId =
-        pathPropertyId ??
-        (hasOwnerPropertyAccess(propertyItems, savedPropertyId)
-          ? savedPropertyId
-          : propertyItems.length === 1
-            ? propertyItems[0].id.toString()
-            : undefined);
-
-      if (nextPropertyId) {
-        localStorage.setItem(ownerPropertyKey, nextPropertyId);
-      }
-
-      setStoredPropertyId(nextPropertyId);
-      setProperties(propertyItems);
-      setAuthorized(true);
+      return;
     }
 
-    guardOwnerRoute().catch(() => {
-      if (!cancelled) router.replace("/");
-    });
+    refreshAttemptedRef.current = false;
+    if (!hasOwnerWorkspace) {
+      router.replace(workspaces.includes("admin") ? "/admin" : "/");
+      return;
+    }
 
-    return () => {
-      cancelled = true;
-    };
-  }, [pathname, router]);
+    const defaultMembership = activeMemberships.find(
+      (membership) => membership.propertyId === defaultPropertyId,
+    );
+    if (pathPropertyId && !pathPropertyIsValid) {
+      if (defaultMembership) {
+        const nextPropertyId = defaultMembership.propertyId.toString();
+        localStorage.setItem(ownerPropertyKey, nextPropertyId);
+        router.replace(`/owner/properties/${nextPropertyId}`);
+      } else {
+        router.replace("/owner/select-property");
+      }
+      return;
+    }
+
+    const savedPropertyId =
+      localStorage.getItem(ownerPropertyKey) ?? undefined;
+    const savedPropertyIsValid = activeMemberships.some(
+      (membership) => membership.propertyId.toString() === savedPropertyId,
+    );
+    const nextPropertyId =
+      pathPropertyId ??
+      (savedPropertyIsValid
+        ? savedPropertyId
+        : defaultMembership?.propertyId.toString());
+
+    if (nextPropertyId) {
+      localStorage.setItem(ownerPropertyKey, nextPropertyId);
+    }
+    setStoredPropertyId(nextPropertyId);
+  }, [
+    activeMemberships,
+    authenticated,
+    defaultPropertyId,
+    hasOwnerWorkspace,
+    loading,
+    pathPropertyId,
+    pathPropertyIsValid,
+    refreshSession,
+    router,
+    workspaces,
+  ]);
 
   function switchProperty(nextPropertyId: string) {
     if (!nextPropertyId) {
@@ -486,20 +484,28 @@ export function OwnerLayout({
 
     localStorage.setItem(ownerPropertyKey, nextPropertyId);
     setStoredPropertyId(nextPropertyId);
-    router.push(`/owner/properties/${nextPropertyId}/dashboard`);
+    router.push(`/owner/properties/${nextPropertyId}`);
   }
 
-  if (!authorized) return null;
+  if (
+    loading ||
+    !authenticated ||
+    !hasOwnerWorkspace ||
+    activeMemberships.length === 0 ||
+    !pathPropertyIsValid
+  ) {
+    return <DashboardAuthorizationLoading />;
+  }
 
   return (
     <DashboardShell
       currentWorkspaceId={propertyId}
       menuItems={getOwnerMenuItems(propertyId)}
       onWorkspaceChange={switchProperty}
-      workspaceLabel={currentProperty?.name ?? "انتخاب اقامتگاه"}
-      workspaceOptions={properties.map((property) => ({
-        id: property.id.toString(),
-        name: property.name,
+      workspaceLabel={currentProperty?.propertyName ?? "انتخاب اقامتگاه"}
+      workspaceOptions={activeMemberships.map((membership) => ({
+        id: membership.propertyId.toString(),
+        name: membership.propertyName,
       }))}
     >
       {children}

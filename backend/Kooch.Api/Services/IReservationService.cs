@@ -7,6 +7,7 @@ public interface IReservationService
 {
     Task<PagedResult<ReservationListItemResponse>> SearchAsync(
         ReservationListQuery query,
+        (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default);
 
     Task<PagedResult<ReservationListItemResponse>> SearchByPropertyAsync(

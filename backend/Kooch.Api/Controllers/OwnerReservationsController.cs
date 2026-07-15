@@ -138,14 +138,6 @@ public class OwnerReservationsController(
         CancellationToken cancellationToken)
     {
         var user = GetCurrentUser();
-        if (user.Role is UserRole.SuperAdmin or UserRole.AdminAssistant)
-        {
-            return await permissionService.HasPermissionAsync(
-                user.UserId,
-                PermissionKey.ManageReservations,
-                cancellationToken: cancellationToken);
-        }
-
         return await permissionService.CanAsync(
             user.UserId,
             propertyId,

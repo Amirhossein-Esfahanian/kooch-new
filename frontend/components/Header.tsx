@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { clearToken, getToken, getWorkspace } from "@/lib/owner-api";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
+import { getWorkspace } from "@/lib/owner-api";
 import {
   defaultSiteSettings,
   fetchPublicSiteSettings,
@@ -21,13 +22,12 @@ const workspaceLabels: Record<string, string> = {
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
+  const { authenticated: isLoggedIn, clearSession } = useAuthSession();
   const [workspace, setWorkspaceLabel] = useState<string | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [settings, setSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
 
   useEffect(() => {
     setWorkspaceLabel(getWorkspace());
-    setIsLoggedIn(Boolean(getToken()));
   }, [pathname]);
 
   useEffect(() => {
@@ -37,9 +37,8 @@ export function Header() {
   }, []);
 
   function logout() {
-    clearToken();
+    clearSession();
     setWorkspaceLabel(null);
-    setIsLoggedIn(false);
     router.push("/login");
   }
 

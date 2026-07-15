@@ -1,6 +1,20 @@
 namespace Kooch.Api.Entities;
 
-public enum UserRole { SuperAdmin, AdminAssistant, Owner, OwnerAssistant, Client }
+public enum UserRole
+{
+    SuperAdmin,
+    AdminAssistant,
+
+    // Legacy compatibility only. Property authorization must use
+    // UserPropertyAccess.PropertyRole. Retained until existing data is migrated.
+    Owner,
+
+    // Legacy compatibility only. Property authorization must use
+    // UserPropertyAccess.PropertyRole. Retained until existing data is migrated.
+    OwnerAssistant,
+
+    Client
+}
 public enum PropertyUserStatus { Pending, Active, Suspended, Inactive }
 public enum PropertyUserRole { PropertyOwner, Manager, Reception, Accounting, Housekeeping, Custom }
 public enum AuditAction

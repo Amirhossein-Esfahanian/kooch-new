@@ -30,8 +30,12 @@ if (jwtOptions.Key.Length < 32 ||
 
 builder.Services.Configure<JwtOptions>(jwtSection);
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<PropertyAccessService>();
+builder.Services.AddScoped<IPropertyAuthorizationService>(serviceProvider =>
+    serviceProvider.GetRequiredService<PropertyAccessService>());
+builder.Services.AddScoped<IPropertyAccessService>(serviceProvider =>
+    serviceProvider.GetRequiredService<PropertyAccessService>());
 builder.Services.AddScoped<IPermissionService, PermissionService>();
-builder.Services.AddScoped<IPropertyAccessService, PropertyAccessService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService>();
@@ -61,6 +65,10 @@ builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IChildPricingRuleResolver, ChildPricingRuleResolver>();
 builder.Services.AddScoped<IReservationRulesResolver, ReservationRulesResolver>();
+if (builder.Environment.IsDevelopment())
+{
+    builder.Services.AddScoped<IAuthorizationDataAuditService, AuthorizationDataAuditService>();
+}
 builder.Services.AddSingleton<PricingService>();
 builder.Services.AddScoped<CouponValidationService>();
 builder.Services.AddScoped<IAuthorizationHandler, PermissionAuthorizationHandler>();
@@ -128,6 +136,20 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+
+if (args.Contains("--audit-authorization-data", StringComparer.OrdinalIgnoreCase))
+{
+    if (!app.Environment.IsDevelopment())
+    {
+        throw new InvalidOperationException("Authorization data audit is available only in Development.");
+    }
+
+    await using var auditScope = app.Services.CreateAsyncScope();
+    var auditService = auditScope.ServiceProvider.GetRequiredService<IAuthorizationDataAuditService>();
+    var report = await auditService.CreateReportAsync();
+    Console.WriteLine(report.ToReadableText());
+    return;
+}
 
 if (app.Environment.IsDevelopment())
 {

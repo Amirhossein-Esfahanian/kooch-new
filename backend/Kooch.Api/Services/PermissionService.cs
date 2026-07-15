@@ -1,72 +1,23 @@
 using Kooch.Api.Data;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace Kooch.Api.Services;
 
-public class PermissionService(KoochDbContext dbContext) : IPermissionService
+public class PermissionService(
+    KoochDbContext dbContext,
+    IPropertyAuthorizationService propertyAuthorizationService) : IPermissionService
 {
-    public async Task<bool> CanAsync(
+    public Task<bool> CanAsync(
         int userId,
         int propertyId,
         string permissionKey,
-        CancellationToken cancellationToken = default)
-    {
-        var normalizedKey = NormalizePermissionKey(permissionKey);
-        if (normalizedKey is null)
-        {
-            return false;
-        }
-
-        var user = await dbContext.Users.AsNoTracking()
-            .Where(user => user.Id == userId && user.IsActive)
-            .Select(user => new { user.Role })
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (user is null)
-        {
-            return false;
-        }
-
-        if (user.Role is UserRole.SuperAdmin or UserRole.AdminAssistant)
-        {
-            return true;
-        }
-
-        if (user.Role == UserRole.Owner &&
-            await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == userId, cancellationToken))
-        {
-            return true;
-        }
-
-        var permissionMatrixJson = await dbContext.UserPropertyAccesses.AsNoTracking()
-            .Where(access =>
-                access.UserId == userId &&
-                access.PropertyId == propertyId &&
-                access.IsActive &&
-                access.Status == PropertyUserStatus.Active)
-            .Select(access => access.PermissionMatrixJson)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (string.IsNullOrWhiteSpace(permissionMatrixJson))
-        {
-            return false;
-        }
-
-        var matrix = DeserializeMatrix(permissionMatrixJson);
-        return matrix.TryGetValue(normalizedKey.Value.Group, out var actions) &&
-               normalizedKey.Value.Action switch
-               {
-                   "view" => actions.View,
-                   "create" => actions.Create,
-                   "edit" => actions.Edit,
-                   "delete" => actions.Delete,
-                   "export" => actions.Export,
-                   _ => false
-               };
-    }
+        CancellationToken cancellationToken = default) =>
+        propertyAuthorizationService.HasPropertyPermissionAsync(
+            userId,
+            propertyId,
+            permissionKey,
+            cancellationToken);
 
     public async Task<bool> HasPermissionAsync(
         int userId,
@@ -89,29 +40,30 @@ public class PermissionService(KoochDbContext dbContext) : IPermissionService
             return true;
         }
 
-        var hasDirectPermission = await dbContext.UserPermissions.AsNoTracking()
+        if (propertyId.HasValue)
+        {
+            foreach (var key in PropertyPermissionMap(permissionKey))
+            {
+                if (await propertyAuthorizationService.HasPropertyPermissionAsync(
+                        userId,
+                        propertyId.Value,
+                        key,
+                        cancellationToken))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        return await dbContext.UserPermissions.AsNoTracking()
             .AnyAsync(permission =>
                 permission.UserId == userId &&
                 permission.PermissionKey == permissionKey &&
-                permission.IsAllowed &&
-                (permission.PropertyId == null || permission.PropertyId == propertyId),
+                permission.PropertyId == null &&
+                permission.IsAllowed,
                 cancellationToken);
-
-        if (hasDirectPermission || propertyId is null)
-        {
-            return hasDirectPermission;
-        }
-
-        var permissionKeys = LegacyPermissionMap(permissionKey);
-        foreach (var key in permissionKeys)
-        {
-            if (await CanAsync(userId, propertyId.Value, key, cancellationToken))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     public static IReadOnlyList<string> MatrixToKeys(IReadOnlyDictionary<string, Dtos.PropertyUsers.PermissionActionsDto> matrix)
@@ -131,56 +83,6 @@ public class PermissionService(KoochDbContext dbContext) : IPermissionService
         return keys;
     }
 
-    private static Dtos.PropertyUsers.PermissionMatrixDto DeserializeMatrix(string value)
-    {
-        try
-        {
-            return JsonSerializer.Deserialize<Dtos.PropertyUsers.PermissionMatrixDto>(
-                    value,
-                    JsonOptions) ??
-                [];
-        }
-        catch (JsonException)
-        {
-            return [];
-        }
-    }
-
-    private static (string Group, string Action)? NormalizePermissionKey(string permissionKey)
-    {
-        var parts = permissionKey.Trim().ToLowerInvariant().Split('.', 2);
-        if (parts.Length != 2) return null;
-
-        var group = parts[0] switch
-        {
-            "dashboard" => "Dashboard",
-            "property" => "Properties",
-            "properties" => "Properties",
-            "rooms" => "Rooms",
-            "pricing" => "Pricing",
-            "inventory" => "Inventory",
-            "bookings" => "Bookings",
-            "booking" => "Bookings",
-            "reviews" => "Reviews",
-            "users" => "Users",
-            "financial" => "Financial",
-            "reports" => "Reports",
-            "settings" => "Settings",
-            _ => null
-        };
-        if (group is null) return null;
-
-        var action = parts[1] switch
-        {
-            "cancel" => "delete",
-            "reply" => "edit",
-            _ => parts[1]
-        };
-        return action is "view" or "create" or "edit" or "delete" or "export"
-            ? (group, action)
-            : null;
-    }
-
     private static string? GroupToPermissionSegment(string group) =>
         group switch
         {
@@ -198,12 +100,15 @@ public class PermissionService(KoochDbContext dbContext) : IPermissionService
             _ => null
         };
 
-    private static IReadOnlyList<string> LegacyPermissionMap(PermissionKey permissionKey) =>
+    private static IReadOnlyList<string> PropertyPermissionMap(PermissionKey permissionKey) =>
         permissionKey switch
         {
             PermissionKey.ManageUsers => ["users.view", "users.edit"],
             PermissionKey.ManageStaff => ["users.view", "users.edit"],
+            PermissionKey.ManageRoles => ["users.view", "users.edit"],
             PermissionKey.ManageProperties => ["property.view", "property.edit"],
+            PermissionKey.ManageRooms => ["rooms.view", "rooms.edit"],
+            PermissionKey.ManagePricing => ["pricing.view", "pricing.edit"],
             PermissionKey.ManageAvailability => ["inventory.view", "inventory.edit"],
             PermissionKey.ManageReservations => ["bookings.view", "bookings.edit"],
             PermissionKey.ManagePayments => ["financial.view", "financial.edit"],
@@ -212,12 +117,10 @@ public class PermissionService(KoochDbContext dbContext) : IPermissionService
             PermissionKey.ManageNotifications => ["dashboard.view"],
             PermissionKey.ViewReports => ["reports.view"],
             PermissionKey.ManageSettings => ["settings.view", "settings.edit"],
-            PermissionKey.ManageRoles => ["users.view", "users.edit"],
+            PermissionKey.ViewDashboard => ["dashboard.view"],
+            PermissionKey.ManageGuests => ["bookings.view", "bookings.edit"],
+            PermissionKey.ManageAmenities => ["property.view", "property.edit"],
             _ => []
         };
 
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 }

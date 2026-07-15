@@ -671,8 +671,13 @@ export async function apiRequest<T>(
   });
 
   if (response.status === 401) {
-    clearToken();
-    throw new Error("نشست شما منقضی شده است. لطفاً دوباره وارد شوید.");
+    if (getToken() === token) {
+      clearToken();
+    }
+    throw new ApiRequestError(
+      "نشست شما منقضی شده است. لطفاً دوباره وارد شوید.",
+      response.status,
+    );
   }
 
   if (!response.ok) {

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/Footer";
 import { Header } from "@/components/Header";
+import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 import { Toaster } from "sonner";
 import { iranYekan } from "./fonts";
 import "./globals.css";
@@ -24,18 +25,20 @@ export default function RootLayout({
       className={iranYekan.variable}
     >
       <body className="font-sans min-h-screen antialiased">
-        <Toaster closeButton dir="rtl" position="top-center" richColors />
-        <script
-          dangerouslySetInnerHTML={{
-            __html:
-              "try{var t=localStorage.getItem('kooch_theme')||'ocean';document.documentElement.dataset.theme=t}catch(e){}",
-          }}
-        />
-        <div className="flex min-h-screen flex-col">
-          <Header />
-          <main className="flex-1">{children}</main>
-          <Footer />
-        </div>
+        <AuthSessionProvider>
+          <Toaster closeButton dir="rtl" position="top-center" richColors />
+          <script
+            dangerouslySetInnerHTML={{
+              __html:
+                "try{var t=localStorage.getItem('kooch_theme')||'ocean';document.documentElement.dataset.theme=t}catch(e){}",
+            }}
+          />
+          <div className="flex min-h-screen flex-col">
+            <Header />
+            <main className="flex-1">{children}</main>
+            <Footer />
+          </div>
+        </AuthSessionProvider>
       </body>
     </html>
   );

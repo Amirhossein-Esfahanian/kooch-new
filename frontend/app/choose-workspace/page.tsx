@@ -2,57 +2,52 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
-import { getAuthName, getAuthRole, getToken, KoochWorkspace, setWorkspace } from "@/lib/owner-api";
+import {
+  AuthWorkspace,
+  resolveSessionDestination,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
+import { KoochWorkspace, setWorkspace } from "@/lib/owner-api";
 
 type WorkspaceOption = {
   key: KoochWorkspace;
   title: string;
   description: string;
-  href: string;
 };
 
 const options: WorkspaceOption[] = [
-  { key: "admin", title: "پنل مدیریت سایت", description: "مدیریت اقامتگاه‌ها، کاربران، امکانات و گزارش‌ها", href: "/admin" },
-  { key: "owner", title: "پنل مالک اقامتگاه", description: "مدیریت اقامتگاه‌ها، اتاق‌ها، تصاویر و موجودی", href: "/owner" },
-  { key: "traveler", title: "سایت مسافر", description: "مشاهده صفحه اصلی، جست‌وجو و صفحات عمومی", href: "/" },
+  { key: "admin", title: "پنل مدیریت سایت", description: "مدیریت اقامتگاه‌ها، کاربران، امکانات و گزارش‌ها" },
+  { key: "owner", title: "پنل مالک اقامتگاه", description: "مدیریت اقامتگاه‌ها، اتاق‌ها، تصاویر و موجودی" },
+  { key: "traveler", title: "سایت مسافر", description: "مشاهده صفحه اصلی، جست‌وجو و صفحات عمومی" },
 ];
-
-function allowedWorkspaces(role: string | null): KoochWorkspace[] {
-  if (role === "SuperAdmin") return ["admin", "owner", "traveler"];
-  if (role === "AdminAssistant") return ["admin", "traveler"];
-  if (role === "Owner" || role === "OwnerAssistant") return ["owner", "traveler"];
-  return ["traveler"];
-}
 
 export default function ChooseWorkspacePage() {
   const router = useRouter();
-  const [role, setRole] = useState<string | null>(null);
-  const [fullName, setFullName] = useState<string | null>(null);
-  const [hasToken, setHasToken] = useState(false);
-  const [ready, setReady] = useState(false);
-  const visibleOptions = useMemo(() => {
-    const allowed = allowedWorkspaces(role);
-    return options.filter((option) => allowed.includes(option.key));
-  }, [role]);
-
-  useEffect(() => {
-    setRole(getAuthRole());
-    setFullName(getAuthName());
-    setHasToken(Boolean(getToken()));
-    setReady(true);
-  }, []);
+  const session = useAuthSession();
+  const { authenticated, loading, user, workspaces } = session;
+  const visibleOptions = options.filter(
+    (option) =>
+      option.key === "traveler" ||
+      (option.key === "admin" && workspaces.includes("admin")) ||
+      (option.key === "owner" && workspaces.includes("owner")),
+  );
 
   function choose(option: WorkspaceOption) {
     setWorkspace(option.key);
-    router.push(option.href);
+    const requestedWorkspace: AuthWorkspace | null =
+      option.key === "traveler" ? "account" : option.key;
+    router.push(
+      option.key === "traveler"
+        ? "/"
+        : resolveSessionDestination(session, requestedWorkspace),
+    );
   }
 
-  if (!ready) {
+  if (loading) {
     return <div className="mx-auto max-w-5xl px-5 py-12 text-slate-500 sm:px-8">در حال آماده‌سازی...</div>;
   }
 
-  if (!hasToken) {
+  if (!authenticated) {
     return (
       <div className="mx-auto grid min-h-[60vh] max-w-md place-items-center px-5 py-12">
         <section className="w-full rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
@@ -72,7 +67,7 @@ export default function ChooseWorkspacePage() {
         <p className="text-sm font-bold text-blue-700">انتخاب موقت محیط کاربری</p>
         <h1 className="mt-2 text-3xl font-black text-slate-950">می‌خواهید وارد کدام محیط شوید؟</h1>
         <p className="mt-2 text-sm text-slate-500">
-          {fullName ? `${fullName} عزیز، ` : ""}این انتخاب برای طراحی رابط کاربری است و بعدا با نقش‌های واقعی جایگزین می‌شود.
+          {user?.fullName ? `${user.fullName} عزیز، ` : ""}این انتخاب برای طراحی رابط کاربری است و بعدا با نقش‌های واقعی جایگزین می‌شود.
         </p>
       </div>
 

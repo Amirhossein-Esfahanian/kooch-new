@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
@@ -10,6 +11,7 @@ namespace Kooch.Api.Services;
 public class PropertyService(
     KoochDbContext dbContext,
     IPropertyAccessService propertyAccessService,
+    IPropertyAuthorizationService propertyAuthorizationService,
     IPermissionService permissionService,
     IPropertyCompletionService propertyCompletionService,
     IChildPricingRuleResolver childPricingRuleResolver) : IPropertyService
@@ -31,7 +33,9 @@ public class PropertyService(
         var ownerId = canCreateAsAdmin ? request.OwnerId ?? userId : userId;
         if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
                 user.Id == ownerId && user.IsActive &&
-                (user.Role == UserRole.Owner || user.Role == UserRole.SuperAdmin), cancellationToken))
+                (user.Role == UserRole.Owner ||
+                 user.Role == UserRole.Client ||
+                 user.Role == UserRole.SuperAdmin), cancellationToken))
         {
             throw new ArgumentException("The selected owner is invalid.");
         }
@@ -76,6 +80,8 @@ public class PropertyService(
         };
 
         dbContext.Properties.Add(property);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await EnsureCanonicalOwnerMembershipAsync(property.Id, null, ownerId, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         if (string.IsNullOrWhiteSpace(englishName))
         {
@@ -264,29 +270,11 @@ public class PropertyService(
         UserRole role,
         CancellationToken cancellationToken = default)
     {
-        var query = dbContext.Properties.AsNoTracking();
-
-        query = role switch
-        {
-            UserRole.SuperAdmin => query,
-            UserRole.Owner => query.Where(property => property.OwnerId == userId ||
-                property.UserPropertyAccesses.Any(access =>
-                    access.UserId == userId &&
-                    access.IsActive &&
-                    access.Status == PropertyUserStatus.Active)),
-            UserRole.OwnerAssistant or UserRole.Client => query.Where(property => property.UserPropertyAccesses
-                .Any(access =>
-                    access.UserId == userId &&
-                    access.IsActive &&
-                    access.Status == PropertyUserStatus.Active)),
-            UserRole.AdminAssistant => await HasGlobalManagePermissionAsync(userId, cancellationToken)
-                ? query
-                : query.Where(property => property.UserPermissions.Any(permission =>
-                    permission.UserId == userId &&
-                    permission.PermissionKey == PermissionKey.ManageProperties &&
-                    permission.IsAllowed)),
-            _ => query.Where(property => false)
-        };
+        var propertyIds = await propertyAuthorizationService.GetAccessiblePropertiesAsync(
+            userId,
+            cancellationToken);
+        var query = dbContext.Properties.AsNoTracking()
+            .Where(property => propertyIds.Contains(property.Id));
 
         return await Project(query.OrderBy(property => property.Name)).ToListAsync(cancellationToken);
     }
@@ -304,7 +292,9 @@ public class PropertyService(
         if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
                 user.Id == request.OwnerId &&
                 user.IsActive &&
-                (user.Role == UserRole.Owner || user.Role == UserRole.SuperAdmin),
+                (user.Role == UserRole.Owner ||
+                 user.Role == UserRole.Client ||
+                 user.Role == UserRole.SuperAdmin),
                 cancellationToken))
         {
             throw new ArgumentException("The selected owner is invalid.");
@@ -315,6 +305,7 @@ public class PropertyService(
         var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
         await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
 
+        var previousOwnerId = property.OwnerId;
         property.OwnerId = request.OwnerId;
         property.DestinationId = request.DestinationId;
         property.Name = request.Name.Trim();
@@ -352,6 +343,11 @@ public class PropertyService(
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
+        await EnsureCanonicalOwnerMembershipAsync(
+            property.Id,
+            previousOwnerId,
+            request.OwnerId,
+            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -380,15 +376,24 @@ public class PropertyService(
         UserRole role,
         CancellationToken cancellationToken = default)
     {
-        var allowed = role == UserRole.SuperAdmin ||
-                      role == UserRole.AdminAssistant &&
-                      await HasGlobalManagePermissionAsync(userId, cancellationToken);
-        if (!allowed)
+        if (role == UserRole.SuperAdmin)
+        {
+            return await Project(dbContext.Properties.AsNoTracking().OrderBy(property => property.Name))
+                .ToListAsync(cancellationToken);
+        }
+
+        if (role != UserRole.AdminAssistant ||
+            !await HasGlobalManagePermissionAsync(userId, cancellationToken))
         {
             throw new UnauthorizedAccessException("ManageProperties permission is required.");
         }
 
-        return await Project(dbContext.Properties.AsNoTracking().OrderBy(property => property.Name))
+        var propertyIds = await propertyAuthorizationService.GetAccessiblePropertiesAsync(
+            userId,
+            cancellationToken);
+        return await Project(dbContext.Properties.AsNoTracking()
+                .Where(property => propertyIds.Contains(property.Id))
+                .OrderBy(property => property.Name))
             .ToListAsync(cancellationToken);
     }
 
@@ -607,10 +612,11 @@ public class PropertyService(
         int propertyId,
         CancellationToken cancellationToken)
     {
-        var allowed = role == UserRole.SuperAdmin ||
-                      role == UserRole.AdminAssistant &&
-                      await permissionService.HasPermissionAsync(
-                          userId, PermissionKey.ManageProperties, propertyId, cancellationToken);
+        var allowed = await permissionService.HasPermissionAsync(
+            userId,
+            PermissionKey.ManageProperties,
+            propertyId,
+            cancellationToken);
         if (!allowed)
         {
             throw new UnauthorizedAccessException("ManageProperties permission is required.");
@@ -623,6 +629,52 @@ public class PropertyService(
 
     private async Task<bool> HasGlobalManagePermissionAsync(int userId, CancellationToken cancellationToken) =>
         await permissionService.HasPermissionAsync(userId, PermissionKey.ManageProperties, null, cancellationToken);
+
+    private async Task EnsureCanonicalOwnerMembershipAsync(
+        int propertyId,
+        int? previousOwnerId,
+        int ownerId,
+        CancellationToken cancellationToken)
+    {
+        if (previousOwnerId.HasValue && previousOwnerId.Value != ownerId)
+        {
+            var previousOwnerAccess = await dbContext.UserPropertyAccesses
+                .SingleOrDefaultAsync(access =>
+                    access.PropertyId == propertyId &&
+                    access.UserId == previousOwnerId.Value &&
+                    access.PropertyRole == PropertyUserRole.PropertyOwner,
+                    cancellationToken);
+            if (previousOwnerAccess is not null)
+            {
+                previousOwnerAccess.Status = PropertyUserStatus.Inactive;
+                previousOwnerAccess.IsActive = false;
+            }
+        }
+
+        var ownerAccess = await dbContext.UserPropertyAccesses
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(access =>
+                access.PropertyId == propertyId && access.UserId == ownerId,
+                cancellationToken);
+        if (ownerAccess is null)
+        {
+            ownerAccess = new UserPropertyAccess
+            {
+                PropertyId = propertyId,
+                UserId = ownerId
+            };
+            dbContext.UserPropertyAccesses.Add(ownerAccess);
+        }
+
+        ownerAccess.PropertyRole = PropertyUserRole.PropertyOwner;
+        ownerAccess.Status = PropertyUserStatus.Active;
+        ownerAccess.IsActive = true;
+        ownerAccess.IsDeleted = false;
+        ownerAccess.DeletedAtUtc = null;
+        ownerAccess.DeletedByUserId = null;
+        ownerAccess.PermissionMatrixJson = JsonSerializer.Serialize(
+            PropertyPermissionMatrixDefaults.CreateOwner());
+    }
 
     private async Task ValidateDestinationAsync(int destinationId, CancellationToken cancellationToken)
     {

@@ -8,9 +8,11 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import {
+  resolveSessionDestination,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
+import {
   apiRequest,
-  ownerPropertyKey,
-  PropertyResponse,
   setAuthUser,
   setToken,
 } from "@/lib/owner-api";
@@ -40,6 +42,7 @@ function validatePassword(password: string) {
 
 export function AuthPage() {
   const router = useRouter();
+  const { refreshSession } = useAuthSession();
   const [mode, setMode] = useState<AuthMode>("login");
   const [method, setMethod] = useState<LoginMethod>("password");
   const [identifier, setIdentifier] = useState("");
@@ -63,29 +66,13 @@ export function AuthPage() {
   async function completeLogin(response: AuthResponse) {
     setToken(response.token);
     setAuthUser(response.role, response.fullName);
+    const session = await refreshSession();
 
-    if (response.role === "SuperAdmin" || response.role === "AdminAssistant") {
-      router.push("/admin");
-      return;
+    if (!session) {
+      throw new Error("اطلاعات حساب کاربری دریافت نشد.");
     }
 
-    try {
-      const properties = await apiRequest<PropertyResponse[]>("/owner/properties");
-      if (properties.length === 1) {
-        localStorage.setItem(ownerPropertyKey, properties[0].id.toString());
-        router.push(`/owner/properties/${properties[0].id}/dashboard`);
-        return;
-      }
-
-      if (properties.length > 1) {
-        router.push("/owner/select-property");
-        return;
-      }
-    } catch {
-      // Guests and users without property access continue to the public site.
-    }
-
-    router.push("/");
+    router.push(resolveSessionDestination(session));
   }
 
   async function submitPassword(event: FormEvent<HTMLFormElement>) {

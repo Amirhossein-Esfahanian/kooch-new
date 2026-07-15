@@ -10,6 +10,7 @@ namespace Kooch.Api.Services;
 public class PropertyUserService(
     KoochDbContext dbContext,
     IPermissionService permissionService,
+    IPropertyAuthorizationService propertyAuthorizationService,
     IAuthService authService,
     IHostEnvironment appEnvironment) : IPropertyUserService
 {
@@ -19,7 +20,7 @@ public class PropertyUserService(
         int propertyId,
         CancellationToken cancellationToken = default)
     {
-        await EnsureCanUseUsersPermissionAsync(currentUserId, currentRole, propertyId, "users.view", cancellationToken);
+        await EnsureCanUseUsersPermissionAsync(currentUserId, propertyId, "users.view", cancellationToken);
 
         var property = await dbContext.Properties.AsNoTracking()
             .Include(item => item.Owner)
@@ -27,9 +28,15 @@ public class PropertyUserService(
             ?? throw new KeyNotFoundException("Property not found.");
 
         var ownerLastActivity = await GetLastActivityAsync(propertyId, property.OwnerId, cancellationToken);
+        var ownerAccess = await dbContext.UserPropertyAccesses.AsNoTracking()
+            .SingleOrDefaultAsync(access =>
+                access.PropertyId == propertyId &&
+                access.UserId == property.OwnerId &&
+                access.PropertyRole == PropertyUserRole.PropertyOwner,
+                cancellationToken);
         var users = new List<PropertyUserResponse>
         {
-            MapOwner(property, ownerLastActivity)
+            MapOwner(property, ownerAccess, ownerLastActivity)
         };
 
         var accessUsers = await dbContext.UserPropertyAccesses.AsNoTracking()
@@ -72,14 +79,13 @@ public class PropertyUserService(
         PropertyUserRequest request,
         CancellationToken cancellationToken = default)
     {
-        await EnsureCanUseUsersPermissionAsync(currentUserId, currentRole, propertyId, "users.create", cancellationToken);
+        await EnsureCanUseUsersPermissionAsync(currentUserId, propertyId, "users.create", cancellationToken);
         if (request.Role == PropertyUserRole.PropertyOwner)
         {
             throw new InvalidOperationException("Property owner cannot be created from this page.");
         }
         await EnsureCanManageTargetRoleAsync(
             currentUserId,
-            currentRole,
             propertyId,
             request.Role,
             "create",
@@ -98,7 +104,6 @@ public class PropertyUserService(
         };
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
-            currentRole,
             propertyId,
             invitation.Permissions ?? BuildDefaultMatrix(invitation.Role),
             null,
@@ -164,14 +169,13 @@ public class PropertyUserService(
         PropertyUserRequest request,
         CancellationToken cancellationToken = default)
     {
-        await EnsureCanUseUsersPermissionAsync(currentUserId, currentRole, propertyId, "users.edit", cancellationToken);
+        await EnsureCanUseUsersPermissionAsync(currentUserId, propertyId, "users.edit", cancellationToken);
         if (request.Role == PropertyUserRole.PropertyOwner)
         {
             throw new InvalidOperationException("Property owner cannot be changed from this page.");
         }
         await EnsureCanManageTargetRoleAsync(
             currentUserId,
-            currentRole,
             propertyId,
             request.Role,
             "assign",
@@ -191,7 +195,6 @@ public class PropertyUserService(
             ?? throw new KeyNotFoundException("Property user not found.");
         await EnsureCanManageTargetRoleAsync(
             currentUserId,
-            currentRole,
             propertyId,
             access.PropertyRole,
             "edit",
@@ -207,10 +210,8 @@ public class PropertyUserService(
         access.User.Email = email;
         access.User.Username = CleanOptional(request.Username) ?? email;
         access.User.PhoneNumber = mobile;
-        access.User.IsActive = request.IsActive && request.Status == PropertyUserStatus.Active;
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
-            currentRole,
             propertyId,
             request.Permissions ?? BuildDefaultMatrix(request.Role),
             DeserializeMatrix(access.PermissionMatrixJson),
@@ -248,7 +249,6 @@ public class PropertyUserService(
     {
         await EnsureCanUseUsersPermissionAsync(
             currentUserId,
-            currentRole,
             propertyId,
             status == PropertyUserStatus.Inactive ? "users.delete" : "users.edit",
             cancellationToken);
@@ -261,19 +261,16 @@ public class PropertyUserService(
         }
 
         var access = await dbContext.UserPropertyAccesses
-            .Include(item => item.User)
             .SingleOrDefaultAsync(item => item.UserId == userId && item.PropertyId == propertyId, cancellationToken)
             ?? throw new KeyNotFoundException("Property user not found.");
         await EnsureCanManageTargetRoleAsync(
             currentUserId,
-            currentRole,
             propertyId,
             access.PropertyRole,
             "change status for",
             cancellationToken);
         access.Status = status;
         access.IsActive = status == PropertyUserStatus.Active;
-        access.User.IsActive = status == PropertyUserStatus.Active;
         await dbContext.SaveChangesAsync(cancellationToken);
         return (await GetUsersAsync(currentUserId, currentRole, propertyId, cancellationToken))
             .Single(item => item.UserId == userId);
@@ -281,28 +278,15 @@ public class PropertyUserService(
 
     private async Task EnsureCanUseUsersPermissionAsync(
         int currentUserId,
-        UserRole currentRole,
         int propertyId,
         string permissionKey,
         CancellationToken cancellationToken)
     {
-        var allowed = currentRole switch
-        {
-            UserRole.SuperAdmin => true,
-            UserRole.AdminAssistant => true,
-            UserRole.Owner => await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == currentUserId, cancellationToken) ||
-                await permissionService.CanAsync(
-                    currentUserId,
-                    propertyId,
-                    permissionKey,
-                    cancellationToken),
-            _ => await permissionService.CanAsync(
-                currentUserId,
-                propertyId,
-                permissionKey,
-                cancellationToken)
-        };
+        var allowed = await permissionService.CanAsync(
+            currentUserId,
+            propertyId,
+            permissionKey,
+            cancellationToken);
 
         if (!allowed)
         {
@@ -312,7 +296,6 @@ public class PropertyUserService(
 
     private async Task EnsureCanGrantPermissionsAsync(
         int currentUserId,
-        UserRole currentRole,
         int propertyId,
         PermissionMatrixDto requestedPermissions,
         PermissionMatrixDto? existingPermissions,
@@ -320,7 +303,11 @@ public class PropertyUserService(
     {
         ValidatePropertyScopedPermissions(requestedPermissions);
 
-        if (currentRole is UserRole.SuperAdmin or UserRole.AdminAssistant)
+        var effectivePermissions = await propertyAuthorizationService.GetEffectivePropertyPermissionsAsync(
+            currentUserId,
+            propertyId,
+            cancellationToken);
+        if (effectivePermissions?.IsSuperAdminBypass == true)
         {
             return;
         }
@@ -356,13 +343,12 @@ public class PropertyUserService(
 
     private async Task EnsureCanManageTargetRoleAsync(
         int currentUserId,
-        UserRole currentRole,
         int propertyId,
         PropertyUserRole targetRole,
         string action,
         CancellationToken cancellationToken)
     {
-        var actorRole = await GetActorPropertyRoleAsync(currentUserId, currentRole, propertyId, cancellationToken);
+        var actorRole = await GetActorPropertyRoleAsync(currentUserId, propertyId, cancellationToken);
         if (RoleRank(targetRole) > RoleRank(actorRole))
         {
             throw new UnauthorizedAccessException(
@@ -372,31 +358,19 @@ public class PropertyUserService(
 
     private async Task<PropertyUserRole> GetActorPropertyRoleAsync(
         int currentUserId,
-        UserRole currentRole,
         int propertyId,
         CancellationToken cancellationToken)
     {
-        if (currentRole is UserRole.SuperAdmin or UserRole.AdminAssistant)
+        var effectivePermissions = await propertyAuthorizationService.GetEffectivePropertyPermissionsAsync(
+            currentUserId,
+            propertyId,
+            cancellationToken);
+        if (effectivePermissions?.IsSuperAdminBypass == true)
         {
             return PropertyUserRole.PropertyOwner;
         }
 
-        if (currentRole == UserRole.Owner &&
-            await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == currentUserId, cancellationToken))
-        {
-            return PropertyUserRole.PropertyOwner;
-        }
-
-        var accessRole = await dbContext.UserPropertyAccesses.AsNoTracking()
-            .Where(access => access.UserId == currentUserId &&
-                             access.PropertyId == propertyId &&
-                             access.IsActive &&
-                             access.Status == PropertyUserStatus.Active)
-            .Select(access => (PropertyUserRole?)access.PropertyRole)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        return accessRole ?? PropertyUserRole.Custom;
+        return effectivePermissions?.PropertyRole ?? PropertyUserRole.Custom;
     }
 
     private static int RoleRank(PropertyUserRole role) =>
@@ -424,24 +398,27 @@ public class PropertyUserService(
         }
     }
 
-    private static PropertyUserResponse MapOwner(Property property, DateTime? lastActivityAtUtc)
+    private static PropertyUserResponse MapOwner(
+        Property property,
+        UserPropertyAccess? access,
+        DateTime? lastActivityAtUtc)
     {
         var owner = property.Owner;
         return new PropertyUserResponse
         {
-            Id = 0,
+            Id = access?.Id ?? 0,
             UserId = property.OwnerId,
             PropertyId = property.Id,
             FullName = (owner.FirstName + " " + owner.LastName).Trim(),
             Mobile = owner.PhoneNumber,
             Email = owner.Email,
             Username = string.IsNullOrWhiteSpace(owner.Username) ? owner.Email : owner.Username!,
-            Status = owner.IsActive ? PropertyUserStatus.Active : PropertyUserStatus.Suspended,
+            Status = access?.Status ?? PropertyUserStatus.Inactive,
             Role = PropertyUserRole.PropertyOwner,
-            IsActive = owner.IsActive,
+            IsActive = owner.IsActive && access is { IsActive: true, Status: PropertyUserStatus.Active },
             PasswordSetupRequired = owner.PasswordSetupRequired,
             CanRemove = false,
-            Permissions = BuildOwnerMatrix(),
+            Permissions = DeserializeMatrix(access?.PermissionMatrixJson),
             CreatedAtUtc = owner.CreatedAtUtc,
             InvitationAcceptedAtUtc = owner.InvitationAcceptedAtUtc,
             LastActivityAtUtc = lastActivityAtUtc
@@ -514,7 +491,7 @@ public class PropertyUserService(
     {
         if (string.IsNullOrWhiteSpace(value))
         {
-            return BuildDefaultMatrix(PropertyUserRole.Manager);
+            return NormalizeMatrix([]);
         }
 
         try
@@ -523,12 +500,12 @@ public class PropertyUserService(
                 value,
                 JsonOptions);
             return matrix is null || matrix.Count == 0
-                ? BuildDefaultMatrix(PropertyUserRole.Manager)
+                ? NormalizeMatrix([])
                 : NormalizeMatrix(matrix);
         }
         catch (JsonException)
         {
-            return BuildDefaultMatrix(PropertyUserRole.Manager);
+            return NormalizeMatrix([]);
         }
     }
 
@@ -550,23 +527,6 @@ public class PropertyUserService(
             };
         }
         return normalized;
-    }
-
-    private static PermissionMatrixDto BuildOwnerMatrix()
-    {
-        var matrix = new PermissionMatrixDto();
-        foreach (var group in PermissionGroups)
-        {
-            matrix[group] = new PermissionActionsDto
-            {
-                View = true,
-                Create = true,
-                Edit = true,
-                Delete = true,
-                Export = true
-            };
-        }
-        return matrix;
     }
 
     private static PermissionMatrixDto BuildDefaultMatrix(PropertyUserRole role)
@@ -630,20 +590,7 @@ public class PropertyUserService(
         return matrix;
     }
 
-    private static readonly string[] PermissionGroups =
-    [
-        "Dashboard",
-        "Properties",
-        "Rooms",
-        "Pricing",
-        "Inventory",
-        "Bookings",
-        "Reviews",
-        "Users",
-        "Financial",
-        "Reports",
-        "Settings"
-    ];
+    private static readonly string[] PermissionGroups = PropertyPermissionMatrixDefaults.Groups;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

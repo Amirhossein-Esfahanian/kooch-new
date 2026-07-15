@@ -2,77 +2,127 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   apiRequest,
-  getAuthRole,
-  getToken,
+  ApiRequestError,
   ownerPropertyKey,
   PropertyResponse,
 } from "@/lib/owner-api";
 
-function isAdminRole(role: string | null) {
-  return role === "SuperAdmin" || role === "AdminAssistant";
-}
-
-function isOwnerPanelRole(role: string | null) {
-  return [
-    "Owner",
-    "OwnerAssistant",
-    "PropertyOwner",
-    "Manager",
-    "Reception",
-    "Accounting",
-    "Housekeeping",
-    "Custom",
-    "Client",
-  ].includes(role ?? "");
-}
-
 export default function SelectOwnerPropertyPage() {
   const router = useRouter();
+  const refreshAttemptedRef = useRef(false);
+  const {
+    authenticated,
+    loading: sessionLoading,
+    propertyMemberships,
+    refreshSession,
+    workspaces,
+  } = useAuthSession();
+  const activeMemberships = useMemo(
+    () =>
+      propertyMemberships.filter(
+        (membership) =>
+          membership.isActive && membership.membershipStatus === "Active",
+      ),
+    [propertyMemberships],
+  );
+  const hasOwnerWorkspace = workspaces.includes("owner");
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [propertiesLoading, setPropertiesLoading] = useState(true);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
+    if (sessionLoading) return;
+
+    if (!authenticated) {
+      if (!refreshAttemptedRef.current) {
+        refreshAttemptedRef.current = true;
+        void refreshSession({ redirectOnUnauthorized: true }).catch(() => {
+          router.replace("/");
+        });
+      }
       return;
     }
 
-    const role = getAuthRole();
-    if (isAdminRole(role)) {
-      router.replace("/admin");
+    refreshAttemptedRef.current = false;
+    if (!hasOwnerWorkspace) {
+      router.replace(workspaces.includes("admin") ? "/admin" : "/");
       return;
     }
 
-    if (!isOwnerPanelRole(role)) {
+    if (activeMemberships.length === 0) {
       router.replace("/");
       return;
     }
 
+    if (activeMemberships.length === 1) {
+      const propertyId = activeMemberships[0].propertyId;
+      localStorage.setItem(ownerPropertyKey, propertyId.toString());
+      router.replace(`/owner/properties/${propertyId}`);
+      return;
+    }
+
+    const activePropertyIds = new Set(
+      activeMemberships.map((membership) => membership.propertyId),
+    );
+    let cancelled = false;
+    setPropertiesLoading(true);
+    setError("");
     apiRequest<PropertyResponse[]>("/owner/properties")
       .then((items) => {
-        if (items.length === 0) {
-          router.replace("/");
-          return;
+        if (!cancelled) {
+          setProperties(
+            items.filter((property) => activePropertyIds.has(property.id)),
+          );
         }
-
-        if (items.length === 1) {
-          localStorage.setItem(ownerPropertyKey, items[0].id.toString());
-          router.replace(`/owner/properties/${items[0].id}/dashboard`);
-          return;
-        }
-        setProperties(items);
       })
-      .catch((caught: Error) => setError(caught.message))
-      .finally(() => setLoading(false));
-  }, [router]);
+      .catch((caught: Error) => {
+        if (cancelled) return;
+        if (caught instanceof ApiRequestError && caught.status === 401) {
+          void refreshSession({ redirectOnUnauthorized: true });
+          return;
+        }
+        setError(caught.message);
+      })
+      .finally(() => {
+        if (!cancelled) setPropertiesLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    activeMemberships,
+    authenticated,
+    hasOwnerWorkspace,
+    refreshSession,
+    router,
+    sessionLoading,
+    workspaces,
+  ]);
 
   function selectProperty(property: PropertyResponse) {
     localStorage.setItem(ownerPropertyKey, property.id.toString());
-    router.push(`/owner/properties/${property.id}/dashboard`);
+    router.push(`/owner/properties/${property.id}`);
+  }
+
+  if (
+    sessionLoading ||
+    !authenticated ||
+    !hasOwnerWorkspace ||
+    activeMemberships.length < 2
+  ) {
+    return (
+      <div
+        className="grid min-h-[50vh] place-items-center px-5 text-sm font-semibold text-muted-foreground"
+        role="status"
+      >
+        در حال بررسی دسترسی...
+      </div>
+    );
   }
 
   return (
@@ -83,13 +133,13 @@ export default function SelectOwnerPropertyPage() {
           کدام اقامتگاه را مدیریت می‌کنید؟
         </h1>
       </div>
-      {loading && (
+      {propertiesLoading && (
         <p className="rounded-lg border bg-white p-5 text-slate-500">
           در حال بارگذاری...
         </p>
       )}
       {error && <p className="text-sm font-semibold text-red-600">{error}</p>}
-      {!loading && properties.length === 0 && (
+      {!propertiesLoading && properties.length === 0 && (
         <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center">
           <p className="text-slate-500">
             هنوز اقامتگاهی برای شما ثبت نشده است.

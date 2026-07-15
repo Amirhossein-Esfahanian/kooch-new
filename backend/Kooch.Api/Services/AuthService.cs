@@ -16,6 +16,7 @@ namespace Kooch.Api.Services;
 public class AuthService(
     KoochDbContext dbContext,
     IOptions<JwtOptions> jwtOptions,
+    IPropertyAuthorizationService propertyAuthorizationService,
     IHostEnvironment appEnvironment,
     INotificationService notificationService) : IAuthService
 {
@@ -214,16 +215,6 @@ public class AuthService(
         setupToken.User.IsActive = true;
         setupToken.UsedAtUtc = now;
 
-        var propertyAccesses = await dbContext.UserPropertyAccesses
-            .Where(access => access.UserId == setupToken.UserId &&
-                             access.Status == PropertyUserStatus.Pending)
-            .ToListAsync(cancellationToken);
-        foreach (var access in propertyAccesses)
-        {
-            access.Status = PropertyUserStatus.Active;
-            access.IsActive = true;
-        }
-
         await dbContext.SaveChangesAsync(cancellationToken);
     }
 
@@ -231,17 +222,107 @@ public class AuthService(
         int userId,
         CancellationToken cancellationToken = default)
     {
-        return await dbContext.Users.AsNoTracking()
+        var user = await dbContext.Users.AsNoTracking()
             .Where(user => user.Id == userId && user.IsActive)
-            .Select(user => new CurrentUserResponse
+            .Select(user => new
             {
-                UserId = user.Id,
-                GuestId = user.Guest == null ? null : user.Guest.Id,
-                FullName = (user.FirstName + " " + user.LastName).Trim(),
-                Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
-                Role = user.Role
+                user.Id,
+                user.FirstName,
+                user.LastName,
+                user.Email,
+                user.PhoneNumber,
+                user.Role,
+                user.IsActive,
+                GuestId = user.Guest == null ? null : (int?)user.Guest.Id
             })
             .SingleOrDefaultAsync(cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        var memberships = await dbContext.UserPropertyAccesses.AsNoTracking()
+            .Where(access => access.UserId == userId)
+            .OrderBy(access => access.Property.Name)
+            .ThenBy(access => access.PropertyId)
+            .Select(access => new
+            {
+                access.PropertyId,
+                PropertyName = access.Property.Name,
+                access.PropertyRole,
+                access.Status,
+                access.IsActive
+            })
+            .ToListAsync(cancellationToken);
+
+        var membershipResponses = new List<CurrentUserPropertyMembershipResponse>();
+        var activePropertyIds = new List<int>();
+        foreach (var membership in memberships)
+        {
+            var effective = await propertyAuthorizationService.GetEffectivePropertyPermissionsAsync(
+                userId,
+                membership.PropertyId,
+                cancellationToken);
+            var hasActiveAccess = membership.IsActive &&
+                                  membership.Status == PropertyUserStatus.Active &&
+                                  effective is not null;
+            if (hasActiveAccess)
+            {
+                activePropertyIds.Add(membership.PropertyId);
+            }
+
+            membershipResponses.Add(new CurrentUserPropertyMembershipResponse
+            {
+                PropertyId = membership.PropertyId,
+                PropertyName = membership.PropertyName,
+                PropertyRole = membership.PropertyRole,
+                MembershipStatus = membership.Status,
+                IsActive = membership.IsActive,
+                EffectivePermissions = effective?.PermissionMatrix ??
+                    PropertyPermissionMatrixDefaults.CreateEmpty()
+            });
+        }
+
+        var platformRole = user.Role.ToCanonicalPlatformRole();
+        var workspaces = new List<string>();
+        if (platformRole.IsPlatformAdmin())
+        {
+            workspaces.Add(WorkspaceNames.Admin);
+        }
+        if (activePropertyIds.Count > 0)
+        {
+            workspaces.Add(WorkspaceNames.Owner);
+        }
+        if (platformRole == UserRole.Client)
+        {
+            workspaces.Add(WorkspaceNames.Account);
+        }
+
+        var defaultWorkspace = workspaces.Contains(WorkspaceNames.Admin)
+            ? WorkspaceNames.Admin
+            : workspaces.Contains(WorkspaceNames.Owner)
+                ? WorkspaceNames.Owner
+                : workspaces.Contains(WorkspaceNames.Account)
+                    ? WorkspaceNames.Account
+                    : null;
+
+        return new CurrentUserResponse
+        {
+            UserId = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            GuestId = user.GuestId,
+            FullName = (user.FirstName + " " + user.LastName).Trim(),
+            Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
+            PhoneNumber = user.PhoneNumber,
+            PlatformRole = platformRole,
+            Role = user.Role,
+            IsActive = user.IsActive,
+            Workspaces = workspaces,
+            PropertyMemberships = membershipResponses,
+            DefaultWorkspace = defaultWorkspace,
+            DefaultPropertyId = activePropertyIds.OrderBy(id => id).Cast<int?>().FirstOrDefault()
+        };
     }
 
     public string GenerateJwtToken(User user, DateTime expiresAtUtc)

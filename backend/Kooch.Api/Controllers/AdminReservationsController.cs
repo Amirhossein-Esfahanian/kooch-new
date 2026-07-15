@@ -23,6 +23,7 @@ public class AdminReservationsController(
         [FromQuery] int roomTypeId,
         CancellationToken cancellationToken)
     {
+        await EnsurePropertyPermissionAsync(propertyId, "bookings.view", cancellationToken);
         return Ok(await reservationRulesResolver.ResolveAsync(propertyId, roomTypeId, cancellationToken));
     }
 
@@ -35,6 +36,7 @@ public class AdminReservationsController(
         [FromQuery] int? excludeReservationId,
         CancellationToken cancellationToken)
     {
+        await EnsurePropertyPermissionAsync(propertyId, "bookings.view", cancellationToken);
         return Ok(await reservationAvailabilityService.GetAvailableRoomsAsync(
             propertyId,
             checkInDate,
@@ -49,7 +51,7 @@ public class AdminReservationsController(
         [FromQuery] ReservationListQuery query,
         CancellationToken cancellationToken)
     {
-        return Ok(await reservationService.SearchAsync(query, cancellationToken));
+        return Ok(await reservationService.SearchAsync(query, GetCurrentUser(), cancellationToken));
     }
 
     [HttpGet("{id:int}")]
@@ -59,6 +61,7 @@ public class AdminReservationsController(
         CancellationToken cancellationToken)
     {
         var response = await reservationService.GetByIdAsync(id, cancellationToken: cancellationToken);
+        await EnsurePropertyPermissionAsync(response.PropertyId, "bookings.view", cancellationToken);
         return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
@@ -88,6 +91,7 @@ public class AdminReservationsController(
         ReservationPricePreviewRequest request,
         CancellationToken cancellationToken)
     {
+        await EnsurePropertyPermissionAsync(request.PropertyId, "bookings.create", cancellationToken);
         return Ok(await reservationPricingService.PreviewReservationPriceAsync(request, cancellationToken));
     }
 
@@ -166,10 +170,11 @@ public class AdminReservationsController(
         CancellationToken cancellationToken)
     {
         var user = GetCurrentUser();
-        var canManageReservations = await permissionService.HasPermissionAsync(
-                user.UserId,
-                PermissionKey.ManageReservations,
-                cancellationToken: cancellationToken);
+        var canManageReservations = await permissionService.CanAsync(
+            user.UserId,
+            response.PropertyId,
+            "bookings.edit",
+            cancellationToken);
         if (!canManageReservations)
         {
             response.AllowedStatusTransitions = response.Status == ReservationStatus.PendingApproval
@@ -180,5 +185,21 @@ public class AdminReservationsController(
         }
 
         return response;
+    }
+
+    private async Task EnsurePropertyPermissionAsync(
+        int propertyId,
+        string permissionKey,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        if (!await permissionService.CanAsync(
+                user.UserId,
+                propertyId,
+                permissionKey,
+                cancellationToken))
+        {
+            throw new UnauthorizedAccessException("You cannot access this property's reservations.");
+        }
     }
 }
