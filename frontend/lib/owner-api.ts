@@ -65,6 +65,24 @@ export type UserRole =
   | "Owner"
   | "OwnerAssistant"
   | "Client";
+export type AdminPermissionKey =
+  | "ManageUsers"
+  | "ManageRoles"
+  | "ManageProperties"
+  | "ManageReservations"
+  | "ManagePayments"
+  | "ManageAvailability"
+  | "ManageReviews"
+  | "ManageSeo"
+  | "ManageNotifications"
+  | "ViewReports"
+  | "ManageStaff"
+  | "ManageSettings"
+  | "ViewDashboard"
+  | "ManageRooms"
+  | "ManagePricing"
+  | "ManageGuests"
+  | "ManageAmenities";
 export type PropertyUserStatus =
   | "Pending"
   | "Active"
@@ -162,6 +180,7 @@ export interface AdminUserResponse {
   propertyId: number | null;
   propertyName: string | null;
   properties: AdminUserPropertyAccessResponse[];
+  permissions: AdminPermissionKey[];
   isActive: boolean;
   passwordSetupRequired: boolean;
   createdAtUtc: string;

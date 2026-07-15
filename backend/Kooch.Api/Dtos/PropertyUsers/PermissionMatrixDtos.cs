@@ -1,5 +1,8 @@
+using System.Text.Json.Serialization;
+
 namespace Kooch.Api.Dtos.PropertyUsers;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class PermissionActionsDto
 {
     public bool View { get; set; }

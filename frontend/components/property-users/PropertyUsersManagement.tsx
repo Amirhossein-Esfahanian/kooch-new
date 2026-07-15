@@ -165,12 +165,17 @@ export function PropertyUsersManagement({
     () => users.find((user) => user.userId === currentUserId) ?? null,
     [currentUserId, users],
   );
+  const hasGlobalPropertyUserAccess =
+    authRole === "SuperAdmin" || authRole === "AdminAssistant";
+  const isCurrentPropertyOwner = actorUser?.role === "PropertyOwner";
+  const canGrantAllPropertyPermissions =
+    hasGlobalPropertyUserAccess || isCurrentPropertyOwner;
   const actorPropertyRole = useMemo<PropertyUserRole>(() => {
-    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+    if (hasGlobalPropertyUserAccess) {
       return "PropertyOwner";
     }
     return actorUser?.role ?? "Custom";
-  }, [actorUser, authRole]);
+  }, [actorUser, hasGlobalPropertyUserAccess]);
   const availableRoleOptions = useMemo(
     () =>
       roleOptions.filter(
@@ -184,7 +189,7 @@ export function PropertyUsersManagement({
   }
 
   function hasUserPermission(action: "view" | "create" | "edit" | "delete") {
-    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+    if (canGrantAllPropertyPermissions) {
       return true;
     }
 
@@ -192,25 +197,29 @@ export function PropertyUsersManagement({
   }
 
   function canGrantPermission(group: PermissionGroup, action: PermissionAction) {
-    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+    if (canGrantAllPropertyPermissions) {
       return true;
     }
 
     return Boolean(actorUser?.permissions?.[group]?.[action]);
   }
 
-  function clampPermissions(matrix: PermissionMatrixValue) {
+  function restrictPermissions(
+    matrix: PermissionMatrixValue,
+    preserved?: PermissionMatrixValue,
+  ) {
     const normalized = normalizePermissionMatrix(matrix);
-    if (authRole === "SuperAdmin" || authRole === "AdminAssistant" || authRole === "Owner") {
+    if (canGrantAllPropertyPermissions) {
       return normalized;
     }
 
+    const preservedPermissions = normalizePermissionMatrix(preserved);
     const next = normalizePermissionMatrix(null);
     permissionGroups.forEach((group) => {
       permissionActions.forEach((action) => {
-        next[group.key][action.key] =
-          Boolean(normalized[group.key]?.[action.key]) &&
-          canGrantPermission(group.key, action.key);
+        next[group.key][action.key] = canGrantPermission(group.key, action.key)
+          ? Boolean(normalized[group.key]?.[action.key])
+          : Boolean(preservedPermissions[group.key]?.[action.key]);
       });
     });
     return next;
@@ -249,7 +258,7 @@ export function PropertyUsersManagement({
     setForm({
       ...emptyForm,
       role: defaultRole,
-      permissions: clampPermissions(createRolePermissionMatrix(defaultRole)),
+      permissions: restrictPermissions(createRolePermissionMatrix(defaultRole)),
     });
     setDialogOpen(true);
   }
@@ -260,9 +269,13 @@ export function PropertyUsersManagement({
       return;
     }
     setEditingUser(user);
+    const userForm = toForm(user);
     setForm({
-      ...toForm(user),
-      permissions: clampPermissions(toForm(user).permissions),
+      ...userForm,
+      permissions: restrictPermissions(
+        userForm.permissions,
+        userForm.permissions,
+      ),
     });
     setDialogOpen(true);
   }
@@ -285,6 +298,10 @@ export function PropertyUsersManagement({
             ...form,
             mobile: form.mobile || null,
             username: form.username || null,
+            permissions: restrictPermissions(
+              form.permissions,
+              normalizePermissionMatrix(editingUser.permissions),
+            ),
           }
         : {
             fullName: form.fullName,
@@ -294,7 +311,7 @@ export function PropertyUsersManagement({
             role: form.role,
             status: "Pending",
             isActive: false,
-            permissions: clampPermissions(form.permissions),
+            permissions: restrictPermissions(form.permissions),
           };
       const saved = await apiRequest<PropertyUserResponse>(
         editingUser
@@ -607,7 +624,12 @@ export function PropertyUsersManagement({
               setForm((current) => ({
                 ...current,
                 role: event.target.value as PropertyUserForm["role"],
-                permissions: clampPermissions(createRolePermissionMatrix(event.target.value)),
+                permissions: restrictPermissions(
+                  createRolePermissionMatrix(event.target.value),
+                  editingUser
+                    ? normalizePermissionMatrix(editingUser.permissions)
+                    : undefined,
+                ),
               }))
             }
             value={form.role}
@@ -628,7 +650,8 @@ export function PropertyUsersManagement({
                 سطح دسترسی
               </h3>
               <p className="mt-1 text-xs text-muted-foreground">
-                دسترسی‌های این کاربر را برای بخش‌های مختلف اقامتگاه تنظیم کنید.
+                فقط دسترسی‌های همین اقامتگاه و در محدوده دسترسی‌های فعلی شما
+                قابل واگذاری هستند.
               </p>
             </div>
             <PermissionMatrix
@@ -637,7 +660,12 @@ export function PropertyUsersManagement({
               onChange={(permissions) =>
                 setForm((current) => ({
                   ...current,
-                  permissions: clampPermissions(permissions),
+                  permissions: restrictPermissions(
+                    permissions,
+                    editingUser
+                      ? normalizePermissionMatrix(editingUser.permissions)
+                      : undefined,
+                  ),
                 }))
               }
               value={form.permissions}

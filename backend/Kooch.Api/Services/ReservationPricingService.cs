@@ -141,7 +141,6 @@ public class ReservationPricingService(
             : 0;
         var maxAdultCapacity = baseAdultCapacity + extraAdultCapacity;
         var maxDeclaredChildren = rules.MaxDeclaredChildren * request.RoomCount;
-        var totalOccupancy = request.Adults + request.Children;
 
         if (request.Children > maxDeclaredChildren)
         {
@@ -154,14 +153,6 @@ public class ReservationPricingService(
                 rules.ExtraGuestAllowed
                     ? "تعداد مهمانان معادل بزرگسال از ظرفیت اتاق و نفرات اضافه بیشتر است."
                     : "تعداد مهمانان معادل بزرگسال از ظرفیت پایه اتاق بیشتر است.");
-        }
-
-        if (totalOccupancy > maxAdultCapacity)
-        {
-            throw new InvalidOperationException(
-                rules.ExtraGuestAllowed
-                    ? "تعداد کل مهمانان از ظرفیت اتاق و نفرات اضافه بیشتر است."
-                    : "تعداد کل مهمانان از ظرفیت پایه اتاق بیشتر است.");
         }
     }
 

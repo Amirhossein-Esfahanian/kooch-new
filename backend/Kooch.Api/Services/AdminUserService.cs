@@ -55,6 +55,7 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         var propertyIds = GetRequestedPropertyIds(request);
+        var permissions = ParsePermissions(request.Permissions);
         if (request.Role == UserRole.Client)
         {
             throw new UnauthorizedAccessException("Passenger accounts must be created from public registration or booking flow.");
@@ -62,6 +63,12 @@ public class AdminUserService(
 
         await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
         EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
+        await EnsureCanAssignPermissionsAsync(
+            currentUserId,
+            currentRole,
+            request.Role,
+            permissions,
+            cancellationToken);
 
         var email = NormalizeEmail(request.Email);
         var mobile = NormalizeMobile(request.PhoneNumber);
@@ -87,6 +94,7 @@ public class AdminUserService(
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
+        await SyncGlobalPermissionsAsync(user, permissions, cancellationToken);
         await SyncPropertyAccessAsync(user, propertyIds, cancellationToken);
         var response = await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
         if (!hasPassword)
@@ -108,6 +116,7 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         var propertyIds = GetRequestedPropertyIds(request);
+        var permissions = ParsePermissions(request.Permissions);
         var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
         if (request.Role == UserRole.Client && user.Role != UserRole.Client)
@@ -117,6 +126,12 @@ public class AdminUserService(
 
         await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
         EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
+        await EnsureCanAssignPermissionsAsync(
+            currentUserId,
+            currentRole,
+            request.Role,
+            permissions,
+            cancellationToken);
         if (currentRole is UserRole.Owner or UserRole.OwnerAssistant && user.ParentUserId != currentUserId)
         {
             throw new UnauthorizedAccessException("You cannot edit this user.");
@@ -146,6 +161,7 @@ public class AdminUserService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await SyncGlobalPermissionsAsync(user, permissions, cancellationToken);
         await SyncPropertyAccessAsync(user, propertyIds, cancellationToken);
         return await GetUserAsync(currentUserId, currentRole, userId, cancellationToken);
     }
@@ -367,6 +383,85 @@ public class AdminUserService(
     private static bool IsGlobalAdminRole(UserRole role) =>
         role is UserRole.SuperAdmin or UserRole.AdminAssistant;
 
+    private static IReadOnlySet<PermissionKey> ParsePermissions(IReadOnlyList<string>? permissionNames)
+    {
+        var permissions = new HashSet<PermissionKey>();
+        foreach (var permissionName in permissionNames ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(permissionName) ||
+                !Enum.TryParse<PermissionKey>(permissionName, ignoreCase: false, out var permission) ||
+                !Enum.IsDefined(permission))
+            {
+                throw new ArgumentException($"Unknown permission: {permissionName}");
+            }
+
+            permissions.Add(permission);
+        }
+
+        return permissions;
+    }
+
+    private async Task EnsureCanAssignPermissionsAsync(
+        int currentUserId,
+        UserRole currentRole,
+        UserRole targetRole,
+        IReadOnlySet<PermissionKey> permissions,
+        CancellationToken cancellationToken)
+    {
+        if (targetRole != UserRole.AdminAssistant && permissions.Count > 0)
+        {
+            throw new ArgumentException("Global permissions can only be assigned to admin assistants.");
+        }
+
+        if (permissions.Count == 0 || currentRole == UserRole.SuperAdmin)
+        {
+            return;
+        }
+
+        var assignablePermissions = await dbContext.UserPermissions.AsNoTracking()
+            .Where(permission =>
+                permission.UserId == currentUserId &&
+                permission.PropertyId == null &&
+                permission.IsAllowed)
+            .Select(permission => permission.PermissionKey)
+            .ToListAsync(cancellationToken);
+        if (!permissions.IsSubsetOf(assignablePermissions))
+        {
+            throw new UnauthorizedAccessException("You cannot assign permissions that you do not have.");
+        }
+    }
+
+    private async Task SyncGlobalPermissionsAsync(
+        User user,
+        IReadOnlySet<PermissionKey> requestedPermissions,
+        CancellationToken cancellationToken)
+    {
+        var existingPermissions = await dbContext.UserPermissions
+            .Where(permission => permission.UserId == user.Id && permission.PropertyId == null)
+            .ToListAsync(cancellationToken);
+        var requested = user.Role == UserRole.AdminAssistant
+            ? requestedPermissions
+            : new HashSet<PermissionKey>();
+
+        foreach (var permission in existingPermissions)
+        {
+            permission.IsAllowed = requested.Contains(permission.PermissionKey);
+        }
+
+        var existingKeys = existingPermissions.Select(permission => permission.PermissionKey).ToHashSet();
+        foreach (var permissionKey in requested.Where(permissionKey => !existingKeys.Contains(permissionKey)))
+        {
+            dbContext.UserPermissions.Add(new UserPermission
+            {
+                UserId = user.Id,
+                PermissionKey = permissionKey,
+                IsAllowed = true
+            });
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+    }
+
     private static IQueryable<AdminUserResponse> Project(IQueryable<User> query) =>
         query.Select(user => new AdminUserResponse
         {
@@ -400,6 +495,11 @@ public class AdminUserService(
                     Role = access.PropertyRole,
                     IsActive = access.IsActive
                 })
+                .ToList(),
+            Permissions = user.UserPermissions
+                .Where(permission => permission.PropertyId == null && permission.IsAllowed)
+                .OrderBy(permission => permission.PermissionKey)
+                .Select(permission => permission.PermissionKey)
                 .ToList(),
             IsActive = user.IsActive,
             PasswordSetupRequired = user.PasswordSetupRequired,

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -24,6 +24,7 @@ import {
   isPaymentEligible,
   statusLabels,
   statusVariant,
+  usePaymentCountdown,
 } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
 import { apiRequest, getAuthRole, getToken } from "@/lib/owner-api";
@@ -38,6 +39,43 @@ function buildPath(page: number) {
   });
 
   return `/account/reservations?${params.toString()}`;
+}
+
+function ReservationPaymentCountdown({
+  onExpired,
+  reservation,
+}: {
+  onExpired: () => void | Promise<void>;
+  reservation: AccountReservation;
+}) {
+  const refreshStartedRef = useRef(false);
+  const remainingSeconds = usePaymentCountdown(reservation);
+  const expired =
+    reservation.isPaymentExpired || remainingSeconds === 0;
+
+  useEffect(() => {
+    refreshStartedRef.current = false;
+  }, [reservation.paymentExpiresAtUtc, reservation.reservationId]);
+
+  useEffect(() => {
+    if (remainingSeconds !== 0 || refreshStartedRef.current) return;
+
+    refreshStartedRef.current = true;
+    void onExpired();
+  }, [onExpired, remainingSeconds]);
+
+  return (
+    <div className="grid gap-1">
+      <KoochBadge variant={expired ? "destructive" : "warning"}>
+        {expired ? "مهلت گذشته" : formatDuration(remainingSeconds)}
+      </KoochBadge>
+      {reservation.paymentExpiresAtUtc && (
+        <span className="text-xs text-muted-foreground">
+          تا {formatDate(reservation.paymentExpiresAtUtc)}
+        </span>
+      )}
+    </div>
+  );
 }
 
 export default function AccountReservationsPage() {
@@ -141,7 +179,9 @@ export default function AccountReservationsPage() {
                       {reservation.reservationNumber}
                     </KoochTableCell>
                     <KoochTableCell>{reservation.propertyName}</KoochTableCell>
-                    <KoochTableCell>{reservation.roomTypeName}</KoochTableCell>
+                    <KoochTableCell>
+                      {reservation.roomName || reservation.roomTypeName}
+                    </KoochTableCell>
                     <KoochTableCell className="whitespace-nowrap">
                       {formatDate(reservation.checkInDate)}
                     </KoochTableCell>
@@ -155,7 +195,7 @@ export default function AccountReservationsPage() {
                     </KoochTableCell>
                     <KoochTableCell className="whitespace-nowrap font-semibold">
                       {formatCurrency(
-                        reservation.totalPrice ?? reservation.finalAmount,
+                        reservation.finalAmount ?? reservation.totalPrice,
                         { showCurrency: false },
                       )}
                     </KoochTableCell>
@@ -166,22 +206,10 @@ export default function AccountReservationsPage() {
                     </KoochTableCell>
                     <KoochTableCell>
                       {reservation.status === "ApprovedAwaitingPayment" ? (
-                        <div className="grid gap-1">
-                          <KoochBadge
-                            variant={eligible ? "warning" : "destructive"}
-                          >
-                            {reservation.isPaymentExpired
-                              ? "مهلت گذشته"
-                              : formatDuration(
-                                  reservation.remainingPaymentSeconds,
-                                )}
-                          </KoochBadge>
-                          {reservation.paymentExpiresAtUtc && (
-                            <span className="text-xs text-muted-foreground">
-                              تا {formatDate(reservation.paymentExpiresAtUtc)}
-                            </span>
-                          )}
-                        </div>
+                        <ReservationPaymentCountdown
+                          onExpired={loadReservations}
+                          reservation={reservation}
+                        />
                       ) : (
                         "-"
                       )}

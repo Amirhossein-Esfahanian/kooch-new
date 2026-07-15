@@ -18,6 +18,7 @@ public class Reservation : BaseEntity
     public decimal DiscountAmount { get; set; }
     public decimal ExtraGuestAmount { get; set; }
     public decimal ServiceFeeAmount { get; set; }
+    public decimal ManualAdjustment { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = "IRR";
     public ReservationStatus Status { get; set; }

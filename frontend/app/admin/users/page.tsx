@@ -7,6 +7,7 @@ import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochCheckbox } from "@/components/KoochCheckbox";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
@@ -25,6 +26,7 @@ import {
   KoochTableRow,
 } from "@/components/KoochTable";
 import {
+  AdminPermissionKey,
   AdminUserResponse,
   apiRequest,
   getToken,
@@ -51,6 +53,90 @@ const roleLabels: Record<UserRole, string> = {
 type UserRoleFilter = "all" | UserRole;
 type UserStatusFilter = "all" | "active" | "inactive" | "passwordSetupRequired";
 
+const permissionCategories: Array<{
+  key: string;
+  label: string;
+  permissions: Array<{ key: AdminPermissionKey; label: string }>;
+}> = [
+  {
+    key: "dashboard",
+    label: "داشبورد",
+    permissions: [
+      { key: "ViewDashboard", label: "مشاهده داشبورد" },
+      { key: "ManageNotifications", label: "مدیریت اعلان‌ها" },
+    ],
+  },
+  {
+    key: "properties",
+    label: "اقامتگاه‌ها",
+    permissions: [
+      { key: "ManageProperties", label: "مدیریت اقامتگاه‌ها" },
+      { key: "ManageReviews", label: "مدیریت نظرات اقامتگاه‌ها" },
+    ],
+  },
+  {
+    key: "rooms",
+    label: "اتاق‌ها",
+    permissions: [{ key: "ManageRooms", label: "مدیریت اتاق‌ها" }],
+  },
+  {
+    key: "inventory",
+    label: "ظرفیت",
+    permissions: [{ key: "ManageAvailability", label: "مدیریت ظرفیت" }],
+  },
+  {
+    key: "pricing",
+    label: "قیمت‌گذاری",
+    permissions: [{ key: "ManagePricing", label: "مدیریت قیمت‌گذاری" }],
+  },
+  {
+    key: "reservations",
+    label: "رزروها",
+    permissions: [{ key: "ManageReservations", label: "مدیریت رزروها" }],
+  },
+  {
+    key: "guests",
+    label: "مهمان‌ها",
+    permissions: [{ key: "ManageGuests", label: "مدیریت مهمان‌ها" }],
+  },
+  {
+    key: "amenities",
+    label: "امکانات",
+    permissions: [{ key: "ManageAmenities", label: "مدیریت امکانات" }],
+  },
+  {
+    key: "users",
+    label: "کاربران",
+    permissions: [
+      { key: "ManageUsers", label: "مدیریت کاربران" },
+      { key: "ManageRoles", label: "مدیریت نقش‌ها" },
+      { key: "ManageStaff", label: "مدیریت همکاران" },
+    ],
+  },
+  {
+    key: "financial",
+    label: "مالی",
+    permissions: [{ key: "ManagePayments", label: "مدیریت امور مالی" }],
+  },
+  {
+    key: "reports",
+    label: "گزارش‌ها",
+    permissions: [{ key: "ViewReports", label: "مشاهده گزارش‌ها" }],
+  },
+  {
+    key: "settings",
+    label: "تنظیمات",
+    permissions: [
+      { key: "ManageSettings", label: "مدیریت تنظیمات" },
+      { key: "ManageSeo", label: "مدیریت سئو" },
+    ],
+  },
+];
+
+const allPermissionKeys = permissionCategories.flatMap((category) =>
+  category.permissions.map((permission) => permission.key),
+);
+
 type UserForm = {
   id: number | null;
   firstName: string;
@@ -60,6 +146,7 @@ type UserForm = {
   password: string;
   role: UserRole;
   propertyIds: string[];
+  permissions: AdminPermissionKey[];
 };
 
 const emptyForm: UserForm = {
@@ -71,6 +158,7 @@ const emptyForm: UserForm = {
   password: "",
   role: "Owner",
   propertyIds: [],
+  permissions: [],
 };
 
 function normalizeSearchText(value: unknown) {
@@ -243,6 +331,7 @@ export default function AdminUsersPage() {
       propertyIds:
         user.properties?.map((property) => property.propertyId.toString()) ??
         (user.propertyId ? [user.propertyId.toString()] : []),
+      permissions: user.permissions ?? [],
     });
     setPropertySearch("");
     setError("");
@@ -293,6 +382,7 @@ export default function AdminUsersPage() {
               ? Number(form.propertyIds[0])
               : null,
             propertyIds: form.propertyIds.map((id) => Number(id)),
+            permissions: form.permissions,
           }),
         },
       );
@@ -359,6 +449,27 @@ export default function AdminUsersPage() {
     setForm((current) => ({
       ...current,
       propertyIds: current.propertyIds.filter((id) => id !== propertyId),
+    }));
+  }
+
+  function setPermission(permission: AdminPermissionKey, checked: boolean) {
+    setForm((current) => ({
+      ...current,
+      permissions: checked
+        ? Array.from(new Set([...current.permissions, permission]))
+        : current.permissions.filter((item) => item !== permission),
+    }));
+  }
+
+  function setCategoryPermissions(
+    permissions: AdminPermissionKey[],
+    checked: boolean,
+  ) {
+    setForm((current) => ({
+      ...current,
+      permissions: checked
+        ? Array.from(new Set([...current.permissions, ...permissions]))
+        : current.permissions.filter((item) => !permissions.includes(item)),
     }));
   }
 
@@ -740,6 +851,10 @@ export default function AdminUsersPage() {
                       )
                         ? []
                         : current.propertyIds,
+                      permissions:
+                        event.target.value === "AdminAssistant"
+                          ? current.permissions
+                          : [],
                     }))
                   }
                   value={form.role}
@@ -752,6 +867,98 @@ export default function AdminUsersPage() {
                 </KoochSelect>
               </KoochField>
             </div>
+
+            {form.role === "AdminAssistant" && (
+              <KoochCard padding="sm" variant="muted">
+                <div className="grid gap-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-black text-foreground">مجوزها</p>
+                      <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                        دسترسی‌های سراسری دستیار مدیر را انتخاب کنید.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <KoochButton
+                        onClick={() =>
+                          setCategoryPermissions(allPermissionKeys, true)
+                        }
+                        size="sm"
+                        type="button"
+                        variant="outline"
+                      >
+                        انتخاب همه
+                      </KoochButton>
+                      <KoochButton
+                        disabled={form.permissions.length === 0}
+                        onClick={() =>
+                          setCategoryPermissions(allPermissionKeys, false)
+                        }
+                        size="sm"
+                        type="button"
+                        variant="ghost"
+                      >
+                        پاک کردن همه
+                      </KoochButton>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {permissionCategories.map((category) => {
+                      const categoryKeys = category.permissions.map(
+                        (permission) => permission.key,
+                      );
+                      const categorySelected = categoryKeys.every((permission) =>
+                        form.permissions.includes(permission),
+                      );
+
+                      return (
+                        <div
+                          className="grid content-start gap-3 rounded-lg border border-border bg-card p-3"
+                          key={category.key}
+                        >
+                          <KoochCheckbox
+                            checked={categorySelected}
+                            label={category.label}
+                            onChange={(event) =>
+                              setCategoryPermissions(
+                                categoryKeys,
+                                event.target.checked,
+                              )
+                            }
+                            wrapperClassName="border-b border-border pb-2 font-black"
+                          />
+                          <div className="grid gap-2">
+                            {category.permissions.map((permission) => (
+                              <KoochCheckbox
+                                checked={form.permissions.includes(permission.key)}
+                                key={permission.key}
+                                label={permission.label}
+                                onChange={(event) =>
+                                  setPermission(
+                                    permission.key,
+                                    event.target.checked,
+                                  )
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </KoochCard>
+            )}
+
+            {form.role === "SuperAdmin" && (
+              <KoochCard padding="sm" variant="muted">
+                <p className="text-sm font-black text-foreground">مجوزها</p>
+                <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                  مدیر ارشد به‌صورت پیش‌فرض به همه بخش‌ها دسترسی دارد.
+                </p>
+              </KoochCard>
+            )}
 
             {!isGlobalAdminRole(form.role) && (
               <KoochCard padding="sm" variant="muted">

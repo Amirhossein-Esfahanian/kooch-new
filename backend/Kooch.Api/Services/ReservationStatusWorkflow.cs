@@ -4,6 +4,20 @@ namespace Kooch.Api.Services;
 
 public class ReservationStatusWorkflow : IReservationStatusWorkflow
 {
+    private static readonly IReadOnlyDictionary<bool, IReadOnlySet<ReservationStatus>> ManualCreationStatuses =
+        new Dictionary<bool, IReadOnlySet<ReservationStatus>>
+        {
+            [false] = new HashSet<ReservationStatus>
+            {
+                ReservationStatus.Pending,
+                ReservationStatus.Confirmed
+            },
+            [true] = new HashSet<ReservationStatus>
+            {
+                ReservationStatus.PendingApproval
+            }
+        };
+
     private static readonly IReadOnlyDictionary<ReservationStatus, IReadOnlySet<ReservationStatus>> AllowedTransitions =
         new Dictionary<ReservationStatus, IReadOnlySet<ReservationStatus>>
         {
@@ -50,6 +64,9 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             : Array.Empty<ReservationStatus>();
     }
 
+    public IReadOnlyCollection<ReservationStatus> GetAllowedManualCreationStatuses(bool isOnRequest) =>
+        ManualCreationStatuses[isOnRequest].ToArray();
+
     public bool CanTransition(ReservationStatus from, ReservationStatus to)
     {
         var normalizedFrom = ReservationStatusNormalizer.Normalize(from);
@@ -67,6 +84,22 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
 
         throw new InvalidOperationException(
             $"Invalid reservation status transition from {GetStatusLabel(from)} to {GetStatusLabel(to)}.");
+    }
+
+    public void ValidateManualCreationStatus(bool isOnRequest, ReservationStatus status)
+    {
+        var normalizedStatus = ReservationStatusNormalizer.Normalize(status);
+        var defaultStatus = isOnRequest
+            ? ReservationStatus.PendingApproval
+            : ReservationStatus.Pending;
+        if (ManualCreationStatuses[isOnRequest].Contains(normalizedStatus) &&
+            (normalizedStatus == defaultStatus || CanTransition(defaultStatus, normalizedStatus)))
+        {
+            return;
+        }
+
+        throw new InvalidOperationException(
+            $"Reservation status {GetStatusLabel(normalizedStatus)} is not valid for this manual booking flow.");
     }
 
     private static string GetStatusLabel(ReservationStatus status) =>

@@ -101,6 +101,7 @@ public class PropertyUserService(
             currentRole,
             propertyId,
             invitation.Permissions ?? BuildDefaultMatrix(invitation.Role),
+            null,
             cancellationToken);
 
         var propertyExists = await dbContext.Properties.AsNoTracking()
@@ -212,6 +213,7 @@ public class PropertyUserService(
             currentRole,
             propertyId,
             request.Permissions ?? BuildDefaultMatrix(request.Role),
+            DeserializeMatrix(access.PermissionMatrixJson),
             cancellationToken);
         ApplyRequest(access, request);
 
@@ -313,26 +315,41 @@ public class PropertyUserService(
         UserRole currentRole,
         int propertyId,
         PermissionMatrixDto requestedPermissions,
+        PermissionMatrixDto? existingPermissions,
         CancellationToken cancellationToken)
     {
+        ValidatePropertyScopedPermissions(requestedPermissions);
+
         if (currentRole is UserRole.SuperAdmin or UserRole.AdminAssistant)
         {
             return;
         }
 
-        if (currentRole == UserRole.Owner &&
-            await dbContext.Properties.AsNoTracking()
-                .AnyAsync(property => property.Id == propertyId && property.OwnerId == currentUserId, cancellationToken))
-        {
-            return;
-        }
+        var requestedValues = MatrixToPermissionValues(NormalizeMatrix(requestedPermissions));
+        var existingValues = MatrixToPermissionValues(
+                NormalizeMatrix(existingPermissions ?? []))
+            .ToDictionary(item => item.PermissionKey, item => item.IsAllowed);
 
-        foreach (var permissionKey in MatrixToPermissionKeys(NormalizeMatrix(requestedPermissions)))
+        foreach (var (permissionKey, isAllowed) in requestedValues)
         {
+            if (existingValues[permissionKey] == isAllowed) continue;
+
             if (!await permissionService.CanAsync(currentUserId, propertyId, permissionKey, cancellationToken))
             {
                 throw new UnauthorizedAccessException(
-                    $"You cannot grant permission '{permissionKey}' because you do not have it.");
+                    $"You cannot change permission '{permissionKey}' because you do not have it for this property.");
+            }
+        }
+    }
+
+    private static void ValidatePropertyScopedPermissions(PermissionMatrixDto permissions)
+    {
+        foreach (var (group, actions) in permissions)
+        {
+            if (!PermissionGroups.Contains(group, StringComparer.Ordinal) || actions is null)
+            {
+                throw new ArgumentException(
+                    $"Permission group '{group}' is not a property-scoped permission.");
             }
         }
     }
@@ -461,7 +478,8 @@ public class PropertyUserService(
         permissions.TryGetValue(group, out var actions) &&
         (actions.Create || actions.Edit || actions.Delete);
 
-    private static IEnumerable<string> MatrixToPermissionKeys(PermissionMatrixDto matrix)
+    private static IEnumerable<(string PermissionKey, bool IsAllowed)> MatrixToPermissionValues(
+        PermissionMatrixDto matrix)
     {
         foreach (var (group, actions) in matrix)
         {
@@ -482,14 +500,13 @@ public class PropertyUserService(
             };
             if (groupKey is null) continue;
 
-            if (actions.View) yield return $"{groupKey}.view";
-            if (actions.Create) yield return $"{groupKey}.create";
-            if (actions.Edit) yield return $"{groupKey}.edit";
-            if (actions.Delete)
-            {
-                yield return groupKey == "bookings" ? "bookings.cancel" : $"{groupKey}.delete";
-            }
-            if (actions.Export) yield return $"{groupKey}.export";
+            yield return ($"{groupKey}.view", actions.View);
+            yield return ($"{groupKey}.create", actions.Create);
+            yield return ($"{groupKey}.edit", actions.Edit);
+            yield return (
+                groupKey == "bookings" ? "bookings.cancel" : $"{groupKey}.delete",
+                actions.Delete);
+            yield return ($"{groupKey}.export", actions.Export);
         }
     }
 

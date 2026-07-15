@@ -26,4 +26,5 @@ public class AdminUserRequest
     public int? ParentUserId { get; set; }
     public int? PropertyId { get; set; }
     public IReadOnlyList<int> PropertyIds { get; set; } = [];
+    public IReadOnlyList<string> Permissions { get; set; } = [];
 }

@@ -1,13 +1,6 @@
 "use client";
 
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type FormEvent,
-  type ReactNode,
-} from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
@@ -16,6 +9,7 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
 import {
   KoochField,
+  KoochInput,
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
@@ -31,6 +25,10 @@ import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
 interface ReservationDetailsDialogProps {
   loading?: boolean;
+  onAdjustPrice?: (
+    reservation: ReservationTableItem,
+    amount: number,
+  ) => void | Promise<void>;
   onCancel?: (
     reservation: ReservationTableItem,
     cancellation: ReservationCancellationPayload,
@@ -101,11 +99,16 @@ const timelineLabels: Record<ReservationTimelineEvent["type"], string> = {
   Paid: "پرداخت",
   StatusChanged: "تغییر وضعیت",
   Cancelled: "لغو رزرو",
+  PriceAdjusted: "اصلاح دستی قیمت",
 };
 
 const statusActionText: Record<
   string,
-  { label: string; description: string; variant?: "warning" | "destructive" }
+  {
+    label: string;
+    description: string;
+    variant?: "information" | "question" | "warning" | "destructive";
+  }
 > = {
   ApprovedAwaitingPayment: {
     label: "آماده پرداخت",
@@ -116,7 +119,7 @@ const statusActionText: Record<
   Confirmed: {
     label: "تایید رزرو",
     description: "رزرو تایید می‌شود. پرداخت یا کاهش موجودی انجام نمی‌شود.",
-    variant: "warning",
+    variant: "information",
   },
   Completed: {
     label: "تکمیل / خروج",
@@ -212,7 +215,7 @@ function isUnpaidReservation(reservation: ReservationTableItem) {
     return reservation.remainingAmount > 0;
   }
 
-  const totalAmount = reservation.totalPrice ?? reservation.finalAmount;
+  const totalAmount = reservation.finalAmount ?? reservation.totalPrice;
   if (
     typeof totalAmount === "number" &&
     typeof reservation.paidAmount === "number"
@@ -233,21 +236,31 @@ function DetailItem({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function DetailSection({
+  action,
   children,
+  footer,
   title,
 }: {
+  action?: ReactNode;
   children: ReactNode;
+  footer?: ReactNode;
   title: string;
 }) {
   return (
     <KoochCard className="grid gap-3" padding="sm" variant="elevated">
-      <h3 className="text-sm font-black text-foreground">{title}</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-black text-foreground">{title}</h3>
+        {action}
+      </div>
       <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</dl>
+      {footer}
     </KoochCard>
   );
 }
 
 function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
+  const currencyLabel = useSiteCurrencyLabel();
+
   return (
     <KoochCard className="grid gap-3" padding="sm" variant="elevated">
       <h3 className="text-sm font-black text-foreground">خط زمانی</h3>
@@ -262,7 +275,7 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
               ? cancellationReasonLabels[event.cancellationReason]
               : null;
             const status = event.status
-              ? statusLabels[event.status] ?? event.status
+              ? (statusLabels[event.status] ?? event.status)
               : null;
 
             return (
@@ -294,6 +307,13 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
                     دلیل: {reason}
                   </span>
                 )}
+                {(event.oldAmount !== null && event.oldAmount !== undefined) ||
+                (event.newAmount !== null && event.newAmount !== undefined) ? (
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    از {formatCurrency(event.oldAmount, { currencyLabel })} به{" "}
+                    {formatCurrency(event.newAmount, { currencyLabel })}
+                  </span>
+                ) : null}
                 {event.note && (
                   <p className="text-xs leading-6 text-muted-foreground">
                     {event.note}
@@ -308,88 +328,205 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
   );
 }
 
-function ReservationCancellationDialog({
+function ReservationPriceAdjustmentAlert({
+  calculatedPrice,
+  currencyLabel,
+  currentAdjustment,
+  onClose,
   onConfirm,
-  onOpenChange,
-  open,
+}: {
+  calculatedPrice: number;
+  currencyLabel: string;
+  currentAdjustment: number;
+  onClose: () => void;
+  onConfirm: (amount: number) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState(
+    currentAdjustment === 0 ? "" : currentAdjustment.toString(),
+  );
+  const [error, setError] = useState("");
+  const [confirmationReady, setConfirmationReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const parsedAmount = Number(amount);
+  const nextFinalAmount = calculatedPrice + parsedAmount;
+
+  function continueAdjustment() {
+    if (!Number.isFinite(parsedAmount) || parsedAmount === 0) {
+      setError("یک مبلغ مثبت یا منفی وارد کنید.");
+      return;
+    }
+    if (nextFinalAmount < 0) {
+      setError("مبلغ نهایی رزرو نمی‌تواند منفی باشد.");
+      return;
+    }
+    if (parsedAmount === currentAdjustment) {
+      setError("مبلغ اصلاح دستی تغییری نکرده است.");
+      return;
+    }
+
+    setError("");
+    setConfirmationReady(true);
+  }
+
+  async function confirmAdjustment() {
+    if (!Number.isFinite(parsedAmount) || parsedAmount === 0) return;
+    setSubmitting(true);
+    try {
+      await onConfirm(parsedAmount);
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <KoochAlert
+      title={confirmationReady ? "تایید اصلاح قیمت" : "اصلاح دستی قیمت"}
+      variant="warning"
+    >
+      {confirmationReady ? (
+        <div className="grid gap-3 pt-2">
+          <p>
+            قیمت محاسبه‌شده:{" "}
+            {formatCurrency(calculatedPrice, { currencyLabel })}
+            <br />
+            اصلاح دستی: {formatCurrency(parsedAmount, { currencyLabel })}
+            <br />
+            مبلغ نهایی: {formatCurrency(nextFinalAmount, { currencyLabel })}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <KoochButton loading={submitting} onClick={confirmAdjustment}>
+              تایید اصلاح قیمت
+            </KoochButton>
+            <KoochButton
+              disabled={submitting}
+              onClick={() => setConfirmationReady(false)}
+              variant="outline"
+            >
+              بازگشت
+            </KoochButton>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-3 pt-2">
+          <KoochField
+            error={error}
+            helperText="برای افزایش مبلغ عدد مثبت و برای کاهش عدد منفی وارد کنید."
+            label={`مبلغ اصلاح (${currencyLabel})`}
+            required
+          >
+            <KoochInput
+              error={error}
+              onChange={(event) => {
+                setAmount(event.target.value);
+                setError("");
+              }}
+              step="any"
+              type="number"
+              value={amount}
+            />
+          </KoochField>
+          <div className="flex flex-wrap gap-2">
+            <KoochButton onClick={continueAdjustment}>ادامه</KoochButton>
+            <KoochButton onClick={onClose} variant="outline">
+              انصراف
+            </KoochButton>
+          </div>
+        </div>
+      )}
+    </KoochAlert>
+  );
+}
+
+function ReservationCancellationAlert({
+  onClose,
+  onConfirm,
   reservationNumber,
 }: {
+  onClose: () => void;
   onConfirm: (cancellation: ReservationCancellationPayload) => Promise<void>;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
   reservationNumber: string;
 }) {
-  const formId = useId();
   const [reason, setReason] = useState<ReservationCancellationReason | "">("");
   const [explanation, setExplanation] = useState("");
   const [reasonError, setReasonError] = useState("");
   const [explanationError, setExplanationError] = useState("");
-  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const [confirmationReady, setConfirmationReady] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
-  useEffect(() => {
-    if (open) return;
-    setReason("");
-    setExplanation("");
-    setReasonError("");
-    setExplanationError("");
-    setConfirmationOpen(false);
-  }, [open]);
-
-  function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function continueCancellation() {
     const trimmedExplanation = explanation.trim();
     const nextReasonError = reason ? "" : "دلیل لغو را انتخاب کنید.";
-    const nextExplanationError = trimmedExplanation
-      ? ""
-      : "توضیحات لغو را وارد کنید.";
+    const nextExplanationError =
+      reason === "Other" && !trimmedExplanation
+        ? "برای دلیل سایر، توضیحات را وارد کنید."
+        : "";
 
     setReasonError(nextReasonError);
     setExplanationError(nextExplanationError);
     if (nextReasonError || nextExplanationError || !reason) return;
 
-    setExplanation(trimmedExplanation);
-    setConfirmationOpen(true);
+    setConfirmationReady(true);
   }
 
   async function confirmCancellation() {
-    if (!reason || !explanation.trim()) return;
-    await onConfirm({ reason, explanation: explanation.trim() });
-    setConfirmationOpen(false);
-    onOpenChange(false);
+    if (!reason || (reason === "Other" && !explanation.trim())) return;
+    setSubmitting(true);
+    try {
+      await onConfirm({ reason, explanation: explanation.trim() });
+      onClose();
+    } finally {
+      setSubmitting(false);
+    }
   }
 
   return (
-    <>
-      <KoochDialog
-        description={`شماره رزرو: ${reservationNumber}`}
-        footer={
-          <>
-            <KoochDialogButton
-              form={formId}
-              type="submit"
-              variant="danger"
+    <KoochAlert
+      className="p-4"
+      title={
+        confirmationReady
+          ? "تایید نهایی لغو رزرو"
+          : `لغو رزرو ${reservationNumber}`
+      }
+      variant="destructive"
+    >
+      {confirmationReady ? (
+        <div className="grid gap-3 pt-2">
+          <p>پس از لغو، رزرو فقط قابل مشاهده خواهد بود.</p>
+          <p>
+            دلیل: {reason ? cancellationReasonLabels[reason] : "-"}
+            <br />
+            یادداشت: {explanation.trim() || "-"}
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <KoochButton
+              loading={submitting}
+              onClick={confirmCancellation}
+              variant="destructive"
             >
-              ادامه لغو رزرو
-            </KoochDialogButton>
-            <KoochDialogButton onClick={() => onOpenChange(false)}>
-              انصراف
-            </KoochDialogButton>
-          </>
-        }
-        onOpenChange={onOpenChange}
-        open={open}
-        size="md"
-        title="لغو رزرو"
-      >
-        <form className="grid gap-4" id={formId} onSubmit={submit}>
+              تایید و لغو رزرو
+            </KoochButton>
+            <KoochButton
+              disabled={submitting}
+              onClick={() => setConfirmationReady(false)}
+              variant="outline"
+            >
+              بازگشت
+            </KoochButton>
+          </div>
+        </div>
+      ) : (
+        <div className="grid gap-4 pt-2">
           <KoochField error={reasonError} label="دلیل لغو" required>
             <KoochSelect
               error={reasonError}
               onChange={(event) => {
-                setReason(
-                  event.target.value as ReservationCancellationReason | "",
-                );
+                const nextReason = event.target.value as
+                  | ReservationCancellationReason
+                  | "";
+                setReason(nextReason);
                 setReasonError("");
+                if (nextReason !== "Other") setExplanationError("");
               }}
               value={reason}
             >
@@ -402,7 +539,11 @@ function ReservationCancellationDialog({
             </KoochSelect>
           </KoochField>
 
-          <KoochField error={explanationError} label="توضیحات" required>
+          <KoochField
+            error={explanationError}
+            label={reason === "Other" ? "توضیحات" : "یادداشت (اختیاری)"}
+            required={reason === "Other"}
+          >
             <KoochTextarea
               error={explanationError}
               maxLength={2000}
@@ -410,34 +551,32 @@ function ReservationCancellationDialog({
                 setExplanation(event.target.value);
                 setExplanationError("");
               }}
-              placeholder="علت و جزئیات لغو رزرو را وارد کنید."
+              placeholder={
+                reason === "Other"
+                  ? "توضیحات دلیل لغو را وارد کنید."
+                  : "در صورت نیاز، یادداشت لغو را وارد کنید."
+              }
               value={explanation}
             />
           </KoochField>
-        </form>
-      </KoochDialog>
 
-      <KoochConfirmDialog
-        confirmText="تایید و لغو رزرو"
-        description="پس از لغو، این رزرو فقط قابل مشاهده خواهد بود و امکان ویرایش آن وجود ندارد."
-        onConfirm={confirmCancellation}
-        onOpenChange={setConfirmationOpen}
-        open={confirmationOpen}
-        title="از لغو این رزرو مطمئن هستید؟"
-        variant="destructive"
-      >
-        <KoochAlert title="لغو نهایی رزرو" variant="destructive">
-          دلیل: {reason ? cancellationReasonLabels[reason] : "-"}
-          <br />
-          توضیحات: {explanation || "-"}
-        </KoochAlert>
-      </KoochConfirmDialog>
-    </>
+          <div className="flex flex-wrap gap-2">
+            <KoochButton onClick={continueCancellation} variant="destructive">
+              ادامه لغو رزرو
+            </KoochButton>
+            <KoochButton onClick={onClose} variant="outline">
+              انصراف
+            </KoochButton>
+          </div>
+        </div>
+      )}
+    </KoochAlert>
   );
 }
 
 export function ReservationDetailsDialog({
   loading = false,
+  onAdjustPrice,
   onCancel,
   onEdit,
   onRefresh,
@@ -452,8 +591,12 @@ export function ReservationDetailsDialog({
   const guestEmail = reservation?.guestEmail ?? reservation?.email ?? "-";
   const identityNumber =
     reservation?.guestNationalCode ?? reservation?.guestPassportNumber ?? "-";
-  const roomName = reservation?.roomTypeName ?? reservation?.roomName ?? "-";
-  const totalAmount = reservation?.totalPrice ?? reservation?.finalAmount;
+  const roomName = reservation?.roomName ?? reservation?.roomTypeName ?? "-";
+  const manualAdjustment = reservation?.manualAdjustment ?? 0;
+  const calculatedPrice =
+    reservation?.calculatedPrice ?? reservation?.totalPrice ?? 0;
+  const totalAmount =
+    reservation?.finalAmount ?? calculatedPrice + manualAdjustment;
   const baseAmount = reservation?.baseAmount ?? reservation?.basePrice;
   const childAmount = reservation?.childAmount ?? reservation?.childCharge;
   const extraGuestAmount =
@@ -469,6 +612,7 @@ export function ReservationDetailsDialog({
       : null);
   const statusActions = reservation?.allowedStatusTransitions ?? [];
   const isReadOnly = reservation?.status === "Cancelled";
+  const canAdjustPrice = !isReadOnly && Boolean(onAdjustPrice);
   const canCancel =
     !isReadOnly && Boolean(onCancel) && statusActions.includes("Cancelled");
   const timelineEvents: ReservationTimelineEvent[] =
@@ -496,14 +640,17 @@ export function ReservationDetailsDialog({
             : []),
         ];
   const [cancellationOpen, setCancellationOpen] = useState(false);
+  const [priceAdjustmentOpen, setPriceAdjustmentOpen] = useState(false);
   const [confirmedEditWarningOpen, setConfirmedEditWarningOpen] =
     useState(false);
   const expiryRefreshStartedRef = useRef(false);
   const shouldShowPaymentCountdown =
-    reservation?.status === "ApprovedAwaitingPayment";
+    open && reservation?.status === "ApprovedAwaitingPayment";
   const remainingPaymentSeconds = useReservationPaymentCountdown(
     shouldShowPaymentCountdown,
     reservation?.paymentExpiresAtUtc,
+    reservation?.remainingPaymentSeconds,
+    reservation?.reservationId ?? reservation?.id,
   );
   const canSendPaymentLink =
     reservation !== null &&
@@ -513,12 +660,22 @@ export function ReservationDetailsDialog({
     isUnpaidReservation(reservation);
 
   useEffect(() => {
-    expiryRefreshStartedRef.current = false;
+    if (open) {
+      expiryRefreshStartedRef.current = false;
+    }
   }, [
+    open,
     reservation?.paymentExpiresAtUtc,
     reservation?.reservationId,
     reservation?.id,
   ]);
+
+  useEffect(() => {
+    if (!open) {
+      setCancellationOpen(false);
+      setPriceAdjustmentOpen(false);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!shouldShowPaymentCountdown || remainingPaymentSeconds === null) {
@@ -526,11 +683,7 @@ export function ReservationDetailsDialog({
     }
 
     if (remainingPaymentSeconds <= 0) {
-      if (
-        reservation &&
-        onRefresh &&
-        !expiryRefreshStartedRef.current
-      ) {
+      if (reservation && onRefresh && !expiryRefreshStartedRef.current) {
         expiryRefreshStartedRef.current = true;
         void onRefresh(reservation);
       }
@@ -549,309 +702,355 @@ export function ReservationDetailsDialog({
         description={reservation?.reservationNumber ?? undefined}
         footer={
           <>
-          {reservation && !isReadOnly && onEdit && (
-            <KoochButton
-              onClick={() => {
-                if (reservation.status === "Confirmed") {
-                  setConfirmedEditWarningOpen(true);
-                  return;
-                }
-                onEdit(reservation);
-              }}
-              variant="outline"
-            >
-              ویرایش
-            </KoochButton>
-          )}
-          {reservation &&
-            !isReadOnly &&
-            onSendPaymentLink &&
-            canSendPaymentLink && (
-              <KoochConfirmDialog
-                cancelText="انصراف"
-                confirmText="ارسال لینک پرداخت"
-                description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
-                onConfirm={() => onSendPaymentLink(reservation)}
-                title="ارسال لینک پرداخت"
-                trigger={
-                  <KoochButton variant="outline">ارسال لینک پرداخت</KoochButton>
-                }
-                variant="warning"
-              />
+            {reservation && !isReadOnly && onEdit && (
+              <KoochButton
+                onClick={() => {
+                  if (reservation.status === "Confirmed") {
+                    setConfirmedEditWarningOpen(true);
+                    return;
+                  }
+                  onEdit(reservation);
+                }}
+                variant="outline"
+              >
+                ویرایش
+              </KoochButton>
             )}
-          {reservation &&
-            !isReadOnly &&
-            onStatusChange &&
-            statusActions
-              .filter((nextStatus) => nextStatus !== "Cancelled")
-              .map((nextStatus) => {
-                const text = statusActionText[nextStatus] ?? {
-                  label: statusLabels[nextStatus] ?? nextStatus,
-                  description: "وضعیت رزرو تغییر می‌کند.",
-                  variant: "warning" as const,
-                };
+            {reservation &&
+              !isReadOnly &&
+              onSendPaymentLink &&
+              canSendPaymentLink && (
+                <KoochConfirmDialog
+                  cancelText="انصراف"
+                  confirmText="ارسال لینک پرداخت"
+                  description="لینک پرداخت جدید ساخته می‌شود، لینک‌های فعال قبلی باطل می‌شوند و اطلاع‌رسانی پیامک و ایمیل فقط در لاگ ثبت خواهد شد."
+                  onConfirm={() => onSendPaymentLink(reservation)}
+                  title="ارسال لینک پرداخت"
+                  trigger={
+                    <KoochButton variant="outline">
+                      ارسال لینک پرداخت
+                    </KoochButton>
+                  }
+                  variant="warning"
+                />
+              )}
+            {reservation &&
+              !isReadOnly &&
+              onStatusChange &&
+              statusActions
+                .filter((nextStatus) => nextStatus !== "Cancelled")
+                .map((nextStatus) => {
+                  const text = statusActionText[nextStatus] ?? {
+                    label: statusLabels[nextStatus] ?? nextStatus,
+                    description: "وضعیت رزرو تغییر می‌کند.",
+                    variant: "warning" as const,
+                  };
 
-                return (
-                  <KoochConfirmDialog
-                    cancelText="انصراف"
-                    confirmText={text.label}
-                    description={text.description}
-                    key={nextStatus}
-                    onConfirm={() => onStatusChange(reservation, nextStatus)}
-                    title={text.label}
-                    trigger={
-                      <KoochButton
-                        variant={
-                          text.variant === "destructive"
-                            ? "destructive"
-                            : "outline"
-                        }
-                      >
-                        {text.label}
-                      </KoochButton>
-                    }
-                    variant={text.variant}
-                  >
-                    <KoochAlert
-                      title="تایید تغییر وضعیت"
-                      variant={
-                        text.variant === "destructive"
-                          ? "destructive"
-                          : "warning"
+                  return (
+                    <KoochConfirmDialog
+                      cancelText="انصراف"
+                      confirmText={text.label}
+                      description={text.description}
+                      key={nextStatus}
+                      onConfirm={() => onStatusChange(reservation, nextStatus)}
+                      title={text.label}
+                      trigger={
+                        <KoochButton
+                          variant={
+                            text.variant === "destructive"
+                              ? "destructive"
+                              : "outline"
+                          }
+                        >
+                          {text.label}
+                        </KoochButton>
                       }
-                    >
-                      وضعیت رزرو از «{statusLabels[reservation.status] ?? reservation.status}»
-                      به «{statusLabels[nextStatus] ?? nextStatus}» تغییر می‌کند.
-                    </KoochAlert>
-                  </KoochConfirmDialog>
-                );
-              })}
-          {reservation && canCancel && (
-            <KoochButton
-              onClick={() => setCancellationOpen(true)}
-              variant="destructive"
+                      variant={text.variant}
+                    />
+                  );
+                })}
+            {reservation && canCancel && !cancellationOpen && (
+              <KoochButton
+                onClick={() => setCancellationOpen(true)}
+                variant="destructive"
+              >
+                لغو رزرو
+              </KoochButton>
+            )}
+            <KoochDialogButton
+              onClick={() => {
+                setCancellationOpen(false);
+                setPriceAdjustmentOpen(false);
+                onOpenChange(false);
+              }}
             >
-              لغو رزرو
-            </KoochButton>
-          )}
-          <KoochDialogButton onClick={() => onOpenChange(false)}>
-            بستن
-          </KoochDialogButton>
+              بستن
+            </KoochDialogButton>
           </>
         }
-        onOpenChange={onOpenChange}
+        onOpenChange={(nextOpen) => {
+          if (!nextOpen) {
+            setCancellationOpen(false);
+            setPriceAdjustmentOpen(false);
+          }
+          onOpenChange(nextOpen);
+        }}
         open={open}
         size="xl"
         title="جزئیات رزرو"
       >
-      {loading && !reservation ? (
-        <p className="text-sm font-semibold text-muted-foreground">
-          در حال بارگذاری...
-        </p>
-      ) : reservation ? (
-        <div className="grid gap-4">
-          {loading && (
-            <p className="text-xs font-semibold text-muted-foreground">
-              در حال به‌روزرسانی جزئیات...
-            </p>
-          )}
-
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3">
-            <div>
+        {loading && !reservation ? (
+          <p className="text-sm font-semibold text-muted-foreground">
+            در حال بارگذاری...
+          </p>
+        ) : reservation ? (
+          <div className="grid gap-4">
+            {loading && (
               <p className="text-xs font-semibold text-muted-foreground">
-                وضعیت فعلی رزرو
+                در حال به‌روزرسانی جزئیات...
               </p>
-              <p className="mt-1 text-sm font-bold text-foreground">
-                {statusLabels[reservation.status] ?? reservation.status}
-              </p>
-            </div>
-            <KoochBadge variant={statusVariant(reservation.status)}>
-              {statusLabels[reservation.status] ?? reservation.status}
-            </KoochBadge>
-          </div>
+            )}
 
-          <DetailSection title="رزرو">
-            <DetailItem
-              label="شماره رزرو"
-              value={reservation.reservationNumber || "-"}
-            />
-            <DetailItem label="منبع" value={formatSource(reservation.source)} />
-            <DetailItem
-              label="تاریخ ایجاد"
-              value={formatDateTime(reservation.createdAtUtc)}
-            />
-            <DetailItem
-              label="ایجادکننده"
-              value={reservation.createdBy ?? "-"}
-            />
-          </DetailSection>
-
-          <DetailSection title="مهمان">
-            <DetailItem label="نام کامل" value={guestName} />
-            <DetailItem label="موبایل" value={reservation.guestMobile ?? "-"} />
-            <DetailItem label="ایمیل" value={guestEmail} />
-            <DetailItem label="کد ملی / شماره پاسپورت" value={identityNumber} />
-            <DetailItem
-              label="ملیت"
-              value={reservation.guestNationality ?? "-"}
-            />
-          </DetailSection>
-
-          <DetailSection title="اقامت">
-            <DetailItem
-              label="اقامتگاه"
-              value={reservation.propertyName ?? "-"}
-            />
-            <DetailItem label="نوع اتاق" value={roomName} />
-            <DetailItem
-              label="تاریخ ورود"
-              value={formatDate(reservation.checkInDate)}
-            />
-            <DetailItem
-              label="تاریخ خروج"
-              value={formatDate(reservation.checkOutDate)}
-            />
-            <DetailItem
-              label="تعداد شب"
-              value={formatNumber(reservation.nightsCount)}
-            />
-            <DetailItem
-              label="بزرگسال"
-              value={formatNumber(reservation.adults)}
-            />
-            <DetailItem
-              label="کودک"
-              value={formatNumber(reservation.children)}
-            />
-            <DetailItem
-              label="تعداد اتاق"
-              value={formatNumber(reservation.roomCount)}
-            />
-          </DetailSection>
-
-          <DetailSection title="مالی">
-            <DetailItem
-              label="قیمت پایه"
-              value={formatCurrency(baseAmount, { currencyLabel })}
-            />
-            <DetailItem
-              label="هزینه کودک"
-              value={formatCurrency(childAmount, { currencyLabel })}
-            />
-            <DetailItem
-              label="هزینه نفر اضافه"
-              value={formatCurrency(extraGuestAmount, { currencyLabel })}
-            />
-            <DetailItem
-              label="تخفیف پروموشن"
-              value={formatCurrency(promotionDiscount, { currencyLabel })}
-            />
-            <DetailItem
-              label="تخفیف کوپن"
-              value={formatCurrency(couponDiscount, { currencyLabel })}
-            />
-            <DetailItem
-              label="هزینه خدمات"
-              value={formatCurrency(reservation.serviceFeeAmount, {
-                currencyLabel,
-              })}
-            />
-            <DetailItem
-              label="مالیات"
-              value={formatCurrency(reservation.taxAmount, { currencyLabel })}
-            />
-            <DetailItem
-              label="مبلغ کل"
-              value={formatCurrency(totalAmount, { currencyLabel })}
-            />
-            <DetailItem
-              label="مبلغ قابل پرداخت"
-              value={formatCurrency(reservation.payableAmount, {
-                currencyLabel,
-              })}
-            />
-            <DetailItem
-              label="مبلغ پرداخت‌شده"
-              value={formatCurrency(paidAmount, { currencyLabel })}
-            />
-            <DetailItem
-              label="باقی‌مانده"
-              value={formatCurrency(reservation.remainingAmount, {
-                currencyLabel,
-              })}
-            />
-            <DetailItem label="واحد پول" value={currencyLabel} />
-          </DetailSection>
-
-          <TimelineSection events={timelineEvents} />
-
-          <DetailSection title="مهلت پرداخت">
-            <DetailItem
-              label="مهلت پرداخت"
-              value={formatDateTime(reservation.paymentExpiresAtUtc)}
-            />
-            {shouldShowPaymentCountdown && (
-              <DetailItem
-                label="زمان باقی‌مانده"
-                value={
-                  <KoochBadge
-                    variant={
-                      reservation.isPaymentExpired ||
-                      remainingPaymentSeconds === 0
-                        ? "destructive"
-                        : "warning"
-                    }
-                  >
-                    {reservation.isPaymentExpired ||
-                    remainingPaymentSeconds === 0
-                      ? "مهلت پرداخت تمام شده است."
-                      : formatDuration(remainingPaymentSeconds)}
-                  </KoochBadge>
-                }
+            {cancellationOpen && canCancel && (
+              <ReservationCancellationAlert
+                key={reservation.reservationNumber}
+                onClose={() => setCancellationOpen(false)}
+                onConfirm={async (cancellation) => {
+                  if (onCancel) await onCancel(reservation, cancellation);
+                }}
+                reservationNumber={reservation.reservationNumber}
               />
             )}
-          </DetailSection>
 
-          <DetailSection title="یادداشت">
-            <DetailItem label="توضیحات رزرو" value={reservation.notes ?? "-"} />
-            <DetailItem
-              label="توضیحات لغو"
-              value={reservation.cancellationNote ?? "-"}
-            />
-          </DetailSection>
-        </div>
-      ) : (
-        <p className="text-sm font-semibold text-muted-foreground">
-          رزروی برای نمایش انتخاب نشده است.
-        </p>
-      )}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted px-4 py-3">
+              <div>
+                <p className="text-xs font-semibold text-muted-foreground">
+                  وضعیت فعلی رزرو
+                </p>
+                <p className="mt-1 text-sm font-bold text-foreground">
+                  {statusLabels[reservation.status] ?? reservation.status}
+                </p>
+              </div>
+              <KoochBadge variant={statusVariant(reservation.status)}>
+                {statusLabels[reservation.status] ?? reservation.status}
+              </KoochBadge>
+            </div>
+
+            <DetailSection title="رزرو">
+              <DetailItem
+                label="شماره رزرو"
+                value={reservation.reservationNumber || "-"}
+              />
+              <DetailItem
+                label="منبع"
+                value={formatSource(reservation.source)}
+              />
+              <DetailItem
+                label="تاریخ ایجاد"
+                value={formatDateTime(reservation.createdAtUtc)}
+              />
+              <DetailItem
+                label="ایجادکننده"
+                value={reservation.createdBy ?? "-"}
+              />
+            </DetailSection>
+
+            <DetailSection title="مهمان">
+              <DetailItem label="نام کامل" value={guestName} />
+              <DetailItem
+                label="موبایل"
+                value={reservation.guestMobile ?? "-"}
+              />
+              <DetailItem label="ایمیل" value={guestEmail} />
+              <DetailItem
+                label="کد ملی / شماره پاسپورت"
+                value={identityNumber}
+              />
+              <DetailItem
+                label="ملیت"
+                value={reservation.guestNationality ?? "-"}
+              />
+            </DetailSection>
+
+            <DetailSection title="اقامت">
+              <DetailItem
+                label="اقامتگاه"
+                value={reservation.propertyName ?? "-"}
+              />
+              <DetailItem label="نوع اتاق" value={roomName} />
+              <DetailItem
+                label="تاریخ ورود"
+                value={formatDate(reservation.checkInDate)}
+              />
+              <DetailItem
+                label="تاریخ خروج"
+                value={formatDate(reservation.checkOutDate)}
+              />
+              <DetailItem
+                label="تعداد شب"
+                value={formatNumber(reservation.nightsCount)}
+              />
+              <DetailItem
+                label="بزرگسال"
+                value={formatNumber(reservation.adults)}
+              />
+              <DetailItem
+                label="کودک"
+                value={formatNumber(reservation.children)}
+              />
+              <DetailItem
+                label="تعداد اتاق"
+                value={formatNumber(reservation.roomCount)}
+              />
+            </DetailSection>
+
+            <DetailSection
+              action={
+                canAdjustPrice && !priceAdjustmentOpen ? (
+                  <KoochButton
+                    onClick={() => setPriceAdjustmentOpen(true)}
+                    size="sm"
+                    variant="outline"
+                  >
+                    اصلاح قیمت
+                  </KoochButton>
+                ) : null
+              }
+              footer={
+                priceAdjustmentOpen && canAdjustPrice && reservation ? (
+                  <ReservationPriceAdjustmentAlert
+                    calculatedPrice={calculatedPrice}
+                    currencyLabel={currencyLabel}
+                    currentAdjustment={manualAdjustment}
+                    key={`${reservation.reservationId ?? reservation.id}-${manualAdjustment}`}
+                    onClose={() => setPriceAdjustmentOpen(false)}
+                    onConfirm={async (amount) => {
+                      if (onAdjustPrice)
+                        await onAdjustPrice(reservation, amount);
+                    }}
+                  />
+                ) : null
+              }
+              title="مالی"
+            >
+              <DetailItem
+                label="قیمت پایه"
+                value={formatCurrency(baseAmount, { currencyLabel })}
+              />
+              <DetailItem
+                label="هزینه کودک"
+                value={formatCurrency(childAmount, { currencyLabel })}
+              />
+              <DetailItem
+                label="هزینه نفر اضافه"
+                value={formatCurrency(extraGuestAmount, { currencyLabel })}
+              />
+              <DetailItem
+                label="تخفیف پروموشن"
+                value={formatCurrency(promotionDiscount, { currencyLabel })}
+              />
+              <DetailItem
+                label="تخفیف کوپن"
+                value={formatCurrency(couponDiscount, { currencyLabel })}
+              />
+              <DetailItem
+                label="هزینه خدمات"
+                value={formatCurrency(reservation.serviceFeeAmount, {
+                  currencyLabel,
+                })}
+              />
+              <DetailItem
+                label="مالیات"
+                value={formatCurrency(reservation.taxAmount, { currencyLabel })}
+              />
+              <DetailItem
+                label="قیمت محاسبه‌شده"
+                value={formatCurrency(calculatedPrice, { currencyLabel })}
+              />
+              <DetailItem
+                label="اصلاح دستی"
+                value={formatCurrency(manualAdjustment, { currencyLabel })}
+              />
+              <DetailItem
+                label="مبلغ نهایی"
+                value={formatCurrency(totalAmount, { currencyLabel })}
+              />
+              <DetailItem
+                label="مبلغ قابل پرداخت"
+                value={formatCurrency(reservation.payableAmount, {
+                  currencyLabel,
+                })}
+              />
+              <DetailItem
+                label="مبلغ پرداخت‌شده"
+                value={formatCurrency(paidAmount, { currencyLabel })}
+              />
+              <DetailItem
+                label="باقی‌مانده"
+                value={formatCurrency(reservation.remainingAmount, {
+                  currencyLabel,
+                })}
+              />
+              <DetailItem label="واحد پول" value={currencyLabel} />
+            </DetailSection>
+
+            <TimelineSection events={timelineEvents} />
+
+            <DetailSection title="مهلت پرداخت">
+              <DetailItem
+                label="مهلت پرداخت"
+                value={formatDateTime(reservation.paymentExpiresAtUtc)}
+              />
+              {shouldShowPaymentCountdown && (
+                <DetailItem
+                  label="زمان باقی‌مانده"
+                  value={
+                    <KoochBadge
+                      variant={
+                        reservation.isPaymentExpired ||
+                        remainingPaymentSeconds === 0
+                          ? "destructive"
+                          : "warning"
+                      }
+                    >
+                      {reservation.isPaymentExpired ||
+                      remainingPaymentSeconds === 0
+                        ? "مهلت پرداخت تمام شده است."
+                        : formatDuration(remainingPaymentSeconds)}
+                    </KoochBadge>
+                  }
+                />
+              )}
+            </DetailSection>
+
+            <DetailSection title="یادداشت">
+              <DetailItem
+                label="توضیحات رزرو"
+                value={reservation.notes ?? "-"}
+              />
+              <DetailItem
+                label="توضیحات لغو"
+                value={reservation.cancellationNote ?? "-"}
+              />
+            </DetailSection>
+          </div>
+        ) : (
+          <p className="text-sm font-semibold text-muted-foreground">
+            رزروی برای نمایش انتخاب نشده است.
+          </p>
+        )}
       </KoochDialog>
 
       {reservation && onEdit && (
         <KoochConfirmDialog
           cancelText="انصراف"
           confirmText="ادامه ویرایش"
+          description="این رزرو تایید شده است. تغییر اطلاعات ممکن است روی قیمت و ظرفیت اثر بگذارد."
           onConfirm={() => onEdit(reservation)}
           onOpenChange={setConfirmedEditWarningOpen}
           open={confirmedEditWarningOpen}
           title="ویرایش رزرو تاییدشده"
           variant="warning"
-        >
-          <KoochAlert title="هشدار ویرایش" variant="warning">
-            این رزرو تایید شده است. تغییر اطلاعات ممکن است روی قیمت و ظرفیت اثر
-            بگذارد.
-          </KoochAlert>
-        </KoochConfirmDialog>
-      )}
-
-      {reservation && onCancel && (
-        <ReservationCancellationDialog
-          onConfirm={async (cancellation) => {
-            await onCancel(reservation, cancellation);
-          }}
-          onOpenChange={setCancellationOpen}
-          open={cancellationOpen}
-          reservationNumber={reservation.reservationNumber}
         />
       )}
     </>

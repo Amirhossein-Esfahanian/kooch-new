@@ -63,6 +63,11 @@ export default function AccountReservationDetailsPage() {
   const expiryRefreshStartedRef = useRef(false);
   const remainingSeconds = usePaymentCountdown(reservation);
   const paymentToken = searchParams.get("token");
+  const paymentHref = paymentToken
+    ? `/account/reservations/${encodeURIComponent(
+        reservationNumber,
+      )}/payment?token=${encodeURIComponent(paymentToken)}`
+    : null;
 
   const loadReservation = useCallback(async () => {
     setLoading(true);
@@ -175,16 +180,19 @@ export default function AccountReservationDetailsPage() {
                   {reservation.propertyName}
                 </p>
                 <p className="text-sm font-semibold text-muted-foreground">
-                  {reservation.roomTypeName}
+                  {reservation.roomName || reservation.roomTypeName}
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
                 {eligible ? (
-                  paymentToken ? (
-                    <KoochButton disabled>
-                      پرداخت آنلاین هنوز فعال نیست
-                    </KoochButton>
+                  paymentHref ? (
+                    <Link
+                      className="inline-flex min-h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)]"
+                      href={paymentHref}
+                    >
+                      ادامه پرداخت
+                    </Link>
                   ) : (
                     <KoochButton disabled>
                       پرداخت با لینک ارسال‌شده انجام می‌شود
@@ -219,7 +227,10 @@ export default function AccountReservationDetailsPage() {
 
             <DetailSection title="اقامت">
               <DetailItem label="اقامتگاه" value={reservation.propertyName} />
-              <DetailItem label="اتاق" value={reservation.roomTypeName} />
+              <DetailItem
+                label="اتاق"
+                value={reservation.roomName || reservation.roomTypeName}
+              />
               <DetailItem
                 label="تاریخ ورود"
                 value={formatDate(reservation.checkInDate)}
@@ -247,7 +258,7 @@ export default function AccountReservationDetailsPage() {
               <DetailItem
                 label="مبلغ کل"
                 value={formatCurrency(
-                  reservation.totalPrice ?? reservation.finalAmount,
+                  reservation.finalAmount ?? reservation.totalPrice,
                   { currencyLabel },
                 )}
               />

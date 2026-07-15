@@ -395,6 +395,10 @@ export default function AdminReservationsPage() {
         const currentId = current?.reservationId ?? current?.id;
         return currentId === reservationId ? updated : current;
       });
+      setEditingReservation((current) => {
+        const currentId = current?.reservationId ?? current?.id;
+        return currentId === reservationId ? updated : current;
+      });
       await loadReservations();
       toast.success("وضعیت رزرو به‌روزرسانی شد.");
     } catch (caught) {
@@ -436,6 +440,38 @@ export default function AdminReservationsPage() {
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
+      setError(message);
+      toast.error(message);
+      throw caught;
+    } finally {
+      setStatusChangingId(null);
+    }
+  }
+
+  async function adjustReservationPrice(
+    reservation: ReservationTableItem,
+    amount: number,
+  ) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+
+    setStatusChangingId(reservationId);
+    setError("");
+
+    try {
+      const updated = await apiRequest<ReservationTableItem>(
+        `/admin/reservations/${reservationId}/price-adjustment`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ amount }),
+        },
+      );
+      setSelectedReservation(updated);
+      await loadReservations();
+      toast.success("اصلاح قیمت رزرو ذخیره شد.");
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "خطا در اصلاح قیمت رزرو.";
       setError(message);
       toast.error(message);
       throw caught;
@@ -921,6 +957,7 @@ export default function AdminReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
+          onAdjustPrice={adjustReservationPrice}
           onCancel={cancelReservation}
           onEdit={editReservation}
           onRefresh={viewReservation}

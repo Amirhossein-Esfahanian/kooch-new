@@ -11,16 +11,16 @@ import type {
 
 export const permissionGroups: Array<{ key: PermissionGroup; label: string }> = [
   { key: "Dashboard", label: "داشبورد" },
-  { key: "Properties", label: "اقامتگاه" },
+  { key: "Properties", label: "اطلاعات اقامتگاه" },
   { key: "Rooms", label: "اتاق‌ها" },
   { key: "Pricing", label: "قیمت‌گذاری" },
   { key: "Inventory", label: "ظرفیت" },
   { key: "Bookings", label: "رزروها" },
   { key: "Reviews", label: "نظرات" },
-  { key: "Users", label: "کاربران" },
+  { key: "Users", label: "کاربران اقامتگاه" },
   { key: "Financial", label: "مالی" },
   { key: "Reports", label: "گزارش‌ها" },
-  { key: "Settings", label: "تنظیمات" },
+  { key: "Settings", label: "تنظیمات اقامتگاه" },
 ];
 
 export const permissionActions: Array<{

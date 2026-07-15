@@ -113,6 +113,22 @@ public class AdminReservationsController(
         return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
     }
 
+    [HttpPut("{id:int}/price-adjustment")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
+    [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationResponse>> AdjustPrice(
+        int id,
+        ReservationPriceAdjustmentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var response = await reservationService.AdjustPriceAsync(
+            id,
+            request,
+            GetCurrentUser(),
+            cancellationToken);
+        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
+    }
+
     [HttpPut("{id:int}/status")]
     [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status200OK)]
@@ -126,6 +142,7 @@ public class AdminReservationsController(
     }
 
     [HttpPost("{id:int}/payment-link")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationPaymentLinkResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationPaymentLinkResponse>> GeneratePaymentLink(
         int id,
@@ -135,6 +152,7 @@ public class AdminReservationsController(
     }
 
     [HttpPost("{id:int}/payment-link/send")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
     [ProducesResponseType<ReservationPaymentLinkResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationPaymentLinkResponse>> SendPaymentLink(
         int id,

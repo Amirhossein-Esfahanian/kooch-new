@@ -16,6 +16,7 @@ import {
   statusVariant,
 } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
 interface PaymentPreparationResponse {
   isValid: boolean;
@@ -62,10 +63,15 @@ export default function ReservationPaymentPage() {
   const token = useSearchParams().get("token") ?? "";
   const [preparation, setPreparation] =
     useState<PaymentPreparationResponse | null>(null);
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [continuing, setContinuing] = useState(false);
   const [error, setError] = useState("");
+  const remainingSeconds = useReservationPaymentCountdown(
+    preparation?.isValid === true,
+    preparation?.paymentExpiresAtUtc,
+    preparation?.remainingPaymentSeconds,
+    preparation?.reservationId ?? reservationNumber,
+  );
   const isExpired =
     !preparation?.isValid ||
     preparation.remainingPaymentSeconds === 0 ||
@@ -86,7 +92,6 @@ export default function ReservationPaymentPage() {
 
       const data = (await response.json()) as PaymentPreparationResponse;
       setPreparation(data);
-      setRemainingSeconds(data.remainingPaymentSeconds ?? null);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "خطا در بررسی لینک پرداخت.",
@@ -112,18 +117,6 @@ export default function ReservationPaymentPage() {
   useEffect(() => {
     void loadPreparation();
   }, [loadPreparation]);
-
-  useEffect(() => {
-    if (remainingSeconds === null || remainingSeconds <= 0) return;
-
-    const timer = window.setTimeout(() => {
-      setRemainingSeconds((current) =>
-        current === null ? null : Math.max(0, current - 1),
-      );
-    }, 1000);
-
-    return () => window.clearTimeout(timer);
-  }, [remainingSeconds]);
 
   useEffect(() => {
     if (remainingSeconds !== 0 || !preparation?.isValid) return;

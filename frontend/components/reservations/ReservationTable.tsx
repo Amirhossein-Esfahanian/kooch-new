@@ -52,7 +52,8 @@ export type ReservationTimelineEventType =
   | "PaymentLinkCreated"
   | "Paid"
   | "StatusChanged"
-  | "Cancelled";
+  | "Cancelled"
+  | "PriceAdjusted";
 
 export interface ReservationTimelineEvent {
   type: ReservationTimelineEventType;
@@ -61,6 +62,8 @@ export interface ReservationTimelineEvent {
   actor?: string | null;
   status?: ReservationTableStatus | null;
   cancellationReason?: ReservationCancellationReason | null;
+  oldAmount?: number | null;
+  newAmount?: number | null;
   note?: string | null;
 }
 
@@ -74,6 +77,8 @@ export interface ReservationTableItem {
   roomTypeName?: string | null;
   roomId?: number | null;
   roomName?: string | null;
+  roomBaseCapacity?: number | null;
+  baseCapacity?: number | null;
   guestId?: number | null;
   guestName?: string | null;
   guestFullName?: string | null;
@@ -120,6 +125,8 @@ export interface ReservationTableItem {
   couponDiscountAmount?: number | null;
   serviceFeeAmount?: number | null;
   taxAmount?: number | null;
+  calculatedPrice?: number | null;
+  manualAdjustment?: number | null;
   totalPrice?: number | null;
   finalAmount?: number | null;
   paidAmount?: number | null;
@@ -249,7 +256,7 @@ export function ReservationTable({
               const roomName =
                 reservation.roomTypeName ?? reservation.roomName ?? "-";
               const totalPrice =
-                reservation.totalPrice ?? reservation.finalAmount ?? null;
+                reservation.finalAmount ?? reservation.totalPrice ?? null;
               return (
                 <KoochTableRow key={rowKey(reservation)}>
                   <KoochTableCell className="font-semibold text-xs">

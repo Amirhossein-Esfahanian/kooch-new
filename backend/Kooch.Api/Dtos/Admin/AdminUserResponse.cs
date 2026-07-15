@@ -16,6 +16,7 @@ public class AdminUserResponse
     public int? PropertyId { get; set; }
     public string? PropertyName { get; set; }
     public IReadOnlyList<AdminUserPropertyAccessResponse> Properties { get; set; } = [];
+    public IReadOnlyList<PermissionKey> Permissions { get; set; } = [];
     public bool IsActive { get; set; }
     public bool PasswordSetupRequired { get; set; }
     public DateTime CreatedAtUtc { get; set; }

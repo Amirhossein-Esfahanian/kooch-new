@@ -1,35 +1,77 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
-function remainingSeconds(expiresAtUtc?: string | null) {
-  if (!expiresAtUtc) return null;
-  const expiresAt = new Date(expiresAtUtc).getTime();
-  if (Number.isNaN(expiresAt)) return null;
-  return Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
+type ServerClockSync = {
+  key: string;
+  monotonicAtSync: number;
+  serverTimeAtSync: number;
+};
+
+function monotonicNow() {
+  return typeof performance === "undefined" ? Date.now() : performance.now();
 }
 
 export function useReservationPaymentCountdown(
   enabled: boolean,
   paymentExpiresAtUtc?: string | null,
+  serverRemainingSeconds?: number | null,
+  sourceKey?: string | number | null,
 ) {
-  const [seconds, setSeconds] = useState<number | null>(null);
+  const [, forceRender] = useState(0);
+  const serverClockRef = useRef<ServerClockSync | null>(null);
+  const expiresAt = paymentExpiresAtUtc
+    ? new Date(paymentExpiresAtUtc).getTime()
+    : Number.NaN;
+  const syncKey = `${sourceKey ?? "reservation"}:${paymentExpiresAtUtc ?? ""}:${serverRemainingSeconds ?? ""}`;
 
   useEffect(() => {
-    setSeconds(enabled ? remainingSeconds(paymentExpiresAtUtc) : null);
-  }, [enabled, paymentExpiresAtUtc]);
-
-  useEffect(() => {
-    if (!enabled || !paymentExpiresAtUtc || seconds === null || seconds <= 0) {
+    if (
+      Number.isNaN(expiresAt) ||
+      serverRemainingSeconds === null ||
+      serverRemainingSeconds === undefined ||
+      serverClockRef.current?.key === syncKey
+    ) {
       return;
     }
 
-    const timer = window.setTimeout(() => {
-      setSeconds(remainingSeconds(paymentExpiresAtUtc));
+    serverClockRef.current = {
+      key: syncKey,
+      monotonicAtSync: monotonicNow(),
+      serverTimeAtSync:
+        expiresAt - Math.max(0, serverRemainingSeconds) * 1000,
+    };
+    forceRender((current) => current + 1);
+  }, [expiresAt, serverRemainingSeconds, syncKey]);
+
+  useEffect(() => {
+    if (!enabled || Number.isNaN(expiresAt)) {
+      return;
+    }
+
+    forceRender((current) => current + 1);
+    const timer = window.setInterval(() => {
+      forceRender((current) => current + 1);
     }, 1000);
 
-    return () => window.clearTimeout(timer);
-  }, [enabled, paymentExpiresAtUtc, seconds]);
+    return () => window.clearInterval(timer);
+  }, [enabled, expiresAt, sourceKey]);
 
-  return seconds;
+  if (!enabled || Number.isNaN(expiresAt)) {
+    return null;
+  }
+
+  const serverClock = serverClockRef.current;
+  if (serverClock?.key !== syncKey) {
+    return serverRemainingSeconds === null ||
+      serverRemainingSeconds === undefined
+      ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000))
+      : Math.max(0, serverRemainingSeconds);
+  }
+
+  const authoritativeNow =
+    serverClock.serverTimeAtSync +
+    (monotonicNow() - serverClock.monotonicAtSync);
+
+  return Math.max(0, Math.ceil((expiresAt - authoritativeNow) / 1000));
 }

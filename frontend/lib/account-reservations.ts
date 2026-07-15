@@ -21,6 +21,7 @@ export interface AccountReservation {
   reservationId: number;
   reservationNumber: string;
   propertyName: string;
+  roomName?: string | null;
   roomTypeName: string;
   checkInDate: string;
   checkOutDate: string;
@@ -37,6 +38,7 @@ export interface AccountReservation {
   createdAtUtc?: string | null;
   paymentExpiresAtUtc?: string | null;
   isPaymentExpired?: boolean | null;
+  isPaymentEligible?: boolean | null;
   remainingPaymentSeconds?: number | null;
 }
 
@@ -135,6 +137,10 @@ export function formatDuration(seconds?: number | null) {
 }
 
 export function isPaymentEligible(reservation: AccountReservation) {
+  if (typeof reservation.isPaymentEligible === "boolean") {
+    return reservation.isPaymentEligible;
+  }
+
   return (
     reservation.status === "ApprovedAwaitingPayment" &&
     !reservation.isPaymentExpired &&
@@ -146,5 +152,7 @@ export function usePaymentCountdown(reservation: AccountReservation | null) {
   return useReservationPaymentCountdown(
     reservation?.status === "ApprovedAwaitingPayment",
     reservation?.paymentExpiresAtUtc,
+    reservation?.remainingPaymentSeconds,
+    reservation?.reservationId,
   );
 }

@@ -41,8 +41,7 @@ public sealed class EffectiveAvailabilityService(KoochDbContext dbContext) : IEf
                 reservation.CheckInDate < checkOutDate &&
                 reservation.CheckOutDate > checkInDate &&
                 (reservation.Status == ReservationStatus.Confirmed ||
-                 reservation.Status == ReservationStatus.Paid) &&
-                reservation.Payments.Any(payment => payment.Status == PaymentStatus.Successful))
+                 reservation.Status == ReservationStatus.Paid))
             .Select(reservation => new
             {
                 reservation.RoomTypeId,

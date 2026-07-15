@@ -11,7 +11,8 @@ public enum AuditAction
     RoomDeleted,
     BookingConfirmed,
     BookingCancelled,
-    BookingApproved
+    BookingApproved,
+    BookingExpired
 }
 public enum PermissionKey
 {
@@ -26,7 +27,12 @@ public enum PermissionKey
     ManageNotifications,
     ViewReports,
     ManageStaff,
-    ManageSettings
+    ManageSettings,
+    ViewDashboard,
+    ManageRooms,
+    ManagePricing,
+    ManageGuests,
+    ManageAmenities
 }
 public enum SiteSettingType { Text, LongText, ImageUrl, Color, Boolean, Number }
 public enum PropertyStatus { Draft, PendingReview, Approved, Rejected, Suspended }
@@ -58,7 +64,8 @@ public enum ReservationCancellationReason
     InvalidGuestInformation,
     PropertyMaintenanceOrForceMajeure,
     AdministrativeCorrection,
-    Other
+    Other,
+    PaymentExpired
 }
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
 public enum AmenityScope { Property, RoomType, Both }

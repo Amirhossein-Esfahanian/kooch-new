@@ -14,6 +14,8 @@ import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 
 export type KoochConfirmDialogVariant =
+  | "default"
+  | "info"
   | "information"
   | "question"
   | "warning"
@@ -36,41 +38,62 @@ export type KoochConfirmDialogProps = {
   onConfirm: () => void | Promise<void>;
 };
 
+type ConfirmDialogTone = {
+  confirmClassName: string;
+  icon: string;
+  iconBackgroundClassName: string;
+  iconClassName: string;
+  titleClassName: string;
+};
+
 function joinClasses(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
 
-const variantTone: Record<
-  KoochConfirmDialogVariant,
-  {
-    confirmClassName: string;
-    icon: string;
-    iconClassName: string;
-    titleClassName: string;
-  }
-> = {
-  information: {
+const variantTone: Record<KoochConfirmDialogVariant, ConfirmDialogTone> = {
+  default: {
     confirmClassName: "",
     icon: "/svgs/info.svg",
-    iconClassName: "bg-primary",
+    iconBackgroundClassName: "bg-muted",
+    iconClassName: "bg-foreground",
+    titleClassName: "text-foreground",
+  },
+  info: {
+    confirmClassName:
+      "border-blue-600 bg-blue-600 text-white hover:bg-blue-700",
+    icon: "/svgs/info.svg",
+    iconBackgroundClassName: "bg-blue-50 dark:bg-blue-950/60",
+    iconClassName: "bg-blue-600 dark:bg-blue-400",
+    titleClassName: "text-foreground",
+  },
+  information: {
+    confirmClassName:
+      "border-blue-600 bg-blue-600 text-white hover:bg-blue-700",
+    icon: "/svgs/info.svg",
+    iconBackgroundClassName: "bg-blue-50 dark:bg-blue-950/60",
+    iconClassName: "bg-blue-600 dark:bg-blue-400",
     titleClassName: "text-foreground",
   },
   question: {
     confirmClassName: "",
     icon: "/svgs/circle-question.svg",
+    iconBackgroundClassName: "bg-primary/10",
     iconClassName: "bg-primary",
     titleClassName: "text-foreground",
   },
   warning: {
     confirmClassName:
-      "border-amber-500 bg-amber-500 text-white hover:bg-amber-600",
+      "border-amber-600 bg-amber-600 text-white hover:bg-amber-700",
     icon: "/svgs/alert.svg",
-    iconClassName: "bg-amber-500",
+    iconBackgroundClassName: "bg-amber-50 dark:bg-amber-950/60",
+    iconClassName: "bg-amber-600 dark:bg-amber-400",
     titleClassName: "text-amber-700 dark:text-amber-300",
   },
   destructive: {
-    confirmClassName: "",
+    confirmClassName:
+      "border-destructive bg-destructive text-destructive-foreground hover:bg-[var(--theme-danger)]",
     icon: "/svgs/error.svg",
+    iconBackgroundClassName: "bg-red-50 dark:bg-red-950/60",
     iconClassName: "bg-destructive",
     titleClassName: "text-destructive",
   },
@@ -78,7 +101,8 @@ const variantTone: Record<
     confirmClassName:
       "border-emerald-600 bg-emerald-600 text-white hover:bg-emerald-700",
     icon: "/svgs/success.svg",
-    iconClassName: "bg-emerald-600",
+    iconBackgroundClassName: "bg-emerald-50 dark:bg-emerald-950/60",
+    iconClassName: "bg-emerald-600 dark:bg-emerald-400",
     titleClassName: "text-emerald-700 dark:text-emerald-300",
   },
 };
@@ -203,7 +227,7 @@ export function KoochConfirmDialog({
         aria-labelledby={titleId}
         aria-modal="true"
         className={joinClasses(
-          "fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-[440px] -translate-x-1/2 -translate-y-1/2 rounded-lg border border-border bg-card p-5 text-card-foreground shadow-2xl",
+          "fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded border border-border bg-card p-5 text-card-foreground shadow-2xl sm:p-5",
           className,
         )}
         dir="rtl"
@@ -214,18 +238,22 @@ export function KoochConfirmDialog({
           <span
             aria-hidden="true"
             className={joinClasses(
-              "mt-0.5 h-6 w-6 shrink-0",
-              tone.iconClassName,
+              "flex h-11 w-11 shrink-0 items-center justify-center rounded-full",
+              tone.iconBackgroundClassName,
             )}
-            style={{
-              WebkitMask: `url(${tone.icon}) center / contain no-repeat`,
-              mask: `url(${tone.icon}) center / contain no-repeat`,
-            }}
-          />
-          <div className="min-w-0">
+          >
+            <span
+              className={joinClasses("h-[30px] w-[30px]", tone.iconClassName)}
+              style={{
+                WebkitMask: `url(${tone.icon}) center / contain no-repeat`,
+                mask: `url(${tone.icon}) center / contain no-repeat`,
+              }}
+            />
+          </span>
+          <div className="min-w-0 flex-1">
             <h2
               className={joinClasses(
-                "text-base font-black leading-7",
+                "text-base font-bold leading-7 pt-2",
                 tone.titleClassName,
               )}
               id={titleId}
@@ -234,7 +262,7 @@ export function KoochConfirmDialog({
             </h2>
             {description && (
               <div
-                className="mt-2 text-sm leading-7 text-muted-foreground"
+                className="mt-1 text-sm leading-7 text-foreground pb-4 pt-2"
                 id={descriptionId}
               >
                 {description}
@@ -243,9 +271,13 @@ export function KoochConfirmDialog({
           </div>
         </header>
 
-        {children && <div className="mt-4 text-sm leading-7">{children}</div>}
+        {children && (
+          <div className="mt-4 text-sm leading-7 text-muted-foreground [&_[data-slot=alert]]:border-0 [&_[data-slot=alert]]:bg-transparent [&_[data-slot=alert]]:p-0 [&_[data-slot=alert]]:shadow-none [&_[data-slot=alert-description]]:text-muted-foreground [&_[data-slot=alert-icon]]:hidden [&_[data-slot=alert-title]]:text-foreground">
+            {children}
+          </div>
+        )}
 
-        <footer className="mt-5 flex flex-col-reverse gap-2 sm:flex-row sm:justify-start">
+        <footer className="mt-5 flex flex-col gap-2 border-t border-border pt-4 sm:flex-row sm:justify-start">
           <KoochButton
             className={joinClasses("w-full sm:w-auto", tone.confirmClassName)}
             disabled={actionDisabled}

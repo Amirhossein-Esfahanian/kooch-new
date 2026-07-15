@@ -23,6 +23,8 @@ public class ReservationListItemResponse
     public int Adults { get; set; }
     public int Children { get; set; }
     public int RoomCount { get; set; }
+    public decimal CalculatedPrice { get; set; }
+    public decimal ManualAdjustment { get; set; }
     public decimal TotalPrice { get; set; }
     public decimal FinalAmount { get; set; }
     public decimal PaidAmount { get; set; }
@@ -33,6 +35,7 @@ public class ReservationListItemResponse
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? PaymentExpiresAtUtc { get; set; }
     public bool IsPaymentExpired { get; set; }
+    public bool IsPaymentEligible { get; set; }
     public int? RemainingPaymentSeconds { get; set; }
 
     public string GuestName
@@ -86,7 +89,8 @@ public enum ReservationTimelineEventType
     PaymentLinkCreated,
     Paid,
     StatusChanged,
-    Cancelled
+    Cancelled,
+    PriceAdjusted
 }
 
 public class ReservationTimelineEventResponse
@@ -97,6 +101,8 @@ public class ReservationTimelineEventResponse
     public string? Actor { get; set; }
     public ReservationStatus? Status { get; set; }
     public ReservationCancellationReason? CancellationReason { get; set; }
+    public decimal? OldAmount { get; set; }
+    public decimal? NewAmount { get; set; }
     public string? Note { get; set; }
 }
 
@@ -160,6 +166,9 @@ public class PagedResult<T>
 
 public class ReservationCreateRequest : IValidatableObject
 {
+    [EnumDataType(typeof(ReservationStatus))]
+    public ReservationStatus? Status { get; set; }
+
     [Range(1, int.MaxValue)]
     public int PropertyId { get; set; }
 
@@ -205,6 +214,9 @@ public class ReservationCreateRequest : IValidatableObject
 
 public class ReservationUpdateRequest : IValidatableObject
 {
+    [EnumDataType(typeof(ReservationStatus))]
+    public ReservationStatus? Status { get; set; }
+
     [Range(1, int.MaxValue)]
     public int RoomTypeId { get; set; }
 
@@ -251,15 +263,41 @@ public class ReservationStatusUpdateRequest
     public string? Notes { get; set; }
 }
 
-public class ReservationCancellationRequest
+public class ReservationCancellationRequest : IValidatableObject
 {
     [Required]
     [EnumDataType(typeof(ReservationCancellationReason))]
     public ReservationCancellationReason? Reason { get; set; }
 
-    [Required]
     [MaxLength(2000)]
-    public string Explanation { get; set; } = string.Empty;
+    public string? Explanation { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Reason == ReservationCancellationReason.Other &&
+            string.IsNullOrWhiteSpace(Explanation))
+        {
+            yield return new ValidationResult(
+                "Cancellation explanation is required when reason is Other.",
+                [nameof(Explanation)]);
+        }
+    }
+}
+
+public class ReservationPriceAdjustmentRequest : IValidatableObject
+{
+    [Range(typeof(decimal), "-9999999999999999.99", "9999999999999999.99")]
+    public decimal Amount { get; set; }
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (Amount == 0)
+        {
+            yield return new ValidationResult(
+                "Manual adjustment must be positive or negative.",
+                [nameof(Amount)]);
+        }
+    }
 }
 
 public class ReservationPaymentLinkResponse
