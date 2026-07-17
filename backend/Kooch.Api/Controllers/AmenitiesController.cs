@@ -13,7 +13,8 @@ namespace Kooch.Api.Controllers;
 [Route("api/amenities")]
 public class AmenitiesController(
     KoochDbContext dbContext,
-    IWebHostEnvironment environment) : ControllerBase
+    IWebHostEnvironment environment,
+    IPermissionService permissionService) : AuthenticatedControllerBase
 {
     private const long MaxSvgFileSizeBytes = 256 * 1024;
 
@@ -48,12 +49,13 @@ public class AmenitiesController(
     }
 
     [HttpPost]
-    [OwnerAuthorize]
+    [AdminAuthorize]
     [ProducesResponseType<AmenityResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<AmenityResponse>> Create(
         AmenityRequest request,
         CancellationToken cancellationToken)
     {
+        await EnsureCanManageAmenitiesAsync(cancellationToken);
         await EnsureCategoryAsync(request.AmenityCategoryId, cancellationToken);
         var slug = await CreateUniqueSlugAsync(request.Slug, request.Name, null, cancellationToken);
         var amenity = new Amenity
@@ -72,13 +74,14 @@ public class AmenitiesController(
     }
 
     [HttpPut("{id:int}")]
-    [OwnerAuthorize]
+    [AdminAuthorize]
     [ProducesResponseType<AmenityResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<AmenityResponse>> Update(
         int id,
         AmenityRequest request,
         CancellationToken cancellationToken)
     {
+        await EnsureCanManageAmenitiesAsync(cancellationToken);
         var amenity = await dbContext.Amenities
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
             ?? throw new KeyNotFoundException("Amenity not found.");
@@ -97,10 +100,11 @@ public class AmenitiesController(
     }
 
     [HttpDelete("{id:int}")]
-    [OwnerAuthorize]
+    [AdminAuthorize]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
     {
+        await EnsureCanManageAmenitiesAsync(cancellationToken);
         var amenity = await dbContext.Amenities
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
             ?? throw new KeyNotFoundException("Amenity not found.");
@@ -111,7 +115,7 @@ public class AmenitiesController(
     }
 
     [HttpPost("svg")]
-    [OwnerAuthorize]
+    [AdminAuthorize]
     [Consumes("multipart/form-data")]
     [ProducesResponseType<AmenitySvgUploadResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<AmenitySvgUploadResponse>> UploadSvg(
@@ -119,6 +123,7 @@ public class AmenitiesController(
         [FromForm] string slug,
         CancellationToken cancellationToken)
     {
+        await EnsureCanManageAmenitiesAsync(cancellationToken);
         var safeSlug = EnglishSlugGenerator.Create(Clean(slug) ?? "amenity-icon", "amenity-icon");
         await ValidateSvgUploadAsync(file, cancellationToken);
 
@@ -139,6 +144,14 @@ public class AmenitiesController(
         return Ok(new AmenitySvgUploadResponse($"/svgs/amenities/{fileName}"));
     }
 
+    private async Task EnsureCanManageAmenitiesAsync(CancellationToken cancellationToken)
+    {
+        var (userId, _) = GetCurrentUser();
+        if (!await permissionService.HasPermissionAsync(userId, PermissionKey.ManageAmenities, null, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("ManageAmenities permission is required.");
+        }
+    }
     private async Task EnsureCategoryAsync(int categoryId, CancellationToken cancellationToken)
     {
         if (!await dbContext.AmenityCategories.AsNoTracking()
@@ -217,3 +230,4 @@ public class AmenitiesController(
         }
     }
 }
+

@@ -1,8 +1,10 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Admin;
 
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
 public class AdminUserRequest
 {
     [Required, MaxLength(100)]
@@ -24,7 +26,5 @@ public class AdminUserRequest
     public UserRole Role { get; set; }
 
     public int? ParentUserId { get; set; }
-    public int? PropertyId { get; set; }
-    public IReadOnlyList<int> PropertyIds { get; set; } = [];
     public IReadOnlyList<string> Permissions { get; set; } = [];
 }

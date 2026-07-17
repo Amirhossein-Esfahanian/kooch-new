@@ -1,34 +1,29 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   apiRequest,
-  getToken,
-  ownerPropertyKey,
   PropertyResponse,
 } from "@/lib/owner-api";
 
 export default function OwnerReviewsPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
-  const router = useRouter();
+  const { authenticated, loading, workspaces } = useAuthSession();
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-    localStorage.setItem(ownerPropertyKey, propertyId.toString());
+    if (loading || !authenticated || !workspaces.includes("owner")) return;
     apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`)
       .then(setProperty)
       .catch((caught: Error) => setError(caught.message));
-  }, [propertyId, router]);
+  }, [authenticated, loading, propertyId, workspaces]);
 
   return (
     <OwnerLayout>

@@ -284,6 +284,7 @@ public class AuthService(
         }
 
         var platformRole = user.Role.ToCanonicalPlatformRole();
+        var platformPermissions = await ResolvePlatformPermissionsAsync(user.Id, platformRole, cancellationToken);
         var workspaces = new List<string>();
         if (platformRole.IsPlatformAdmin())
         {
@@ -316,6 +317,7 @@ public class AuthService(
             Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
             PhoneNumber = user.PhoneNumber,
             PlatformRole = platformRole,
+            PlatformPermissions = platformPermissions,
             Role = user.Role,
             IsActive = user.IsActive,
             Workspaces = workspaces,
@@ -325,6 +327,31 @@ public class AuthService(
         };
     }
 
+    private async Task<IReadOnlyList<PermissionKey>> ResolvePlatformPermissionsAsync(
+        int userId,
+        UserRole platformRole,
+        CancellationToken cancellationToken)
+    {
+        if (platformRole == UserRole.SuperAdmin)
+        {
+            return Enum.GetValues<PermissionKey>();
+        }
+
+        if (platformRole != UserRole.AdminAssistant)
+        {
+            return [];
+        }
+
+        return await dbContext.UserPermissions.AsNoTracking()
+            .Where(permission =>
+                permission.UserId == userId &&
+                permission.PropertyId == null &&
+                permission.IsAllowed)
+            .Select(permission => permission.PermissionKey)
+            .Distinct()
+            .OrderBy(permission => permission)
+            .ToListAsync(cancellationToken);
+    }
     public string GenerateJwtToken(User user, DateTime expiresAtUtc)
     {
         var claims = new[]
@@ -333,7 +360,7 @@ public class AuthService(
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
             new Claim(ClaimTypes.Email, IsInternalEmail(user.Email) ? string.Empty : user.Email),
-            new Claim(ClaimTypes.Role, user.Role.ToString()),
+            new Claim(ClaimTypes.Role, user.Role.ToCanonicalPlatformRole().ToString()),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -750,9 +777,12 @@ public class AuthService(
     private static char NormalizeDigit(char character) =>
         character switch
         {
-            >= '۰' and <= '۹' => (char)('0' + character - '۰'),
-            >= '٠' and <= '٩' => (char)('0' + character - '٠'),
+            >= '\u06F0' and <= '\u06F9' => (char)('0' + character - '\u06F0'),
+            >= '\u0660' and <= '\u0669' => (char)('0' + character - '\u0660'),
             _ => character
         };
 
 }
+
+
+

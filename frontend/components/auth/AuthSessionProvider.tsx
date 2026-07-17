@@ -69,6 +69,7 @@ export interface AuthSessionUser {
 export interface AuthSession {
   user: AuthSessionUser;
   platformRole: PlatformRole;
+  platformPermissions: string[];
   workspaces: AuthWorkspace[];
   propertyMemberships: AuthPropertyMembership[];
   defaultWorkspace: AuthWorkspace | null;
@@ -85,6 +86,7 @@ export type WorkspaceRoutingSession = Pick<
 
 interface CurrentUserResponse extends Omit<AuthSessionUser, "isActive"> {
   platformRole: PlatformRole;
+  platformPermissions?: string[];
   isActive: boolean;
   workspaces: AuthWorkspace[];
   propertyMemberships: AuthPropertyMembership[];
@@ -101,6 +103,7 @@ export interface AuthSessionContextValue {
   authenticated: boolean;
   user: AuthSessionUser | null;
   platformRole: PlatformRole | null;
+  platformPermissions: string[];
   workspaces: AuthWorkspace[];
   propertyMemberships: AuthPropertyMembership[];
   defaultWorkspace: AuthWorkspace | null;
@@ -126,6 +129,7 @@ function toSession(response: CurrentUserResponse): AuthSession {
       isActive: response.isActive,
     },
     platformRole: response.platformRole,
+    platformPermissions: response.platformPermissions ?? [],
     workspaces: response.workspaces,
     propertyMemberships: response.propertyMemberships,
     defaultWorkspace: response.defaultWorkspace,
@@ -243,6 +247,7 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       authenticated: session !== null,
       user: session?.user ?? null,
       platformRole: session?.platformRole ?? null,
+      platformPermissions: session?.platformPermissions ?? [],
       workspaces: session?.workspaces ?? [],
       propertyMemberships: session?.propertyMemberships ?? [],
       defaultWorkspace: session?.defaultWorkspace ?? null,
@@ -268,3 +273,4 @@ export function useAuthSession() {
 
   return context;
 }
+

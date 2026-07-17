@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using Kooch.Api.Authentication;
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;

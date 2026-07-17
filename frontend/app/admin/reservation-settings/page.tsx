@@ -1,14 +1,14 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { apiRequest, getToken } from "@/lib/owner-api";
+import { apiRequest } from "@/lib/owner-api";
 
 type ReservationSettingsResponse = {
   freeChildMaxAge: number | null;
@@ -52,16 +52,13 @@ function optionalAge(value: string) {
 }
 
 export default function AdminReservationSettingsPage() {
-  const router = useRouter();
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [draft, setDraft] = useState<ReservationSettingsDraft>(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
 
     apiRequest<ReservationSettingsResponse>("/admin/reservation-settings")
       .then((settings) => setDraft(toDraft(settings)))
@@ -69,7 +66,7 @@ export default function AdminReservationSettingsPage() {
         toast.error(caught.message || "تنظیمات رزرو بارگذاری نشد"),
       )
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authenticated, sessionLoading, workspaces]);
 
   function update(key: keyof ReservationSettingsDraft, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));

@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
@@ -25,20 +25,18 @@ public class PropertyService(
         var canCreateAsAdmin = role == UserRole.SuperAdmin ||
                                role == UserRole.AdminAssistant &&
                                await HasGlobalManagePermissionAsync(userId, cancellationToken);
-        if (role != UserRole.Owner && !canCreateAsAdmin)
+        if (!canCreateAsAdmin)
         {
-            throw new UnauthorizedAccessException("ManageProperties permission is required.");
+            throw new UnauthorizedAccessException("Property creation is admin-only.");
         }
 
-        var ownerId = canCreateAsAdmin ? request.OwnerId ?? userId : userId;
-        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
-                user.Id == ownerId && user.IsActive &&
-                (user.Role == UserRole.Owner ||
-                 user.Role == UserRole.Client ||
-                 user.Role == UserRole.SuperAdmin), cancellationToken))
+        if (!request.OwnerId.HasValue)
         {
-            throw new ArgumentException("The selected owner is invalid.");
+            throw new ArgumentException("The selected owner is required.");
         }
+
+        var ownerId = request.OwnerId.Value;
+        await EnsureCanonicalOwnerAccountAsync(ownerId, cancellationToken);
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
@@ -289,16 +287,7 @@ public class PropertyService(
         await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
 
         var property = await GetEntityAsync(propertyId, cancellationToken);
-        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
-                user.Id == request.OwnerId &&
-                user.IsActive &&
-                (user.Role == UserRole.Owner ||
-                 user.Role == UserRole.Client ||
-                 user.Role == UserRole.SuperAdmin),
-                cancellationToken))
-        {
-            throw new ArgumentException("The selected owner is invalid.");
-        }
+        await EnsureCanonicalOwnerAccountAsync(request.OwnerId, cancellationToken);
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
@@ -629,6 +618,17 @@ public class PropertyService(
 
     private async Task<bool> HasGlobalManagePermissionAsync(int userId, CancellationToken cancellationToken) =>
         await permissionService.HasPermissionAsync(userId, PermissionKey.ManageProperties, null, cancellationToken);
+
+    private async Task EnsureCanonicalOwnerAccountAsync(int ownerId, CancellationToken cancellationToken)
+    {
+        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
+                user.Id == ownerId &&
+                user.Role == UserRole.Client,
+                cancellationToken))
+        {
+            throw new ArgumentException("The selected owner must be a normal user account.");
+        }
+    }
 
     private async Task EnsureCanonicalOwnerMembershipAsync(
         int propertyId,

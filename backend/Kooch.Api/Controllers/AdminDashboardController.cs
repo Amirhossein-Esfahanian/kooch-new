@@ -1,4 +1,4 @@
-using Kooch.Api.Authentication;
+﻿using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
@@ -59,7 +59,7 @@ public class AdminDashboardController(KoochDbContext dbContext) : AuthenticatedC
             PendingProperties = await dbContext.Properties.CountAsync(property => property.Status == PropertyStatus.PendingReview, cancellationToken),
             ApprovedProperties = await dbContext.Properties.CountAsync(property => property.Status == PropertyStatus.Approved, cancellationToken),
             TotalUsers = await dbContext.Users.IgnoreQueryFilters().CountAsync(cancellationToken),
-            TotalOwners = await dbContext.Users.IgnoreQueryFilters().CountAsync(user => user.Role == UserRole.Owner, cancellationToken),
+            TotalOwners = await dbContext.UserPropertyAccesses.AsNoTracking().Where(access => access.PropertyRole == PropertyUserRole.PropertyOwner && access.Status == PropertyUserStatus.Active && access.IsActive).Select(access => access.UserId).Distinct().CountAsync(cancellationToken),
             PendingPropertyItems = pendingItems
         });
     }

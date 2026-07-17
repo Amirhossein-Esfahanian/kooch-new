@@ -5,6 +5,7 @@ namespace Kooch.Api.Services;
 
 public interface IPropertyUserService
 {
+    Task<PropertyPermissionMetadataResponse> GetPermissionMetadataAsync(int currentUserId, int propertyId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PropertyUserResponse>> GetUsersAsync(int currentUserId, UserRole currentRole, int propertyId, CancellationToken cancellationToken = default);
     Task<PropertyUserResponse> CreateUserAsync(int currentUserId, UserRole currentRole, int propertyId, PropertyUserRequest request, CancellationToken cancellationToken = default);
     Task<PropertyUserResponse> UpdateUserAsync(int currentUserId, UserRole currentRole, int propertyId, int userId, PropertyUserRequest request, CancellationToken cancellationToken = default);

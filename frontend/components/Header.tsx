@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { getWorkspace } from "@/lib/owner-api";
+import {
+  type AuthWorkspace,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
 import {
   defaultSiteSettings,
   fetchPublicSiteSettings,
@@ -13,22 +15,36 @@ import {
   SiteSettingsMap,
 } from "@/lib/site-settings";
 
-const workspaceLabels: Record<string, string> = {
+const workspaceLabels: Record<AuthWorkspace, string> = {
   admin: "پنل مدیریت",
   owner: "پنل مالک",
-  traveler: "سایت مسافر",
+  account: "حساب کاربری",
 };
 
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const { authenticated: isLoggedIn, clearSession } = useAuthSession();
-  const [workspace, setWorkspaceLabel] = useState<string | null>(null);
+  const {
+    authenticated: isLoggedIn,
+    clearSession,
+    defaultWorkspace,
+    workspaces,
+  } = useAuthSession();
   const [settings, setSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
-
-  useEffect(() => {
-    setWorkspaceLabel(getWorkspace());
-  }, [pathname]);
+  const routeWorkspace: AuthWorkspace | null = pathname.startsWith("/admin")
+    ? "admin"
+    : pathname.startsWith("/owner")
+      ? "owner"
+      : pathname.startsWith("/account")
+        ? "account"
+        : null;
+  const workspace = routeWorkspace && workspaces.includes(routeWorkspace)
+    ? routeWorkspace
+    : pathname === "/choose-workspace" &&
+        defaultWorkspace &&
+        workspaces.includes(defaultWorkspace)
+      ? defaultWorkspace
+      : null;
 
   useEffect(() => {
     fetchPublicSiteSettings()
@@ -38,7 +54,6 @@ export function Header() {
 
   function logout() {
     clearSession();
-    setWorkspaceLabel(null);
     router.push("/login");
   }
 
@@ -62,7 +77,7 @@ export function Header() {
           </Link>
           {workspace && (
             <span className="rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-xs font-bold text-[var(--theme-primary-text)]">
-              {workspaceLabels[workspace] ?? "سایت مسافر"}
+              {workspaceLabels[workspace]}
             </span>
           )}
         </div>

@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { OwnerPage } from "@/components/owner/OwnerPage";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 import {
   apiRequest,
-  getToken,
   PropertyCompletionResponse,
   PropertyResponse,
 } from "@/lib/owner-api";
@@ -30,7 +29,7 @@ const ownerDashboardCards = [
 ];
 
 export default function OwnerPropertiesPage() {
-  const router = useRouter();
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [completions, setCompletions] = useState<
     Record<number, PropertyCompletionResponse>
@@ -39,10 +38,7 @@ export default function OwnerPropertiesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (sessionLoading || !authenticated || !workspaces.includes("owner")) return;
     apiRequest<PropertyResponse[]>("/owner/properties")
       .then(async (propertyItems) => {
         setProperties(propertyItems);
@@ -62,7 +58,7 @@ export default function OwnerPropertiesPage() {
       })
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authenticated, sessionLoading, workspaces]);
 
   return (
     <OwnerPage title="اقامتگاه‌ها">

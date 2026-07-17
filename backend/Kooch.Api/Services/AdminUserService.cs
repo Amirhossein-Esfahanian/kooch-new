@@ -1,10 +1,8 @@
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
-using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
-using System.Text.Json;
 
 namespace Kooch.Api.Services;
 
@@ -20,11 +18,8 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         await EnsureCanManageUsersAsync(currentUserId, currentRole, cancellationToken);
-        var query = dbContext.Users.IgnoreQueryFilters().AsNoTracking();
-        if (currentRole is UserRole.Owner or UserRole.OwnerAssistant)
-        {
-            query = query.Where(user => user.ParentUserId == currentUserId);
-        }
+        var query = dbContext.Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(user => user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant);
 
         return await Project(query.OrderBy(user => user.LastName).ThenBy(user => user.FirstName))
             .ToListAsync(cancellationToken);
@@ -37,13 +32,9 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         await EnsureCanManageUsersAsync(currentUserId, currentRole, cancellationToken);
-        if (currentRole is UserRole.Owner or UserRole.OwnerAssistant &&
-            !await dbContext.Users.IgnoreQueryFilters().AnyAsync(user => user.Id == userId && user.ParentUserId == currentUserId, cancellationToken))
-        {
-            throw new UnauthorizedAccessException("You cannot access this user.");
-        }
-
-        return await Project(dbContext.Users.IgnoreQueryFilters().AsNoTracking().Where(user => user.Id == userId))
+        return await Project(dbContext.Users.IgnoreQueryFilters().AsNoTracking().Where(user =>
+                user.Id == userId &&
+                (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant)))
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
     }
@@ -54,15 +45,9 @@ public class AdminUserService(
         AdminUserRequest request,
         CancellationToken cancellationToken = default)
     {
-        var propertyIds = GetRequestedPropertyIds(request);
         var permissions = ParsePermissions(request.Permissions);
-        if (request.Role == UserRole.Client)
-        {
-            throw new UnauthorizedAccessException("Passenger accounts must be created from public registration or booking flow.");
-        }
-
-        await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
-        EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
+        ValidatePlatformAccountRole(request.Role);
+        await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, cancellationToken);
         await EnsureCanAssignPermissionsAsync(
             currentUserId,
             currentRole,
@@ -95,7 +80,6 @@ public class AdminUserService(
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
         await SyncGlobalPermissionsAsync(user, permissions, cancellationToken);
-        await SyncPropertyAccessAsync(user, propertyIds, cancellationToken);
         var response = await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
         if (!hasPassword)
         {
@@ -115,28 +99,18 @@ public class AdminUserService(
         AdminUserRequest request,
         CancellationToken cancellationToken = default)
     {
-        var propertyIds = GetRequestedPropertyIds(request);
         var permissions = ParsePermissions(request.Permissions);
         var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
-        if (request.Role == UserRole.Client && user.Role != UserRole.Client)
-        {
-            throw new UnauthorizedAccessException("Passenger accounts must be created from public registration or booking flow.");
-        }
-
-        await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, propertyIds, cancellationToken);
-        EnsurePropertyAssignmentIsValid(request.Role, propertyIds);
+        ValidatePlatformAccountRole(user.Role);
+        ValidatePlatformAccountRole(request.Role);
+        await EnsureCanCreateRoleAsync(currentUserId, currentRole, request.Role, cancellationToken);
         await EnsureCanAssignPermissionsAsync(
             currentUserId,
             currentRole,
             request.Role,
             permissions,
             cancellationToken);
-        if (currentRole is UserRole.Owner or UserRole.OwnerAssistant && user.ParentUserId != currentUserId)
-        {
-            throw new UnauthorizedAccessException("You cannot edit this user.");
-        }
-
         if (user.Role == UserRole.SuperAdmin && currentRole != UserRole.SuperAdmin)
         {
             throw new UnauthorizedAccessException("Only SuperAdmin can edit SuperAdmin users.");
@@ -162,7 +136,6 @@ public class AdminUserService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await SyncGlobalPermissionsAsync(user, permissions, cancellationToken);
-        await SyncPropertyAccessAsync(user, propertyIds, cancellationToken);
         return await GetUserAsync(currentUserId, currentRole, userId, cancellationToken);
     }
 
@@ -176,10 +149,7 @@ public class AdminUserService(
         await EnsureCanManageUsersAsync(currentUserId, currentRole, cancellationToken);
         var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
-        if (currentRole is UserRole.Owner or UserRole.OwnerAssistant && user.ParentUserId != currentUserId)
-        {
-            throw new UnauthorizedAccessException("You cannot change this user.");
-        }
+        ValidatePlatformAccountRole(user.Role);
 
         if (!user.CanBeRestricted || user.Id == currentUserId)
         {
@@ -195,10 +165,7 @@ public class AdminUserService(
     {
         var allowed = currentRole == UserRole.SuperAdmin ||
                       currentRole == UserRole.AdminAssistant &&
-                      await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageUsers, null, cancellationToken) ||
-                      currentRole == UserRole.Owner ||
-                      currentRole == UserRole.OwnerAssistant &&
-                      await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageStaff, null, cancellationToken);
+                      await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageUsers, null, cancellationToken);
 
         if (!allowed)
         {
@@ -210,7 +177,6 @@ public class AdminUserService(
         int currentUserId,
         UserRole currentRole,
         UserRole targetRole,
-        IReadOnlyCollection<int> propertyIds,
         CancellationToken cancellationToken)
     {
         if (currentRole == UserRole.SuperAdmin)
@@ -221,161 +187,22 @@ public class AdminUserService(
         if (currentRole == UserRole.AdminAssistant)
         {
             var canManageUsers = await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageUsers, null, cancellationToken);
-            var allowed = targetRole is UserRole.Owner or UserRole.OwnerAssistant ||
-                          targetRole == UserRole.AdminAssistant && canManageUsers;
-            if (allowed && (targetRole != UserRole.AdminAssistant || canManageUsers))
+            if (targetRole == UserRole.AdminAssistant && canManageUsers)
             {
                 return;
             }
         }
 
-        if (currentRole == UserRole.Owner)
-        {
-            if (targetRole is not UserRole.OwnerAssistant)
-            {
-                throw new UnauthorizedAccessException("Owners can only create owner assistants.");
-            }
-
-            if (propertyIds.Count > 0)
-            {
-                var ownedPropertyCount = await dbContext.Properties.AsNoTracking()
-                    .CountAsync(property => propertyIds.Contains(property.Id) && property.OwnerId == currentUserId, cancellationToken);
-                if (ownedPropertyCount != propertyIds.Count)
-                {
-                    throw new UnauthorizedAccessException("You can only grant access to your own properties.");
-                }
-            }
-            return;
-        }
-
-        if (currentRole == UserRole.OwnerAssistant)
-        {
-            var canManageStaff = propertyIds.Count > 0
-                ? await CanManageStaffForAllPropertiesAsync(currentUserId, propertyIds, cancellationToken)
-                : await permissionService.HasPermissionAsync(currentUserId, PermissionKey.ManageStaff, null, cancellationToken);
-            if (canManageStaff && targetRole is UserRole.OwnerAssistant)
-            {
-                return;
-            }
-        }
-
-        throw new UnauthorizedAccessException("You cannot create this user role.");
+        throw new UnauthorizedAccessException("You cannot create or assign this platform role.");
     }
 
-    private async Task<bool> CanManageStaffForAllPropertiesAsync(
-        int userId,
-        IReadOnlyCollection<int> propertyIds,
-        CancellationToken cancellationToken)
+    private static void ValidatePlatformAccountRole(UserRole role)
     {
-        foreach (var propertyId in propertyIds)
+        if (role is not UserRole.SuperAdmin and not UserRole.AdminAssistant)
         {
-            if (!await permissionService.HasPermissionAsync(userId, PermissionKey.ManageStaff, propertyId, cancellationToken))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private static void EnsurePropertyAssignmentIsValid(UserRole role, IReadOnlyCollection<int> propertyIds)
-    {
-        if (role is UserRole.SuperAdmin or UserRole.AdminAssistant)
-        {
-            return;
-        }
-
-        if (propertyIds.Count == 0)
-        {
-            throw new ArgumentException("برای این کاربر حداقل یک اقامتگاه انتخاب کنید.");
+            throw new ArgumentException("Platform Admin Users supports only SuperAdmin and AdminAssistant accounts.");
         }
     }
-
-    private async Task SyncPropertyAccessAsync(
-        User user,
-        IReadOnlyCollection<int> propertyIds,
-        CancellationToken cancellationToken)
-    {
-        if (IsGlobalAdminRole(user.Role))
-        {
-            var globalRoleAccesses = await dbContext.UserPropertyAccesses
-                .Where(access => access.UserId == user.Id)
-                .ToListAsync(cancellationToken);
-            foreach (var access in globalRoleAccesses)
-            {
-                access.IsActive = false;
-                access.Status = PropertyUserStatus.Inactive;
-            }
-
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return;
-        }
-
-        var existingPropertiesCount = await dbContext.Properties.AsNoTracking()
-            .CountAsync(property => propertyIds.Contains(property.Id), cancellationToken);
-        if (existingPropertiesCount != propertyIds.Count)
-        {
-            throw new ArgumentException("اقامتگاه انتخاب‌شده معتبر نیست.");
-        }
-
-        var accesses = await dbContext.UserPropertyAccesses
-            .Where(access => access.UserId == user.Id)
-            .ToListAsync(cancellationToken);
-        var requested = propertyIds.ToHashSet();
-        var pending = user.PasswordSetupRequired || !user.IsActive;
-
-        foreach (var access in accesses.Where(access => !requested.Contains(access.PropertyId)))
-        {
-            access.IsActive = false;
-            access.Status = PropertyUserStatus.Inactive;
-        }
-
-        var existingPropertyIds = accesses.Select(access => access.PropertyId).ToHashSet();
-        foreach (var propertyId in requested.Where(propertyId => !existingPropertyIds.Contains(propertyId)))
-        {
-            var access = new UserPropertyAccess
-            {
-                UserId = user.Id,
-                PropertyId = propertyId
-            };
-            ApplyDefaultPropertyAccess(access, pending);
-            dbContext.UserPropertyAccesses.Add(access);
-        }
-
-        await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    private static void ApplyDefaultPropertyAccess(UserPropertyAccess access, bool pending)
-    {
-        access.PropertyRole = PropertyUserRole.Manager;
-        access.CanManageProperty = true;
-        access.CanManageRooms = true;
-        access.CanManageAvailability = true;
-        access.CanManagePricing = true;
-        access.CanManageReservations = true;
-        access.CanManagePayments = true;
-        access.CanManageReviews = true;
-        access.CanManageNotifications = true;
-        access.CanViewReports = true;
-        access.PermissionMatrixJson = JsonSerializer.Serialize(BuildManagerMatrix(), JsonOptions);
-        access.IsActive = !pending;
-        access.Status = pending ? PropertyUserStatus.Pending : PropertyUserStatus.Active;
-    }
-
-    private static IReadOnlyList<int> GetRequestedPropertyIds(AdminUserRequest request)
-    {
-        var ids = new List<int>();
-        if (request.PropertyId is > 0)
-        {
-            ids.Add(request.PropertyId.Value);
-        }
-
-        ids.AddRange(request.PropertyIds.Where(id => id > 0));
-        return ids.Distinct().ToArray();
-    }
-
-    private static bool IsGlobalAdminRole(UserRole role) =>
-        role == UserRole.SuperAdmin;
 
     private static IReadOnlySet<PermissionKey> ParsePermissions(IReadOnlyList<string>? permissionNames)
     {
@@ -468,28 +295,6 @@ public class AdminUserService(
             Role = user.Role,
             ParentUserId = user.ParentUserId,
             ParentUserName = user.ParentUser == null ? null : (user.ParentUser.FirstName + " " + user.ParentUser.LastName).Trim(),
-            PropertyId = user.UserPropertyAccesses
-                .Where(access => access.Status != PropertyUserStatus.Inactive)
-                .OrderBy(access => access.PropertyId)
-                .Select(access => (int?)access.PropertyId)
-                .FirstOrDefault(),
-            PropertyName = user.UserPropertyAccesses
-                .Where(access => access.Status != PropertyUserStatus.Inactive)
-                .OrderBy(access => access.PropertyId)
-                .Select(access => access.Property.Name)
-                .FirstOrDefault(),
-            Properties = user.UserPropertyAccesses
-                .Where(access => access.Status != PropertyUserStatus.Inactive)
-                .OrderBy(access => access.Property.Name)
-                .Select(access => new AdminUserPropertyAccessResponse
-                {
-                    PropertyId = access.PropertyId,
-                    PropertyName = access.Property.Name,
-                    Status = access.Status,
-                    Role = access.PropertyRole,
-                    IsActive = access.IsActive
-                })
-                .ToList(),
             Permissions = user.UserPermissions
                 .Where(permission => permission.PropertyId == null && permission.IsAllowed)
                 .OrderBy(permission => permission.PermissionKey)
@@ -502,7 +307,6 @@ public class AdminUserService(
         });
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
-    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
     private async Task EnsureUniqueIdentityAsync(
         string email,
         string? mobile,
@@ -596,57 +400,4 @@ public class AdminUserService(
         return variants.ToArray();
     }
 
-    private static PermissionMatrixDto BuildManagerMatrix()
-    {
-        var matrix = new PermissionMatrixDto();
-        foreach (var group in PermissionGroups)
-        {
-            matrix[group] = new PermissionActionsDto();
-        }
-
-        void Allow(string group, bool create = false, bool edit = false, bool delete = false, bool export = false)
-        {
-            matrix[group] = new PermissionActionsDto
-            {
-                View = true,
-                Create = create,
-                Edit = edit,
-                Delete = delete,
-                Export = export
-            };
-        }
-
-        Allow("Dashboard");
-        Allow("Properties", create: true, edit: true);
-        Allow("Rooms", create: true, edit: true, delete: true);
-        Allow("Pricing", create: true, edit: true);
-        Allow("Inventory", create: true, edit: true);
-        Allow("Bookings", create: true, edit: true, delete: true, export: true);
-        Allow("Reviews", edit: true, delete: true);
-        Allow("Users", create: true, edit: true);
-        Allow("Financial", export: true);
-        Allow("Reports", export: true);
-        Allow("Settings", edit: true);
-        return matrix;
-    }
-
-    private static readonly string[] PermissionGroups =
-    [
-        "Dashboard",
-        "Properties",
-        "Rooms",
-        "Pricing",
-        "Inventory",
-        "Bookings",
-        "Reviews",
-        "Users",
-        "Financial",
-        "Reports",
-        "Settings"
-    ];
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true
-    };
 }

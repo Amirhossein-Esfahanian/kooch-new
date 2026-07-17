@@ -1,10 +1,11 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
@@ -27,15 +28,14 @@ import {
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   apiRequest,
-  AdminUserResponse,
-  getToken,
+  AdminPropertyOwnerAccountResponse,
   InventoryMode,
   PropertyResponse,
   PropertyStatus,
   propertyTypes,
   PropertyType,
   resolveDestinationId,
-  UserRole,
+
 } from "@/lib/owner-api";
 
 const statuses: PropertyStatus[] = [
@@ -114,10 +114,11 @@ function normalizeSearchText(value: unknown) {
 
 export default function AdminPropertiesPage() {
   const router = useRouter();
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
-  const [users, setUsers] = useState<AdminUserResponse[]>([]);
+  const [users, setUsers] = useState<AdminPropertyOwnerAccountResponse[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreatePropertyForm>(emptyCreateForm);
@@ -129,12 +130,7 @@ export default function AdminPropertiesPage() {
   const [typeFilter, setTypeFilter] = useState<PropertyTypeFilter>("all");
 
   const ownerOptions = useMemo(
-    () =>
-      users.filter(
-        (user) =>
-          user.isActive &&
-          (user.role === "Owner" || user.role === "SuperAdmin"),
-      ),
+    () => users,
     [users],
   );
 
@@ -175,7 +171,7 @@ export default function AdminPropertiesPage() {
   const load = useCallback(async () => {
     const [propertyItems, userItems] = await Promise.all([
       apiRequest<PropertyResponse[]>("/admin/properties"),
-      apiRequest<AdminUserResponse[]>("/admin/users").catch(() => []),
+      apiRequest<AdminPropertyOwnerAccountResponse[]>("/admin/properties/owner-candidates").catch(() => []),
     ]);
 
     setProperties(propertyItems);
@@ -183,15 +179,12 @@ export default function AdminPropertiesPage() {
   }, []);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
 
     load()
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
-  }, [load, router]);
+  }, [authenticated, load, sessionLoading, workspaces]);
 
   function resetFilters() {
     setSearchTerm("");
@@ -241,17 +234,14 @@ export default function AdminPropertiesPage() {
       return { ownerId: Number(createForm.ownerId), setupLink: null };
     }
 
-    const createdOwner = await apiRequest<AdminUserResponse>("/admin/users", {
+    const createdOwner = await apiRequest<AdminPropertyOwnerAccountResponse>("/admin/properties/owner-candidates", {
       method: "POST",
       body: JSON.stringify({
         firstName: createForm.ownerFirstName.trim(),
         lastName: createForm.ownerLastName.trim(),
         email: createForm.ownerEmail.trim(),
         phoneNumber: createForm.ownerPhoneNumber.trim() || null,
-        password: null,
-        role: "Owner" satisfies UserRole,
-        parentUserId: null,
-        propertyId: null,
+        password: createForm.ownerPassword.trim() || null,
       }),
     });
 

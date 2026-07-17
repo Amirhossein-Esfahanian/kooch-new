@@ -8,13 +8,8 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochInput, KoochSelect } from "@/components/KoochFormControls";
-import {
-  createRolePermissionMatrix,
-  permissionActions,
-  permissionGroups,
-  normalizePermissionMatrix,
-  PermissionMatrix,
-} from "@/components/PermissionMatrix";
+import { PermissionMatrix } from "@/components/PermissionMatrix";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   KoochTable,
   KoochTableBody,
@@ -26,11 +21,9 @@ import {
 } from "@/components/KoochTable";
 import {
   apiRequest,
-  getAuthRole,
-  getAuthUserId,
   PermissionMatrixValue,
   PermissionAction,
-  PermissionGroup,
+  PropertyPermissionMetadataResponse,
   PropertyResponse,
   PropertyUserResponse,
   PropertyUserRole,
@@ -79,16 +72,44 @@ type PropertyUserForm = {
   permissions: PermissionMatrixValue;
 };
 
-const emptyForm: PropertyUserForm = {
-  fullName: "",
-  mobile: "",
-  email: "",
-  username: "",
-  status: "Pending",
-  role: "Manager",
-  isActive: false,
-  permissions: createRolePermissionMatrix("Manager"),
-};
+function normalizePermissionMatrix(
+  value: PermissionMatrixValue | null | undefined,
+  metadata: PropertyPermissionMetadataResponse | null,
+): PermissionMatrixValue {
+  if (!metadata) return {};
+
+  return Object.fromEntries(
+    metadata.groups.map((group) => [
+      group.key,
+      Object.fromEntries(
+        metadata.actions.map((action) => [
+          action.key,
+          group.supportedActions.includes(action.key)
+            ? Boolean(value?.[group.key]?.[action.key])
+            : false,
+        ]),
+      ),
+    ]),
+  ) as PermissionMatrixValue;
+}
+
+function createEmptyForm(
+  metadata: PropertyPermissionMetadataResponse | null,
+): PropertyUserForm {
+  return {
+    fullName: "",
+    mobile: "",
+    email: "",
+    username: "",
+    status: "Pending",
+    role: "Manager",
+    isActive: false,
+    permissions: normalizePermissionMatrix(
+      metadata?.roleDefaults.Manager,
+      metadata,
+    ),
+  };
+}
 
 function statusVariant(status: PropertyUserStatus) {
   if (status === "Active") return "success" as const;
@@ -97,7 +118,10 @@ function statusVariant(status: PropertyUserStatus) {
   return "destructive" as const;
 }
 
-function toForm(user: PropertyUserResponse): PropertyUserForm {
+function toForm(
+  user: PropertyUserResponse,
+  metadata: PropertyPermissionMetadataResponse,
+): PropertyUserForm {
   return {
     fullName: user.fullName,
     mobile: user.mobile ?? "",
@@ -106,7 +130,7 @@ function toForm(user: PropertyUserResponse): PropertyUserForm {
     status: user.status,
     role: user.role === "PropertyOwner" ? "Manager" : user.role,
     isActive: user.isActive,
-    permissions: normalizePermissionMatrix(user.permissions),
+    permissions: normalizePermissionMatrix(user.permissions, metadata),
   };
 }
 
@@ -135,6 +159,7 @@ function formatOptionalDate(value?: string | null) {
 }
 
 export function PropertyUsersManagement({
+  context = "owner",
   propertyId,
 }: {
   context?: "admin" | "owner";
@@ -152,24 +177,25 @@ export function PropertyUsersManagement({
     null,
   );
   const [setupLink, setSetupLink] = useState("");
-  const [form, setForm] = useState<PropertyUserForm>(emptyForm);
+  const [permissionMetadata, setPermissionMetadata] =
+    useState<PropertyPermissionMetadataResponse | null>(null);
+  const [form, setForm] = useState<PropertyUserForm>(() =>
+    createEmptyForm(null),
+  );
   const [propertyName, setPropertyName] = useState("");
+  const { platformRole, user: sessionUser } = useAuthSession();
+  const apiBase = `/${context}/properties/${propertyId}/users`;
+  const propertyApiBase = `/${context}/properties/${propertyId}`;
 
   const ownerCount = useMemo(
     () => users.filter((user) => user.role === "PropertyOwner").length,
     [users],
   );
-  const currentUserId = getAuthUserId();
-  const authRole = getAuthRole();
   const actorUser = useMemo(
-    () => users.find((user) => user.userId === currentUserId) ?? null,
-    [currentUserId, users],
+    () => users.find((user) => user.userId === sessionUser?.userId) ?? null,
+    [sessionUser?.userId, users],
   );
-  const hasGlobalPropertyUserAccess =
-    authRole === "SuperAdmin" || authRole === "AdminAssistant";
-  const isCurrentPropertyOwner = actorUser?.role === "PropertyOwner";
-  const canGrantAllPropertyPermissions =
-    hasGlobalPropertyUserAccess || isCurrentPropertyOwner;
+  const hasGlobalPropertyUserAccess = platformRole === "SuperAdmin";
   const actorPropertyRole = useMemo<PropertyUserRole>(() => {
     if (hasGlobalPropertyUserAccess) {
       return "PropertyOwner";
@@ -189,34 +215,33 @@ export function PropertyUsersManagement({
   }
 
   function hasUserPermission(action: "view" | "create" | "edit" | "delete") {
-    if (canGrantAllPropertyPermissions) {
-      return true;
-    }
-
-    return Boolean(actorUser?.permissions?.Users?.[action]);
+    return Boolean(
+      permissionMetadata?.actorAssignablePermissions?.Users?.[action],
+    );
   }
 
-  function canGrantPermission(group: PermissionGroup, action: PermissionAction) {
-    if (canGrantAllPropertyPermissions) {
-      return true;
-    }
-
-    return Boolean(actorUser?.permissions?.[group]?.[action]);
+  function canGrantPermission(group: string, action: PermissionAction) {
+    return Boolean(
+      permissionMetadata?.actorAssignablePermissions?.[group]?.[action],
+    );
   }
 
   function restrictPermissions(
     matrix: PermissionMatrixValue,
     preserved?: PermissionMatrixValue,
   ) {
-    const normalized = normalizePermissionMatrix(matrix);
-    if (canGrantAllPropertyPermissions) {
+    const normalized = normalizePermissionMatrix(matrix, permissionMetadata);
+    if (!permissionMetadata) {
       return normalized;
     }
 
-    const preservedPermissions = normalizePermissionMatrix(preserved);
-    const next = normalizePermissionMatrix(null);
-    permissionGroups.forEach((group) => {
-      permissionActions.forEach((action) => {
+    const preservedPermissions = normalizePermissionMatrix(
+      preserved,
+      permissionMetadata,
+    );
+    const next = normalizePermissionMatrix(null, permissionMetadata);
+    permissionMetadata.groups.forEach((group) => {
+      permissionMetadata.actions.forEach((action) => {
         next[group.key][action.key] = canGrantPermission(group.key, action.key)
           ? Boolean(normalized[group.key]?.[action.key])
           : Boolean(preservedPermissions[group.key]?.[action.key]);
@@ -232,44 +257,49 @@ export function PropertyUsersManagement({
 
   async function load() {
     setError("");
-    const [property, userItems] = await Promise.all([
-      apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`).catch(
-        () => null,
-      ),
-      apiRequest<PropertyUserResponse[]>(
-        `/owner/properties/${propertyId}/users`,
+    const [property, userItems, metadata] = await Promise.all([
+      apiRequest<PropertyResponse>(propertyApiBase).catch(() => null),
+      apiRequest<PropertyUserResponse[]>(apiBase),
+      apiRequest<PropertyPermissionMetadataResponse>(
+        `${apiBase}/permission-metadata`,
       ),
     ]);
     setPropertyName(property?.name ?? "");
     setUsers(userItems);
+    setPermissionMetadata(metadata);
+    setForm(createEmptyForm(metadata));
   }
 
   useEffect(() => {
     load()
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
-  }, [propertyId]);
+  }, [apiBase, propertyApiBase]);
 
   function openCreate() {
+    if (!permissionMetadata) return;
     setEditingUser(null);
     const defaultRole =
       (availableRoleOptions[0]?.value as PropertyUserForm["role"] | undefined) ??
       "Custom";
     setForm({
-      ...emptyForm,
+      ...createEmptyForm(permissionMetadata),
       role: defaultRole,
-      permissions: restrictPermissions(createRolePermissionMatrix(defaultRole)),
+      permissions: restrictPermissions(
+        permissionMetadata.roleDefaults[defaultRole],
+      ),
     });
     setDialogOpen(true);
   }
 
   function openEdit(user: PropertyUserResponse) {
+    if (!permissionMetadata) return;
     if (!canManageRole(user.role)) {
       hierarchyError("شما نمی‌توانید کاربری با نقش بالاتر را ویرایش کنید.");
       return;
     }
     setEditingUser(user);
-    const userForm = toForm(user);
+    const userForm = toForm(user, permissionMetadata);
     setForm({
       ...userForm,
       permissions: restrictPermissions(
@@ -300,7 +330,10 @@ export function PropertyUsersManagement({
             username: form.username || null,
             permissions: restrictPermissions(
               form.permissions,
-              normalizePermissionMatrix(editingUser.permissions),
+              normalizePermissionMatrix(
+                editingUser.permissions,
+                permissionMetadata,
+              ),
             ),
           }
         : {
@@ -309,14 +342,14 @@ export function PropertyUsersManagement({
             email: form.email,
             username: null,
             role: form.role,
-            status: "Pending",
-            isActive: false,
+            status: form.status,
+            isActive: form.status === "Active",
             permissions: restrictPermissions(form.permissions),
           };
       const saved = await apiRequest<PropertyUserResponse>(
         editingUser
-          ? `/owner/properties/${propertyId}/users/${editingUser.userId}`
-          : `/owner/properties/${propertyId}/users`,
+          ? `${apiBase}/${editingUser.userId}`
+          : apiBase,
         {
           method: editingUser ? "PUT" : "POST",
           body: JSON.stringify(body),
@@ -362,7 +395,7 @@ export function PropertyUsersManagement({
         Inactive: "deactivate",
       }[status];
       const saved = await apiRequest<PropertyUserResponse>(
-        `/owner/properties/${propertyId}/users/${user.userId}/${action}`,
+        `${apiBase}/${user.userId}/${action}`,
         {
           method: "PUT",
         },
@@ -620,18 +653,22 @@ export function PropertyUsersManagement({
             value={form.email}
           />
           <KoochSelect
-            onChange={(event) =>
+            onChange={(event) => {
+              const role = event.target.value as PropertyUserForm["role"];
               setForm((current) => ({
                 ...current,
-                role: event.target.value as PropertyUserForm["role"],
+                role,
                 permissions: restrictPermissions(
-                  createRolePermissionMatrix(event.target.value),
+                  permissionMetadata?.roleDefaults[role] ?? {},
                   editingUser
-                    ? normalizePermissionMatrix(editingUser.permissions)
+                    ? normalizePermissionMatrix(
+                        editingUser.permissions,
+                        permissionMetadata,
+                      )
                     : undefined,
                 ),
-              }))
-            }
+              }));
+            }}
             value={form.role}
           >
             {roleOptions.map((role) => (
@@ -655,7 +692,9 @@ export function PropertyUsersManagement({
               </p>
             </div>
             <PermissionMatrix
+              actions={permissionMetadata?.actions ?? []}
               disabled={!hasUserPermission(editingUser ? "edit" : "create")}
+              groups={permissionMetadata?.groups ?? []}
               isActionDisabled={(group, action) => !canGrantPermission(group, action)}
               onChange={(permissions) =>
                 setForm((current) => ({
@@ -663,7 +702,10 @@ export function PropertyUsersManagement({
                   permissions: restrictPermissions(
                     permissions,
                     editingUser
-                      ? normalizePermissionMatrix(editingUser.permissions)
+                      ? normalizePermissionMatrix(
+                          editingUser.permissions,
+                          permissionMetadata,
+                        )
                       : undefined,
                   ),
                 }))
@@ -672,50 +714,34 @@ export function PropertyUsersManagement({
             />
           </div>
           {editingUser && (
-            <>
-              <KoochInput
-                dir="ltr"
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    username: event.target.value,
-                  }))
-                }
-                placeholder="نام کاربری"
-                value={form.username}
-              />
-              <KoochSelect
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    status: event.target.value as PropertyUserStatus,
-                    isActive: event.target.value === "Active",
-                  }))
-                }
-                value={form.status}
-              >
-                {statusOptions.map((status) => (
-                  <option key={status.value} value={status.value}>
-                    {status.label}
-                  </option>
-                ))}
-              </KoochSelect>
-              <label className="flex items-center gap-2 text-sm font-bold text-foreground">
-                <input
-                  checked={form.isActive}
-                  className="h-4 w-4 accent-primary"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      isActive: event.target.checked,
-                    }))
-                  }
-                  type="checkbox"
-                />
-                کاربر فعال باشد
-              </label>
-            </>
+            <KoochInput
+              dir="ltr"
+              onChange={(event) =>
+                setForm((current) => ({
+                  ...current,
+                  username: event.target.value,
+                }))
+              }
+              placeholder="نام کاربری"
+              value={form.username}
+            />
           )}
+          <KoochSelect
+            onChange={(event) =>
+              setForm((current) => ({
+                ...current,
+                status: event.target.value as PropertyUserStatus,
+                isActive: event.target.value === "Active",
+              }))
+            }
+            value={form.status}
+          >
+            {statusOptions.map((status) => (
+              <option key={status.value} value={status.value}>
+                {status.label}
+              </option>
+            ))}
+          </KoochSelect>
         </form>
       </KoochDialog>
 

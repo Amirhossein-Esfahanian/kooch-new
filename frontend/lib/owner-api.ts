@@ -1,4 +1,4 @@
-export const propertyTypes = [
+﻿export const propertyTypes = [
   "TraditionalHouse",
   "BoutiqueHotel",
   "EcoLodge",
@@ -113,7 +113,25 @@ export type PermissionAction = "view" | "create" | "edit" | "delete" | "export";
 
 export type PermissionActions = Record<PermissionAction, boolean>;
 
-export type PermissionMatrixValue = Record<PermissionGroup, PermissionActions>;
+export type PermissionMatrixValue = Record<string, PermissionActions>;
+
+export interface PropertyPermissionGroupMetadata {
+  key: PermissionGroup;
+  label: string;
+  supportedActions: PermissionAction[];
+}
+
+export interface PropertyPermissionActionMetadata {
+  key: PermissionAction;
+  label: string;
+}
+
+export interface PropertyPermissionMetadataResponse {
+  groups: PropertyPermissionGroupMetadata[];
+  actions: PropertyPermissionActionMetadata[];
+  roleDefaults: Record<PropertyUserRole, PermissionMatrixValue>;
+  actorAssignablePermissions: PermissionMatrixValue;
+}
 
 export interface PropertyUserResponse {
   id: number;
@@ -177,9 +195,6 @@ export interface AdminUserResponse {
   role: UserRole;
   parentUserId: number | null;
   parentUserName: string | null;
-  propertyId: number | null;
-  propertyName: string | null;
-  properties: AdminUserPropertyAccessResponse[];
   permissions: AdminPermissionKey[];
   isActive: boolean;
   passwordSetupRequired: boolean;
@@ -188,12 +203,16 @@ export interface AdminUserResponse {
   temporarySetupLink?: string | null;
 }
 
-export interface AdminUserPropertyAccessResponse {
-  propertyId: number;
-  propertyName: string;
-  status: PropertyUserStatus;
-  role: PropertyUserRole;
+export interface AdminPropertyOwnerAccountResponse {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  email: string;
+  phoneNumber: string | null;
   isActive: boolean;
+  passwordSetupRequired: boolean;
+  temporarySetupLink?: string | null;
 }
 
 export interface RoomTypeResponse {
@@ -573,8 +592,6 @@ const tokenKey = "kooch_owner_token";
 const userRoleKey = "kooch_user_role";
 const userNameKey = "kooch_user_name";
 export const ownerPropertyKey = "kooch_owner_property_id";
-export const workspaceKey = "kooch_workspace";
-export type KoochWorkspace = "admin" | "owner" | "traveler";
 
 export function getToken() {
   return typeof window === "undefined" ? null : localStorage.getItem(tokenKey);
@@ -589,58 +606,11 @@ export function setAuthUser(role: string, fullName?: string) {
   if (fullName) localStorage.setItem(userNameKey, fullName);
 }
 
-export function getAuthRole() {
-  return typeof window === "undefined"
-    ? null
-    : localStorage.getItem(userRoleKey);
-}
-
-export function getAuthUserId() {
-  const token = getToken();
-  if (!token) return null;
-  try {
-    const payload = token.split(".")[1];
-    if (!payload) return null;
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(
-      normalized.length + ((4 - (normalized.length % 4)) % 4),
-      "=",
-    );
-    const decoded = JSON.parse(window.atob(padded));
-    const id =
-      decoded.nameid ??
-      decoded.sub ??
-      decoded[
-        "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/nameidentifier"
-      ];
-    const numericId = Number(id);
-    return Number.isFinite(numericId) ? numericId : null;
-  } catch {
-    return null;
-  }
-}
-
-export function getAuthName() {
-  return typeof window === "undefined"
-    ? null
-    : localStorage.getItem(userNameKey);
-}
-
-export function setWorkspace(workspace: KoochWorkspace) {
-  localStorage.setItem(workspaceKey, workspace);
-}
-
-export function getWorkspace() {
-  return typeof window === "undefined"
-    ? null
-    : localStorage.getItem(workspaceKey);
-}
-
 export function clearToken() {
   localStorage.removeItem(tokenKey);
   localStorage.removeItem(userRoleKey);
   localStorage.removeItem(userNameKey);
-  localStorage.removeItem(workspaceKey);
+  localStorage.removeItem("kooch_workspace");
 }
 
 export class ApiRequestError extends Error {

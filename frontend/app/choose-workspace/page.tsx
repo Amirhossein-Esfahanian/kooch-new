@@ -7,10 +7,9 @@ import {
   resolveSessionDestination,
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
-import { KoochWorkspace, setWorkspace } from "@/lib/owner-api";
 
 type WorkspaceOption = {
-  key: KoochWorkspace;
+  key: AuthWorkspace;
   title: string;
   description: string;
 };
@@ -18,7 +17,7 @@ type WorkspaceOption = {
 const options: WorkspaceOption[] = [
   { key: "admin", title: "پنل مدیریت سایت", description: "مدیریت اقامتگاه‌ها، کاربران، امکانات و گزارش‌ها" },
   { key: "owner", title: "پنل مالک اقامتگاه", description: "مدیریت اقامتگاه‌ها، اتاق‌ها، تصاویر و موجودی" },
-  { key: "traveler", title: "سایت مسافر", description: "مشاهده صفحه اصلی، جست‌وجو و صفحات عمومی" },
+  { key: "account", title: "سایت مسافر", description: "مشاهده صفحه اصلی، جست‌وجو و صفحات عمومی" },
 ];
 
 export default function ChooseWorkspacePage() {
@@ -26,20 +25,14 @@ export default function ChooseWorkspacePage() {
   const session = useAuthSession();
   const { authenticated, loading, user, workspaces } = session;
   const visibleOptions = options.filter(
-    (option) =>
-      option.key === "traveler" ||
-      (option.key === "admin" && workspaces.includes("admin")) ||
-      (option.key === "owner" && workspaces.includes("owner")),
+    (option) => workspaces.includes(option.key),
   );
 
   function choose(option: WorkspaceOption) {
-    setWorkspace(option.key);
-    const requestedWorkspace: AuthWorkspace | null =
-      option.key === "traveler" ? "account" : option.key;
     router.push(
-      option.key === "traveler"
+      option.key === "account"
         ? "/"
-        : resolveSessionDestination(session, requestedWorkspace),
+        : resolveSessionDestination(session, option.key),
     );
   }
 

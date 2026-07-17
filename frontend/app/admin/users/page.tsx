@@ -1,8 +1,8 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
@@ -29,28 +29,29 @@ import {
   AdminPermissionKey,
   AdminUserResponse,
   apiRequest,
-  getToken,
-  PropertyResponse,
   UserRole,
 } from "@/lib/owner-api";
 import { KoochIcon } from "../../../components/KoochIcon";
 
-const roles: UserRole[] = [
+type PlatformAdminRole = Extract<UserRole, "SuperAdmin" | "AdminAssistant">;
+
+const roles: PlatformAdminRole[] = [
   "SuperAdmin",
   "AdminAssistant",
-  "Owner",
-  "OwnerAssistant",
 ];
 
-const roleLabels: Record<UserRole, string> = {
-  SuperAdmin: "مدیر ارشد",
-  AdminAssistant: "دستیار مدیر",
-  Owner: "مالک اقامتگاه",
-  OwnerAssistant: "همکار مالک",
-  Client: "مسافر",
+const roleLabels: Record<PlatformAdminRole, string> = {
+  SuperAdmin: "Ù…Ø¯ÛŒØ± Ø§Ø±Ø´Ø¯",
+  AdminAssistant: "Ø¯Ø³ØªÛŒØ§Ø± Ù…Ø¯ÛŒØ±",
 };
 
-type UserRoleFilter = "all" | UserRole;
+function roleLabel(role: UserRole) {
+  return roles.includes(role as PlatformAdminRole)
+    ? roleLabels[role as PlatformAdminRole]
+    : role;
+}
+
+type UserRoleFilter = "all" | PlatformAdminRole;
 type UserStatusFilter = "all" | "active" | "inactive" | "passwordSetupRequired";
 
 const permissionCategories: Array<{
@@ -144,8 +145,7 @@ type UserForm = {
   email: string;
   phoneNumber: string;
   password: string;
-  role: UserRole;
-  propertyIds: string[];
+  role: PlatformAdminRole;
   permissions: AdminPermissionKey[];
 };
 
@@ -156,8 +156,7 @@ const emptyForm: UserForm = {
   email: "",
   phoneNumber: "",
   password: "",
-  role: "Owner",
-  propertyIds: [],
+  role: "AdminAssistant",
   permissions: [],
 };
 
@@ -167,10 +166,6 @@ function normalizeSearchText(value: unknown) {
     .toLowerCase()
     .replaceAll("ي", "ی")
     .replaceAll("ك", "ک");
-}
-
-function isGlobalAdminRole(role: UserRole) {
-  return role === "SuperAdmin" || role === "AdminAssistant";
 }
 
 function statusVariant(user: AdminUserResponse) {
@@ -193,55 +188,22 @@ function validatePassword(password: string) {
 }
 
 export default function AdminUsersPage() {
-  const router = useRouter();
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [users, setUsers] = useState<AdminUserResponse[]>([]);
-  const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [propertySearch, setPropertySearch] = useState("");
   const [error, setError] = useState("");
   const [setupLink, setSetupLink] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
-  const [propertyFilter, setPropertyFilter] = useState("all");
-
-  const filteredProperties = useMemo(() => {
-    const query = normalizeSearchText(propertySearch);
-
-    if (!query) return properties;
-
-    return properties.filter((property) =>
-      [property.name, property.englishName, property.city, property.ownerName]
-        .map(normalizeSearchText)
-        .some((value) => value.includes(query)),
-    );
-  }, [properties, propertySearch]);
-
-  const selectedProperties = useMemo(
-    () =>
-      form.propertyIds
-        .map((id) =>
-          properties.find((property) => property.id.toString() === id),
-        )
-        .filter((property): property is PropertyResponse => Boolean(property)),
-    [form.propertyIds, properties],
-  );
 
   const filteredUsers = useMemo(() => {
     const query = normalizeSearchText(searchTerm);
 
     return users.filter((user) => {
-      const userPropertyIds =
-        user.properties?.map((property) => property.propertyId.toString()) ??
-        (user.propertyId ? [user.propertyId.toString()] : []);
-
-      const userPropertyNames =
-        user.properties?.map((property) => property.propertyName) ??
-        (user.propertyName ? [user.propertyName] : []);
-
       const matchesSearch =
         !query ||
         [
@@ -250,9 +212,8 @@ export default function AdminUsersPage() {
           user.lastName,
           user.email,
           user.phoneNumber,
-          roleLabels[user.role],
+          roleLabel(user.role),
           statusLabel(user),
-          ...userPropertyNames,
         ]
           .map(normalizeSearchText)
           .some((value) => value.includes(query));
@@ -268,34 +229,21 @@ export default function AdminUsersPage() {
         (statusFilter === "passwordSetupRequired" &&
           user.passwordSetupRequired);
 
-      const matchesProperty =
-        propertyFilter === "all" || userPropertyIds.includes(propertyFilter);
-
-      return matchesSearch && matchesRole && matchesStatus && matchesProperty;
+      return matchesSearch && matchesRole && matchesStatus;
     });
-  }, [propertyFilter, roleFilter, searchTerm, statusFilter, users]);
+  }, [roleFilter, searchTerm, statusFilter, users]);
 
   const hasActiveFilters =
     Boolean(searchTerm.trim()) ||
     roleFilter !== "all" ||
-    statusFilter !== "all" ||
-    propertyFilter !== "all";
+    statusFilter !== "all";
 
   async function load() {
-    const [userItems, propertyItems] = await Promise.all([
-      apiRequest<AdminUserResponse[]>("/admin/users"),
-      apiRequest<PropertyResponse[]>("/admin/properties").catch(() => []),
-    ]);
-
-    setUsers(userItems);
-    setProperties(propertyItems);
+    setUsers(await apiRequest<AdminUserResponse[]>("/admin/users"));
   }
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
 
     load()
       .catch((caught: Error) => {
@@ -303,18 +251,16 @@ export default function AdminUsersPage() {
         toast.error(caught.message);
       })
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authenticated, sessionLoading, workspaces]);
 
   function resetFilters() {
     setSearchTerm("");
     setRoleFilter("all");
     setStatusFilter("all");
-    setPropertyFilter("all");
   }
 
   function openCreate() {
     setForm(emptyForm);
-    setPropertySearch("");
     setError("");
     setDialogOpen(true);
   }
@@ -327,13 +273,9 @@ export default function AdminUsersPage() {
       email: user.email,
       phoneNumber: user.phoneNumber ?? "",
       password: "",
-      role: user.role,
-      propertyIds:
-        user.properties?.map((property) => property.propertyId.toString()) ??
-        (user.propertyId ? [user.propertyId.toString()] : []),
+      role: user.role as PlatformAdminRole,
       permissions: user.permissions ?? [],
     });
-    setPropertySearch("");
     setError("");
     setDialogOpen(true);
   }
@@ -342,18 +284,10 @@ export default function AdminUsersPage() {
     if (saving) return;
     setDialogOpen(false);
     setForm(emptyForm);
-    setPropertySearch("");
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!isGlobalAdminRole(form.role) && form.propertyIds.length === 0) {
-      const message = "برای این کاربر حداقل یک اقامتگاه انتخاب کنید.";
-      setError(message);
-      toast.error(message);
-      return;
-    }
 
     const passwordError = form.password ? validatePassword(form.password) : "";
     if (passwordError) {
@@ -378,10 +312,6 @@ export default function AdminUsersPage() {
             password: form.password ? form.password : null,
             role: form.role,
             parentUserId: null,
-            propertyId: form.propertyIds[0]
-              ? Number(form.propertyIds[0])
-              : null,
-            propertyIds: form.propertyIds.map((id) => Number(id)),
             permissions: form.permissions,
           }),
         },
@@ -432,24 +362,6 @@ export default function AdminUsersPage() {
       toast.error(message);
       throw caught;
     }
-  }
-
-  function addPropertyAccess(propertyId: string) {
-    if (!propertyId) return;
-
-    setForm((current) => ({
-      ...current,
-      propertyIds: current.propertyIds.includes(propertyId)
-        ? current.propertyIds
-        : [...current.propertyIds, propertyId],
-    }));
-  }
-
-  function removePropertyAccess(propertyId: string) {
-    setForm((current) => ({
-      ...current,
-      propertyIds: current.propertyIds.filter((id) => id !== propertyId),
-    }));
   }
 
   function setPermission(permission: AdminPermissionKey, checked: boolean) {
@@ -530,11 +442,11 @@ export default function AdminUsersPage() {
             padding="sm"
             variant="elevated"
           >
-            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_190px_190px_220px_auto] xl:items-end">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_190px_190px_auto] xl:items-end">
               <KoochField label="جستجو">
                 <KoochInput
                   onChange={(event) => setSearchTerm(event.target.value)}
-                  placeholder="نام، ایمیل، شماره تماس، نقش، اقامتگاه..."
+                  placeholder="نام، ایمیل، شماره تماس یا نقش..."
                   value={searchTerm}
                 />
               </KoochField>
@@ -568,20 +480,6 @@ export default function AdminUsersPage() {
                   <option value="passwordSetupRequired">
                     در انتظار تنظیم رمز
                   </option>
-                </KoochSelect>
-              </KoochField>
-
-              <KoochField label="اقامتگاه">
-                <KoochSelect
-                  onChange={(event) => setPropertyFilter(event.target.value)}
-                  value={propertyFilter}
-                >
-                  <option value="all">همه اقامتگاه‌ها</option>
-                  {properties.map((property) => (
-                    <option key={property.id} value={property.id.toString()}>
-                      {property.name}
-                    </option>
-                  ))}
                 </KoochSelect>
               </KoochField>
 
@@ -619,7 +517,6 @@ export default function AdminUsersPage() {
                 <KoochTableHead>کاربر</KoochTableHead>
                 <KoochTableHead>شماره تماس</KoochTableHead>
                 <KoochTableHead>نقش</KoochTableHead>
-                <KoochTableHead>اقامتگاه</KoochTableHead>
                 <KoochTableHead>وضعیت</KoochTableHead>
                 <KoochTableHead>عملیات</KoochTableHead>
               </KoochTableRow>
@@ -627,15 +524,15 @@ export default function AdminUsersPage() {
 
             <KoochTableBody>
               {loading ? (
-                <KoochTableEmpty colSpan={7}>
+                <KoochTableEmpty colSpan={6}>
                   در حال بارگذاری...
                 </KoochTableEmpty>
               ) : users.length === 0 ? (
-                <KoochTableEmpty colSpan={7}>
+                <KoochTableEmpty colSpan={6}>
                   هنوز کاربری ثبت نشده است.
                 </KoochTableEmpty>
               ) : filteredUsers.length === 0 ? (
-                <KoochTableEmpty colSpan={7}>
+                <KoochTableEmpty colSpan={6}>
                   موردی با فیلترهای انتخاب‌شده پیدا نشد.
                 </KoochTableEmpty>
               ) : (
@@ -658,24 +555,7 @@ export default function AdminUsersPage() {
                     </KoochTableCell>
 
                     <KoochTableCell>{user.phoneNumber}</KoochTableCell>
-                    <KoochTableCell>{roleLabels[user.role]}</KoochTableCell>
-
-                    <KoochTableCell className="text-muted-foreground">
-                      {user.properties?.length ? (
-                        <div className="flex flex-wrap gap-1.5">
-                          {user.properties.map((property) => (
-                            <KoochBadge
-                              key={property.propertyId}
-                              variant="muted"
-                            >
-                              {property.propertyName}
-                            </KoochBadge>
-                          ))}
-                        </div>
-                      ) : (
-                        (user.propertyName ?? "-")
-                      )}
-                    </KoochTableCell>
+                    <KoochTableCell>{roleLabel(user.role)}</KoochTableCell>
 
                     <KoochTableCell>
                       <KoochBadge variant={statusVariant(user)}>
@@ -845,12 +725,7 @@ export default function AdminUsersPage() {
                   onChange={(event) =>
                     setForm((current) => ({
                       ...current,
-                      role: event.target.value as UserRole,
-                      propertyIds: isGlobalAdminRole(
-                        event.target.value as UserRole,
-                      )
-                        ? []
-                        : current.propertyIds,
+                      role: event.target.value as PlatformAdminRole,
                       permissions:
                         event.target.value === "AdminAssistant"
                           ? current.permissions
@@ -960,72 +835,6 @@ export default function AdminUsersPage() {
               </KoochCard>
             )}
 
-            {!isGlobalAdminRole(form.role) && (
-              <KoochCard padding="sm" variant="muted">
-                <div className="grid gap-3">
-                  <div>
-                    <p className="text-sm font-black text-foreground">
-                      اتصال به اقامتگاه
-                    </p>
-                    <p className="mt-1 text-xs leading-6 text-muted-foreground">
-                      برای نقش‌های سراسری این بخش می‌تواند خالی بماند. برای
-                      همکار مالک، اقامتگاه را با نام انتخاب کنید.
-                    </p>
-                  </div>
-
-                  <KoochInput
-                    onChange={(event) => setPropertySearch(event.target.value)}
-                    placeholder="جستجوی نام اقامتگاه، شهر یا مالک"
-                    value={propertySearch}
-                  />
-
-                  <KoochSelect
-                    onChange={(event) => addPropertyAccess(event.target.value)}
-                    value=""
-                  >
-                    <option value="">بدون اقامتگاه / دسترسی سراسری</option>
-                    {filteredProperties
-                      .filter(
-                        (property) =>
-                          !form.propertyIds.includes(property.id.toString()),
-                      )
-                      .map((property) => (
-                        <option key={property.id} value={property.id}>
-                          {property.name} - {property.city} -{" "}
-                          {property.ownerName}
-                        </option>
-                      ))}
-                  </KoochSelect>
-
-                  {selectedProperties.length > 0 ? (
-                    <div className="flex flex-wrap gap-2">
-                      {selectedProperties.map((property) => (
-                        <span
-                          className="inline-flex items-center gap-2 rounded-full border border-border bg-card px-3 py-1 text-xs font-bold text-card-foreground"
-                          key={property.id}
-                        >
-                          {property.name}
-                          <button
-                            aria-label={`حذف دسترسی ${property.name}`}
-                            className="text-muted-foreground transition hover:text-destructive"
-                            onClick={() =>
-                              removePropertyAccess(property.id.toString())
-                            }
-                            type="button"
-                          >
-                            ×
-                          </button>
-                        </span>
-                      ))}
-                    </div>
-                  ) : (
-                    <p className="text-xs font-bold text-destructive">
-                      حداقل یک اقامتگاه انتخاب کنید.
-                    </p>
-                  )}
-                </div>
-              </KoochCard>
-            )}
           </form>
         </KoochDialog>
       </main>

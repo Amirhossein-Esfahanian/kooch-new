@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -13,8 +14,6 @@ import {
 } from "@/components/pricing/PricingWarnings";
 import {
   apiRequest,
-  getToken,
-  ownerPropertyKey,
   PropertyCompletionResponse,
   PropertyResponse,
   RoomTypeResponse,
@@ -27,7 +26,7 @@ const linkButtonClass =
 export default function OwnerPropertyDashboardPage() {
   const params = useParams<{ id: string }>();
   const propertyId = Number(params.id);
-  const router = useRouter();
+  const { authenticated, loading, workspaces } = useAuthSession();
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [completion, setCompletion] =
     useState<PropertyCompletionResponse | null>(null);
@@ -35,12 +34,7 @@ export default function OwnerPropertyDashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-
-    localStorage.setItem(ownerPropertyKey, propertyId.toString());
+    if (loading || !authenticated || !workspaces.includes("owner")) return;
 
     Promise.all([
       apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`),
@@ -57,7 +51,7 @@ export default function OwnerPropertyDashboardPage() {
         setRoomTypes(roomTypesResult);
       })
       .catch((caught: Error) => setError(caught.message));
-  }, [propertyId, router]);
+  }, [authenticated, loading, propertyId, workspaces]);
 
   const cards = [
     {

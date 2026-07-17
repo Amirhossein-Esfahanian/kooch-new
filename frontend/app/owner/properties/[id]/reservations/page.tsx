@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import {
@@ -18,12 +19,8 @@ import {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
-import {
-  apiRequest,
-  getToken,
-  ownerPropertyKey,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
+import { apiRequest } from "@/lib/owner-api";
 import { toast } from "sonner";
 
 type ReservationStatusFilter = "" | ReservationTableStatus;
@@ -96,8 +93,8 @@ function buildReservationsPath(
 
 export default function OwnerReservationsPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
-  const router = useRouter();
-  const [property, setProperty] = useState<PropertyResponse | null>(null);
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const { propertyName } = useOwnerProperty();
   const [reservations, setReservations] = useState<ReservationTableItem[]>([]);
   const [selectedReservationState, setSelectedReservation] =
     useState<ReservationTableItem | null>(null);
@@ -132,21 +129,9 @@ export default function OwnerReservationsPage() {
   }, [currentPage, filters, propertyId]);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-
-    localStorage.setItem(ownerPropertyKey, propertyId.toString());
-    apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`)
-      .then(setProperty)
-      .catch((caught: Error) => setError(caught.message));
-  }, [propertyId, router]);
-
-  useEffect(() => {
-    if (!getToken()) return;
+    if (sessionLoading || !authenticated || !workspaces.includes("owner")) return;
     void loadReservations();
-  }, [loadReservations]);
+  }, [authenticated, loadReservations, sessionLoading, workspaces]);
 
   function applyFilters(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -272,7 +257,7 @@ export default function OwnerReservationsPage() {
             </Link>
             </div>
           }
-          description={property?.name ?? "در حال بارگذاری..."}
+          description={propertyName ?? "در حال بارگذاری..."}
           eyebrow="اقامتگاه فعال"
           title="رزروها"
         />

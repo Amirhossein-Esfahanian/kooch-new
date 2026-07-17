@@ -11,6 +11,19 @@ namespace Kooch.Api.Controllers;
 [Route("api/owner/properties/{propertyId:int}/users")]
 public class PropertyUsersController(IPropertyUserService propertyUserService) : AuthenticatedControllerBase
 {
+    [HttpGet("permission-metadata")]
+    [ProducesResponseType<PropertyPermissionMetadataResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyPermissionMetadataResponse>> GetPermissionMetadata(
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.GetPermissionMetadataAsync(
+            user.UserId,
+            propertyId,
+            cancellationToken));
+    }
+
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PropertyUserResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<PropertyUserResponse>>> Get(

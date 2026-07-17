@@ -5,12 +5,12 @@ import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCheckbox } from "@/components/KoochCheckbox";
 import { KoochDialog } from "@/components/KoochDialog";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   KoochField,
   KoochInput,
   KoochSelect,
 } from "@/components/KoochFormControls";
-import { getAuthName } from "@/lib/owner-api";
 
 type ProfileForm = {
   avatar: string;
@@ -43,7 +43,7 @@ const defaultForm: ProfileForm = {
   inAppNotifications: true,
 };
 
-function readProfile(): ProfileForm {
+function readProfile(sessionName: string): ProfileForm {
   if (typeof window === "undefined") return defaultForm;
 
   const savedProfile = localStorage.getItem(storageKey);
@@ -57,7 +57,7 @@ function readProfile(): ProfileForm {
     return {
       ...defaultForm,
       ...parsed,
-      name: parsed.name || getAuthName() || defaultForm.name,
+      name: parsed.name || sessionName || defaultForm.name,
       password: "",
       passwordConfirm: "",
       theme:
@@ -71,7 +71,7 @@ function readProfile(): ProfileForm {
   } catch {
     return {
       ...defaultForm,
-      name: getAuthName() || defaultForm.name,
+      name: sessionName || defaultForm.name,
     };
   }
 }
@@ -96,14 +96,15 @@ export function KoochUserProfileDialog({
   onOpenChange: (open: boolean) => void;
   open: boolean;
 }) {
+  const { user } = useAuthSession();
   const [form, setForm] = useState<ProfileForm>(defaultForm);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (open) {
-      setForm(readProfile());
+      setForm(readProfile(user?.fullName ?? ""));
     }
-  }, [open]);
+  }, [open, user?.fullName]);
 
   const avatarPreview = useMemo(() => form.avatar.trim(), [form.avatar]);
 

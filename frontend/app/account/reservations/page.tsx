@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KoochBadge } from "@/components/KoochBadge";
+import {
+  resolveSessionDestination,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -27,7 +31,7 @@ import {
   usePaymentCountdown,
 } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
-import { apiRequest, getAuthRole, getToken } from "@/lib/owner-api";
+import { apiRequest } from "@/lib/owner-api";
 
 const pageSize = 10;
 
@@ -80,6 +84,8 @@ function ReservationPaymentCountdown({
 
 export default function AccountReservationsPage() {
   const router = useRouter();
+  const session = useAuthSession();
+  const { authenticated, loading: sessionLoading, workspaces } = session;
   const [reservations, setReservations] = useState<AccountReservation[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(0);
@@ -106,18 +112,20 @@ export default function AccountReservationsPage() {
   }, [currentPage]);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (sessionLoading) return;
+
+    if (!authenticated) {
       router.replace("/login");
       return;
     }
 
-    if (getAuthRole() !== "Client") {
-      router.replace("/");
+    if (!workspaces.includes("account")) {
+      router.replace(resolveSessionDestination(session));
       return;
     }
 
     void loadReservations();
-  }, [loadReservations, router]);
+  }, [authenticated, loadReservations, router, session, sessionLoading, workspaces]);
 
   return (
     <main

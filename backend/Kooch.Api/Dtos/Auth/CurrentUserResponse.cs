@@ -13,6 +13,7 @@ public class CurrentUserResponse
     public string Email { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; }
     public UserRole PlatformRole { get; set; }
+    public IReadOnlyList<PermissionKey> PlatformPermissions { get; set; } = [];
     public bool IsActive { get; set; }
     public IReadOnlyList<string> Workspaces { get; set; } = [];
     public IReadOnlyList<CurrentUserPropertyMembershipResponse> PropertyMemberships { get; set; } = [];
@@ -39,3 +40,5 @@ public static class WorkspaceNames
     public const string Owner = "owner";
     public const string Account = "account";
 }
+
+

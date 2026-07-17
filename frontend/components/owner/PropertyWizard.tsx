@@ -4,13 +4,13 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   AmenityCategoryResponse,
   AmenityResponse,
   ApiRequestError,
   apiRequest,
   BreakfastOption,
-  getToken,
   InventoryMode,
   NearbyPlaceCategory,
   NearbyPlaceResponse,
@@ -233,6 +233,11 @@ function boolLabel(value: boolean, label: string) {
 
 export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: PropertyWizardProps) {
   const router = useRouter();
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const canLoadWorkspace =
+    !sessionLoading &&
+    authenticated &&
+    workspaces.includes(isAdmin ? "admin" : "owner");
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(initialData);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
@@ -259,10 +264,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   }, []);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (!canLoadWorkspace) return;
     Promise.all([
       apiRequest<AmenityCategoryResponse[]>("/amenity-categories"),
       apiRequest<AmenityResponse[]>("/amenities"),
@@ -272,10 +274,10 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         setAmenities(items);
       })
       .catch((caught: Error) => setError(caught.message));
-  }, [router]);
+  }, [canLoadWorkspace]);
 
   useEffect(() => {
-    if (mode !== "edit" || !propertyId) return;
+    if (!canLoadWorkspace || mode !== "edit" || !propertyId) return;
     setBooting(true);
     Promise.all([
       apiRequest<PropertyResponse>(isAdmin ? `/admin/properties/${propertyId}` : `/owner/properties/${propertyId}`),
@@ -341,7 +343,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       })
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setBooting(false));
-  }, [isAdmin, mode, propertyId]);
+  }, [canLoadWorkspace, isAdmin, mode, propertyId]);
 
   const propertyAmenityOptions = amenities.filter((item) => item.scope !== "RoomType");
   const completed = useMemo(() => [

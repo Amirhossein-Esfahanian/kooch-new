@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import {
@@ -78,17 +78,14 @@ function inputType(type: SiteSettingType) {
 }
 
 export default function AdminSiteSettingsPage() {
-  const router = useRouter();
+  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [settings, setSettings] = useState<SiteSettingResponse[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
 
     apiRequest<SiteSettingResponse[]>("/admin/site-settings")
       .then((items) => {
@@ -101,7 +98,7 @@ export default function AdminSiteSettingsPage() {
         toast.error(caught.message || "تنظیمات سایت بارگذاری نشد"),
       )
       .finally(() => setLoading(false));
-  }, [router]);
+  }, [authenticated, sessionLoading, workspaces]);
 
   const groupedSettings = useMemo(() => {
     return settings.reduce<Record<string, SiteSettingResponse[]>>(

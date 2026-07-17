@@ -1,13 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
+import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import {
   apiRequest,
-  getToken,
-  ownerPropertyKey,
   PropertyResponse,
 } from "@/lib/owner-api";
 
@@ -20,20 +19,17 @@ export function OwnerPanel({
   title: string;
   children: ReactNode;
 }) {
-  const router = useRouter();
+  const { authenticated, loading, workspaces } = useAuthSession();
+  const { propertyName } = useOwnerProperty();
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
-    localStorage.setItem(ownerPropertyKey, propertyId.toString());
+    if (loading || !authenticated || !workspaces.includes("owner")) return;
     apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`)
       .then(setProperty)
       .catch((caught: Error) => setError(caught.message));
-  }, [propertyId, router]);
+  }, [authenticated, loading, propertyId, workspaces]);
 
   return (
     <OwnerLayout>
@@ -43,7 +39,7 @@ export function OwnerPanel({
             <p className="text-xs font-bold text-slate-400">اقامتگاه فعال</p>
             <h1 className="mt-1 text-2xl font-black text-slate-950 dark:text-slate-100">{title}</h1>
             <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-              {property?.name ?? "در حال بارگذاری..."}
+              {propertyName ?? "در حال بارگذاری..."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">

@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { ReactNode, useEffect, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   getPropertyFinancialWarnings,
   PricingSettingsWarning,
 } from "@/components/pricing/PricingWarnings";
-import { apiRequest, getToken, PropertyResponse } from "@/lib/owner-api";
+import { apiRequest, PropertyResponse } from "@/lib/owner-api";
 
 export function AdminPropertyPanel({
   children,
@@ -21,20 +21,17 @@ export function AdminPropertyPanel({
   showPricingWarnings?: boolean;
   title: string;
 }) {
-  const router = useRouter();
+  const { authenticated, loading, workspaces } = useAuthSession();
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!getToken()) {
-      router.replace("/login");
-      return;
-    }
+    if (loading || !authenticated || !workspaces.includes("admin")) return;
 
     apiRequest<PropertyResponse>(`/admin/properties/${propertyId}`)
       .then(setProperty)
       .catch((caught: Error) => setError(caught.message));
-  }, [propertyId, router]);
+  }, [authenticated, loading, propertyId, workspaces]);
 
   return (
     <AdminLayout>

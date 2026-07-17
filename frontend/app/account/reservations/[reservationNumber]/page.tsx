@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, type ReactNode, useRef, useState } from "react";
 import { KoochBadge } from "@/components/KoochBadge";
+import {
+  resolveSessionDestination,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -19,7 +23,7 @@ import {
   usePaymentCountdown,
 } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { apiRequest, getAuthRole, getToken } from "@/lib/owner-api";
+import { apiRequest } from "@/lib/owner-api";
 
 type DetailItemProps = {
   label: string;
@@ -53,6 +57,8 @@ function DetailSection({
 export default function AccountReservationDetailsPage() {
   const currencyLabel = useSiteCurrencyLabel();
   const router = useRouter();
+  const session = useAuthSession();
+  const { authenticated, loading: sessionLoading, workspaces } = session;
   const searchParams = useSearchParams();
   const reservationNumber = decodeURIComponent(
     useParams<{ reservationNumber: string }>().reservationNumber,
@@ -90,18 +96,20 @@ export default function AccountReservationDetailsPage() {
   }, [reservationNumber]);
 
   useEffect(() => {
-    if (!getToken()) {
+    if (sessionLoading) return;
+
+    if (!authenticated) {
       router.replace("/login");
       return;
     }
 
-    if (getAuthRole() !== "Client") {
-      router.replace("/");
+    if (!workspaces.includes("account")) {
+      router.replace(resolveSessionDestination(session));
       return;
     }
 
     void loadReservation();
-  }, [loadReservation, router]);
+  }, [authenticated, loadReservation, router, session, sessionLoading, workspaces]);
 
   useEffect(() => {
     expiryRefreshStartedRef.current = false;

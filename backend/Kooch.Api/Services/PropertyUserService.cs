@@ -14,6 +14,45 @@ public class PropertyUserService(
     IAuthService authService,
     IHostEnvironment appEnvironment) : IPropertyUserService
 {
+    public async Task<PropertyPermissionMetadataResponse> GetPermissionMetadataAsync(
+        int currentUserId,
+        int propertyId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanUseUsersPermissionAsync(currentUserId, propertyId, "users.view", cancellationToken);
+
+        var effectivePermissions = await propertyAuthorizationService.GetEffectivePropertyPermissionsAsync(
+            currentUserId,
+            propertyId,
+            cancellationToken)
+            ?? throw new UnauthorizedAccessException("You cannot access this property.");
+        var supportedActions = PropertyPermissionMatrixDefaults.ActionDefinitions
+            .Select(action => action.Key)
+            .ToArray();
+
+        return new PropertyPermissionMetadataResponse
+        {
+            Groups = PropertyPermissionMatrixDefaults.GroupDefinitions
+                .Select(group => new PropertyPermissionGroupMetadataResponse
+                {
+                    Key = group.Key,
+                    Label = group.Label,
+                    SupportedActions = supportedActions
+                })
+                .ToArray(),
+            Actions = PropertyPermissionMatrixDefaults.ActionDefinitions
+                .Select(action => new PropertyPermissionActionMetadataResponse
+                {
+                    Key = action.Key,
+                    Label = action.Label
+                })
+                .ToArray(),
+            RoleDefaults = Enum.GetValues<PropertyUserRole>()
+                .ToDictionary(role => role, PropertyPermissionMatrixDefaults.CreateForRole),
+            ActorAssignablePermissions = NormalizeMatrix(effectivePermissions.PermissionMatrix)
+        };
+    }
+
     public async Task<IReadOnlyList<PropertyUserResponse>> GetUsersAsync(
         int currentUserId,
         UserRole currentRole,
@@ -98,14 +137,14 @@ public class PropertyUserService(
             Email = request.Email,
             Username = request.Username,
             Role = request.Role,
-            Status = PropertyUserStatus.Pending,
-            IsActive = false,
+            Status = request.Status,
+            IsActive = request.IsActive,
             Permissions = request.Permissions
         };
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
             propertyId,
-            invitation.Permissions ?? BuildDefaultMatrix(invitation.Role),
+            invitation.Permissions ?? PropertyPermissionMatrixDefaults.CreateForRole(invitation.Role),
             null,
             cancellationToken);
 
@@ -129,7 +168,7 @@ public class PropertyUserService(
             Username = username,
             PhoneNumber = mobile,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
-            Role = UserRole.OwnerAssistant,
+            Role = UserRole.Client,
             ParentUserId = currentUserId,
             IsActive = false,
             PasswordSetupRequired = true
@@ -213,7 +252,7 @@ public class PropertyUserService(
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
             propertyId,
-            request.Permissions ?? BuildDefaultMatrix(request.Role),
+            request.Permissions ?? PropertyPermissionMatrixDefaults.CreateForRole(request.Role),
             DeserializeMatrix(access.PermissionMatrixJson),
             cancellationToken);
         ApplyRequest(access, request);
@@ -438,7 +477,7 @@ public class PropertyUserService(
         access.PropertyRole = request.Role;
         access.Status = request.Status;
         access.IsActive = request.IsActive && request.Status == PropertyUserStatus.Active;
-        var permissions = NormalizeMatrix(request.Permissions ?? BuildDefaultMatrix(request.Role));
+        var permissions = NormalizeMatrix(request.Permissions ?? PropertyPermissionMatrixDefaults.CreateForRole(request.Role));
         access.PermissionMatrixJson = JsonSerializer.Serialize(permissions, JsonOptions);
         access.CanManageProperty = CanManageGroup(permissions, "Properties");
         access.CanManageRooms = CanManageGroup(permissions, "Rooms");
@@ -527,67 +566,6 @@ public class PropertyUserService(
             };
         }
         return normalized;
-    }
-
-    private static PermissionMatrixDto BuildDefaultMatrix(PropertyUserRole role)
-    {
-        var matrix = new PermissionMatrixDto();
-        foreach (var group in PermissionGroups)
-        {
-            matrix[group] = new PermissionActionsDto();
-        }
-
-        void Allow(string group, bool create = false, bool edit = false, bool delete = false, bool export = false)
-        {
-            matrix[group] = new PermissionActionsDto
-            {
-                View = true,
-                Create = create,
-                Edit = edit,
-                Delete = delete,
-                Export = export
-            };
-        }
-
-        switch (role)
-        {
-            case PropertyUserRole.Manager:
-                Allow("Dashboard");
-                Allow("Properties", create: true, edit: true);
-                Allow("Rooms", create: true, edit: true, delete: true);
-                Allow("Pricing", create: true, edit: true);
-                Allow("Inventory", create: true, edit: true);
-                Allow("Bookings", create: true, edit: true, delete: true, export: true);
-                Allow("Reviews", edit: true, delete: true);
-                Allow("Users", create: true, edit: true);
-                Allow("Financial", export: true);
-                Allow("Reports", export: true);
-                Allow("Settings", edit: true);
-                break;
-            case PropertyUserRole.Reception:
-                Allow("Dashboard");
-                Allow("Rooms");
-                Allow("Inventory");
-                Allow("Bookings", create: true, edit: true, export: true);
-                Allow("Reviews", edit: true);
-                break;
-            case PropertyUserRole.Accounting:
-                Allow("Dashboard");
-                Allow("Pricing");
-                Allow("Financial", create: true, edit: true, export: true);
-                Allow("Reports", export: true);
-                break;
-            case PropertyUserRole.Housekeeping:
-                Allow("Dashboard");
-                Allow("Rooms", edit: true);
-                Allow("Inventory", edit: true);
-                break;
-            case PropertyUserRole.Custom:
-            default:
-                break;
-        }
-
-        return matrix;
     }
 
     private static readonly string[] PermissionGroups = PropertyPermissionMatrixDefaults.Groups;

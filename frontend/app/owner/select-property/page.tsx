@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
+import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import {
   apiRequest,
   ApiRequestError,
-  ownerPropertyKey,
   PropertyResponse,
 } from "@/lib/owner-api";
 
@@ -17,18 +17,10 @@ export default function SelectOwnerPropertyPage() {
   const {
     authenticated,
     loading: sessionLoading,
-    propertyMemberships,
     refreshSession,
     workspaces,
   } = useAuthSession();
-  const activeMemberships = useMemo(
-    () =>
-      propertyMemberships.filter(
-        (membership) =>
-          membership.isActive && membership.membershipStatus === "Active",
-      ),
-    [propertyMemberships],
-  );
+  const { activeMemberships, switchProperty } = useOwnerProperty();
   const hasOwnerWorkspace = workspaces.includes("owner");
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(true);
@@ -60,8 +52,7 @@ export default function SelectOwnerPropertyPage() {
 
     if (activeMemberships.length === 1) {
       const propertyId = activeMemberships[0].propertyId;
-      localStorage.setItem(ownerPropertyKey, propertyId.toString());
-      router.replace(`/owner/properties/${propertyId}`);
+      switchProperty(propertyId, { replace: true });
       return;
     }
 
@@ -101,12 +92,12 @@ export default function SelectOwnerPropertyPage() {
     refreshSession,
     router,
     sessionLoading,
+    switchProperty,
     workspaces,
   ]);
 
   function selectProperty(property: PropertyResponse) {
-    localStorage.setItem(ownerPropertyKey, property.id.toString());
-    router.push(`/owner/properties/${property.id}`);
+    switchProperty(property.id);
   }
 
   if (
