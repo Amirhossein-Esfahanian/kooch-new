@@ -1,4 +1,7 @@
+using System.Text.Json;
+using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
+using Kooch.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Data;
@@ -6,6 +9,7 @@ namespace Kooch.Api.Data;
 public static class SeedData
 {
     private const string AdminEmail = "admin@kooch.local";
+    private const string DemoOwnerEmail = "demo-owner@kooch.local";
     private const string InitialAdminPassword = "Admin@12345";
 
     public static async Task InitializeAsync(KoochDbContext dbContext)
@@ -37,7 +41,6 @@ public static class SeedData
         {
             existingAdmin.Role = UserRole.SuperAdmin;
             existingAdmin.IsActive = true;
-            existingAdmin.CanManageUsers = true;
             existingAdmin.CanBeRestricted = false;
             if (!existingAdmin.PasswordHash.StartsWith("$2", StringComparison.Ordinal))
             {
@@ -53,7 +56,6 @@ public static class SeedData
             Email = AdminEmail,
             Role = UserRole.SuperAdmin,
             IsActive = true,
-            CanManageUsers = true,
             CanBeRestricted = false
         };
 
@@ -387,15 +389,14 @@ public static class SeedData
 
     private static async Task SeedDemoPropertiesAsync(KoochDbContext dbContext)
     {
+        var ownerId = await EnsureDemoOwnerAsync(dbContext);
+
         if (await dbContext.Properties.IgnoreQueryFilters().AnyAsync())
         {
+            await EnsureSeededPropertyOwnerMembershipsAsync(dbContext, ownerId);
             return;
         }
 
-        var ownerId = await dbContext.Users
-            .Where(user => user.Email == AdminEmail)
-            .Select(user => user.Id)
-            .SingleAsync();
         var destinationId = await dbContext.Destinations
             .Where(destination => destination.Slug == "kashan")
             .Select(destination => destination.Id)
@@ -436,6 +437,7 @@ public static class SeedData
 
         dbContext.Properties.AddRange(courtyardHouse, gardenHotel);
         await dbContext.SaveChangesAsync();
+        await EnsureSeededPropertyOwnerMembershipsAsync(dbContext, ownerId);
 
         var shahAbbasi = new RoomType
         {
@@ -522,5 +524,83 @@ public static class SeedData
             AvailableCount = 1,
             Status = AvailabilityStatus.Available
         });
+    }
+
+    private static async Task<int> EnsureDemoOwnerAsync(KoochDbContext dbContext)
+    {
+        var owner = await dbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(user => user.Email == DemoOwnerEmail);
+        if (owner is null)
+        {
+            owner = new User
+            {
+                FirstName = "Demo",
+                LastName = "Owner",
+                Email = DemoOwnerEmail,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
+                Role = UserRole.Client,
+                IsActive = true,
+                IsDeleted = false,
+                CanBeRestricted = true
+            };
+            dbContext.Users.Add(owner);
+            await dbContext.SaveChangesAsync();
+            return owner.Id;
+        }
+
+        owner.Role = UserRole.Client;
+        owner.IsActive = true;
+        owner.IsDeleted = false;
+        owner.DeletedAtUtc = null;
+        owner.DeletedByUserId = null;
+        if (string.IsNullOrWhiteSpace(owner.PasswordHash))
+        {
+            owner.PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"));
+        }
+        await dbContext.SaveChangesAsync();
+        return owner.Id;
+    }
+
+    private static async Task EnsureSeededPropertyOwnerMembershipsAsync(KoochDbContext dbContext, int ownerId)
+    {
+        var seededProperties = await dbContext.Properties.IgnoreQueryFilters()
+            .Where(property => property.Slug == "kashan-courtyard-house" || property.Slug == "fin-garden-boutique-stay")
+            .ToListAsync();
+        foreach (var property in seededProperties)
+        {
+            property.OwnerId = ownerId;
+            var memberships = await dbContext.UserPropertyAccesses.IgnoreQueryFilters()
+                .Where(access => access.PropertyId == property.Id)
+                .ToListAsync();
+            foreach (var conflictingOwner in memberships.Where(access =>
+                         access.UserId != ownerId &&
+                         access.PropertyRole == PropertyUserRole.PropertyOwner &&
+                         access.Status == PropertyUserStatus.Active &&
+                         access.IsActive &&
+                         !access.IsDeleted))
+            {
+                conflictingOwner.Status = PropertyUserStatus.Inactive;
+                conflictingOwner.IsActive = false;
+            }
+
+            var ownerAccess = memberships.SingleOrDefault(access => access.UserId == ownerId);
+            if (ownerAccess is null)
+            {
+                ownerAccess = new UserPropertyAccess
+                {
+                    UserId = ownerId,
+                    PropertyId = property.Id
+                };
+                dbContext.UserPropertyAccesses.Add(ownerAccess);
+            }
+
+            ownerAccess.PropertyRole = PropertyUserRole.PropertyOwner;
+            ownerAccess.Status = PropertyUserStatus.Active;
+            ownerAccess.IsActive = true;
+            ownerAccess.IsDeleted = false;
+            ownerAccess.DeletedAtUtc = null;
+            ownerAccess.DeletedByUserId = null;
+            ownerAccess.PermissionMatrixJson = JsonSerializer.Serialize(PropertyPermissionMatrixDefaults.CreateForRole(PropertyUserRole.PropertyOwner));
+        }
     }
 }

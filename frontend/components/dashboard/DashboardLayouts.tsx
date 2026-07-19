@@ -42,42 +42,42 @@ const menuIcons = {
 type MenuIconName = keyof typeof menuIcons;
 const adminMenuItems: DashboardMenuItem[] = [
   {
-    label: "Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯",
+    label: "داشبورد",
     icon: "/svgs/tachometer-alt.svg",
     href: "/admin",
     exact: true,
   },
   {
-    label: "Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§",
+    label: "مدیریت اقامتگاه‌ها",
     icon: "/svgs/hotel.svg",
     href: "/admin/properties",
   },
-  { label: "Ù…Ø¯ÛŒØ±ÛŒØª Ú©Ø§Ø±Ø¨Ø±Ø§Ù†", icon: "/svgs/users.svg", href: "/admin/users" },
-  { label: "Ù…Ø¯ÛŒØ±ÛŒØª Ù…Ù‡Ù…Ø§Ù†â€ŒÙ‡Ø§", icon: "/svgs/users.svg", href: "/admin/guests" },
+  { label: "مدیریت کاربران", icon: "/svgs/users.svg", href: "/admin/users" },
+  { label: "مدیریت مهمان‌ها", icon: "/svgs/users.svg", href: "/admin/guests" },
   {
-    label: "Ù…Ø¯ÛŒØ±ÛŒØª Ø§Ù…Ú©Ø§Ù†Ø§Øª",
+    label: "مدیریت امکانات",
     icon: "/svgs/folder-gear.svg",
     href: "/admin/amenities",
     platformPermission: "ManageAmenities",
   },
   {
-    label: "ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³Ø§ÛŒØª",
+    label: "تنظیمات سایت",
     icon: "/svgs/gear-complex-code.svg",
     href: "/admin/site-settings",
   },
   {
-    label: "ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø±Ø²Ø±Ùˆ",
+    label: "تنظیمات رزرو",
     icon: "/svgs/square-sliders.svg",
     href: "/admin/reservation-settings",
   },
   {
-    label: "Ù…Ø¯ÛŒØ±ÛŒØª Ø±Ø²Ø±ÙˆÙ‡Ø§",
+    label: "مدیریت رزروها",
     icon: "/svgs/address-card.svg",
     href: "/admin/reservations",
   },
-  { label: "Ù¾Ø±ÙˆÙ…ÙˆØ´Ù†â€ŒÙ‡Ø§", icon: "/svgs/tags.svg", href: "/admin/promotions" },
-  { label: "Ú¯Ø²Ø§Ø±Ø´â€ŒÙ‡Ø§", icon: "/svgs/list.svg", href: "/admin/reports" },
-  { label: "ØªÙ†Ø¸ÛŒÙ…Ø§Øª", icon: "/svgs/cogs.svg", href: "/admin/settings" },
+  { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
+  { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports" },
+  { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },
 ];
 
 function canViewAdminMenuItem(
@@ -116,68 +116,68 @@ function getOwnerMenuItems(
 
   const items: OwnerDashboardMenuItem[] = [
     {
-      label: "Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯",
+      label: "داشبورد",
       icon: "/svgs/tachometer-alt.svg",
       href: propertyId ? `${base}/dashboard` : fallbackHref,
       permission: "Dashboard",
     },
     {
-      label: "Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ù…Ù†",
+      label: "اقامتگاه من",
       icon: "/svgs/hotel.svg",
       href: propertyId ? base : "/owner/properties",
       exact: true,
       permission: "Properties",
     },
     {
-      label: "Ø§ØªØ§Ù‚â€ŒÙ‡Ø§",
+      label: "اتاق‌ها",
       icon: "/svgs/bed-alt.svg",
       href: propertyId ? `${base}/rooms` : fallbackHref,
       permission: "Rooms",
     },
     {
-      label: "Ø¸Ø±ÙÛŒØª Ø§ØªØ§Ù‚â€ŒÙ‡Ø§",
+      label: "ظرفیت اتاق‌ها",
       icon: "/svgs/table.svg",
       href: propertyId ? `${base}/inventory` : fallbackHref,
       permission: "Inventory",
     },
     {
-      label: "Ù‚ÛŒÙ…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ø§ØªØ§Ù‚â€ŒÙ‡Ø§",
+      label: "قیمت‌گذاری اتاق‌ها",
       icon: "/svgs/money-bill.svg",
       href: propertyId ? `${base}/pricing` : fallbackHref,
       permission: "Pricing",
     },
     {
-      label: "Ù¾Ø±ÙˆÙ…ÙˆØ´Ù†â€ŒÙ‡Ø§",
+      label: "پروموشن‌ها",
       icon: "/svgs/tags.svg",
       href: propertyId ? `${base}/promotions` : fallbackHref,
       permission: "Pricing",
     },
     {
-      label: "Ø±Ø²Ø±ÙˆÙ‡Ø§",
+      label: "رزروها",
       icon: "/svgs/address-card.svg",
       href: propertyId ? `${base}/reservations` : fallbackHref,
       permission: "Bookings",
     },
     {
-      label: "Ù†Ø¸Ø±Ø§Øª",
+      label: "نظرات",
       icon: "/svgs/comment.svg",
       href: propertyId ? `${base}/reviews` : fallbackHref,
       permission: "Reviews",
     },
     {
-      label: "Ú©Ø§Ø±Ø¨Ø±Ø§Ù†",
+      label: "کاربران",
       icon: "/svgs/users.svg",
       href: propertyId ? `${base}/users` : fallbackHref,
       permission: "Users",
     },
     {
-      label: "Ø³ÙˆØ§Ø¨Ù‚ Ø¹Ù…Ù„ÛŒØ§Øª",
+      label: "سوابق عملیات",
       icon: "/svgs/list.svg",
       href: propertyId ? `${base}/change-logs` : fallbackHref,
       permission: "Reports",
     },
     {
-      label: "ØªÙ†Ø¸ÛŒÙ…Ø§Øª",
+      label: "تنظیمات",
       icon: "/svgs/cog.svg",
       href: propertyId ? `${base}/settings` : fallbackHref,
       permission: "Settings",
@@ -195,142 +195,142 @@ function DashboardAuthorizationLoading() {
       className="grid min-h-[50vh] place-items-center px-5 text-sm font-semibold text-muted-foreground"
       role="status"
     >
-      Ø¯Ø± Ø­Ø§Ù„ Ø¨Ø±Ø±Ø³ÛŒ Ø¯Ø³ØªØ±Ø³ÛŒ...
+      در حال بررسی دسترسی...
     </div>
   );
 }
 
 const stats = [
   {
-    title: "Ø±Ø²Ø±ÙˆÙ‡Ø§ÛŒ Ø§Ù…Ø±ÙˆØ²",
-    value: "Û²Û´",
-    detail: "Û¶ Ø±Ø²Ø±Ùˆ Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ ØªØ§ÛŒÛŒØ¯",
-    icon: "â—·",
+    title: "رزروهای امروز",
+    value: "۲۴",
+    detail: "۶ رزرو نیازمند تایید",
+    icon: "◷",
     tone: "primary",
   },
   {
-    title: "Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„",
-    value: "Û±Û³Û¸",
-    detail: "Û±Û² Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ø¨Ø§Ø²Ø¨ÛŒÙ†ÛŒ",
-    icon: "âŒ‚",
+    title: "اقامتگاه‌های فعال",
+    value: "۱۳۸",
+    detail: "۱۲ اقامتگاه در انتظار بازبینی",
+    icon: "⌂",
     tone: "success",
   },
   {
-    title: "Ø¯Ø±Ø¢Ù…Ø¯ Ø§Ù…Ø±ÙˆØ²",
-    value: "Û±Û¸Ù«Û¶ Ù…ÛŒÙ„ÛŒÙˆÙ†",
-    detail: "Û±Û´Ùª Ø±Ø´Ø¯ Ù†Ø³Ø¨Øª Ø¨Ù‡ Ø¯ÛŒØ±ÙˆØ²",
-    icon: "ï·¼",
+    title: "درآمد امروز",
+    value: "۱۸٫۶ میلیون",
+    detail: "۱۴٪ رشد نسبت به دیروز",
+    icon: "﷼",
     tone: "warning",
   },
   {
-    title: "Ù¾Ø±ÙˆÙ…ÙˆØ´Ù†â€ŒÙ‡Ø§ÛŒ ÙØ¹Ø§Ù„",
-    value: "Û±Û·",
-    detail: "Ûµ Ù¾ÛŒØ´Ù†Ù‡Ø§Ø¯ Ù…Ø¯ÛŒØ±ÛŒØªÛŒ Ù…Ù†ØªØ´Ø± Ø´Ø¯Ù‡",
+    title: "پروموشن‌های فعال",
+    value: "۱۷",
+    detail: "۵ پیشنهاد مدیریتی منتشر شده",
     icon: "%",
     tone: "primary",
   },
   {
-    title: "Ù†Ø¸Ø±Ø§Øª Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø±",
-    value: "Û¹",
-    detail: "Û³ Ù†Ø¸Ø± Ø¨Ø§ Ø§Ù…ØªÛŒØ§Ø² Ù¾Ø§ÛŒÛŒÙ†",
-    icon: "â˜†",
+    title: "نظرات در انتظار",
+    value: "۹",
+    detail: "۳ نظر با امتیاز پایین",
+    icon: "☆",
     tone: "danger",
   },
   {
-    title: "Ø¸Ø±ÙÛŒØªâ€ŒÙ‡Ø§ÛŒ Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ø¨Ø±Ø±Ø³ÛŒ",
-    value: "Û³Û±",
-    detail: "Û· Ø±ÙˆØ² Ù¾Ø±ØªØ±Ø§ÙÛŒÚ© Ø¯Ø± Ù‡ÙØªÙ‡ Ø¢ÛŒÙ†Ø¯Ù‡",
-    icon: "â‡…",
+    title: "ظرفیت‌های نیازمند بررسی",
+    value: "۳۱",
+    detail: "۷ روز پرترافیک در هفته آینده",
+    icon: "⇅",
     tone: "warning",
   },
 ];
 
 const recentReservations = [
   {
-    guest: "Ø³Ø§Ø±Ø§ Ù†Ø§Ø¯Ø±ÛŒ",
-    property: "Ø®Ø§Ù†Ù‡ Ø­ÛŒØ§Ø·â€ŒØ¯Ø§Ø± Ú©Ø§Ø´Ø§Ù†",
-    date: "Ø§Ù…Ø±ÙˆØ²ØŒ Û±Û´:Û³Û°",
-    amount: "Û³Ù«Û² Ù…ÛŒÙ„ÛŒÙˆÙ†",
-    status: "Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± ØªØ§ÛŒÛŒØ¯",
+    guest: "سارا نادری",
+    property: "خانه حیاط‌دار کاشان",
+    date: "امروز، ۱۴:۳۰",
+    amount: "۳٫۲ میلیون",
+    status: "در انتظار تایید",
   },
   {
-    guest: "Ù…Ø­Ù…Ø¯ Ø±Ø³ØªÙ…ÛŒ",
-    property: "Ø¨ÙˆØªÛŒÚ© Ù‡ØªÙ„ Ø¨Ø§Øº ÙÛŒÙ†",
-    date: "Ø§Ù…Ø±ÙˆØ²ØŒ Û±Û³:Û±Û°",
-    amount: "ÛµÙ«Û¸ Ù…ÛŒÙ„ÛŒÙˆÙ†",
-    status: "ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡",
+    guest: "محمد رستمی",
+    property: "بوتیک هتل باغ فین",
+    date: "امروز، ۱۳:۱۰",
+    amount: "۵٫۸ میلیون",
+    status: "تایید شده",
   },
   {
-    guest: "Ù†ÛŒÙ„ÙˆÙØ± Ù‚Ø§Ø³Ù…ÛŒ",
-    property: "Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ù…Ø³ÛŒØ± Ú©ÙˆÛŒØ±",
-    date: "Ø¯ÛŒØ±ÙˆØ²ØŒ Û²Û±:Û´Ûµ",
-    amount: "Û²Ù«Û´ Ù…ÛŒÙ„ÛŒÙˆÙ†",
-    status: "Ù¾Ø±Ø¯Ø§Ø®Øª Ø´Ø¯Ù‡",
+    guest: "نیلوفر قاسمی",
+    property: "اقامتگاه مسیر کویر",
+    date: "دیروز، ۲۱:۴۵",
+    amount: "۲٫۴ میلیون",
+    status: "پرداخت شده",
   },
   {
-    guest: "Ø¢Ø±Ù…Ø§Ù† Ø´ÙÛŒØ¹ÛŒ",
-    property: "Ø®Ø§Ù†Ù‡ Ø³Ù†ØªÛŒ Ù†Ù‚Ø±Ù‡",
-    date: "Ø¯ÛŒØ±ÙˆØ²ØŒ Û±Û¸:Û²Û°",
-    amount: "Û´Ù«Û± Ù…ÛŒÙ„ÛŒÙˆÙ†",
-    status: "Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ ØªÙ…Ø§Ø³",
+    guest: "آرمان شفیعی",
+    property: "خانه سنتی نقره",
+    date: "دیروز، ۱۸:۲۰",
+    amount: "۴٫۱ میلیون",
+    status: "نیازمند تماس",
   },
 ];
 
 const activities = [
-  "Ù‚ÛŒÙ…Øª Ø§ØªØ§Ù‚ Ø¯Ø§Ø¨Ù„ Ø¨Ø±Ø§ÛŒ Ø¢Ø®Ø± Ù‡ÙØªÙ‡ Ø¨Ù‡â€ŒØ±ÙˆØ²Ø±Ø³Ø§Ù†ÛŒ Ø´Ø¯.",
-  "Ù¾Ø±ÙˆÙ…ÙˆØ´Ù† Â«Û³ Ø´Ø¨ Ø§Ù‚Ø§Ù…ØªØŒ Ú¯Ø´Øª Ø±Ø§ÛŒÚ¯Ø§Ù†Â» ÙØ¹Ø§Ù„ Ø´Ø¯.",
-  "ØªØµØ§ÙˆÛŒØ± Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ø®Ø§Ù†Ù‡ Ø¨Ø§Øº ØªÙˆØ³Ø· Ù…Ø§Ù„Ú© ØªØºÛŒÛŒØ± Ú©Ø±Ø¯.",
-  "Ø¸Ø±ÙÛŒØª Ø§ØªØ§Ù‚ Ø´Ø§Ù‡â€ŒÙ†Ø´ÛŒÙ† Ø¯Ø± ØªØ§Ø±ÛŒØ® Û±Û² ØªÛŒØ± ØªÚ©Ù…ÛŒÙ„ Ø´Ø¯.",
-  "Ú©Ø§Ø±Ø¨Ø± Ø¬Ø¯ÛŒØ¯ Ø¨Ù‡ Ù¾Ù†Ù„ Ù…Ø§Ù„Ú© Ø§Ø¶Ø§ÙÙ‡ Ø´Ø¯.",
+  "قیمت اتاق دابل برای آخر هفته به‌روزرسانی شد.",
+  "پروموشن «۳ شب اقامت، گشت رایگان» فعال شد.",
+  "تصاویر اقامتگاه خانه باغ توسط مالک تغییر کرد.",
+  "ظرفیت اتاق شاه‌نشین در تاریخ ۱۲ تیر تکمیل شد.",
+  "کاربر جدید به پنل مالک اضافه شد.",
 ];
 
 const messages = [
-  { name: "Ù…Ø§Ù„Ú© Ø®Ø§Ù†Ù‡ Ú©Ø§Ø¬", text: "Ø¯Ø±Ø®ÙˆØ§Ø³Øª Ø¨Ø±Ø±Ø³ÛŒ ØªØµØ§ÙˆÛŒØ± Ø¬Ø¯ÛŒØ¯", unread: true },
+  { name: "مالک خانه کاج", text: "درخواست بررسی تصاویر جدید", unread: true },
   {
-    name: "Ù¾Ø´ØªÛŒØ¨Ø§Ù†ÛŒ Ú©ÙˆÚ†",
-    text: "Û³ Ø±Ø²Ø±Ùˆ Ø§Ù…Ø±ÙˆØ² Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ù¾ÛŒÚ¯ÛŒØ±ÛŒ Ø§Ø³Øª",
+    name: "پشتیبانی کوچ",
+    text: "۳ رزرو امروز نیازمند پیگیری است",
     unread: true,
   },
   {
-    name: "Ø³ÛŒØ³ØªÙ… Ù‚ÛŒÙ…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ",
-    text: "Ù‡Ø´Ø¯Ø§Ø± Ø§Ø®ØªÙ„Ø§Ù Ø¸Ø±ÙÛŒØª Ùˆ Ù‚ÛŒÙ…Øª",
+    name: "سیستم قیمت‌گذاری",
+    text: "هشدار اختلاف ظرفیت و قیمت",
     unread: false,
   },
 ];
 
 const notifications = [
   {
-    title: "Ø±Ø²Ø±Ùˆ Ø¬Ø¯ÛŒØ¯ Ø«Ø¨Øª Ø´Ø¯",
-    text: "Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ø®Ø§Ù†Ù‡ Ø­ÛŒØ§Ø·â€ŒØ¯Ø§Ø± Ú©Ø§Ø´Ø§Ù† ÛŒÚ© Ø±Ø²Ø±Ùˆ ØªØ§Ø²Ù‡ Ø¯Ø§Ø±Ø¯.",
+    title: "رزرو جدید ثبت شد",
+    text: "اقامتگاه خانه حیاط‌دار کاشان یک رزرو تازه دارد.",
     unread: true,
   },
   {
-    title: "Ù†ÛŒØ§Ø² Ø¨Ù‡ ØªØ§ÛŒÛŒØ¯ ØªØµÙˆÛŒØ±",
-    text: "Û´ ØªØµÙˆÛŒØ± Ø¬Ø¯ÛŒØ¯ Ø¯Ø± ØµÙ Ø¨Ø±Ø±Ø³ÛŒ Ù‚Ø±Ø§Ø± Ú¯Ø±ÙØªÙ‡ Ø§Ø³Øª.",
+    title: "نیاز به تایید تصویر",
+    text: "۴ تصویر جدید در صف بررسی قرار گرفته است.",
     unread: true,
   },
   {
-    title: "Ù‡Ø´Ø¯Ø§Ø± Ø¸Ø±ÙÛŒØª",
-    text: "Ø¸Ø±ÙÛŒØª Ø¨Ø±Ø®ÛŒ Ø§ØªØ§Ù‚â€ŒÙ‡Ø§ Ø¨Ø±Ø§ÛŒ Ø¢Ø®Ø± Ù‡ÙØªÙ‡ Ú©Ø§Ù…Ù„ Ø´Ø¯Ù‡ Ø§Ø³Øª.",
+    title: "هشدار ظرفیت",
+    text: "ظرفیت برخی اتاق‌ها برای آخر هفته کامل شده است.",
     unread: false,
   },
 ];
 
 const drawerEvents = [
-  { time: "Û±Û°:Û³Û°", title: "Ø¨Ø±Ø±Ø³ÛŒ Ø±Ø²Ø±ÙˆÙ‡Ø§ÛŒ Ø§Ù…Ø±ÙˆØ²" },
-  { time: "Û±Û²:Û°Û°", title: "ØªÙ…Ø§Ø³ Ø¨Ø§ Ù…Ø§Ù„Ú© Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ø¨Ø§Øº ÙÛŒÙ†" },
-  { time: "Û±Û¶:Û´Ûµ", title: "Ø¨Ø§Ø²Ø¨ÛŒÙ†ÛŒ Ù¾Ø±ÙˆÙ…ÙˆØ´Ù†â€ŒÙ‡Ø§ÛŒ Ù…Ù†ØªØ´Ø± Ø´Ø¯Ù‡" },
+  { time: "۱۰:۳۰", title: "بررسی رزروهای امروز" },
+  { time: "۱۲:۰۰", title: "تماس با مالک اقامتگاه باغ فین" },
+  { time: "۱۶:۴۵", title: "بازبینی پروموشن‌های منتشر شده" },
 ];
 
 const drawerNotes = [
-  "ØªØµØ§ÙˆÛŒØ± Û´ Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ Ù†ÛŒØ§Ø² Ø¨Ù‡ ØªØ§ÛŒÛŒØ¯ Ø¯Ø§Ø±Ø¯.",
-  "Ù‚ÛŒÙ…Øªâ€ŒÚ¯Ø°Ø§Ø±ÛŒ Ø¢Ø®Ø± Ù‡ÙØªÙ‡ Ø¨Ø±Ø§ÛŒ Û² Ø§ØªØ§Ù‚ Ø®Ø§Ù„ÛŒ Ø§Ø³Øª.",
+  "تصاویر ۴ اقامتگاه نیاز به تایید دارد.",
+  "قیمت‌گذاری آخر هفته برای ۲ اتاق خالی است.",
 ];
 
 const quickSettings = [
-  "Ù†Ù…Ø§ÛŒØ´ Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ÛŒ ÙÙˆØ±ÛŒ",
-  "Ø­Ø§Ù„Øª ÙØ´Ø±Ø¯Ù‡ Ù¾Ù†Ù„",
-  "ÛŒØ§Ø¯Ø¢ÙˆØ±ÛŒ Ø±Ø²Ø±ÙˆÙ‡Ø§ÛŒ Ø¬Ø¯ÛŒØ¯",
+  "نمایش اعلان‌های فوری",
+  "حالت فشرده پنل",
+  "یادآوری رزروهای جدید",
 ];
 
 const chartBars = [34, 58, 44, 72, 63, 86, 51, 79, 92, 66, 74, 88];
@@ -480,7 +480,7 @@ export function OwnerLayout({
         effectivePermissions,
       )}
       onWorkspaceChange={handlePropertySwitch}
-      workspaceLabel={propertyName ?? "Ø§Ù†ØªØ®Ø§Ø¨ Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡"}
+      workspaceLabel={propertyName ?? "انتخاب اقامتگاه"}
       workspaceOptions={activeMemberships.map((membership) => ({
         id: membership.propertyId.toString(),
         name: membership.propertyName,
@@ -504,22 +504,22 @@ export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
 
         <section className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
           <DashboardSectionCard
-            title="Ù†Ù…ÙˆØ¯Ø§Ø± Ø±Ø²Ø±ÙˆÙ‡Ø§"
-            subtitle="placeholder Ø³Ø§Ø¯Ù‡ Ø¨Ø¯ÙˆÙ† Ú©ØªØ§Ø¨Ø®Ø§Ù†Ù‡ Ù†Ù…ÙˆØ¯Ø§Ø±"
+            title="نمودار رزروها"
+            subtitle="placeholder ساده بدون کتابخانه نمودار"
           >
             <SimpleChart darkMode={darkMode} />
           </DashboardSectionCard>
           <DashboardSectionCard
-            title="ÙˆØ¶Ø¹ÛŒØª Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§"
-            subtitle="Ù†Ù…Ø§ÛŒ Ø®Ù„Ø§ØµÙ‡ mock data"
+            title="وضعیت اقامتگاه‌ها"
+            subtitle="نمای خلاصه mock data"
           >
             <PropertyStatus darkMode={darkMode} />
           </DashboardSectionCard>
         </section>
 
         <DashboardSectionCard
-          title="Ø±Ø²Ø±ÙˆÙ‡Ø§ÛŒ Ø§Ø®ÛŒØ±"
-          subtitle="Ø¢Ø®Ø±ÛŒÙ† Ø¯Ø±Ø®ÙˆØ§Ø³Øªâ€ŒÙ‡Ø§ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡ Ø¯Ø± Ú©ÙˆÚ†"
+          title="رزروهای اخیر"
+          subtitle="آخرین درخواست‌های ثبت‌شده در کوچ"
         >
           <RecentReservations />
         </DashboardSectionCard>
@@ -527,14 +527,14 @@ export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
 
       <aside className="grid h-fit gap-5 lg:sticky lg:top-6">
         <DashboardSectionCard
-          title="ÙØ¹Ø§Ù„ÛŒØªâ€ŒÙ‡Ø§ÛŒ Ø§Ø®ÛŒØ±"
-          subtitle="Ø±ÙˆÛŒØ¯Ø§Ø¯Ù‡Ø§ÛŒ Ù…Ù‡Ù… Ù¾Ù†Ù„"
+          title="فعالیت‌های اخیر"
+          subtitle="رویدادهای مهم پنل"
         >
           <ActivityList />
         </DashboardSectionCard>
         <DashboardSectionCard
-          title="Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ / Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§"
-          subtitle="placeholder Ø±ÛŒÙ„ Ú©Ù†Ø§Ø±ÛŒ"
+          title="پیام‌ها / اعلان‌ها"
+          subtitle="placeholder ریل کناری"
         >
           <MessageRail />
         </DashboardSectionCard>
@@ -548,7 +548,7 @@ function DashboardShell({
   currentWorkspaceId,
   menuItems,
   onWorkspaceChange,
-  workspaceLabel = "Ù¾Ù†Ù„ Ù…Ø¯ÛŒØ±ÛŒØª",
+  workspaceLabel = "پنل مدیریت",
   workspaceOptions = [],
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
@@ -594,7 +594,7 @@ function DashboardShell({
           className="fixed inset-0 z-40 bg-slate-950/45 md:hidden"
           onClick={() => setMobileSidebarOpen(false)}
           type="button"
-          aria-label="Ø¨Ø³ØªÙ† Ù…Ù†Ùˆ"
+          aria-label="بستن منو"
         />
       )}
       <div className="flex h-full">
@@ -680,7 +680,7 @@ function DashboardSidebar({
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-black text-white shadow-lg shadow-blue-600/20">
-              Ú©ÙˆÚ†
+              کوچ
             </div>
             {!collapsed && (
               <div className="min-w-0 [&>p:last-child]:hidden">
@@ -688,7 +688,7 @@ function DashboardSidebar({
                 <p className={`truncate ${mutedText(darkMode)}`}>
                   {workspaceLabel}
                 </p>
-                <p className={mutedText(darkMode)}>Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ù†Ù…ÙˆÙ†Ù‡</p>
+                <p className={mutedText(darkMode)}>داشبورد نمونه</p>
               </div>
             )}
           </div>
@@ -701,7 +701,7 @@ function DashboardSidebar({
               }`}
               onClick={onCollapse}
               type="button"
-              aria-label="Ø¬Ù…Ø¹ Ú©Ø±Ø¯Ù† Ù…Ù†Ùˆ"
+              aria-label="جمع کردن منو"
             >
               <MenuIcon icon={menuIcons.menu} />
             </button>
@@ -709,7 +709,7 @@ function DashboardSidebar({
               className={`grid h-9 w-9 place-items-center rounded-lg border text-sm md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-300 bg-white"}`}
               onClick={onMobileClose}
               type="button"
-              aria-label="Ø¨Ø³ØªÙ† Ù…Ù†Ùˆ"
+              aria-label="بستن منو"
             >
               <MenuIcon icon={menuIcons.close} />
             </button>
@@ -726,7 +726,7 @@ function DashboardSidebar({
             onChange={(event) => onWorkspaceChange(event.target.value)}
             value={currentWorkspaceId ?? ""}
           >
-            <option value="">Ø§Ù†ØªØ®Ø§Ø¨ Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡</option>
+            <option value="">انتخاب اقامتگاه</option>
             {workspaceOptions.map((workspace) => (
               <option key={workspace.id} value={workspace.id}>
                 {workspace.name}
@@ -780,13 +780,13 @@ function DashboardSidebar({
         >
           {!collapsed ? (
             <>
-              <p className="text-sm font-black">Ù†Ù…ÙˆÙ†Ù‡ Ù‚Ø§Ø¨Ù„ Ø¨Ø§Ø²Ø§Ø³ØªÙØ§Ø¯Ù‡</p>
+              <p className="text-sm font-black">نمونه قابل بازاستفاده</p>
               <p className={`mt-2 text-xs leading-6 ${mutedText(darkMode)}`}>
-                Ø§ÛŒÙ† Ø´ÙÙ„ Ø¨Ø¹Ø¯Ø§Ù‹ Ù…ÛŒâ€ŒØªÙˆØ§Ù†Ø¯ Ù¾Ø§ÛŒÙ‡ AdminLayout Ùˆ OwnerLayout Ø´ÙˆØ¯.
+                این شِل بعداً می‌تواند پایه AdminLayout و OwnerLayout شود.
               </p>
             </>
           ) : (
-            <p className="text-center text-lg">âœ¦</p>
+            <p className="text-center text-lg">✦</p>
           )}
         </div>
       </div>
@@ -816,12 +816,12 @@ function DashboardHeader({
   const router = useRouter();
   const { clearSession, user } = useAuthSession();
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
-  const userName = user?.fullName || user?.email || "Ú©Ø§Ø±Ø¨Ø± Ú©ÙˆÚ†";
+  const userName = user?.fullName || user?.email || "کاربر کوچ";
 
   function handleProfileMenuAction(item: string) {
     onProfileMenuClose();
 
-    if (item === "Ø®Ø±ÙˆØ¬ Ø§Ø² Ø­Ø³Ø§Ø¨") {
+    if (item === "خروج از حساب") {
       clearSession();
       router.push("/login");
       return;
@@ -840,29 +840,29 @@ function DashboardHeader({
             className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
             onClick={onSidebarToggle}
             type="button"
-            aria-label="Ù†Ù…Ø§ÛŒØ´ Ù…Ù†Ùˆ"
+            aria-label="نمایش منو"
           >
-            â˜°
+            ☰
           </button>
           <div
             className={`hidden text-xs font-bold sm:block ${mutedText(darkMode)}`}
           >
-            Ø®Ø§Ù†Ù‡ / Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯Ù‡Ø§ / Ù†Ù…ÙˆÙ†Ù‡ Ù¾Ù†Ù„ Ú©ÙˆÚ†
+            خانه / داشبوردها / نمونه پنل کوچ
           </div>
           <div
             className={`mr-auto flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
           >
-            <span className={mutedText(darkMode)}>âŒ•</span>
+            <span className={mutedText(darkMode)}>⌕</span>
             <input
               className="w-full border-0 bg-transparent p-0 text-sm outline-none"
-              placeholder="Ø¬Ø³ØªØ¬Ùˆ Ø¯Ø± Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡ØŒ Ø±Ø²Ø±ÙˆØŒ Ú©Ø§Ø±Ø¨Ø±..."
+              placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
               type="search"
             />
           </div>
           <HeaderIcon
             active={activeDrawer === "messages"}
             darkMode={darkMode}
-            label="Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§"
+            label="پیام‌ها"
             onClick={() => onDrawerToggle("messages")}
           >
             <MenuIcon icon={menuIcons.messages} />
@@ -870,7 +870,7 @@ function DashboardHeader({
           <HeaderIcon
             active={activeDrawer === "notifications"}
             darkMode={darkMode}
-            label="Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§"
+            label="اعلان‌ها"
             onClick={() => onDrawerToggle("notifications")}
           >
             <MenuIcon icon={menuIcons.notification} />
@@ -881,7 +881,7 @@ function DashboardHeader({
             className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
             onClick={onThemeToggle}
             type="button"
-            aria-label="ØªØºÛŒÛŒØ± Ø­Ø§Ù„Øª Ø±ÙˆØ´Ù† Ùˆ ØªÛŒØ±Ù‡"
+            aria-label="تغییر حالت روشن و تیره"
           >
             {darkMode ? (
               <MenuIcon icon={menuIcons.light} />
@@ -895,7 +895,7 @@ function DashboardHeader({
                 className="fixed inset-0 z-[60] cursor-default"
                 onClick={onProfileMenuClose}
                 type="button"
-                aria-label="Ø¨Ø³ØªÙ† Ù…Ù†ÙˆÛŒ Ù¾Ø±ÙˆÙØ§ÛŒÙ„"
+                aria-label="بستن منوی پروفایل"
               />
             )}
             <button
@@ -928,12 +928,12 @@ function DashboardHeader({
                 }`}
                 role="menu"
               >
-                {["Ù…Ø´Ø§Ù‡Ø¯Ù‡ Ù¾Ø±ÙˆÙØ§ÛŒÙ„", "ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø­Ø³Ø§Ø¨", "Ø®Ø±ÙˆØ¬ Ø§Ø² Ø­Ø³Ø§Ø¨"].map(
+                {["مشاهده پروفایل", "تنظیمات حساب", "خروج از حساب"].map(
                   (item) => (
                     <button
                       className={`block w-full rounded-lg px-3 py-2 text-right transition ${
                         darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
-                      } ${item === "Ø®Ø±ÙˆØ¬ Ø§Ø² Ø­Ø³Ø§Ø¨" ? "text-[var(--theme-danger)]" : ""}`}
+                      } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
                       key={item}
                       onClick={() => handleProfileMenuAction(item)}
                       role="menuitem"
@@ -962,16 +962,16 @@ function HeroHeader() {
       actions={
         <>
           <span className="rounded-full bg-[var(--theme-primary-soft)] px-4 py-2 text-sm font-black text-[var(--theme-primary-text)]">
-            Ø§Ù…Ø±ÙˆØ²: Û¶ ØªÛŒØ± Û±Û´Û°Ûµ
+            امروز: ۶ تیر ۱۴۰۵
           </span>
           <span className="rounded-full bg-muted px-4 py-2 text-sm font-black text-muted-foreground">
             Mock Data
           </span>
         </>
       }
-      description="ÛŒÚ© Ù†Ù…ÙˆÙ†Ù‡ Ø­Ø±ÙÙ‡â€ŒØ§ÛŒ Ùˆ Fuse-inspired Ø¨Ø±Ø§ÛŒ Ø§Ø±Ø²ÛŒØ§Ø¨ÛŒ Ø³Ø§Ø®ØªØ§Ø± Ù¾Ù†Ù„Ø› Ø¨Ø¯ÙˆÙ† Ø§ØªØµØ§Ù„ Ø¨Ù‡ Ø¨Ú©â€ŒØ§Ù†Ø¯ Ùˆ Ø¨Ø¯ÙˆÙ† ØªØºÛŒÛŒØ± Ø¯Ø± ØµÙØ­Ø§Øª ÙØ¹Ù„ÛŒ."
-      eyebrow="Ù¾Ø±ÙˆØªÙˆØªØ§ÛŒÙ¾ Ø¨ØµØ±ÛŒ"
-      title="Ø¯Ø§Ø´Ø¨ÙˆØ±Ø¯ Ù…Ø¯ÛŒØ±ÛŒØªÛŒ Ú©ÙˆÚ†"
+      description="یک نمونه حرفه‌ای و Fuse-inspired برای ارزیابی ساختار پنل؛ بدون اتصال به بک‌اند و بدون تغییر در صفحات فعلی."
+      eyebrow="پروتوتایپ بصری"
+      title="داشبورد مدیریتی کوچ"
     />
   );
 }
@@ -1067,9 +1067,9 @@ function SimpleChart({ darkMode }: { darkMode: boolean }) {
 
 function PropertyStatus({ darkMode }: { darkMode: boolean }) {
   const rows = [
-    ["ØªØ§ÛŒÛŒØ¯ Ø´Ø¯Ù‡", "Û¸Û¶Ùª"],
-    ["Ø¯Ø± Ø§Ù†ØªØ¸Ø§Ø± Ø¨Ø§Ø²Ø¨ÛŒÙ†ÛŒ", "Û¹Ùª"],
-    ["Ù†ÛŒØ§Ø²Ù…Ù†Ø¯ Ø§ØµÙ„Ø§Ø­", "ÛµÙª"],
+    ["تایید شده", "۸۶٪"],
+    ["در انتظار بازبینی", "۹٪"],
+    ["نیازمند اصلاح", "۵٪"],
   ];
 
   return (
@@ -1090,10 +1090,10 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
       ))}
       <div className="rounded-lg border border-dashed border-border bg-muted p-5 text-center">
         <p className="text-3xl font-black text-[var(--theme-primary-text)]">
-          Û±Û´Û²
+          ۱۴۲
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ú©Ù„ Ø§Ù‚Ø§Ù…ØªÚ¯Ø§Ù‡â€ŒÙ‡Ø§ÛŒ Ø«Ø¨Øªâ€ŒØ´Ø¯Ù‡
+          کل اقامتگاه‌های ثبت‌شده
         </p>
       </div>
     </div>
@@ -1178,7 +1178,7 @@ function DashboardSideDrawer({
   type: "messages" | "notifications" | null;
 }) {
   const open = Boolean(type);
-  const title = type === "messages" ? "Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§" : "Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§";
+  const title = type === "messages" ? "پیام‌ها" : "اعلان‌ها";
 
   return (
     <div
@@ -1189,7 +1189,7 @@ function DashboardSideDrawer({
         className={`absolute inset-0 bg-slate-950/35 transition-opacity duration-300 ${open ? "pointer-events-auto opacity-100" : "opacity-0"}`}
         onClick={onClose}
         type="button"
-        aria-label="Ø¨Ø³ØªÙ† Ù¾Ù†Ù„"
+        aria-label="بستن پنل"
       />
       <aside
         className={`pointer-events-auto absolute inset-x-3 bottom-3 max-h-[88vh] overflow-hidden rounded-lg border shadow-2xl transition duration-300 sm:inset-x-auto sm:bottom-0 sm:left-0 sm:top-0 sm:h-full sm:max-h-none sm:w-[330px] sm:rounded-none sm:rounded-r-2xl ${
@@ -1205,7 +1205,7 @@ function DashboardSideDrawer({
           >
             <div>
               <p className="text-xs font-bold text-[var(--theme-primary-text)]">
-                Ù¾Ù†Ù„ Ø³Ø±ÛŒØ¹
+                پنل سریع
               </p>
               <h2 className="mt-1 text-xl font-black">{title}</h2>
             </div>
@@ -1217,9 +1217,9 @@ function DashboardSideDrawer({
               }`}
               onClick={onClose}
               type="button"
-              aria-label="Ø¨Ø³ØªÙ†"
+              aria-label="بستن"
             >
-              Ã—
+              ×
             </button>
           </div>
 
@@ -1228,15 +1228,15 @@ function DashboardSideDrawer({
               className={`rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
             >
               <p className={`text-xs font-bold ${mutedText(darkMode)}`}>
-                Ø§Ù…Ø±ÙˆØ²
+                امروز
               </p>
-              <p className="mt-1 text-2xl font-black">Û¶ ØªÛŒØ± Û±Û´Û°Ûµ</p>
+              <p className="mt-1 text-2xl font-black">۶ تیر ۱۴۰۵</p>
               <p className={`mt-2 text-sm ${mutedText(darkMode)}`}>
-                Û³ Ø±ÙˆÛŒØ¯Ø§Ø¯ Ùˆ Û² ÛŒØ§Ø¯Ø¯Ø§Ø´Øª Ø¨Ø±Ø§ÛŒ Ø¨Ø±Ø±Ø³ÛŒ
+                ۳ رویداد و ۲ یادداشت برای بررسی
               </p>
             </section>
 
-            <DrawerSection darkMode={darkMode} title="Ø±ÙˆÛŒØ¯Ø§Ø¯Ù‡Ø§">
+            <DrawerSection darkMode={darkMode} title="رویدادها">
               <div className="space-y-2">
                 {drawerEvents.map((event) => (
                   <div
@@ -1254,7 +1254,7 @@ function DashboardSideDrawer({
               </div>
             </DrawerSection>
 
-            <DrawerSection darkMode={darkMode} title="ÛŒØ§Ø¯Ø¯Ø§Ø´Øªâ€ŒÙ‡Ø§">
+            <DrawerSection darkMode={darkMode} title="یادداشت‌ها">
               <div className="space-y-2">
                 {drawerNotes.map((note) => (
                   <p
@@ -1269,7 +1269,7 @@ function DashboardSideDrawer({
 
             <DrawerSection
               darkMode={darkMode}
-              title={type === "messages" ? "Ù¾ÛŒØ§Ù…â€ŒÙ‡Ø§ÛŒ Ø§Ø®ÛŒØ±" : "Ø§Ø¹Ù„Ø§Ù†â€ŒÙ‡Ø§ÛŒ Ø§Ø®ÛŒØ±"}
+              title={type === "messages" ? "پیام‌های اخیر" : "اعلان‌های اخیر"}
             >
               <div className="space-y-2">
                 {type === "messages"
@@ -1314,7 +1314,7 @@ function DashboardSideDrawer({
               </div>
             </DrawerSection>
 
-            <DrawerSection darkMode={darkMode} title="ØªÙ†Ø¸ÛŒÙ…Ø§Øª Ø³Ø±ÛŒØ¹">
+            <DrawerSection darkMode={darkMode} title="تنظیمات سریع">
               <div className="space-y-2">
                 {quickSettings.map((setting, index) => (
                   <label

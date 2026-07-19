@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Guests;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,6 +8,7 @@ namespace Kooch.Api.Controllers;
 
 [ApiController]
 [AdminAuthorize]
+[PermissionAuthorize(PermissionKey.ManageGuests)]
 [Route("api/admin/guests")]
 public class AdminGuestsController(IGuestService guestService) : AuthenticatedControllerBase
 {

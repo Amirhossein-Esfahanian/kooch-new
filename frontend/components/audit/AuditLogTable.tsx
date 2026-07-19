@@ -20,19 +20,22 @@ const actionLabels: Record<AuditAction, string> = {
   RoomCreated: "ایجاد اتاق",
   RoomDeleted: "حذف اتاق",
   BookingConfirmed: "تأیید رزرو",
-  BookingCancelled: "لغو رزرو",
+  BookingCancelled: "??? ????",
+  BookingApproved: "Booking approved",
+  BookingExpired: "Booking expired",
+  PropertyOwnershipTransferred: "Ownership transferred",
 };
 
 function actionVariant(action: AuditAction) {
-  if (action === "RoomDeleted" || action === "BookingCancelled") {
+  if (action === "RoomDeleted" || action === "BookingCancelled" || action === "BookingExpired") {
     return "destructive" as const;
   }
 
-  if (action === "BookingConfirmed" || action === "RoomCreated") {
+  if (action === "BookingConfirmed" || action === "BookingApproved" || action === "RoomCreated") {
     return "success" as const;
   }
 
-  if (action === "InventoryChanged") {
+  if (action === "InventoryChanged" || action === "PropertyOwnershipTransferred") {
     return "warning" as const;
   }
 

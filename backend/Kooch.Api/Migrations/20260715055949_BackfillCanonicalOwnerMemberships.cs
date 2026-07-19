@@ -26,58 +26,27 @@ namespace Kooch.Api.Migrations
                   "Settings":{"View":true,"Create":true,"Edit":true,"Delete":true,"Export":true}
                 }';
 
-                IF EXISTS
-                (
-                    SELECT required.Id
-                    FROM (VALUES (1), (2), (3), (4), (5), (1005), (1006)) AS required(Id)
-                    WHERE NOT EXISTS
-                    (
-                        SELECT 1
-                        FROM Properties AS property
-                        WHERE property.Id = required.Id
-                          AND property.IsDeleted = 0
-                    )
-                )
-                BEGIN
-                    THROW 51000, N'AUTH-A5B cannot continue because a mapped property is missing or deleted.', 1;
-                END;
+                DECLARE @MissingOwners nvarchar(max);
 
-                IF EXISTS
-                (
-                    SELECT required.Id
-                    FROM (VALUES (1), (1004), (1011)) AS required(Id)
-                    WHERE NOT EXISTS
-                    (
-                        SELECT 1
-                        FROM Users AS account
-                        WHERE account.Id = required.Id
-                          AND account.IsDeleted = 0
-                    )
-                )
-                BEGIN
-                    THROW 51001, N'AUTH-A5B cannot continue because a mapped owner account is missing or deleted.', 1;
-                END;
+                SELECT @MissingOwners = STRING_AGG(
+                    CONVERT(nvarchar(max), CONCAT(
+                        N'PropertyId=', property.Id,
+                        N', OwnerId=', property.OwnerId)),
+                    N'; ')
+                FROM Properties AS property
+                LEFT JOIN Users AS owner
+                    ON owner.Id = property.OwnerId
+                   AND owner.IsDeleted = 0
+                WHERE property.IsDeleted = 0
+                  AND owner.Id IS NULL;
 
-                IF EXISTS
-                (
-                    SELECT 1
-                    FROM Properties
-                    WHERE (Id = 5 AND OwnerId NOT IN (1, 1011))
-                       OR (Id = 1006 AND OwnerId NOT IN (1, 1004))
-                       OR (Id IN (1, 2, 3, 4, 1005) AND OwnerId <> 1)
-                )
+                IF @MissingOwners IS NOT NULL
                 BEGIN
-                    THROW 51002, N'AUTH-A5B ownership mapping conflicts with the current Property.OwnerId values.', 1;
+                    DECLARE @MissingOwnerMessage nvarchar(2048) = LEFT(
+                        CONCAT(N'AUTH-A5B cannot continue because a Property.OwnerId user is missing or deleted. ', @MissingOwners),
+                        2048);
+                    THROW 51001, @MissingOwnerMessage, 1;
                 END;
-
-                UPDATE Properties
-                SET OwnerId = CASE Id
-                    WHEN 5 THEN 1011
-                    WHEN 1006 THEN 1004
-                    ELSE OwnerId
-                END
-                WHERE (Id = 5 AND OwnerId = 1)
-                   OR (Id = 1006 AND OwnerId = 1);
 
                 DECLARE @OwnershipConflicts nvarchar(max);
 
@@ -117,7 +86,7 @@ namespace Kooch.Api.Migrations
                       AND access.IsDeleted = 1
                 )
                 BEGIN
-                    THROW 51004, N'AUTH-A5B found a deleted membership for a mapped owner; manual review is required.', 1;
+                    THROW 51004, N'AUTH-A5B found a deleted membership for a canonical owner; manual review is required.', 1;
                 END;
 
                 -- Preserve an existing valid matrix. Only missing/invalid matrices receive
@@ -222,24 +191,17 @@ namespace Kooch.Api.Migrations
                     THROW 51005, N'AUTH-A5B canonical owner membership verification failed.', 1;
                 END;
 
-                IF EXISTS
+                DECLARE @VerifiedPropertyCount int =
                 (
-                    SELECT 1
-                    FROM Properties
-                    WHERE (Id = 5 AND OwnerId <> 1011)
-                       OR (Id = 1006 AND OwnerId <> 1004)
-                       OR (Id IN (1, 2, 3, 4, 1005) AND OwnerId <> 1)
-                )
-                BEGIN
-                    THROW 51006, N'AUTH-A5B final ownership mapping verification failed.', 1;
-                END;
+                    SELECT COUNT(*)
+                    FROM Properties AS property
+                    WHERE property.IsDeleted = 0
+                );
 
-                DECLARE @User1011IsActive bit =
-                    (SELECT IsActive FROM Users WHERE Id = 1011);
                 PRINT CONCAT(
-                    N'AUTH-A5B: User 1011 global IsActive=',
-                    CONVERT(nvarchar(5), @User1011IsActive),
-                    N'; account status was not changed.');
+                    N'AUTH-A5B: canonical owner memberships verified for ',
+                    CONVERT(nvarchar(20), @VerifiedPropertyCount),
+                    N' existing non-deleted properties.');
                 """);
         }
 

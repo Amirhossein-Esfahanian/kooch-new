@@ -11,9 +11,9 @@ public class User : BaseEntity
     public UserRole Role { get; set; }
     public bool IsActive { get; set; } = true;
     public bool PasswordSetupRequired { get; set; }
+    public int SecurityStampVersion { get; set; }
     public DateTime? InvitationAcceptedAtUtc { get; set; }
     public int? ParentUserId { get; set; }
-    public bool CanManageUsers { get; set; }
     public bool CanBeRestricted { get; set; } = true;
 
     public User? ParentUser { get; set; }

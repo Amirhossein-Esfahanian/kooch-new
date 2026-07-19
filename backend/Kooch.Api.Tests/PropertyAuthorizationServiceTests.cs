@@ -42,6 +42,27 @@ public sealed class PropertyAuthorizationServiceTests
     }
 
     [Fact]
+    public async Task MatrixPermissions_DriveLegacyCanManageWrapperMethods()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var service = new PropertyAccessService(dbContext);
+
+        Assert.True(await service.CanManageRoomsAsync(3, UserRole.Client, FirstPropertyId));
+        Assert.False(await service.CanManagePricingAsync(3, UserRole.Client, FirstPropertyId));
+        Assert.False(await service.CanManageAvailabilityAsync(3, UserRole.Client, FirstPropertyId));
+
+        var membership = await dbContext.UserPropertyAccesses.SingleAsync(access => access.Id == 102);
+        membership.PermissionMatrixJson = PropertyMatrix(
+            ("Pricing", new PermissionActionsDto { Edit = true }),
+            ("Inventory", new PermissionActionsDto { View = true }));
+        await dbContext.SaveChangesAsync();
+
+        Assert.False(await service.CanManageRoomsAsync(3, UserRole.Client, FirstPropertyId));
+        Assert.True(await service.CanManagePricingAsync(3, UserRole.Client, FirstPropertyId));
+        Assert.False(await service.CanManageAvailabilityAsync(3, UserRole.Client, FirstPropertyId));
+    }
+
+    [Fact]
     public async Task PropertyAssistant_LegacyGlobalRoleDoesNotExtendMembershipAccess()
     {
         await using var dbContext = await CreateContextAsync();
@@ -59,6 +80,48 @@ public sealed class PropertyAuthorizationServiceTests
 
         Assert.False(await service.CanAccessPropertyAsync(5, FirstPropertyId));
         Assert.False(await service.HasPropertyPermissionAsync(5, FirstPropertyId, "rooms.edit"));
+    }
+
+    [Fact]
+    public async Task MembershipStatusChange_ImmediatelyAffectsPropertyAccess()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var service = new PropertyAccessService(dbContext);
+        var membership = await dbContext.UserPropertyAccesses.SingleAsync(access => access.Id == 102);
+
+        Assert.True(await service.CanAccessPropertyAsync(3, FirstPropertyId));
+
+        membership.Status = PropertyUserStatus.Suspended;
+        membership.IsActive = false;
+        await dbContext.SaveChangesAsync();
+
+        Assert.False(await service.CanAccessPropertyAsync(3, FirstPropertyId));
+        Assert.False(await service.HasPropertyPermissionAsync(3, FirstPropertyId, "rooms.edit"));
+
+        membership.Status = PropertyUserStatus.Active;
+        membership.IsActive = true;
+        await dbContext.SaveChangesAsync();
+
+        Assert.True(await service.CanAccessPropertyAsync(3, FirstPropertyId));
+        Assert.True(await service.HasPropertyPermissionAsync(3, FirstPropertyId, "rooms.edit"));
+    }
+
+    [Fact]
+    public async Task PermissionMatrixChange_ImmediatelyAffectsNextPermissionCheck()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var service = new PropertyAccessService(dbContext);
+        var membership = await dbContext.UserPropertyAccesses.SingleAsync(access => access.Id == 102);
+
+        Assert.True(await service.HasPropertyPermissionAsync(3, FirstPropertyId, "rooms.edit"));
+        Assert.False(await service.HasPropertyPermissionAsync(3, FirstPropertyId, "bookings.view"));
+
+        membership.PermissionMatrixJson = PropertyMatrix(
+            ("Bookings", new PermissionActionsDto { View = true }));
+        await dbContext.SaveChangesAsync();
+
+        Assert.False(await service.HasPropertyPermissionAsync(3, FirstPropertyId, "rooms.edit"));
+        Assert.True(await service.HasPropertyPermissionAsync(3, FirstPropertyId, "bookings.view"));
     }
 
     [Fact]
@@ -99,7 +162,7 @@ public sealed class PropertyAuthorizationServiceTests
     }
 
     [Fact]
-    public async Task AdminAssistantWithoutMembership_IsDeniedEvenWithGlobalAndPropertyUserPermissions()
+    public async Task AdminAssistantWithoutMembership_IsDeniedEvenWithGlobalPlatformPermission()
     {
         await using var dbContext = await CreateContextAsync();
         var service = new PropertyAccessService(dbContext);
@@ -111,6 +174,28 @@ public sealed class PropertyAuthorizationServiceTests
             8,
             PermissionKey.ManageProperties,
             FirstPropertyId));
+    }
+
+    [Fact]
+    public async Task GlobalPlatformPermission_ContinuesToAuthorizeAdminAssistant()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var service = new PermissionService(dbContext, new PropertyAccessService(dbContext));
+
+        Assert.True(await service.HasPermissionAsync(8, PermissionKey.ManageProperties));
+        Assert.False(await service.HasPermissionAsync(3, PermissionKey.ManageProperties));
+    }
+
+    [Fact]
+    public async Task DisabledGlobalPlatformPermission_RemainsDenied()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var permission = await dbContext.UserPermissions.SingleAsync(item => item.UserId == 8);
+        permission.IsAllowed = false;
+        await dbContext.SaveChangesAsync();
+        var service = new PermissionService(dbContext, new PropertyAccessService(dbContext));
+
+        Assert.False(await service.HasPermissionAsync(8, PermissionKey.ManageProperties));
     }
 
     private static async Task<KoochDbContext> CreateContextAsync()
@@ -150,7 +235,7 @@ public sealed class PropertyAuthorizationServiceTests
             CreateMembership(101, 10, OtherPropertyId, PropertyUserRole.PropertyOwner, PropertyMatrix(
                 ("Properties", new PermissionActionsDto { View = true, Edit = true }))),
             CreateMembership(102, 3, FirstPropertyId, PropertyUserRole.Manager, PropertyMatrix(
-                ("Rooms", new PermissionActionsDto { View = true, Edit = true })), legacyBooleans: false),
+                ("Rooms", new PermissionActionsDto { View = true, Edit = true }))),
             CreateMembership(103, 4, FirstPropertyId, PropertyUserRole.Reception, PropertyMatrix(
                 ("Bookings", new PermissionActionsDto { View = true }))),
             CreateMembership(104, 5, FirstPropertyId, PropertyUserRole.Manager, PropertyMatrix(
@@ -168,9 +253,8 @@ public sealed class PropertyAuthorizationServiceTests
             Name = nameof(PermissionKey.ManageProperties)
         });
         dbContext.UserPermissions.AddRange(
-            CreateUserPermission(300, 7, propertyId: null),
-            CreateUserPermission(301, 8, propertyId: null),
-            CreateUserPermission(302, 8, FirstPropertyId));
+            CreateUserPermission(300, 7),
+            CreateUserPermission(301, 8));
 
         await dbContext.SaveChangesAsync();
         return dbContext;
@@ -210,8 +294,7 @@ public sealed class PropertyAuthorizationServiceTests
         PropertyUserRole role,
         string matrix,
         PropertyUserStatus status = PropertyUserStatus.Active,
-        bool isActive = true,
-        bool legacyBooleans = true) => new()
+        bool isActive = true) => new()
     {
         Id = id,
         UserId = userId,
@@ -219,24 +302,14 @@ public sealed class PropertyAuthorizationServiceTests
         PropertyRole = role,
         Status = status,
         IsActive = isActive,
-        PermissionMatrixJson = matrix,
-        CanManageProperty = legacyBooleans,
-        CanManageRooms = legacyBooleans,
-        CanManageAvailability = legacyBooleans,
-        CanManagePricing = legacyBooleans,
-        CanManageReservations = legacyBooleans,
-        CanManagePayments = legacyBooleans,
-        CanManageReviews = legacyBooleans,
-        CanManageNotifications = legacyBooleans,
-        CanViewReports = legacyBooleans
+        PermissionMatrixJson = matrix
     };
 
-    private static UserPermission CreateUserPermission(int id, int userId, int? propertyId) => new()
+    private static UserPermission CreateUserPermission(int id, int userId) => new()
     {
         Id = id,
         UserId = userId,
         PermissionKey = PermissionKey.ManageProperties,
-        PropertyId = propertyId,
         IsAllowed = true
     };
 

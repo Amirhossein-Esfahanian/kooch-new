@@ -2,21 +2,35 @@ namespace Kooch.Api.Entities;
 
 public enum UserRole
 {
-    SuperAdmin,
-    AdminAssistant,
+    SuperAdmin = 0,
+    AdminAssistant = 1,
 
     // Legacy compatibility only. Property authorization must use
     // UserPropertyAccess.PropertyRole. Retained until existing data is migrated.
-    Owner,
+    Owner = 2,
 
     // Legacy compatibility only. Property authorization must use
     // UserPropertyAccess.PropertyRole. Retained until existing data is migrated.
-    OwnerAssistant,
+    OwnerAssistant = 3,
 
-    Client
+    Client = 4
 }
-public enum PropertyUserStatus { Pending, Active, Suspended, Inactive }
-public enum PropertyUserRole { PropertyOwner, Manager, Reception, Accounting, Housekeeping, Custom }
+public enum PropertyUserStatus
+{
+    Pending = 0,
+    Active = 1,
+    Suspended = 2,
+    Inactive = 3
+}
+public enum PropertyUserRole
+{
+    PropertyOwner = 0,
+    Manager = 1,
+    Reception = 2,
+    Accounting = 3,
+    Housekeeping = 4,
+    Custom = 5
+}
 public enum AuditAction
 {
     PriceChanged,
@@ -26,7 +40,8 @@ public enum AuditAction
     BookingConfirmed,
     BookingCancelled,
     BookingApproved,
-    BookingExpired
+    BookingExpired,
+    PropertyOwnershipTransferred
 }
 public enum PermissionKey
 {
@@ -46,7 +61,8 @@ public enum PermissionKey
     ManageRooms,
     ManagePricing,
     ManageGuests,
-    ManageAmenities
+    ManageAmenities,
+    ManagePromotions
 }
 public enum SiteSettingType { Text, LongText, ImageUrl, Color, Boolean, Number }
 public enum PropertyStatus { Draft, PendingReview, Approved, Rejected, Suspended }

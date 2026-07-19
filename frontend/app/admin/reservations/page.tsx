@@ -32,7 +32,6 @@ type ReservationBookingModeFilter = "" | "Instant" | "OnRequest";
 type ReservationSourceFilter =
   | ""
   | "Website"
-  | "OwnerManual"
   | "PhoneReferral"
   | "AdminCreated"
   | "ExternalChannel";
@@ -157,7 +156,6 @@ const sourceOptions: Array<{ value: ReservationSourceFilter; label: string }> =
   [
     { value: "", label: "همه منابع" },
     { value: "Website", label: "وب‌سایت" },
-    { value: "OwnerManual", label: "ثبت مالک" },
     { value: "PhoneReferral", label: "ارجاع تلفنی" },
     { value: "AdminCreated", label: "ثبت ادمین" },
     { value: "ExternalChannel", label: "کانال بیرونی" },

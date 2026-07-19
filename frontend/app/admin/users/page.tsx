@@ -35,14 +35,11 @@ import { KoochIcon } from "../../../components/KoochIcon";
 
 type PlatformAdminRole = Extract<UserRole, "SuperAdmin" | "AdminAssistant">;
 
-const roles: PlatformAdminRole[] = [
-  "SuperAdmin",
-  "AdminAssistant",
-];
+const roles: PlatformAdminRole[] = ["SuperAdmin", "AdminAssistant"];
 
 const roleLabels: Record<PlatformAdminRole, string> = {
-  SuperAdmin: "Ù…Ø¯ÛŒØ± Ø§Ø±Ø´Ø¯",
-  AdminAssistant: "Ø¯Ø³ØªÛŒØ§Ø± Ù…Ø¯ÛŒØ±",
+  SuperAdmin: "مدیر ارشد",
+  AdminAssistant: "دستیار مدیر",
 };
 
 function roleLabel(role: UserRole) {
@@ -180,7 +177,11 @@ function statusLabel(user: AdminUserResponse) {
 }
 
 function validatePassword(password: string) {
-  if (password.length < 8 || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+  if (
+    password.length < 8 ||
+    !/[a-z]/.test(password) ||
+    !/[0-9]/.test(password)
+  ) {
     return "رمز عبور باید حداقل ۸ کاراکتر و شامل حرف کوچک انگلیسی و عدد باشد.";
   }
 
@@ -188,7 +189,11 @@ function validatePassword(password: string) {
 }
 
 export default function AdminUsersPage() {
-  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const {
+    authenticated,
+    loading: sessionLoading,
+    workspaces,
+  } = useAuthSession();
   const [users, setUsers] = useState<AdminUserResponse[]>([]);
   const [form, setForm] = useState<UserForm>(emptyForm);
   const [loading, setLoading] = useState(true);
@@ -243,7 +248,8 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
+    if (sessionLoading || !authenticated || !workspaces.includes("admin"))
+      return;
 
     load()
       .catch((caught: Error) => {
@@ -748,7 +754,9 @@ export default function AdminUsersPage() {
                 <div className="grid gap-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-foreground">مجوزها</p>
+                      <p className="text-sm font-black text-foreground">
+                        مجوزها
+                      </p>
                       <p className="mt-1 text-xs leading-6 text-muted-foreground">
                         دسترسی‌های سراسری دستیار مدیر را انتخاب کنید.
                       </p>
@@ -783,8 +791,8 @@ export default function AdminUsersPage() {
                       const categoryKeys = category.permissions.map(
                         (permission) => permission.key,
                       );
-                      const categorySelected = categoryKeys.every((permission) =>
-                        form.permissions.includes(permission),
+                      const categorySelected = categoryKeys.every(
+                        (permission) => form.permissions.includes(permission),
                       );
 
                       return (
@@ -806,7 +814,9 @@ export default function AdminUsersPage() {
                           <div className="grid gap-2">
                             {category.permissions.map((permission) => (
                               <KoochCheckbox
-                                checked={form.permissions.includes(permission.key)}
+                                checked={form.permissions.includes(
+                                  permission.key,
+                                )}
                                 key={permission.key}
                                 label={permission.label}
                                 onChange={(event) =>
@@ -834,7 +844,6 @@ export default function AdminUsersPage() {
                 </p>
               </KoochCard>
             )}
-
           </form>
         </KoochDialog>
       </main>

@@ -47,7 +47,7 @@ public sealed class AuthorizationCharacterizationTests
         var ok = Assert.IsType<OkObjectResult>(response.Result);
         var currentUser = Assert.IsType<CurrentUserResponse>(ok.Value);
         Assert.Equal(userId, currentUser.UserId);
-        Assert.Equal(role, currentUser.Role);
+        Assert.Equal(role.ToCanonicalPlatformRole(), currentUser.PlatformRole);
     }
 
     [Fact]
@@ -278,8 +278,7 @@ public sealed class AuthorizationCharacterizationTests
             Id = 3001,
             UserId = AdminAssistantId,
             PermissionKey = PermissionKey.ManageProperties,
-            IsAllowed = true,
-            PropertyId = null
+            IsAllowed = true
         });
 
         await dbContext.SaveChangesAsync();

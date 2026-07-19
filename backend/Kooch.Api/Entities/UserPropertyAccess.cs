@@ -4,15 +4,6 @@ public class UserPropertyAccess : BaseEntity
 {
     public int UserId { get; set; }
     public int PropertyId { get; set; }
-    public bool CanManageProperty { get; set; }
-    public bool CanManageRooms { get; set; }
-    public bool CanManageAvailability { get; set; }
-    public bool CanManagePricing { get; set; }
-    public bool CanManageReservations { get; set; }
-    public bool CanManagePayments { get; set; }
-    public bool CanManageReviews { get; set; }
-    public bool CanManageNotifications { get; set; }
-    public bool CanViewReports { get; set; }
     public PropertyUserStatus Status { get; set; } = PropertyUserStatus.Active;
     public PropertyUserRole PropertyRole { get; set; } = PropertyUserRole.Manager;
     public string PermissionMatrixJson { get; set; } = "{}";

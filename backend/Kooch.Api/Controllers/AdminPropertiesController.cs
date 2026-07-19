@@ -97,6 +97,17 @@ public class AdminPropertiesController(
         return Ok(await propertyService.SetPropertyStatusAsync(user.UserId, user.Role, id, request.Status, cancellationToken));
     }
 
+    [HttpPost("{id:int}/transfer-ownership")]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyResponse>> TransferOwnership(
+        int id,
+        AdminTransferPropertyOwnershipRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyService.TransferOwnershipAsync(user.UserId, user.Role, id, request, cancellationToken));
+    }
+
     [HttpGet("{id:int}")]
     [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PropertyResponse>> GetById(int id, CancellationToken cancellationToken)

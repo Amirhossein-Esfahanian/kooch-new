@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Promotions;
+using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 
@@ -7,6 +8,7 @@ namespace Kooch.Api.Controllers;
 
 [ApiController]
 [AdminAuthorize]
+[PermissionAuthorize(PermissionKey.ManagePromotions)]
 [Route("api/admin/promotions")]
 public sealed class AdminPromotionsController(IPromotionService promotionService) : AuthenticatedControllerBase
 {

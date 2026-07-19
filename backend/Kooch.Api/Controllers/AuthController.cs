@@ -84,6 +84,16 @@ public class AuthController(IAuthService authService) : ControllerBase
             : Ok(response);
     }
 
+    [HttpGet("password-setup-token")]
+    [AllowAnonymous]
+    [ProducesResponseType<PasswordSetupTokenStatusResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PasswordSetupTokenStatusResponse>> ValidatePasswordSetupToken(
+        [FromQuery] string token,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await authService.ValidatePasswordSetupTokenAsync(token, cancellationToken));
+    }
+
     [HttpPost("set-password")]
     [AllowAnonymous]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

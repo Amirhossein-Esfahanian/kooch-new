@@ -8,9 +8,7 @@ public static class AuthorizationRoleExtensions
         role is UserRole.SuperAdmin or UserRole.AdminAssistant;
 
     public static UserRole ToCanonicalPlatformRole(this UserRole role) =>
-        role is UserRole.Owner or UserRole.OwnerAssistant
-            ? UserRole.Client
-            : role;
+        role.IsPlatformAdmin() ? role : UserRole.Client;
 
     public static bool IsPropertyRole(this PropertyUserRole role) =>
         Enum.IsDefined(role);

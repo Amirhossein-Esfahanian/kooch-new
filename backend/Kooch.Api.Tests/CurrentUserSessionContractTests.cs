@@ -62,7 +62,6 @@ public sealed class CurrentUserSessionContractTests
 
         Assert.NotNull(response);
         Assert.Equal(UserRole.Client, response.PlatformRole);
-        Assert.Equal(UserRole.Client, response.Role);
         Assert.Equal([WorkspaceNames.Owner, WorkspaceNames.Account], response.Workspaces);
         Assert.Equal(WorkspaceNames.Owner, response.DefaultWorkspace);
         Assert.Equal(FirstPropertyId, response.DefaultPropertyId);
@@ -82,10 +81,43 @@ public sealed class CurrentUserSessionContractTests
 
         Assert.NotNull(response);
         Assert.Equal(UserRole.Client, response.PlatformRole);
-        Assert.Equal(UserRole.OwnerAssistant, response.Role);
         Assert.Equal([WorkspaceNames.Owner, WorkspaceNames.Account], response.Workspaces);
         Assert.Equal(WorkspaceNames.Owner, response.DefaultWorkspace);
         Assert.Single(response.PropertyMemberships);
+    }
+
+    [Fact]
+    public async Task SessionRefresh_ReflectsCurrentMembershipPermissionsAndStatus()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var service = CreateService(dbContext);
+        var membership = await dbContext.UserPropertyAccesses.SingleAsync(access => access.Id == 103);
+
+        var initial = await service.GetCurrentUserAsync(4);
+        Assert.NotNull(initial);
+        Assert.Contains(WorkspaceNames.Owner, initial.Workspaces);
+        Assert.True(initial.PropertyMemberships.Single().EffectivePermissions["Dashboard"].View);
+
+        membership.PermissionMatrixJson = SerializeMatrix(
+            "Rooms",
+            new PermissionActionsDto { View = true, Edit = true });
+        await dbContext.SaveChangesAsync();
+
+        var afterPermissionChange = await service.GetCurrentUserAsync(4);
+        Assert.NotNull(afterPermissionChange);
+        var refreshedMembership = afterPermissionChange.PropertyMemberships.Single();
+        Assert.False(refreshedMembership.EffectivePermissions.TryGetValue("Dashboard", out var dashboard) && dashboard.View);
+        Assert.True(refreshedMembership.EffectivePermissions["Rooms"].Edit);
+
+        membership.Status = PropertyUserStatus.Suspended;
+        membership.IsActive = false;
+        await dbContext.SaveChangesAsync();
+
+        var afterSuspension = await service.GetCurrentUserAsync(4);
+        Assert.NotNull(afterSuspension);
+        Assert.Equal([WorkspaceNames.Account], afterSuspension.Workspaces);
+        Assert.Null(afterSuspension.DefaultPropertyId);
+        Assert.False(afterSuspension.PropertyMemberships.Single().EffectivePermissions["Rooms"].Edit);
     }
 
     [Fact]

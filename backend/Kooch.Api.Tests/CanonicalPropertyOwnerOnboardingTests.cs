@@ -115,6 +115,174 @@ public sealed class CanonicalPropertyOwnerOnboardingTests
         Assert.Equal([OwnerUserId], candidates.Select(candidate => candidate.Id).ToArray());
     }
 
+    [Fact]
+    public async Task TransferOwnership_ExistingClientPromotesNewOwnerAndDemotesPreviousOwner()
+    {
+        await using var dbContext = CreateContext();
+        await SeedTransferPropertyAsync(dbContext);
+        var service = CreatePropertyService(dbContext);
+
+        var updated = await service.TransferOwnershipAsync(
+            AdminUserId,
+            UserRole.SuperAdmin,
+            TransferPropertyId,
+            new AdminTransferPropertyOwnershipRequest
+            {
+                NewOwnerId = NewOwnerUserId,
+                PreviousOwnerAction = PreviousOwnerTransferAction.Demote,
+                PreviousOwnerRole = PropertyUserRole.Manager
+            });
+
+        var memberships = await dbContext.UserPropertyAccesses
+            .Where(access => access.PropertyId == TransferPropertyId)
+            .OrderBy(access => access.UserId)
+            .ToListAsync();
+        var previousOwner = memberships.Single(access => access.UserId == OwnerUserId);
+        var newOwner = memberships.Single(access => access.UserId == NewOwnerUserId);
+        var staff = memberships.Single(access => access.UserId == StaffUserId);
+        var newOwnerPermissions = JsonSerializer.Deserialize<PermissionMatrixDto>(newOwner.PermissionMatrixJson)!;
+
+        Assert.Equal(NewOwnerUserId, updated.OwnerId);
+        Assert.Equal(PropertyUserRole.PropertyOwner, newOwner.PropertyRole);
+        Assert.Equal(PropertyUserStatus.Active, newOwner.Status);
+        Assert.True(newOwner.IsActive);
+        Assert.True(newOwnerPermissions["Users"].Create);
+        Assert.True(newOwnerPermissions["Settings"].Delete);
+        Assert.Equal(PropertyUserRole.Manager, previousOwner.PropertyRole);
+        Assert.Equal(PropertyUserStatus.Active, previousOwner.Status);
+        Assert.True(previousOwner.IsActive);
+        Assert.Equal(PropertyUserRole.Reception, staff.PropertyRole);
+        Assert.True(staff.IsActive);
+        Assert.Single(memberships, access =>
+            access.PropertyRole == PropertyUserRole.PropertyOwner &&
+            access.Status == PropertyUserStatus.Active &&
+            access.IsActive);
+        Assert.Contains(await dbContext.AuditLogs.ToListAsync(), log =>
+            log.Action == AuditAction.PropertyOwnershipTransferred &&
+            log.PropertyId == TransferPropertyId &&
+            log.UserId == AdminUserId);
+    }
+
+    [Fact]
+    public async Task TransferOwnership_NewClientCreatesAccountPromotesOwnerAndDeactivatesPreviousOwner()
+    {
+        await using var dbContext = CreateContext();
+        await SeedTransferPropertyAsync(dbContext);
+        var service = CreatePropertyService(dbContext);
+
+        var updated = await service.TransferOwnershipAsync(
+            AdminUserId,
+            UserRole.SuperAdmin,
+            TransferPropertyId,
+            new AdminTransferPropertyOwnershipRequest
+            {
+                NewOwner = new AdminPropertyOwnerAccountRequest
+                {
+                    FirstName = "Created",
+                    LastName = "Owner",
+                    Email = "created-transfer-owner@example.test",
+                    PhoneNumber = "09120000123",
+                    Password = "password1"
+                },
+                PreviousOwnerAction = PreviousOwnerTransferAction.DeactivateMembership
+            });
+
+        var createdOwner = await dbContext.Users.SingleAsync(user => user.Email == "created-transfer-owner@example.test");
+        var previousOwner = await dbContext.UserPropertyAccesses.SingleAsync(access =>
+            access.PropertyId == TransferPropertyId && access.UserId == OwnerUserId);
+        var ownerMembership = await dbContext.UserPropertyAccesses.SingleAsync(access =>
+            access.PropertyId == TransferPropertyId && access.UserId == createdOwner.Id);
+
+        Assert.Equal(createdOwner.Id, updated.OwnerId);
+        Assert.Equal(UserRole.Client, createdOwner.Role);
+        Assert.True(createdOwner.IsActive);
+        Assert.False(createdOwner.PasswordSetupRequired);
+        Assert.Equal(PropertyUserRole.PropertyOwner, ownerMembership.PropertyRole);
+        Assert.Equal(PropertyUserStatus.Active, ownerMembership.Status);
+        Assert.True(ownerMembership.IsActive);
+        Assert.Equal(PropertyUserStatus.Inactive, previousOwner.Status);
+        Assert.False(previousOwner.IsActive);
+        Assert.Single(await dbContext.UserPropertyAccesses.Where(access =>
+            access.PropertyId == TransferPropertyId &&
+            access.PropertyRole == PropertyUserRole.PropertyOwner &&
+            access.Status == PropertyUserStatus.Active &&
+            access.IsActive).ToListAsync());
+    }
+
+    [Fact]
+    public async Task TransferOwnership_RejectsInactiveUser()
+    {
+        await using var dbContext = CreateContext();
+        await SeedTransferPropertyAsync(dbContext);
+        var service = CreatePropertyService(dbContext);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.TransferOwnershipAsync(
+            AdminUserId,
+            UserRole.SuperAdmin,
+            TransferPropertyId,
+            new AdminTransferPropertyOwnershipRequest
+            {
+                NewOwnerId = InactiveUserId,
+                PreviousOwnerAction = PreviousOwnerTransferAction.DeactivateMembership
+            }));
+
+        var property = await dbContext.Properties.SingleAsync(property => property.Id == TransferPropertyId);
+        var previousOwner = await dbContext.UserPropertyAccesses.SingleAsync(access =>
+            access.PropertyId == TransferPropertyId && access.UserId == OwnerUserId);
+        Assert.Equal(OwnerUserId, property.OwnerId);
+        Assert.Equal(PropertyUserRole.PropertyOwner, previousOwner.PropertyRole);
+        Assert.Equal(PropertyUserStatus.Active, previousOwner.Status);
+        Assert.True(previousOwner.IsActive);
+    }
+
+    private static async Task SeedTransferPropertyAsync(KoochDbContext dbContext)
+    {
+        await SeedBaseAsync(dbContext);
+        dbContext.Users.AddRange(
+            CreateUser(NewOwnerUserId, UserRole.Client, "new-owner", true),
+            CreateUser(StaffUserId, UserRole.Client, "staff", true),
+            CreateUser(InactiveUserId, UserRole.Client, "inactive-owner", false));
+        dbContext.Properties.Add(new Property
+        {
+            Id = TransferPropertyId,
+            OwnerId = OwnerUserId,
+            DestinationId = DestinationId,
+            Name = "Transfer property",
+            Slug = "transfer-property",
+            Description = "Transfer property",
+            Address = "Transfer address",
+            City = "Kashan",
+            Country = "Iran",
+            Status = PropertyStatus.Approved,
+            Type = PropertyType.TraditionalHouse,
+            InventoryMode = InventoryMode.NamedRooms
+        });
+        dbContext.UserPropertyAccesses.AddRange(
+            new UserPropertyAccess
+            {
+                UserId = OwnerUserId,
+                PropertyId = TransferPropertyId,
+                PropertyRole = PropertyUserRole.PropertyOwner,
+                Status = PropertyUserStatus.Active,
+                IsActive = true,
+                PermissionMatrixJson = JsonSerializer.Serialize(new PermissionMatrixDto
+                {
+                    ["Users"] = new PermissionActionsDto { View = true, Create = true, Edit = true, Delete = true, Export = true },
+                    ["Settings"] = new PermissionActionsDto { View = true, Create = true, Edit = true, Delete = true, Export = true }
+                })
+            },
+            new UserPropertyAccess
+            {
+                UserId = StaffUserId,
+                PropertyId = TransferPropertyId,
+                PropertyRole = PropertyUserRole.Reception,
+                Status = PropertyUserStatus.Active,
+                IsActive = true,
+                PermissionMatrixJson = "{}"
+            });
+        await dbContext.SaveChangesAsync();
+    }
+
     private static PropertyService CreatePropertyService(KoochDbContext dbContext)
     {
         var authorization = new PropertyAccessService(dbContext);
@@ -208,6 +376,9 @@ public sealed class CanonicalPropertyOwnerOnboardingTests
         public Task SetPasswordAsync(SetPasswordRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<PasswordSetupTokenStatusResponse> ValidatePasswordSetupTokenAsync(string token, CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<AuthResponse?> VerifyOtpAsync(VerifyOtpRequest request, CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }
@@ -223,5 +394,9 @@ public sealed class CanonicalPropertyOwnerOnboardingTests
     private const int AdminUserId = 1;
     private const int OwnerUserId = 2;
     private const int LegacyOwnerUserId = 3;
+    private const int NewOwnerUserId = 4;
+    private const int StaffUserId = 5;
+    private const int InactiveUserId = 6;
     private const int DestinationId = 10;
+    private const int TransferPropertyId = 100;
 }

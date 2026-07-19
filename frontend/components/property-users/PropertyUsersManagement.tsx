@@ -183,7 +183,7 @@ export function PropertyUsersManagement({
     createEmptyForm(null),
   );
   const [propertyName, setPropertyName] = useState("");
-  const { platformRole, user: sessionUser } = useAuthSession();
+  const { platformRole, refreshSession, user: sessionUser } = useAuthSession();
   const apiBase = `/${context}/properties/${propertyId}/users`;
   const propertyApiBase = `/${context}/properties/${propertyId}`;
 
@@ -209,6 +209,12 @@ export function PropertyUsersManagement({
       ),
     [actorPropertyRole],
   );
+
+  async function refreshSessionAfterSelfChange(userId: number) {
+    if (userId === sessionUser?.userId) {
+      await refreshSession({ redirectOnUnauthorized: true });
+    }
+  }
 
   function canManageRole(role: PropertyUserRole) {
     return roleRank(role) <= roleRank(actorPropertyRole);
@@ -360,6 +366,7 @@ export function PropertyUsersManagement({
           ? current.map((item) => (item.userId === saved.userId ? saved : item))
           : [...current, saved],
       );
+      await refreshSessionAfterSelfChange(saved.userId);
       if (
         !editingUser &&
         saved.temporarySetupLink &&
@@ -403,6 +410,7 @@ export function PropertyUsersManagement({
       setUsers((current) =>
         current.map((item) => (item.userId === saved.userId ? saved : item)),
       );
+      await refreshSessionAfterSelfChange(saved.userId);
       toast.success(
         status === "Active"
           ? "کاربر فعال شد"
@@ -421,6 +429,34 @@ export function PropertyUsersManagement({
     }
   }
 
+  async function resendInvitation(user: PropertyUserResponse) {
+    if (!canManageRole(user.role)) {
+      hierarchyError("شما نمی‌توانید دعوت کاربری با نقش بالاتر را دوباره ارسال کنید.");
+      return;
+    }
+    try {
+      const saved = await apiRequest<PropertyUserResponse>(
+        `${apiBase}/${user.userId}/resend-invitation`,
+        { method: "POST" },
+      );
+      setUsers((current) =>
+        current.map((item) => (item.userId === saved.userId ? saved : item)),
+      );
+      if (
+        saved.temporarySetupLink &&
+        process.env.NODE_ENV !== "production"
+      ) {
+        setSetupLink(saved.temporarySetupLink);
+      }
+      toast.success("دعوت‌نامه دوباره ارسال شد.");
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "ارسال دوباره دعوت‌نامه انجام نشد.";
+      setError(message);
+      toast.error(message);
+      throw caught;
+    }
+  }
   return (
     <KoochCard className="grid gap-4" padding="none" variant="elevated">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
@@ -539,6 +575,25 @@ export function PropertyUsersManagement({
                       >
                         فعالیت
                       </KoochButton>
+                      {user.passwordSetupRequired && canManageRole(user.role) && hasUserPermission("edit") && (
+                        <KoochConfirmDialog
+                          cancelText="انصراف"
+                          confirmText="ارسال دوباره"
+                          description="یک لینک جدید تنظیم رمز برای این کاربر ساخته می‌شود و لینک‌های فعال قبلی نامعتبر می‌شوند."
+                          onConfirm={() => resendInvitation(user)}
+                          title="ارسال دوباره دعوت‌نامه"
+                          trigger={
+                            <KoochButton
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              ارسال دعوت
+                            </KoochButton>
+                          }
+                          variant="info"
+                        />
+                      )}
                       {user.canRemove && canManageRole(user.role) && (
                         <>
                           {user.status !== "Active" && hasUserPermission("edit") && (
@@ -818,3 +873,5 @@ function ReadOnlyActivityItem({
     </div>
   );
 }
+
+

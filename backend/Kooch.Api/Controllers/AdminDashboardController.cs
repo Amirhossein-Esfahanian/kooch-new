@@ -1,4 +1,4 @@
-﻿using Kooch.Api.Authentication;
+using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
@@ -10,6 +10,7 @@ namespace Kooch.Api.Controllers;
 
 [ApiController]
 [AdminAuthorize]
+[PermissionAuthorize(PermissionKey.ViewDashboard)]
 [Route("api/admin/dashboard")]
 public class AdminDashboardController(KoochDbContext dbContext) : AuthenticatedControllerBase
 {

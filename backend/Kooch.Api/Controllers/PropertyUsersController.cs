@@ -1,4 +1,4 @@
-using Kooch.Api.Authentication;
+﻿using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
@@ -70,6 +70,21 @@ public class PropertyUsersController(IPropertyUserService propertyUserService) :
         return NoContent();
     }
 
+    [HttpPost("{userId:int}/resend-invitation")]
+    [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyUserResponse>> ResendInvitation(
+        int propertyId,
+        int userId,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.ResendInvitationAsync(
+            user.UserId,
+            user.Role,
+            propertyId,
+            userId,
+            cancellationToken));
+    }
     [HttpPut("{userId:int}/activate")]
     [ProducesResponseType<PropertyUserResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PropertyUserResponse>> Activate(
@@ -121,3 +136,4 @@ public class PropertyUsersController(IPropertyUserService propertyUserService) :
             cancellationToken));
     }
 }
+

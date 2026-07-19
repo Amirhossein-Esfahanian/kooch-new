@@ -3126,9 +3126,6 @@ namespace Kooch.Api.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(true);
 
-                    b.Property<bool>("CanManageUsers")
-                        .HasColumnType("bit");
-
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -3185,6 +3182,11 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("Role")
                         .HasColumnType("int");
 
+                    b.Property<int>("SecurityStampVersion")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -3238,9 +3240,6 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("PermissionKey")
                         .HasColumnType("int");
 
-                    b.Property<int?>("PropertyId")
-                        .HasColumnType("int");
-
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -3254,9 +3253,7 @@ namespace Kooch.Api.Migrations
 
                     b.HasIndex("PermissionKey");
 
-                    b.HasIndex("PropertyId");
-
-                    b.HasIndex("UserId", "PermissionKey", "PropertyId")
+                    b.HasIndex("UserId", "PermissionKey")
                         .IsUnique();
 
                     b.ToTable("UserPermissions");
@@ -3269,33 +3266,6 @@ namespace Kooch.Api.Migrations
                         .HasColumnType("int");
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<bool>("CanManageAvailability")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageNotifications")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManagePayments")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManagePricing")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageProperty")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageReservations")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageReviews")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanManageRooms")
-                        .HasColumnType("bit");
-
-                    b.Property<bool>("CanViewReports")
-                        .HasColumnType("bit");
 
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
@@ -3327,14 +3297,10 @@ namespace Kooch.Api.Migrations
                         .HasColumnType("int");
 
                     b.Property<int>("PropertyRole")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
+                        .HasColumnType("int");
 
                     b.Property<int>("Status")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int")
-                        .HasDefaultValue(1);
+                        .HasColumnType("int");
 
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
@@ -4005,11 +3971,6 @@ namespace Kooch.Api.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
-                    b.HasOne("Kooch.Api.Entities.Property", "Property")
-                        .WithMany("UserPermissions")
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.NoAction);
-
                     b.HasOne("Kooch.Api.Entities.User", "User")
                         .WithMany("UserPermissions")
                         .HasForeignKey("UserId")
@@ -4017,8 +3978,6 @@ namespace Kooch.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("Permission");
-
-                    b.Navigation("Property");
 
                     b.Navigation("User");
                 });
@@ -4137,8 +4096,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("SeoMetadata");
 
                     b.Navigation("StayRules");
-
-                    b.Navigation("UserPermissions");
 
                     b.Navigation("UserPropertyAccesses");
 

@@ -145,7 +145,6 @@ public class PropertyAccessService(KoochDbContext dbContext)
             var platformPermissions = await dbContext.UserPermissions.AsNoTracking()
                 .Where(permission =>
                     permission.UserId == userId &&
-                    permission.PropertyId == null &&
                     permission.IsAllowed)
                 .Select(permission => permission.PermissionKey)
                 .ToHashSetAsync(cancellationToken);

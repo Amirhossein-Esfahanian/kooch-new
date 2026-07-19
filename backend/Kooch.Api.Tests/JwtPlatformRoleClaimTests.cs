@@ -85,7 +85,6 @@ public sealed class JwtPlatformRoleClaimTests
 
         Assert.NotNull(currentUser);
         Assert.Equal(UserRole.Client, currentUser.PlatformRole);
-        Assert.Equal(UserRole.OwnerAssistant, currentUser.Role);
         Assert.Contains(WorkspaceNames.Owner, currentUser.Workspaces);
         Assert.True(await propertyAccessService.CanAccessPropertyAsync(LegacyAssistantId, PropertyId));
         Assert.True(await propertyAccessService.CanAccessOwnerPanelAsync(LegacyAssistantId));
@@ -102,7 +101,6 @@ public sealed class JwtPlatformRoleClaimTests
 
         Assert.NotNull(currentUser);
         Assert.Equal(UserRole.Client, currentUser.PlatformRole);
-        Assert.Equal(UserRole.OwnerAssistant, currentUser.Role);
         Assert.Equal([WorkspaceNames.Account], currentUser.Workspaces);
         Assert.False(await propertyAccessService.CanAccessPropertyAsync(
             LegacyAssistantWithoutMembershipId,

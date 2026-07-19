@@ -61,7 +61,6 @@ public class PermissionService(
             .AnyAsync(permission =>
                 permission.UserId == userId &&
                 permission.PermissionKey == permissionKey &&
-                permission.PropertyId == null &&
                 permission.IsAllowed,
                 cancellationToken);
     }
@@ -120,6 +119,7 @@ public class PermissionService(
             PermissionKey.ViewDashboard => ["dashboard.view"],
             PermissionKey.ManageGuests => ["bookings.view", "bookings.edit"],
             PermissionKey.ManageAmenities => ["property.view", "property.edit"],
+            PermissionKey.ManagePromotions => ["pricing.view", "pricing.edit"],
             _ => []
         };
 

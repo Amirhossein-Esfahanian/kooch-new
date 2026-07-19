@@ -19,9 +19,6 @@ public class CurrentUserResponse
     public IReadOnlyList<CurrentUserPropertyMembershipResponse> PropertyMemberships { get; set; } = [];
     public string? DefaultWorkspace { get; set; }
     public int? DefaultPropertyId { get; set; }
-
-    // Compatibility alias for existing clients. PlatformRole is authoritative.
-    public UserRole Role { get; set; }
 }
 
 public class CurrentUserPropertyMembershipResponse

@@ -1,3 +1,4 @@
+using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Entities;
@@ -120,18 +121,26 @@ public class AdminUserService(
         var mobile = NormalizeMobile(request.PhoneNumber);
         await EnsureUniqueIdentityAsync(email, mobile, userId, cancellationToken);
 
+        var roleChanged = user.Role != request.Role;
+        var passwordChanged = !string.IsNullOrWhiteSpace(request.Password);
+
         user.FirstName = request.FirstName.Trim();
         user.LastName = request.LastName.Trim();
         user.Email = email;
         user.PhoneNumber = mobile;
         user.Role = request.Role;
         user.ParentUserId = currentRole == UserRole.SuperAdmin ? request.ParentUserId : user.ParentUserId ?? currentUserId;
-        if (!string.IsNullOrWhiteSpace(request.Password))
+        if (passwordChanged)
         {
-            PasswordPolicy.Validate(request.Password);
-            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
+            PasswordPolicy.Validate(request.Password!);
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password!);
             user.PasswordSetupRequired = false;
             user.IsActive = true;
+        }
+
+        if (roleChanged || passwordChanged)
+        {
+            user.SecurityStampVersion++;
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -156,7 +165,13 @@ public class AdminUserService(
             throw new InvalidOperationException("This user cannot be activated or deactivated here.");
         }
 
+        var wasActive = user.IsActive;
         user.IsActive = isActive;
+        if (wasActive && !isActive)
+        {
+            user.SecurityStampVersion++;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         return await GetUserAsync(currentUserId, currentRole, userId, cancellationToken);
     }
@@ -242,7 +257,6 @@ public class AdminUserService(
         var assignablePermissions = await dbContext.UserPermissions.AsNoTracking()
             .Where(permission =>
                 permission.UserId == currentUserId &&
-                permission.PropertyId == null &&
                 permission.IsAllowed)
             .Select(permission => permission.PermissionKey)
             .ToListAsync(cancellationToken);
@@ -258,7 +272,7 @@ public class AdminUserService(
         CancellationToken cancellationToken)
     {
         var existingPermissions = await dbContext.UserPermissions
-            .Where(permission => permission.UserId == user.Id && permission.PropertyId == null)
+            .Where(permission => permission.UserId == user.Id)
             .ToListAsync(cancellationToken);
         var requested = user.Role == UserRole.AdminAssistant
             ? requestedPermissions
@@ -292,11 +306,11 @@ public class AdminUserService(
             FullName = (user.FirstName + " " + user.LastName).Trim(),
             Email = user.Email,
             PhoneNumber = user.PhoneNumber,
-            Role = user.Role,
+            Role = user.Role.ToCanonicalPlatformRole(),
             ParentUserId = user.ParentUserId,
             ParentUserName = user.ParentUser == null ? null : (user.ParentUser.FirstName + " " + user.ParentUser.LastName).Trim(),
             Permissions = user.UserPermissions
-                .Where(permission => permission.PropertyId == null && permission.IsAllowed)
+                .Where(permission => permission.IsAllowed)
                 .OrderBy(permission => permission.PermissionKey)
                 .Select(permission => permission.PermissionKey)
                 .ToList(),

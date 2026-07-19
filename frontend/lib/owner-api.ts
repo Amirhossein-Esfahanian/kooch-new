@@ -1,4 +1,22 @@
-﻿export const propertyTypes = [
+import {
+  clearToken,
+  getToken,
+  isSessionRevokedResponse,
+  notifySessionRevoked,
+  ownerPropertyKey,
+  setAuthUser,
+  setToken,
+} from "@/lib/auth-session";
+
+export {
+  clearToken,
+  getToken,
+  ownerPropertyKey,
+  setAuthUser,
+  setToken,
+} from "@/lib/auth-session";
+
+export const propertyTypes = [
   "TraditionalHouse",
   "BoutiqueHotel",
   "EcoLodge",
@@ -59,12 +77,7 @@ export type PropertyStatus =
   | "Approved"
   | "Rejected"
   | "Suspended";
-export type UserRole =
-  | "SuperAdmin"
-  | "AdminAssistant"
-  | "Owner"
-  | "OwnerAssistant"
-  | "Client";
+export type UserRole = "SuperAdmin" | "AdminAssistant" | "Client";
 export type AdminPermissionKey =
   | "ManageUsers"
   | "ManageRoles"
@@ -160,7 +173,10 @@ export type AuditAction =
   | "RoomCreated"
   | "RoomDeleted"
   | "BookingConfirmed"
-  | "BookingCancelled";
+  | "BookingCancelled"
+  | "BookingApproved"
+  | "BookingExpired"
+  | "PropertyOwnershipTransferred";
 
 export interface AuditLogResponse {
   id: number;
@@ -588,36 +604,14 @@ export interface PropertyFormValues {
   maxFreeChildren?: number | null;
 }
 
-const tokenKey = "kooch_owner_token";
-const userRoleKey = "kooch_user_role";
-const userNameKey = "kooch_user_name";
-export const ownerPropertyKey = "kooch_owner_property_id";
 
-export function getToken() {
-  return typeof window === "undefined" ? null : localStorage.getItem(tokenKey);
-}
-
-export function setToken(token: string) {
-  localStorage.setItem(tokenKey, token);
-}
-
-export function setAuthUser(role: string, fullName?: string) {
-  localStorage.setItem(userRoleKey, role);
-  if (fullName) localStorage.setItem(userNameKey, fullName);
-}
-
-export function clearToken() {
-  localStorage.removeItem(tokenKey);
-  localStorage.removeItem(userRoleKey);
-  localStorage.removeItem(userNameKey);
-  localStorage.removeItem("kooch_workspace");
-}
 
 export class ApiRequestError extends Error {
   constructor(
     message: string,
     public readonly status: number,
     public readonly body: unknown = null,
+    public readonly sessionRevoked = false,
   ) {
     super(message);
     this.name = "ApiRequestError";
@@ -641,13 +635,21 @@ export async function apiRequest<T>(
   });
 
   if (response.status === 401) {
-    if (getToken() === token) {
-      clearToken();
+    const body = (await response.json().catch(() => null)) as {
+      message?: string;
+      code?: string;
+    } | null;
+    const sessionRevoked =
+      isSessionRevokedResponse(response, body) || path === "/auth/me";
+    const message =
+      body?.message ??
+      "\u0646\u0634\u0633\u062a \u0634\u0645\u0627 \u0645\u0646\u0642\u0636\u06cc \u0634\u062f\u0647 \u0627\u0633\u062a. \u0644\u0637\u0641\u0627\u064b \u062f\u0648\u0628\u0627\u0631\u0647 \u0648\u0627\u0631\u062f \u0634\u0648\u06cc\u062f.";
+
+    if (sessionRevoked && getToken() === token) {
+      notifySessionRevoked(message);
     }
-    throw new ApiRequestError(
-      "نشست شما منقضی شده است. لطفاً دوباره وارد شوید.",
-      response.status,
-    );
+
+    throw new ApiRequestError(message, response.status, body, sessionRevoked);
   }
 
   if (!response.ok) {

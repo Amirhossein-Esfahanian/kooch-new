@@ -13,7 +13,6 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import {
   apiRequest,
-  setAuthUser,
   setToken,
 } from "@/lib/owner-api";
 
@@ -23,7 +22,6 @@ type LoginMethod = "password" | "otp";
 interface AuthResponse {
   token: string;
   fullName: string;
-  role: string;
 }
 
 interface RequestOtpResponse {
@@ -65,7 +63,6 @@ export function AuthPage() {
 
   async function completeLogin(response: AuthResponse) {
     setToken(response.token);
-    setAuthUser(response.role, response.fullName);
     const session = await refreshSession();
 
     if (!session) {

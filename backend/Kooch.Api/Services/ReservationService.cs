@@ -251,7 +251,7 @@ public class ReservationService(
             Currency = pricePreview.Currency,
             Status = requestedStatus,
             ConfirmedAtUtc = requestedStatus == ReservationStatus.Confirmed ? now : null,
-            Source = GetReservationSource(currentUser.Role),
+            Source = ReservationSource.AdminCreated,
             GuestNote = request.Notes
         };
 
@@ -1159,10 +1159,6 @@ public class ReservationService(
         }
     }
 
-    private static ReservationSource GetReservationSource(UserRole role) =>
-        role is UserRole.Owner or UserRole.OwnerAssistant
-            ? ReservationSource.OwnerManual
-            : ReservationSource.AdminCreated;
 
     private IQueryable<Reservation> ReservationQuery() =>
         dbContext.Reservations

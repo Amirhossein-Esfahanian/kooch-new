@@ -1,7 +1,8 @@
-﻿using System.Text.Json;
+using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Kooch.Api.Exceptions;
 using Microsoft.EntityFrameworkCore;
@@ -77,16 +78,42 @@ public class PropertyService(
                 : request.Status ?? PropertyStatus.Draft
         };
 
-        dbContext.Properties.Add(property);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        await EnsureCanonicalOwnerMembershipAsync(property.Id, null, ownerId, cancellationToken);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        if (string.IsNullOrWhiteSpace(englishName))
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        if (dbContext.Database.IsRelational())
         {
-            property.Slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id);
-            await EnsureUniqueSlugAsync(property.Slug, property.Id, cancellationToken);
-            await dbContext.SaveChangesAsync(cancellationToken);
+            transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         }
+
+        try
+        {
+            dbContext.Properties.Add(property);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await EnsureCanonicalOwnerMembershipAsync(property.Id, null, ownerId, cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (string.IsNullOrWhiteSpace(englishName))
+            {
+                property.Slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id);
+                await EnsureUniqueSlugAsync(property.Slug, property.Id, cancellationToken);
+                await dbContext.SaveChangesAsync(cancellationToken);
+            }
+
+            await EnsureExactlyOneActiveOwnerMembershipAsync(property.Id, ownerId, cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+
         return await LoadResponseAsync(property.Id, cancellationToken);
     }
 
@@ -287,15 +314,16 @@ public class PropertyService(
         await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
 
         var property = await GetEntityAsync(propertyId, cancellationToken);
-        await EnsureCanonicalOwnerAccountAsync(request.OwnerId, cancellationToken);
+        if (request.OwnerId != property.OwnerId)
+        {
+            throw new InvalidOperationException("Use the transfer ownership action to change a property owner.");
+        }
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
         var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
         await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
 
-        var previousOwnerId = property.OwnerId;
-        property.OwnerId = request.OwnerId;
         property.DestinationId = request.DestinationId;
         property.Name = request.Name.Trim();
         property.EnglishName = englishName;
@@ -332,13 +360,128 @@ public class PropertyService(
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
-        await EnsureCanonicalOwnerMembershipAsync(
-            property.Id,
-            previousOwnerId,
-            request.OwnerId,
-            cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    public async Task<PropertyResponse> TransferOwnershipAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        AdminTransferPropertyOwnershipRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
+
+        var hasExistingOwner = request.NewOwnerId.HasValue;
+        var hasNewOwner = request.NewOwner is not null;
+        if (hasExistingOwner == hasNewOwner)
+        {
+            throw new ArgumentException("Select exactly one new owner source.");
+        }
+
+        if (request.PreviousOwnerAction == PreviousOwnerTransferAction.Demote &&
+            (!request.PreviousOwnerRole.HasValue || request.PreviousOwnerRole == PropertyUserRole.PropertyOwner))
+        {
+            throw new ArgumentException("Select a non-owner role for the previous owner.");
+        }
+
+        Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
+        if (dbContext.Database.IsRelational())
+        {
+            transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        }
+
+        try
+        {
+            var property = await dbContext.Properties
+                .Include(item => item.Owner)
+                .SingleOrDefaultAsync(item => item.Id == propertyId, cancellationToken)
+                ?? throw new KeyNotFoundException("Property not found.");
+            var previousOwnerId = property.OwnerId;
+            var newOwner = hasExistingOwner
+                ? await ResolveTransferOwnerAsync(request.NewOwnerId!.Value, cancellationToken)
+                : await CreateTransferOwnerAsync(userId, request.NewOwner!, cancellationToken);
+
+            if (newOwner.Id == previousOwnerId)
+            {
+                throw new InvalidOperationException("The selected user is already the property owner.");
+            }
+
+            var conflictingOwners = await dbContext.UserPropertyAccesses.AsNoTracking()
+                .Where(access =>
+                    access.PropertyId == propertyId &&
+                    access.PropertyRole == PropertyUserRole.PropertyOwner &&
+                    access.Status == PropertyUserStatus.Active &&
+                    access.IsActive &&
+                    !access.IsDeleted &&
+                    access.UserId != previousOwnerId &&
+                    access.UserId != newOwner.Id)
+                .Select(access => access.UserId)
+                .ToListAsync(cancellationToken);
+            if (conflictingOwners.Count > 0)
+            {
+                throw new InvalidOperationException("This property already has another active owner membership.");
+            }
+
+            var previousOwner = property.Owner;
+            property.OwnerId = newOwner.Id;
+            var newOwnerAccess = await EnsureOwnerAccessAsync(propertyId, newOwner.Id, cancellationToken);
+
+            var previousOwnerAccess = await dbContext.UserPropertyAccesses
+                .SingleOrDefaultAsync(access =>
+                    access.PropertyId == propertyId &&
+                    access.UserId == previousOwnerId,
+                    cancellationToken);
+            if (previousOwnerAccess is not null)
+            {
+                if (request.PreviousOwnerAction == PreviousOwnerTransferAction.DeactivateMembership)
+                {
+                    previousOwnerAccess.Status = PropertyUserStatus.Inactive;
+                    previousOwnerAccess.IsActive = false;
+                }
+                else
+                {
+                    ApplyMembershipRole(previousOwnerAccess, request.PreviousOwnerRole!.Value, PropertyUserStatus.Active, true);
+                }
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await EnsureExactlyOneActiveOwnerMembershipAsync(propertyId, newOwner.Id, cancellationToken);
+
+            dbContext.AuditLogs.Add(new AuditLog
+            {
+                UserId = userId,
+                PropertyId = propertyId,
+                Action = AuditAction.PropertyOwnershipTransferred,
+                EntityType = nameof(Property),
+                EntityId = propertyId,
+                EntityName = property.Name,
+                Description = $"Property ownership transferred from user {previousOwnerId} ({DescribeUser(previousOwner)}) to user {newOwner.Id} ({DescribeUser(newOwner)}). Previous owner action: {request.PreviousOwnerAction} {request.PreviousOwnerRole?.ToString() ?? string.Empty}".Trim(),
+                OccurredAtUtc = DateTime.UtcNow
+            });
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+
+            return await LoadResponseAsync(propertyId, cancellationToken);
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                await transaction.RollbackAsync(cancellationToken);
+            }
+
+            throw;
+        }
+        finally
+        {
+            transaction?.Dispose();
+        }
     }
 
     public async Task<PropertyResponse> GetPropertyByIdAsync(
@@ -621,14 +764,174 @@ public class PropertyService(
 
     private async Task EnsureCanonicalOwnerAccountAsync(int ownerId, CancellationToken cancellationToken)
     {
-        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
-                user.Id == ownerId &&
-                user.Role == UserRole.Client,
-                cancellationToken))
+        var owner = await dbContext.Users.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(user => user.Id == ownerId, cancellationToken);
+        if (owner is null || owner.Role != UserRole.Client)
         {
             throw new ArgumentException("The selected owner must be a normal user account.");
         }
+
+        if (owner.IsDeleted)
+        {
+            throw new InvalidOperationException("Deleted users cannot own properties.");
+        }
+
+        if (!owner.IsActive)
+        {
+            throw new InvalidOperationException("Inactive users cannot own properties.");
+        }
     }
+
+    private async Task<User> ResolveTransferOwnerAsync(int ownerId, CancellationToken cancellationToken)
+    {
+        var user = await dbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(item => item.Id == ownerId, cancellationToken)
+            ?? throw new ArgumentException("The selected owner account was not found.");
+        if (user.IsDeleted)
+        {
+            throw new InvalidOperationException("Deleted users cannot receive property ownership.");
+        }
+
+        if (!user.IsActive)
+        {
+            throw new InvalidOperationException("Inactive users must be reactivated before receiving property ownership.");
+        }
+
+        if (user.Role != UserRole.Client)
+        {
+            throw new ArgumentException("The selected owner must be a normal user account.");
+        }
+
+        return user;
+    }
+
+    private async Task<User> CreateTransferOwnerAsync(
+        int currentUserId,
+        AdminPropertyOwnerAccountRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(request.Password))
+        {
+            throw new ArgumentException("An initial password is required when creating a new owner during transfer.");
+        }
+
+        PasswordPolicy.Validate(request.Password);
+        var email = NormalizeEmail(request.Email);
+        var mobile = NormalizeMobile(request.PhoneNumber);
+        await EnsureUniqueIdentityAsync(email, mobile, cancellationToken);
+        var user = new User
+        {
+            FirstName = request.FirstName.Trim(),
+            LastName = request.LastName.Trim(),
+            Email = email,
+            PhoneNumber = mobile,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            Role = UserRole.Client,
+            ParentUserId = currentUserId,
+            IsActive = true,
+            PasswordSetupRequired = false
+        };
+        dbContext.Users.Add(user);
+        return user;
+    }
+
+    private async Task<UserPropertyAccess> EnsureOwnerAccessAsync(
+        int propertyId,
+        int ownerId,
+        CancellationToken cancellationToken)
+    {
+        var ownerAccess = await dbContext.UserPropertyAccesses
+            .IgnoreQueryFilters()
+            .SingleOrDefaultAsync(access =>
+                access.PropertyId == propertyId && access.UserId == ownerId,
+                cancellationToken);
+        if (ownerAccess is null)
+        {
+            ownerAccess = new UserPropertyAccess
+            {
+                PropertyId = propertyId,
+                UserId = ownerId,
+                PropertyRole = PropertyUserRole.PropertyOwner,
+                Status = PropertyUserStatus.Active
+            };
+            dbContext.UserPropertyAccesses.Add(ownerAccess);
+        }
+
+        ApplyMembershipRole(ownerAccess, PropertyUserRole.PropertyOwner, PropertyUserStatus.Active, true);
+        ownerAccess.IsDeleted = false;
+        ownerAccess.DeletedAtUtc = null;
+        ownerAccess.DeletedByUserId = null;
+        return ownerAccess;
+    }
+
+    private async Task EnsureExactlyOneActiveOwnerMembershipAsync(
+        int propertyId,
+        int ownerId,
+        CancellationToken cancellationToken)
+    {
+        var ownerUserIds = await dbContext.UserPropertyAccesses.AsNoTracking()
+            .Where(access =>
+                access.PropertyId == propertyId &&
+                access.PropertyRole == PropertyUserRole.PropertyOwner &&
+                access.Status == PropertyUserStatus.Active &&
+                access.IsActive &&
+                !access.IsDeleted)
+            .Select(access => access.UserId)
+            .ToListAsync(cancellationToken);
+        if (ownerUserIds.Count != 1 || ownerUserIds[0] != ownerId)
+        {
+            throw new InvalidOperationException("A property must have exactly one active property owner membership matching Property.OwnerId.");
+        }
+    }
+
+    private async Task EnsureUniqueIdentityAsync(
+        string email,
+        string? mobile,
+        CancellationToken cancellationToken)
+    {
+        if (await dbContext.Users.IgnoreQueryFilters().AnyAsync(user => user.Email == email, cancellationToken))
+        {
+            throw new ArgumentException("Email is already in use.");
+        }
+
+        if (string.IsNullOrWhiteSpace(mobile))
+        {
+            if (await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
+            {
+                throw new ArgumentException("Guest with this email already exists.");
+            }
+
+            return;
+        }
+
+        var mobileVariants = BuildMobileVariants(mobile);
+        if (await dbContext.Users.IgnoreQueryFilters()
+            .AnyAsync(user => user.PhoneNumber != null && mobileVariants.Contains(user.PhoneNumber), cancellationToken))
+        {
+            throw new ArgumentException("Phone number is already in use.");
+        }
+
+        if (await dbContext.Guests.AsNoTracking()
+            .AnyAsync(guest => guest.NormalizedEmail == email || guest.NormalizedMobile == mobile, cancellationToken))
+        {
+            throw new ArgumentException("Guest with this mobile or email already exists.");
+        }
+    }
+
+    private static void ApplyMembershipRole(
+        UserPropertyAccess access,
+        PropertyUserRole role,
+        PropertyUserStatus status,
+        bool isActive)
+    {
+        access.PropertyRole = role;
+        access.Status = status;
+        access.IsActive = isActive && status == PropertyUserStatus.Active;
+        var permissions = PropertyPermissionMatrixDefaults.CreateForRole(role);
+        access.PermissionMatrixJson = JsonSerializer.Serialize(permissions);
+    }
+
 
     private async Task EnsureCanonicalOwnerMembershipAsync(
         int propertyId,
@@ -661,19 +964,17 @@ public class PropertyService(
             ownerAccess = new UserPropertyAccess
             {
                 PropertyId = propertyId,
-                UserId = ownerId
+                UserId = ownerId,
+                PropertyRole = PropertyUserRole.PropertyOwner,
+                Status = PropertyUserStatus.Active
             };
             dbContext.UserPropertyAccesses.Add(ownerAccess);
         }
 
-        ownerAccess.PropertyRole = PropertyUserRole.PropertyOwner;
-        ownerAccess.Status = PropertyUserStatus.Active;
-        ownerAccess.IsActive = true;
+        ApplyMembershipRole(ownerAccess, PropertyUserRole.PropertyOwner, PropertyUserStatus.Active, true);
         ownerAccess.IsDeleted = false;
         ownerAccess.DeletedAtUtc = null;
         ownerAccess.DeletedByUserId = null;
-        ownerAccess.PermissionMatrixJson = JsonSerializer.Serialize(
-            PropertyPermissionMatrixDefaults.CreateOwner());
     }
 
     private async Task ValidateDestinationAsync(int destinationId, CancellationToken cancellationToken)
@@ -1035,6 +1336,62 @@ public class PropertyService(
 
         return Math.Max(0, requestedChildren - Math.Min(freeChildren, maxFreeChildren.Value));
     }
+
+    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+
+    private static string? NormalizeMobile(string? mobile)
+    {
+        if (string.IsNullOrWhiteSpace(mobile)) return null;
+
+        var builder = new System.Text.StringBuilder();
+        foreach (var character in mobile.Trim())
+        {
+            var normalized = character switch
+            {
+                >= '\u06F0' and <= '\u06F9' => (char)('0' + character - '\u06F0'),
+                >= '\u0660' and <= '\u0669' => (char)('0' + character - '\u0660'),
+                _ => character
+            };
+            if (char.IsDigit(normalized) || normalized == '+')
+            {
+                builder.Append(normalized);
+            }
+        }
+
+        var value = builder.ToString();
+        if (value.StartsWith("0098", StringComparison.Ordinal))
+        {
+            value = $"0{value[4..]}";
+        }
+        else if (value.StartsWith("+98", StringComparison.Ordinal))
+        {
+            value = $"0{value[3..]}";
+        }
+        else if (value.StartsWith("98", StringComparison.Ordinal) && value.Length == 12)
+        {
+            value = $"0{value[2..]}";
+        }
+
+        return string.IsNullOrWhiteSpace(value) ? null : value;
+    }
+
+    private static string[] BuildMobileVariants(string mobile)
+    {
+        var variants = new HashSet<string> { mobile };
+        if (mobile.StartsWith('0') && mobile.Length > 1)
+        {
+            variants.Add($"+98{mobile[1..]}");
+            variants.Add($"98{mobile[1..]}");
+            variants.Add($"0098{mobile[1..]}");
+        }
+
+        return variants.ToArray();
+    }
+
+    private static string DescribeUser(User user) =>
+        string.IsNullOrWhiteSpace((user.FirstName + " " + user.LastName).Trim())
+            ? user.Email
+            : (user.FirstName + " " + user.LastName).Trim();
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

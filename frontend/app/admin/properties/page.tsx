@@ -5,6 +5,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
@@ -34,6 +35,7 @@ import {
   PropertyStatus,
   propertyTypes,
   PropertyType,
+  PropertyUserRole,
   resolveDestinationId,
 
 } from "@/lib/owner-api";
@@ -67,6 +69,8 @@ const propertyTypeLabels: Record<PropertyType, string> = {
 };
 
 type AdminCreateMode = "existing-owner" | "new-owner";
+type TransferOwnerMode = "existing-owner" | "new-owner";
+type PreviousOwnerAction = "DeactivateMembership" | "Demote";
 type PropertyStatusFilter = "all" | PropertyStatus;
 type PropertyTypeFilter = "all" | PropertyType;
 
@@ -85,6 +89,47 @@ type CreatePropertyForm = {
   address: string;
   description: string;
   inventoryMode: InventoryMode;
+};
+
+const previousOwnerRoleOptions: Exclude<PropertyUserRole, "PropertyOwner">[] = [
+  "Manager",
+  "Reception",
+  "Accounting",
+  "Housekeeping",
+  "Custom",
+];
+
+const propertyUserRoleLabels: Record<PropertyUserRole, string> = {
+  PropertyOwner: "Owner",
+  Manager: "Manager",
+  Reception: "Reception",
+  Accounting: "Accounting",
+  Housekeeping: "Housekeeping",
+  Custom: "Custom",
+};
+
+type TransferOwnershipForm = {
+  ownerMode: TransferOwnerMode;
+  newOwnerId: string;
+  newOwnerFirstName: string;
+  newOwnerLastName: string;
+  newOwnerEmail: string;
+  newOwnerPhoneNumber: string;
+  newOwnerPassword: string;
+  previousOwnerAction: PreviousOwnerAction;
+  previousOwnerRole: Exclude<PropertyUserRole, "PropertyOwner">;
+};
+
+const emptyTransferForm: TransferOwnershipForm = {
+  ownerMode: "existing-owner",
+  newOwnerId: "",
+  newOwnerFirstName: "",
+  newOwnerLastName: "",
+  newOwnerEmail: "",
+  newOwnerPhoneNumber: "",
+  newOwnerPassword: "",
+  previousOwnerAction: "DeactivateMembership",
+  previousOwnerRole: "Manager",
 };
 
 const emptyCreateForm: CreatePropertyForm = {
@@ -123,6 +168,9 @@ export default function AdminPropertiesPage() {
   const [createForm, setCreateForm] =
     useState<CreatePropertyForm>(emptyCreateForm);
   const [creating, setCreating] = useState(false);
+  const [transferProperty, setTransferProperty] = useState<PropertyResponse | null>(null);
+  const [transferForm, setTransferForm] = useState<TransferOwnershipForm>(emptyTransferForm);
+  const [transferring, setTransferring] = useState(false);
   const [error, setError] = useState("");
   const [setupLink, setSetupLink] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -167,6 +215,10 @@ export default function AdminPropertiesPage() {
     Boolean(searchTerm.trim()) ||
     statusFilter !== "all" ||
     typeFilter !== "all";
+
+  const selectedTransferOwner = transferForm.newOwnerId
+    ? users.find((user) => user.id === Number(transferForm.newOwnerId)) ?? null
+    : null;
 
   const load = useCallback(async () => {
     const [propertyItems, userItems] = await Promise.all([
@@ -254,6 +306,84 @@ export default function AdminPropertiesPage() {
     }
 
     return { ownerId: createdOwner.id, setupLink: ownerSetupLink };
+  }
+
+  function openTransferDialog(property: PropertyResponse) {
+    const firstCandidate = ownerOptions.find((owner) => owner.id !== property.ownerId);
+    setTransferProperty(property);
+    setTransferForm({
+      ...emptyTransferForm,
+      newOwnerId: firstCandidate ? String(firstCandidate.id) : "",
+    });
+    setError("");
+  }
+
+  async function transferOwnership() {
+    if (!transferProperty) return;
+
+    if (transferForm.ownerMode === "existing-owner" && !transferForm.newOwnerId) {
+      toast.error("Select the new owner.");
+      throw new Error("Select the new owner.");
+    }
+
+    if (transferForm.ownerMode === "new-owner" &&
+        (!transferForm.newOwnerFirstName.trim() ||
+          !transferForm.newOwnerLastName.trim() ||
+          !transferForm.newOwnerEmail.trim() ||
+          !transferForm.newOwnerPassword.trim())) {
+      toast.error("Enter new owner name, email, and initial password.");
+      throw new Error("Enter new owner name, email, and initial password.");
+    }
+
+    setTransferring(true);
+    setError("");
+    try {
+      const updated = await apiRequest<PropertyResponse>(
+        `/admin/properties/${transferProperty.id}/transfer-ownership`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            newOwnerId:
+              transferForm.ownerMode === "existing-owner"
+                ? Number(transferForm.newOwnerId)
+                : null,
+            newOwner:
+              transferForm.ownerMode === "new-owner"
+                ? {
+                    firstName: transferForm.newOwnerFirstName.trim(),
+                    lastName: transferForm.newOwnerLastName.trim(),
+                    email: transferForm.newOwnerEmail.trim(),
+                    phoneNumber: transferForm.newOwnerPhoneNumber.trim() || null,
+                    password: transferForm.newOwnerPassword,
+                  }
+                : null,
+            previousOwnerAction: transferForm.previousOwnerAction,
+            previousOwnerRole:
+              transferForm.previousOwnerAction === "Demote"
+                ? transferForm.previousOwnerRole
+                : null,
+          }),
+        },
+      );
+
+      setProperties((current) =>
+        current.map((property) =>
+          property.id === updated.id ? updated : property,
+        ),
+      );
+      await load();
+      toast.success("Ownership transferred.");
+      setTransferProperty(null);
+      setTransferForm(emptyTransferForm);
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Ownership transfer failed.";
+      setError(message);
+      toast.error(message);
+      throw caught;
+    } finally {
+      setTransferring(false);
+    }
   }
 
   async function createDraftProperty(event: FormEvent<HTMLFormElement>) {
@@ -576,6 +706,16 @@ export default function AdminPropertiesPage() {
                             <KoochIcon name="audit" />
                           </Link>
 
+                          <KoochButton
+                            onClick={() => openTransferDialog(property)}
+                            size="sm"
+                            title="Transfer ownership"
+                            type="button"
+                            variant="outline"
+                          >
+                            Transfer Ownership
+                          </KoochButton>
+
                           {property.status === "Approved" && (
                             <Link
                               className={actionLinkClass}
@@ -596,6 +736,158 @@ export default function AdminPropertiesPage() {
             </KoochTable>
           </>
         )}
+
+
+        <KoochConfirmDialog
+          cancelText="Cancel"
+          confirmText="Transfer ownership"
+          description={
+            transferProperty ? (
+              <span>
+                Current owner: {transferProperty.ownerName || transferProperty.ownerId}
+                <br />
+                New owner: {transferForm.ownerMode === "existing-owner"
+                  ? selectedTransferOwner?.fullName || selectedTransferOwner?.email || "Not selected"
+                  : [transferForm.newOwnerFirstName, transferForm.newOwnerLastName].filter(Boolean).join(" ") || "New user"}
+              </span>
+            ) : undefined
+          }
+          disabled={transferring}
+          loading={transferring}
+          onConfirm={transferOwnership}
+          onOpenChange={(open) => {
+            if (!open && !transferring) setTransferProperty(null);
+          }}
+          open={Boolean(transferProperty)}
+          title="Transfer property ownership"
+          variant="warning"
+        >
+          <div className="grid gap-4">
+            <div className="flex flex-wrap gap-2">
+              <KoochButton
+                onClick={() => setTransferForm({ ...transferForm, ownerMode: "existing-owner" })}
+                size="sm"
+                type="button"
+                variant={transferForm.ownerMode === "existing-owner" ? "primary" : "outline"}
+              >
+                Existing user
+              </KoochButton>
+              <KoochButton
+                onClick={() => setTransferForm({ ...transferForm, ownerMode: "new-owner" })}
+                size="sm"
+                type="button"
+                variant={transferForm.ownerMode === "new-owner" ? "primary" : "outline"}
+              >
+                Create Client account
+              </KoochButton>
+            </div>
+
+            {transferForm.ownerMode === "existing-owner" ? (
+              <KoochField label="New owner">
+                <KoochSelect
+                  onChange={(event) =>
+                    setTransferForm({ ...transferForm, newOwnerId: event.target.value })
+                  }
+                  value={transferForm.newOwnerId}
+                >
+                  <option value="">Select user</option>
+                  {ownerOptions
+                    .filter((owner) => owner.id !== transferProperty?.ownerId)
+                    .map((owner) => (
+                      <option key={owner.id} value={owner.id}>
+                        {owner.fullName || owner.email} - {owner.email}
+                        {!owner.isActive ? " (inactive)" : ""}
+                      </option>
+                    ))}
+                </KoochSelect>
+              </KoochField>
+            ) : (
+              <div className="grid gap-3 md:grid-cols-2">
+                <KoochField label="First name">
+                  <KoochInput
+                    onChange={(event) =>
+                      setTransferForm({ ...transferForm, newOwnerFirstName: event.target.value })
+                    }
+                    value={transferForm.newOwnerFirstName}
+                  />
+                </KoochField>
+                <KoochField label="Last name">
+                  <KoochInput
+                    onChange={(event) =>
+                      setTransferForm({ ...transferForm, newOwnerLastName: event.target.value })
+                    }
+                    value={transferForm.newOwnerLastName}
+                  />
+                </KoochField>
+                <KoochField label="Email">
+                  <KoochInput
+                    dir="ltr"
+                    onChange={(event) =>
+                      setTransferForm({ ...transferForm, newOwnerEmail: event.target.value })
+                    }
+                    type="email"
+                    value={transferForm.newOwnerEmail}
+                  />
+                </KoochField>
+                <KoochField label="Phone">
+                  <KoochInput
+                    dir="ltr"
+                    onChange={(event) =>
+                      setTransferForm({ ...transferForm, newOwnerPhoneNumber: event.target.value })
+                    }
+                    value={transferForm.newOwnerPhoneNumber}
+                  />
+                </KoochField>
+                <KoochField className="md:col-span-2" label="Initial password">
+                  <KoochInput
+                    dir="ltr"
+                    minLength={8}
+                    onChange={(event) =>
+                      setTransferForm({ ...transferForm, newOwnerPassword: event.target.value })
+                    }
+                    type="password"
+                    value={transferForm.newOwnerPassword}
+                  />
+                </KoochField>
+              </div>
+            )}
+
+            <KoochField label="Previous owner">
+              <KoochSelect
+                onChange={(event) =>
+                  setTransferForm({
+                    ...transferForm,
+                    previousOwnerAction: event.target.value as PreviousOwnerAction,
+                  })
+                }
+                value={transferForm.previousOwnerAction}
+              >
+                <option value="DeactivateMembership">Deactivate membership</option>
+                <option value="Demote">Demote to role</option>
+              </KoochSelect>
+            </KoochField>
+
+            {transferForm.previousOwnerAction === "Demote" && (
+              <KoochField label="Previous owner role">
+                <KoochSelect
+                  onChange={(event) =>
+                    setTransferForm({
+                      ...transferForm,
+                      previousOwnerRole: event.target.value as Exclude<PropertyUserRole, "PropertyOwner">,
+                    })
+                  }
+                  value={transferForm.previousOwnerRole}
+                >
+                  {previousOwnerRoleOptions.map((role) => (
+                    <option key={role} value={role}>
+                      {propertyUserRoleLabels[role]}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+            )}
+          </div>
+        </KoochConfirmDialog>
 
         <KoochDialog
           closeDisabled={creating}

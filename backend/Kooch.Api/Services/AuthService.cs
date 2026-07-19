@@ -1,3 +1,4 @@
+﻿using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Security.Claims;
@@ -159,12 +160,24 @@ public class AuthService(
             throw new KeyNotFoundException("User not found.");
         }
 
+        var now = DateTime.UtcNow;
+        var activeTokens = await dbContext.PasswordSetupTokens
+            .Where(token =>
+                token.UserId == userId &&
+                token.UsedAtUtc == null &&
+                token.ExpiresAtUtc > now)
+            .ToListAsync(cancellationToken);
+        foreach (var activeToken in activeTokens)
+        {
+            activeToken.UsedAtUtc = now;
+        }
+
         var rawToken = CreateRawToken();
         dbContext.PasswordSetupTokens.Add(new PasswordSetupToken
         {
             UserId = userId,
             TokenHash = HashToken(rawToken),
-            ExpiresAtUtc = DateTime.UtcNow.AddHours(24)
+            ExpiresAtUtc = now.AddHours(24)
         });
         await dbContext.SaveChangesAsync(cancellationToken);
         var setupLink = $"/set-password?token={Uri.EscapeDataString(rawToken)}";
@@ -192,31 +205,87 @@ public class AuthService(
         }
 
         PasswordPolicy.Validate(request.NewPassword);
-        var tokenHash = HashToken(request.Token);
         var now = DateTime.UtcNow;
-        var setupToken = await dbContext.PasswordSetupTokens
-            .Include(token => token.User)
-            .SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken)
-            ?? throw new InvalidOperationException("Password setup token is invalid.");
-
-        if (setupToken.UsedAtUtc.HasValue)
+        var setupToken = await FindPasswordSetupTokenAsync(request.Token, cancellationToken);
+        var status = GetPasswordSetupTokenStatus(setupToken, now);
+        if (status != PasswordSetupTokenStatus.Valid)
         {
-            throw new InvalidOperationException("Password setup token has already been used.");
+            throw CreatePasswordSetupTokenException(status);
         }
 
-        if (setupToken.ExpiresAtUtc <= now)
-        {
-            throw new InvalidOperationException("Password setup token has expired.");
-        }
-
-        setupToken.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+        setupToken!.User.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
         setupToken.User.PasswordSetupRequired = false;
         setupToken.User.InvitationAcceptedAtUtc = now;
         setupToken.User.IsActive = true;
+        setupToken.User.SecurityStampVersion++;
         setupToken.UsedAtUtc = now;
 
         await dbContext.SaveChangesAsync(cancellationToken);
     }
+
+    public async Task<PasswordSetupTokenStatusResponse> ValidatePasswordSetupTokenAsync(
+        string token,
+        CancellationToken cancellationToken = default)
+    {
+        var setupToken = await FindPasswordSetupTokenAsync(token, cancellationToken);
+        return new PasswordSetupTokenStatusResponse
+        {
+            Status = GetPasswordSetupTokenStatus(setupToken, DateTime.UtcNow)
+        };
+    }
+
+    private async Task<PasswordSetupToken?> FindPasswordSetupTokenAsync(
+        string rawToken,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken))
+        {
+            return null;
+        }
+
+        var tokenHash = HashToken(rawToken);
+        return await dbContext.PasswordSetupTokens
+            .Include(token => token.User)
+            .SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken);
+    }
+
+    private static PasswordSetupTokenStatus GetPasswordSetupTokenStatus(
+        PasswordSetupToken? setupToken,
+        DateTime now)
+    {
+        if (setupToken?.User is null ||
+            setupToken.UserId != setupToken.User.Id ||
+            setupToken.User.IsDeleted)
+        {
+            return PasswordSetupTokenStatus.Invalid;
+        }
+
+        if (setupToken.UsedAtUtc.HasValue)
+        {
+            return PasswordSetupTokenStatus.Used;
+        }
+
+        if (setupToken.ExpiresAtUtc <= now)
+        {
+            return PasswordSetupTokenStatus.Expired;
+        }
+
+        if (!setupToken.User.PasswordSetupRequired &&
+            !string.IsNullOrWhiteSpace(setupToken.User.PasswordHash))
+        {
+            return PasswordSetupTokenStatus.Used;
+        }
+
+        return PasswordSetupTokenStatus.Valid;
+    }
+
+    private static InvalidOperationException CreatePasswordSetupTokenException(
+        PasswordSetupTokenStatus status) => status switch
+    {
+        PasswordSetupTokenStatus.Expired => new InvalidOperationException("Password setup token has expired."),
+        PasswordSetupTokenStatus.Used => new InvalidOperationException("Password setup token has already been used or revoked."),
+        _ => new InvalidOperationException("Password setup token is invalid.")
+    };
 
     public async Task<CurrentUserResponse?> GetCurrentUserAsync(
         int userId,
@@ -317,9 +386,7 @@ public class AuthService(
             Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
             PhoneNumber = user.PhoneNumber,
             PlatformRole = platformRole,
-            PlatformPermissions = platformPermissions,
-            Role = user.Role,
-            IsActive = user.IsActive,
+            PlatformPermissions = platformPermissions,            IsActive = user.IsActive,
             Workspaces = workspaces,
             PropertyMemberships = membershipResponses,
             DefaultWorkspace = defaultWorkspace,
@@ -345,7 +412,6 @@ public class AuthService(
         return await dbContext.UserPermissions.AsNoTracking()
             .Where(permission =>
                 permission.UserId == userId &&
-                permission.PropertyId == null &&
                 permission.IsAllowed)
             .Select(permission => permission.PermissionKey)
             .Distinct()
@@ -361,6 +427,7 @@ public class AuthService(
             new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
             new Claim(ClaimTypes.Email, IsInternalEmail(user.Email) ? string.Empty : user.Email),
             new Claim(ClaimTypes.Role, user.Role.ToCanonicalPlatformRole().ToString()),
+            new Claim(KoochJwtClaimTypes.SessionVersion, user.SecurityStampVersion.ToString(CultureInfo.InvariantCulture)),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
@@ -393,7 +460,7 @@ public class AuthService(
             GuestId = guestId,
             FullName = $"{user.FirstName} {user.LastName}".Trim(),
             Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
-            Role = user.Role
+            Role = user.Role.ToCanonicalPlatformRole()
         };
     }
 
@@ -418,7 +485,7 @@ public class AuthService(
                               (!excludedUserId.HasValue || user.Id != excludedUserId.Value),
                 cancellationToken))
         {
-            throw new ArgumentException("این ایمیل قبلاً ثبت شده است.");
+            throw new ArgumentException("\u0627\u06CC\u0646 \u0627\u06CC\u0645\u06CC\u0644 \u0642\u0628\u0644\u0627\u064B \u062B\u0628\u062A \u0634\u062F\u0647 \u0627\u0633\u062A.");
         }
     }
 
@@ -434,7 +501,7 @@ public class AuthService(
                               (!excludedUserId.HasValue || user.Id != excludedUserId.Value),
                 cancellationToken))
         {
-            throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+            throw new ArgumentException("\u0627\u06CC\u0646 \u0634\u0645\u0627\u0631\u0647 \u0645\u0648\u0628\u0627\u06CC\u0644 \u0642\u0628\u0644\u0627\u064B \u062B\u0628\u062A \u0634\u062F\u0647 \u0627\u0633\u062A.");
         }
     }
 
@@ -517,7 +584,7 @@ public class AuthService(
             guest.NormalizedMobile ??= mobile;
             guest.Email ??= email;
             guest.NormalizedEmail ??= email;
-            guest.Nationality ??= "ایران";
+            guest.Nationality ??= "\u0627\u06CC\u0631\u0627\u0646";
             await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
@@ -531,7 +598,7 @@ public class AuthService(
             NormalizedMobile = mobile,
             Email = email,
             NormalizedEmail = email,
-            Nationality = "ایران"
+            Nationality = "\u0627\u06CC\u0631\u0627\u0646"
         });
         await dbContext.SaveChangesAsync(cancellationToken);
     }
@@ -596,7 +663,7 @@ public class AuthService(
             guest.NormalizedMobile ??= mobile;
             guest.Email ??= email;
             guest.NormalizedEmail ??= email;
-            guest.Nationality ??= "ایران";
+            guest.Nationality ??= "\u0627\u06CC\u0631\u0627\u0646";
             await dbContext.SaveChangesAsync(cancellationToken);
             return guest.Id;
         }
@@ -610,7 +677,7 @@ public class AuthService(
             NormalizedMobile = mobile,
             Email = email,
             NormalizedEmail = email,
-            Nationality = "ایران"
+            Nationality = "\u0627\u06CC\u0631\u0627\u0646"
         };
         dbContext.Guests.Add(newGuest);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -783,6 +850,7 @@ public class AuthService(
         };
 
 }
+
 
 
 

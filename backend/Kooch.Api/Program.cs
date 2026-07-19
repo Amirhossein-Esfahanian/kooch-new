@@ -1,4 +1,5 @@
-﻿using System.Text;
+﻿using System.Security.Claims;
+using System.Text;
 using System.Text.Json.Serialization;
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
@@ -89,6 +90,46 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
             ValidAudience = jwtOptions.Audience,
             IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtOptions.Key)),
             ClockSkew = TimeSpan.FromSeconds(30)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = async context =>
+            {
+                var userIdClaim = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+                var sessionVersionClaim = context.Principal?.FindFirstValue(KoochJwtClaimTypes.SessionVersion);
+                if (!int.TryParse(userIdClaim, out var userId) ||
+                    !int.TryParse(sessionVersionClaim, out var sessionVersion))
+                {
+                    context.Fail(UserSessionVersionValidator.RevokedFailureMessage);
+                    return;
+                }
+
+                var dbContext = context.HttpContext.RequestServices.GetRequiredService<KoochDbContext>();
+                var isValid = await UserSessionVersionValidator.IsValidAsync(
+                    dbContext,
+                    userId,
+                    sessionVersion,
+                    context.HttpContext.RequestAborted);
+                if (!isValid)
+                {
+                    context.Fail(UserSessionVersionValidator.RevokedFailureMessage);
+                }
+            },
+            OnChallenge = async context =>
+            {
+                if (context.AuthenticateFailure?.Message != UserSessionVersionValidator.RevokedFailureMessage ||
+                    context.Response.HasStarted)
+                {
+                    return;
+                }
+
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/json";
+                context.Response.Headers["X-Kooch-Auth-Error"] = UserSessionVersionValidator.RevokedFailureMessage;
+                await context.Response.WriteAsync(
+                    "{\"message\":\"Your session is no longer valid. Please sign in again.\",\"code\":\"session_revoked\"}");
+            }
         };
     });
 

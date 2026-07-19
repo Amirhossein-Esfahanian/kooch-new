@@ -11,12 +11,14 @@ import {
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   apiRequest,
   ApiRequestError,
   clearToken,
   getToken,
 } from "@/lib/owner-api";
+import { onSessionRevoked } from "@/lib/auth-session";
 
 export type AuthWorkspace = "admin" | "owner" | "account";
 export type PlatformRole = "SuperAdmin" | "AdminAssistant" | "Client";
@@ -217,9 +219,12 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
         }
 
         if (error instanceof ApiRequestError && error.status === 401) {
-          clearSession();
-          if (options.redirectOnUnauthorized) {
-            router.replace("/login");
+          if (!error.sessionRevoked) {
+            clearSession();
+            if (options.redirectOnUnauthorized) {
+              toast.error(error.message);
+              router.replace("/login");
+            }
           }
           return null;
         }
@@ -231,6 +236,17 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
     [clearSession, router],
   );
 
+  useEffect(
+    () =>
+      onSessionRevoked(({ message }) => {
+        requestIdRef.current += 1;
+        setSession(null);
+        setLoading(false);
+        toast.error(message);
+        router.replace("/login");
+      }),
+    [router],
+  );
   useEffect(() => {
     if (!getToken()) {
       setSession(null);

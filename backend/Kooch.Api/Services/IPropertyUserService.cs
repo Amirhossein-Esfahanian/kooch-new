@@ -1,4 +1,4 @@
-using Kooch.Api.Dtos.PropertyUsers;
+﻿using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 
 namespace Kooch.Api.Services;
@@ -10,5 +10,7 @@ public interface IPropertyUserService
     Task<PropertyUserResponse> CreateUserAsync(int currentUserId, UserRole currentRole, int propertyId, PropertyUserRequest request, CancellationToken cancellationToken = default);
     Task<PropertyUserResponse> UpdateUserAsync(int currentUserId, UserRole currentRole, int propertyId, int userId, PropertyUserRequest request, CancellationToken cancellationToken = default);
     Task<PropertyUserResponse> SetStatusAsync(int currentUserId, UserRole currentRole, int propertyId, int userId, PropertyUserStatus status, CancellationToken cancellationToken = default);
+    Task<PropertyUserResponse> ResendInvitationAsync(int currentUserId, UserRole currentRole, int propertyId, int userId, CancellationToken cancellationToken = default);
     Task DeleteUserAsync(int currentUserId, UserRole currentRole, int propertyId, int userId, CancellationToken cancellationToken = default);
 }
+

@@ -5,7 +5,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class PromotionService(KoochDbContext dbContext, IPropertyAccessService propertyAccessService)
+public sealed class PromotionService(
+    KoochDbContext dbContext,
+    IPropertyAccessService propertyAccessService,
+    IPermissionService permissionService)
     : IPromotionService
 {
     public async Task<IReadOnlyList<PromotionResponse>> GetAllForAdminAsync(CancellationToken cancellationToken = default)
@@ -238,7 +241,7 @@ public sealed class PromotionService(KoochDbContext dbContext, IPropertyAccessSe
             return;
         }
 
-        if (role is not (UserRole.SuperAdmin or UserRole.AdminAssistant))
+        if (!await permissionService.HasPermissionAsync(userId, PermissionKey.ManagePromotions, cancellationToken: cancellationToken))
             throw new UnauthorizedAccessException("اجازه مدیریت پروموشن‌ها را ندارید.");
     }
 

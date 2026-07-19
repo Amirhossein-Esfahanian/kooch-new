@@ -1,4 +1,4 @@
-using Kooch.Api.Data;
+﻿using Kooch.Api.Data;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -157,49 +157,65 @@ public class PropertyUserService(
 
         var email = NormalizeEmail(invitation.Email);
         var mobile = NormalizeMobile(invitation.Mobile);
-        await EnsureUniqueIdentityAsync(email, mobile, null, cancellationToken);
-        var username = CleanOptional(invitation.Username) ?? email;
-        var name = SplitFullName(invitation.FullName);
-        var user = new User
+        var user = await ResolveUserForInvitationAsync(email, mobile, cancellationToken);
+        if (user is null)
         {
-            FirstName = name.FirstName,
-            LastName = name.LastName,
-            Email = email,
-            Username = username,
-            PhoneNumber = mobile,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
-            Role = UserRole.Client,
-            ParentUserId = currentUserId,
-            IsActive = false,
-            PasswordSetupRequired = true
-        };
-        dbContext.Users.Add(user);
-        await dbContext.SaveChangesAsync(cancellationToken);
+            var username = CleanOptional(invitation.Username) ?? email;
+            var name = SplitFullName(invitation.FullName);
+            user = new User
+            {
+                FirstName = name.FirstName,
+                LastName = name.LastName,
+                Email = email,
+                Username = username,
+                PhoneNumber = mobile,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
+                Role = UserRole.Client,
+                ParentUserId = currentUserId,
+                IsActive = false,
+                PasswordSetupRequired = true
+            };
+            dbContext.Users.Add(user);
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
 
         var access = await dbContext.UserPropertyAccesses
             .SingleOrDefaultAsync(item => item.UserId == user.Id && item.PropertyId == propertyId, cancellationToken);
-        if (access is null)
+        if (access is not null)
         {
-            access = new UserPropertyAccess
-            {
-                UserId = user.Id,
-                PropertyId = propertyId
-            };
-            dbContext.UserPropertyAccesses.Add(access);
+            throw new InvalidOperationException("This user already has access to this property.");
         }
 
+        access = new UserPropertyAccess
+        {
+            UserId = user.Id,
+            PropertyId = propertyId,
+            PropertyRole = invitation.Role,
+            Status = invitation.Status
+        };
+        dbContext.UserPropertyAccesses.Add(access);
         ApplyRequest(access, invitation);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        var setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
+
+        var setupLink = string.Empty;
+        if (NeedsPasswordSetup(user))
+        {
+            user.PasswordSetupRequired = true;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
+        }
+        else
+        {
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+
         var response = (await GetUsersAsync(currentUserId, currentRole, propertyId, cancellationToken))
             .Single(item => item.UserId == user.Id);
-        if (appEnvironment.IsDevelopment())
+        if (!string.IsNullOrWhiteSpace(setupLink) && appEnvironment.IsDevelopment())
         {
             response.TemporarySetupLink = setupLink;
         }
         return response;
     }
-
     public async Task<PropertyUserResponse> UpdateUserAsync(
         int currentUserId,
         UserRole currentRole,
@@ -315,6 +331,42 @@ public class PropertyUserService(
             .Single(item => item.UserId == userId);
     }
 
+    public async Task<PropertyUserResponse> ResendInvitationAsync(
+        int currentUserId,
+        UserRole currentRole,
+        int propertyId,
+        int userId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanUseUsersPermissionAsync(currentUserId, propertyId, "users.edit", cancellationToken);
+
+        var access = await dbContext.UserPropertyAccesses
+            .Include(item => item.User)
+            .SingleOrDefaultAsync(item => item.UserId == userId && item.PropertyId == propertyId, cancellationToken)
+            ?? throw new KeyNotFoundException("Property user not found.");
+        await EnsureCanManageTargetRoleAsync(
+            currentUserId,
+            propertyId,
+            access.PropertyRole,
+            "resend invitation for",
+            cancellationToken);
+
+        if (!NeedsPasswordSetup(access.User))
+        {
+            throw new InvalidOperationException("This user already has a password and does not need a setup invitation.");
+        }
+
+        access.User.PasswordSetupRequired = true;
+        await dbContext.SaveChangesAsync(cancellationToken);
+        var setupLink = await authService.CreatePasswordSetupTokenAsync(access.UserId, cancellationToken);
+        var response = (await GetUsersAsync(currentUserId, currentRole, propertyId, cancellationToken))
+            .Single(item => item.UserId == userId);
+        if (appEnvironment.IsDevelopment())
+        {
+            response.TemporarySetupLink = setupLink;
+        }
+        return response;
+    }
     private async Task EnsureCanUseUsersPermissionAsync(
         int currentUserId,
         int propertyId,
@@ -479,20 +531,8 @@ public class PropertyUserService(
         access.IsActive = request.IsActive && request.Status == PropertyUserStatus.Active;
         var permissions = NormalizeMatrix(request.Permissions ?? PropertyPermissionMatrixDefaults.CreateForRole(request.Role));
         access.PermissionMatrixJson = JsonSerializer.Serialize(permissions, JsonOptions);
-        access.CanManageProperty = CanManageGroup(permissions, "Properties");
-        access.CanManageRooms = CanManageGroup(permissions, "Rooms");
-        access.CanManageAvailability = CanManageGroup(permissions, "Inventory");
-        access.CanManagePricing = CanManageGroup(permissions, "Pricing");
-        access.CanManageReservations = CanManageGroup(permissions, "Bookings");
-        access.CanManagePayments = CanManageGroup(permissions, "Financial");
-        access.CanManageReviews = CanManageGroup(permissions, "Reviews");
-        access.CanManageNotifications = CanManageGroup(permissions, "Dashboard");
-        access.CanViewReports = permissions.TryGetValue("Reports", out var reports) && reports.View;
     }
 
-    private static bool CanManageGroup(PermissionMatrixDto permissions, string group) =>
-        permissions.TryGetValue(group, out var actions) &&
-        (actions.Create || actions.Edit || actions.Delete);
 
     private static IEnumerable<(string PermissionKey, bool IsAllowed)> MatrixToPermissionValues(
         PermissionMatrixDto matrix)
@@ -588,6 +628,66 @@ public class PropertyUserService(
 
     private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private async Task<User?> ResolveUserForInvitationAsync(
+        string email,
+        string? mobile,
+        CancellationToken cancellationToken)
+    {
+        var mobileVariants = string.IsNullOrWhiteSpace(mobile)
+            ? []
+            : BuildMobileVariants(mobile);
+        var matchingUsers = await dbContext.Users.IgnoreQueryFilters()
+            .Where(user =>
+                user.Email == email ||
+                user.PhoneNumber != null && mobileVariants.Contains(user.PhoneNumber))
+            .ToListAsync(cancellationToken);
+
+        if (matchingUsers.Select(user => user.Id).Distinct().Count() > 1)
+        {
+            throw new ArgumentException("Email and mobile belong to different users.");
+        }
+
+        var existingUser = matchingUsers.SingleOrDefault();
+        if (existingUser is not null)
+        {
+            if (existingUser.IsDeleted)
+            {
+                throw new InvalidOperationException("This user account has been deleted.");
+            }
+
+            if (existingUser.Role != UserRole.Client)
+            {
+                throw new InvalidOperationException("Only Client accounts can be assigned as property users.");
+            }
+
+            return existingUser;
+        }
+
+        if (string.IsNullOrWhiteSpace(mobile))
+        {
+            if (await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
+            {
+                throw new ArgumentException("Guest with this email already exists.");
+            }
+
+            return null;
+        }
+
+        if (await dbContext.Guests.AsNoTracking()
+            .AnyAsync(guest =>
+                    guest.NormalizedEmail == email ||
+                    guest.NormalizedMobile == mobile,
+                cancellationToken))
+        {
+            throw new ArgumentException("Guest with this mobile or email already exists.");
+        }
+
+        return null;
+    }
+
+    private static bool NeedsPasswordSetup(User user) =>
+        user.PasswordSetupRequired || string.IsNullOrWhiteSpace(user.PasswordHash);
     private async Task EnsureUniqueIdentityAsync(
         string email,
         string? mobile,
@@ -641,8 +741,8 @@ public class PropertyUserService(
         {
             var normalized = character switch
             {
-                >= '۰' and <= '۹' => (char)('0' + character - '۰'),
-                >= '٠' and <= '٩' => (char)('0' + character - '٠'),
+                >= '\u06F0' and <= '\u06F9' => (char)('0' + character - '\u06F0'),
+                >= '\u0660' and <= '\u0669' => (char)('0' + character - '\u0660'),
                 _ => character
             };
             if (char.IsDigit(normalized) || normalized == '+')
@@ -681,3 +781,8 @@ public class PropertyUserService(
         return variants.ToArray();
     }
 }
+
+
+
+
+

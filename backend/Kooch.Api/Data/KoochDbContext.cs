@@ -129,6 +129,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(user => user.PasswordHash).HasMaxLength(500).IsRequired();
             entity.Property(user => user.PhoneNumber).HasMaxLength(30);
             entity.Property(user => user.PasswordSetupRequired).HasDefaultValue(false);
+            entity.Property(user => user.SecurityStampVersion).HasDefaultValue(0);
             entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
             entity.HasIndex(user => user.Email).IsUnique();
             entity.HasIndex(user => user.PhoneNumber)
@@ -184,8 +185,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasIndex(permission => new
             {
                 permission.UserId,
-                permission.PermissionKey,
-                permission.PropertyId
+                permission.PermissionKey
             }).IsUnique().HasFilter(null);
             entity.HasOne(permission => permission.User)
                 .WithMany(user => user.UserPermissions)
@@ -195,10 +195,6 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(permission => permission.UserPermissions)
                 .HasForeignKey(permission => permission.PermissionKey)
                 .HasPrincipalKey(permission => permission.Key)
-                .OnDelete(DeleteBehavior.NoAction);
-            entity.HasOne(permission => permission.Property)
-                .WithMany(property => property.UserPermissions)
-                .HasForeignKey(permission => permission.PropertyId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
@@ -260,8 +256,6 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<UserPropertyAccess>(entity =>
         {
             entity.Property(access => access.IsActive).HasDefaultValue(true);
-            entity.Property(access => access.Status).HasDefaultValue(PropertyUserStatus.Active);
-            entity.Property(access => access.PropertyRole).HasDefaultValue(PropertyUserRole.Manager);
             entity.Property(access => access.PermissionMatrixJson).HasDefaultValue("{}");
             entity.HasIndex(access => new { access.UserId, access.PropertyId }).IsUnique();
             entity.HasOne(access => access.User)

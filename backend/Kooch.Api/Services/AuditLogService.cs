@@ -7,7 +7,7 @@ namespace Kooch.Api.Services;
 
 public class AuditLogService(
     KoochDbContext dbContext,
-    IPropertyAccessService propertyAccessService) : IAuditLogService
+    IPermissionService permissionService) : IAuditLogService
 {
     public void Add(
         int userId,
@@ -37,7 +37,7 @@ public class AuditLogService(
         int propertyId,
         CancellationToken cancellationToken = default)
     {
-        if (!await propertyAccessService.CanViewAsync(userId, role, propertyId, cancellationToken))
+        if (!await permissionService.HasPermissionAsync(userId, PermissionKey.ViewReports, propertyId, cancellationToken))
         {
             throw new UnauthorizedAccessException("You cannot view audit logs for this property.");
         }

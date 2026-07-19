@@ -9,6 +9,7 @@ public interface IPropertyService
     Task<PropertyResponse> CreatePropertyAsync(int userId, UserRole role, CreatePropertyRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdatePropertyAsync(int userId, UserRole role, int propertyId, UpdatePropertyRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdatePropertyForAdminAsync(int userId, UserRole role, int propertyId, AdminUpdatePropertyRequest request, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> TransferOwnershipAsync(int userId, UserRole role, int propertyId, AdminTransferPropertyOwnershipRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdateBasicSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyBasicSectionRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdateLocationSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyLocationSectionRequest request, CancellationToken cancellationToken = default);
     Task<PropertyResponse> UpdateBuildingSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertyBuildingSectionRequest request, CancellationToken cancellationToken = default);
