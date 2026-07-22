@@ -65,8 +65,9 @@ public sealed class AccountMembershipStatusSeparationTests
             TargetUserId,
             new PropertyUserRequest
             {
-                FullName = "Property Staff",
+                                FullName = "Property Staff",
                 Email = "staff@example.test",
+                Mobile = "09120004001",
                 Role = PropertyUserRole.Manager,
                 Status = PropertyUserStatus.Suspended,
                 IsActive = false
@@ -131,7 +132,6 @@ public sealed class AccountMembershipStatusSeparationTests
         var propertyAuthorizationService = new PropertyAccessService(dbContext);
         return new PropertyUserService(
             dbContext,
-            new PermissionService(dbContext, propertyAuthorizationService),
             propertyAuthorizationService,
             null!,
             null!);

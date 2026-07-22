@@ -1,4 +1,4 @@
-﻿using System.Globalization;
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Security.Claims;
@@ -6,7 +6,9 @@ using System.Text;
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Auth;
+using Kooch.Api.Dtos.Users;
 using Kooch.Api.Entities;
+using Kooch.Api.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -36,9 +38,9 @@ public class AuthService(
         }
 
         PasswordPolicy.Validate(request.Password);
-        var mobile = NormalizeMobile(request.Mobile)
-            ?? throw new ArgumentException("Mobile number is required.");
-        var email = NormalizeOptionalEmail(request.Email);
+        var identity = CreateUserIdentity(request.FirstName, request.LastName, request.Mobile, request.Email);
+        var mobile = identity.PhoneNumber;
+        var email = identity.Email;
 
         await EnsureUniqueMobileAsync(mobile, null, cancellationToken);
         if (!string.IsNullOrWhiteSpace(email))
@@ -49,9 +51,9 @@ public class AuthService(
 
         var user = new User
         {
-            FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim(),
-            Email = email ?? CreateInternalEmail(mobile),
+            FirstName = identity.FirstName,
+            LastName = identity.LastName,
+            Email = email,
             PhoneNumber = mobile,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
             Role = UserRole.Client,
@@ -89,7 +91,7 @@ public class AuthService(
         RequestOtpRequest request,
         CancellationToken cancellationToken = default)
     {
-        var mobile = NormalizeMobile(request.Mobile)
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(request.Mobile)
             ?? throw new ArgumentException("Mobile number is required.");
         var user = await FindUserByMobileAsync(mobile, cancellationToken)
             ?? throw new InvalidOperationException("No active account was found for this mobile number.");
@@ -106,7 +108,7 @@ public class AuthService(
         VerifyOtpRequest request,
         CancellationToken cancellationToken = default)
     {
-        var mobile = NormalizeMobile(request.Mobile);
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(request.Mobile);
         if (string.IsNullOrWhiteSpace(mobile))
         {
             return null;
@@ -186,7 +188,7 @@ public class AuthService(
             EventType = NotificationEventType.PasswordSetupRequested,
             RecipientUserId = user.Id,
             Mobile = user.PhoneNumber,
-            Email = IsInternalEmail(user.Email) ? null : user.Email,
+            Email = GetContactEmail(user.Email),
             Subject = "Password setup requested",
             Message = "Password setup requested.",
             DataJson = $$"""{"setupLink":"{{setupLink}}"}""",
@@ -383,7 +385,7 @@ public class AuthService(
             LastName = user.LastName,
             GuestId = user.GuestId,
             FullName = (user.FirstName + " " + user.LastName).Trim(),
-            Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
+            Email = GetDisplayEmail(user.Email),
             PhoneNumber = user.PhoneNumber,
             PlatformRole = platformRole,
             PlatformPermissions = platformPermissions,            IsActive = user.IsActive,
@@ -425,7 +427,7 @@ public class AuthService(
             new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
             new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new Claim(ClaimTypes.Name, $"{user.FirstName} {user.LastName}".Trim()),
-            new Claim(ClaimTypes.Email, IsInternalEmail(user.Email) ? string.Empty : user.Email),
+            new Claim(ClaimTypes.Email, GetDisplayEmail(user.Email)),
             new Claim(ClaimTypes.Role, user.Role.ToCanonicalPlatformRole().ToString()),
             new Claim(KoochJwtClaimTypes.SessionVersion, user.SecurityStampVersion.ToString(CultureInfo.InvariantCulture)),
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
@@ -459,19 +461,30 @@ public class AuthService(
             UserId = user.Id,
             GuestId = guestId,
             FullName = $"{user.FirstName} {user.LastName}".Trim(),
-            Email = IsInternalEmail(user.Email) ? string.Empty : user.Email,
+            Email = GetDisplayEmail(user.Email),
             Role = user.Role.ToCanonicalPlatformRole()
         };
     }
 
-    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
 
-    private static string? NormalizeOptionalEmail(string? email) =>
-        string.IsNullOrWhiteSpace(email) ? null : NormalizeEmail(email);
+    private static UserIdentityInput CreateUserIdentity(
+        string firstName,
+        string lastName,
+        string phoneNumber,
+        string? email)
+    {
+        var normalizedPhone = UserIdentityNormalization.NormalizePhoneNumber(phoneNumber)
+            ?? throw new ArgumentException("Mobile number is required.");
+        return new UserIdentityInput(
+            UserIdentityNormalization.NormalizeName(firstName),
+            UserIdentityNormalization.NormalizeName(lastName),
+            normalizedPhone,
+            UserIdentityNormalization.NormalizeEmail(email));
+    }
 
-    private static string CreateInternalEmail(string mobile) =>
-        $"{mobile}@{InternalEmailDomain}";
+    private static string GetDisplayEmail(string? email) => GetContactEmail(email) ?? string.Empty;
 
+    private static string? GetContactEmail(string? email) => IsInternalEmail(email) ? null : email;
     private static bool IsInternalEmail(string? email) =>
         email?.EndsWith($"@{InternalEmailDomain}", StringComparison.OrdinalIgnoreCase) == true;
 
@@ -494,7 +507,7 @@ public class AuthService(
         int? excludedUserId,
         CancellationToken cancellationToken)
     {
-        var variants = BuildMobileVariants(mobile);
+        var variants = UserIdentityNormalization.BuildPhoneNumberVariants(mobile);
         if (await dbContext.Users.IgnoreQueryFilters()
             .AnyAsync(user => user.PhoneNumber != null &&
                               variants.Contains(user.PhoneNumber) &&
@@ -537,7 +550,7 @@ public class AuthService(
             EventType = NotificationEventType.OtpRequested,
             RecipientUserId = user.Id,
             Mobile = mobile,
-            Email = IsInternalEmail(user.Email) ? null : user.Email,
+            Email = GetContactEmail(user.Email),
             Subject = "OTP requested",
             Message = "OTP requested.",
             DataJson = appEnvironment.IsDevelopment()
@@ -637,8 +650,8 @@ public class AuthService(
             return linkedGuestId.Value;
         }
 
-        var mobile = NormalizeMobile(user.PhoneNumber);
-        var email = IsInternalEmail(user.Email) ? null : NormalizeOptionalEmail(user.Email);
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(user.PhoneNumber);
+        var email = IsInternalEmail(user.Email) ? null : UserIdentityNormalization.NormalizeEmail(user.Email);
         if (mobile is null && email is null)
         {
             return null;
@@ -729,12 +742,12 @@ public class AuthService(
     {
         if (identifier.Contains('@', StringComparison.Ordinal))
         {
-            var email = NormalizeEmail(identifier);
+            var email = UserIdentityNormalization.NormalizeEmail(identifier);
             return await dbContext.Users
                 .SingleOrDefaultAsync(user => user.Email == email, cancellationToken);
         }
 
-        var mobile = NormalizeMobile(identifier);
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(identifier);
         return string.IsNullOrWhiteSpace(mobile)
             ? null
             : await FindUserByMobileAsync(mobile, cancellationToken);
@@ -744,7 +757,7 @@ public class AuthService(
         string mobile,
         CancellationToken cancellationToken)
     {
-        var variants = BuildMobileVariants(mobile);
+        var variants = UserIdentityNormalization.BuildPhoneNumberVariants(mobile);
         return await dbContext.Users
             .SingleOrDefaultAsync(user => user.PhoneNumber != null && variants.Contains(user.PhoneNumber), cancellationToken);
     }
@@ -797,49 +810,6 @@ public class AuthService(
         return builder.ToString();
     }
 
-    private static string? NormalizeMobile(string? mobile)
-    {
-        if (string.IsNullOrWhiteSpace(mobile)) return null;
-
-        var builder = new StringBuilder();
-        foreach (var character in mobile.Trim())
-        {
-            var normalized = NormalizeDigit(character);
-            if (char.IsDigit(normalized) || normalized == '+')
-            {
-                builder.Append(normalized);
-            }
-        }
-
-        var value = builder.ToString();
-        if (value.StartsWith("0098", StringComparison.Ordinal))
-        {
-            value = $"0{value[4..]}";
-        }
-        else if (value.StartsWith("+98", StringComparison.Ordinal))
-        {
-            value = $"0{value[3..]}";
-        }
-        else if (value.StartsWith("98", StringComparison.Ordinal) && value.Length == 12)
-        {
-            value = $"0{value[2..]}";
-        }
-
-        return value;
-    }
-
-    private static string[] BuildMobileVariants(string mobile)
-    {
-        var variants = new HashSet<string> { mobile };
-        if (mobile.StartsWith('0') && mobile.Length > 1)
-        {
-            variants.Add($"+98{mobile[1..]}");
-            variants.Add($"98{mobile[1..]}");
-            variants.Add($"0098{mobile[1..]}");
-        }
-
-        return variants.ToArray();
-    }
 
     private static char NormalizeDigit(char character) =>
         character switch

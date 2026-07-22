@@ -1,7 +1,9 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
+using Kooch.Api.Dtos.Users;
 using Kooch.Api.Entities;
+using Kooch.Api.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 
@@ -56,8 +58,9 @@ public class AdminUserService(
             permissions,
             cancellationToken);
 
-        var email = NormalizeEmail(request.Email);
-        var mobile = NormalizeMobile(request.PhoneNumber);
+        var identity = CreateUserIdentity(request.FirstName, request.LastName, request.PhoneNumber, request.Email);
+        var email = identity.Email;
+        var mobile = identity.PhoneNumber;
         await EnsureUniqueIdentityAsync(email, mobile, null, cancellationToken);
         var hasPassword = !string.IsNullOrWhiteSpace(request.Password);
         if (hasPassword)
@@ -67,8 +70,8 @@ public class AdminUserService(
 
         var user = new User
         {
-            FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim(),
+            FirstName = identity.FirstName,
+            LastName = identity.LastName,
             Email = email,
             PhoneNumber = mobile,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(hasPassword ? request.Password! : Guid.NewGuid().ToString("N")),
@@ -117,15 +120,16 @@ public class AdminUserService(
             throw new UnauthorizedAccessException("Only SuperAdmin can edit SuperAdmin users.");
         }
 
-        var email = NormalizeEmail(request.Email);
-        var mobile = NormalizeMobile(request.PhoneNumber);
+        var identity = CreateUserIdentity(request.FirstName, request.LastName, request.PhoneNumber, request.Email);
+        var email = identity.Email;
+        var mobile = identity.PhoneNumber;
         await EnsureUniqueIdentityAsync(email, mobile, userId, cancellationToken);
 
         var roleChanged = user.Role != request.Role;
         var passwordChanged = !string.IsNullOrWhiteSpace(request.Password);
 
-        user.FirstName = request.FirstName.Trim();
-        user.LastName = request.LastName.Trim();
+        user.FirstName = identity.FirstName;
+        user.LastName = identity.LastName;
         user.Email = email;
         user.PhoneNumber = mobile;
         user.Role = request.Role;
@@ -304,7 +308,7 @@ public class AdminUserService(
             FirstName = user.FirstName,
             LastName = user.LastName,
             FullName = (user.FirstName + " " + user.LastName).Trim(),
-            Email = user.Email,
+            Email = user.Email ?? string.Empty,
             PhoneNumber = user.PhoneNumber,
             Role = user.Role.ToCanonicalPlatformRole(),
             ParentUserId = user.ParentUserId,
@@ -320,98 +324,52 @@ public class AdminUserService(
             InvitationAcceptedAtUtc = user.InvitationAcceptedAtUtc
         });
 
-    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
+    private static UserIdentityInput CreateUserIdentity(
+        string firstName,
+        string lastName,
+        string phoneNumber,
+        string? email)
+    {
+        var normalizedPhone = UserIdentityNormalization.NormalizePhoneNumber(phoneNumber)
+            ?? throw new ArgumentException("Mobile number is required.");
+        return new UserIdentityInput(
+            UserIdentityNormalization.NormalizeName(firstName),
+            UserIdentityNormalization.NormalizeName(lastName),
+            normalizedPhone,
+            UserIdentityNormalization.NormalizeEmail(email));
+    }
+
     private async Task EnsureUniqueIdentityAsync(
-        string email,
-        string? mobile,
+        string? email,
+        string mobile,
         int? currentUserId,
         CancellationToken cancellationToken)
     {
-        if (await dbContext.Users.IgnoreQueryFilters()
+        if (email is not null && await dbContext.Users.IgnoreQueryFilters()
                 .AnyAsync(user => user.Email == email &&
                                   (!currentUserId.HasValue || user.Id != currentUserId.Value),
                     cancellationToken))
         {
-            throw new ArgumentException("این ایمیل قبلاً ثبت شده است.");
+            throw new ArgumentException(UserIdentityNormalization.DuplicateEmailMessage);
         }
 
-        if (string.IsNullOrWhiteSpace(mobile))
-        {
-            if (await dbContext.Guests.AsNoTracking()
-                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
-            {
-                throw new ArgumentException("Guest with this email already exists.");
-            }
-
-            return;
-        }
-
-        var mobileVariants = BuildMobileVariants(mobile);
+        var mobileVariants = UserIdentityNormalization.BuildPhoneNumberVariants(mobile);
         if (await dbContext.Users.IgnoreQueryFilters()
                 .AnyAsync(user => user.PhoneNumber != null &&
                                   mobileVariants.Contains(user.PhoneNumber) &&
                                   (!currentUserId.HasValue || user.Id != currentUserId.Value),
                     cancellationToken))
         {
-            throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+            throw new ArgumentException(UserIdentityNormalization.DuplicatePhoneNumberMessage);
         }
+
         if (await dbContext.Guests.AsNoTracking()
             .AnyAsync(guest =>
-                    guest.NormalizedEmail == email ||
+                    (email != null && guest.NormalizedEmail == email) ||
                     guest.NormalizedMobile == mobile,
                 cancellationToken))
         {
             throw new ArgumentException("Guest with this mobile or email already exists.");
         }
     }
-
-    private static string? NormalizeMobile(string? mobile)
-    {
-        if (string.IsNullOrWhiteSpace(mobile)) return null;
-
-        var builder = new System.Text.StringBuilder();
-        foreach (var character in mobile.Trim())
-        {
-            var normalized = character switch
-            {
-                >= '۰' and <= '۹' => (char)('0' + character - '۰'),
-                >= '٠' and <= '٩' => (char)('0' + character - '٠'),
-                _ => character
-            };
-            if (char.IsDigit(normalized) || normalized == '+')
-            {
-                builder.Append(normalized);
-            }
-        }
-
-        var value = builder.ToString();
-        if (value.StartsWith("0098", StringComparison.Ordinal))
-        {
-            value = $"0{value[4..]}";
-        }
-        else if (value.StartsWith("+98", StringComparison.Ordinal))
-        {
-            value = $"0{value[3..]}";
-        }
-        else if (value.StartsWith("98", StringComparison.Ordinal) && value.Length == 12)
-        {
-            value = $"0{value[2..]}";
-        }
-
-        return string.IsNullOrWhiteSpace(value) ? null : value;
-    }
-
-    private static string[] BuildMobileVariants(string mobile)
-    {
-        var variants = new HashSet<string> { mobile };
-        if (mobile.StartsWith('0') && mobile.Length > 1)
-        {
-            variants.Add($"+98{mobile[1..]}");
-            variants.Add($"98{mobile[1..]}");
-            variants.Add($"0098{mobile[1..]}");
-        }
-
-        return variants.ToArray();
-    }
-
 }

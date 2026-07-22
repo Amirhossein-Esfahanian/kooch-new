@@ -29,3 +29,14 @@ Thumbs.db
 *.resources.dll
 *.deps.json
 *.runtimeconfig.json
+
+# Codex temporary workspace
+.codex/
+**/gpt/
+# .NET build outputs
+**/bin/
+**/obj/
+
+# Test results
+TestResults/
+*.trx

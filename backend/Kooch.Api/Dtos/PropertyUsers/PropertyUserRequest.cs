@@ -5,14 +5,13 @@ namespace Kooch.Api.Dtos.PropertyUsers;
 
 public class PropertyUserRequest
 {
-    [Required, MaxLength(200)]
-    public string FullName { get; set; } = string.Empty;
+    [MaxLength(200)]
+    public string? FullName { get; set; }
+    [Required, MaxLength(30)]
+    public string Mobile { get; set; } = string.Empty;
 
-    [MaxLength(30)]
-    public string? Mobile { get; set; }
-
-    [Required, EmailAddress, MaxLength(320)]
-    public string Email { get; set; } = string.Empty;
+    [EmailAddress, MaxLength(320)]
+    public string? Email { get; set; }
 
     [MaxLength(100)]
     public string? Username { get; set; }

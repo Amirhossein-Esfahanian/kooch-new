@@ -146,6 +146,17 @@ export interface PropertyPermissionMetadataResponse {
   actorAssignablePermissions: PermissionMatrixValue;
 }
 
+export type PropertyUserCandidateOutcome =
+  | "CanContinue"
+  | "AlreadyMember"
+  | "Unavailable";
+
+export interface PropertyUserCandidateResponse {
+  outcome: PropertyUserCandidateOutcome;
+  requiresUserCreation: boolean;
+  maskedName: string | null;
+}
+
 export interface PropertyUserResponse {
   id: number;
   userId: number;

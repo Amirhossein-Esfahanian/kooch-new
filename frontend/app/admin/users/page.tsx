@@ -17,6 +17,13 @@ import {
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
+  CreateUserFields,
+  getCreateUserApiError,
+  hasCreateUserIdentityErrors,
+  validateCreateUserIdentity,
+  type CreateUserIdentityErrors,
+} from "@/components/users/CreateUserFields";
+import {
   KoochTable,
   KoochTableBody,
   KoochTableCell,
@@ -200,6 +207,8 @@ export default function AdminUsersPage() {
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [error, setError] = useState("");
+  const [identityErrors, setIdentityErrors] =
+    useState<CreateUserIdentityErrors>({});
   const [setupLink, setSetupLink] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
@@ -268,6 +277,7 @@ export default function AdminUsersPage() {
   function openCreate() {
     setForm(emptyForm);
     setError("");
+    setIdentityErrors({});
     setDialogOpen(true);
   }
 
@@ -283,6 +293,7 @@ export default function AdminUsersPage() {
       permissions: user.permissions ?? [],
     });
     setError("");
+    setIdentityErrors({});
     setDialogOpen(true);
   }
 
@@ -290,10 +301,25 @@ export default function AdminUsersPage() {
     if (saving) return;
     setDialogOpen(false);
     setForm(emptyForm);
+    setIdentityErrors({});
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    const nextIdentityErrors = validateCreateUserIdentity({
+      firstName: form.firstName,
+      lastName: form.lastName,
+      mobile: form.phoneNumber,
+      email: form.email,
+    });
+    setIdentityErrors(nextIdentityErrors);
+    if (hasCreateUserIdentityErrors(nextIdentityErrors)) {
+      const message = Object.values(nextIdentityErrors)[0]!;
+      setError(message);
+      toast.error(message);
+      return;
+    }
 
     const passwordError = form.password ? validatePassword(form.password) : "";
     if (passwordError) {
@@ -313,8 +339,8 @@ export default function AdminUsersPage() {
           body: JSON.stringify({
             firstName: form.firstName,
             lastName: form.lastName,
-            email: form.email,
-            phoneNumber: form.phoneNumber || null,
+            email: form.email.trim() || null,
+            phoneNumber: form.phoneNumber,
             password: form.password ? form.password : null,
             role: form.role,
             parentUserId: null,
@@ -335,8 +361,7 @@ export default function AdminUsersPage() {
       closeDialog();
       toast.success(form.id ? "کاربر ذخیره شد" : "دعوت کاربر ثبت شد");
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "ذخیره کاربر انجام نشد.";
+      const message = getCreateUserApiError(caught, "ذخیره کاربر انجام نشد.");
       setError(message);
       toast.error(message);
     } finally {
@@ -647,61 +672,27 @@ export default function AdminUsersPage() {
           title={form.id ? "ویرایش کاربر" : "افزودن کاربر"}
         >
           <form className="grid gap-4" id="admin-user-form" onSubmit={submit}>
+            <CreateUserFields
+              errors={identityErrors}
+              idPrefix="admin-user"
+              onChange={(identity) =>
+                setForm((current) => ({
+                  ...current,
+                  firstName: identity.firstName,
+                  lastName: identity.lastName,
+                  phoneNumber: identity.mobile,
+                  email: identity.email,
+                }))
+              }
+              value={{
+                firstName: form.firstName,
+                lastName: form.lastName,
+                mobile: form.phoneNumber,
+                email: form.email,
+              }}
+            />
+
             <div className="grid gap-4 md:grid-cols-2">
-              <KoochField label="نام" required>
-                <KoochInput
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      firstName: event.target.value,
-                    }))
-                  }
-                  required
-                  value={form.firstName}
-                />
-              </KoochField>
-
-              <KoochField label="نام خانوادگی" required>
-                <KoochInput
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      lastName: event.target.value,
-                    }))
-                  }
-                  required
-                  value={form.lastName}
-                />
-              </KoochField>
-
-              <KoochField label="ایمیل" required>
-                <KoochInput
-                  dir="ltr"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      email: event.target.value,
-                    }))
-                  }
-                  required
-                  type="email"
-                  value={form.email}
-                />
-              </KoochField>
-
-              <KoochField label="شماره تماس">
-                <KoochInput
-                  dir="ltr"
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      phoneNumber: event.target.value,
-                    }))
-                  }
-                  value={form.phoneNumber}
-                />
-              </KoochField>
-
               <>
                 <KoochField
                   helperText={

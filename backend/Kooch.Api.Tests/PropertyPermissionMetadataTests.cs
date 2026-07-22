@@ -76,7 +76,6 @@ public class PropertyPermissionMetadataTests
         var authorization = new PropertyAccessService(dbContext);
         return new PropertyUserService(
             dbContext,
-            new PermissionService(dbContext, authorization),
             authorization,
             null!,
             null!);

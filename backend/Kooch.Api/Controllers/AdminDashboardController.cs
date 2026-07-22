@@ -27,7 +27,7 @@ public class AdminDashboardController(KoochDbContext dbContext) : AuthenticatedC
                 Id = property.Id,
                 OwnerId = property.OwnerId,
                 OwnerName = (property.Owner.FirstName + " " + property.Owner.LastName).Trim(),
-                OwnerEmail = property.Owner.Email,
+                OwnerEmail = property.Owner.Email ?? string.Empty,
                 CreatedAtUtc = property.CreatedAtUtc,
                 DestinationId = property.DestinationId,
                 DestinationName = property.Destination.Name,

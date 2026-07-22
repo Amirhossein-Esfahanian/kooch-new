@@ -18,6 +18,13 @@ import {
 import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
+  CreateUserFields,
+  getCreateUserApiError,
+  hasCreateUserIdentityErrors,
+  validateCreateUserIdentity,
+  type CreateUserIdentityErrors,
+} from "@/components/users/CreateUserFields";
+import {
   KoochTable,
   KoochTableBody,
   KoochTableCell,
@@ -172,6 +179,10 @@ export default function AdminPropertiesPage() {
   const [transferForm, setTransferForm] = useState<TransferOwnershipForm>(emptyTransferForm);
   const [transferring, setTransferring] = useState(false);
   const [error, setError] = useState("");
+  const [createIdentityErrors, setCreateIdentityErrors] =
+    useState<CreateUserIdentityErrors>({});
+  const [transferIdentityErrors, setTransferIdentityErrors] =
+    useState<CreateUserIdentityErrors>({});
   const [setupLink, setSetupLink] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<PropertyStatusFilter>("all");
@@ -274,6 +285,7 @@ export default function AdminPropertiesPage() {
       ownerId: ownerOptions[0]?.id ? String(ownerOptions[0].id) : "",
     });
     setError("");
+    setCreateIdentityErrors({});
     setCreateOpen(true);
   }
 
@@ -291,8 +303,8 @@ export default function AdminPropertiesPage() {
       body: JSON.stringify({
         firstName: createForm.ownerFirstName.trim(),
         lastName: createForm.ownerLastName.trim(),
-        email: createForm.ownerEmail.trim(),
-        phoneNumber: createForm.ownerPhoneNumber.trim() || null,
+        email: createForm.ownerEmail.trim() || null,
+        phoneNumber: createForm.ownerPhoneNumber.trim(),
         password: createForm.ownerPassword.trim() || null,
       }),
     });
@@ -316,6 +328,7 @@ export default function AdminPropertiesPage() {
       newOwnerId: firstCandidate ? String(firstCandidate.id) : "",
     });
     setError("");
+    setTransferIdentityErrors({});
   }
 
   async function transferOwnership() {
@@ -326,13 +339,25 @@ export default function AdminPropertiesPage() {
       throw new Error("Select the new owner.");
     }
 
-    if (transferForm.ownerMode === "new-owner" &&
-        (!transferForm.newOwnerFirstName.trim() ||
-          !transferForm.newOwnerLastName.trim() ||
-          !transferForm.newOwnerEmail.trim() ||
-          !transferForm.newOwnerPassword.trim())) {
-      toast.error("Enter new owner name, email, and initial password.");
-      throw new Error("Enter new owner name, email, and initial password.");
+    if (transferForm.ownerMode === "new-owner") {
+      const nextIdentityErrors = validateCreateUserIdentity({
+        firstName: transferForm.newOwnerFirstName,
+        lastName: transferForm.newOwnerLastName,
+        mobile: transferForm.newOwnerPhoneNumber,
+        email: transferForm.newOwnerEmail,
+      });
+      setTransferIdentityErrors(nextIdentityErrors);
+      if (hasCreateUserIdentityErrors(nextIdentityErrors)) {
+        const message = Object.values(nextIdentityErrors)[0]!;
+        toast.error(message);
+        throw new Error(message);
+      }
+
+      if (!transferForm.newOwnerPassword.trim()) {
+        const message = "رمز عبور اولیه مالک جدید را وارد کنید.";
+        toast.error(message);
+        throw new Error(message);
+      }
     }
 
     setTransferring(true);
@@ -352,8 +377,8 @@ export default function AdminPropertiesPage() {
                 ? {
                     firstName: transferForm.newOwnerFirstName.trim(),
                     lastName: transferForm.newOwnerLastName.trim(),
-                    email: transferForm.newOwnerEmail.trim(),
-                    phoneNumber: transferForm.newOwnerPhoneNumber.trim() || null,
+                    email: transferForm.newOwnerEmail.trim() || null,
+                    phoneNumber: transferForm.newOwnerPhoneNumber.trim(),
                     password: transferForm.newOwnerPassword,
                   }
                 : null,
@@ -376,8 +401,10 @@ export default function AdminPropertiesPage() {
       setTransferProperty(null);
       setTransferForm(emptyTransferForm);
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Ownership transfer failed.";
+      const message = getCreateUserApiError(
+        caught,
+        "انتقال مالکیت انجام نشد.",
+      );
       setError(message);
       toast.error(message);
       throw caught;
@@ -404,14 +431,18 @@ export default function AdminPropertiesPage() {
       return;
     }
 
-    if (
-      createForm.ownerMode === "new-owner" &&
-      (!createForm.ownerFirstName.trim() ||
-        !createForm.ownerLastName.trim() ||
-        !createForm.ownerEmail.trim())
-    ) {
-      toast.error("برای مالک جدید، نام و ایمیل لازم است.");
-      return;
+    if (createForm.ownerMode === "new-owner") {
+      const nextIdentityErrors = validateCreateUserIdentity({
+        firstName: createForm.ownerFirstName,
+        lastName: createForm.ownerLastName,
+        mobile: createForm.ownerPhoneNumber,
+        email: createForm.ownerEmail,
+      });
+      setCreateIdentityErrors(nextIdentityErrors);
+      if (hasCreateUserIdentityErrors(nextIdentityErrors)) {
+        toast.error(Object.values(nextIdentityErrors)[0]!);
+        return;
+      }
     }
 
     setCreating(true);
@@ -450,8 +481,10 @@ export default function AdminPropertiesPage() {
         router.push(`/admin/properties/${created.id}`);
       }
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "ایجاد اقامتگاه انجام نشد.";
+      const message = getCreateUserApiError(
+        caught,
+        "ایجاد اقامتگاه انجام نشد.",
+      );
 
       setError(message);
       toast.error(message);
@@ -803,41 +836,26 @@ export default function AdminPropertiesPage() {
               </KoochField>
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
-                <KoochField label="First name">
-                  <KoochInput
-                    onChange={(event) =>
-                      setTransferForm({ ...transferForm, newOwnerFirstName: event.target.value })
-                    }
-                    value={transferForm.newOwnerFirstName}
-                  />
-                </KoochField>
-                <KoochField label="Last name">
-                  <KoochInput
-                    onChange={(event) =>
-                      setTransferForm({ ...transferForm, newOwnerLastName: event.target.value })
-                    }
-                    value={transferForm.newOwnerLastName}
-                  />
-                </KoochField>
-                <KoochField label="Email">
-                  <KoochInput
-                    dir="ltr"
-                    onChange={(event) =>
-                      setTransferForm({ ...transferForm, newOwnerEmail: event.target.value })
-                    }
-                    type="email"
-                    value={transferForm.newOwnerEmail}
-                  />
-                </KoochField>
-                <KoochField label="Phone">
-                  <KoochInput
-                    dir="ltr"
-                    onChange={(event) =>
-                      setTransferForm({ ...transferForm, newOwnerPhoneNumber: event.target.value })
-                    }
-                    value={transferForm.newOwnerPhoneNumber}
-                  />
-                </KoochField>
+                <CreateUserFields
+                  className="md:col-span-2"
+                  errors={transferIdentityErrors}
+                  idPrefix="transfer-owner"
+                  onChange={(identity) =>
+                    setTransferForm({
+                      ...transferForm,
+                      newOwnerFirstName: identity.firstName,
+                      newOwnerLastName: identity.lastName,
+                      newOwnerPhoneNumber: identity.mobile,
+                      newOwnerEmail: identity.email,
+                    })
+                  }
+                  value={{
+                    firstName: transferForm.newOwnerFirstName,
+                    lastName: transferForm.newOwnerLastName,
+                    mobile: transferForm.newOwnerPhoneNumber,
+                    email: transferForm.newOwnerEmail,
+                  }}
+                />
                 <KoochField className="md:col-span-2" label="Initial password">
                   <KoochInput
                     dir="ltr"
@@ -983,47 +1001,26 @@ export default function AdminPropertiesPage() {
                   </KoochField>
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
-                    <KoochField label="نام مالک" required>
-                      <KoochInput
-                        onChange={(event) =>
-                          setCreateForm({
-                            ...createForm,
-                            ownerFirstName: event.target.value,
-                          })
-                        }
-                        required
-                        value={createForm.ownerFirstName}
-                      />
-                    </KoochField>
-
-                    <KoochField label="نام خانوادگی مالک" required>
-                      <KoochInput
-                        onChange={(event) =>
-                          setCreateForm({
-                            ...createForm,
-                            ownerLastName: event.target.value,
-                          })
-                        }
-                        required
-                        value={createForm.ownerLastName}
-                      />
-                    </KoochField>
-
-                    <KoochField label="ایمیل مالک" required>
-                      <KoochInput
-                        dir="ltr"
-                        onChange={(event) =>
-                          setCreateForm({
-                            ...createForm,
-                            ownerEmail: event.target.value,
-                          })
-                        }
-                        required
-                        type="email"
-                        value={createForm.ownerEmail}
-                      />
-                    </KoochField>
-
+                    <CreateUserFields
+                      className="md:col-span-2"
+                      errors={createIdentityErrors}
+                      idPrefix="property-owner-candidate"
+                      onChange={(identity) =>
+                        setCreateForm({
+                          ...createForm,
+                          ownerFirstName: identity.firstName,
+                          ownerLastName: identity.lastName,
+                          ownerPhoneNumber: identity.mobile,
+                          ownerEmail: identity.email,
+                        })
+                      }
+                      value={{
+                        firstName: createForm.ownerFirstName,
+                        lastName: createForm.ownerLastName,
+                        mobile: createForm.ownerPhoneNumber,
+                        email: createForm.ownerEmail,
+                      }}
+                    />
                     <KoochField className="hidden" label="رمز عبور اولیه">
                       <KoochInput
                         dir="ltr"
@@ -1039,18 +1036,6 @@ export default function AdminPropertiesPage() {
                       />
                     </KoochField>
 
-                    <KoochField label="شماره تماس">
-                      <KoochInput
-                        dir="ltr"
-                        onChange={(event) =>
-                          setCreateForm({
-                            ...createForm,
-                            ownerPhoneNumber: event.target.value,
-                          })
-                        }
-                        value={createForm.ownerPhoneNumber}
-                      />
-                    </KoochField>
                   </div>
                 )}
               </div>

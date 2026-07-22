@@ -124,14 +124,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(user => user.FirstName).HasMaxLength(100).IsRequired();
             entity.Property(user => user.LastName).HasMaxLength(100).IsRequired();
-            entity.Property(user => user.Email).HasMaxLength(320).IsRequired();
+            entity.Property(user => user.Email).HasMaxLength(320);
             entity.Property(user => user.Username).HasMaxLength(100);
             entity.Property(user => user.PasswordHash).HasMaxLength(500).IsRequired();
             entity.Property(user => user.PhoneNumber).HasMaxLength(30);
             entity.Property(user => user.PasswordSetupRequired).HasDefaultValue(false);
             entity.Property(user => user.SecurityStampVersion).HasDefaultValue(0);
             entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
-            entity.HasIndex(user => user.Email).IsUnique();
+            entity.HasIndex(user => user.Email)
+                .IsUnique()
+                .HasFilter("[Email] IS NOT NULL AND [Email] <> ''");
             entity.HasIndex(user => user.PhoneNumber)
                 .IsUnique()
                 .HasFilter("[PhoneNumber] IS NOT NULL AND [PhoneNumber] <> ''");

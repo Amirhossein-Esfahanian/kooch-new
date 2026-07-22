@@ -2059,7 +2059,7 @@ public class ReservationService(
         }
 
         var fullName = $"{user.FirstName} {user.LastName}".Trim();
-        return string.IsNullOrWhiteSpace(fullName) ? user.Email : fullName;
+        return string.IsNullOrWhiteSpace(fullName) ? user.Email ?? string.Empty : fullName;
     }
 
     private static NotificationRequest CreateReservationNotificationRequest(

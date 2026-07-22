@@ -2,8 +2,10 @@ using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Dtos.Users;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
+using Kooch.Api.Utilities;
 using Kooch.Api.Exceptions;
 using Microsoft.EntityFrameworkCore;
 
@@ -816,13 +818,14 @@ public class PropertyService(
         }
 
         PasswordPolicy.Validate(request.Password);
-        var email = NormalizeEmail(request.Email);
-        var mobile = NormalizeMobile(request.PhoneNumber);
+        var identity = CreateUserIdentity(request.FirstName, request.LastName, request.PhoneNumber, request.Email);
+        var email = identity.Email;
+        var mobile = identity.PhoneNumber;
         await EnsureUniqueIdentityAsync(email, mobile, cancellationToken);
         var user = new User
         {
-            FirstName = request.FirstName.Trim(),
-            LastName = request.LastName.Trim(),
+            FirstName = identity.FirstName,
+            LastName = identity.LastName,
             Email = email,
             PhoneNumber = mobile,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
@@ -885,35 +888,28 @@ public class PropertyService(
     }
 
     private async Task EnsureUniqueIdentityAsync(
-        string email,
-        string? mobile,
+        string? email,
+        string mobile,
         CancellationToken cancellationToken)
     {
-        if (await dbContext.Users.IgnoreQueryFilters().AnyAsync(user => user.Email == email, cancellationToken))
+        if (email is not null && await dbContext.Users.IgnoreQueryFilters()
+                .AnyAsync(user => user.Email == email, cancellationToken))
         {
-            throw new ArgumentException("Email is already in use.");
+            throw new ArgumentException(UserIdentityNormalization.DuplicateEmailMessage);
         }
 
-        if (string.IsNullOrWhiteSpace(mobile))
-        {
-            if (await dbContext.Guests.AsNoTracking()
-                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
-            {
-                throw new ArgumentException("Guest with this email already exists.");
-            }
-
-            return;
-        }
-
-        var mobileVariants = BuildMobileVariants(mobile);
+        var mobileVariants = UserIdentityNormalization.BuildPhoneNumberVariants(mobile);
         if (await dbContext.Users.IgnoreQueryFilters()
             .AnyAsync(user => user.PhoneNumber != null && mobileVariants.Contains(user.PhoneNumber), cancellationToken))
         {
-            throw new ArgumentException("Phone number is already in use.");
+            throw new ArgumentException(UserIdentityNormalization.DuplicatePhoneNumberMessage);
         }
 
         if (await dbContext.Guests.AsNoTracking()
-            .AnyAsync(guest => guest.NormalizedEmail == email || guest.NormalizedMobile == mobile, cancellationToken))
+            .AnyAsync(guest =>
+                    (email != null && guest.NormalizedEmail == email) ||
+                    guest.NormalizedMobile == mobile,
+                cancellationToken))
         {
             throw new ArgumentException("Guest with this mobile or email already exists.");
         }
@@ -1001,7 +997,7 @@ public class PropertyService(
             Id = property.Id,
             OwnerId = property.OwnerId,
             OwnerName = (property.Owner.FirstName + " " + property.Owner.LastName).Trim(),
-            OwnerEmail = property.Owner.Email,
+            OwnerEmail = property.Owner.Email ?? string.Empty,
             CreatedAtUtc = property.CreatedAtUtc,
             DestinationId = property.DestinationId,
             DestinationName = property.Destination.Name,
@@ -1337,60 +1333,26 @@ public class PropertyService(
         return Math.Max(0, requestedChildren - Math.Min(freeChildren, maxFreeChildren.Value));
     }
 
-    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
-
-    private static string? NormalizeMobile(string? mobile)
+    private static UserIdentityInput CreateUserIdentity(
+        string firstName,
+        string lastName,
+        string phoneNumber,
+        string? email)
     {
-        if (string.IsNullOrWhiteSpace(mobile)) return null;
-
-        var builder = new System.Text.StringBuilder();
-        foreach (var character in mobile.Trim())
-        {
-            var normalized = character switch
-            {
-                >= '\u06F0' and <= '\u06F9' => (char)('0' + character - '\u06F0'),
-                >= '\u0660' and <= '\u0669' => (char)('0' + character - '\u0660'),
-                _ => character
-            };
-            if (char.IsDigit(normalized) || normalized == '+')
-            {
-                builder.Append(normalized);
-            }
-        }
-
-        var value = builder.ToString();
-        if (value.StartsWith("0098", StringComparison.Ordinal))
-        {
-            value = $"0{value[4..]}";
-        }
-        else if (value.StartsWith("+98", StringComparison.Ordinal))
-        {
-            value = $"0{value[3..]}";
-        }
-        else if (value.StartsWith("98", StringComparison.Ordinal) && value.Length == 12)
-        {
-            value = $"0{value[2..]}";
-        }
-
-        return string.IsNullOrWhiteSpace(value) ? null : value;
+        var normalizedPhone = UserIdentityNormalization.NormalizePhoneNumber(phoneNumber)
+            ?? throw new ArgumentException("Mobile number is required.");
+        return new UserIdentityInput(
+            UserIdentityNormalization.NormalizeName(firstName),
+            UserIdentityNormalization.NormalizeName(lastName),
+            normalizedPhone,
+            UserIdentityNormalization.NormalizeEmail(email));
     }
 
-    private static string[] BuildMobileVariants(string mobile)
-    {
-        var variants = new HashSet<string> { mobile };
-        if (mobile.StartsWith('0') && mobile.Length > 1)
-        {
-            variants.Add($"+98{mobile[1..]}");
-            variants.Add($"98{mobile[1..]}");
-            variants.Add($"0098{mobile[1..]}");
-        }
 
-        return variants.ToArray();
-    }
 
     private static string DescribeUser(User user) =>
         string.IsNullOrWhiteSpace((user.FirstName + " " + user.LastName).Trim())
-            ? user.Email
+            ? user.Email ?? string.Empty
             : (user.FirstName + " " + user.LastName).Trim();
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();

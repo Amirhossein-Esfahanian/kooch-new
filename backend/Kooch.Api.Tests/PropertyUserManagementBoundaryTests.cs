@@ -1,4 +1,4 @@
-﻿using System.Security.Cryptography;
+using System.Security.Cryptography;
 using System.Text.Json;
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
@@ -51,6 +51,7 @@ public sealed class PropertyUserManagementBoundaryTests
                 FirstName = "Platform",
                 LastName = "Assistant",
                 Email = "platform-assistant@example.test",
+                PhoneNumber = "09120001001",
                 Password = "password1",
                 Role = UserRole.AdminAssistant
             });
@@ -88,6 +89,7 @@ public sealed class PropertyUserManagementBoundaryTests
                 FirstName = "Updated",
                 LastName = "Assistant",
                 Email = "updated-assistant@example.test",
+                PhoneNumber = "09120001002",
                 Role = UserRole.AdminAssistant
             });
 
@@ -120,13 +122,13 @@ public sealed class PropertyUserManagementBoundaryTests
                 FirstName = "Created",
                 LastName = "Assistant",
                 Email = "created-assistant@example.test",
+                PhoneNumber = "09120001003",
                 Password = "password1",
                 Role = UserRole.AdminAssistant
             });
 
         Assert.Equal(UserRole.AdminAssistant, created.Role);
     }
-
     [Fact]
     public async Task AdminAssistantWithoutCanonicalManageUsersPermission_CannotCreateAdminAssistant()
     {
@@ -143,6 +145,7 @@ public sealed class PropertyUserManagementBoundaryTests
                 FirstName = "Denied",
                 LastName = "Assistant",
                 Email = "denied-assistant@example.test",
+                PhoneNumber = "09120001004",
                 Password = "password1",
                 Role = UserRole.AdminAssistant
             }));
@@ -164,6 +167,7 @@ public sealed class PropertyUserManagementBoundaryTests
                 FirstName = "Legacy",
                 LastName = "Owner",
                 Email = "legacy-owner@example.test",
+                PhoneNumber = "09120001005",
                 Password = "password1",
                 Role = UserRole.Owner
             }));
@@ -202,7 +206,6 @@ public sealed class PropertyUserManagementBoundaryTests
         var authorization = new PropertyAccessService(dbContext);
         var service = new PropertyUserService(
             dbContext,
-            new PermissionService(dbContext, authorization),
             authorization,
             new StubAuthService(),
             new TestHostEnvironment());
@@ -218,8 +221,9 @@ public sealed class PropertyUserManagementBoundaryTests
             100,
             new PropertyUserRequest
             {
-                FullName = "Property Reception",
+                                FullName = "Property Reception",
                 Email = "property-reception@example.test",
+                Mobile = "09120002001",
                 Role = PropertyUserRole.Reception,
                 Status = PropertyUserStatus.Suspended,
                 IsActive = false,
@@ -270,7 +274,6 @@ public sealed class PropertyUserManagementBoundaryTests
         var authorization = new PropertyAccessService(dbContext);
         var service = new PropertyUserService(
             dbContext,
-            new PermissionService(dbContext, authorization),
             authorization,
             new StubAuthService(),
             new TestHostEnvironment());
@@ -281,8 +284,9 @@ public sealed class PropertyUserManagementBoundaryTests
             100,
             new PropertyUserRequest
             {
-                FullName = "Property Manager",
+                                FullName = "Property Manager",
                 Email = "property-manager@example.test",
+                Mobile = "09120002002",
                 Role = PropertyUserRole.Manager,
                 Status = PropertyUserStatus.Active,
                 IsActive = true,
@@ -320,8 +324,9 @@ public sealed class PropertyUserManagementBoundaryTests
             100,
             new PropertyUserRequest
             {
-                FullName = "Invited Staff",
+                                FullName = "Invited Staff",
                 Email = "invited-staff@example.test",
+                Mobile = "09120002003",
                 Role = PropertyUserRole.Reception,
                 Status = PropertyUserStatus.Pending,
                 IsActive = false,
@@ -354,6 +359,7 @@ public sealed class PropertyUserManagementBoundaryTests
             FirstName = "Existing",
             LastName = "Client",
             Email = "existing-client@example.test",
+            PhoneNumber = "09120002004",
             PasswordHash = "existing-password-hash",
             Role = UserRole.Client,
             IsActive = true,
@@ -372,8 +378,9 @@ public sealed class PropertyUserManagementBoundaryTests
             100,
             new PropertyUserRequest
             {
-                FullName = "Ignored Name",
+                                FullName = "Ignored Name",
                 Email = "existing-client@example.test",
+                Mobile = "09120002004",
                 Role = PropertyUserRole.Manager,
                 Status = PropertyUserStatus.Active,
                 IsActive = true,
@@ -418,6 +425,7 @@ public sealed class PropertyUserManagementBoundaryTests
             FirstName = "Multi",
             LastName = "Member",
             Email = "multi-member@example.test",
+            PhoneNumber = "09120002005",
             PasswordHash = "existing-password-hash",
             Role = UserRole.Client,
             IsActive = true,
@@ -441,8 +449,9 @@ public sealed class PropertyUserManagementBoundaryTests
             100,
             new PropertyUserRequest
             {
-                FullName = "Multi Member",
+                                FullName = "Multi Member",
                 Email = "multi-member@example.test",
+                Mobile = "09120002005",
                 Role = PropertyUserRole.Reception,
                 Status = PropertyUserStatus.Suspended,
                 IsActive = false,
@@ -739,7 +748,6 @@ public sealed class PropertyUserManagementBoundaryTests
         var authorization = new PropertyAccessService(dbContext);
         return new PropertyUserService(
             dbContext,
-            new PermissionService(dbContext, authorization),
             authorization,
             authService ?? new StubAuthService(),
             hostEnvironment ?? new TestHostEnvironment());

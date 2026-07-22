@@ -1,6 +1,8 @@
-﻿using Kooch.Api.Data;
+using Kooch.Api.Data;
 using Kooch.Api.Dtos.PropertyUsers;
+using Kooch.Api.Dtos.Users;
 using Kooch.Api.Entities;
+using Kooch.Api.Utilities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using System.Text.Json;
@@ -9,7 +11,6 @@ namespace Kooch.Api.Services;
 
 public class PropertyUserService(
     KoochDbContext dbContext,
-    IPermissionService permissionService,
     IPropertyAuthorizationService propertyAuthorizationService,
     IAuthService authService,
     IHostEnvironment appEnvironment) : IPropertyUserService
@@ -91,8 +92,8 @@ public class PropertyUserService(
                 PropertyId = access.PropertyId,
                 FullName = (access.User.FirstName + " " + access.User.LastName).Trim(),
                 Mobile = access.User.PhoneNumber,
-                Email = access.User.Email,
-                Username = string.IsNullOrWhiteSpace(access.User.Username) ? access.User.Email : access.User.Username!,
+                Email = access.User.Email ?? string.Empty,
+                Username = string.IsNullOrWhiteSpace(access.User.Username) ? access.User.Email ?? access.User.PhoneNumber ?? string.Empty : access.User.Username!,
                 Status = access.Status,
                 Role = access.PropertyRole,
                 IsActive = access.IsActive && access.User.IsActive,
@@ -109,6 +110,70 @@ public class PropertyUserService(
 
         users.AddRange(accessUsers);
         return users;
+    }
+
+    public async Task<PropertyUserCandidateResponse> ResolveCandidateAsync(
+        int currentUserId,
+        int propertyId,
+        PropertyUserCandidateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanUseUsersPermissionAsync(
+            currentUserId,
+            propertyId,
+            "users.create",
+            cancellationToken);
+
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(request.Mobile);
+        if (mobile is null)
+        {
+            return UnavailableCandidate();
+        }
+
+        var users = await FindUsersByMobileAsync(mobile, cancellationToken);
+        if (users.Count > 1)
+        {
+            return UnavailableCandidate();
+        }
+
+        var user = users.SingleOrDefault();
+        if (user is null)
+        {
+            var conflictsWithGuest = await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest => guest.NormalizedMobile == mobile, cancellationToken);
+            return conflictsWithGuest
+                ? UnavailableCandidate()
+                : new PropertyUserCandidateResponse
+                {
+                    Outcome = PropertyUserCandidateOutcome.CanContinue,
+                    RequiresUserCreation = true
+                };
+        }
+
+        if (user.IsDeleted)
+        {
+            return UnavailableCandidate();
+        }
+
+        var alreadyMember = await dbContext.UserPropertyAccesses
+            .IgnoreQueryFilters()
+            .AnyAsync(
+                access => access.UserId == user.Id && access.PropertyId == propertyId,
+                cancellationToken);
+        if (alreadyMember)
+        {
+            return new PropertyUserCandidateResponse
+            {
+                Outcome = PropertyUserCandidateOutcome.AlreadyMember
+            };
+        }
+
+        return new PropertyUserCandidateResponse
+        {
+            Outcome = PropertyUserCandidateOutcome.CanContinue,
+            RequiresUserCreation = false,
+            MaskedName = MaskName(user)
+        };
     }
 
     public async Task<PropertyUserResponse> CreateUserAsync(
@@ -130,44 +195,66 @@ public class PropertyUserService(
             "create",
             cancellationToken);
 
-        var invitation = new PropertyUserRequest
-        {
-            FullName = request.FullName,
-            Mobile = request.Mobile,
-            Email = request.Email,
-            Username = request.Username,
-            Role = request.Role,
-            Status = request.Status,
-            IsActive = request.IsActive,
-            Permissions = request.Permissions
-        };
+        var permissions = request.Permissions
+            ?? PropertyPermissionMatrixDefaults.CreateForRole(request.Role);
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
             propertyId,
-            invitation.Permissions ?? PropertyPermissionMatrixDefaults.CreateForRole(invitation.Role),
+            permissions,
             null,
             cancellationToken);
 
-        var propertyExists = await dbContext.Properties.AsNoTracking()
-            .AnyAsync(property => property.Id == propertyId, cancellationToken);
-        if (!propertyExists)
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(request.Mobile)
+            ?? throw new ArgumentException("شماره موبایل را وارد کنید.");
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        var matchingUsers = await FindUsersByMobileAsync(mobile, cancellationToken);
+        if (matchingUsers.Count > 1)
         {
-            throw new KeyNotFoundException("Property not found.");
+            throw CandidateUnavailableException();
         }
 
-        var email = NormalizeEmail(invitation.Email);
-        var mobile = NormalizeMobile(invitation.Mobile);
-        var user = await ResolveUserForInvitationAsync(email, mobile, cancellationToken);
+        var user = matchingUsers.SingleOrDefault();
+        var isNewUser = user is null;
+        if (user is { IsDeleted: true })
+        {
+            throw CandidateUnavailableException();
+        }
+
         if (user is null)
         {
-            var username = CleanOptional(invitation.Username) ?? email;
-            var name = SplitFullName(invitation.FullName);
+            var conflictsWithGuestMobile = await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest => guest.NormalizedMobile == mobile, cancellationToken);
+            if (conflictsWithGuestMobile || string.IsNullOrWhiteSpace(request.FullName))
+            {
+                throw CandidateUnavailableException();
+            }
+
+            var identity = CreateUserIdentityFromFullName(
+                request.FullName!,
+                mobile,
+                request.Email);
+            var email = identity.Email;
+            var hasIdentityConflict =
+                email is not null &&
+                (await dbContext.Users.IgnoreQueryFilters()
+                     .AnyAsync(item => item.Email == email, cancellationToken) ||
+                 await dbContext.Guests.AsNoTracking()
+                     .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken));
+            if (hasIdentityConflict)
+            {
+                throw CandidateUnavailableException();
+            }
+
             user = new User
             {
-                FirstName = name.FirstName,
-                LastName = name.LastName,
+                FirstName = identity.FirstName,
+                LastName = identity.LastName,
                 Email = email,
-                Username = username,
+                Username = email ?? mobile,
                 PhoneNumber = mobile,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N")),
                 Role = UserRole.Client,
@@ -176,44 +263,59 @@ public class PropertyUserService(
                 PasswordSetupRequired = true
             };
             dbContext.Users.Add(user);
-            await dbContext.SaveChangesAsync(cancellationToken);
         }
 
-        var access = await dbContext.UserPropertyAccesses
-            .SingleOrDefaultAsync(item => item.UserId == user.Id && item.PropertyId == propertyId, cancellationToken);
-        if (access is not null)
+        var duplicateMembership = await dbContext.UserPropertyAccesses
+            .IgnoreQueryFilters()
+            .AnyAsync(
+                access => access.UserId == user.Id && access.PropertyId == propertyId,
+                cancellationToken);
+        if (duplicateMembership)
         {
-            throw new InvalidOperationException("This user already has access to this property.");
+            throw new InvalidOperationException("این کاربر قبلاً عضو این اقامتگاه است.");
         }
 
-        access = new UserPropertyAccess
+        var access = new UserPropertyAccess
         {
-            UserId = user.Id,
+            User = user,
             PropertyId = propertyId,
-            PropertyRole = invitation.Role,
-            Status = invitation.Status
+            PropertyRole = request.Role,
+            Status = request.Status
         };
         dbContext.UserPropertyAccesses.Add(access);
-        ApplyRequest(access, invitation);
+        ApplyRequest(access, request);
+
+        if (NeedsPasswordSetup(user))
+        {
+            user.PasswordSetupRequired = true;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
 
         var setupLink = string.Empty;
         if (NeedsPasswordSetup(user))
         {
-            user.PasswordSetupRequired = true;
-            await dbContext.SaveChangesAsync(cancellationToken);
-            setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
-        }
-        else
-        {
-            await dbContext.SaveChangesAsync(cancellationToken);
+            setupLink = await authService.CreatePasswordSetupTokenAsync(
+                user.Id,
+                cancellationToken);
         }
 
-        var response = (await GetUsersAsync(currentUserId, currentRole, propertyId, cancellationToken))
+        var response = (await GetUsersAsync(
+                currentUserId,
+                currentRole,
+                propertyId,
+                cancellationToken))
             .Single(item => item.UserId == user.Id);
         if (!string.IsNullOrWhiteSpace(setupLink) && appEnvironment.IsDevelopment())
         {
             response.TemporarySetupLink = setupLink;
         }
+
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
         return response;
     }
     public async Task<PropertyUserResponse> UpdateUserAsync(
@@ -255,15 +357,18 @@ public class PropertyUserService(
             "edit",
             cancellationToken);
 
-        var email = NormalizeEmail(request.Email);
-        var mobile = NormalizeMobile(request.Mobile);
+        var identity = CreateUserIdentityFromFullName(
+            request.FullName ?? throw new ArgumentException("Full name is required."),
+            request.Mobile,
+            request.Email);
+        var email = identity.Email;
+        var mobile = identity.PhoneNumber;
         await EnsureUniqueIdentityAsync(email, mobile, userId, cancellationToken);
 
-        var name = SplitFullName(request.FullName);
-        access.User.FirstName = name.FirstName;
-        access.User.LastName = name.LastName;
+        access.User.FirstName = identity.FirstName;
+        access.User.LastName = identity.LastName;
         access.User.Email = email;
-        access.User.Username = CleanOptional(request.Username) ?? email;
+        access.User.Username = CleanOptional(request.Username) ?? email ?? mobile;
         access.User.PhoneNumber = mobile;
         await EnsureCanGrantPermissionsAsync(
             currentUserId,
@@ -373,7 +478,7 @@ public class PropertyUserService(
         string permissionKey,
         CancellationToken cancellationToken)
     {
-        var allowed = await permissionService.CanAsync(
+        var allowed = await propertyAuthorizationService.HasPropertyPermissionAsync(
             currentUserId,
             propertyId,
             permissionKey,
@@ -412,7 +517,11 @@ public class PropertyUserService(
         {
             if (existingValues[permissionKey] == isAllowed) continue;
 
-            if (!await permissionService.CanAsync(currentUserId, propertyId, permissionKey, cancellationToken))
+            if (!await propertyAuthorizationService.HasPropertyPermissionAsync(
+                    currentUserId,
+                    propertyId,
+                    permissionKey,
+                    cancellationToken))
             {
                 throw new UnauthorizedAccessException(
                     $"You cannot change permission '{permissionKey}' because you do not have it for this property.");
@@ -502,8 +611,8 @@ public class PropertyUserService(
             PropertyId = property.Id,
             FullName = (owner.FirstName + " " + owner.LastName).Trim(),
             Mobile = owner.PhoneNumber,
-            Email = owner.Email,
-            Username = string.IsNullOrWhiteSpace(owner.Username) ? owner.Email : owner.Username!,
+            Email = owner.Email ?? string.Empty,
+            Username = string.IsNullOrWhiteSpace(owner.Username) ? owner.Email ?? owner.PhoneNumber ?? string.Empty : owner.Username!,
             Status = access?.Status ?? PropertyUserStatus.Inactive,
             Role = PropertyUserRole.PropertyOwner,
             IsActive = owner.IsActive && access is { IsActive: true, Status: PropertyUserStatus.Active },
@@ -626,163 +735,86 @@ public class PropertyUserService(
         };
     }
 
-    private static string NormalizeEmail(string email) => email.Trim().ToLowerInvariant();
-    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
-    private async Task<User?> ResolveUserForInvitationAsync(
-        string email,
-        string? mobile,
-        CancellationToken cancellationToken)
+    private static UserIdentityInput CreateUserIdentityFromFullName(
+        string fullName,
+        string phoneNumber,
+        string? email)
     {
-        var mobileVariants = string.IsNullOrWhiteSpace(mobile)
-            ? []
-            : BuildMobileVariants(mobile);
-        var matchingUsers = await dbContext.Users.IgnoreQueryFilters()
-            .Where(user =>
-                user.Email == email ||
-                user.PhoneNumber != null && mobileVariants.Contains(user.PhoneNumber))
-            .ToListAsync(cancellationToken);
-
-        if (matchingUsers.Select(user => user.Id).Distinct().Count() > 1)
-        {
-            throw new ArgumentException("Email and mobile belong to different users.");
-        }
-
-        var existingUser = matchingUsers.SingleOrDefault();
-        if (existingUser is not null)
-        {
-            if (existingUser.IsDeleted)
-            {
-                throw new InvalidOperationException("This user account has been deleted.");
-            }
-
-            if (existingUser.Role != UserRole.Client)
-            {
-                throw new InvalidOperationException("Only Client accounts can be assigned as property users.");
-            }
-
-            return existingUser;
-        }
-
-        if (string.IsNullOrWhiteSpace(mobile))
-        {
-            if (await dbContext.Guests.AsNoTracking()
-                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
-            {
-                throw new ArgumentException("Guest with this email already exists.");
-            }
-
-            return null;
-        }
-
-        if (await dbContext.Guests.AsNoTracking()
-            .AnyAsync(guest =>
-                    guest.NormalizedEmail == email ||
-                    guest.NormalizedMobile == mobile,
-                cancellationToken))
-        {
-            throw new ArgumentException("Guest with this mobile or email already exists.");
-        }
-
-        return null;
+        var name = SplitFullName(fullName);
+        var normalizedPhone = UserIdentityNormalization.NormalizePhoneNumber(phoneNumber)
+            ?? throw new ArgumentException("Mobile number is required.");
+        return new UserIdentityInput(
+            UserIdentityNormalization.NormalizeName(name.FirstName),
+            UserIdentityNormalization.NormalizeName(name.LastName),
+            normalizedPhone,
+            UserIdentityNormalization.NormalizeEmail(email));
     }
 
+    private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+    private async Task<List<User>> FindUsersByMobileAsync(
+        string mobile,
+        CancellationToken cancellationToken)
+    {
+        var variants = UserIdentityNormalization.BuildPhoneNumberVariants(mobile);
+        return await dbContext.Users.IgnoreQueryFilters()
+            .Where(user =>
+                user.PhoneNumber != null &&
+                variants.Contains(user.PhoneNumber))
+            .OrderBy(user => user.Id)
+            .ToListAsync(cancellationToken);
+    }
+
+    private static PropertyUserCandidateResponse UnavailableCandidate() => new()
+    {
+        Outcome = PropertyUserCandidateOutcome.Unavailable
+    };
+
+    private static InvalidOperationException CandidateUnavailableException() =>
+        new("عملیات قابل انجام نیست.");
+
+    private static string MaskName(User user)
+    {
+        static string MaskPart(string value)
+        {
+            var trimmed = value.Trim();
+            return trimmed.Length == 0 ? string.Empty : $"{trimmed[0]}***";
+        }
+
+        return $"{MaskPart(user.FirstName)} {MaskPart(user.LastName)}".Trim();
+    }
     private static bool NeedsPasswordSetup(User user) =>
         user.PasswordSetupRequired || string.IsNullOrWhiteSpace(user.PasswordHash);
     private async Task EnsureUniqueIdentityAsync(
-        string email,
-        string? mobile,
+        string? email,
+        string mobile,
         int? currentUserId,
         CancellationToken cancellationToken)
     {
-        if (await dbContext.Users.IgnoreQueryFilters()
+        if (email is not null && await dbContext.Users.IgnoreQueryFilters()
                 .AnyAsync(user => user.Email == email &&
                                   (!currentUserId.HasValue || user.Id != currentUserId.Value),
                     cancellationToken))
         {
-            throw new ArgumentException("این ایمیل قبلاً ثبت شده است.");
+            throw new ArgumentException(UserIdentityNormalization.DuplicateEmailMessage);
         }
 
-        if (string.IsNullOrWhiteSpace(mobile))
-        {
-            if (await dbContext.Guests.AsNoTracking()
-                .AnyAsync(guest => guest.NormalizedEmail == email, cancellationToken))
-            {
-                throw new ArgumentException("Guest with this email already exists.");
-            }
-
-            return;
-        }
-
-        var mobileVariants = BuildMobileVariants(mobile);
+        var mobileVariants = UserIdentityNormalization.BuildPhoneNumberVariants(mobile);
         if (await dbContext.Users.IgnoreQueryFilters()
                 .AnyAsync(user => user.PhoneNumber != null &&
                                   mobileVariants.Contains(user.PhoneNumber) &&
                                   (!currentUserId.HasValue || user.Id != currentUserId.Value),
                     cancellationToken))
         {
-            throw new ArgumentException("این شماره موبایل قبلاً ثبت شده است.");
+            throw new ArgumentException(UserIdentityNormalization.DuplicatePhoneNumberMessage);
         }
+
         if (await dbContext.Guests.AsNoTracking()
             .AnyAsync(guest =>
-                    guest.NormalizedEmail == email ||
+                    (email != null && guest.NormalizedEmail == email) ||
                     guest.NormalizedMobile == mobile,
                 cancellationToken))
         {
             throw new ArgumentException("Guest with this mobile or email already exists.");
         }
     }
-
-    private static string? NormalizeMobile(string? mobile)
-    {
-        if (string.IsNullOrWhiteSpace(mobile)) return null;
-
-        var builder = new System.Text.StringBuilder();
-        foreach (var character in mobile.Trim())
-        {
-            var normalized = character switch
-            {
-                >= '\u06F0' and <= '\u06F9' => (char)('0' + character - '\u06F0'),
-                >= '\u0660' and <= '\u0669' => (char)('0' + character - '\u0660'),
-                _ => character
-            };
-            if (char.IsDigit(normalized) || normalized == '+')
-            {
-                builder.Append(normalized);
-            }
-        }
-
-        var value = builder.ToString();
-        if (value.StartsWith("0098", StringComparison.Ordinal))
-        {
-            value = $"0{value[4..]}";
-        }
-        else if (value.StartsWith("+98", StringComparison.Ordinal))
-        {
-            value = $"0{value[3..]}";
-        }
-        else if (value.StartsWith("98", StringComparison.Ordinal) && value.Length == 12)
-        {
-            value = $"0{value[2..]}";
-        }
-
-        return string.IsNullOrWhiteSpace(value) ? null : value;
-    }
-
-    private static string[] BuildMobileVariants(string mobile)
-    {
-        var variants = new HashSet<string> { mobile };
-        if (mobile.StartsWith('0') && mobile.Length > 1)
-        {
-            variants.Add($"+98{mobile[1..]}");
-            variants.Add($"98{mobile[1..]}");
-            variants.Add($"0098{mobile[1..]}");
-        }
-
-        return variants.ToArray();
-    }
 }
-
-
-
-
-

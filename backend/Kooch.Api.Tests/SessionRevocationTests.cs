@@ -93,9 +93,10 @@ public sealed class SessionRevocationTests
             TargetUserId,
             new AdminUserRequest
             {
-                FirstName = "Updated",
+                                FirstName = "Updated",
                 LastName = "Admin",
                 Email = "updated-admin@example.test",
+                PhoneNumber = "09120003001",
                 Password = "changedpassword1",
                 Role = UserRole.SuperAdmin
             });
@@ -170,7 +171,6 @@ public sealed class SessionRevocationTests
         var authorization = new PropertyAccessService(dbContext);
         return new PropertyUserService(
             dbContext,
-            new PermissionService(dbContext, authorization),
             authorization,
             null!,
             null!);

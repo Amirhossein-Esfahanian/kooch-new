@@ -24,6 +24,20 @@ public class PropertyUsersController(IPropertyUserService propertyUserService) :
             cancellationToken));
     }
 
+    [HttpPost("resolve")]
+    [ProducesResponseType<PropertyUserCandidateResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PropertyUserCandidateResponse>> ResolveCandidate(
+        int propertyId,
+        PropertyUserCandidateRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyUserService.ResolveCandidateAsync(
+            user.UserId,
+            propertyId,
+            request,
+            cancellationToken));
+    }
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PropertyUserResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<PropertyUserResponse>>> Get(
