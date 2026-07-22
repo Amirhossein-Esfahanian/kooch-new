@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useId } from "react";
+import { ReactNode, useEffect, useId, useState } from "react";
 
 type KoochDialogSize = "md" | "lg" | "xl";
 
@@ -13,6 +13,8 @@ const sizeClass: Record<KoochDialogSize, string> = {
 function joinClasses(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }
+
+const DIALOG_ANIMATION_MS = 220;
 
 export function KoochDialog({
   bodyClassName = "",
@@ -46,38 +48,80 @@ export function KoochDialog({
   const titleId = useId();
   const descriptionId = useId();
 
+  const [isMounted, setIsMounted] = useState(open);
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setIsMounted(true);
+
+      const frame = requestAnimationFrame(() => {
+        setIsVisible(true);
+      });
+
+      return () => cancelAnimationFrame(frame);
+    }
+
+    setIsVisible(false);
+
+    const timeout = window.setTimeout(() => {
+      setIsMounted(false);
+    }, DIALOG_ANIMATION_MS);
+
+    return () => window.clearTimeout(timeout);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !closeDisabled) onOpenChange(false);
+      if (event.key === "Escape" && !closeDisabled) {
+        onOpenChange(false);
+      }
     };
 
     document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
+
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [closeDisabled, onOpenChange, open]);
 
-  if (!open) return null;
+  if (!isMounted) return null;
 
   return (
     <div
       aria-describedby={description ? descriptionId : undefined}
+      aria-hidden={!isVisible}
       aria-labelledby={title ? titleId : undefined}
       aria-modal="true"
-      className="fixed inset-0 z-[70] grid place-items-center p-4"
+      className={joinClasses(
+        "fixed inset-0 z-[70] grid place-items-center p-4",
+        "transition-opacity duration-200 ease-out",
+        isVisible ? "opacity-100" : "pointer-events-none opacity-0",
+      )}
       dir={dir}
       role="dialog"
     >
       <button
         aria-label="Close dialog"
-        className="fixed inset-0 z-0 bg-black/50"
+        className={joinClasses(
+          "fixed inset-0 z-0 bg-black/50",
+          "transition-opacity duration-200 ease-out",
+          isVisible ? "opacity-100" : "opacity-0",
+        )}
         disabled={closeDisabled}
         onClick={() => onOpenChange(false)}
         type="button"
       />
+
       <section
         className={joinClasses(
           "relative z-10 grid h-[min(760px,90vh)] w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-card p-0 text-card-foreground shadow-xl",
+          "transition-[opacity,transform] duration-200 ease-out",
+          isVisible
+            ? "translate-y-0 scale-100 opacity-100"
+            : "translate-y-3 scale-[0.98] opacity-0",
           sizeClass[size],
           contentClassName,
           className,
@@ -98,6 +142,7 @@ export function KoochDialog({
                 {title}
               </h2>
             )}
+
             {description && (
               <p
                 className="mt-2 text-sm leading-6 text-muted-foreground"
@@ -108,6 +153,7 @@ export function KoochDialog({
               </p>
             )}
           </div>
+
           <button
             aria-label="Close"
             className="absolute left-4 top-4 grid h-8 w-8 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-40"
@@ -115,7 +161,7 @@ export function KoochDialog({
             onClick={() => onOpenChange(false)}
             type="button"
           >
-            x
+            ×
           </button>
         </header>
 
@@ -132,7 +178,7 @@ export function KoochDialog({
         {footer && (
           <footer
             className={joinClasses(
-              "sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-border bg-card px-6 py-4  sm:flex-row sm:justify-start bg-muted ",
+              "sticky bottom-0 z-10 flex flex-col-reverse gap-2 border-t border-border bg-muted px-6 py-4 sm:flex-row sm:justify-start",
               footerClassName,
             )}
             data-slot="dialog-footer"
@@ -146,38 +192,3 @@ export function KoochDialog({
 }
 
 export const KoochModal = KoochDialog;
-
-export function KoochDialogButton({
-  children,
-  disabled,
-  form,
-  onClick,
-  type = "button",
-  variant = "secondary",
-}: {
-  children: ReactNode;
-  disabled?: boolean;
-  form?: string;
-  onClick?: () => void;
-  type?: "button" | "submit";
-  variant?: "primary" | "secondary" | "danger";
-}) {
-  const className =
-    variant === "primary"
-      ? "inline-flex min-h-10 items-center justify-center rounded-md border border-primary bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)] disabled:opacity-60"
-      : variant === "danger"
-        ? "inline-flex min-h-10 items-center justify-center rounded-md border border-destructive bg-destructive px-4 py-2 text-sm font-semibold text-destructive-foreground transition hover:bg-[var(--theme-danger)] disabled:opacity-60"
-        : "inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground transition hover:bg-muted disabled:opacity-60";
-
-  return (
-    <button
-      className={className}
-      disabled={disabled}
-      form={form}
-      onClick={onClick}
-      type={type}
-    >
-      {children}
-    </button>
-  );
-}
