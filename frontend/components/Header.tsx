@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { KoochGuestAuthDialog } from "@/components/auth/KoochGuestAuthDialog";
 import {
   type AuthWorkspace,
   useAuthSession,
@@ -14,6 +15,7 @@ import {
   settingValue,
   SiteSettingsMap,
 } from "@/lib/site-settings";
+import { KoochButton } from "./KoochButton";
 
 const workspaceLabels: Record<AuthWorkspace, string> = {
   admin: "پنل مدیریت",
@@ -30,7 +32,8 @@ export function Header() {
     defaultWorkspace,
     workspaces,
   } = useAuthSession();
-  const [settings, setSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
+  const [settings, setSettings] =
+    useState<SiteSettingsMap>(defaultSiteSettings);
   const routeWorkspace: AuthWorkspace | null = pathname.startsWith("/admin")
     ? "admin"
     : pathname.startsWith("/owner")
@@ -38,13 +41,14 @@ export function Header() {
       : pathname.startsWith("/account")
         ? "account"
         : null;
-  const workspace = routeWorkspace && workspaces.includes(routeWorkspace)
-    ? routeWorkspace
-    : pathname === "/choose-workspace" &&
-        defaultWorkspace &&
-        workspaces.includes(defaultWorkspace)
-      ? defaultWorkspace
-      : null;
+  const workspace =
+    routeWorkspace && workspaces.includes(routeWorkspace)
+      ? routeWorkspace
+      : pathname === "/choose-workspace" &&
+          defaultWorkspace &&
+          workspaces.includes(defaultWorkspace)
+        ? defaultWorkspace
+        : null;
 
   useEffect(() => {
     fetchPublicSiteSettings()
@@ -59,7 +63,7 @@ export function Header() {
 
   const siteName = settingValue(settings, "site.name");
   const logoUrl = settingValue(settings, "site.logoUrl");
-
+  const [loginOpen, setLoginOpen] = useState(false);
   return (
     <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
       <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
@@ -70,7 +74,11 @@ export function Header() {
             href="/"
           >
             {logoUrl ? (
-              <img alt={siteName} className="h-10 w-auto object-contain" src={logoUrl} />
+              <img
+                alt={siteName}
+                className="h-10 w-auto object-contain"
+                src={logoUrl}
+              />
             ) : (
               siteName
             )}
@@ -107,21 +115,27 @@ export function Header() {
           )}
           {isLoggedIn ? (
             <button
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700"
+              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700"
               onClick={logout}
               type="button"
             >
               خروج
             </button>
           ) : (
-            <Link
-              className="rounded-xl border border-[var(--theme-primary)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)] transition hover:bg-[var(--theme-primary-soft)]"
-              href="/login"
-            >
-              ورود
-            </Link>
+            <>
+              <Link
+                className="rounded-lg border border-[var(--theme-primary)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)] transition hover:bg-[var(--theme-primary-soft)]"
+                href="/login"
+              >
+                ورود
+              </Link>
+              <KoochButton onClick={() => setLoginOpen(true)}>
+                ورود2
+              </KoochButton>
+            </>
           )}
         </nav>
+        <KoochGuestAuthDialog open={loginOpen} onOpenChange={setLoginOpen} />
       </div>
     </header>
   );

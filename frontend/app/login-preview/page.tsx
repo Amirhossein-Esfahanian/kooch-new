@@ -129,44 +129,6 @@ export default function LoginMockPage() {
       dir="rtl"
       className="min-h-screen bg-background text-foreground lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(520px,1.05fr)]"
     >
-      <aside
-        className="relative hidden min-h-screen overflow-hidden lg:block"
-        aria-label="معرفی پنل مدیریت کوچ"
-      >
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{
-            backgroundImage:
-              "url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85')",
-          }}
-        />
-        <div className="absolute inset-0 bg-neutral-950/60" />
-        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/85 via-neutral-950/15 to-neutral-950/25" />
-
-        <div className="relative z-10 flex h-full min-h-screen flex-col justify-between p-12 text-white xl:p-16">
-          <div>
-            <div className="text-4xl font-black tracking-tight xl:text-5xl">
-              فلای‌تودی
-            </div>
-          </div>
-
-          <div className="max-w-2xl">
-            <h2 className="text-3xl font-black leading-relaxed xl:text-4xl">
-              هتل و اقامتگاه خود را با یک{" "}
-              <span className="text-amber-400">پنل</span> مدیریت کنید.
-            </h2>
-
-            <p className="mt-5 text-base leading-8 text-white/75">
-              موجودی، قیمت‌گذاری، ظرفیت و درخواست‌های رزرو را از یک فضای یکپارچه
-              مدیریت کنید.
-            </p>
-            <p className="mt-1 text-sm leading-7 text-white/65">
-              اطلاعات واردشده مستقیماً در بخش‌های عمومی سامانه نمایش داده
-              می‌شوند.
-            </p>
-          </div>
-        </div>
-      </aside>
       <section className="flex min-h-screen items-center justify-center px-5 py-10 sm:px-8 lg:px-14">
         <div className="w-full max-w-[520px]">
           <div className="mb-9 text-center">
@@ -308,6 +270,45 @@ export default function LoginMockPage() {
           </p>
         </div>
       </section>
+
+      <aside
+        className="relative hidden min-h-screen overflow-hidden lg:block"
+        aria-label="معرفی پنل مدیریت کوچ"
+      >
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage:
+              "url('https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1800&q=85')",
+          }}
+        />
+        <div className="absolute inset-0 bg-neutral-950/60" />
+        <div className="absolute inset-0 bg-gradient-to-t from-neutral-950/85 via-neutral-950/15 to-neutral-950/25" />
+
+        <div className="relative z-10 flex h-full min-h-screen flex-col justify-between p-12 text-white xl:p-16">
+          <div>
+            <div className="text-4xl font-black tracking-tight xl:text-5xl">
+              فلای‌تودی
+            </div>
+          </div>
+
+          <div className="max-w-2xl">
+            <h2 className="text-3xl font-black leading-relaxed xl:text-4xl">
+              هتل و اقامتگاه خود را با یک{" "}
+              <span className="text-amber-400">پنل</span> مدیریت کنید.
+            </h2>
+
+            <p className="mt-5 text-base leading-8 text-white/75">
+              موجودی، قیمت‌گذاری، ظرفیت و درخواست‌های رزرو را از یک فضای یکپارچه
+              مدیریت کنید.
+            </p>
+            <p className="mt-1 text-sm leading-7 text-white/65">
+              اطلاعات واردشده مستقیماً در بخش‌های عمومی سامانه نمایش داده
+              می‌شوند.
+            </p>
+          </div>
+        </div>
+      </aside>
     </main>
   );
 }
