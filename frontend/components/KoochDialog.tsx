@@ -282,12 +282,12 @@ export function KoochDialog({
 
           <button
             aria-label="بستن"
-            className="absolute left-4 top-4 grid h-8 w-8 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none disabled:opacity-40"
+            className="absolute right-4 top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring  disabled:pointer-events-none disabled:opacity-40"
             disabled={closeDisabled}
             onClick={() => onOpenChange(false)}
             type="button"
           >
-            ×
+            x
           </button>
         </header>
 
