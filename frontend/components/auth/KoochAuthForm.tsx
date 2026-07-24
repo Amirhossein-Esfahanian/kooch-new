@@ -1,7 +1,7 @@
 "use client";
 
-import type { FormEvent, ReactNode } from "react";
-import { useMemo, useState } from "react";
+import type { FormEvent, KeyboardEvent, ReactNode } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import { KoochButton } from "@/components/KoochButton";
 
 export type KoochAuthMethod = "password" | "sms" | "email";
@@ -80,6 +80,9 @@ export function KoochAuthForm({
   const [password, setPassword] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [previewMessage, setPreviewMessage] = useState(false);
+  const tabsId = useId();
+  const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const tabPanelId = `${tabsId}-panel`;
 
   const config = useMemo(() => {
     if (method === "password") {
@@ -138,22 +141,58 @@ export function KoochAuthForm({
     }
   }
 
+  function selectMethod(nextMethod: KoochAuthMethod) {
+    setMethod(nextMethod);
+    setPreviewMessage(false);
+  }
+
+  function handleTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) {
+    let nextIndex: number;
+
+    if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = methods.length - 1;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const isRtl = getComputedStyle(event.currentTarget).direction === "rtl";
+      const moveForward =
+        event.key === "ArrowLeft" ? isRtl : !isRtl;
+      nextIndex =
+        (currentIndex + (moveForward ? 1 : -1) + methods.length) %
+        methods.length;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    selectMethod(methods[nextIndex].id);
+    tabRefs.current[nextIndex]?.focus();
+  }
+
   return (
     <div dir="rtl">
       <div role="tablist" aria-label="روش ورود" className="grid grid-cols-3 gap-2">
-        {methods.map((item) => {
+        {methods.map((item, index) => {
           const active = method === item.id;
+          const tabId = `${tabsId}-${item.id}-tab`;
 
           return (
             <button
               key={item.id}
+              ref={(element) => {
+                tabRefs.current[index] = element;
+              }}
+              id={tabId}
               type="button"
               role="tab"
+              aria-controls={tabPanelId}
               aria-selected={active}
-              onClick={() => {
-                setMethod(item.id);
-                setPreviewMessage(false);
-              }}
+              tabIndex={active ? 0 : -1}
+              onClick={() => selectMethod(item.id)}
+              onKeyDown={(event) => handleTabKeyDown(event, index)}
               className={[
                 "flex min-h-16 flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-sm font-medium transition",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
@@ -169,7 +208,13 @@ export function KoochAuthForm({
         })}
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-5">
+      <form
+        id={tabPanelId}
+        role="tabpanel"
+        aria-labelledby={`${tabsId}-${method}-tab`}
+        onSubmit={handleSubmit}
+        className="mt-5"
+      >
         <div className="flex flex-col">
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-foreground">
