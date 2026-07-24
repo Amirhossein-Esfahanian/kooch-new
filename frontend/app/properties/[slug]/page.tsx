@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -13,6 +14,7 @@ import {
   PublicProperty,
   PublicRoomType,
 } from "@/lib/public-properties";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 const placeholder =
   "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80";
@@ -235,6 +237,8 @@ export default function PublicPropertyPage() {
             image={gallery[0]}
             className="col-span-2 row-span-2"
             name={property.name}
+            priority
+            sizes="(max-width: 767px) 100vw, 50vw"
           />
           {[1, 2, 3, 4].map((index) => (
             <Gallery
@@ -242,6 +246,7 @@ export default function PublicPropertyPage() {
               className={index > 2 ? "hidden md:block" : ""}
               key={index}
               name={property.name}
+              sizes="(max-width: 767px) 50vw, 25vw"
             />
           ))}
           <button
@@ -542,10 +547,17 @@ function RoomTypeCard({
   return (
     <article className="overflow-hidden rounded-2xl border bg-white shadow-sm">
       <div className="grid md:grid-cols-[220px_minmax(0,1fr)_190px]">
-        <img
+        <Image
           alt={roomType.name}
           className="h-full min-h-52 w-full object-cover"
+          height={624}
+          loading="lazy"
+          sizes="(max-width: 767px) calc(100vw - 2.5rem), 220px"
           src={roomType.images[0]?.url ?? galleryFallback}
+          unoptimized={shouldBypassImageOptimization(
+            roomType.images[0]?.url ?? galleryFallback,
+          )}
+          width={660}
         />
         <div className="p-5">
           <h3 className="text-xl font-black">{roomType.name}</h3>
@@ -616,17 +628,25 @@ function Gallery({
   image,
   name,
   className = "",
+  priority = false,
+  sizes,
 }: {
   image: PublicImage;
   name: string;
   className?: string;
+  priority?: boolean;
+  sizes: string;
 }) {
   return (
     <figure className={`relative h-full w-full ${className}`}>
-      <img
+      <Image
         alt={image.altText || image.caption || name}
-        className="h-full w-full object-cover"
+        className="object-cover"
+        fill
+        priority={priority}
+        sizes={sizes}
         src={image.url}
+        unoptimized={shouldBypassImageOptimization(image.url)}
       />
       {image.caption && (
         <figcaption className="absolute bottom-2 right-2 rounded-lg bg-white/90 px-2 py-1 text-xs font-bold text-slate-700">

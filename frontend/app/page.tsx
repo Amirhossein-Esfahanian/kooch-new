@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
@@ -9,6 +10,7 @@ import {
   formatPrice,
   PublicProperty,
 } from "@/lib/public-properties";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import {
   defaultSiteSettings,
   fetchPublicSiteSettings,
@@ -193,13 +195,21 @@ export default function HomePage() {
                   className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
                   key={property.id}
                 >
-                  <img
+                  <Image
                     alt={property.name}
                     className="aspect-[4/3] w-full object-cover"
+                    height={600}
+                    loading="lazy"
+                    sizes="(max-width: 639px) calc(100vw - 2.5rem), (max-width: 1023px) 50vw, 33vw"
                     src={
                       property.coverImageUrl ??
                       sampleProperties[0].coverImageUrl!
                     }
+                    unoptimized={shouldBypassImageOptimization(
+                      property.coverImageUrl ??
+                        sampleProperties[0].coverImageUrl!,
+                    )}
+                    width={800}
                   />
                   <div className="p-5">
                     <span className="rounded-full bg-[var(--theme-primary-soft)] px-2.5 py-1 text-xs font-bold text-[var(--theme-primary-text)]">

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { ThemeSelector } from "@/components/ThemeSelector";
@@ -10,6 +11,7 @@ import {
   settingValue,
   SiteSettingsMap,
 } from "@/lib/site-settings";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 export function Footer() {
   const [settings, setSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
@@ -29,7 +31,16 @@ export function Footer() {
         <div>
           <Link href="/" className="text-2xl font-black tracking-tight text-[var(--theme-primary-text)]">
             {logoUrl ? (
-              <img alt={siteName} className="h-10 w-auto object-contain" src={logoUrl} />
+              <Image
+                alt={siteName}
+                className="h-10 w-auto object-contain"
+                height={40}
+                loading="lazy"
+                sizes="160px"
+                src={logoUrl}
+                unoptimized={shouldBypassImageOptimization(logoUrl)}
+                width={160}
+              />
             ) : (
               siteName
             )}

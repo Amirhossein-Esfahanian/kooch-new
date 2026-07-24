@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -15,6 +16,7 @@ import {
   settingValue,
   SiteSettingsMap,
 } from "@/lib/site-settings";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import { KoochButton } from "./KoochButton";
 
 const workspaceLabels: Record<AuthWorkspace, string> = {
@@ -74,10 +76,15 @@ export function Header() {
             href="/"
           >
             {logoUrl ? (
-              <img
+              <Image
                 alt={siteName}
                 className="h-10 w-auto object-contain"
+                height={40}
+                priority
+                sizes="160px"
                 src={logoUrl}
+                unoptimized={shouldBypassImageOptimization(logoUrl)}
+                width={160}
               />
             ) : (
               siteName

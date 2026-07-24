@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 export interface MediaGalleryItem {
   id: string | number;
@@ -95,7 +96,7 @@ function GalleryThumbnail({ item, preload }: { item: MediaGalleryItem; preload: 
         quality={45}
         sizes="(max-width: 767px) 50vw, (max-width: 1023px) 33vw, (max-width: 1535px) 25vw, 17vw"
         src={item.url}
-        unoptimized={!item.url.startsWith("/")}
+        unoptimized={shouldBypassImageOptimization(item.url)}
       />
     </>
   );
@@ -113,14 +114,18 @@ function ProgressiveViewerImage({ item }: { item: MediaGalleryItem }) {
         quality={35}
         sizes="92vw"
         src={item.url}
-        unoptimized={!item.url.startsWith("/")}
+        unoptimized={shouldBypassImageOptimization(item.url)}
       />
-      <img
+      <Image
         alt={item.alt || "پیش‌نمایش تصویر"}
-        className={`absolute inset-0 h-full w-full object-contain transition-opacity duration-500 ${fullLoaded ? "opacity-100" : "opacity-0"}`}
-        loading="eager"
+        className={`object-contain transition-opacity duration-500 ${fullLoaded ? "opacity-100" : "opacity-0"}`}
+        fill
         onLoad={() => setFullLoaded(true)}
+        priority
+        quality={85}
+        sizes="92vw"
         src={item.url}
+        unoptimized={shouldBypassImageOptimization(item.url)}
       />
     </div>
   );

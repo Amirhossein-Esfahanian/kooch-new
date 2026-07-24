@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -10,6 +11,7 @@ import {
   formatPrice,
   PublicProperty,
 } from "@/lib/public-properties";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 type ResultProperty = Pick<
   PublicProperty,
@@ -448,13 +450,21 @@ function PropertiesContent() {
                       className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm md:grid md:grid-cols-[260px_minmax(0,1fr)_190px]"
                       key={property.id}
                     >
-                      <img
+                      <Image
                         alt={property.name}
                         className="h-full min-h-52 w-full object-cover"
+                        height={624}
+                        loading="lazy"
+                        sizes="(max-width: 767px) calc(100vw - 2.5rem), 260px"
                         src={
                           property.coverImageUrl ??
                           sampleProperties[0].coverImageUrl!
                         }
+                        unoptimized={shouldBypassImageOptimization(
+                          property.coverImageUrl ??
+                            sampleProperties[0].coverImageUrl!,
+                        )}
+                        width={780}
                       />
                       <div className="p-5">
                         <div className="flex flex-wrap items-center gap-2">
