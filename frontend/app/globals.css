@@ -410,7 +410,34 @@ a {
   content: "";
 }
 
+@media (pointer: coarse) {
+  .touch-target-44:not(.absolute) {
+    position: relative;
+  }
+
+  .touch-target-44::after {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+    content: "";
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  .animate-spin,
+  .animate-pulse,
+  .animate-ping,
+  .animate-bounce {
+    animation: none !important;
+  }
+
   .media-skeleton::after {
     animation: none;
   }

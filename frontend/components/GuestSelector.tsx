@@ -53,7 +53,7 @@ function CounterRow({
       </div>
       <div className="flex items-center gap-3" dir="ltr">
         <button
-          className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
+          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
           disabled={!canDecrease}
           onClick={() => onChange(value - 1)}
           type="button"
@@ -62,7 +62,7 @@ function CounterRow({
         </button>
         <span className="w-7 text-center text-xl font-black text-slate-950">{formatFaNumber(value)}</span>
         <button
-          className="grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
+          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
           disabled={!canIncrease}
           onClick={() => onChange(value + 1)}
           type="button"
@@ -122,7 +122,7 @@ export function GuestSelector({
           <span className="truncate">{guestSummary}</span>
           <span className="text-xs font-bold text-slate-500">{roomSummary}</span>
         </span>
-        <span className={`text-lg text-slate-500 transition ${open ? "rotate-180" : ""}`}>⌄</span>
+        <span className={`text-lg text-slate-500 transition motion-reduce:transition-none ${open ? "rotate-180" : ""}`}>⌄</span>
       </button>
 
       {open && (

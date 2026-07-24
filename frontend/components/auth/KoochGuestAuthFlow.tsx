@@ -275,7 +275,7 @@ export function KoochGuestAuthFlow() {
             <div
               aria-hidden={!loginConfig.showPassword}
               className={[
-                "overflow-hidden transition-[max-height,opacity,margin,transform] duration-300 ease-out",
+                "overflow-hidden transition-[max-height,opacity,margin,transform] duration-300 ease-out motion-reduce:transition-opacity motion-reduce:duration-100",
                 loginConfig.showPassword
                   ? "mt-4 max-h-28 translate-y-0 opacity-100"
                   : "pointer-events-none mt-0 max-h-0 -translate-y-1 opacity-0",
@@ -475,7 +475,7 @@ export function KoochGuestAuthFlow() {
 
       <div
         className={[
-          "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out",
+          "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out motion-reduce:transition-opacity motion-reduce:duration-100",
           previewMessage
             ? "mt-4 grid-rows-[1fr] opacity-100"
             : "mt-0 grid-rows-[0fr] opacity-0",

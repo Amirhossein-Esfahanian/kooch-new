@@ -88,7 +88,7 @@ function GalleryThumbnail({ item, preload }: { item: MediaGalleryItem; preload: 
       {!loaded && <span className="media-skeleton absolute inset-0 bg-slate-200" />}
       <Image
         alt={item.alt || "تصویر اقامتگاه"}
-        className={`h-full w-full object-cover transition duration-300 hover:scale-[1.03] ${loaded ? "opacity-100" : "opacity-0"}`}
+        className={`h-full w-full object-cover transition duration-300 hover:scale-[1.03] motion-reduce:duration-100 motion-reduce:hover:scale-100 ${loaded ? "opacity-100" : "opacity-0"}`}
         fill
         loading={preload ? "eager" : "lazy"}
         onLoad={() => setLoaded(true)}
@@ -274,7 +274,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
             {uploading ? (
               <span className="grid justify-items-center gap-1"><span className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent" /><span className="text-xs">{uploadProgress ?? 0}٪</span></span>
             ) : (
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105">+</span>
+              <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">+</span>
             )}
             <span className="text-sm font-black">{uploading ? "در حال بارگذاری…" : "افزودن عکس"}</span>
           </span>
@@ -324,7 +324,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
               <button
                 aria-expanded={openMenuImageId === item.id}
                 aria-label="گزینه‌های تصویر"
-                className="grid h-7 w-7 place-items-center rounded-full bg-slate-950/65 text-white shadow-md backdrop-blur-sm transition hover:bg-slate-950/80"
+                className="touch-target-44 grid h-7 w-7 place-items-center rounded-full bg-slate-950/65 text-white shadow-md backdrop-blur-sm transition hover:bg-slate-950/80"
                 disabled={busyId === item.id}
                 onClick={(event) => { event.stopPropagation(); setOpenMenuImageId((current) => current === item.id ? null : item.id); }}
                 onPointerDown={(event) => event.stopPropagation()}
@@ -335,10 +335,10 @@ export function MediaGallery<T extends MediaGalleryItem>({
               {openMenuImageId === item.id && (
                 <div className="absolute bottom-9 right-0 z-50 min-w-48 overflow-hidden rounded-xl border border-[var(--theme-border)] bg-white py-1 text-right text-sm font-bold text-[var(--theme-text)] shadow-xl" onClick={(event) => event.stopPropagation()} onPointerDown={(event) => event.stopPropagation()}>
                   {mode === "property" && onSetMain && (
-                    <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-primary-soft)] disabled:cursor-default disabled:opacity-50" disabled={item.isMain} onClick={() => { setOpenMenuImageId(null); if (!item.isMain) void onSetMain(item); }} type="button">تعیین به عنوان عکس کاور</button>
+                    <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-primary-soft)] disabled:cursor-default disabled:opacity-50 [@media(pointer:coarse)]:min-h-11" disabled={item.isMain} onClick={() => { setOpenMenuImageId(null); if (!item.isMain) void onSetMain(item); }} type="button">تعیین به عنوان عکس کاور</button>
                   )}
-                  <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-surface-muted)]" onClick={() => { setOpenMenuImageId(null); setCropError(""); setCropTarget(item); setCropZoom(1); setCropAspect(aspectRatio); setSelectedSaveMode(cropSaveMode); setCrop({ x: 0, y: 0 }); toast.info("تصویر برای برش آماده شد"); }} type="button">برش تصویر</button>
-                  <button className="block w-full px-4 py-2.5 text-right text-[var(--theme-danger)] hover:bg-[var(--theme-danger-soft)]" onClick={() => { setOpenMenuImageId(null); void onDelete(item); }} type="button">حذف تصویر</button>
+                  <button className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-surface-muted)] [@media(pointer:coarse)]:min-h-11" onClick={() => { setOpenMenuImageId(null); setCropError(""); setCropTarget(item); setCropZoom(1); setCropAspect(aspectRatio); setSelectedSaveMode(cropSaveMode); setCrop({ x: 0, y: 0 }); toast.info("تصویر برای برش آماده شد"); }} type="button">برش تصویر</button>
+                  <button className="block w-full px-4 py-2.5 text-right text-[var(--theme-danger)] hover:bg-[var(--theme-danger-soft)] [@media(pointer:coarse)]:min-h-11" onClick={() => { setOpenMenuImageId(null); void onDelete(item); }} type="button">حذف تصویر</button>
                 </div>
               )}
             </div>
@@ -365,9 +365,9 @@ export function MediaGallery<T extends MediaGalleryItem>({
             {items.length > 1 && <><button aria-label="تصویر قبلی" className="absolute right-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(-1); }} type="button">‹</button><button aria-label="تصویر بعدی" className="absolute left-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(1); }} type="button">›</button></>}
             <div className="h-[82vh] w-[92vw] max-w-6xl select-none transition-transform" onClick={(event) => event.stopPropagation()} style={{ transform: `scale(${previewZoom})` }}><ProgressiveViewerImage item={preview} key={preview.id} /></div>
             <div className="absolute bottom-5 flex items-center gap-2 rounded-full bg-slate-950/70 p-2 text-white backdrop-blur">
-              <button aria-label="کوچک‌نمایی" className="h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.max(1, value - 0.25)); }} type="button">−</button>
+              <button aria-label="کوچک‌نمایی" className="touch-target-44 h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.max(1, value - 0.25)); }} type="button">−</button>
               <span className="min-w-14 text-center text-sm font-bold">{Math.round(previewZoom * 100)}٪</span>
-              <button aria-label="بزرگ‌نمایی" className="h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.min(3, value + 0.25)); }} type="button">+</button>
+              <button aria-label="بزرگ‌نمایی" className="touch-target-44 h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.min(3, value + 0.25)); }} type="button">+</button>
             </div>
           </div>
         </KoochDialog>

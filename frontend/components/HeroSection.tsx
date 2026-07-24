@@ -15,7 +15,7 @@ export function HeroSection() {
             From quiet cabins to sunlit city homes, Kooch brings together stays with a sense of place.
           </p>
           <div className="mt-9 flex flex-wrap gap-4">
-            <Link href="/stays" className="rounded-full bg-ink px-7 py-3.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-moss">
+            <Link href="/stays" className="rounded-full bg-ink px-7 py-3.5 text-sm font-bold text-white transition hover:-translate-y-0.5 hover:bg-moss motion-reduce:hover:translate-y-0">
               Explore all stays
             </Link>
             <a href="#featured" className="rounded-full border border-ink/20 px-7 py-3.5 text-sm font-bold transition hover:border-ink hover:bg-white/40">
@@ -35,4 +35,3 @@ export function HeroSection() {
     </section>
   );
 }
-

@@ -211,7 +211,7 @@ export function KoochDialog({
       aria-hidden={!isVisible}
       className={joinClasses(
         "fixed inset-0 z-[70] grid place-items-center p-4",
-        "transition-opacity duration-200 ease-out",
+        "transition-opacity duration-200 ease-out motion-reduce:duration-100",
         isVisible ? "opacity-100" : "pointer-events-none opacity-0",
       )}
       dir={dir}
@@ -221,7 +221,7 @@ export function KoochDialog({
         aria-label="بستن دیالوگ"
         className={joinClasses(
           "fixed inset-0 z-0 bg-black/50",
-          "transition-opacity duration-200 ease-out",
+          "transition-opacity duration-200 ease-out motion-reduce:duration-100",
           isVisible ? "opacity-100" : "opacity-0",
         )}
         disabled={closeDisabled}
@@ -241,7 +241,7 @@ export function KoochDialog({
         aria-modal="true"
         className={joinClasses(
           "relative z-10 grid h-[min(760px,90vh)] w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-card p-0 text-card-foreground shadow-xl",
-          "transition-[opacity,transform] duration-200 ease-out",
+          "transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity motion-reduce:duration-100",
           "focus:outline-none",
           isVisible
             ? "translate-y-0 scale-100 opacity-100"
@@ -282,7 +282,7 @@ export function KoochDialog({
 
           <button
             aria-label="بستن"
-            className="absolute right-4 top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring  disabled:pointer-events-none disabled:opacity-40"
+            className="touch-target-44 absolute right-4 top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring  disabled:pointer-events-none disabled:opacity-40"
             disabled={closeDisabled}
             onClick={() => onOpenChange(false)}
             type="button"

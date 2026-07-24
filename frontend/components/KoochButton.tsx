@@ -19,7 +19,7 @@ const sizeClass: Record<KoochButtonSize, string> = {
   sm: "min-h-9 px-3 py-1.5 text-xs",
   md: "min-h-10 px-4 py-2 text-sm",
   lg: "min-h-11 px-5 py-2.5 text-sm",
-  icon: "h-10 w-10 p-0 text-sm",
+  icon: "h-10 w-10 p-0 text-sm [@media(pointer:coarse)]:min-w-11",
 };
 
 export type KoochButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -52,7 +52,7 @@ export const KoochButton = forwardRef<HTMLButtonElement, KoochButtonProps>(
     return (
       <button
         className={[
-          "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold transition disabled:pointer-events-none disabled:opacity-60",
+          "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold transition disabled:pointer-events-none disabled:opacity-60 [@media(pointer:coarse)]:min-h-11",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           variantClass[variant],
           sizeClass[size],

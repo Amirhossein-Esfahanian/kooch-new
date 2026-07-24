@@ -668,7 +668,7 @@ function DashboardSidebar({
 
   return (
     <aside
-      className={`fixed inset-y-0 right-0 z-50 h-full shrink-0 border-l transition-all duration-300 md:static md:z-auto md:block ${
+      className={`fixed inset-y-0 right-0 z-50 h-full shrink-0 border-l transition-all duration-300 motion-reduce:transition-none md:static md:z-auto md:block ${
         mobileOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
       } ${collapsed ? "md:w-24" : "md:w-72"} w-72 ${
         darkMode
@@ -1000,7 +1000,7 @@ function DashboardStatCard({
 
   return (
     <KoochCard
-      className="transition hover:-translate-y-1 hover:shadow-xl"
+      className="transition hover:-translate-y-1 hover:shadow-xl motion-reduce:hover:translate-y-0"
       variant="elevated"
     >
       <div className="flex items-start justify-between gap-3">
@@ -1186,13 +1186,13 @@ function DashboardSideDrawer({
       aria-hidden={!open}
     >
       <button
-        className={`absolute inset-0 bg-slate-950/35 transition-opacity duration-300 ${open ? "pointer-events-auto opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-slate-950/35 transition-opacity duration-300 motion-reduce:duration-100 ${open ? "pointer-events-auto opacity-100" : "opacity-0"}`}
         onClick={onClose}
         type="button"
         aria-label="بستن پنل"
       />
       <aside
-        className={`pointer-events-auto absolute inset-x-3 bottom-3 max-h-[88vh] overflow-hidden rounded-lg border shadow-2xl transition duration-300 sm:inset-x-auto sm:bottom-0 sm:left-0 sm:top-0 sm:h-full sm:max-h-none sm:w-[330px] sm:rounded-none sm:rounded-r-2xl ${
+        className={`pointer-events-auto absolute inset-x-3 bottom-3 max-h-[88vh] overflow-hidden rounded-lg border shadow-2xl transition duration-300 motion-reduce:transition-opacity motion-reduce:duration-100 sm:inset-x-auto sm:bottom-0 sm:left-0 sm:top-0 sm:h-full sm:max-h-none sm:w-[330px] sm:rounded-none sm:rounded-r-2xl ${
           open
             ? "translate-y-0 opacity-100 sm:translate-x-0"
             : "translate-y-8 opacity-0 sm:-translate-x-full sm:translate-y-0"
@@ -1327,10 +1327,10 @@ function DashboardSideDrawer({
                   >
                     <span>{setting}</span>
                     <span
-                      className={`h-6 w-10 rounded-full p-1 transition ${index === 0 ? "bg-[var(--theme-primary)]" : darkMode ? "bg-white/10" : "bg-slate-200"}`}
+                      className={`h-6 w-10 rounded-full p-1 transition motion-reduce:transition-none ${index === 0 ? "bg-[var(--theme-primary)]" : darkMode ? "bg-white/10" : "bg-slate-200"}`}
                     >
                       <span
-                        className={`block h-4 w-4 rounded-full bg-white transition ${index === 0 ? "translate-x-0" : "-translate-x-4"}`}
+                        className={`block h-4 w-4 rounded-full bg-white transition motion-reduce:transition-none ${index === 0 ? "translate-x-0" : "-translate-x-4"}`}
                       />
                     </span>
                   </label>

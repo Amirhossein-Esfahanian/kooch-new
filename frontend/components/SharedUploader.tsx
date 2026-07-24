@@ -377,7 +377,7 @@ export function SharedUploader({
               </>
             ) : (
               <span className="grid justify-items-center gap-2 text-[var(--theme-muted-text)]">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105">+</span>
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">+</span>
                 <span className="text-sm font-black">{text.browseText}</span>
                 <span className="text-xs font-semibold">حداکثر {maxFileSizeMb} مگابایت</span>
               </span>
@@ -451,7 +451,7 @@ export function SharedUploader({
                 {!hideFileDetails && <p className="truncate text-sm font-black">{item.file.name}</p>}
                 <p className={`${hideFileDetails ? "" : "mt-1"} text-xs text-slate-500`}>{formatSize(item.file.size)}</p>
                 <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-                  <span className="block h-full rounded-full bg-blue-600 transition-all" style={{ width: `${item.progress}%` }} />
+                  <span className="block h-full rounded-full bg-blue-600 transition-all motion-reduce:transition-none" style={{ width: `${item.progress}%` }} />
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">

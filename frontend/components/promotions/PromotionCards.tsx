@@ -80,7 +80,7 @@ export function PromotionCards({
 
           return (
             <article
-              className={`group rounded-2xl border border-[var(--theme-primary-border)] bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+              className={`group rounded-2xl border border-[var(--theme-primary-border)] bg-white shadow-sm transition duration-200 hover:-translate-y-0.5 hover:shadow-md motion-reduce:hover:translate-y-0 ${
                 compact ? "p-3" : "p-4 sm:p-5"
               }`}
               key={promotion.id}

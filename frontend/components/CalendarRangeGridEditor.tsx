@@ -945,7 +945,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     selectedCount > 0 && activeRow ? (
       <div
         aria-hidden={isMinimized}
-        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3 transition-all duration-[250ms] ease-out ${
+        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3 transition-all duration-[250ms] ease-out motion-reduce:transition-opacity motion-reduce:duration-100 ${
           isMinimized
             ? "pointer-events-none invisible translate-y-4 scale-95 opacity-0"
             : "visible translate-y-0 scale-100 opacity-100"

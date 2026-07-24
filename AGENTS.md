@@ -1,143 +1,527 @@
-# Kooch AI Agent Rules
+Kooch AI Agent Rules
 
-## Core Principle
+1. Purpose
 
-Write the smallest correct change. Do not over-engineer. Prefer fixing the existing structure over creating new abstractions.
+This file defines the operating rules for AI coding agents working on Kooch.
 
-Before writing code, check:
+The primary objective is to make the smallest correct change while preserving:
 
-1. Is there already a component, helper, API method, type, or pattern for this?
-2. Can this be solved by editing existing code?
-3. Is a new dependency really necessary?
-4. Will this change make future maintenance easier or harder?
+confirmed product rules
 
-## Kooch Project Rules
+architecture integrity
 
-### Reuse First
+shared-component consistency
 
-- Do not create one-off UI components when a shared component exists.
-- Prefer existing project patterns over introducing new architecture.
-- Keep changes localized unless a shared abstraction is clearly needed.
+RTL behavior
 
-### Dialogs, Modals, Alerts
+existing theme behavior
 
-- Use `KoochDialog` / `KoochModal` for large create/edit forms.
-- Use `KoochAlert` / `KoochConfirmDialog` for confirmations, warnings, questions, delete prompts, unusual price confirmation, and “are you sure?” flows.
-- Do not build custom modal/dialog/sheet implementations directly inside pages.
-- Room add/edit dialogs must use a fixed-size modal shell with scrollable body and sticky footer.
-- Dialogs must support RTL, dark mode, consistent header/footer behavior, and future replacement from one place.
+accessibility
 
-### Toasts
+current business logic
 
-- Use Sonner for toast notifications.
-- Do not introduce another toast/notification system.
+Do not over-engineer, introduce parallel systems, or refactor unrelated code.
 
-### UI Consistency
+2. Project Documentation
 
-- Use existing Tailwind conventions in the project.
-- Prefer `rounded-lg` over `rounded-2xl` in admin/owner panels unless there is a specific design reason.
-- Respect dark mode.
-- Respect RTL layout.
-- Keep forms, buttons, spacing, tables, and cards consistent with existing Kooch UI.
+Before changing code, read the relevant documentation under gpt/.
 
-### Calendar / Pricing / Inventory
+Source priority
 
-- Be careful with date picker and date range logic.
-- Pricing bulk edit date range display has known issues; avoid rewriting it blindly.
-- For range selection, preserve desktop/mobile behavior if already implemented.
-- Do not change calendar logic unless the task explicitly requires it.
+When sources conflict, use this order:
 
-### Authentication / User Management
+gpt/Product_Rules.md — confirmed product behavior
 
-- Username/login sprint is incomplete and has known defects.
-- Do not assume login/account flows are stable.
-- Make small, testable changes.
+gpt/Kooch_Architecture.md — confirmed technical architecture
 
-### Backend / EF Core
+gpt/03_UI_Design_System.md — confirmed UI and shared-component rules
 
-- Do not ignore EF Core migration warnings.
-- If the model changed, create a migration before updating the database.
-- Avoid database changes unless required.
-- Keep DTOs, API contracts, and entity models aligned.
+gpt/04_Coding_Guidelines.md — implementation and verification rules
 
-### Code Style
+gpt/05_Current_State.md — current implementation state and active work
 
-- TypeScript: avoid `any` unless unavoidable.
-- Prefer explicit types for API responses and form payloads.
-- Keep functions short.
-- Remove dead code.
-- Do not add comments explaining obvious code.
-- Add comments only for tricky business logic.
+gpt/06_Backlog.md — planned and deferred work
 
-### Dependencies
+gpt/00_Project_Overview.md — project scope and goals
 
-- Do not add packages unless the project truly needs them.
-- Prefer existing libraries already used in the project.
-- If adding a package, explain why existing code cannot solve the problem.
+gpt/99_Next_Chat_Prompt.md — supplemental continuity notes
 
-### Implementation Behavior
+Interpretation rules
 
-- First inspect relevant files.
-- Then make the smallest safe change.
-- Do not refactor unrelated files.
-- Do not rename files, routes, or components unless necessary.
-- Do not change styling globally unless the request is global.
-- Do not generate large new systems for small bugs.
+A Confirmed rule must not be changed without explicit user approval.
 
-### Shared Components
+Current State describes what is true now.
 
-- Before creating a new component, look for an existing Kooch component.
-- Extend existing shared components whenever practical.
-- If a new shared component is required, place it where it can be reused.
+Backlog describes planned work and is not permission to implement it automatically.
 
-### Forms
+Planned, Future, Deferred, and incomplete items must not be treated as implemented.
 
-- Prefer existing Kooch form controls (`KoochInput`, `KoochSelect`, `KoochTextarea`, etc.).
-- Keep validation behavior and spacing consistent across admin and owner panels.
+When documentation and code disagree, report the mismatch before making a broad correction.
 
-### Booking Domain
+Do not edit ProjectContext Markdown files unless the task explicitly includes documentation updates.
 
-- Reuse existing PricingService, Inventory, Promotion, Guest, and Permission systems.
-- Do not duplicate business logic already implemented in backend services.
+3. Required Pre-Task Inspection
 
-### Project Backlog Awareness
+Before writing code:
 
-- Some modules are intentionally incomplete (for example login flow and date picker improvements).
-- Do not redesign unfinished modules unless the task explicitly requests it.
-- Prefer incremental improvements over rewrites.
+Read the relevant ProjectContext files.
 
-### Testing Checklist
+Inspect the target files and their direct consumers.
 
-Before finishing:
+Search for an existing component, helper, service, DTO, API method, type, or project pattern.
 
-- Backend builds successfully if backend changed.
-- Frontend builds successfully if frontend changed.
-- Light mode and dark mode are checked.
-- RTL layout is preserved.
-- Existing behavior outside the requested scope is unchanged.
+Check whether the task touches a confirmed product or architecture decision.
 
-### Final Response Format
+Define the smallest safe scope.
 
-After changes, explain:
+Identify required verification commands.
 
-1. What changed
-2. Which files changed
-3. Why this approach was chosen
-4. Any risks or follow-up items
+Only then implement.
 
-## Removed / Softened from Generic Ponytail
+If required information is missing, do not invent product behavior. Ask for clarification.
 
-- Removed broad philosophical rules that do not directly help Kooch.
-- Softened the “write no code” mindset because Kooch needs active UI/form development.
-- Removed extreme anti-abstraction guidance because Kooch needs reusable components.
-- Removed anything that would prevent creating shared components such as `KoochDialog`.
-- Removed unrelated language/framework rules.
-- Removed generic performance/security advice that could create noisy, unfocused changes.
-- Softened overly strict rules that might make the AI too conservative for simple fixes.
+4. Core Product and Architecture Rules
 
-Encoding
+The following must not change without explicit approval:
 
-- All source files must be saved as UTF-8.
-- Never introduce mojibake or corrupted Persian strings.
-- Preserve existing Persian text encoding.
-- If corrupted Persian text is found, fix the encoding instead of replacing text manually.
+One User model
+
+Guest is not a separate identity
+
+Workspace model
+
+Property Membership model
+
+Permission Matrix
+
+Calendar-driven pricing and capacity
+
+OnRequest reservation workflow
+
+REST API architecture
+
+layered backend architecture
+
+EF Core and migration-driven database changes
+
+reusable-first frontend strategy
+
+Authorization
+
+Authorization follows:
+
+Authentication→ Workspace→ Membership→ Permission→ Action
+
+Do not use Platform Role to replace Property Membership permissions.
+
+Business logic
+
+Backend services own business logic.
+
+Controllers handle validation, mapping, and responses.
+
+Frontend handles presentation, local state, and API interaction.
+
+Do not move backend business rules into React components.
+
+5. Reuse First
+
+Always prefer:
+
+Reuse→ Extend→ Create
+
+Rules:
+
+Do not create duplicate or one-off shared components.
+
+Do not introduce a parallel API for an existing shared component.
+
+Prefer updating stale consumers over restoring a removed shared API, unless restoring it is explicitly safer and justified.
+
+Shared components must not depend on feature-specific components.
+
+Features may depend on shared components.
+
+Before creating a new component, confirm that an existing Kooch component cannot be reused or safely extended.
+
+6. Shared UI Rules
+
+Use the established shared components:
+
+KoochButton
+
+KoochDialog / KoochModal
+
+KoochConfirmDialog
+
+KoochAlert
+
+KoochLoading
+
+existing Kooch form controls
+
+KoochSearchSelect
+
+shared date-picker components
+
+shared image-picker components
+
+shared capacity and pricing editors
+
+Dialogs and confirmations
+
+Use KoochDialog for large forms, previews, and modal content.
+
+Use KoochConfirmDialog or KoochAlert for confirmations, warnings, destructive actions, and questions.
+
+Do not implement custom modal, focus trap, overlay, scroll lock, or dialog semantics inside feature pages.
+
+KoochDialog is the shared owner of:
+
+Portal rendering
+
+focus trapping
+
+focus restoration
+
+Escape handling
+
+scroll locking
+
+accessible modal semantics
+
+Preserve fixed shell, scrollable body, and sticky footer behavior where established.
+
+Notifications
+
+Use Sonner.
+
+Do not introduce another toast system.
+
+Forms
+
+Prefer existing Kooch form controls.
+
+Preserve the existing form library and validation pattern used by the target feature.
+
+Do not migrate a working form to another form library unless the task explicitly requests it.
+
+Labels, help text, and errors must be programmatically associated with their controls.
+
+Invalid controls must expose aria-invalid.
+
+Error messages must be announced appropriately.
+
+Tabs
+
+Custom tabs must implement the complete WAI-ARIA tabs pattern, including:
+
+roving tabIndex
+
+aria-selected
+
+aria-controls
+
+associated tab panels
+
+keyboard focus management
+
+Home and End support
+
+RTL-aware ArrowLeft and ArrowRight behavior
+
+7. Visual and Responsive Rules
+
+RTL first.
+
+Mobile first.
+
+Use logical spacing where practical.
+
+Preserve existing light- and dark-theme behavior.
+
+Use semantic theme tokens instead of hard-coded color values.
+
+Do not run a broad public dark-mode migration automatically.
+
+Public dark-mode scope is a product decision currently deferred.
+
+Do not remove existing dark-mode support.
+
+Do not redesign layouts unless the task explicitly requests redesign.
+
+Prefer rounded-lg in admin and owner panels unless an established component or explicit design requires otherwise.
+
+Preserve existing typography and fonts.
+
+Primary touch controls should normally provide a 44px hit area on touch devices.
+
+Do not unnecessarily enlarge dense desktop table controls.
+
+Respect prefers-reduced-motion; simplify non-essential motion without removing functionality.
+
+8. Authentication Rules
+
+Authentication and registration work is incomplete and must be changed incrementally.
+
+Current product direction:
+
+Guest authentication is intended to use a dialog.
+
+Owner and Admin authentication are intended to use a full login page.
+
+Final Guest registration is planned as OTP-first:
+
+mobile or email
+
+OTP verification
+
+first and last name
+
+create User
+
+automatic login
+
+This final registration flow is planned, not fully implemented.
+
+Therefore:
+
+Do not assume the current login or registration flow is final.
+
+Do not redesign or replace authentication contracts unless explicitly requested.
+
+Keep UI, API, DTO, Session, and redirect behavior aligned.
+
+Do not add public owner/admin registration.
+
+Preserve the One User model.
+
+9. Reservation and Property Rules
+
+Owner must not manually create reservations.
+
+Owner must not cancel paid reservations.
+
+Cancelled reservations are read-only.
+
+Reservation cancellation requires an authorized actor, reason, and explanation.
+
+OnRequest inventory is not reduced before approval.
+
+Calendar remains the source of truth for availability, pricing, and capacity.
+
+Do not rewrite date-range, pricing, capacity, or inventory logic without task-specific scope.
+
+Preserve existing desktop/mobile range-selection behavior unless the task explicitly changes it.
+
+10. Backend and Database Rules
+
+Keep DTOs, API contracts, services, and entities aligned.
+
+Do not expose EF entities directly to the UI.
+
+If the data model changes, create and review an EF Core migration.
+
+Do not create migrations for UI-only changes.
+
+Do not ignore migration or package warnings.
+
+Avoid manual SQL unless explicitly justified.
+
+Important multi-step operations must use transactions where appropriate.
+
+Do not add dependencies unless existing project code cannot reasonably solve the task.
+
+11. Coding Rules
+
+Make one focused change per task.
+
+Do not refactor unrelated files.
+
+Do not rename files, routes, or components unless necessary.
+
+Do not change global styling for a local problem.
+
+Avoid any unless unavoidable and justified.
+
+Prefer explicit API response and payload types.
+
+Keep functions focused and readable.
+
+Remove dead code introduced or exposed by the change when safe.
+
+Add comments only for non-obvious business or technical logic.
+
+Preserve UTF-8 and existing Persian strings.
+
+Never introduce mojibake.
+
+If corrupted Persian encoding exists, fix the encoding rather than rewriting text blindly.
+
+12. Impeccable and Audit Workflow
+
+Audit tools may inspect the whole repository, but fixes must be implemented as small, restricted tasks.
+
+Never run broad, unconstrained commands such as:
+
+harden
+
+adapt
+
+colorize
+
+optimize
+
+animate
+
+distill
+
+polish
+
+without an explicit file and behavior scope.
+
+Current audit order
+
+Unless the user changes priorities:
+
+Shared accessibility
+
+MediaGallery preview using KoochDialog
+
+Authentication tabs accessibility
+
+Image optimization
+
+Touch-target normalization
+
+Duplicate login cleanup
+
+Reduced-motion support
+
+Final audit
+
+Deferred audit item
+
+Broad public dark-mode migration
+
+Do not treat the deferred dark-mode decision as an automatic bug fix.
+
+13. Current Project Awareness
+
+Before starting work, read gpt/05_Current_State.md.
+
+Known current concerns include:
+
+shared accessibility
+
+MediaGallery dialog refactor
+
+authentication tabs accessibility
+
+image optimization
+
+touch-target improvements
+
+UI audit hardening
+
+incomplete Guest registration
+
+incomplete Workspace and Reservation work
+
+Do not assume backlog items are complete merely because related components exist.
+
+14. Verification
+
+Run verification appropriate to the changed scope.
+
+Frontend changes
+
+At minimum:
+
+npm run typecheck
+npm run build
+git diff --check
+
+Run the existing test suite when available:
+
+npm test
+
+For focused components, also run relevant targeted tests when available.
+
+Backend changes
+
+At minimum:
+
+backend build
+
+relevant tests
+
+migration review if the model changed
+
+Manual checks where relevant
+
+RTL layout
+
+keyboard navigation
+
+focus visibility
+
+dialog focus behavior
+
+mobile layout
+
+existing light/dark behavior
+
+no regression outside scope
+
+Never claim a command passed unless it was actually run successfully.
+
+15. Git and Change Safety
+
+Do not discard unrelated user changes.
+
+Do not modify generated files unless the task requires it.
+
+Do not commit automatically unless explicitly requested.
+
+Keep tool initialization files, product documentation, and functional code in separate commits when practical.
+
+Before a broad tool installation or audit-driven change, recommend a clean commit or checkpoint.
+
+Report unexpected repository changes before continuing.
+
+16. Final Response Format
+
+After implementation, report:
+
+Summary
+
+What changed.
+
+Files Changed
+
+Exact files changed.
+
+Why
+
+Why this approach was selected.
+
+Verification
+
+Commands and checks actually completed.
+
+Side Effects / Risks
+
+Known effects or risks.
+
+Remaining Work
+
+Only relevant follow-up work.
+
+If no files were changed, state that explicitly.
+
+17. Final Rule
+
+Preserve project integrity over implementation speed.
+
+When speed conflicts with confirmed product rules, architecture, shared-component consistency, or data safety, preserve the project rules and explain the constraint.
