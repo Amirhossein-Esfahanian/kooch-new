@@ -4,7 +4,8 @@ import Cropper, { Area } from "react-easy-crop";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochDialog } from "@/components/KoochDialog";
 
 export interface MediaGalleryItem {
   id: string | number;
@@ -365,12 +366,20 @@ export function MediaGallery<T extends MediaGalleryItem>({
         closeDisabled={cropping}
         footer={
           <>
-            <KoochDialogButton disabled={cropping} onClick={() => setCropTarget(null)}>
+            <KoochButton
+              disabled={cropping}
+              onClick={() => setCropTarget(null)}
+              variant="outline"
+            >
               انصراف
-            </KoochDialogButton>
-            <KoochDialogButton disabled={cropping} onClick={() => void confirmCrop()} variant="primary">
+            </KoochButton>
+            <KoochButton
+              disabled={cropping}
+              onClick={() => void confirmCrop()}
+              variant="primary"
+            >
               {cropping ? `در حال ذخیره... ${uploadProgress ?? 0}%` : "ذخیره برش"}
-            </KoochDialogButton>
+            </KoochButton>
           </>
         }
         onOpenChange={(open) => {

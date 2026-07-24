@@ -6,7 +6,7 @@ import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
@@ -777,15 +777,16 @@ export function ReservationDetailsDialog({
                 لغو رزرو
               </KoochButton>
             )}
-            <KoochDialogButton
+            <KoochButton
               onClick={() => {
                 setCancellationOpen(false);
                 setPriceAdjustmentOpen(false);
                 onOpenChange(false);
               }}
+              variant="outline"
             >
               بستن
-            </KoochDialogButton>
+            </KoochButton>
           </>
         }
         onOpenChange={(nextOpen) => {

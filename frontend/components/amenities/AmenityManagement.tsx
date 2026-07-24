@@ -12,7 +12,7 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
@@ -618,17 +618,21 @@ export function AmenityManagement({
           closeDisabled={saving}
           footer={
             <>
-              <KoochDialogButton disabled={saving} onClick={closeCategoryModal}>
+              <KoochButton
+                disabled={saving}
+                onClick={closeCategoryModal}
+                variant="outline"
+              >
                 لغو
-              </KoochDialogButton>
-              <KoochDialogButton
+              </KoochButton>
+              <KoochButton
                 disabled={saving}
                 form="category-form"
                 type="submit"
                 variant="primary"
               >
                 {saving ? "در حال ذخیره..." : "ذخیره"}
-              </KoochDialogButton>
+              </KoochButton>
             </>
           }
           onOpenChange={(open) => {
@@ -732,17 +736,21 @@ export function AmenityManagement({
         closeDisabled={saving}
         footer={
           <>
-            <KoochDialogButton disabled={saving} onClick={closeModal}>
+            <KoochButton
+              disabled={saving}
+              onClick={closeModal}
+              variant="outline"
+            >
               لغو
-            </KoochDialogButton>
-            <KoochDialogButton
+            </KoochButton>
+            <KoochButton
               disabled={saving}
               form="amenity-form"
               type="submit"
               variant="primary"
             >
               {saving ? "در حال ذخیره..." : "ذخیره"}
-            </KoochDialogButton>
+            </KoochButton>
           </>
         }
         onOpenChange={(open) => {

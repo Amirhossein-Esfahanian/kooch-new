@@ -3,7 +3,8 @@
 import Cropper, { Area } from "react-easy-crop";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { KoochDialog, KoochDialogButton } from "@/components/KoochDialog";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochDialog } from "@/components/KoochDialog";
 
 export type SharedUploadedFile = Record<string, unknown>;
 
@@ -494,12 +495,15 @@ export function SharedUploader({
       <KoochDialog
         footer={
           <>
-            <KoochDialogButton onClick={() => setCropTarget(null)}>
+            <KoochButton
+              onClick={() => setCropTarget(null)}
+              variant="outline"
+            >
               {text.cancelText}
-            </KoochDialogButton>
-            <KoochDialogButton onClick={confirmCrop} variant="primary">
+            </KoochButton>
+            <KoochButton onClick={confirmCrop} variant="primary">
               {text.confirmCropText}
-            </KoochDialogButton>
+            </KoochButton>
           </>
         }
         onOpenChange={(open) => {
