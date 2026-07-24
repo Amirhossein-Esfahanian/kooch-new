@@ -1,12 +1,16 @@
 "use client";
 
 import {
+  cloneElement,
   Fragment,
   forwardRef,
+  isValidElement,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
+  type AriaAttributes,
   type HTMLAttributes,
   type InputHTMLAttributes,
   type LabelHTMLAttributes,
@@ -25,8 +29,39 @@ type InvalidStateProps = {
   error?: ReactNode;
 };
 
+type AccessibleControlProps = Pick<
+  AriaAttributes,
+  "aria-describedby" | "aria-invalid"
+> & {
+  id?: string;
+};
+
+const labelableTags = new Set([
+  "button",
+  "input",
+  "meter",
+  "output",
+  "progress",
+  "select",
+  "textarea",
+]);
+
 function joinClasses(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
+}
+
+function mergeAriaIds(...values: Array<string | undefined>) {
+  const ids = values.flatMap((value) => value?.split(/\s+/).filter(Boolean) ?? []);
+  return [...new Set(ids)].join(" ") || undefined;
+}
+
+function resolveAriaInvalid(
+  error: ReactNode,
+  ariaInvalid: AriaAttributes["aria-invalid"],
+) {
+  if (Boolean(error)) return true;
+  if (ariaInvalid === false || ariaInvalid === "false") return undefined;
+  return ariaInvalid;
 }
 
 const controlClass =
@@ -40,9 +75,20 @@ export type KoochInputProps = InputHTMLAttributes<HTMLInputElement> &
 
 export const KoochInput = forwardRef<HTMLInputElement, KoochInputProps>(
   function KoochInput(
-    { selectOnFocus = false, onFocus, className = "", error, ...props },
+    {
+      selectOnFocus = false,
+      onFocus,
+      className = "",
+      error,
+      id,
+      "aria-describedby": ariaDescribedBy,
+      "aria-invalid": ariaInvalid,
+      ...props
+    },
     ref,
   ) {
+    const generatedId = useId();
+
     return (
       <input
         onFocus={(event) => {
@@ -52,12 +98,14 @@ export const KoochInput = forwardRef<HTMLInputElement, KoochInputProps>(
 
           onFocus?.(event);
         }}
-        aria-invalid={Boolean(error) || undefined}
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
         className={joinClasses(
           "h-10 px-3 py-2 text-sm",
           controlClass,
           className,
         )}
+        id={id ?? `kooch-input-${generatedId}`}
         ref={ref}
         {...props}
       />
@@ -74,12 +122,19 @@ export function KoochSelect({
   children,
   className = "",
   error,
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   ...props
 }: KoochSelectProps) {
+  const generatedId = useId();
+
   return (
     <select
-      aria-invalid={Boolean(error) || undefined}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
       className={joinClasses("h-10 px-3 py-2 text-sm", controlClass, className)}
+      id={id ?? `kooch-select-${generatedId}`}
       {...props}
     >
       {children}
@@ -95,17 +150,24 @@ export type KoochTextareaProps = TextareaHTMLAttributes<HTMLTextAreaElement> &
 export function KoochTextarea({
   className = "",
   error,
+  id,
   rows = 4,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   ...props
 }: KoochTextareaProps) {
+  const generatedId = useId();
+
   return (
     <textarea
-      aria-invalid={Boolean(error) || undefined}
+      aria-describedby={ariaDescribedBy}
+      aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
       className={joinClasses(
         "min-h-28 px-3 py-2 text-sm",
         controlClass,
         className,
       )}
+      id={id ?? `kooch-textarea-${generatedId}`}
       rows={rows}
       {...props}
     />
@@ -154,23 +216,105 @@ export function KoochField({
   required = false,
   ...props
 }: KoochFieldProps) {
+  const generatedId = useId();
+  const controlElement = isValidElement<AccessibleControlProps>(children)
+    ? children
+    : null;
+  const controlId = controlElement?.props.id ?? `kooch-field-${generatedId}`;
+  const labelId = `${controlId}-label`;
+  const messageId = error || helperText ? `${controlId}-message` : undefined;
+  const usesGroupSemantics =
+    !controlElement ||
+    controlElement.type === Fragment ||
+    (typeof controlElement.type === "string" &&
+      !labelableTags.has(controlElement.type));
+  const controlDescribedBy = mergeAriaIds(
+    controlElement?.props["aria-describedby"],
+    messageId,
+  );
+  const controlAriaInvalid = resolveAriaInvalid(
+    error,
+    controlElement?.props["aria-invalid"],
+  );
+  const enhancedChildren =
+    controlElement && !usesGroupSemantics
+      ? cloneElement(controlElement, {
+          "aria-describedby": controlDescribedBy,
+          "aria-invalid": controlAriaInvalid,
+          id: controlId,
+        })
+      : children;
+  const {
+    "aria-describedby": groupDescribedBy,
+    "aria-invalid": groupAriaInvalid,
+    "aria-labelledby": groupLabelledBy,
+    role,
+    ...containerProps
+  } = props;
+
   return (
-    <div className={joinClasses("grid gap-2", className)} {...props}>
-      {label && <KoochLabel required={required}>{label}</KoochLabel>}
-      {children}
-      <KoochFieldMessage error={error} helperText={helperText} />
+    <div
+      aria-describedby={
+        usesGroupSemantics
+          ? mergeAriaIds(groupDescribedBy, messageId)
+          : groupDescribedBy
+      }
+      aria-invalid={
+        usesGroupSemantics
+          ? resolveAriaInvalid(error, groupAriaInvalid)
+          : resolveAriaInvalid(undefined, groupAriaInvalid)
+      }
+      aria-labelledby={
+        usesGroupSemantics && label
+          ? mergeAriaIds(groupLabelledBy, labelId)
+          : groupLabelledBy
+      }
+      className={joinClasses("grid gap-2", className)}
+      role={usesGroupSemantics && label ? (role ?? "group") : role}
+      {...containerProps}
+    >
+      {label && (
+        <KoochLabel
+          htmlFor={usesGroupSemantics ? undefined : controlId}
+          id={labelId}
+          required={required}
+        >
+          {label}
+        </KoochLabel>
+      )}
+      {enhancedChildren}
+      <KoochFieldMessage
+        error={error}
+        helperText={helperText}
+        id={messageId}
+      />
     </div>
   );
 }
 
-function KoochFieldMessage({ error, helperText }: FieldStateProps) {
+function KoochFieldMessage({
+  error,
+  helperText,
+  id,
+}: FieldStateProps & { id?: string }) {
   if (error) {
-    return <p className="text-xs font-medium text-destructive">{error}</p>;
+    return (
+      <p
+        aria-atomic="true"
+        className="text-xs font-medium text-destructive"
+        id={id}
+        role="alert"
+      >
+        {error}
+      </p>
+    );
   }
 
   if (helperText) {
     return (
-      <p className="text-xs font-medium text-muted-foreground">{helperText}</p>
+      <p className="text-xs font-medium text-muted-foreground" id={id}>
+        {helperText}
+      </p>
     );
   }
 
@@ -218,14 +362,20 @@ export function KoochCheckbox({
   disabled,
   checked,
   defaultChecked,
+  id,
   onChange,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
   ...props
 }: KoochCheckboxProps) {
+  const generatedId = useId();
   const isControlled = checked !== undefined;
   const [internalChecked, setInternalChecked] = useState(
     Boolean(defaultChecked),
   );
   const isChecked = isControlled ? Boolean(checked) : internalChecked;
+  const controlId = id ?? `kooch-checkbox-${generatedId}`;
+  const messageId = error || helperText ? `${controlId}-message` : undefined;
 
   return (
     <label
@@ -253,11 +403,13 @@ export function KoochCheckbox({
       )}
     >
       <input
-        aria-invalid={Boolean(error) || undefined}
+        aria-describedby={mergeAriaIds(ariaDescribedBy, messageId)}
+        aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
         checked={checked}
         className="peer sr-only"
         defaultChecked={defaultChecked}
         disabled={disabled}
+        id={controlId}
         onChange={(event) => {
           if (!isControlled) {
             setInternalChecked(event.currentTarget.checked);
@@ -302,11 +454,19 @@ export function KoochCheckbox({
           )}
 
           {error ? (
-            <span className="text-xs font-medium text-destructive">
+            <span
+              aria-atomic="true"
+              className="text-xs font-medium text-destructive"
+              id={messageId}
+              role="alert"
+            >
               {error}
             </span>
           ) : helperText ? (
-            <span className="text-xs font-medium text-muted-foreground">
+            <span
+              className="text-xs font-medium text-muted-foreground"
+              id={messageId}
+            >
               {helperText}
             </span>
           ) : null}
@@ -336,7 +496,7 @@ export type KoochSearchableSelectOption = {
   disabled?: boolean;
 };
 
-export type KoochMultiSelectProps = FieldStateProps & {
+export type KoochMultiSelectProps = FieldStateProps & AccessibleControlProps & {
   options: KoochMultiSelectOption[];
   value: KoochMultiSelectValue[];
   onChange: (value: KoochMultiSelectValue[]) => void;
@@ -350,7 +510,8 @@ export type KoochMultiSelectProps = FieldStateProps & {
   dropdownClassName?: string;
 };
 
-export type KoochSearchableSelectProps = FieldStateProps & {
+export type KoochSearchableSelectProps = FieldStateProps &
+  AccessibleControlProps & {
   options: KoochSearchableSelectOption[];
   value: KoochSelectValue | "";
   onChange: (value: string) => void;
@@ -403,7 +564,11 @@ export function KoochSearchableSelect({
   onSearchChange,
   error,
   helperText,
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
 }: KoochSearchableSelectProps) {
+  const generatedId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
@@ -412,6 +577,8 @@ export function KoochSearchableSelect({
   const selectedOption = options.find((option) =>
     optionMatchesValue(option.value, value),
   );
+  const controlId = id ?? `kooch-searchable-select-${generatedId}`;
+  const messageId = error || helperText ? `${controlId}-message` : undefined;
 
   const filteredOptions = useMemo(() => {
     const normalizedQuery = query.trim().toLocaleLowerCase("fa-IR");
@@ -522,13 +689,15 @@ export function KoochSearchableSelect({
     <div className="grid gap-1.5" dir="rtl">
       <div className="relative" ref={wrapperRef}>
         <button
+          aria-describedby={mergeAriaIds(ariaDescribedBy, messageId)}
           aria-expanded={open}
-          aria-invalid={Boolean(error) || undefined}
+          aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
           className={joinClasses(
             "flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-right text-sm text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive",
             className,
           )}
           disabled={disabled}
+          id={controlId}
           onClick={() => setOpen((current) => !current)}
           onKeyDown={handleKeyDown}
           type="button"
@@ -647,7 +816,11 @@ export function KoochSearchableSelect({
         )}
       </div>
 
-      <KoochFieldMessage error={error} helperText={helperText} />
+      <KoochFieldMessage
+        error={error}
+        helperText={helperText}
+        id={messageId}
+      />
     </div>
   );
 }
@@ -666,10 +839,16 @@ export function KoochMultiSelect({
   dropdownClassName = "",
   error,
   helperText,
+  id,
+  "aria-describedby": ariaDescribedBy,
+  "aria-invalid": ariaInvalid,
 }: KoochMultiSelectProps) {
+  const generatedId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
+  const controlId = id ?? `kooch-multi-select-${generatedId}`;
+  const messageId = error || helperText ? `${controlId}-message` : undefined;
 
   useEffect(() => {
     if (!open) return;
@@ -745,13 +924,15 @@ export function KoochMultiSelect({
     <div className="grid gap-1.5" dir="rtl">
       <div className="relative" ref={wrapperRef}>
         <button
+          aria-describedby={mergeAriaIds(ariaDescribedBy, messageId)}
           aria-expanded={open}
-          aria-invalid={Boolean(error) || undefined}
+          aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
           className={joinClasses(
             "flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-right text-sm text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive",
             className,
           )}
           disabled={disabled}
+          id={controlId}
           onClick={() => setOpen((current) => !current)}
           type="button"
         >
@@ -872,7 +1053,11 @@ export function KoochMultiSelect({
         )}
       </div>
 
-      <KoochFieldMessage error={error} helperText={helperText} />
+      <KoochFieldMessage
+        error={error}
+        helperText={helperText}
+        id={messageId}
+      />
     </div>
   );
 }

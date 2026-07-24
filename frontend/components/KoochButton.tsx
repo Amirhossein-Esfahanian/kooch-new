@@ -53,7 +53,7 @@ export const KoochButton = forwardRef<HTMLButtonElement, KoochButtonProps>(
       <button
         className={[
           "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold transition disabled:pointer-events-none disabled:opacity-60",
-          "focus:outline-none  focus:ring-ring  focus:ring-offset-background",
+          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
           variantClass[variant],
           sizeClass[size],
           className,

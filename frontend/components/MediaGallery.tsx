@@ -170,6 +170,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
   const [openMenuImageId, setOpenMenuImageId] = useState<string | number | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
+  const previewCloseRef = useRef<HTMLButtonElement>(null);
   const touchStartX = useRef<number | null>(null);
   const [cropTarget, setCropTarget] = useState<T | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -193,7 +194,6 @@ export function MediaGallery<T extends MediaGalleryItem>({
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         setOpenMenuImageId(null);
-        setPreviewIndex(null);
         setCropTarget(null);
       }
       if (event.key === "ArrowLeft") setPreviewIndex((current) => current === null ? null : (current + 1) % items.length);
@@ -342,24 +342,30 @@ export function MediaGallery<T extends MediaGalleryItem>({
       </div>
 
       {preview && (
-        <div
-          aria-label="پیش‌نمایش تصویر"
-          aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center overflow-hidden bg-slate-950/90 p-4"
-          onClick={() => setPreviewIndex(null)}
-          onTouchEnd={(event) => { if (touchStartX.current === null) return; const distance = event.changedTouches[0].clientX - touchStartX.current; if (Math.abs(distance) > 50) movePreview(distance < 0 ? 1 : -1); touchStartX.current = null; }}
-          onTouchStart={(event) => { touchStartX.current = event.touches[0].clientX; }}
-          role="dialog"
+        <KoochDialog
+          bodyClassName="relative grid place-items-center overflow-hidden bg-slate-950/80 p-4"
+          contentClassName="!fixed !inset-0 !h-full !w-full !max-w-none !transform-none !rounded-none !border-0 !bg-transparent !shadow-none !transition-none [&_[data-slot=dialog-header]]:hidden"
+          initialFocusRef={previewCloseRef}
+          onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
+          open
+          title="پیش‌نمایش تصویر"
         >
-          <button aria-label="بستن" className="absolute left-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20" onClick={() => setPreviewIndex(null)} type="button"><CloseIcon /></button>
-          {items.length > 1 && <><button aria-label="تصویر قبلی" className="absolute right-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(-1); }} type="button">‹</button><button aria-label="تصویر بعدی" className="absolute left-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(1); }} type="button">›</button></>}
-          <div className="h-[82vh] w-[92vw] max-w-6xl select-none transition-transform" onClick={(event) => event.stopPropagation()} style={{ transform: `scale(${previewZoom})` }}><ProgressiveViewerImage item={preview} key={preview.id} /></div>
-          <div className="absolute bottom-5 flex items-center gap-2 rounded-full bg-slate-950/70 p-2 text-white backdrop-blur">
-            <button aria-label="کوچک‌نمایی" className="h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.max(1, value - 0.25)); }} type="button">−</button>
-            <span className="min-w-14 text-center text-sm font-bold">{Math.round(previewZoom * 100)}٪</span>
-            <button aria-label="بزرگ‌نمایی" className="h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.min(3, value + 0.25)); }} type="button">+</button>
+          <div
+            className="absolute inset-0 grid place-items-center overflow-hidden p-4"
+            onClick={() => setPreviewIndex(null)}
+            onTouchEnd={(event) => { if (touchStartX.current === null) return; const distance = event.changedTouches[0].clientX - touchStartX.current; if (Math.abs(distance) > 50) movePreview(distance < 0 ? 1 : -1); touchStartX.current = null; }}
+            onTouchStart={(event) => { touchStartX.current = event.touches[0].clientX; }}
+          >
+            <button ref={previewCloseRef} aria-label="بستن" className="absolute left-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20" onClick={() => setPreviewIndex(null)} type="button"><CloseIcon /></button>
+            {items.length > 1 && <><button aria-label="تصویر قبلی" className="absolute right-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(-1); }} type="button">‹</button><button aria-label="تصویر بعدی" className="absolute left-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(1); }} type="button">›</button></>}
+            <div className="h-[82vh] w-[92vw] max-w-6xl select-none transition-transform" onClick={(event) => event.stopPropagation()} style={{ transform: `scale(${previewZoom})` }}><ProgressiveViewerImage item={preview} key={preview.id} /></div>
+            <div className="absolute bottom-5 flex items-center gap-2 rounded-full bg-slate-950/70 p-2 text-white backdrop-blur">
+              <button aria-label="کوچک‌نمایی" className="h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.max(1, value - 0.25)); }} type="button">−</button>
+              <span className="min-w-14 text-center text-sm font-bold">{Math.round(previewZoom * 100)}٪</span>
+              <button aria-label="بزرگ‌نمایی" className="h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.min(3, value + 0.25)); }} type="button">+</button>
+            </div>
           </div>
-        </div>
+        </KoochDialog>
       )}
 
       <KoochDialog
