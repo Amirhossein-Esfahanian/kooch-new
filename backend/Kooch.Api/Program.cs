@@ -5,7 +5,9 @@ using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Entities;
 using Kooch.Api.Filters;
+using Kooch.Api.Integrations.PnlDev;
 using Kooch.Api.Services;
+using Kooch.Api.Services.Holidays;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
@@ -16,6 +18,10 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddDbContext<KoochDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+
+builder.Services.Configure<PnlDevOptions>(
+    builder.Configuration.GetSection(PnlDevOptions.SectionName));
+builder.Services.AddHttpClient<IHolidayProvider, PnlDevHolidayProvider>();
 
 var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
 var jwtOptions = jwtSection.Get<JwtOptions>()

@@ -21,4 +21,9 @@
   <ItemGroup>
     <ProjectReference Include="..\Kooch.Api\Kooch.Api.csproj" />
   </ItemGroup>
+
+  <ItemGroup>
+    <None Update="HolidayCalendar\Fixtures\pnldev-1405.json"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
