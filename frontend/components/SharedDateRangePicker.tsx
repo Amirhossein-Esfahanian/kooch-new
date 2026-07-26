@@ -341,7 +341,7 @@ export function SharedDateRangePicker({
         </div>
         {showGregorianToggle && (
           <button
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
+            className="  rounded-lg border border-border bg-background px-2 py-1 text-xs font-semibold text-foreground hover:bg-muted hover:text-foreground"
             onClick={() => {
               const nextCalendar =
                 activeCalendar === "jalali" ? "gregorian" : "jalali";
