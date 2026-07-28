@@ -26,6 +26,9 @@ builder.Services.Configure<HolidayCalendarSynchronizationOptions>(
 builder.Services.AddHttpClient<IHolidayProvider, PnlDevHolidayProvider>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IHolidayCalendarSynchronizationService, HolidayCalendarSynchronizationService>();
+builder.Services.AddScoped<IHolidayCalendarQueryService, HolidayCalendarQueryService>();
+builder.Services.AddSingleton<HolidayCalendarSolarYearResolver>();
+builder.Services.AddHostedService<HolidayCalendarSyncHostedService>();
 
 var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
 var jwtOptions = jwtSection.Get<JwtOptions>()
