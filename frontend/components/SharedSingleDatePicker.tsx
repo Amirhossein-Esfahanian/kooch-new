@@ -241,7 +241,13 @@ export function SharedSingleDatePicker({
             data-picker-footer="true"
           >
             <div
-              className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
+              className="sm:hidden"
+              data-mobile-holiday-details-row="true"
+            >
+              <HolidayCalendarDetails titles={holidayDetails.titles} />
+            </div>
+            <div
+              className="grid min-h-12 w-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3"
               data-picker-footer-grid="true"
               dir="rtl"
             >
@@ -255,7 +261,15 @@ export function SharedSingleDatePicker({
                   setOpen(false);
                 }} type="button">{confirmText}</button>
               </div>
-              <div className="col-start-2 min-w-0 justify-self-stretch">
+              <span
+                aria-hidden="true"
+                className="col-start-2 sm:hidden"
+                data-mobile-footer-spacer="true"
+              />
+              <div
+                className="col-start-2 hidden min-w-0 justify-self-stretch sm:block"
+                data-desktop-holiday-details="true"
+              >
                 <HolidayCalendarDetails titles={holidayDetails.titles} />
               </div>
               <button

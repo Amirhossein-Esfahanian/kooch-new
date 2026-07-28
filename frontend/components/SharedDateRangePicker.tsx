@@ -507,7 +507,13 @@ export function SharedDateRangePicker({
         data-picker-footer="true"
       >
         <div
-          className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)] sm:gap-3"
+          className="sm:hidden"
+          data-mobile-holiday-details-row="true"
+        >
+          <HolidayCalendarDetails titles={holidayDetails.titles} />
+        </div>
+        <div
+          className="grid min-h-12 w-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)]"
           data-picker-footer-grid="true"
           dir="rtl"
         >
@@ -542,7 +548,16 @@ export function SharedDateRangePicker({
             </button>
           </div>
 
-          <div className="col-start-2 min-w-0 justify-self-stretch">
+          <span
+            aria-hidden="true"
+            className="col-start-2 sm:hidden"
+            data-mobile-footer-spacer="true"
+          />
+
+          <div
+            className="col-start-2 hidden min-w-0 justify-self-stretch sm:block"
+            data-desktop-holiday-details="true"
+          >
             <HolidayCalendarDetails titles={holidayDetails.titles} />
           </div>
 

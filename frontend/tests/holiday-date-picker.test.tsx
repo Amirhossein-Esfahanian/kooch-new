@@ -149,7 +149,10 @@ describe("holiday date-picker presentation", () => {
 
     focusCalendarDay(day);
 
-    const details = document.querySelector<HTMLElement>(
+    const desktopDetailsRegion = document.querySelector<HTMLElement>(
+      "[data-desktop-holiday-details]",
+    )!;
+    const details = desktopDetailsRegion.querySelector<HTMLElement>(
       "[data-holiday-details-content]",
     );
     expect(document.activeElement).toBe(day);
@@ -168,6 +171,9 @@ describe("holiday date-picker presentation", () => {
       "overflow-hidden",
     );
     expect(details?.closest("[data-picker-footer]")).not.toBeNull();
+    expect(desktopDetailsRegion.className).toContain("hidden");
+    expect(desktopDetailsRegion.className).toContain("sm:block");
+    expect(desktopDetailsRegion.className).toContain("col-start-2");
     expect(document.querySelector("[data-holiday-tooltip]")).toBeNull();
     expect(document.querySelector('[role="tooltip"]')).toBeNull();
   });
@@ -190,8 +196,14 @@ describe("holiday date-picker presentation", () => {
     const footerGrid = document.querySelector<HTMLElement>(
       "[data-picker-footer-grid]",
     )!;
-    const details = document.querySelector<HTMLElement>(
+    const mobileDetailsRow = document.querySelector<HTMLElement>(
+      "[data-mobile-holiday-details-row]",
+    )!;
+    const details = mobileDetailsRow.querySelector<HTMLElement>(
       "[data-holiday-details]",
+    )!;
+    const desktopDetailsRegion = document.querySelector<HTMLElement>(
+      "[data-desktop-holiday-details]",
     )!;
     const actionGroup = document.querySelector<HTMLElement>(
       "[data-picker-action-group]",
@@ -214,17 +226,28 @@ describe("holiday date-picker presentation", () => {
     expect(footerGrid.className).toContain("min-h-12");
     expect(footerGrid.className).toContain("min-w-0");
     expect(footerGrid.className).toContain(
-      "grid-cols-[auto_minmax(0,1fr)_auto]",
+      "grid-cols-[auto_1fr_auto]",
     );
     expect(details.className).toContain("h-10");
     expect(details.className).toContain("overflow-hidden");
     expect(actionGroup.className).toContain("col-start-1");
     expectNonWrappingActionGroup(actionGroup);
-    expect(details.parentElement?.className).toContain("col-start-2");
-    expect(details.parentElement?.className).toContain("min-w-0");
+    expect(mobileDetailsRow.className).toContain("sm:hidden");
+    expect(mobileDetailsRow.parentElement?.dataset.pickerFooter).toBe("true");
+    expect(footerGrid.contains(mobileDetailsRow)).toBe(false);
+    expect(
+      footerGrid.querySelector("[data-mobile-footer-spacer]"),
+    ).not.toBeNull();
+    expect(desktopDetailsRegion.className).toContain("col-start-2");
+    expect(desktopDetailsRegion.className).toContain("min-w-0");
+    expect(desktopDetailsRegion.className).toContain("hidden");
+    expect(desktopDetailsRegion.className).toContain("sm:block");
     expect(
       details.querySelector("[data-holiday-details-content]")?.className,
     ).toContain("line-clamp-2");
+    expect(
+      desktopDetailsRegion.querySelector("[data-holiday-details]")?.className,
+    ).toContain("h-10");
     expect(todayAction.className).toContain("col-start-3");
     expect(screen.getByRole("button", { name: "Confirm" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
@@ -301,7 +324,16 @@ describe("holiday date-picker presentation", () => {
 
     fireEvent.click(day);
 
-    expect(document.querySelector("[data-holiday-details]")?.textContent).toBe("Nowruz");
+    const mobileDetailsRow = document.querySelector<HTMLElement>(
+      "[data-mobile-holiday-details-row]",
+    )!;
+    const footerGrid = document.querySelector<HTMLElement>(
+      "[data-picker-footer-grid]",
+    )!;
+
+    expect(mobileDetailsRow.textContent).toBe("Nowruz");
+    expect(mobileDetailsRow.className).toContain("sm:hidden");
+    expect(footerGrid.contains(mobileDetailsRow)).toBe(false);
   });
 
   it("uses the same fixed details footer in the range picker and keeps actions functional", async () => {
@@ -322,8 +354,14 @@ describe("holiday date-picker presentation", () => {
     fireEvent.click(rendered.container.querySelector("button")!);
     const startDay = await findCalendarDay("2026-03-21");
     const endDay = await findCalendarDay("2026-03-22");
-    const details = document.querySelector<HTMLElement>(
+    const mobileDetailsRow = document.querySelector<HTMLElement>(
+      "[data-mobile-holiday-details-row]",
+    )!;
+    const details = mobileDetailsRow.querySelector<HTMLElement>(
       "[data-holiday-details]",
+    )!;
+    const desktopDetailsRegion = document.querySelector<HTMLElement>(
+      "[data-desktop-holiday-details]",
     )!;
 
     fireEvent.mouseEnter(startDay);
@@ -343,7 +381,7 @@ describe("holiday date-picker presentation", () => {
     expect(
       document.querySelector("[data-picker-footer-grid]")?.className,
     ).toContain(
-      "grid-cols-[auto_minmax(0,1fr)_auto]",
+      "grid-cols-[auto_1fr_auto]",
     );
     expect(
       document.querySelector("[data-picker-footer-grid]")?.className,
@@ -352,6 +390,18 @@ describe("holiday date-picker presentation", () => {
     );
     expect(details.className).toContain("h-10");
     expect(details.className).toContain("overflow-hidden");
+    expect(mobileDetailsRow.className).toContain("sm:hidden");
+    expect(
+      document
+        .querySelector("[data-picker-footer-grid]")
+        ?.contains(mobileDetailsRow),
+    ).toBe(false);
+    expect(desktopDetailsRegion.className).toContain("hidden");
+    expect(desktopDetailsRegion.className).toContain("sm:block");
+    expect(desktopDetailsRegion.className).toContain("col-start-2");
+    expect(
+      desktopDetailsRegion.querySelector("[data-holiday-details]")?.className,
+    ).toContain("h-10");
     expect(
       details.querySelector("[data-holiday-details-content]")?.className,
     ).toContain("line-clamp-2");
