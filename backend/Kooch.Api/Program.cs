@@ -21,7 +21,11 @@ builder.Services.AddDbContext<KoochDbContext>(options =>
 
 builder.Services.Configure<PnlDevOptions>(
     builder.Configuration.GetSection(PnlDevOptions.SectionName));
+builder.Services.Configure<HolidayCalendarSynchronizationOptions>(
+    builder.Configuration.GetSection(HolidayCalendarSynchronizationOptions.SectionName));
 builder.Services.AddHttpClient<IHolidayProvider, PnlDevHolidayProvider>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IHolidayCalendarSynchronizationService, HolidayCalendarSynchronizationService>();
 
 var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
 var jwtOptions = jwtSection.Get<JwtOptions>()
