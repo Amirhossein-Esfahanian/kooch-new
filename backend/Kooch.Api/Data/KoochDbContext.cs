@@ -54,6 +54,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
     public DbSet<Coupon> Coupons => Set<Coupon>();
     public DbSet<CouponUsage> CouponUsages => Set<CouponUsage>();
+    public DbSet<HolidayCalendarDay> HolidayCalendarDays => Set<HolidayCalendarDay>();
+    public DbSet<HolidayCalendarOccasion> HolidayCalendarOccasions => Set<HolidayCalendarOccasion>();
+    public DbSet<HolidayCalendarDayOverride> HolidayCalendarDayOverrides => Set<HolidayCalendarDayOverride>();
+    public DbSet<HolidayCalendarSyncState> HolidayCalendarSyncStates => Set<HolidayCalendarSyncState>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -75,6 +79,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureRoomDailyPrices(modelBuilder);
         ConfigureAuditLogs(modelBuilder);
         ConfigureCoupons(modelBuilder);
+        ConfigureHolidayCalendar(modelBuilder);
         ConfigureGuests(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
@@ -610,6 +615,64 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany()
                 .HasForeignKey(log => log.PropertyId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureHolidayCalendar(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<HolidayCalendarDay>(entity =>
+        {
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint(
+                    "CK_HolidayCalendarDays_DayOfWeek",
+                    "[DayOfWeek] BETWEEN 0 AND 6");
+                table.HasCheckConstraint(
+                    "CK_HolidayCalendarDays_HolidayClassification",
+                    "([IsWeeklyHoliday] = 1 AND [IsOfficialHoliday] = 0 AND [DayOfWeek] = 5) OR " +
+                    "([IsWeeklyHoliday] = 0 AND [IsOfficialHoliday] = 1 AND [DayOfWeek] <> 5)");
+            });
+            entity.Property(day => day.ProviderName).HasMaxLength(100).IsRequired();
+            entity.HasIndex(day => day.GregorianDate).IsUnique();
+            entity.HasIndex(day => new { day.SolarYear, day.SolarMonth, day.SolarDay }).IsUnique();
+            entity.HasIndex(day => new { day.SolarYear, day.SolarMonth });
+            entity.HasMany(day => day.Occasions)
+                .WithOne(occasion => occasion.HolidayCalendarDay)
+                .HasForeignKey(occasion => occasion.HolidayCalendarDayId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(day => day.Override)
+                .WithOne(dayOverride => dayOverride.HolidayCalendarDay)
+                .HasForeignKey<HolidayCalendarDayOverride>(dayOverride => dayOverride.HolidayCalendarDayId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<HolidayCalendarOccasion>(entity =>
+        {
+            entity.Property(occasion => occasion.Title).HasMaxLength(512).IsRequired();
+            entity.Property(occasion => occasion.NormalizedTitle).HasMaxLength(512).IsRequired();
+            entity.HasIndex(occasion => occasion.HolidayCalendarDayId);
+            entity.HasIndex(occasion => new
+            {
+                occasion.HolidayCalendarDayId,
+                occasion.Source,
+                occasion.NormalizedTitle
+            }).IsUnique();
+        });
+
+        modelBuilder.Entity<HolidayCalendarDayOverride>(entity =>
+        {
+            entity.Property(dayOverride => dayOverride.Note).HasMaxLength(1000);
+            entity.HasIndex(dayOverride => dayOverride.HolidayCalendarDayId).IsUnique();
+        });
+
+        modelBuilder.Entity<HolidayCalendarSyncState>(entity =>
+        {
+            entity.Property(state => state.ProviderName).HasMaxLength(100).IsRequired();
+            entity.Property(state => state.LastResponseHash).HasMaxLength(128);
+            entity.Property(state => state.LastErrorSummary).HasMaxLength(1000);
+            entity.Property(state => state.LeaseOwner).HasMaxLength(200);
+            entity.Property(state => state.RowVersion).IsRowVersion();
+            entity.HasIndex(state => state.ProviderName).IsUnique();
         });
     }
 

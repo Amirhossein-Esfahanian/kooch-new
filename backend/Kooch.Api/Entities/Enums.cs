@@ -153,6 +153,7 @@ public enum NotificationStatus
     Logged = 3
 }
 public enum AvailabilityStatus { Available, Unavailable, OnRequest }
+public enum HolidayCalendarOccasionSource { Provider = 0, Manual = 1 }
 public enum NearbyPlaceCategory { Attraction, Transport, Landmark, Market, Other }
 public enum PropertyViewType { CourtyardView, GardenView, CityView, MountainView, DesertView }
 public enum PropertyDescriptionSectionType
