@@ -5,6 +5,13 @@ import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
 import { KoochDialog } from "@/components/KoochDialog";
+import {
+  HolidayCalendarDayContent,
+  MobileHolidayDetails,
+  holidayAccessibleLabel,
+  holidayDayStateClass,
+} from "@/components/HolidayCalendarDayContent";
+import { useHolidayCalendarMonths } from "@/hooks/useHolidayCalendarMonths";
 
 dayjs.extend(jalaliday);
 
@@ -233,13 +240,21 @@ export function SharedDateRangePicker({
   const [visibleMonth, setVisibleMonth] = useState(() =>
     asCalendar(dayjs(), calendarType).startOf("month"),
   );
+  const [mobileHolidayTitles, setMobileHolidayTitles] = useState<readonly string[]>([]);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const dateButtonBase =
     controlClassName ??
     "grid rounded-lg border border-border bg-background px-4 py-3 text-right text-foreground transition hover:bg-muted";
   const isOpen = activeField !== null;
+  const { holidayByDate } = useHolidayCalendarMonths({
+    visibleMonth,
+    calendarType: activeCalendar,
+    includeResponsiveSecondMonth: true,
+    enabled: isOpen,
+  });
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);
+  useEffect(() => setMobileHolidayTitles([]), [activeCalendar, isOpen, visibleMonth]);
   useEffect(() => {
     if (openOnDialog) return;
 
@@ -275,6 +290,10 @@ export function SharedDateRangePicker({
     if (isDisabled(date, disablePastDates, minDate, maxDate, disabledDates))
       return;
     const iso = toIso(date);
+    const holiday = holidayByDate.get(iso);
+    setMobileHolidayTitles(
+      holiday?.isOfficialHoliday ? holiday.occasionTitles : [],
+    );
     if (!tempStartDate || tempEndDate) {
       setTempStartDate(iso);
       setTempEndDate(null);
@@ -438,20 +457,37 @@ export function SharedDateRangePicker({
                 const inRange = isBetween(iso, tempStartDate, tempEndDate);
                 const selected = isRangeStart || isRangeEnd;
                 const today = iso === dayjs().format(isoFormat);
+                const holiday = holidayByDate.get(iso);
+                const dayText = toPersianDigits(
+                  asCalendar(date, activeCalendar).format("D"),
+                );
+                const visualState = { selected, disabled, today, inRange };
                 return (
                   <div
                     className={`h-10 ${inRange || selected ? "bg-[var(--theme-primary-soft)]" : ""} ${isRangeStart ? "rounded-r-[4px]" : ""} ${isRangeEnd ? "rounded-l-[4px]" : ""}`}
                     key={iso}
                   >
                     <button
-                      className={`h-10 w-full text-sm font-semibold transition ${selected ? "rounded-[4px] bg-[var(--theme-primary)] text-primary-foreground shadow-sm" : inRange ? "text-[var(--theme-primary-text)] hover:bg-[var(--theme-primary-soft)]" : today ? "rounded-[4px] border border-[var(--theme-primary)] text-[var(--theme-primary-text)]" : "rounded-[4px] text-foreground hover:bg-[var(--theme-primary-soft)]"} ${disabled ? "cursor-not-allowed text-muted-foreground opacity-40 hover:bg-transparent" : ""}`}
+                      aria-label={holidayAccessibleLabel(dayText, holiday)}
+                      className={`group h-10 w-full rounded-[4px] text-sm font-semibold transition ${holidayDayStateClass(visualState, holiday, "text-foreground hover:bg-[var(--theme-primary-soft)]")}`}
+                      data-calendar-date={iso}
+                      data-holiday={holiday ? "true" : undefined}
+                      data-holiday-kind={
+                        holiday?.isOfficialHoliday
+                          ? "official"
+                          : holiday?.isWeeklyHoliday
+                            ? "weekly"
+                            : undefined
+                      }
                       disabled={disabled}
                       onClick={() => selectDay(date)}
                       type="button"
                     >
-                      {toPersianDigits(
-                        asCalendar(date, activeCalendar).format("D"),
-                      )}
+                      <HolidayCalendarDayContent
+                        dayText={dayText}
+                        holiday={holiday}
+                        state={visualState}
+                      />
                     </button>
                   </div>
                 );
@@ -460,6 +496,7 @@ export function SharedDateRangePicker({
           </section>
         ))}
       </div>
+      <MobileHolidayDetails titles={mobileHolidayTitles} />
       <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
         <div className="flex gap-2">
           <button

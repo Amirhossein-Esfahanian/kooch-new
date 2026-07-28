@@ -5,6 +5,13 @@ import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
 import { CalendarType } from "@/components/SharedDateRangePicker";
+import {
+  HolidayCalendarDayContent,
+  MobileHolidayDetails,
+  holidayAccessibleLabel,
+  holidayDayStateClass,
+} from "@/components/HolidayCalendarDayContent";
+import { useHolidayCalendarMonths } from "@/hooks/useHolidayCalendarMonths";
 
 dayjs.extend(jalaliday);
 
@@ -129,10 +136,17 @@ export function SharedSingleDatePicker({
   const [open, setOpen] = useState(false);
   const [tempDate, setTempDate] = useState<string | null>(value);
   const [visibleMonth, setVisibleMonth] = useState(() => asCalendar(dayjs(), calendarType).startOf("month"));
+  const [mobileHolidayTitles, setMobileHolidayTitles] = useState<readonly string[]>([]);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonClass = controlClassName ?? "grid rounded-xl border bg-white px-4 py-3 text-right transition";
+  const { holidayByDate } = useHolidayCalendarMonths({
+    visibleMonth,
+    calendarType: activeCalendar,
+    enabled: open,
+  });
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);
+  useEffect(() => setMobileHolidayTitles([]), [activeCalendar, open, visibleMonth]);
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
       if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
@@ -181,13 +195,42 @@ export function SharedSingleDatePicker({
               const disabled = isDisabled(date, disablePastDates, minDate, maxDate, disabledDates);
               const selected = tempDate === iso;
               const today = iso === dayjs().format(isoFormat);
+              const holiday = holidayByDate.get(iso);
+              const dayText = asCalendar(date, activeCalendar).format("D");
+              const visualState = { selected, disabled, today };
               return (
-                <button className={`h-10 rounded-[4px] text-sm font-bold transition ${selected ? "bg-[var(--theme-primary)] text-white shadow-sm" : today ? "border border-[var(--theme-primary)] text-[var(--theme-primary-text)]" : "text-slate-700 hover:bg-[var(--theme-primary-soft)]"} ${disabled ? "cursor-not-allowed text-slate-300 hover:bg-transparent" : ""}`} disabled={disabled} key={iso} onClick={() => setTempDate(iso)} type="button">
-                  {asCalendar(date, activeCalendar).format("D")}
+                <button
+                  aria-label={holidayAccessibleLabel(dayText, holiday)}
+                  className={`group h-10 rounded-[4px] text-sm font-bold transition ${holidayDayStateClass(visualState, holiday, "text-slate-700 hover:bg-[var(--theme-primary-soft)]")}`}
+                  data-calendar-date={iso}
+                  data-holiday={holiday ? "true" : undefined}
+                  data-holiday-kind={
+                    holiday?.isOfficialHoliday
+                      ? "official"
+                      : holiday?.isWeeklyHoliday
+                        ? "weekly"
+                        : undefined
+                  }
+                  disabled={disabled}
+                  key={iso}
+                  onClick={() => {
+                    setTempDate(iso);
+                    setMobileHolidayTitles(
+                      holiday?.isOfficialHoliday ? holiday.occasionTitles : [],
+                    );
+                  }}
+                  type="button"
+                >
+                  <HolidayCalendarDayContent
+                    dayText={dayText}
+                    holiday={holiday}
+                    state={visualState}
+                  />
                 </button>
               );
             })}
           </div>
+          <MobileHolidayDetails titles={mobileHolidayTitles} />
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
             <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => {
               const today = dayjs();
