@@ -86,6 +86,32 @@ async function findCalendarDay(date: string) {
   });
 }
 
+function focusCalendarDay(day: HTMLButtonElement) {
+  day.focus();
+  fireEvent.focus(day);
+}
+
+function expectNonWrappingActionGroup(actionGroup: HTMLElement) {
+  const classTokens = new Set(actionGroup.className.split(/\s+/));
+  const actionButtons = Array.from(
+    actionGroup.querySelectorAll<HTMLButtonElement>("button"),
+  );
+
+  expect(classTokens.has("flex-nowrap")).toBe(true);
+  expect(classTokens.has("flex-wrap")).toBe(false);
+  expect(classTokens.has("items-center")).toBe(true);
+  expect(classTokens.has("whitespace-nowrap")).toBe(true);
+  expect(actionButtons).toHaveLength(2);
+  expect(actionButtons.every((button) => button.parentElement === actionGroup)).toBe(
+    true,
+  );
+  expect(
+    actionButtons.every((button) =>
+      button.className.split(/\s+/).includes("shrink-0"),
+    ),
+  ).toBe(true);
+}
+
 describe("holiday date-picker presentation", () => {
   beforeEach(() => setDesktopViewport(false));
 
@@ -106,27 +132,149 @@ describe("holiday date-picker presentation", () => {
     expect(onChange).toHaveBeenCalledWith("2026-03-21");
   });
 
-  it("shows official titles on desktop and exposes them on keyboard focus", async () => {
+  it("shows multiple official titles in the fixed footer on keyboard focus", async () => {
     setDesktopViewport(true);
-    installHolidayFetch([holidayDay("2026-03-21", "official", ["Nowruz", "Spring day"])]);
+    installHolidayFetch([
+      holidayDay("2026-03-21", "official", [
+        "Nowruz [provider note]",
+        "Spring day",
+        "Nowruz",
+        "[hidden note]",
+        "Spring day",
+        "Day (observed)",
+      ]),
+    ]);
     openSinglePicker();
     const day = await findCalendarDay("2026-03-21");
 
-    day.focus();
+    focusCalendarDay(day);
 
+    const details = document.querySelector<HTMLElement>(
+      "[data-holiday-details-content]",
+    );
     expect(document.activeElement).toBe(day);
-    expect(day.getAttribute("aria-label")).toContain("Nowruz");
-    expect(day.querySelector("[data-holiday-tooltip]")?.textContent).toContain("Spring day");
+    expect(day.getAttribute("aria-label")).toContain("Nowruz [provider note]");
+    expect(details?.textContent).toBe(
+      "Nowruz • Spring day • Day (observed)",
+    );
+    expect(details?.textContent).not.toContain("[");
+    expect(details?.className).toContain("line-clamp-2");
+    expect(details?.className).toContain("w-full");
+    expect(details?.className).toContain("[overflow-wrap:anywhere]");
+    expect(details?.closest("[data-holiday-details]")?.className).toContain(
+      "h-10",
+    );
+    expect(details?.closest("[data-holiday-details]")?.className).toContain(
+      "overflow-hidden",
+    );
+    expect(details?.closest("[data-picker-footer]")).not.toBeNull();
+    expect(document.querySelector("[data-holiday-tooltip]")).toBeNull();
+    expect(document.querySelector('[role="tooltip"]')).toBeNull();
   });
 
-  it("marks an ordinary Friday without creating an empty title tooltip", async () => {
+  it("keeps footer tracks and height stable between one and multiple titles", async () => {
+    installHolidayFetch([
+      holidayDay("2026-03-21", "official", ["One title"]),
+      holidayDay("2026-03-22", "official", [
+        "A much longer first title",
+        "A second title",
+        "A third title",
+      ]),
+    ]);
+    openSinglePicker({
+      cancelText: "Cancel",
+      labels: { today: "Today" },
+    });
+    const oneTitleDay = await findCalendarDay("2026-03-21");
+    const multipleTitleDay = await findCalendarDay("2026-03-22");
+    const footerGrid = document.querySelector<HTMLElement>(
+      "[data-picker-footer-grid]",
+    )!;
+    const details = document.querySelector<HTMLElement>(
+      "[data-holiday-details]",
+    )!;
+    const actionGroup = document.querySelector<HTMLElement>(
+      "[data-picker-action-group]",
+    )!;
+    const todayAction = document.querySelector<HTMLElement>(
+      "[data-picker-today-action]",
+    )!;
+    const stableGridClassName = footerGrid.className;
+    const stableDetailsClassName = details.className;
+
+    fireEvent.mouseEnter(oneTitleDay);
+    expect(details.textContent).toBe("One title");
+
+    fireEvent.mouseEnter(multipleTitleDay);
+    expect(details.textContent).toBe(
+      "A much longer first title • A second title • A third title",
+    );
+    expect(footerGrid.className).toBe(stableGridClassName);
+    expect(details.className).toBe(stableDetailsClassName);
+    expect(footerGrid.className).toContain("min-h-12");
+    expect(footerGrid.className).toContain("min-w-0");
+    expect(footerGrid.className).toContain(
+      "grid-cols-[auto_minmax(0,1fr)_auto]",
+    );
+    expect(details.className).toContain("h-10");
+    expect(details.className).toContain("overflow-hidden");
+    expect(actionGroup.className).toContain("col-start-1");
+    expectNonWrappingActionGroup(actionGroup);
+    expect(details.parentElement?.className).toContain("col-start-2");
+    expect(details.parentElement?.className).toContain("min-w-0");
+    expect(
+      details.querySelector("[data-holiday-details-content]")?.className,
+    ).toContain("line-clamp-2");
+    expect(todayAction.className).toContain("col-start-3");
+    expect(screen.getByRole("button", { name: "Confirm" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Today" })).toBeTruthy();
+  });
+
+  it("uses hover, focus, and selected-title precedence without a floating element", async () => {
+    setDesktopViewport(true);
+    installHolidayFetch([
+      holidayDay("2026-03-21", "official", ["Selected title"]),
+      holidayDay("2026-03-22", "official", ["Focused title"]),
+    ]);
+    openSinglePicker();
+    const selectedDay = await findCalendarDay("2026-03-21");
+    const focusedDay = await findCalendarDay("2026-03-22");
+    const details = document.querySelector<HTMLElement>(
+      "[data-holiday-details]",
+    )!;
+
+    fireEvent.click(selectedDay);
+    fireEvent.mouseLeave(selectedDay);
+    selectedDay.blur();
+    expect(details.textContent).toBe("Selected title");
+
+    focusCalendarDay(focusedDay);
+    expect(details.textContent).toBe("Focused title");
+
+    fireEvent.mouseEnter(selectedDay);
+    expect(details.textContent).toBe("Selected title");
+
+    fireEvent.mouseLeave(selectedDay);
+    expect(details.textContent).toBe("Focused title");
+
+    fireEvent.blur(focusedDay);
+    expect(details.textContent).toBe("Selected title");
+    expect(document.querySelector("[data-holiday-tooltip]")).toBeNull();
+  });
+
+  it("marks an ordinary Friday without creating empty details content", async () => {
     installHolidayFetch([holidayDay("2026-03-27", "weekly")]);
     openSinglePicker({ value: "2026-03-27" });
     const day = await findCalendarDay("2026-03-27");
 
+    fireEvent.mouseEnter(day);
+    focusCalendarDay(day);
+
     expect(day.dataset.holidayKind).toBe("weekly");
     expect(day.querySelector("[data-holiday-marker]")).not.toBeNull();
-    expect(day.querySelector("[data-holiday-tooltip]")).toBeNull();
+    expect(document.querySelector("[data-holiday-details]")).not.toBeNull();
+    expect(document.querySelector("[data-holiday-details-content]")).toBeNull();
     expect(day.getAttribute("aria-label")).not.toContain(":");
   });
 
@@ -153,7 +301,75 @@ describe("holiday date-picker presentation", () => {
 
     fireEvent.click(day);
 
-    expect(document.querySelector("[data-mobile-holiday-details]")?.textContent).toBe("Nowruz");
+    expect(document.querySelector("[data-holiday-details]")?.textContent).toBe("Nowruz");
+  });
+
+  it("uses the same fixed details footer in the range picker and keeps actions functional", async () => {
+    installHolidayFetch([
+      holidayDay("2026-03-21", "official", ["Range start"]),
+      holidayDay("2026-03-22", "official", ["Range end", "Second occasion"]),
+    ]);
+    const onChange = vi.fn();
+    const rendered = render(
+      <SharedDateRangePicker
+        cancelText="Cancel range"
+        confirmText="Confirm range"
+        onChange={onChange}
+        value={{ startDate: "2026-03-21", endDate: null }}
+      />,
+    );
+
+    fireEvent.click(rendered.container.querySelector("button")!);
+    const startDay = await findCalendarDay("2026-03-21");
+    const endDay = await findCalendarDay("2026-03-22");
+    const details = document.querySelector<HTMLElement>(
+      "[data-holiday-details]",
+    )!;
+
+    fireEvent.mouseEnter(startDay);
+    expect(details.textContent).toBe("Range start");
+    expect(details.closest("[data-picker-footer]")).not.toBeNull();
+
+    focusCalendarDay(startDay);
+    fireEvent.mouseLeave(startDay);
+    expect(details.textContent).toBe("Range start");
+
+    fireEvent.blur(startDay);
+    focusCalendarDay(endDay);
+    fireEvent.click(endDay);
+    fireEvent.mouseLeave(endDay);
+    fireEvent.blur(endDay);
+    expect(details.textContent).toBe("Range end • Second occasion");
+    expect(
+      document.querySelector("[data-picker-footer-grid]")?.className,
+    ).toContain(
+      "grid-cols-[auto_minmax(0,1fr)_auto]",
+    );
+    expect(
+      document.querySelector("[data-picker-footer-grid]")?.className,
+    ).toContain(
+      "sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)]",
+    );
+    expect(details.className).toContain("h-10");
+    expect(details.className).toContain("overflow-hidden");
+    expect(
+      details.querySelector("[data-holiday-details-content]")?.className,
+    ).toContain("line-clamp-2");
+
+    const actionGroup = document.querySelector<HTMLElement>(
+      "[data-picker-action-group]",
+    )!;
+    expectNonWrappingActionGroup(actionGroup);
+    expect(document.querySelector("[data-picker-today-action]")).not.toBeNull();
+
+    expect(screen.getByRole("button", { name: "Cancel range" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm range" }));
+
+    expect(onChange).toHaveBeenCalledWith({
+      startDate: "2026-03-21",
+      endDate: "2026-03-22",
+    });
+    expect(document.querySelector("[data-holiday-tooltip]")).toBeNull();
   });
 
   it("leaves selection usable when the holiday API fails", async () => {

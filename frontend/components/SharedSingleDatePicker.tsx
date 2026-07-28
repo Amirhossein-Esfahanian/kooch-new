@@ -7,9 +7,10 @@ import "dayjs/locale/fa";
 import { CalendarType } from "@/components/SharedDateRangePicker";
 import {
   HolidayCalendarDayContent,
-  MobileHolidayDetails,
+  HolidayCalendarDetails,
   holidayAccessibleLabel,
   holidayDayStateClass,
+  useHolidayCalendarDetails,
 } from "@/components/HolidayCalendarDayContent";
 import { useHolidayCalendarMonths } from "@/hooks/useHolidayCalendarMonths";
 
@@ -136,7 +137,7 @@ export function SharedSingleDatePicker({
   const [open, setOpen] = useState(false);
   const [tempDate, setTempDate] = useState<string | null>(value);
   const [visibleMonth, setVisibleMonth] = useState(() => asCalendar(dayjs(), calendarType).startOf("month"));
-  const [mobileHolidayTitles, setMobileHolidayTitles] = useState<readonly string[]>([]);
+  const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonClass = controlClassName ?? "grid rounded-xl border bg-white px-4 py-3 text-right transition";
   const { holidayByDate } = useHolidayCalendarMonths({
@@ -146,7 +147,10 @@ export function SharedSingleDatePicker({
   });
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);
-  useEffect(() => setMobileHolidayTitles([]), [activeCalendar, open, visibleMonth]);
+  useEffect(
+    () => holidayDetails.reset(),
+    [activeCalendar, holidayDetails.reset, open, visibleMonth],
+  );
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
       if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
@@ -201,7 +205,7 @@ export function SharedSingleDatePicker({
               return (
                 <button
                   aria-label={holidayAccessibleLabel(dayText, holiday)}
-                  className={`group h-10 rounded-[4px] text-sm font-bold transition ${holidayDayStateClass(visualState, holiday, "text-slate-700 hover:bg-[var(--theme-primary-soft)]")}`}
+                  className={`h-10 rounded-[4px] text-sm font-bold transition ${holidayDayStateClass(visualState, holiday, "text-slate-700 hover:bg-[var(--theme-primary-soft)]")}`}
                   data-calendar-date={iso}
                   data-holiday={holiday ? "true" : undefined}
                   data-holiday-kind={
@@ -213,12 +217,14 @@ export function SharedSingleDatePicker({
                   }
                   disabled={disabled}
                   key={iso}
+                  onBlur={holidayDetails.clearFocusedHoliday}
                   onClick={() => {
                     setTempDate(iso);
-                    setMobileHolidayTitles(
-                      holiday?.isOfficialHoliday ? holiday.occasionTitles : [],
-                    );
+                    holidayDetails.selectHoliday(holiday);
                   }}
+                  onFocus={() => holidayDetails.focusHoliday(holiday)}
+                  onMouseEnter={() => holidayDetails.hoverHoliday(holiday)}
+                  onMouseLeave={holidayDetails.clearHoveredHoliday}
                   type="button"
                 >
                   <HolidayCalendarDayContent
@@ -230,19 +236,40 @@ export function SharedSingleDatePicker({
               );
             })}
           </div>
-          <MobileHolidayDetails titles={mobileHolidayTitles} />
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-4">
-            <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]" onClick={() => {
-              const today = dayjs();
-              setVisibleMonth(asCalendar(today, activeCalendar).startOf("month"));
-              setTempDate(toIso(today));
-            }} type="button">{text.today}</button>
-            <div className="flex gap-2">
-              <button className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setOpen(false)} type="button">{cancelText}</button>
-              <button className="rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)]" onClick={() => {
-                onChange(tempDate);
-                setOpen(false);
-              }} type="button">{confirmText}</button>
+          <div
+            className="mt-5 border-t border-slate-100 pt-3"
+            data-picker-footer="true"
+          >
+            <div
+              className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2"
+              data-picker-footer-grid="true"
+              dir="rtl"
+            >
+              <div
+                className="col-start-1 flex flex-nowrap items-center gap-2 justify-self-start whitespace-nowrap"
+                data-picker-action-group="true"
+              >
+                <button className="shrink-0 rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700" onClick={() => setOpen(false)} type="button">{cancelText}</button>
+                <button className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)]" onClick={() => {
+                  onChange(tempDate);
+                  setOpen(false);
+                }} type="button">{confirmText}</button>
+              </div>
+              <div className="col-start-2 min-w-0 justify-self-stretch">
+                <HolidayCalendarDetails titles={holidayDetails.titles} />
+              </div>
+              <button
+                className="col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                data-picker-today-action="true"
+                onClick={() => {
+                  const today = dayjs();
+                  setVisibleMonth(asCalendar(today, activeCalendar).startOf("month"));
+                  setTempDate(toIso(today));
+                }}
+                type="button"
+              >
+                {text.today}
+              </button>
             </div>
           </div>
         </div>

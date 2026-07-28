@@ -7,9 +7,10 @@ import "dayjs/locale/fa";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
   HolidayCalendarDayContent,
-  MobileHolidayDetails,
+  HolidayCalendarDetails,
   holidayAccessibleLabel,
   holidayDayStateClass,
+  useHolidayCalendarDetails,
 } from "@/components/HolidayCalendarDayContent";
 import { useHolidayCalendarMonths } from "@/hooks/useHolidayCalendarMonths";
 
@@ -240,7 +241,7 @@ export function SharedDateRangePicker({
   const [visibleMonth, setVisibleMonth] = useState(() =>
     asCalendar(dayjs(), calendarType).startOf("month"),
   );
-  const [mobileHolidayTitles, setMobileHolidayTitles] = useState<readonly string[]>([]);
+  const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const dateButtonBase =
     controlClassName ??
@@ -254,7 +255,10 @@ export function SharedDateRangePicker({
   });
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);
-  useEffect(() => setMobileHolidayTitles([]), [activeCalendar, isOpen, visibleMonth]);
+  useEffect(
+    () => holidayDetails.reset(),
+    [activeCalendar, holidayDetails.reset, isOpen, visibleMonth],
+  );
   useEffect(() => {
     if (openOnDialog) return;
 
@@ -291,9 +295,7 @@ export function SharedDateRangePicker({
       return;
     const iso = toIso(date);
     const holiday = holidayByDate.get(iso);
-    setMobileHolidayTitles(
-      holiday?.isOfficialHoliday ? holiday.occasionTitles : [],
-    );
+    holidayDetails.selectHoliday(holiday);
     if (!tempStartDate || tempEndDate) {
       setTempStartDate(iso);
       setTempEndDate(null);
@@ -469,7 +471,7 @@ export function SharedDateRangePicker({
                   >
                     <button
                       aria-label={holidayAccessibleLabel(dayText, holiday)}
-                      className={`group h-10 w-full rounded-[4px] text-sm font-semibold transition ${holidayDayStateClass(visualState, holiday, "text-foreground hover:bg-[var(--theme-primary-soft)]")}`}
+                      className={`h-10 w-full rounded-[4px] text-sm font-semibold transition ${holidayDayStateClass(visualState, holiday, "text-foreground hover:bg-[var(--theme-primary-soft)]")}`}
                       data-calendar-date={iso}
                       data-holiday={holiday ? "true" : undefined}
                       data-holiday-kind={
@@ -480,7 +482,11 @@ export function SharedDateRangePicker({
                             : undefined
                       }
                       disabled={disabled}
+                      onBlur={holidayDetails.clearFocusedHoliday}
                       onClick={() => selectDay(date)}
+                      onFocus={() => holidayDetails.focusHoliday(holiday)}
+                      onMouseEnter={() => holidayDetails.hoverHoliday(holiday)}
+                      onMouseLeave={holidayDetails.clearHoveredHoliday}
                       type="button"
                     >
                       <HolidayCalendarDayContent
@@ -496,40 +502,63 @@ export function SharedDateRangePicker({
           </section>
         ))}
       </div>
-      <MobileHolidayDetails titles={mobileHolidayTitles} />
-      <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-        <div className="flex gap-2">
+      <div
+        className="mt-5 border-t border-border pt-3"
+        data-picker-footer="true"
+      >
+        <div
+          className="grid min-h-12 w-full min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)] sm:gap-3"
+          data-picker-footer-grid="true"
+          dir="rtl"
+        >
+          <div
+            className="col-start-1 flex flex-nowrap items-center gap-2 justify-self-start whitespace-nowrap"
+            data-picker-action-group="true"
+          >
+            <button
+              className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={!tempStartDate || !tempEndDate}
+              onClick={() => {
+                if (!tempStartDate || !tempEndDate) return;
+
+                onChange({
+                  startDate: tempStartDate,
+                  endDate: tempEndDate,
+                });
+
+                setActiveField(null);
+              }}
+              type="button"
+            >
+              {toPersianDigits(confirmText)}
+            </button>
+
+            <button
+              className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+              onClick={() => setActiveField(null)}
+              type="button"
+            >
+              {toPersianDigits(cancelText)}
+            </button>
+          </div>
+
+          <div className="col-start-2 min-w-0 justify-self-stretch">
+            <HolidayCalendarDetails titles={holidayDetails.titles} />
+          </div>
+
           <button
-            className="rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!tempStartDate || !tempEndDate}
-            onClick={() => {
-              if (!tempStartDate || !tempEndDate) return;
-              onChange({ startDate: tempStartDate, endDate: tempEndDate });
-              setActiveField(null);
-            }}
+            className="col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
+            data-picker-today-action="true"
+            onClick={() =>
+              setVisibleMonth(
+                asCalendar(dayjs(), activeCalendar).startOf("month"),
+              )
+            }
             type="button"
           >
-            {toPersianDigits(confirmText)}
-          </button>
-          <button
-            className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
-            onClick={() => setActiveField(null)}
-            type="button"
-          >
-            {toPersianDigits(cancelText)}
+            {toPersianDigits(text.today)}
           </button>
         </div>
-        <button
-          className="rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
-          onClick={() =>
-            setVisibleMonth(
-              asCalendar(dayjs(), activeCalendar).startOf("month"),
-            )
-          }
-          type="button"
-        >
-          {toPersianDigits(text.today)}
-        </button>
       </div>
     </div>
   );

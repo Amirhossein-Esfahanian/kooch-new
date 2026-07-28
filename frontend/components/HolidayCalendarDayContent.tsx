@@ -1,3 +1,4 @@
+import { useCallback, useState } from "react";
 import type { HolidayCalendarDay } from "@/lib/holiday-calendar";
 
 export type HolidayCalendarDayVisualState = {
@@ -44,6 +45,78 @@ export function holidayAccessibleLabel(
   return `${dayText}، تعطیل هفتگی`;
 }
 
+function officialHolidayTitles(
+  holiday: HolidayCalendarDay | undefined,
+): readonly string[] {
+  return holiday?.isOfficialHoliday ? holiday.occasionTitles : [];
+}
+
+function formatHolidayTitles(titles: readonly string[]) {
+  const seen = new Set<string>();
+  const formattedTitles: string[] = [];
+
+  for (const title of titles) {
+    const formattedTitle = title
+      .replace(/\s*\[[^\]]*\]/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!formattedTitle || seen.has(formattedTitle)) continue;
+    seen.add(formattedTitle);
+    formattedTitles.push(formattedTitle);
+  }
+
+  return formattedTitles;
+}
+
+export function useHolidayCalendarDetails() {
+  const [selectedTitles, setSelectedTitles] = useState<readonly string[]>([]);
+  const [hoveredTitles, setHoveredTitles] = useState<readonly string[] | null>(
+    null,
+  );
+  const [focusedTitles, setFocusedTitles] = useState<readonly string[] | null>(
+    null,
+  );
+
+  const reset = useCallback(() => {
+    setSelectedTitles([]);
+    setHoveredTitles(null);
+    setFocusedTitles(null);
+  }, []);
+  const selectHoliday = useCallback(
+    (holiday: HolidayCalendarDay | undefined) => {
+      setSelectedTitles(officialHolidayTitles(holiday));
+    },
+    [],
+  );
+  const hoverHoliday = useCallback(
+    (holiday: HolidayCalendarDay | undefined) => {
+      const titles = officialHolidayTitles(holiday);
+      setHoveredTitles(titles.length > 0 ? titles : null);
+    },
+    [],
+  );
+  const focusHoliday = useCallback(
+    (holiday: HolidayCalendarDay | undefined) => {
+      const titles = officialHolidayTitles(holiday);
+      setFocusedTitles(titles.length > 0 ? titles : null);
+    },
+    [],
+  );
+  const clearHoveredHoliday = useCallback(() => setHoveredTitles(null), []);
+  const clearFocusedHoliday = useCallback(() => setFocusedTitles(null), []);
+
+  return {
+    titles: hoveredTitles ?? focusedTitles ?? selectedTitles,
+    selectHoliday,
+    hoverHoliday,
+    focusHoliday,
+    clearHoveredHoliday,
+    clearFocusedHoliday,
+    reset,
+  };
+}
+
 export function HolidayCalendarDayContent({
   dayText,
   holiday,
@@ -53,9 +126,6 @@ export function HolidayCalendarDayContent({
   holiday: HolidayCalendarDay | undefined;
   state: HolidayCalendarDayVisualState;
 }) {
-  const hasTitles = Boolean(
-    holiday?.isOfficialHoliday && holiday.occasionTitles.length > 0,
-  );
   const markerClassName = state.selected
     ? "bg-primary-foreground"
     : state.disabled
@@ -74,27 +144,31 @@ export function HolidayCalendarDayContent({
           data-holiday-marker="true"
         />
       )}
-      {hasTitles && (
-        <span
-          aria-hidden="true"
-          className="pointer-events-none absolute bottom-full start-1/2 z-20 mb-1 hidden w-max max-w-48 -translate-x-1/2 whitespace-normal rounded-md border border-border bg-popover px-2 py-1 text-xs font-medium leading-5 text-popover-foreground opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 sm:block motion-reduce:transition-none"
-          data-holiday-tooltip="true"
-        >
-          {holiday!.occasionTitles.join("، ")}
-        </span>
-      )}
     </span>
   );
 }
 
-export function MobileHolidayDetails({ titles }: { titles: readonly string[] }) {
+export function HolidayCalendarDetails({
+  titles,
+}: {
+  titles: readonly string[];
+}) {
+  const formattedTitles = formatHolidayTitles(titles);
+
   return (
     <div
       aria-hidden="true"
-      className="mt-2 min-h-6 text-center text-xs font-medium leading-5 text-destructive sm:hidden"
-      data-mobile-holiday-details="true"
+      className="flex h-10 min-w-0 w-full items-center justify-center overflow-hidden px-2 text-center text-xs font-medium leading-5 text-destructive"
+      data-holiday-details="true"
     >
-      {titles.join("، ")}
+      {formattedTitles.length > 0 && (
+        <span
+          className="line-clamp-2 w-full [overflow-wrap:anywhere]"
+          data-holiday-details-content="true"
+        >
+          {formattedTitles.join(" • ")}
+        </span>
+      )}
     </div>
   );
 }
