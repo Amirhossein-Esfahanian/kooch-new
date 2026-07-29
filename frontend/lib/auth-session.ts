@@ -3,7 +3,10 @@ export const sessionRevokedCode = "session_revoked";
 const tokenKey = "kooch_owner_token";
 const userRoleKey = "kooch_user_role";
 const userNameKey = "kooch_user_name";
+export const workspaceKey = "kooch_workspace";
 export const ownerPropertyKey = "kooch_owner_property_id";
+export const workspaceValues = ["account", "owner", "admin"] as const;
+export type StoredWorkspace = (typeof workspaceValues)[number];
 
 export interface SessionRevokedEvent {
   code: typeof sessionRevokedCode;
@@ -19,6 +22,58 @@ let sessionRevocationNotified = false;
 
 function canUseBrowserStorage() {
   return typeof window !== "undefined" && typeof localStorage !== "undefined";
+}
+
+export function isStoredWorkspace(value: unknown): value is StoredWorkspace {
+  return workspaceValues.includes(value as StoredWorkspace);
+}
+
+export function getStoredWorkspace(
+  authorizedWorkspaces: readonly StoredWorkspace[],
+) {
+  if (!canUseBrowserStorage()) return null;
+
+  const storedWorkspace = localStorage.getItem(workspaceKey);
+  if (
+    !isStoredWorkspace(storedWorkspace) ||
+    !authorizedWorkspaces.includes(storedWorkspace)
+  ) {
+    localStorage.removeItem(workspaceKey);
+    return null;
+  }
+
+  return storedWorkspace;
+}
+
+export function setStoredWorkspace(workspace: StoredWorkspace) {
+  if (!canUseBrowserStorage() || !isStoredWorkspace(workspace)) return;
+  localStorage.setItem(workspaceKey, workspace);
+}
+
+export function getStoredOwnerPropertyId(
+  authorizedPropertyIds: readonly number[],
+) {
+  if (!canUseBrowserStorage()) return null;
+
+  const storedPropertyId = Number(localStorage.getItem(ownerPropertyKey));
+  if (
+    !Number.isInteger(storedPropertyId) ||
+    storedPropertyId <= 0 ||
+    !authorizedPropertyIds.includes(storedPropertyId)
+  ) {
+    localStorage.removeItem(ownerPropertyKey);
+    return null;
+  }
+
+  return storedPropertyId;
+}
+
+export function setStoredOwnerPropertyId(propertyId: number) {
+  if (!canUseBrowserStorage() || !Number.isInteger(propertyId) || propertyId <= 0) {
+    return;
+  }
+
+  localStorage.setItem(ownerPropertyKey, propertyId.toString());
 }
 
 export function getToken() {
@@ -44,7 +99,7 @@ export function clearToken() {
 
   localStorage.removeItem(tokenKey);
   localStorage.removeItem(userNameKey);
-  localStorage.removeItem("kooch_workspace");
+  localStorage.removeItem(workspaceKey);
   localStorage.removeItem(ownerPropertyKey);
   localStorage.removeItem(userRoleKey);
 }

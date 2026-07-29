@@ -15,7 +15,10 @@ import type {
   PropertyPermissionMatrix,
 } from "@/components/auth/AuthSessionProvider";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { ownerPropertyKey } from "@/lib/owner-api";
+import {
+  getStoredOwnerPropertyId,
+  setStoredOwnerPropertyId,
+} from "@/lib/auth-session";
 
 export interface SwitchPropertyOptions {
   replace?: boolean;
@@ -44,7 +47,6 @@ export function OwnerPropertyProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const {
     authenticated,
-    defaultPropertyId,
     loading,
     propertyMemberships,
     workspaces,
@@ -79,9 +81,6 @@ export function OwnerPropertyProvider({ children }: { children: ReactNode }) {
   );
   const routePropertyIsValid =
     !routeRequestsProperty || Boolean(routeMembership);
-  const defaultMembership = activeMemberships.find(
-    (membership) => membership.propertyId === defaultPropertyId,
-  );
   const preferredMembership = activeMemberships.find(
     (membership) => membership.propertyId === preferredPropertyId,
   );
@@ -93,31 +92,27 @@ export function OwnerPropertyProvider({ children }: { children: ReactNode }) {
     (routeRequestsProperty
       ? routeMembership ?? null
       : preferredMembership ??
-        defaultMembership ??
-        (activeMemberships.length === 1 ? activeMemberships[0] : null));
+        activeMemberships[0] ??
+        null);
 
   useEffect(() => {
     if (loading) return;
 
-    const savedPropertyId = Number(localStorage.getItem(ownerPropertyKey));
+    const savedPropertyId = getStoredOwnerPropertyId(
+      activeMemberships.map((item) => item.propertyId),
+    );
     const savedMembership = activeMemberships.find(
       (item) => item.propertyId === savedPropertyId,
     );
 
     setPreferredPropertyId(savedMembership?.propertyId ?? null);
-    if (!savedMembership) {
-      localStorage.removeItem(ownerPropertyKey);
-    }
   }, [activeMemberships, loading]);
 
   useEffect(() => {
     if (!routeMembership) return;
 
     setPreferredPropertyId(routeMembership.propertyId);
-    localStorage.setItem(
-      ownerPropertyKey,
-      routeMembership.propertyId.toString(),
-    );
+    setStoredOwnerPropertyId(routeMembership.propertyId);
   }, [routeMembership]);
 
   useEffect(() => {
@@ -137,14 +132,20 @@ export function OwnerPropertyProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    const activePropertyIds = activeMemberships.map(
+      (membership) => membership.propertyId,
+    );
+    const fallbackPropertyId =
+      getStoredOwnerPropertyId(activePropertyIds) ?? activePropertyIds[0];
+
     router.replace(
-      defaultMembership
-        ? `/owner/properties/${defaultMembership.propertyId}`
+      fallbackPropertyId
+        ? `/owner/properties/${fallbackPropertyId}`
         : "/owner/select-property",
     );
   }, [
+    activeMemberships,
     authenticated,
-    defaultMembership,
     loading,
     routePropertyIsValid,
     routeRequestsProperty,
@@ -164,7 +165,7 @@ export function OwnerPropertyProvider({ children }: { children: ReactNode }) {
 
       setPendingPropertyId(propertyId);
       setPreferredPropertyId(propertyId);
-      localStorage.setItem(ownerPropertyKey, propertyId.toString());
+      setStoredOwnerPropertyId(propertyId);
       const destination = `/owner/properties/${propertyId}`;
       if (options.replace) {
         router.replace(destination);

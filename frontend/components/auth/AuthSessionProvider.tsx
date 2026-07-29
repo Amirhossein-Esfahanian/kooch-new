@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   apiRequest,
@@ -18,9 +18,15 @@ import {
   clearToken,
   getToken,
 } from "@/lib/owner-api";
-import { onSessionRevoked } from "@/lib/auth-session";
+import {
+  getStoredOwnerPropertyId,
+  getStoredWorkspace,
+  onSessionRevoked,
+  setStoredWorkspace,
+  type StoredWorkspace,
+} from "@/lib/auth-session";
 
-export type AuthWorkspace = "admin" | "owner" | "account";
+export type AuthWorkspace = StoredWorkspace;
 export type PlatformRole = "SuperAdmin" | "AdminAssistant" | "Client";
 export type PropertyRole =
   | "PropertyOwner"
@@ -143,20 +149,19 @@ export function resolveSessionDestination(
   session: WorkspaceRoutingSession,
   requestedWorkspace?: AuthWorkspace | null,
 ) {
-  const workspace = requestedWorkspace
-    ? session.workspaces.includes(requestedWorkspace)
+  const requestedAuthorizedWorkspace =
+    requestedWorkspace && session.workspaces.includes(requestedWorkspace)
       ? requestedWorkspace
-      : null
-    : session.defaultWorkspace &&
-        session.workspaces.includes(session.defaultWorkspace)
-      ? session.defaultWorkspace
-      : session.workspaces.includes("admin")
-        ? "admin"
-        : session.workspaces.includes("owner")
-          ? "owner"
-          : session.workspaces.includes("account")
-            ? "account"
-            : null;
+      : null;
+  const workspace =
+    requestedAuthorizedWorkspace ??
+    (session.workspaces.length === 1
+      ? session.workspaces[0]
+      : getStoredWorkspace(session.workspaces));
+
+  if (!workspace) {
+    return session.workspaces.length > 1 ? "/choose-workspace" : "/login";
+  }
 
   if (workspace === "admin") return "/admin";
 
@@ -165,24 +170,22 @@ export function resolveSessionDestination(
       (membership) =>
         membership.isActive && membership.membershipStatus === "Active",
     );
-    const defaultMembership = activeMemberships.find(
-      (membership) => membership.propertyId === session.defaultPropertyId,
+    const activePropertyIds = activeMemberships.map(
+      (membership) => membership.propertyId,
     );
     const propertyId =
-      defaultMembership?.propertyId ??
-      (activeMemberships.length === 1
-        ? activeMemberships[0].propertyId
-        : null);
+      getStoredOwnerPropertyId(activePropertyIds) ?? activePropertyIds[0] ?? null;
 
     return propertyId
       ? `/owner/properties/${propertyId}`
       : "/owner/select-property";
   }
 
-  return "/";
+  return "/account";
 }
 
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const router = useRouter();
   const requestIdRef = useRef(0);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -206,6 +209,15 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       try {
         const response = await apiRequest<CurrentUserResponse>("/auth/me");
         const nextSession = toSession(response);
+        getStoredWorkspace(nextSession.workspaces);
+        getStoredOwnerPropertyId(
+          nextSession.propertyMemberships
+            .filter(
+              (membership) =>
+                membership.isActive && membership.membershipStatus === "Active",
+            )
+            .map((membership) => membership.propertyId),
+        );
 
         if (requestId === requestIdRef.current) {
           setSession(nextSession);
@@ -256,6 +268,22 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
 
     void refreshSession().catch(() => undefined);
   }, [refreshSession]);
+
+  useEffect(() => {
+    if (!session) return;
+
+    const routeWorkspace: AuthWorkspace | null = pathname.startsWith("/admin")
+      ? "admin"
+      : pathname.startsWith("/owner")
+        ? "owner"
+        : pathname.startsWith("/account")
+          ? "account"
+          : null;
+
+    if (routeWorkspace && session.workspaces.includes(routeWorkspace)) {
+      setStoredWorkspace(routeWorkspace);
+    }
+  }, [pathname, session]);
 
   const value = useMemo<AuthSessionContextValue>(
     () => ({

@@ -223,14 +223,16 @@ describe("platform workspace authorization", () => {
     );
 
     await waitForSession();
-    await waitFor(() => expect(navigation.router.replace).toHaveBeenCalledWith("/"));
+    await waitFor(() =>
+      expect(navigation.router.replace).toHaveBeenCalledWith("/account"),
+    );
     expect(screen.queryByTestId("denied-admin-content")).toBeNull();
   });
 
   it("keeps an account-only guest out of admin and owner destinations", () => {
     const guest = session();
 
-    expect(resolveSessionDestination(guest)).toBe("/");
+    expect(resolveSessionDestination(guest)).toBe("/account");
     expect(guest.workspaces).toEqual(["account"]);
   });
 });
@@ -255,7 +257,7 @@ describe("property workspace authorization", () => {
     expect(screen.getByText("Property 11")).toBeTruthy();
   });
 
-  it("sends a multi-property owner without a default to property selection", () => {
+  it("sends a multi-property owner without a saved property to the first active property", () => {
     const memberships = [membership(11), membership(22)];
     const owner = session({
       workspaces: ["owner"],
@@ -263,7 +265,24 @@ describe("property workspace authorization", () => {
       defaultWorkspace: "owner",
     });
 
-    expect(resolveSessionDestination(owner)).toBe("/owner/select-property");
+    expect(resolveSessionDestination(owner)).toBe("/owner/properties/11");
+  });
+
+  it("restores a valid saved property and rejects a stale saved property", () => {
+    const owner = session({
+      workspaces: ["owner", "account"],
+      propertyMemberships: [membership(11), membership(22)],
+      defaultWorkspace: "owner",
+      defaultPropertyId: 11,
+    });
+
+    localStorage.setItem("kooch_workspace", "owner");
+    localStorage.setItem("kooch_owner_property_id", "22");
+    expect(resolveSessionDestination(owner)).toBe("/owner/properties/22");
+
+    localStorage.setItem("kooch_owner_property_id", "999");
+    expect(resolveSessionDestination(owner)).toBe("/owner/properties/11");
+    expect(localStorage.getItem("kooch_owner_property_id")).toBeNull();
   });
 
   it("rejects a property route outside the active memberships", async () => {
@@ -372,7 +391,30 @@ describe("legacy storage regression", () => {
     );
 
     await waitForSession();
-    await waitFor(() => expect(navigation.router.replace).toHaveBeenCalledWith("/"));
+    await waitFor(() =>
+      expect(navigation.router.replace).toHaveBeenCalledWith("/account"),
+    );
     expect(screen.queryByTestId("cached-role-content")).toBeNull();
+  });
+
+  it("restores only an authorized Workspace and discards stale values", () => {
+    const multiWorkspaceSession = session({
+      platformRole: "SuperAdmin",
+      workspaces: ["admin", "account"],
+      defaultWorkspace: "admin",
+    });
+
+    expect(resolveSessionDestination(multiWorkspaceSession)).toBe(
+      "/choose-workspace",
+    );
+
+    localStorage.setItem("kooch_workspace", "account");
+    expect(resolveSessionDestination(multiWorkspaceSession)).toBe("/account");
+
+    localStorage.setItem("kooch_workspace", "owner");
+    expect(resolveSessionDestination(multiWorkspaceSession)).toBe(
+      "/choose-workspace",
+    );
+    expect(localStorage.getItem("kooch_workspace")).toBeNull();
   });
 });

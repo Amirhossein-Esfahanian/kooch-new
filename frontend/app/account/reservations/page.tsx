@@ -137,9 +137,9 @@ export default function AccountReservationsPage() {
           actions={
             <Link
               className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
-              href="/"
+              href="/account"
             >
-              بازگشت به خانه
+              بازگشت به حساب کاربری
             </Link>
           }
           description="رزروهایی که با حساب مهمان شما ثبت شده‌اند."

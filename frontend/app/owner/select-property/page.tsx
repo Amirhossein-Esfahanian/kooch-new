@@ -3,7 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { useAuthSession } from "@/components/auth/AuthSessionProvider";
+import {
+  resolveSessionDestination,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import {
   apiRequest,
@@ -14,12 +17,13 @@ import {
 export default function SelectOwnerPropertyPage() {
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
+  const session = useAuthSession();
   const {
     authenticated,
     loading: sessionLoading,
     refreshSession,
     workspaces,
-  } = useAuthSession();
+  } = session;
   const { activeMemberships, switchProperty } = useOwnerProperty();
   const hasOwnerWorkspace = workspaces.includes("owner");
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
@@ -33,7 +37,7 @@ export default function SelectOwnerPropertyPage() {
       if (!refreshAttemptedRef.current) {
         refreshAttemptedRef.current = true;
         void refreshSession({ redirectOnUnauthorized: true }).catch(() => {
-          router.replace("/");
+          router.replace("/login");
         });
       }
       return;
@@ -41,12 +45,17 @@ export default function SelectOwnerPropertyPage() {
 
     refreshAttemptedRef.current = false;
     if (!hasOwnerWorkspace) {
-      router.replace(workspaces.includes("admin") ? "/admin" : "/");
+      router.replace(resolveSessionDestination(session));
       return;
     }
 
     if (activeMemberships.length === 0) {
-      router.replace("/");
+      router.replace(
+        resolveSessionDestination({
+          ...session,
+          workspaces: workspaces.filter((workspace) => workspace !== "owner"),
+        }),
+      );
       return;
     }
 
@@ -91,6 +100,7 @@ export default function SelectOwnerPropertyPage() {
     hasOwnerWorkspace,
     refreshSession,
     router,
+    session,
     sessionLoading,
     switchProperty,
     workspaces,

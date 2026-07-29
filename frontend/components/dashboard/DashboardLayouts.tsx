@@ -4,10 +4,13 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import { useAuthSession } from "@/components/auth/AuthSessionProvider";
+import {
+  resolveSessionDestination,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
+import { KoochUserMenu } from "@/components/KoochUserMenu";
 import type { PropertyPermissionMatrix } from "@/components/auth/AuthSessionProvider";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import type { PermissionGroup } from "@/lib/owner-api";
@@ -342,17 +345,15 @@ export function AdminLayout({
 }) {
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
+  const session = useAuthSession();
   const {
     authenticated,
-    defaultPropertyId,
     loading,
     platformPermissions,
     refreshSession,
     workspaces,
-  } = useAuthSession();
-  const { switchProperty: switchOwnerProperty } = useOwnerProperty();
+  } = session;
   const hasAdminWorkspace = workspaces.includes("admin");
-  const hasOwnerWorkspace = workspaces.includes("owner");
   const visibleAdminMenuItems = adminMenuItems.filter((item) =>
     canViewAdminMenuItem(item, platformPermissions),
   );
@@ -373,27 +374,15 @@ export function AdminLayout({
     refreshAttemptedRef.current = false;
     if (hasAdminWorkspace) return;
 
-    if (hasOwnerWorkspace) {
-      if (defaultPropertyId) {
-        switchOwnerProperty(defaultPropertyId, { replace: true });
-        return;
-      }
-
-      router.replace("/owner/select-property");
-      return;
-    }
-
-    router.replace("/");
+    router.replace(resolveSessionDestination(session));
   }, [
     authenticated,
-    defaultPropertyId,
     hasAdminWorkspace,
-    hasOwnerWorkspace,
     loading,
     platformPermissions,
     refreshSession,
     router,
-    switchOwnerProperty,
+    session,
   ]);
 
   if (loading || !authenticated || !hasAdminWorkspace) {
@@ -410,12 +399,13 @@ export function OwnerLayout({
 }) {
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
+  const session = useAuthSession();
   const {
     authenticated,
     loading,
     refreshSession,
     workspaces,
-  } = useAuthSession();
+  } = session;
   const {
     activeMemberships,
     effectivePermissions,
@@ -441,7 +431,7 @@ export function OwnerLayout({
 
     refreshAttemptedRef.current = false;
     if (!hasOwnerWorkspace) {
-      router.replace(workspaces.includes("admin") ? "/admin" : "/");
+      router.replace(resolveSessionDestination(session));
       return;
     }
   }, [
@@ -450,6 +440,7 @@ export function OwnerLayout({
     loading,
     refreshSession,
     router,
+    session,
     workspaces,
   ]);
 
@@ -813,28 +804,10 @@ function DashboardHeader({
   onSidebarToggle: () => void;
   profileMenuOpen: boolean;
 }) {
-  const router = useRouter();
-  const { clearSession, user } = useAuthSession();
-  const [profileDialogOpen, setProfileDialogOpen] = useState(false);
-  const userName = user?.fullName || user?.email || "کاربر کوچ";
-
-  function handleProfileMenuAction(item: string) {
-    onProfileMenuClose();
-
-    if (item === "خروج از حساب") {
-      clearSession();
-      router.push("/login");
-      return;
-    }
-
-    setProfileDialogOpen(true);
-  }
-
   return (
-    <>
-      <header
-        className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
-      >
+    <header
+      className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
+    >
         <div className="flex flex-wrap items-center gap-3">
           <button
             className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
@@ -889,70 +862,17 @@ function DashboardHeader({
               <MenuIcon icon={menuIcons.dark} />
             )}
           </button>
-          <div className="relative">
-            {profileMenuOpen && (
-              <button
-                className="fixed inset-0 z-[60] cursor-default"
-                onClick={onProfileMenuClose}
-                type="button"
-                aria-label="بستن منوی پروفایل"
-              />
-            )}
-            <button
-              className={`relative z-[80] flex items-center gap-2 rounded-xl border px-2 py-1.5 transition hover:border-[var(--theme-primary)] ${
-                profileMenuOpen
-                  ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)]"
-                  : darkMode
-                    ? "border-white/10 bg-white/5"
-                    : "border-slate-200 bg-slate-50"
-              }`}
-              onClick={onProfileMenuToggle}
-              type="button"
-              aria-expanded={profileMenuOpen}
-              aria-haspopup="menu"
-            >
-              <span className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-black text-white">
-                {userName.charAt(0)}
-              </span>
-              <span className="hidden text-sm font-bold lg:inline">
-                {userName}
-              </span>
-              <span className={mutedText(darkMode)}>v</span>
-            </button>
-            {profileMenuOpen && (
-              <div
-                className={`absolute left-0 top-12 z-[90] w-52 overflow-hidden rounded-xl border p-1 text-sm font-bold shadow-2xl ${
-                  darkMode
-                    ? "border-white/10 bg-[#111720] text-slate-100"
-                    : "border-slate-200 bg-white text-slate-800"
-                }`}
-                role="menu"
-              >
-                {["مشاهده پروفایل", "تنظیمات حساب", "خروج از حساب"].map(
-                  (item) => (
-                    <button
-                      className={`block w-full rounded-lg px-3 py-2 text-right transition ${
-                        darkMode ? "hover:bg-white/10" : "hover:bg-slate-100"
-                      } ${item === "خروج از حساب" ? "text-[var(--theme-danger)]" : ""}`}
-                      key={item}
-                      onClick={() => handleProfileMenuAction(item)}
-                      role="menuitem"
-                      type="button"
-                    >
-                      {item}
-                    </button>
-                  ),
-                )}
-              </div>
-            )}
-          </div>
+          <KoochUserMenu
+            darkMode={darkMode}
+            onOpenChange={(nextOpen) => {
+              if (nextOpen) onProfileMenuToggle();
+              else onProfileMenuClose();
+            }}
+            open={profileMenuOpen}
+            variant="dashboard"
+          />
         </div>
       </header>
-      <KoochUserProfileDialog
-        onOpenChange={setProfileDialogOpen}
-        open={profileDialogOpen}
-      />
-    </>
   );
 }
 

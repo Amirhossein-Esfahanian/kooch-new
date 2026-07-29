@@ -19,6 +19,7 @@ const sonner = vi.hoisted(() => ({
 }));
 
 vi.mock("next/navigation", () => ({
+  usePathname: () => "/account",
   useRouter: () => navigation.router,
 }));
 

@@ -29,7 +29,7 @@ public sealed class CurrentUserSessionContractTests
 
         Assert.NotNull(response);
         Assert.Equal(UserRole.SuperAdmin, response.PlatformRole);
-        Assert.Equal([WorkspaceNames.Admin, WorkspaceNames.Owner], response.Workspaces);
+        Assert.Equal([WorkspaceNames.Admin, WorkspaceNames.Owner, WorkspaceNames.Account], response.Workspaces);
         Assert.Equal(WorkspaceNames.Admin, response.DefaultWorkspace);
         Assert.Equal(SecondPropertyId, response.DefaultPropertyId);
         var membership = Assert.Single(response.PropertyMemberships);
@@ -47,7 +47,7 @@ public sealed class CurrentUserSessionContractTests
 
         Assert.NotNull(response);
         Assert.Equal(UserRole.AdminAssistant, response.PlatformRole);
-        Assert.Equal([WorkspaceNames.Admin], response.Workspaces);
+        Assert.Equal([WorkspaceNames.Admin, WorkspaceNames.Account], response.Workspaces);
         Assert.Empty(response.PropertyMemberships);
         Assert.Equal(WorkspaceNames.Admin, response.DefaultWorkspace);
         Assert.Null(response.DefaultPropertyId);

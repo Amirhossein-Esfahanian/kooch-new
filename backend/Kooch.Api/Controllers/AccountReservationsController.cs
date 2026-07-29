@@ -1,12 +1,13 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace Kooch.Api.Controllers;
 
 [ApiController]
-[ClientAuthorize]
+[Authorize]
 [Route("api/account/reservations")]
 public class AccountReservationsController(IReservationService reservationService) : AuthenticatedControllerBase
 {

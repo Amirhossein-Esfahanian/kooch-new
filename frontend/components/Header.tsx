@@ -2,13 +2,14 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { KoochGuestAuthDialog } from "@/components/auth/KoochGuestAuthDialog";
 import {
   type AuthWorkspace,
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
+import { KoochUserMenu } from "@/components/KoochUserMenu";
 import {
   defaultSiteSettings,
   fetchPublicSiteSettings,
@@ -27,13 +28,7 @@ const workspaceLabels: Record<AuthWorkspace, string> = {
 
 export function Header() {
   const pathname = usePathname();
-  const router = useRouter();
-  const {
-    authenticated: isLoggedIn,
-    clearSession,
-    defaultWorkspace,
-    workspaces,
-  } = useAuthSession();
+  const { authenticated: isLoggedIn, workspaces } = useAuthSession();
   const [settings, setSettings] =
     useState<SiteSettingsMap>(defaultSiteSettings);
   const routeWorkspace: AuthWorkspace | null = pathname.startsWith("/admin")
@@ -46,22 +41,13 @@ export function Header() {
   const workspace =
     routeWorkspace && workspaces.includes(routeWorkspace)
       ? routeWorkspace
-      : pathname === "/choose-workspace" &&
-          defaultWorkspace &&
-          workspaces.includes(defaultWorkspace)
-        ? defaultWorkspace
-        : null;
+      : null;
 
   useEffect(() => {
     fetchPublicSiteSettings()
       .then((items) => setSettings(mergeSiteSettings(items)))
       .catch(() => setSettings(defaultSiteSettings));
   }, []);
-
-  function logout() {
-    clearSession();
-    router.push("/login");
-  }
 
   const siteName = settingValue(settings, "site.name");
   const logoUrl = settingValue(settings, "site.logoUrl");
@@ -112,22 +98,8 @@ export function Header() {
           >
             میزبان شوید
           </Link>
-          {isLoggedIn && (
-            <Link
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
-              href="/choose-workspace"
-            >
-              تغییر محیط کاربری
-            </Link>
-          )}
           {isLoggedIn ? (
-            <button
-              className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 transition hover:border-red-200 hover:text-red-700"
-              onClick={logout}
-              type="button"
-            >
-              خروج
-            </button>
+            <KoochUserMenu />
           ) : (
             <>
               <Link

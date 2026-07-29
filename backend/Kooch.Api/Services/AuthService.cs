@@ -365,10 +365,7 @@ public class AuthService(
         {
             workspaces.Add(WorkspaceNames.Owner);
         }
-        if (platformRole == UserRole.Client)
-        {
-            workspaces.Add(WorkspaceNames.Account);
-        }
+        workspaces.Add(WorkspaceNames.Account);
 
         var defaultWorkspace = workspaces.Contains(WorkspaceNames.Admin)
             ? WorkspaceNames.Admin

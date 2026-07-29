@@ -51,7 +51,7 @@ public sealed class JwtPlatformRoleClaimTests
     [Theory]
     [InlineData(LegacyOwnerId, "legacy-owner@example.test")]
     [InlineData(LegacyAssistantId, "legacy-assistant@example.test")]
-    public async Task CanonicalJwtClaim_AllowsAccountReservationPolicy(
+    public async Task CanonicalJwtClaim_AllowsAuthenticatedAccountReservationPolicy(
         int userId,
         string email)
     {
@@ -65,7 +65,7 @@ public sealed class JwtPlatformRoleClaimTests
 
         Assert.NotNull(response);
         var principal = ValidateToken(response.Token);
-        var requirement = new RolesAuthorizationRequirement([UserRole.Client.ToString()]);
+        var requirement = new DenyAnonymousAuthorizationRequirement();
         var context = new AuthorizationHandlerContext([requirement], principal, resource: null);
 
         await requirement.HandleAsync(context);
