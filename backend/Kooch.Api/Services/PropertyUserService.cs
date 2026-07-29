@@ -585,19 +585,6 @@ public class PropertyUserService(
             _ => 0
         };
 
-    private async Task EnsureUserCanBeAssignedAsync(
-        int userId,
-        int propertyId,
-        CancellationToken cancellationToken)
-    {
-        var belongsToOtherProperty = await dbContext.UserPropertyAccesses.AsNoTracking()
-            .AnyAsync(access => access.UserId == userId && access.PropertyId != propertyId, cancellationToken);
-        if (belongsToOtherProperty)
-        {
-            throw new InvalidOperationException("This user already belongs to another property.");
-        }
-    }
-
     private static PropertyUserResponse MapOwner(
         Property property,
         UserPropertyAccess? access,

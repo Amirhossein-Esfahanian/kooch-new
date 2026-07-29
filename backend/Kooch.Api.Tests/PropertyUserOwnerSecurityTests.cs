@@ -1,10 +1,17 @@
+using System.Reflection;
+using System.Security.Claims;
 using System.Text.Json;
+using System.Threading.RateLimiting;
+using Kooch.Api.Authentication;
+using Kooch.Api.Controllers;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Auth;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
@@ -75,6 +82,140 @@ public sealed class PropertyUserOwnerSecurityTests
         Assert.DoesNotContain("Admin", JsonSerializer.Serialize(existing));
         Assert.DoesNotContain("@", JsonSerializer.Serialize(existing));
         Assert.DoesNotContain(SecondPropertyId.ToString(), JsonSerializer.Serialize(existing));
+        Assert.Equal(
+            ["MaskedName", "Outcome", "RequiresUserCreation"],
+            typeof(PropertyUserCandidateResponse)
+                .GetProperties(BindingFlags.Instance | BindingFlags.Public)
+                .Select(property => property.Name)
+                .OrderBy(name => name));
+    }
+
+    [Fact]
+    public async Task UnknownMobile_CanContinueOnlyWithNewUserCreation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = CreateService(database.Context);
+
+        var candidate = await service.ResolveCandidateAsync(
+            OwnerUserId,
+            FirstPropertyId,
+            new PropertyUserCandidateRequest { Mobile = "09129990001" });
+
+        Assert.Equal(PropertyUserCandidateOutcome.CanContinue, candidate.Outcome);
+        Assert.True(candidate.RequiresUserCreation);
+        Assert.Null(candidate.MaskedName);
+    }
+
+    [Fact]
+    public async Task GuestConflictingIdentity_IsUnavailableWithoutIdentityDetails()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        database.Context.Guests.Add(new Guest
+        {
+            FirstName = "Guest",
+            LastName = "Identity",
+            Mobile = "+989129990002",
+            NormalizedMobile = "09129990002",
+            Email = "guest@example.test"
+        });
+        await database.Context.SaveChangesAsync();
+        var service = CreateService(database.Context);
+
+        var candidate = await service.ResolveCandidateAsync(
+            OwnerUserId,
+            FirstPropertyId,
+            new PropertyUserCandidateRequest { Mobile = "09129990002" });
+
+        Assert.Equal(PropertyUserCandidateOutcome.Unavailable, candidate.Outcome);
+        Assert.False(candidate.RequiresUserCreation);
+        Assert.Null(candidate.MaskedName);
+        Assert.DoesNotContain("Guest", JsonSerializer.Serialize(candidate));
+        Assert.DoesNotContain("guest@example.test", JsonSerializer.Serialize(candidate));
+    }
+
+    [Fact]
+    public async Task AmbiguousNormalizedMatches_AreUnavailableWithoutIdentityDetails()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        database.Context.Users.AddRange(
+            CreateUser(ExistingUserId, UserRole.Client, "first-match", "09129990003"),
+            CreateUser(DeletedUserId, UserRole.Client, "second-match", "+989129990003"));
+        await database.Context.SaveChangesAsync();
+        var service = CreateService(database.Context);
+
+        var candidate = await service.ResolveCandidateAsync(
+            OwnerUserId,
+            FirstPropertyId,
+            new PropertyUserCandidateRequest { Mobile = "09129990003" });
+
+        Assert.Equal(PropertyUserCandidateOutcome.Unavailable, candidate.Outcome);
+        Assert.False(candidate.RequiresUserCreation);
+        Assert.Null(candidate.MaskedName);
+        Assert.DoesNotContain("match", JsonSerializer.Serialize(candidate));
+    }
+
+    [Fact]
+    public async Task RepeatedLookupAttempts_ReturnTheSameMinimalResponse()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = CreateService(database.Context);
+
+        var responses = new List<PropertyUserCandidateResponse>();
+        for (var attempt = 0; attempt < PropertyUserResolveRateLimitPolicy.PermitLimit; attempt++)
+        {
+            responses.Add(await service.ResolveCandidateAsync(
+                OwnerUserId,
+                FirstPropertyId,
+                new PropertyUserCandidateRequest { Mobile = "09129990004" }));
+        }
+
+        Assert.All(responses, candidate =>
+        {
+            Assert.Equal(PropertyUserCandidateOutcome.CanContinue, candidate.Outcome);
+            Assert.True(candidate.RequiresUserCreation);
+            Assert.Null(candidate.MaskedName);
+        });
+    }
+
+    [Theory]
+    [InlineData(typeof(PropertyUsersController))]
+    [InlineData(typeof(AdminPropertyUsersController))]
+    public void ResolveEndpoint_UsesCandidateSpecificRateLimit(Type controllerType)
+    {
+        var method = controllerType.GetMethod("ResolveCandidate");
+        var attribute = Assert.Single(
+            method!.GetCustomAttributes<EnableRateLimitingAttribute>());
+
+        Assert.Equal(PropertyUserResolveRateLimitPolicy.Name, attribute.PolicyName);
+    }
+
+    [Fact]
+    public async Task CandidateRateLimit_RejectsRepeatedAttempts_AcrossProperties_AndIsolatesActors()
+    {
+        using var limiter = PartitionedRateLimiter.Create<HttpContext, string>(
+            PropertyUserResolveRateLimitPolicy.CreatePartition);
+        var firstPropertyContext = CreateResolveHttpContext(OwnerUserId, FirstPropertyId);
+
+        var acceptedLeases = new List<RateLimitLease>();
+        for (var attempt = 0; attempt < PropertyUserResolveRateLimitPolicy.PermitLimit; attempt++)
+        {
+            var lease = await limiter.AcquireAsync(firstPropertyContext);
+            acceptedLeases.Add(lease);
+            Assert.True(lease.IsAcquired);
+        }
+
+        using var rejectedLease = await limiter.AcquireAsync(firstPropertyContext);
+        Assert.False(rejectedLease.IsAcquired);
+
+        using var sameActorOtherPropertyLease = await limiter.AcquireAsync(
+            CreateResolveHttpContext(OwnerUserId, SecondPropertyId));
+        Assert.False(sameActorOtherPropertyLease.IsAcquired);
+
+        using var otherActorLease = await limiter.AcquireAsync(
+            CreateResolveHttpContext(OtherOwnerUserId, SecondPropertyId));
+        Assert.True(otherActorLease.IsAcquired);
+
+        acceptedLeases.ForEach(lease => lease.Dispose());
     }
 
     [Fact]
@@ -284,6 +425,19 @@ public sealed class PropertyUserOwnerSecurityTests
         IsActive = true,
         PermissionMatrixJson = JsonSerializer.Serialize(matrix)
     };
+
+    private static DefaultHttpContext CreateResolveHttpContext(int actorUserId, int propertyId)
+    {
+        var context = new DefaultHttpContext
+        {
+            User = new ClaimsPrincipal(new ClaimsIdentity(
+                [new Claim(ClaimTypes.NameIdentifier, actorUserId.ToString())],
+                "test"))
+        };
+        context.Request.RouteValues["propertyId"] = propertyId;
+        context.Request.Path = $"/api/owner/properties/{propertyId}/users/resolve";
+        return context;
+    }
 
     private sealed class TestDatabase : IAsyncDisposable
     {

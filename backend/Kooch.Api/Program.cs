@@ -10,6 +10,7 @@ using Kooch.Api.Services;
 using Kooch.Api.Services.Holidays;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
@@ -157,6 +158,13 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy(AuthorizationPolicies.ClientUsers, policy =>
         policy.RequireRole(UserRole.Client.ToString()));
 });
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy<string>(
+        PropertyUserResolveRateLimitPolicy.Name,
+        PropertyUserResolveRateLimitPolicy.CreatePartition);
+});
 
 builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())
     .AddJsonOptions(options =>
@@ -215,6 +223,7 @@ if (app.Environment.IsDevelopment())
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseAuthentication();
+app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
 

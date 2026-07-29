@@ -220,6 +220,7 @@ export function PropertyUsersManagement({
     () => users.find((user) => user.userId === sessionUser?.userId) ?? null,
     [sessionUser?.userId, users],
   );
+  // TODO: Replace frontend PlatformRole inference only if assignable roles move to server metadata.
   const hasGlobalPropertyUserAccess = platformRole === "SuperAdmin";
   const actorPropertyRole = useMemo<PropertyUserRole>(() => {
     if (hasGlobalPropertyUserAccess) {

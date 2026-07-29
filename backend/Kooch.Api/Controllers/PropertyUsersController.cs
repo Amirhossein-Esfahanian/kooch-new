@@ -3,6 +3,7 @@ using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace Kooch.Api.Controllers;
 
@@ -25,6 +26,7 @@ public class PropertyUsersController(IPropertyUserService propertyUserService) :
     }
 
     [HttpPost("resolve")]
+    [EnableRateLimiting(PropertyUserResolveRateLimitPolicy.Name)]
     [ProducesResponseType<PropertyUserCandidateResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PropertyUserCandidateResponse>> ResolveCandidate(
         int propertyId,
