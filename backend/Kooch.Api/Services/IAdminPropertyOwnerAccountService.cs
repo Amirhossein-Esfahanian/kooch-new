@@ -5,9 +5,10 @@ namespace Kooch.Api.Services;
 
 public interface IAdminPropertyOwnerAccountService
 {
-    Task<IReadOnlyList<AdminPropertyOwnerAccountResponse>> GetCandidatesAsync(
+    Task<AdminPropertyOwnerCandidatePageResponse> SearchCandidatesAsync(
         int currentUserId,
         UserRole currentRole,
+        AdminPropertyOwnerCandidateQuery query,
         CancellationToken cancellationToken = default);
 
     Task<AdminPropertyOwnerAccountResponse> CreateAsync(

@@ -379,14 +379,10 @@ public class PropertyService(
         var hasNewOwner = request.NewOwner is not null;
         if (hasExistingOwner == hasNewOwner)
         {
-            throw new ArgumentException("Select exactly one new owner source.");
+            throw new ArgumentException("دقیقاً یک مالک جدید را انتخاب کنید.");
         }
 
-        if (request.PreviousOwnerAction == PreviousOwnerTransferAction.Demote &&
-            (!request.PreviousOwnerRole.HasValue || request.PreviousOwnerRole == PropertyUserRole.PropertyOwner))
-        {
-            throw new ArgumentException("Select a non-owner role for the previous owner.");
-        }
+        ValidatePreviousOwnerSelection(request);
 
         Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction? transaction = null;
         if (dbContext.Database.IsRelational())
@@ -407,7 +403,7 @@ public class PropertyService(
 
             if (newOwner.Id == previousOwnerId)
             {
-                throw new InvalidOperationException("The selected user is already the property owner.");
+                throw new InvalidOperationException("کاربر انتخاب‌شده هم‌اکنون مالک این اقامتگاه است.");
             }
 
             var conflictingOwners = await dbContext.UserPropertyAccesses.AsNoTracking()
@@ -423,7 +419,7 @@ public class PropertyService(
                 .ToListAsync(cancellationToken);
             if (conflictingOwners.Count > 0)
             {
-                throw new InvalidOperationException("This property already has another active owner membership.");
+                throw new InvalidOperationException("این اقامتگاه دارای عضویت مالک فعال دیگری است.");
             }
 
             var previousOwner = property.Owner;
@@ -431,21 +427,37 @@ public class PropertyService(
             var newOwnerAccess = await EnsureOwnerAccessAsync(propertyId, newOwner.Id, cancellationToken);
 
             var previousOwnerAccess = await dbContext.UserPropertyAccesses
+                .IgnoreQueryFilters()
                 .SingleOrDefaultAsync(access =>
                     access.PropertyId == propertyId &&
                     access.UserId == previousOwnerId,
                     cancellationToken);
-            if (previousOwnerAccess is not null)
+            if (request.PreviousOwnerAction == PreviousOwnerTransferAction.DeactivateMembership)
             {
-                if (request.PreviousOwnerAction == PreviousOwnerTransferAction.DeactivateMembership)
+                if (previousOwnerAccess is not null)
                 {
                     previousOwnerAccess.Status = PropertyUserStatus.Inactive;
                     previousOwnerAccess.IsActive = false;
                 }
-                else
+            }
+            else
+            {
+                if (previousOwnerAccess is null)
                 {
-                    ApplyMembershipRole(previousOwnerAccess, request.PreviousOwnerRole!.Value, PropertyUserStatus.Active, true);
+                    previousOwnerAccess = new UserPropertyAccess
+                    {
+                        PropertyId = propertyId,
+                        UserId = previousOwnerId
+                    };
+                    dbContext.UserPropertyAccesses.Add(previousOwnerAccess);
                 }
+
+                ApplyMembershipRole(
+                    previousOwnerAccess,
+                    request.PreviousOwnerRole!.Value,
+                    PropertyUserStatus.Active,
+                    true);
+                RestoreMembership(previousOwnerAccess);
             }
 
             await dbContext.SaveChangesAsync(cancellationToken);
@@ -791,17 +803,12 @@ public class PropertyService(
             ?? throw new ArgumentException("The selected owner account was not found.");
         if (user.IsDeleted)
         {
-            throw new InvalidOperationException("Deleted users cannot receive property ownership.");
+            throw new InvalidOperationException("کاربر حذف‌شده نمی‌تواند مالک اقامتگاه شود.");
         }
 
         if (!user.IsActive)
         {
-            throw new InvalidOperationException("Inactive users must be reactivated before receiving property ownership.");
-        }
-
-        if (user.Role != UserRole.Client)
-        {
-            throw new ArgumentException("The selected owner must be a normal user account.");
+            throw new InvalidOperationException("کاربر غیرفعال باید پیش از دریافت مالکیت فعال شود.");
         }
 
         return user;
@@ -861,9 +868,7 @@ public class PropertyService(
         }
 
         ApplyMembershipRole(ownerAccess, PropertyUserRole.PropertyOwner, PropertyUserStatus.Active, true);
-        ownerAccess.IsDeleted = false;
-        ownerAccess.DeletedAtUtc = null;
-        ownerAccess.DeletedByUserId = null;
+        RestoreMembership(ownerAccess);
         return ownerAccess;
     }
 
@@ -926,6 +931,39 @@ public class PropertyService(
         access.IsActive = isActive && status == PropertyUserStatus.Active;
         var permissions = PropertyPermissionMatrixDefaults.CreateForRole(role);
         access.PermissionMatrixJson = JsonSerializer.Serialize(permissions);
+    }
+
+    private static void RestoreMembership(UserPropertyAccess access)
+    {
+        access.IsDeleted = false;
+        access.DeletedAtUtc = null;
+        access.DeletedByUserId = null;
+    }
+
+    private static void ValidatePreviousOwnerSelection(
+        AdminTransferPropertyOwnershipRequest request)
+    {
+        if (!Enum.IsDefined(request.PreviousOwnerAction))
+        {
+            throw new ArgumentException("نحوه دسترسی مالک قبلی معتبر نیست.");
+        }
+
+        if (request.PreviousOwnerAction == PreviousOwnerTransferAction.DeactivateMembership)
+        {
+            if (request.PreviousOwnerRole.HasValue)
+            {
+                throw new ArgumentException("برای حذف دسترسی مالک قبلی نباید نقشی انتخاب شود.");
+            }
+
+            return;
+        }
+
+        if (!request.PreviousOwnerRole.HasValue ||
+            !Enum.IsDefined(request.PreviousOwnerRole.Value) ||
+            request.PreviousOwnerRole == PropertyUserRole.PropertyOwner)
+        {
+            throw new ArgumentException("یک نقش معتبر و غیرمالک برای مالک قبلی انتخاب کنید.");
+        }
     }
 
 

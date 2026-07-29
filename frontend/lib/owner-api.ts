@@ -242,6 +242,23 @@ export interface AdminPropertyOwnerAccountResponse {
   temporarySetupLink?: string | null;
 }
 
+export interface AdminPropertyOwnerCandidateResponse {
+  id: number;
+  firstName: string;
+  lastName: string;
+  fullName: string;
+  phoneNumber: string | null;
+  email: string | null;
+}
+
+export interface AdminPropertyOwnerCandidatePageResponse {
+  items: AdminPropertyOwnerCandidateResponse[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface RoomTypeResponse {
   id: number;
   propertyId: number;

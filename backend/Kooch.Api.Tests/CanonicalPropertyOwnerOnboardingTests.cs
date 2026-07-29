@@ -104,15 +104,21 @@ public sealed class CanonicalPropertyOwnerOnboardingTests
     }
 
     [Fact]
-    public async Task OwnerAccountCandidates_ReturnOnlyNormalClientAccounts()
+    public async Task OwnerAccountCandidates_ReturnActiveUsersRegardlessOfPlatformRole()
     {
         await using var dbContext = CreateContext();
         await SeedBaseAsync(dbContext);
         var service = CreateOwnerAccountService(dbContext);
 
-        var candidates = await service.GetCandidatesAsync(AdminUserId, UserRole.SuperAdmin);
+        var candidates = await service.SearchCandidatesAsync(
+            AdminUserId,
+            UserRole.SuperAdmin,
+            new AdminPropertyOwnerCandidateQuery { Page = 1, PageSize = 25 });
 
-        Assert.Equal([OwnerUserId], candidates.Select(candidate => candidate.Id).ToArray());
+        Assert.Equal(
+            [AdminUserId, OwnerUserId, LegacyOwnerUserId],
+            candidates.Items.Select(candidate => candidate.Id).ToArray());
+        Assert.Equal(3, candidates.TotalCount);
     }
 
     [Fact]

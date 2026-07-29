@@ -14,18 +14,51 @@ public class AdminPropertyOwnerAccountService(
     IAuthService authService,
     IHostEnvironment appEnvironment) : IAdminPropertyOwnerAccountService
 {
-    public async Task<IReadOnlyList<AdminPropertyOwnerAccountResponse>> GetCandidatesAsync(
+    public async Task<AdminPropertyOwnerCandidatePageResponse> SearchCandidatesAsync(
         int currentUserId,
         UserRole currentRole,
+        AdminPropertyOwnerCandidateQuery query,
         CancellationToken cancellationToken = default)
     {
         await EnsureCanManagePropertiesAsync(currentUserId, currentRole, cancellationToken);
 
-        return await Project(dbContext.Users.AsNoTracking()
-                .Where(user => user.Role == UserRole.Client)
+        var users = dbContext.Users
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .Where(user => !user.IsDeleted && user.IsActive);
+        if (query.ExcludeUserId.HasValue)
+        {
+            users = users.Where(user => user.Id != query.ExcludeUserId.Value);
+        }
+
+        var search = query.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            users = users.Where(user =>
+                user.FirstName.Contains(search) ||
+                user.LastName.Contains(search) ||
+                (user.PhoneNumber != null && user.PhoneNumber.Contains(search)) ||
+                (user.Email != null && user.Email.Contains(search)));
+        }
+
+        var totalCount = await users.CountAsync(cancellationToken);
+        var items = await ProjectCandidates(users
                 .OrderBy(user => user.LastName)
-                .ThenBy(user => user.FirstName))
+                .ThenBy(user => user.FirstName)
+                .ThenBy(user => user.Id)
+                .Skip((query.Page - 1) * query.PageSize)
+                .Take(query.PageSize))
             .ToListAsync(cancellationToken);
+        return new AdminPropertyOwnerCandidatePageResponse
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)query.PageSize)
+        };
     }
 
     public async Task<AdminPropertyOwnerAccountResponse> CreateAsync(
@@ -133,6 +166,17 @@ public class AdminPropertyOwnerAccountService(
             PhoneNumber = user.PhoneNumber,
             IsActive = user.IsActive,
             PasswordSetupRequired = user.PasswordSetupRequired
+        });
+
+    private static IQueryable<AdminPropertyOwnerCandidateResponse> ProjectCandidates(IQueryable<User> query) =>
+        query.Select(user => new AdminPropertyOwnerCandidateResponse
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            FullName = (user.FirstName + " " + user.LastName).Trim(),
+            PhoneNumber = user.PhoneNumber,
+            Email = user.Email
         });
 
     private static UserIdentityInput CreateUserIdentity(

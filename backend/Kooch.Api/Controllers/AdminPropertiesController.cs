@@ -16,12 +16,17 @@ public class AdminPropertiesController(
     IAdminPropertyOwnerAccountService ownerAccountService) : AuthenticatedControllerBase
 {
     [HttpGet("owner-candidates")]
-    [ProducesResponseType<IReadOnlyList<AdminPropertyOwnerAccountResponse>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<AdminPropertyOwnerAccountResponse>>> GetOwnerCandidates(
+    [ProducesResponseType<AdminPropertyOwnerCandidatePageResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<AdminPropertyOwnerCandidatePageResponse>> GetOwnerCandidates(
+        [FromQuery] AdminPropertyOwnerCandidateQuery query,
         CancellationToken cancellationToken)
     {
         var user = GetCurrentUser();
-        return Ok(await ownerAccountService.GetCandidatesAsync(user.UserId, user.Role, cancellationToken));
+        return Ok(await ownerAccountService.SearchCandidatesAsync(
+            user.UserId,
+            user.Role,
+            query,
+            cancellationToken));
     }
 
     [HttpPost("owner-candidates")]
@@ -32,7 +37,7 @@ public class AdminPropertiesController(
     {
         var user = GetCurrentUser();
         var owner = await ownerAccountService.CreateAsync(user.UserId, user.Role, request, cancellationToken);
-        return CreatedAtAction(nameof(GetOwnerCandidates), new { id = owner.Id }, owner);
+        return StatusCode(StatusCodes.Status201Created, owner);
     }
 
     [HttpPost]

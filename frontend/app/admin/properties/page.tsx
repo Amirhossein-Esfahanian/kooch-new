@@ -1,7 +1,7 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
@@ -37,6 +37,8 @@ import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   apiRequest,
   AdminPropertyOwnerAccountResponse,
+  AdminPropertyOwnerCandidatePageResponse,
+  AdminPropertyOwnerCandidateResponse,
   InventoryMode,
   PropertyResponse,
   PropertyStatus,
@@ -107,12 +109,12 @@ const previousOwnerRoleOptions: Exclude<PropertyUserRole, "PropertyOwner">[] = [
 ];
 
 const propertyUserRoleLabels: Record<PropertyUserRole, string> = {
-  PropertyOwner: "Owner",
-  Manager: "Manager",
-  Reception: "Reception",
-  Accounting: "Accounting",
-  Housekeeping: "Housekeeping",
-  Custom: "Custom",
+  PropertyOwner: "مالک اقامتگاه",
+  Manager: "مدیر اقامتگاه",
+  Reception: "پذیرش",
+  Accounting: "حسابداری",
+  Housekeeping: "خانه‌داری",
+  Custom: "نقش سفارشی",
 };
 
 type TransferOwnershipForm = {
@@ -164,13 +166,205 @@ function normalizeSearchText(value: unknown) {
     .replaceAll("ك", "ک");
 }
 
+function getTransferOwnershipError(caught: unknown) {
+  const message = caught instanceof Error ? caught.message : "";
+  const normalized = message.toLocaleLowerCase("en-US");
+  const identityMessage = getCreateUserApiError(caught, "");
+
+  if (
+    identityMessage.includes("شماره موبایل") ||
+    identityMessage.includes("ایمیل")
+  ) {
+    return identityMessage;
+  }
+  if (message.includes("غیرفعال") || normalized.includes("inactive")) {
+    return "کاربر غیرفعال باید پیش از دریافت مالکیت فعال شود.";
+  }
+  if (message.includes("حذف‌شده") || normalized.includes("deleted")) {
+    return "کاربر حذف‌شده نمی‌تواند مالک اقامتگاه شود.";
+  }
+  if (message.includes("هم‌اکنون مالک") || normalized.includes("already the property owner")) {
+    return "کاربر انتخاب‌شده هم‌اکنون مالک این اقامتگاه است.";
+  }
+  if (message.includes("عضویت مالک فعال") || normalized.includes("active owner membership")) {
+    return "این اقامتگاه دارای عضویت مالک فعال دیگری است.";
+  }
+  if (
+    message.includes("نحوه دسترسی مالک قبلی") ||
+    message.includes("نقش معتبر") ||
+    normalized.includes("previous owner")
+  ) {
+    return "نحوه دسترسی یا نقش مالک قبلی معتبر نیست.";
+  }
+  if (
+    message.includes("دسترسی مدیریت اقامتگاه‌ها") ||
+    normalized.includes("permission") ||
+    normalized.includes("forbidden") ||
+    normalized.includes("403")
+  ) {
+    return "شما اجازه انتقال مالکیت این اقامتگاه را ندارید.";
+  }
+
+  return "انتقال مالکیت انجام نشد.";
+}
+
+function OwnerCandidateSearch({
+  excludeUserId,
+  label,
+  onSelect,
+  selected,
+}: {
+  excludeUserId?: number;
+  label: string;
+  onSelect: (candidate: AdminPropertyOwnerCandidateResponse | null) => void;
+  selected: AdminPropertyOwnerCandidateResponse | null;
+}) {
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [result, setResult] =
+    useState<AdminPropertyOwnerCandidatePageResponse | null>(null);
+  const [searching, setSearching] = useState(true);
+  const [searchError, setSearchError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      setSearching(true);
+      setSearchError("");
+      const query = new URLSearchParams({
+        search: search.trim(),
+        page: String(page),
+        pageSize: "10",
+      });
+      if (excludeUserId) {
+        query.set("excludeUserId", String(excludeUserId));
+      }
+
+      try {
+        const response =
+          await apiRequest<AdminPropertyOwnerCandidatePageResponse>(
+            `/admin/properties/owner-candidates?${query.toString()}`,
+          );
+        if (!cancelled) setResult(response);
+      } catch {
+        if (!cancelled) {
+          setResult(null);
+          setSearchError("جست‌وجوی کاربران انجام نشد. دوباره تلاش کنید.");
+        }
+      } finally {
+        if (!cancelled) setSearching(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [excludeUserId, page, search]);
+
+  const selectedOutsidePage =
+    selected && !result?.items.some((candidate) => candidate.id === selected.id)
+      ? selected
+      : null;
+
+  return (
+    <div className="grid gap-3">
+      <KoochField label="جست‌وجوی کاربر">
+        <KoochInput
+          autoComplete="off"
+          onChange={(event) => {
+            setSearch(event.target.value);
+            setPage(1);
+          }}
+          placeholder="نام، نام خانوادگی، موبایل یا ایمیل"
+          value={search}
+        />
+      </KoochField>
+
+      <KoochField label={label} required>
+        <KoochSelect
+          disabled={searching || Boolean(searchError)}
+          onChange={(event) => {
+            const id = Number(event.target.value);
+            const candidate = [
+              ...(result?.items ?? []),
+              ...(selectedOutsidePage ? [selectedOutsidePage] : []),
+            ].find((item) => item.id === id);
+            onSelect(candidate ?? null);
+          }}
+          value={selected ? String(selected.id) : ""}
+        >
+          <option value="">
+            {searching ? "در حال جست‌وجو..." : "انتخاب کاربر"}
+          </option>
+          {selectedOutsidePage && (
+            <option value={selectedOutsidePage.id}>
+              {selectedOutsidePage.fullName || selectedOutsidePage.phoneNumber}
+            </option>
+          )}
+          {result?.items.map((candidate) => (
+            <option key={candidate.id} value={candidate.id}>
+              {candidate.fullName || "کاربر بدون نام"} —{" "}
+              {candidate.phoneNumber || candidate.email || "بدون اطلاعات تماس"}
+            </option>
+          ))}
+        </KoochSelect>
+      </KoochField>
+
+      {searchError ? (
+        <p className="text-sm font-semibold text-destructive" role="alert">
+          {searchError}
+        </p>
+      ) : !searching && result?.items.length === 0 ? (
+        <p className="text-sm text-muted-foreground" role="status">
+          {search.trim()
+            ? "کاربری مطابق جست‌وجو یافت نشد."
+            : "کاربر واجد شرایطی برای انتخاب وجود ندارد."}
+        </p>
+      ) : null}
+
+      {result && result.totalPages > 1 && (
+        <div
+          aria-label="صفحه‌بندی نتایج کاربران"
+          className="flex items-center justify-between gap-3"
+        >
+          <KoochButton
+            disabled={searching || page <= 1}
+            onClick={() => setPage((current) => Math.max(1, current - 1))}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            صفحه قبل
+          </KoochButton>
+          <span className="text-xs text-muted-foreground">
+            صفحه {result.page} از {result.totalPages}
+          </span>
+          <KoochButton
+            disabled={searching || page >= result.totalPages}
+            onClick={() => setPage((current) => current + 1)}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            صفحه بعد
+          </KoochButton>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPropertiesPage() {
   const router = useRouter();
   const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
-  const [users, setUsers] = useState<AdminPropertyOwnerAccountResponse[]>([]);
+  const [selectedCreateOwner, setSelectedCreateOwner] =
+    useState<AdminPropertyOwnerCandidateResponse | null>(null);
+  const [selectedTransferOwner, setSelectedTransferOwner] =
+    useState<AdminPropertyOwnerCandidateResponse | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreatePropertyForm>(emptyCreateForm);
@@ -183,15 +377,11 @@ export default function AdminPropertiesPage() {
     useState<CreateUserIdentityErrors>({});
   const [transferIdentityErrors, setTransferIdentityErrors] =
     useState<CreateUserIdentityErrors>({});
+  const transferSubmissionRef = useRef(false);
   const [setupLink, setSetupLink] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState<PropertyStatusFilter>("all");
   const [typeFilter, setTypeFilter] = useState<PropertyTypeFilter>("all");
-
-  const ownerOptions = useMemo(
-    () => users,
-    [users],
-  );
 
   const filteredProperties = useMemo(() => {
     const normalizedSearch = normalizeSearchText(searchTerm);
@@ -227,18 +417,10 @@ export default function AdminPropertiesPage() {
     statusFilter !== "all" ||
     typeFilter !== "all";
 
-  const selectedTransferOwner = transferForm.newOwnerId
-    ? users.find((user) => user.id === Number(transferForm.newOwnerId)) ?? null
-    : null;
-
   const load = useCallback(async () => {
-    const [propertyItems, userItems] = await Promise.all([
-      apiRequest<PropertyResponse[]>("/admin/properties"),
-      apiRequest<AdminPropertyOwnerAccountResponse[]>("/admin/properties/owner-candidates").catch(() => []),
-    ]);
-
+    const propertyItems =
+      await apiRequest<PropertyResponse[]>("/admin/properties");
     setProperties(propertyItems);
-    setUsers(userItems);
   }, []);
 
   useEffect(() => {
@@ -282,8 +464,9 @@ export default function AdminPropertiesPage() {
   function openCreateDialog() {
     setCreateForm({
       ...emptyCreateForm,
-      ownerId: ownerOptions[0]?.id ? String(ownerOptions[0].id) : "",
+      ownerId: "",
     });
+    setSelectedCreateOwner(null);
     setError("");
     setCreateIdentityErrors({});
     setCreateOpen(true);
@@ -309,8 +492,6 @@ export default function AdminPropertiesPage() {
       }),
     });
 
-    setUsers((current) => [...current, createdOwner]);
-
     const ownerSetupLink = createdOwner.temporarySetupLink ?? null;
 
     if (ownerSetupLink && process.env.NODE_ENV !== "production") {
@@ -321,22 +502,20 @@ export default function AdminPropertiesPage() {
   }
 
   function openTransferDialog(property: PropertyResponse) {
-    const firstCandidate = ownerOptions.find((owner) => owner.id !== property.ownerId);
     setTransferProperty(property);
-    setTransferForm({
-      ...emptyTransferForm,
-      newOwnerId: firstCandidate ? String(firstCandidate.id) : "",
-    });
+    setTransferForm(emptyTransferForm);
+    setSelectedTransferOwner(null);
     setError("");
     setTransferIdentityErrors({});
   }
 
   async function transferOwnership() {
-    if (!transferProperty) return;
+    if (!transferProperty || transferSubmissionRef.current) return;
 
     if (transferForm.ownerMode === "existing-owner" && !transferForm.newOwnerId) {
-      toast.error("Select the new owner.");
-      throw new Error("Select the new owner.");
+      const message = "مالک جدید را انتخاب کنید.";
+      toast.error(message);
+      throw new Error(message);
     }
 
     if (transferForm.ownerMode === "new-owner") {
@@ -360,6 +539,7 @@ export default function AdminPropertiesPage() {
       }
     }
 
+    transferSubmissionRef.current = true;
     setTransferring(true);
     setError("");
     try {
@@ -397,18 +577,17 @@ export default function AdminPropertiesPage() {
         ),
       );
       await load();
-      toast.success("Ownership transferred.");
+      toast.success("انتقال مالکیت با موفقیت انجام شد.");
       setTransferProperty(null);
       setTransferForm(emptyTransferForm);
+      setSelectedTransferOwner(null);
     } catch (caught) {
-      const message = getCreateUserApiError(
-        caught,
-        "انتقال مالکیت انجام نشد.",
-      );
+      const message = getTransferOwnershipError(caught);
       setError(message);
       toast.error(message);
-      throw caught;
+      throw new Error(message);
     } finally {
+      transferSubmissionRef.current = false;
       setTransferring(false);
     }
   }
@@ -742,11 +921,11 @@ export default function AdminPropertiesPage() {
                           <KoochButton
                             onClick={() => openTransferDialog(property)}
                             size="sm"
-                            title="Transfer ownership"
+                            title="انتقال مالکیت"
                             type="button"
                             variant="outline"
                           >
-                            Transfer Ownership
+                            انتقال مالکیت
                           </KoochButton>
 
                           {property.status === "Approved" && (
@@ -772,17 +951,33 @@ export default function AdminPropertiesPage() {
 
 
         <KoochConfirmDialog
-          cancelText="Cancel"
-          confirmText="Transfer ownership"
+          cancelText="انصراف"
+          confirmText="تأیید انتقال مالکیت"
           description={
             transferProperty ? (
-              <span>
-                Current owner: {transferProperty.ownerName || transferProperty.ownerId}
-                <br />
-                New owner: {transferForm.ownerMode === "existing-owner"
-                  ? selectedTransferOwner?.fullName || selectedTransferOwner?.email || "Not selected"
-                  : [transferForm.newOwnerFirstName, transferForm.newOwnerLastName].filter(Boolean).join(" ") || "New user"}
-              </span>
+              <div className="grid gap-2">
+                <p>
+                  مالکیت اقامتگاه «{transferProperty.name}» از «
+                  {transferProperty.ownerName || transferProperty.ownerId}» به «
+                  {transferForm.ownerMode === "existing-owner"
+                    ? selectedTransferOwner?.fullName || "انتخاب نشده"
+                    : [transferForm.newOwnerFirstName, transferForm.newOwnerLastName]
+                        .filter(Boolean)
+                        .join(" ") || "کاربر جدید"}
+                  » منتقل می‌شود.
+                </p>
+                <p>
+                  مالک جدید{" "}
+                  {transferForm.ownerMode === "existing-owner"
+                    ? "از میان کاربران موجود انتخاب شده است."
+                    : "به‌عنوان کاربر جدید در همین فرایند ساخته می‌شود."}
+                </p>
+                <p>
+                  {transferForm.previousOwnerAction === "DeactivateMembership"
+                    ? "دسترسی مالک قبلی به این اقامتگاه حذف خواهد شد."
+                    : `مالک قبلی با نقش «${propertyUserRoleLabels[transferForm.previousOwnerRole]}» به همکاری ادامه می‌دهد.`}
+                </p>
+              </div>
             ) : undefined
           }
           disabled={transferring}
@@ -792,7 +987,7 @@ export default function AdminPropertiesPage() {
             if (!open && !transferring) setTransferProperty(null);
           }}
           open={Boolean(transferProperty)}
-          title="Transfer property ownership"
+          title="انتقال مالکیت اقامتگاه"
           variant="warning"
         >
           <div className="grid gap-4">
@@ -803,7 +998,7 @@ export default function AdminPropertiesPage() {
                 type="button"
                 variant={transferForm.ownerMode === "existing-owner" ? "primary" : "outline"}
               >
-                Existing user
+                انتخاب کاربر موجود
               </KoochButton>
               <KoochButton
                 onClick={() => setTransferForm({ ...transferForm, ownerMode: "new-owner" })}
@@ -811,29 +1006,23 @@ export default function AdminPropertiesPage() {
                 type="button"
                 variant={transferForm.ownerMode === "new-owner" ? "primary" : "outline"}
               >
-                Create Client account
+                ساخت کاربر جدید
               </KoochButton>
             </div>
 
             {transferForm.ownerMode === "existing-owner" ? (
-              <KoochField label="New owner">
-                <KoochSelect
-                  onChange={(event) =>
-                    setTransferForm({ ...transferForm, newOwnerId: event.target.value })
-                  }
-                  value={transferForm.newOwnerId}
-                >
-                  <option value="">Select user</option>
-                  {ownerOptions
-                    .filter((owner) => owner.id !== transferProperty?.ownerId)
-                    .map((owner) => (
-                      <option key={owner.id} value={owner.id}>
-                        {owner.fullName || owner.email} - {owner.email}
-                        {!owner.isActive ? " (inactive)" : ""}
-                      </option>
-                    ))}
-                </KoochSelect>
-              </KoochField>
+              <OwnerCandidateSearch
+                excludeUserId={transferProperty?.ownerId}
+                label="مالک جدید"
+                onSelect={(candidate) => {
+                  setSelectedTransferOwner(candidate);
+                  setTransferForm({
+                    ...transferForm,
+                    newOwnerId: candidate ? String(candidate.id) : "",
+                  });
+                }}
+                selected={selectedTransferOwner}
+              />
             ) : (
               <div className="grid gap-3 md:grid-cols-2">
                 <CreateUserFields
@@ -856,7 +1045,7 @@ export default function AdminPropertiesPage() {
                     email: transferForm.newOwnerEmail,
                   }}
                 />
-                <KoochField className="md:col-span-2" label="Initial password">
+                <KoochField className="md:col-span-2" label="رمز عبور اولیه" required>
                   <KoochInput
                     dir="ltr"
                     minLength={8}
@@ -870,7 +1059,7 @@ export default function AdminPropertiesPage() {
               </div>
             )}
 
-            <KoochField label="Previous owner">
+            <KoochField label="نحوه دسترسی مالک قبلی">
               <KoochSelect
                 onChange={(event) =>
                   setTransferForm({
@@ -880,13 +1069,13 @@ export default function AdminPropertiesPage() {
                 }
                 value={transferForm.previousOwnerAction}
               >
-                <option value="DeactivateMembership">Deactivate membership</option>
-                <option value="Demote">Demote to role</option>
+                <option value="DeactivateMembership">حذف دسترسی مالک قبلی</option>
+                <option value="Demote">تغییر نقش مالک قبلی</option>
               </KoochSelect>
             </KoochField>
 
             {transferForm.previousOwnerAction === "Demote" && (
-              <KoochField label="Previous owner role">
+              <KoochField label="نقش جدید مالک قبلی">
                 <KoochSelect
                   onChange={(event) =>
                     setTransferForm({
@@ -976,29 +1165,17 @@ export default function AdminPropertiesPage() {
                 </div>
 
                 {createForm.ownerMode === "existing-owner" ? (
-                  <KoochField
-                    helperText="مالک بعدا می‌تواند از پنل مالک، اقامتگاه را تکمیل کند."
+                  <OwnerCandidateSearch
                     label="مالک اقامتگاه"
-                    required
-                  >
-                    <KoochSelect
-                      onChange={(event) =>
-                        setCreateForm({
-                          ...createForm,
-                          ownerId: event.target.value,
-                        })
-                      }
-                      required
-                      value={createForm.ownerId}
-                    >
-                      <option value="">انتخاب مالک</option>
-                      {ownerOptions.map((owner) => (
-                        <option key={owner.id} value={owner.id}>
-                          {owner.fullName || owner.email} - {owner.email}
-                        </option>
-                      ))}
-                    </KoochSelect>
-                  </KoochField>
+                    onSelect={(candidate) => {
+                      setSelectedCreateOwner(candidate);
+                      setCreateForm({
+                        ...createForm,
+                        ownerId: candidate ? String(candidate.id) : "",
+                      });
+                    }}
+                    selected={selectedCreateOwner}
+                  />
                 ) : (
                   <div className="grid gap-4 md:grid-cols-2">
                     <CreateUserFields
