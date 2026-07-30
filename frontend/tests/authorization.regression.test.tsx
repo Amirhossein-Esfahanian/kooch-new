@@ -58,6 +58,7 @@ type SessionResponse = {
   email: string;
   phoneNumber: string | null;
   platformRole: PlatformRole;
+  platformPermissions: string[];
   isActive: boolean;
   workspaces: AuthWorkspace[];
   propertyMemberships: AuthPropertyMembership[];
@@ -131,6 +132,7 @@ function session(
     email: "test@example.com",
     phoneNumber: null,
     platformRole: "Client",
+    platformPermissions: [],
     isActive: true,
     workspaces: ["account"],
     propertyMemberships: [],
@@ -211,6 +213,85 @@ describe("platform workspace authorization", () => {
     );
 
     expect(await screen.findByTestId("assistant-admin-content")).toBeTruthy();
+  });
+
+  it("allows SuperAdmin through a required platform permission implicitly", async () => {
+    renderWithSession(
+      session({
+        platformRole: "SuperAdmin",
+        platformPermissions: [],
+        workspaces: ["admin"],
+        defaultWorkspace: "admin",
+      }),
+      <AdminLayout requiredPlatformPermission="ManageUsers">
+        <div data-testid="super-admin-users">users</div>
+      </AdminLayout>,
+      { pathname: "/admin/users" },
+    );
+
+    expect(await screen.findByTestId("super-admin-users")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "مدیریت کاربران" }),
+    ).toBeTruthy();
+  });
+
+  it("allows an AdminAssistant with ManageUsers into Admin Users", async () => {
+    renderWithSession(
+      session({
+        platformRole: "AdminAssistant",
+        platformPermissions: ["ManageUsers"],
+        workspaces: ["admin"],
+        defaultWorkspace: "admin",
+      }),
+      <AdminLayout requiredPlatformPermission="ManageUsers">
+        <div data-testid="assistant-admin-users">users</div>
+      </AdminLayout>,
+      { pathname: "/admin/users" },
+    );
+
+    expect(await screen.findByTestId("assistant-admin-users")).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "مدیریت کاربران" }),
+    ).toBeTruthy();
+  });
+
+  it("redirects an AdminAssistant without ManageUsers away from Admin Users", async () => {
+    renderWithSession(
+      session({
+        platformRole: "AdminAssistant",
+        workspaces: ["admin"],
+        defaultWorkspace: "admin",
+      }),
+      <AdminLayout requiredPlatformPermission="ManageUsers">
+        <div data-testid="denied-admin-users">users</div>
+      </AdminLayout>,
+      { pathname: "/admin/users" },
+    );
+
+    await waitForSession();
+    await waitFor(() =>
+      expect(navigation.router.replace).toHaveBeenCalledWith("/admin"),
+    );
+    expect(screen.queryByTestId("denied-admin-users")).toBeNull();
+  });
+
+  it("hides the Admin Users menu without ManageUsers", async () => {
+    renderWithSession(
+      session({
+        platformRole: "AdminAssistant",
+        workspaces: ["admin"],
+        defaultWorkspace: "admin",
+      }),
+      <AdminLayout>
+        <div data-testid="admin-home">home</div>
+      </AdminLayout>,
+      { pathname: "/admin" },
+    );
+
+    expect(await screen.findByTestId("admin-home")).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "مدیریت کاربران" }),
+    ).toBeNull();
   });
 
   it("denies an AdminAssistant when admin access is absent", async () => {

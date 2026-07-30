@@ -41,7 +41,11 @@ public enum AuditAction
     BookingCancelled,
     BookingApproved,
     BookingExpired,
-    PropertyOwnershipTransferred
+    PropertyOwnershipTransferred,
+    PlatformAdminCreated,
+    PlatformAdminUpdated,
+    PlatformAdminActivated,
+    PlatformAdminDeactivated
 }
 public enum PermissionKey
 {

@@ -55,7 +55,12 @@ const adminMenuItems: DashboardMenuItem[] = [
     icon: "/svgs/hotel.svg",
     href: "/admin/properties",
   },
-  { label: "مدیریت کاربران", icon: "/svgs/users.svg", href: "/admin/users" },
+  {
+    label: "مدیریت کاربران",
+    icon: "/svgs/users.svg",
+    href: "/admin/users",
+    platformPermission: "ManageUsers",
+  },
   { label: "مدیریت مهمان‌ها", icon: "/svgs/users.svg", href: "/admin/guests" },
   {
     label: "مدیریت امکانات",
@@ -86,9 +91,12 @@ const adminMenuItems: DashboardMenuItem[] = [
 function canViewAdminMenuItem(
   item: DashboardMenuItem,
   platformPermissions: string[],
+  platformRole?: string | null,
 ) {
   return (
-    !item.platformPermission || platformPermissions.includes(item.platformPermission)
+    !item.platformPermission ||
+    platformRole === "SuperAdmin" ||
+    platformPermissions.includes(item.platformPermission)
   );
 }
 function MenuIcon({ icon }: { icon: string }) {
@@ -340,8 +348,10 @@ const chartBars = [34, 58, 44, 72, 63, 86, 51, 79, 92, 66, 74, 88];
 
 export function AdminLayout({
   children,
+  requiredPlatformPermission,
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
+  requiredPlatformPermission?: string;
 }) {
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
@@ -349,13 +359,18 @@ export function AdminLayout({
   const {
     authenticated,
     loading,
+    platformRole,
     platformPermissions,
     refreshSession,
     workspaces,
   } = session;
   const hasAdminWorkspace = workspaces.includes("admin");
+  const hasRequiredPlatformPermission =
+    !requiredPlatformPermission ||
+    platformRole === "SuperAdmin" ||
+    platformPermissions.includes(requiredPlatformPermission);
   const visibleAdminMenuItems = adminMenuItems.filter((item) =>
-    canViewAdminMenuItem(item, platformPermissions),
+    canViewAdminMenuItem(item, platformPermissions, platformRole),
   );
 
   useEffect(() => {
@@ -372,12 +387,15 @@ export function AdminLayout({
     }
 
     refreshAttemptedRef.current = false;
-    if (hasAdminWorkspace) return;
+    if (hasAdminWorkspace && hasRequiredPlatformPermission) return;
 
-    router.replace(resolveSessionDestination(session));
+    router.replace(
+      hasAdminWorkspace ? "/admin" : resolveSessionDestination(session),
+    );
   }, [
     authenticated,
     hasAdminWorkspace,
+    hasRequiredPlatformPermission,
     loading,
     platformPermissions,
     refreshSession,
@@ -385,7 +403,12 @@ export function AdminLayout({
     session,
   ]);
 
-  if (loading || !authenticated || !hasAdminWorkspace) {
+  if (
+    loading ||
+    !authenticated ||
+    !hasAdminWorkspace ||
+    !hasRequiredPlatformPermission
+  ) {
     return <DashboardAuthorizationLoading />;
   }
 

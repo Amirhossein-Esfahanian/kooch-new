@@ -155,6 +155,15 @@ public class AuthService(
         int userId,
         CancellationToken cancellationToken = default)
     {
+        var setupLink = await CreatePasswordSetupTokenWithoutNotificationAsync(userId, cancellationToken);
+        await SendPasswordSetupNotificationAsync(userId, setupLink, cancellationToken);
+        return setupLink;
+    }
+
+    public async Task<string> CreatePasswordSetupTokenWithoutNotificationAsync(
+        int userId,
+        CancellationToken cancellationToken = default)
+    {
         var user = await dbContext.Users.IgnoreQueryFilters()
             .SingleOrDefaultAsync(user => user.Id == userId, cancellationToken);
         if (user is null)
@@ -182,7 +191,17 @@ public class AuthService(
             ExpiresAtUtc = now.AddHours(24)
         });
         await dbContext.SaveChangesAsync(cancellationToken);
-        var setupLink = $"/set-password?token={Uri.EscapeDataString(rawToken)}";
+        return $"/set-password?token={Uri.EscapeDataString(rawToken)}";
+    }
+
+    public async Task SendPasswordSetupNotificationAsync(
+        int userId,
+        string setupLink,
+        CancellationToken cancellationToken = default)
+    {
+        var user = await dbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
+            ?? throw new KeyNotFoundException("User not found.");
         await notificationService.SendAsync(new NotificationRequest
         {
             EventType = NotificationEventType.PasswordSetupRequested,
@@ -194,7 +213,6 @@ public class AuthService(
             DataJson = $$"""{"setupLink":"{{setupLink}}"}""",
             Channels = NotificationChannel.InApp | NotificationChannel.Sms | NotificationChannel.Email
         }, cancellationToken);
-        return setupLink;
     }
 
     public async Task SetPasswordAsync(

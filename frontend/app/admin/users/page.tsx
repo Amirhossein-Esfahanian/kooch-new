@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochBadge } from "@/components/KoochBadge";
+import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochCheckbox } from "@/components/KoochCheckbox";
@@ -199,6 +200,8 @@ export default function AdminUsersPage() {
   const {
     authenticated,
     loading: sessionLoading,
+    platformPermissions,
+    platformRole,
     workspaces,
   } = useAuthSession();
   const [users, setUsers] = useState<AdminUserResponse[]>([]);
@@ -213,6 +216,25 @@ export default function AdminUsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
+  const canManageUsers =
+    platformRole === "SuperAdmin" ||
+    platformPermissions.includes("ManageUsers");
+  const assignableRoles: PlatformAdminRole[] =
+    platformRole === "SuperAdmin" ? roles : ["AdminAssistant"];
+  const assignablePermissionKeys =
+    platformRole === "SuperAdmin"
+      ? allPermissionKeys
+      : allPermissionKeys.filter((permission) =>
+          platformPermissions.includes(permission),
+        );
+  const assignablePermissionCategories = permissionCategories
+    .map((category) => ({
+      ...category,
+      permissions: category.permissions.filter((permission) =>
+        assignablePermissionKeys.includes(permission.key),
+      ),
+    }))
+    .filter((category) => category.permissions.length > 0);
 
   const filteredUsers = useMemo(() => {
     const query = normalizeSearchText(searchTerm);
@@ -257,7 +279,12 @@ export default function AdminUsersPage() {
   }
 
   useEffect(() => {
-    if (sessionLoading || !authenticated || !workspaces.includes("admin"))
+    if (
+      sessionLoading ||
+      !authenticated ||
+      !workspaces.includes("admin") ||
+      !canManageUsers
+    )
       return;
 
     load()
@@ -266,7 +293,7 @@ export default function AdminUsersPage() {
         toast.error(caught.message);
       })
       .finally(() => setLoading(false));
-  }, [authenticated, sessionLoading, workspaces]);
+  }, [authenticated, canManageUsers, sessionLoading, workspaces]);
 
   function resetFilters() {
     setSearchTerm("");
@@ -417,7 +444,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout requiredPlatformPermission="ManageUsers">
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
           actions={
@@ -431,12 +458,9 @@ export default function AdminUsersPage() {
         />
 
         {error && (
-          <KoochCard
-            className="border-destructive/30 bg-destructive/10 text-destructive"
-            padding="sm"
-          >
-            <p className="text-sm font-bold">{error}</p>
-          </KoochCard>
+          <KoochAlert title="عملیات انجام نشد" variant="destructive">
+            {error}
+          </KoochAlert>
         )}
 
         {setupLink && process.env.NODE_ENV !== "production" && (
@@ -533,7 +557,7 @@ export default function AdminUsersPage() {
               </span>
 
               {hasActiveFilters && (
-                <span className="rounded-md bg-amber-300 px-3 py-1 text-xs font-bold text-amber-800 dark:bg-amber-200 dark:text-amber-900">
+                <span className="rounded-md bg-[var(--theme-warning-soft)] px-3 py-1 text-xs font-bold text-[var(--theme-warning)]">
                   فیلتر فعال است
                 </span>
               )}
@@ -596,44 +620,49 @@ export default function AdminUsersPage() {
 
                     <KoochTableCell>
                       <div className="flex flex-wrap gap-2">
-                        <KoochButton
-                          title="ویرایش کاربر"
-                          onClick={() => openEdit(user)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          <KoochIcon name="edit" />
-                        </KoochButton>
+                        {(platformRole === "SuperAdmin" ||
+                          user.role !== "SuperAdmin") && (
+                          <>
+                            <KoochButton
+                              title="ویرایش کاربر"
+                              onClick={() => openEdit(user)}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              <KoochIcon name="edit" />
+                            </KoochButton>
 
-                        {user.isActive ? (
-                          <KoochConfirmDialog
-                            cancelText="انصراف"
-                            confirmText="غیرفعال شود"
-                            description="این کاربر غیرفعال می‌شود. آیا مطمئن هستید؟"
-                            onConfirm={() => setActive(user, false)}
-                            title="غیرفعال‌سازی کاربر"
-                            trigger={
-                              <KoochButton
+                            {user.isActive ? (
+                              <KoochConfirmDialog
+                                cancelText="انصراف"
+                                confirmText="غیرفعال شود"
+                                description="این کاربر غیرفعال می‌شود. آیا مطمئن هستید؟"
+                                onConfirm={() => setActive(user, false)}
                                 title="غیرفعال‌سازی کاربر"
+                                trigger={
+                                  <KoochButton
+                                    title="غیرفعال‌سازی کاربر"
+                                    size="sm"
+                                    type="button"
+                                    variant="destructive"
+                                  >
+                                    <KoochIcon name="suspend" />{" "}
+                                  </KoochButton>
+                                }
+                                variant="destructive"
+                              />
+                            ) : (
+                              <KoochButton
+                                onClick={() => setActive(user, true)}
                                 size="sm"
                                 type="button"
-                                variant="destructive"
+                                variant="ghost"
                               >
-                                <KoochIcon name="suspend" />{" "}
+                                فعال
                               </KoochButton>
-                            }
-                            variant="destructive"
-                          />
-                        ) : (
-                          <KoochButton
-                            onClick={() => setActive(user, true)}
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                          >
-                            فعال
-                          </KoochButton>
+                            )}
+                          </>
                         )}
                       </div>
                     </KoochTableCell>
@@ -731,7 +760,7 @@ export default function AdminUsersPage() {
                   }
                   value={form.role}
                 >
-                  {roles.map((role) => (
+                  {assignableRoles.map((role) => (
                     <option key={role} value={role}>
                       {roleLabels[role]}
                     </option>
@@ -755,7 +784,7 @@ export default function AdminUsersPage() {
                     <div className="flex flex-wrap gap-2">
                       <KoochButton
                         onClick={() =>
-                          setCategoryPermissions(allPermissionKeys, true)
+                          setCategoryPermissions(assignablePermissionKeys, true)
                         }
                         size="sm"
                         type="button"
@@ -766,7 +795,7 @@ export default function AdminUsersPage() {
                       <KoochButton
                         disabled={form.permissions.length === 0}
                         onClick={() =>
-                          setCategoryPermissions(allPermissionKeys, false)
+                          setCategoryPermissions(assignablePermissionKeys, false)
                         }
                         size="sm"
                         type="button"
@@ -778,7 +807,7 @@ export default function AdminUsersPage() {
                   </div>
 
                   <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {permissionCategories.map((category) => {
+                    {assignablePermissionCategories.map((category) => {
                       const categoryKeys = category.permissions.map(
                         (permission) => permission.key,
                       );

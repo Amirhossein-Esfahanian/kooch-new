@@ -12,6 +12,10 @@ public interface IAuthService
     Task SetPasswordAsync(SetPasswordRequest request, CancellationToken cancellationToken = default);
     Task<PasswordSetupTokenStatusResponse> ValidatePasswordSetupTokenAsync(string token, CancellationToken cancellationToken = default);
     Task<string> CreatePasswordSetupTokenAsync(int userId, CancellationToken cancellationToken = default);
+    Task<string> CreatePasswordSetupTokenWithoutNotificationAsync(int userId, CancellationToken cancellationToken = default) =>
+        CreatePasswordSetupTokenAsync(userId, cancellationToken);
+    Task SendPasswordSetupNotificationAsync(int userId, string setupLink, CancellationToken cancellationToken = default) =>
+        Task.CompletedTask;
     Task<CurrentUserResponse?> GetCurrentUserAsync(int userId, CancellationToken cancellationToken = default);
     string GenerateJwtToken(User user, DateTime expiresAtUtc);
 }

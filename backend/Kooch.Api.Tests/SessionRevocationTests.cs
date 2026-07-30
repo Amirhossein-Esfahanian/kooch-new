@@ -159,11 +159,14 @@ public sealed class SessionRevocationTests
     private static AdminUserService CreateAdminUserService(KoochDbContext dbContext)
     {
         var authorization = new PropertyAccessService(dbContext);
+        var permissionService = new PermissionService(dbContext, authorization);
         return new AdminUserService(
             dbContext,
-            new PermissionService(dbContext, authorization),
+            permissionService,
             null!,
-            null!);
+            new AuditLogService(dbContext, permissionService),
+            null!,
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<AdminUserService>.Instance);
     }
 
     private static PropertyUserService CreatePropertyUserService(KoochDbContext dbContext)

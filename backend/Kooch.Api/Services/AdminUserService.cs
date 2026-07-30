@@ -1,3 +1,4 @@
+using System.Data;
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
@@ -13,8 +14,13 @@ public class AdminUserService(
     KoochDbContext dbContext,
     IPermissionService permissionService,
     IAuthService authService,
-    IHostEnvironment appEnvironment) : IAdminUserService
+    IAuditLogService auditLogService,
+    IHostEnvironment appEnvironment,
+    ILogger<AdminUserService> logger) : IAdminUserService
 {
+    private const string LastSuperAdminError = "حداقل یک مدیر ارشد فعال باید در سامانه باقی بماند.";
+    private const string PropertyOwnerDeactivationError = "پیش از غیرفعال‌کردن این کاربر، مالکیت اقامتگاه‌های او را منتقل کنید.";
+
     public async Task<IReadOnlyList<AdminUserResponse>> GetUsersAsync(
         int currentUserId,
         UserRole currentRole,
@@ -22,7 +28,8 @@ public class AdminUserService(
     {
         await EnsureCanManageUsersAsync(currentUserId, currentRole, cancellationToken);
         var query = dbContext.Users.IgnoreQueryFilters().AsNoTracking()
-            .Where(user => user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant);
+            .Where(user => !user.IsDeleted &&
+                           (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant));
 
         return await Project(query.OrderBy(user => user.LastName).ThenBy(user => user.FirstName))
             .ToListAsync(cancellationToken);
@@ -37,6 +44,7 @@ public class AdminUserService(
         await EnsureCanManageUsersAsync(currentUserId, currentRole, cancellationToken);
         return await Project(dbContext.Users.IgnoreQueryFilters().AsNoTracking().Where(user =>
                 user.Id == userId &&
+                !user.IsDeleted &&
                 (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant)))
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
@@ -57,6 +65,10 @@ public class AdminUserService(
             request.Role,
             permissions,
             cancellationToken);
+
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
 
         var identity = CreateUserIdentity(request.FirstName, request.LastName, request.PhoneNumber, request.Email);
         var email = identity.Email;
@@ -84,14 +96,34 @@ public class AdminUserService(
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
         await SyncGlobalPermissionsAsync(user, permissions, cancellationToken);
-        var response = await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
+        string? setupLink = null;
         if (!hasPassword)
         {
-            var setupLink = await authService.CreatePasswordSetupTokenAsync(user.Id, cancellationToken);
-            if (appEnvironment.IsDevelopment())
-            {
-                response.TemporarySetupLink = setupLink;
-            }
+            setupLink = await authService.CreatePasswordSetupTokenWithoutNotificationAsync(user.Id, cancellationToken);
+        }
+
+        auditLogService.Add(
+            currentUserId,
+            AuditAction.PlatformAdminCreated,
+            nameof(User),
+            user.Id,
+            entityName: user.Role.ToString(),
+            description: $"Platform admin created with role {user.Role}.");
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        if (setupLink is not null)
+        {
+            await TrySendPasswordSetupNotificationAsync(user.Id, setupLink, cancellationToken);
+        }
+
+        var response = await GetUserAsync(currentUserId, currentRole, user.Id, cancellationToken);
+        if (setupLink is not null && appEnvironment.IsDevelopment())
+        {
+            response.TemporarySetupLink = setupLink;
         }
         return response;
     }
@@ -104,7 +136,13 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         var permissions = ParsePermissions(request.Permissions);
-        var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+
+        var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(
+                user => user.Id == userId && !user.IsDeleted,
+                cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
         ValidatePlatformAccountRole(user.Role);
         ValidatePlatformAccountRole(request.Role);
@@ -127,12 +165,23 @@ public class AdminUserService(
 
         var roleChanged = user.Role != request.Role;
         var passwordChanged = !string.IsNullOrWhiteSpace(request.Password);
+        await EnsureSuperAdminAuthorityRemainsAsync(user, request.Role, user.IsActive, cancellationToken);
+        var existingPermissions = await dbContext.UserPermissions.AsNoTracking()
+            .Where(permission => permission.UserId == user.Id && permission.IsAllowed)
+            .Select(permission => permission.PermissionKey)
+            .ToListAsync(cancellationToken);
+        var permissionChanged = !existingPermissions.ToHashSet().SetEquals(
+            request.Role == UserRole.AdminAssistant ? permissions : []);
 
         user.FirstName = identity.FirstName;
         user.LastName = identity.LastName;
         user.Email = email;
         user.PhoneNumber = mobile;
         user.Role = request.Role;
+        if (roleChanged)
+        {
+            user.CanBeRestricted = request.Role != UserRole.SuperAdmin;
+        }
         user.ParentUserId = currentRole == UserRole.SuperAdmin ? request.ParentUserId : user.ParentUserId ?? currentUserId;
         if (passwordChanged)
         {
@@ -149,6 +198,23 @@ public class AdminUserService(
 
         await dbContext.SaveChangesAsync(cancellationToken);
         await SyncGlobalPermissionsAsync(user, permissions, cancellationToken);
+        if (passwordChanged)
+        {
+            await RevokePasswordSetupTokensAsync(user.Id, cancellationToken);
+        }
+
+        auditLogService.Add(
+            currentUserId,
+            AuditAction.PlatformAdminUpdated,
+            nameof(User),
+            user.Id,
+            entityName: user.Role.ToString(),
+            description: BuildUpdateAuditDescription(roleChanged, permissionChanged, passwordChanged));
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return await GetUserAsync(currentUserId, currentRole, userId, cancellationToken);
     }
 
@@ -160,13 +226,32 @@ public class AdminUserService(
         CancellationToken cancellationToken = default)
     {
         await EnsureCanManageUsersAsync(currentUserId, currentRole, cancellationToken);
-        var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(user => user.Id == userId, cancellationToken)
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+
+        var user = await dbContext.Users.IgnoreQueryFilters().SingleOrDefaultAsync(
+                user => user.Id == userId && !user.IsDeleted,
+                cancellationToken)
             ?? throw new KeyNotFoundException("User not found.");
         ValidatePlatformAccountRole(user.Role);
 
-        if (!user.CanBeRestricted || user.Id == currentUserId)
+        if (user.Role == UserRole.SuperAdmin && currentRole != UserRole.SuperAdmin)
+        {
+            throw new UnauthorizedAccessException("Only SuperAdmin can activate or deactivate SuperAdmin users.");
+        }
+
+        if (user.Id == currentUserId ||
+            (user.Role != UserRole.SuperAdmin && !user.CanBeRestricted))
         {
             throw new InvalidOperationException("This user cannot be activated or deactivated here.");
+        }
+
+        await EnsureSuperAdminAuthorityRemainsAsync(user, user.Role, isActive, cancellationToken);
+        if (!isActive && await dbContext.Properties.IgnoreQueryFilters()
+                .AnyAsync(property => !property.IsDeleted && property.OwnerId == user.Id, cancellationToken))
+        {
+            throw new InvalidOperationException(PropertyOwnerDeactivationError);
         }
 
         var wasActive = user.IsActive;
@@ -177,7 +262,91 @@ public class AdminUserService(
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        auditLogService.Add(
+            currentUserId,
+            isActive ? AuditAction.PlatformAdminActivated : AuditAction.PlatformAdminDeactivated,
+            nameof(User),
+            user.Id,
+            entityName: user.Role.ToString(),
+            description: isActive ? "Platform admin activated." : "Platform admin deactivated.");
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
         return await GetUserAsync(currentUserId, currentRole, userId, cancellationToken);
+    }
+
+    private async Task EnsureSuperAdminAuthorityRemainsAsync(
+        User user,
+        UserRole resultingRole,
+        bool resultingIsActive,
+        CancellationToken cancellationToken)
+    {
+        var removesActiveAuthority = user.Role == UserRole.SuperAdmin &&
+                                     user.IsActive &&
+                                     !user.IsDeleted &&
+                                     (resultingRole != UserRole.SuperAdmin || !resultingIsActive);
+        if (!removesActiveAuthority)
+        {
+            return;
+        }
+
+        var anotherActiveSuperAdminExists = await dbContext.Users.IgnoreQueryFilters()
+            .AnyAsync(candidate =>
+                    candidate.Id != user.Id &&
+                    candidate.Role == UserRole.SuperAdmin &&
+                    candidate.IsActive &&
+                    !candidate.IsDeleted,
+                cancellationToken);
+        if (!anotherActiveSuperAdminExists)
+        {
+            throw new InvalidOperationException(LastSuperAdminError);
+        }
+    }
+
+    private async Task RevokePasswordSetupTokensAsync(int userId, CancellationToken cancellationToken)
+    {
+        var now = DateTime.UtcNow;
+        var activeTokens = await dbContext.PasswordSetupTokens
+            .Where(token => token.UserId == userId && token.UsedAtUtc == null)
+            .ToListAsync(cancellationToken);
+        foreach (var token in activeTokens)
+        {
+            token.UsedAtUtc = now;
+        }
+    }
+
+    private async Task TrySendPasswordSetupNotificationAsync(
+        int userId,
+        string setupLink,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            await authService.SendPasswordSetupNotificationAsync(userId, setupLink, cancellationToken);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                exception,
+                "Password setup notification failed after platform admin {UserId} was committed.",
+                userId);
+        }
+    }
+
+    private static string BuildUpdateAuditDescription(
+        bool roleChanged,
+        bool permissionChanged,
+        bool passwordChanged)
+    {
+        var changes = new List<string>();
+        if (roleChanged) changes.Add("role");
+        if (permissionChanged) changes.Add("permissions");
+        if (passwordChanged) changes.Add("password");
+        return changes.Count == 0
+            ? "Platform admin profile updated."
+            : $"Platform admin updated: {string.Join(", ", changes)}.";
     }
 
     private async Task EnsureCanManageUsersAsync(int currentUserId, UserRole currentRole, CancellationToken cancellationToken)
