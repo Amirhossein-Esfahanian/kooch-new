@@ -27,6 +27,7 @@ export type ReservationTableStatus =
   | "PendingApproval"
   | "ApprovedAwaitingPayment"
   | "PaymentExpired"
+  | "CapacityLost"
   | string;
 
 export type ReservationCancellationReason =
@@ -162,6 +163,7 @@ const statusLabels: Record<string, string> = {
   PendingApproval: "در انتظار تایید",
   ApprovedAwaitingPayment: "در انتظار پرداخت",
   PaymentExpired: "مهلت پرداخت گذشته",
+  CapacityLost: "ظرفیت از دست رفته",
 };
 
 function statusVariant(status: ReservationTableStatus) {
@@ -182,7 +184,8 @@ function statusVariant(status: ReservationTableStatus) {
     status === "Cancelled" ||
     status === "Rejected" ||
     status === "Expired" ||
-    status === "PaymentExpired"
+    status === "PaymentExpired" ||
+    status === "CapacityLost"
   ) {
     return "destructive" as const;
   }

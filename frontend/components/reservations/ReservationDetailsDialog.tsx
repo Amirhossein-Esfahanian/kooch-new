@@ -59,6 +59,7 @@ const statusLabels: Record<string, string> = {
   PendingApproval: "در انتظار تایید",
   ApprovedAwaitingPayment: "در انتظار پرداخت",
   PaymentExpired: "مهلت پرداخت گذشته",
+  CapacityLost: "ظرفیت از دست رفته",
 };
 
 const sourceLabels: Record<string, string> = {
@@ -116,6 +117,11 @@ const statusActionText: Record<
       "رزرو به وضعیت آماده پرداخت منتقل می‌شود و اطلاع‌رسانی برای مهمان ثبت خواهد شد.",
     variant: "warning",
   },
+  Rejected: {
+    label: "رد درخواست",
+    description: "درخواست رزرو رد می‌شود و دیگر قابل ویرایش نخواهد بود.",
+    variant: "destructive",
+  },
   Confirmed: {
     label: "تایید رزرو",
     description: "رزرو تایید می‌شود. پرداخت یا کاهش موجودی انجام نمی‌شود.",
@@ -151,7 +157,8 @@ function statusVariant(status?: ReservationTableStatus) {
     status === "Cancelled" ||
     status === "Rejected" ||
     status === "Expired" ||
-    status === "PaymentExpired"
+    status === "PaymentExpired" ||
+    status === "CapacityLost"
   ) {
     return "destructive" as const;
   }
@@ -457,10 +464,9 @@ function ReservationCancellationAlert({
   function continueCancellation() {
     const trimmedExplanation = explanation.trim();
     const nextReasonError = reason ? "" : "دلیل لغو را انتخاب کنید.";
-    const nextExplanationError =
-      reason === "Other" && !trimmedExplanation
-        ? "برای دلیل سایر، توضیحات را وارد کنید."
-        : "";
+    const nextExplanationError = trimmedExplanation
+      ? ""
+      : "توضیحات لغو را وارد کنید.";
 
     setReasonError(nextReasonError);
     setExplanationError(nextExplanationError);
@@ -470,7 +476,7 @@ function ReservationCancellationAlert({
   }
 
   async function confirmCancellation() {
-    if (!reason || (reason === "Other" && !explanation.trim())) return;
+    if (!reason || !explanation.trim()) return;
     setSubmitting(true);
     try {
       await onConfirm({ reason, explanation: explanation.trim() });
@@ -526,7 +532,6 @@ function ReservationCancellationAlert({
                   | "";
                 setReason(nextReason);
                 setReasonError("");
-                if (nextReason !== "Other") setExplanationError("");
               }}
               value={reason}
             >
@@ -541,8 +546,8 @@ function ReservationCancellationAlert({
 
           <KoochField
             error={explanationError}
-            label={reason === "Other" ? "توضیحات" : "یادداشت (اختیاری)"}
-            required={reason === "Other"}
+            label="توضیحات لغو"
+            required
           >
             <KoochTextarea
               error={explanationError}
@@ -551,11 +556,7 @@ function ReservationCancellationAlert({
                 setExplanation(event.target.value);
                 setExplanationError("");
               }}
-              placeholder={
-                reason === "Other"
-                  ? "توضیحات دلیل لغو را وارد کنید."
-                  : "در صورت نیاز، یادداشت لغو را وارد کنید."
-              }
+              placeholder="توضیحات دلیل لغو را وارد کنید."
               value={explanation}
             />
           </KoochField>
@@ -611,7 +612,15 @@ export function ReservationDetailsDialog({
       ? Math.max(totalAmount - reservation.remainingAmount, 0)
       : null);
   const statusActions = reservation?.allowedStatusTransitions ?? [];
-  const isReadOnly = reservation?.status === "Cancelled";
+  const isReadOnly =
+    reservation !== null &&
+    [
+      "Cancelled",
+      "Rejected",
+      "PaymentExpired",
+      "CapacityLost",
+      "Completed",
+    ].includes(reservation.status);
   const canAdjustPrice = !isReadOnly && Boolean(onAdjustPrice);
   const canCancel =
     !isReadOnly && Boolean(onCancel) && statusActions.includes("Cancelled");

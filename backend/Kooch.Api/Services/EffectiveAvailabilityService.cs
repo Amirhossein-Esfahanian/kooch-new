@@ -40,7 +40,8 @@ public sealed class EffectiveAvailabilityService(KoochDbContext dbContext) : IEf
                 (!excludedReservationId.HasValue || reservation.Id != excludedReservationId.Value) &&
                 reservation.CheckInDate < checkOutDate &&
                 reservation.CheckOutDate > checkInDate &&
-                (reservation.Status == ReservationStatus.Confirmed ||
+                (reservation.Status == ReservationStatus.ApprovedAwaitingPayment ||
+                 reservation.Status == ReservationStatus.Confirmed ||
                  reservation.Status == ReservationStatus.Paid))
             .Select(reservation => new
             {

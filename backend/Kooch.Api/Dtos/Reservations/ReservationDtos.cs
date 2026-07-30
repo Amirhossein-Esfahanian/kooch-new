@@ -274,11 +274,10 @@ public class ReservationCancellationRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
-        if (Reason == ReservationCancellationReason.Other &&
-            string.IsNullOrWhiteSpace(Explanation))
+        if (string.IsNullOrWhiteSpace(Explanation))
         {
             yield return new ValidationResult(
-                "Cancellation explanation is required when reason is Other.",
+                "Cancellation explanation is required.",
                 [nameof(Explanation)]);
         }
     }

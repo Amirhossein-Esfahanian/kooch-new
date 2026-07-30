@@ -67,6 +67,29 @@ type ReservationDraft = {
   notes: string;
 };
 
+export type ReservationMutationPayload = {
+  status: ReservationTableStatus;
+  propertyId: number;
+  roomTypeId: number;
+  roomId: number;
+  guestId: number;
+  checkInDate: string;
+  checkOutDate: string;
+  adults: number;
+  children: number;
+  childAges: number[];
+  roomCount: number;
+  roomIds: number[];
+  guestType: PricingGuestType;
+  notes: string | null;
+};
+
+export function buildReservationMutationPayload(
+  payload: ReservationMutationPayload,
+): ReservationMutationPayload {
+  return payload;
+}
+
 type ReservationPricePreviewResponse = {
   nightsCount: number;
   roomCount: number;
@@ -485,11 +508,20 @@ export function ManualReservationDialog({
     reservation?.id ??
     reservation?.reservationNumber ??
     "new";
-  const isCancelled = isEditMode && reservation?.status === "Cancelled";
+  const isTerminalReadOnly =
+    isEditMode &&
+    reservation?.status !== undefined &&
+    [
+      "Cancelled",
+      "Rejected",
+      "PaymentExpired",
+      "CapacityLost",
+      "Completed",
+    ].includes(reservation.status);
   const isLockedEdit =
     isEditMode &&
     reservation?.status !== undefined &&
-    ["Paid", "Completed", "Cancelled"].includes(reservation.status);
+    (reservation.status === "Paid" || isTerminalReadOnly);
 
   function setDialogOpen(nextOpen: boolean) {
     if (isEditMode) {
@@ -1270,8 +1302,8 @@ export function ManualReservationDialog({
 
     if (submitting || submissionInFlightRef.current) return;
 
-    if (isCancelled) {
-      toast.error("رزرو لغوشده قابل ویرایش نیست.");
+    if (isTerminalReadOnly) {
+      toast.error("رزرو نهایی‌شده قابل ویرایش نیست.");
       return;
     }
 
@@ -1340,7 +1372,8 @@ export function ManualReservationDialog({
 
       await apiRequest(endpoint, {
         method: isEditMode ? "PUT" : "POST",
-        body: JSON.stringify({
+        body: JSON.stringify(buildReservationMutationPayload({
+          status: selectedStatus,
           propertyId: selectedPropertyId,
           roomTypeId: Number(draft.roomTypeId),
           roomId: Number(draft.roomIds[0]),
@@ -1357,7 +1390,7 @@ export function ManualReservationDialog({
           roomIds: draft.roomIds.map((id) => Number(id)),
           guestType: draft.guestType,
           notes: draft.notes.trim() || null,
-        }),
+        })),
       });
 
       toast.success(isEditMode ? "رزرو به‌روز شد." : "رزرو اضافه شد.");
@@ -1416,9 +1449,9 @@ export function ManualReservationDialog({
               type="button"
               variant="outline"
             >
-              {isCancelled ? "بستن" : "انصراف"}
+              {isTerminalReadOnly ? "بستن" : "انصراف"}
             </KoochButton>
-            {!isCancelled && (
+            {!isTerminalReadOnly && (
               <KoochButton
                 form="manual-reservation-form"
                 disabled={
@@ -1463,7 +1496,7 @@ export function ManualReservationDialog({
                   : "وضعیت پیش‌فرض از نوع رزرو اتاق تعیین می‌شود. فقط وضعیت‌های مجاز ثبت دستی قابل انتخاب هستند."}
               </p>
             </div>
-            {!isCancelled && statusSelectionOptions.length > 0 && (
+            {!isTerminalReadOnly && statusSelectionOptions.length > 0 && (
               <div className="flex flex-wrap gap-2 border-t border-border pt-3">
                 {statusSelectionOptions.map((status) => (
                   <KoochButton
@@ -1484,11 +1517,11 @@ export function ManualReservationDialog({
           {isLockedEdit ? (
             <KoochAlert
               title={
-                isCancelled ? "رزرو لغوشده" : "رزرو پرداخت‌شده یا تکمیل‌شده"
+                isTerminalReadOnly ? "رزرو نهایی‌شده" : "رزرو پرداخت‌شده"
               }
-              variant={isCancelled ? "destructive" : "warning"}
+              variant={isTerminalReadOnly ? "destructive" : "warning"}
             >
-              {isCancelled
+              {isTerminalReadOnly
                 ? "این رزرو فقط قابل مشاهده است و امکان ویرایش آن وجود ندارد."
                 : "اتاق، تاریخ، تعداد مهمان و قیمت این رزرو قابل تغییر نیست. فقط یادداشت داخلی را می‌توانید ویرایش کنید."}
             </KoochAlert>
@@ -1913,7 +1946,7 @@ export function ManualReservationDialog({
 
           <KoochField label="یادداشت داخلی">
             <KoochTextarea
-              disabled={isCancelled}
+              disabled={isTerminalReadOnly}
               onChange={(event) => updateDraft("notes", event.target.value)}
               rows={3}
               value={draft.notes}

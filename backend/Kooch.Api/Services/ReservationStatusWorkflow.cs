@@ -37,11 +37,14 @@ public class ReservationStatusWorkflow : IReservationStatusWorkflow
             },
             [ReservationStatus.PendingApproval] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.ApprovedAwaitingPayment
+                ReservationStatus.ApprovedAwaitingPayment,
+                ReservationStatus.Rejected,
+                ReservationStatus.Cancelled
             },
             [ReservationStatus.ApprovedAwaitingPayment] = new HashSet<ReservationStatus>
             {
-                ReservationStatus.PaymentExpired
+                ReservationStatus.PaymentExpired,
+                ReservationStatus.Cancelled
             },
             [ReservationStatus.Completed] = new HashSet<ReservationStatus>(),
             [ReservationStatus.Cancelled] = new HashSet<ReservationStatus>(),
