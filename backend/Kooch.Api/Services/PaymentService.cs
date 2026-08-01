@@ -61,23 +61,33 @@ public class PaymentService(
             session,
             reservations,
             request.Provider,
-            DateTime.UtcNow);
-        return await PersistOrReplayAsync(session.Id, candidate, cancellationToken);
+            request.IdempotencyKey);
+        return await PersistOrReplayAsync(
+            session.Id,
+            reservations,
+            candidate,
+            DateTime.UtcNow,
+            cancellationToken);
     }
 
     private async Task<BookingSessionPaymentInitiationResult> PersistOrReplayAsync(
         int bookingSessionId,
+        IReadOnlyList<Reservation> reservations,
         PaymentInitiationCandidate candidate,
+        DateTime now,
         CancellationToken cancellationToken)
     {
-        var existingPayment = await GetExistingPendingPaymentAsync(
+        var existingPayment = await GetExistingPaymentAsync(
             bookingSessionId,
+            candidate.IdempotencyKey,
             cancellationToken);
         if (existingPayment is not null)
         {
             return ValidateAndMapReplay(existingPayment, candidate);
         }
 
+        await EnsureNoOtherPendingPaymentAsync(bookingSessionId, cancellationToken);
+        ValidateNewPaymentReadiness(reservations, candidate.PaymentDeadlineUtc, now);
         var payment = CreatePendingPayment(bookingSessionId, candidate);
         dbContext.Payments.Add(payment);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -376,15 +386,30 @@ public class PaymentService(
         return Math.Max(0, remainingSeconds);
     }
 
-    private Task<Payment?> GetExistingPendingPaymentAsync(
+    private Task<Payment?> GetExistingPaymentAsync(
         int bookingSessionId,
+        string idempotencyKey,
         CancellationToken cancellationToken) =>
         dbContext.Payments
             .Include(payment => payment.Items)
             .SingleOrDefaultAsync(payment =>
                 payment.BookingSessionId == bookingSessionId &&
-                payment.Status == PaymentStatus.Pending,
+                payment.IdempotencyKey == idempotencyKey,
                 cancellationToken);
+
+    private async Task EnsureNoOtherPendingPaymentAsync(
+        int bookingSessionId,
+        CancellationToken cancellationToken)
+    {
+        if (await dbContext.Payments.AnyAsync(payment =>
+                payment.BookingSessionId == bookingSessionId &&
+                payment.Status == PaymentStatus.Pending,
+                cancellationToken))
+        {
+            throw new InvalidOperationException(
+                "The booking session already has an active pending payment.");
+        }
+    }
 
     private static BookingSessionPaymentInitiationResult ValidateAndMapReplay(
         Payment payment,
@@ -435,9 +460,9 @@ public class PaymentService(
         BookingSession session,
         IReadOnlyList<Reservation> reservations,
         string provider,
-        DateTime now)
+        string idempotencyKey)
     {
-        var deadline = ValidatePaymentReadiness(reservations, now);
+        var deadline = GetCanonicalPaymentDeadline(reservations);
         var currency = NormalizeCurrency(session.Currency);
         var allocations = BuildAllocations(reservations, currency);
         var amount = allocations.Sum(item => item.AllocatedAmount);
@@ -448,6 +473,7 @@ public class PaymentService(
             allocations);
         return new PaymentInitiationCandidate(
             provider,
+            idempotencyKey,
             currency,
             amount,
             deadline,
@@ -455,11 +481,14 @@ public class PaymentService(
             allocations);
     }
 
-    private static DateTime ValidatePaymentReadiness(
-        IReadOnlyList<Reservation> reservations,
-        DateTime now)
+    private static DateTime GetCanonicalPaymentDeadline(
+        IReadOnlyList<Reservation> reservations)
     {
-        ValidatePaymentStatuses(reservations);
+        if (reservations.Count == 0)
+        {
+            throw new InvalidOperationException("The booking session has no reservations.");
+        }
+
         if (reservations.Any(reservation => !reservation.PaymentExpiresAtUtc.HasValue))
         {
             throw new InvalidOperationException("Every reservation must have a payment deadline.");
@@ -475,21 +504,23 @@ public class PaymentService(
             throw new InvalidOperationException("Reservation payment deadlines are inconsistent.");
         }
 
-        if (deadlines[0] <= now)
+        return deadlines[0];
+    }
+
+    private static void ValidateNewPaymentReadiness(
+        IReadOnlyList<Reservation> reservations,
+        DateTime deadline,
+        DateTime now)
+    {
+        ValidatePaymentStatuses(reservations);
+        if (deadline <= now)
         {
             throw new InvalidOperationException("The booking session payment deadline has expired.");
         }
-
-        return deadlines[0];
     }
 
     private static void ValidatePaymentStatuses(IReadOnlyList<Reservation> reservations)
     {
-        if (reservations.Count == 0)
-        {
-            throw new InvalidOperationException("The booking session has no reservations.");
-        }
-
         if (reservations.Any(x => x.Status == ReservationStatus.PendingApproval))
         {
             throw new InvalidOperationException("The booking session still has pending approvals.");
@@ -540,6 +571,8 @@ public class PaymentService(
             Amount = candidate.Amount,
             Currency = candidate.Currency,
             Provider = candidate.Provider,
+            IdempotencyKey = candidate.IdempotencyKey,
+            RequestHash = candidate.RequestHash,
             Status = PaymentStatus.Pending,
             Items = candidate.Items.Select(item => new PaymentItem
             {
@@ -561,21 +594,10 @@ public class PaymentService(
     }
 
     private static bool MatchesCandidate(Payment payment, PaymentInitiationCandidate candidate)
-    {
-        if (payment.ReservationId is not null || payment.Amount != candidate.Amount ||
-            payment.Currency != candidate.Currency || payment.Provider != candidate.Provider ||
-            payment.TransactionReference is not null || payment.Items.Count != candidate.Items.Count)
-        {
-            return false;
-        }
-
-        var current = payment.Items.OrderBy(item => item.ReservationId).ToArray();
-        var expected = candidate.Items.OrderBy(item => item.ReservationId).ToArray();
-        return current.Zip(expected).All(pair =>
-            pair.First.ReservationId == pair.Second.ReservationId &&
-            pair.First.AllocatedAmount == pair.Second.AllocatedAmount &&
-            pair.First.Currency == pair.Second.Currency);
-    }
+        => payment.BookingSessionId.HasValue &&
+           payment.ReservationId is null &&
+           payment.IdempotencyKey == candidate.IdempotencyKey &&
+           payment.RequestHash == candidate.RequestHash;
 
     private static BookingSessionPaymentInitiationResult ToInitiationResult(
         Payment payment,
@@ -680,6 +702,7 @@ public class PaymentService(
 
     private sealed record PaymentInitiationCandidate(
         string Provider,
+        string IdempotencyKey,
         string Currency,
         decimal Amount,
         DateTime PaymentDeadlineUtc,

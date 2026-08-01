@@ -26,6 +26,8 @@ public sealed class PaymentPersistenceModelTests
             .Single(item => item.Id == paymentId);
         Assert.Equal(10, payment.ReservationId);
         Assert.Null(payment.BookingSessionId);
+        Assert.Null(payment.IdempotencyKey);
+        Assert.Null(payment.RequestHash);
     }
 
     [Fact]
@@ -122,6 +124,38 @@ public sealed class PaymentPersistenceModelTests
     }
 
     [Fact]
+    public void DuplicateIdempotencyKeyForTheSameSession_IsRejected()
+    {
+        using var database = new PaymentConstraintDatabase();
+        database.InsertPayment(null, 20, "provider", "reference-one", "payment-key", "HASH-ONE");
+
+        Assert.Throws<SqliteException>(() =>
+            database.InsertPayment(null, 20, "provider", "reference-two", "payment-key", "HASH-TWO"));
+    }
+
+    [Fact]
+    public void SameIdempotencyKeyForDifferentSessions_IsAllowed()
+    {
+        using var database = new PaymentConstraintDatabase();
+        database.InsertPayment(null, 20, "provider", "reference-one", "payment-key", "HASH");
+        database.InsertPayment(null, 21, "provider", "reference-two", "payment-key", "HASH");
+
+        Assert.Equal(2, database.Context.Payments.IgnoreQueryFilters().Count());
+    }
+
+    [Fact]
+    public void MultipleLegacyPaymentsWithNullIdempotencyKey_AreAllowed()
+    {
+        using var database = new PaymentConstraintDatabase();
+        database.InsertPayment(null, 20, "provider", "reference-one");
+        database.InsertPayment(null, 20, "provider", "reference-two");
+
+        Assert.All(
+            database.Context.Payments.IgnoreQueryFilters(),
+            payment => Assert.Null(payment.IdempotencyKey));
+    }
+
+    [Fact]
     public void Payment_RowVersionIsConfiguredForOptimisticConcurrency()
     {
         using var context = CreateMetadataContext();
@@ -144,6 +178,8 @@ public sealed class PaymentPersistenceModelTests
         Assert.NotNull(paymentItemType);
 
         Assert.Equal(3, paymentType.FindProperty(nameof(Payment.Currency))?.GetMaxLength());
+        Assert.Equal(200, paymentType.FindProperty(nameof(Payment.IdempotencyKey))?.GetMaxLength());
+        Assert.Equal(128, paymentType.FindProperty(nameof(Payment.RequestHash))?.GetMaxLength());
         Assert.Equal(3, paymentItemType.FindProperty(nameof(PaymentItem.Currency))?.GetMaxLength());
 
         var sessionIndex = Assert.Single(
@@ -151,6 +187,15 @@ public sealed class PaymentPersistenceModelTests
             index => index.Properties.Select(property => property.Name)
                 .SequenceEqual([nameof(Payment.BookingSessionId)]));
         Assert.False(sessionIndex.IsUnique);
+
+        var idempotencyIndex = Assert.Single(
+            paymentType.GetIndexes(),
+            index => index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(Payment.BookingSessionId), nameof(Payment.IdempotencyKey)]));
+        Assert.True(idempotencyIndex.IsUnique);
+        Assert.Equal(
+            "[BookingSessionId] IS NOT NULL AND [IdempotencyKey] IS NOT NULL",
+            idempotencyIndex.GetFilter());
 
         var referenceIndex = Assert.Single(
             paymentType.GetIndexes(),
@@ -231,7 +276,9 @@ public sealed class PaymentPersistenceModelTests
             int? reservationId,
             int? bookingSessionId,
             string provider,
-            string transactionReference)
+            string transactionReference,
+            string? idempotencyKey = null,
+            string? requestHash = null)
         {
             Context.Database.ExecuteSqlInterpolated($"""
                 INSERT INTO Payments (
@@ -242,6 +289,8 @@ public sealed class PaymentPersistenceModelTests
                     Status,
                     Provider,
                     TransactionReference,
+                    IdempotencyKey,
+                    RequestHash,
                     RowVersion,
                     CreatedAtUtc,
                     IsDeleted)
@@ -253,6 +302,8 @@ public sealed class PaymentPersistenceModelTests
                     {(int)PaymentStatus.Pending},
                     {provider},
                     {transactionReference},
+                    {idempotencyKey},
+                    {requestHash},
                     {new byte[] { 1 }},
                     {DateTime.UtcNow},
                     {false});

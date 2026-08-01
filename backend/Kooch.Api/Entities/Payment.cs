@@ -9,6 +9,8 @@ public class Payment : BaseEntity
     public PaymentStatus Status { get; set; }
     public string? Provider { get; set; }
     public string? TransactionReference { get; set; }
+    public string? IdempotencyKey { get; set; }
+    public string? RequestHash { get; set; }
     public DateTime? PaidAtUtc { get; set; }
     public byte[] RowVersion { get; set; } = [];
 

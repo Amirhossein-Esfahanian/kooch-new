@@ -825,11 +825,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(payment => payment.Currency).HasMaxLength(3).IsRequired();
             entity.Property(payment => payment.Provider).HasMaxLength(100);
             entity.Property(payment => payment.TransactionReference).HasMaxLength(200);
+            entity.Property(payment => payment.IdempotencyKey).HasMaxLength(200);
+            entity.Property(payment => payment.RequestHash).HasMaxLength(128);
             entity.Property(payment => payment.RowVersion).IsRowVersion();
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_Payment_ExactlyOneParent",
                 "([ReservationId] IS NOT NULL AND [BookingSessionId] IS NULL) OR ([ReservationId] IS NULL AND [BookingSessionId] IS NOT NULL)"));
             entity.HasIndex(payment => payment.BookingSessionId);
+            entity.HasIndex(payment => new { payment.BookingSessionId, payment.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("[BookingSessionId] IS NOT NULL AND [IdempotencyKey] IS NOT NULL");
             entity.HasIndex(payment => new { payment.Provider, payment.TransactionReference })
                 .IsUnique()
                 .HasFilter("[TransactionReference] IS NOT NULL");

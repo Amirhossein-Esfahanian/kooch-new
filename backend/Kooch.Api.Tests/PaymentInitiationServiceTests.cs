@@ -34,6 +34,8 @@ public sealed class PaymentInitiationServiceTests
         var payment = await harness.Context.Payments.Include(item => item.Items).SingleAsync();
         Assert.Null(payment.ReservationId);
         Assert.Equal(harness.SessionId, payment.BookingSessionId);
+        Assert.Equal("payment-key", payment.IdempotencyKey);
+        Assert.Equal(result.RequestHash, payment.RequestHash);
         Assert.Equal(2, payment.Items.Count);
     }
 
@@ -109,6 +111,26 @@ public sealed class PaymentInitiationServiceTests
         Assert.Single(await harness.Context.Payments.ToListAsync());
     }
 
+    [Theory]
+    [InlineData(PaymentStatus.Successful)]
+    [InlineData(PaymentStatus.Failed)]
+    public async Task RetryAfterPaymentStatusChanges_ReturnsTheExistingPayment(PaymentStatus status)
+    {
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(DateTime.UtcNow.AddHours(1), 100));
+        var first = await harness.Service.InitiateBookingSessionPaymentAsync(Request("stable-key"));
+        var payment = await harness.Context.Payments.SingleAsync();
+        payment.Status = status;
+        await harness.Context.SaveChangesAsync();
+
+        var replay = await harness.Service.InitiateBookingSessionPaymentAsync(Request("stable-key"));
+
+        Assert.True(replay.IsReplay);
+        Assert.Equal(first.PaymentId, replay.PaymentId);
+        Assert.Equal(status, replay.Status);
+        Assert.Single(await harness.Context.Payments.ToListAsync());
+    }
+
     [Fact]
     public async Task SameKeyWithDifferentPayload_IsRejected()
     {
@@ -126,17 +148,37 @@ public sealed class PaymentInitiationServiceTests
     }
 
     [Fact]
-    public async Task DuplicatePendingPayment_WithAnotherKey_ReturnsExistingPayment()
+    public async Task DuplicatePendingPayment_WithAnotherKey_IsRejected()
     {
         await using var harness = await PaymentInitiationHarness.CreateAsync(
             Reservation(DateTime.UtcNow.AddHours(1), 100));
         var first = await harness.Service.InitiateBookingSessionPaymentAsync(Request("first-key"));
 
-        var duplicate = await harness.Service.InitiateBookingSessionPaymentAsync(Request("second-key"));
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Service.InitiateBookingSessionPaymentAsync(Request("second-key")));
 
-        Assert.True(duplicate.IsReplay);
-        Assert.Equal(first.PaymentId, duplicate.PaymentId);
+        Assert.Contains("active pending payment", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.NotEqual(0, first.PaymentId);
         Assert.Single(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ConcurrentRequestsWithTheSameKey_ReturnTheSamePayment()
+    {
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(DateTime.UtcNow.AddHours(1), 100));
+        await using var firstScope = harness.CreateServiceScope();
+        await using var secondScope = harness.CreateServiceScope();
+
+        var results = await Task.WhenAll(
+            firstScope.Service.InitiateBookingSessionPaymentAsync(Request("concurrent-key")),
+            secondScope.Service.InitiateBookingSessionPaymentAsync(Request("concurrent-key")));
+
+        Assert.Equal(results[0].PaymentId, results[1].PaymentId);
+        Assert.Single(results, result => !result.IsReplay);
+        Assert.Single(results, result => result.IsReplay);
+        await using var verification = harness.CreateVerificationContext();
+        Assert.Single(await verification.Payments.ToListAsync());
     }
 
     [Fact]
@@ -295,6 +337,23 @@ public sealed class PaymentInitiationServiceTests
 
         public KoochDbContext CreateVerificationContext() => new(options);
 
+        public PaymentServiceScope CreateServiceScope()
+        {
+            var context = new KoochDbContext(options);
+            return new PaymentServiceScope(
+                context,
+                new PaymentService(context, new EffectiveAvailabilityService(context)));
+        }
+
         public async ValueTask DisposeAsync() => await Context.DisposeAsync();
+    }
+
+    private sealed class PaymentServiceScope(
+        KoochDbContext context,
+        PaymentService service) : IAsyncDisposable
+    {
+        public PaymentService Service { get; } = service;
+
+        public ValueTask DisposeAsync() => context.DisposeAsync();
     }
 }
