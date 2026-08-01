@@ -87,6 +87,7 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                         CheckInDate = reservation.CheckInDate,
                         CheckOutDate = reservation.CheckOutDate,
                         Status = reservation.Status,
+                        PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
                         Currency = reservation.Currency
                     })
@@ -118,6 +119,30 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             _ => "Mixed"
         };
 
+        var paymentReservations = reservations
+            .Where(reservation =>
+                reservation.Status == ReservationStatus.ApprovedAwaitingPayment)
+            .ToArray();
+        var paymentDeadlines = paymentReservations
+            .Where(reservation => reservation.PaymentExpiresAtUtc.HasValue)
+            .Select(reservation => reservation.PaymentExpiresAtUtc!.Value)
+            .ToArray();
+        var hasPendingApprovals = reservations.Any(reservation =>
+            reservation.Status == ReservationStatus.PendingApproval);
+        var hasRejectedReservations = reservations.Any(reservation =>
+            reservation.Status == ReservationStatus.Rejected);
+        var hasMissingPaymentDeadline =
+            paymentReservations.Any(reservation => !reservation.PaymentExpiresAtUtc.HasValue);
+        var hasInconsistentPaymentDeadlines =
+            paymentDeadlines.Distinct().Skip(1).Any();
+        var hasBlockingStatus = reservations.Any(reservation => reservation.Status is
+            ReservationStatus.Pending or
+            ReservationStatus.PendingApproval or
+            ReservationStatus.Rejected or
+            ReservationStatus.PaymentExpired or
+            ReservationStatus.Draft or
+            ReservationStatus.CapacityLost);
+
         return new BookingSessionDerivedSummaryResponse
         {
             DerivedStatus = derivedStatus,
@@ -129,6 +154,15 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             LatestCheckOutDate = reservations.Count == 0
                 ? null
                 : reservations.Max(reservation => reservation.CheckOutDate),
+            IsPaymentReady = paymentReservations.Length > 0 &&
+                !hasBlockingStatus &&
+                !hasMissingPaymentDeadline,
+            HasPendingApprovals = hasPendingApprovals,
+            HasRejectedReservations = hasRejectedReservations,
+            HasInconsistentPaymentDeadlines = hasInconsistentPaymentDeadlines,
+            EarliestPaymentDeadlineUtc = paymentDeadlines.Length == 0
+                ? null
+                : paymentDeadlines.Min(),
             StatusCounts = statusCounts
         };
     }
