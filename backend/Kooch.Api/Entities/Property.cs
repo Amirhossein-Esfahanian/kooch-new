@@ -49,6 +49,7 @@ public class Property : BaseEntity
     public ICollection<PropertyCommonArea> CommonAreas { get; set; } = [];
     public ICollection<PropertyView> Views { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
+    public ICollection<BookingSession> BookingSessions { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<CancellationPolicy> CancellationPolicies { get; set; } = [];
     public ICollection<StayRule> StayRules { get; set; } = [];

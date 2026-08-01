@@ -19,6 +19,7 @@ public class Guest : BaseEntity
     public string? Address { get; set; }
     public string? Notes { get; set; }
     public User? User { get; set; }
+    public ICollection<BookingSession> BookingSessions { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
 

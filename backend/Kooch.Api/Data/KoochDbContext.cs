@@ -19,6 +19,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Room> Rooms => Set<Room>();
     public DbSet<Availability> Availabilities => Set<Availability>();
     public DbSet<Guest> Guests => Set<Guest>();
+    public DbSet<BookingSession> BookingSessions => Set<BookingSession>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
@@ -81,6 +82,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureCoupons(modelBuilder);
         ConfigureHolidayCalendar(modelBuilder);
         ConfigureGuests(modelBuilder);
+        ConfigureBookingSessions(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
@@ -676,6 +678,37 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         });
     }
 
+    private static void ConfigureBookingSessions(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BookingSession>(entity =>
+        {
+            entity.Property(session => session.SessionCode).HasMaxLength(32).IsRequired();
+            entity.Property(session => session.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(session => session.IdempotencyKey).HasMaxLength(200);
+            entity.Property(session => session.RequestHash).HasMaxLength(128);
+            entity.Property(session => session.RowVersion).IsRowVersion();
+            entity.HasIndex(session => session.SessionCode).IsUnique();
+            entity.HasIndex(session => session.ClientId);
+            entity.HasIndex(session => session.GuestId);
+            entity.HasIndex(session => session.PropertyId);
+            entity.HasIndex(session => new { session.ClientId, session.IdempotencyKey })
+                .IsUnique()
+                .HasFilter("[IdempotencyKey] IS NOT NULL AND [IdempotencyKey] <> ''");
+            entity.HasOne(session => session.Client)
+                .WithMany(user => user.BookingSessions)
+                .HasForeignKey(session => session.ClientId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(session => session.Guest)
+                .WithMany(guest => guest.BookingSessions)
+                .HasForeignKey(session => session.GuestId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(session => session.Property)
+                .WithMany(property => property.BookingSessions)
+                .HasForeignKey(session => session.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
     private static void ConfigureReservations(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Reservation>(entity =>
@@ -692,6 +725,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(reservation => reservation.GuestNote).HasMaxLength(2000);
             entity.Property(reservation => reservation.CancellationNote).HasMaxLength(2000);
             entity.Property(reservation => reservation.RowVersion).IsRowVersion();
+            entity.HasIndex(reservation => reservation.BookingSessionId);
             entity.HasIndex(reservation => new
             {
                 reservation.PropertyId,
@@ -713,6 +747,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasIndex(reservation => reservation.Status);
             entity.HasIndex(reservation => new { reservation.Status, reservation.HoldUntilUtc });
             entity.HasIndex(reservation => new { reservation.Status, reservation.PaymentExpiresAtUtc });
+            entity.HasOne(reservation => reservation.BookingSession)
+                .WithMany(session => session.Reservations)
+                .HasForeignKey(reservation => reservation.BookingSessionId)
+                .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(reservation => reservation.Client)
                 .WithMany(user => user.Reservations)
                 .HasForeignKey(reservation => reservation.ClientId)

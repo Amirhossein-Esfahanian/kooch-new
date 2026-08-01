@@ -3,6 +3,7 @@ namespace Kooch.Api.Entities;
 public class Reservation : BaseEntity
 {
     public string? ReservationNumber { get; set; }
+    public int? BookingSessionId { get; set; }
     public int ClientId { get; set; }
     public int? GuestId { get; set; }
     public int PropertyId { get; set; }
@@ -39,6 +40,7 @@ public class Reservation : BaseEntity
     public DateTime? ChangedAtUtc { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
+    public BookingSession? BookingSession { get; set; }
     public User Client { get; set; } = null!;
     public User? ApprovedByUser { get; set; }
     public User? CancelledByUser { get; set; }

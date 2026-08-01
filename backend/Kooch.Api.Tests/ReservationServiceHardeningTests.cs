@@ -580,6 +580,15 @@ internal sealed class StubReservationNumberGenerator : IReservationNumberGenerat
 {
     public Task<string> GenerateAsync(DateTime? nowUtc = null, CancellationToken cancellationToken = default) =>
         Task.FromResult($"KCH-TEST-{Guid.NewGuid():N}");
+
+    public Task<IReadOnlyList<string>> GenerateBatchAsync(
+        int count,
+        DateTime? nowUtc = null,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<string>>(
+            Enumerable.Range(0, count)
+                .Select(_ => $"KCH-TEST-{Guid.NewGuid():N}")
+                .ToArray());
 }
 
 internal sealed class RecordingNotificationService : INotificationService

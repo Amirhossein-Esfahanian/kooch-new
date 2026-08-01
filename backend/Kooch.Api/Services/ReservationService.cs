@@ -221,7 +221,6 @@ public class ReservationService(
             },
             cancellationToken);
 
-        var reservationNumber = await reservationNumberGenerator.GenerateAsync(DateTime.UtcNow, cancellationToken);
         var isOnRequest = availability.HasOnRequestNight;
         var requestedStatus = request.Status ?? (isOnRequest
             ? ReservationStatus.PendingApproval
@@ -231,7 +230,6 @@ public class ReservationService(
         var now = DateTime.UtcNow;
         var reservation = new Reservation
         {
-            ReservationNumber = reservationNumber,
             ClientId = currentUser.UserId,
             GuestId = request.GuestId,
             PropertyId = request.PropertyId,
@@ -285,6 +283,9 @@ public class ReservationService(
             excludedReservationId: null,
             cancellationToken: cancellationToken);
 
+        reservation.ReservationNumber = await reservationNumberGenerator.GenerateAsync(
+            now,
+            cancellationToken);
         dbContext.Reservations.Add(reservation);
         await dbContext.SaveChangesAsync(cancellationToken);
 
