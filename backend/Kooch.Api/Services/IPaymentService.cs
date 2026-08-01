@@ -4,6 +4,10 @@ namespace Kooch.Api.Services;
 
 public interface IPaymentService
 {
+    Task<BookingSessionPaymentInitiationResult> InitiateBookingSessionPaymentAsync(
+        BookingSessionPaymentInitiationRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<PaymentConfirmationResponse> ConfirmSuccessfulPaymentAsync(
         int reservationId,
         PaymentConfirmationRequest request,
