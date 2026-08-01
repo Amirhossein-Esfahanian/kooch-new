@@ -74,6 +74,8 @@ builder.Services.AddScoped<ISmsSender, NoOpSmsSender>();
 builder.Services.AddScoped<IEmailSender, NoOpEmailSender>();
 builder.Services.AddScoped<IReservationNumberGenerator, ReservationNumberGenerator>();
 builder.Services.AddSingleton<IBookingSessionCodeGenerator, BookingSessionCodeGenerator>();
+builder.Services.AddScoped<IBookingSessionService, BookingSessionService>();
+builder.Services.AddScoped<IBookingSessionQueryService, BookingSessionQueryService>();
 builder.Services.AddScoped<IReservationStatusWorkflow, ReservationStatusWorkflow>();
 builder.Services.AddScoped<IEffectiveAvailabilityService, EffectiveAvailabilityService>();
 builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabilityService>();
