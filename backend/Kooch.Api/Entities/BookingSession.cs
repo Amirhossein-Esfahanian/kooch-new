@@ -15,4 +15,5 @@ public class BookingSession : BaseEntity
     public Guest? Guest { get; set; }
     public Property Property { get; set; } = null!;
     public ICollection<Reservation> Reservations { get; set; } = [];
+    public ICollection<Payment> Payments { get; set; } = [];
 }

@@ -23,6 +23,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
+    public DbSet<PaymentItem> PaymentItems => Set<PaymentItem>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -824,9 +825,40 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(payment => payment.Currency).HasMaxLength(3).IsRequired();
             entity.Property(payment => payment.Provider).HasMaxLength(100);
             entity.Property(payment => payment.TransactionReference).HasMaxLength(200);
+            entity.Property(payment => payment.RowVersion).IsRowVersion();
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_Payment_ExactlyOneParent",
+                "([ReservationId] IS NOT NULL AND [BookingSessionId] IS NULL) OR ([ReservationId] IS NULL AND [BookingSessionId] IS NOT NULL)"));
+            entity.HasIndex(payment => payment.BookingSessionId);
+            entity.HasIndex(payment => new { payment.Provider, payment.TransactionReference })
+                .IsUnique()
+                .HasFilter("[TransactionReference] IS NOT NULL");
             entity.HasOne(payment => payment.Reservation)
                 .WithMany(reservation => reservation.Payments)
                 .HasForeignKey(payment => payment.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(payment => payment.BookingSession)
+                .WithMany(session => session.Payments)
+                .HasForeignKey(payment => payment.BookingSessionId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<PaymentItem>(entity =>
+        {
+            entity.Property(item => item.AllocatedAmount).HasPrecision(18, 2);
+            entity.Property(item => item.Currency).HasMaxLength(3).IsRequired();
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_PaymentItem_PositiveAllocatedAmount",
+                "[AllocatedAmount] > 0"));
+            entity.HasIndex(item => new { item.PaymentId, item.ReservationId }).IsUnique();
+            entity.HasIndex(item => item.ReservationId);
+            entity.HasOne(item => item.Payment)
+                .WithMany(payment => payment.Items)
+                .HasForeignKey(item => item.PaymentId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(item => item.Reservation)
+                .WithMany(reservation => reservation.PaymentItems)
+                .HasForeignKey(item => item.ReservationId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }

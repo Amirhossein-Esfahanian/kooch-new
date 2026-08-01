@@ -50,6 +50,7 @@ public class Reservation : BaseEntity
     public Room? Room { get; set; }
     public RatePlan? RatePlan { get; set; }
     public ICollection<Payment> Payments { get; set; } = [];
+    public ICollection<PaymentItem> PaymentItems { get; set; } = [];
     public ICollection<ReservationPaymentLinkToken> PaymentLinkTokens { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
