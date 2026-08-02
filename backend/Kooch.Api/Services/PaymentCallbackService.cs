@@ -152,10 +152,8 @@ public sealed class PaymentCallbackService(
                 return ToResult(payment, receiptId, isDuplicate);
             }
 
-            var reservations = await LockPaymentReservationsAsync(payment, cancellationToken);
             var outcome = await domainApplicationHandler.ApplyAsync(
                 payment,
-                reservations,
                 cancellationToken);
             if (outcome == PaymentDomainApplicationOutcome.Deferred)
             {
@@ -305,34 +303,4 @@ public sealed class PaymentCallbackService(
                 $"SELECT * FROM Payments WITH (UPDLOCK, HOLDLOCK) WHERE Id = {paymentId}")
             : dbContext.Payments.Where(payment => payment.Id == paymentId);
 
-    private async Task<IReadOnlyList<Reservation>> LockPaymentReservationsAsync(
-        Payment payment,
-        CancellationToken cancellationToken)
-    {
-        var ids = payment.BookingSessionId.HasValue
-            ? await dbContext.Reservations.AsNoTracking()
-                .Where(reservation => reservation.BookingSessionId == payment.BookingSessionId)
-                .OrderBy(reservation => reservation.Id)
-                .Select(reservation => reservation.Id)
-                .ToListAsync(cancellationToken)
-            : payment.ReservationId.HasValue
-                ? [payment.ReservationId.Value]
-                : [];
-        var reservations = new List<Reservation>(ids.Count);
-        foreach (var id in ids)
-        {
-            reservations.Add(await LockReservationAsync(id, cancellationToken));
-        }
-
-        return reservations;
-    }
-
-    private async Task<Reservation> LockReservationAsync(int id, CancellationToken token) =>
-        await GetReservationLockQuery(id).SingleAsync(token);
-
-    private IQueryable<Reservation> GetReservationLockQuery(int id) =>
-        dbContext.Database.IsSqlServer()
-            ? dbContext.Reservations.FromSqlInterpolated(
-                $"SELECT * FROM Reservations WITH (UPDLOCK, HOLDLOCK) WHERE Id = {id}")
-            : dbContext.Reservations.Where(reservation => reservation.Id == id);
 }

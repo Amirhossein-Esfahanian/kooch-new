@@ -10,7 +10,7 @@ namespace Kooch.Api.Tests;
 public sealed class PaymentCallbackServiceTests
 {
     [Fact]
-    public async Task ValidCallback_IsValidatedAndDurablyRecordedWithoutConfirmingReservations()
+    public async Task ValidCallback_IsValidatedAndAtomicallyConfirmsSessionReservations()
     {
         await using var harness = await PaymentCallbackHarness.CreateAsync();
 
@@ -19,20 +19,232 @@ public sealed class PaymentCallbackServiceTests
             harness.Callback());
 
         Assert.False(result.IsDuplicate);
-        Assert.Equal(PaymentCallbackApplicationState.Deferred, result.ApplicationState);
+        Assert.Equal(PaymentCallbackApplicationState.Applied, result.ApplicationState);
         var receipt = await harness.Context.PaymentCallbackReceipts.SingleAsync();
         var payment = await harness.Context.Payments.SingleAsync(payment => payment.Id == 100);
         Assert.Equal(payment.Id, receipt.PaymentId);
         Assert.True(receipt.IsSuccessful);
         Assert.Equal("transaction-1", payment.TransactionReference);
         Assert.NotNull(payment.ProviderConfirmedAtUtc);
-        Assert.Null(payment.AppliedAtUtc);
-        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.NotNull(payment.AppliedAtUtc);
+        Assert.Equal(PaymentStatus.Successful, payment.Status);
         Assert.All(
             await harness.Context.Reservations.ToListAsync(),
             reservation => Assert.Equal(
-                ReservationStatus.ApprovedAwaitingPayment,
+                ReservationStatus.Confirmed,
                 reservation.Status));
+        Assert.Equal(2, await harness.Context.AuditLogs.CountAsync());
+        Assert.Equal(2, await harness.Context.NotificationLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task InvalidSecondChild_RollsBackTheWholeSessionApplication()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        (await harness.Context.Reservations.FindAsync(11))!.Status = ReservationStatus.Rejected;
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.Equal(
+            ReservationStatus.ApprovedAwaitingPayment,
+            (await harness.Context.Reservations.FindAsync(10))!.Status);
+        Assert.Equal(ReservationStatus.Rejected, (await harness.Context.Reservations.FindAsync(11))!.Status);
+        Assert.Empty(await harness.Context.AuditLogs.ToListAsync());
+        Assert.Empty(await harness.Context.NotificationLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ExpiredChild_PreventsEveryReservationFromBeingConfirmed()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        (await harness.Context.Reservations.FindAsync(11))!.PaymentExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.All(
+            await harness.Context.Reservations.ToListAsync(),
+            reservation => Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status));
+    }
+
+    [Fact]
+    public async Task AllocationMismatch_DoesNotApplyThePayment()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        (await harness.Context.PaymentItems.SingleAsync(item => item.ReservationId == 10)).AllocatedAmount = 101;
+        (await harness.Context.PaymentItems.SingleAsync(item => item.ReservationId == 11)).AllocatedAmount = 199;
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.Null((await harness.Context.Payments.FindAsync(100))!.AppliedAtUtc);
+    }
+
+    [Fact]
+    public async Task RetryAfterChildCorrection_AppliesTheSameDurablePayment()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        (await harness.Context.Reservations.FindAsync(11))!.Status = ReservationStatus.Rejected;
+        await harness.Context.SaveChangesAsync();
+        var failed = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+        (await harness.Context.Reservations.FindAsync(11))!.Status =
+            ReservationStatus.ApprovedAwaitingPayment;
+        await harness.Context.SaveChangesAsync();
+
+        var retried = await harness.Service.RetryApplicationAsync(100);
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, failed.ApplicationState);
+        Assert.Equal(PaymentCallbackApplicationState.Applied, retried.ApplicationState);
+        Assert.Equal(failed.ReceiptId, retried.ReceiptId);
+        Assert.Single(await harness.Context.PaymentCallbackReceipts.ToListAsync());
+        Assert.All(
+            await harness.Context.Reservations.Where(reservation => reservation.BookingSessionId == 1).ToListAsync(),
+            reservation => Assert.Equal(ReservationStatus.Confirmed, reservation.Status));
+    }
+
+    [Fact]
+    public async Task ReservationCurrencyMismatch_DoesNotApplyThePayment()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        (await harness.Context.Reservations.FindAsync(11))!.Currency = "USD";
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.All(
+            await harness.Context.Reservations.ToListAsync(),
+            reservation => Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status));
+    }
+
+    [Fact]
+    public async Task PaymentItemOutsideSession_IsRejectedWithoutPartialApplication()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        harness.Context.BookingSessions.Add(new BookingSession
+        {
+            Id = 2,
+            SessionCode = "KCH-S-OTHER",
+            ClientId = 1,
+            PropertyId = 1,
+            Currency = "IRR"
+        });
+        (await harness.Context.Reservations.FindAsync(11))!.BookingSessionId = 2;
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.All(
+            await harness.Context.Reservations.ToListAsync(),
+            reservation => Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status));
+    }
+
+    [Fact]
+    public async Task CapacityRecheckFailure_NeverAppliesPartialCapacityLost()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        harness.Context.Reservations.Add(new Reservation
+        {
+            Id = 12,
+            ReservationNumber = "KCH-R-12",
+            ClientId = 2,
+            PropertyId = 1,
+            RoomTypeId = 10,
+            CheckInDate = new DateOnly(2036, 1, 1),
+            CheckOutDate = new DateOnly(2036, 1, 2),
+            AdultCount = 1,
+            TotalPrice = 50,
+            FinalAmount = 50,
+            Currency = "IRR",
+            Status = ReservationStatus.Confirmed,
+            Source = ReservationSource.AdminCreated
+        });
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.Equal(
+            ReservationStatus.ApprovedAwaitingPayment,
+            (await harness.Context.Reservations.FindAsync(10))!.Status);
+        Assert.Equal(
+            ReservationStatus.ApprovedAwaitingPayment,
+            (await harness.Context.Reservations.FindAsync(11))!.Status);
+        Assert.DoesNotContain(
+            await harness.Context.Reservations.ToListAsync(),
+            reservation => reservation.Status == ReservationStatus.CapacityLost);
+    }
+
+    [Fact]
+    public async Task SuccessfulSessionPayment_ConsumesEveryActiveChildToken()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        harness.Context.ReservationPaymentLinkTokens.AddRange(
+            new ReservationPaymentLinkToken
+            {
+                ReservationId = 10,
+                TokenHash = "token-10",
+                ExpiresAtUtc = DateTime.UtcNow.AddHours(1)
+            },
+            new ReservationPaymentLinkToken
+            {
+                ReservationId = 11,
+                TokenHash = "token-11",
+                ExpiresAtUtc = DateTime.UtcNow.AddHours(1)
+            });
+        await harness.Context.SaveChangesAsync();
+
+        await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.All(
+            await harness.Context.ReservationPaymentLinkTokens.ToListAsync(),
+            token => Assert.NotNull(token.UsedAtUtc));
+    }
+
+    [Fact]
+    public async Task PreviousSuccessfulPayment_PreventsDoubleCounting()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        harness.Context.Payments.Add(new Payment
+        {
+            Id = 102,
+            ReservationId = 10,
+            Amount = 100,
+            Currency = "IRR",
+            Provider = "legacy",
+            TransactionReference = "already-paid",
+            Status = PaymentStatus.Successful,
+            PaidAtUtc = DateTime.UtcNow
+        });
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, result.ApplicationState);
+        Assert.Null((await harness.Context.Payments.FindAsync(100))!.AppliedAtUtc);
     }
 
     [Fact]
@@ -174,10 +386,36 @@ public sealed class PaymentCallbackServiceTests
     public async Task LegacyReservationPayment_CanReceiveAValidatedReceipt()
     {
         await using var harness = await PaymentCallbackHarness.CreateAsync();
+        harness.Context.RoomTypes.Add(new RoomType
+        {
+            Id = 12,
+            PropertyId = 1,
+            Name = "Legacy room type",
+            Slug = "legacy-room-type",
+            TotalInventory = 1,
+            InventoryMode = InventoryMode.TypeBasedInventory
+        });
+        harness.Context.Reservations.Add(new Reservation
+        {
+            Id = 12,
+            ReservationNumber = "KCH-R-LEGACY",
+            ClientId = 1,
+            PropertyId = 1,
+            RoomTypeId = 12,
+            CheckInDate = new DateOnly(2036, 1, 1),
+            CheckOutDate = new DateOnly(2036, 1, 2),
+            AdultCount = 1,
+            TotalPrice = 100,
+            FinalAmount = 100,
+            Currency = "IRR",
+            Status = ReservationStatus.ApprovedAwaitingPayment,
+            Source = ReservationSource.Website,
+            PaymentExpiresAtUtc = DateTime.UtcNow.AddHours(1)
+        });
         harness.Context.Payments.Add(new Payment
         {
             Id = 101,
-            ReservationId = 10,
+            ReservationId = 12,
             Amount = 100,
             Currency = "IRR",
             Provider = InternalTestPaymentProvider.ProviderName,
@@ -190,10 +428,13 @@ public sealed class PaymentCallbackServiceTests
             harness.Callback(paymentId: 101, amount: 100, eventId: "legacy-event"));
 
         Assert.Equal(101, result.PaymentId);
-        Assert.Equal(PaymentCallbackApplicationState.Deferred, result.ApplicationState);
+        Assert.Equal(PaymentCallbackApplicationState.Applied, result.ApplicationState);
         Assert.Contains(
             await harness.Context.PaymentCallbackReceipts.ToListAsync(),
             receipt => receipt.PaymentId == 101);
+        Assert.Equal(
+            ReservationStatus.Confirmed,
+            (await harness.Context.Reservations.FindAsync(12))!.Status);
     }
 
     [Fact]
@@ -213,12 +454,11 @@ public sealed class PaymentCallbackServiceTests
 
         public Task<PaymentDomainApplicationOutcome> ApplyAsync(
             Payment payment,
-            IReadOnlyList<Reservation> reservations,
             CancellationToken cancellationToken = default)
         {
             if (ThrowAfterFirstReservation)
             {
-                reservations[0].Status = ReservationStatus.Confirmed;
+                payment.Status = PaymentStatus.Successful;
                 throw new InvalidOperationException("Simulated domain failure.");
             }
 
@@ -230,12 +470,12 @@ public sealed class PaymentCallbackServiceTests
     {
         internal const string SigningSecret = "local-test-secret";
         private readonly DbContextOptions<KoochDbContext> options;
-        private readonly IPaymentDomainApplicationHandler handler;
+        private readonly IPaymentDomainApplicationHandler? handler;
 
         private PaymentCallbackHarness(
             DbContextOptions<KoochDbContext> options,
             KoochDbContext context,
-            IPaymentDomainApplicationHandler handler)
+            IPaymentDomainApplicationHandler? handler)
         {
             this.options = options;
             this.handler = handler;
@@ -267,7 +507,10 @@ public sealed class PaymentCallbackServiceTests
             context.Reservations.AddRange(
                 Reservation(10, 100, deadline),
                 Reservation(11, 200, deadline));
-            context.Payments.Add(new Payment
+            context.RoomTypes.AddRange(
+                RoomType(10),
+                RoomType(11));
+            var payment = new Payment
             {
                 Id = 100,
                 BookingSessionId = 1,
@@ -276,13 +519,19 @@ public sealed class PaymentCallbackServiceTests
                 Provider = InternalTestPaymentProvider.ProviderName,
                 IdempotencyKey = "payment-key",
                 RequestHash = new string('A', 64),
-                Status = PaymentStatus.Pending
-            });
+                Status = PaymentStatus.Pending,
+                Items =
+                [
+                    new PaymentItem { Id = 1000, ReservationId = 10, AllocatedAmount = 100, Currency = "IRR" },
+                    new PaymentItem { Id = 1001, ReservationId = 11, AllocatedAmount = 200, Currency = "IRR" }
+                ]
+            };
+            context.Payments.Add(payment);
             await context.SaveChangesAsync();
             return new PaymentCallbackHarness(
                 options,
                 context,
-                handler ?? new DeferredPaymentDomainApplicationHandler());
+                handler);
         }
 
         public PaymentProviderCallbackContext Callback(
@@ -325,7 +574,22 @@ public sealed class PaymentCallbackServiceTests
             new(
                 context,
                 [new InternalTestPaymentProvider(SigningSecret)],
-                handler);
+                handler is null
+                    ? new PaymentDomainApplicationHandler(
+                        context,
+                        new EffectiveAvailabilityService(context))
+                    : handler);
+
+        private static RoomType RoomType(int id) =>
+            new()
+            {
+                Id = id,
+                PropertyId = 1,
+                Name = $"Room type {id}",
+                Slug = $"room-type-{id}",
+                TotalInventory = 1,
+                InventoryMode = InventoryMode.TypeBasedInventory
+            };
 
         private static Reservation Reservation(int id, decimal amount, DateTime deadline) =>
             new()
