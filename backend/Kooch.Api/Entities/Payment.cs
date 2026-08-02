@@ -12,9 +12,14 @@ public class Payment : BaseEntity
     public string? IdempotencyKey { get; set; }
     public string? RequestHash { get; set; }
     public DateTime? PaidAtUtc { get; set; }
+    public DateTime? ProviderConfirmedAtUtc { get; set; }
+    public DateTime? AppliedAtUtc { get; set; }
+    public DateTime? FailedAtUtc { get; set; }
+    public string? ProcessingError { get; set; }
     public byte[] RowVersion { get; set; } = [];
 
     public Reservation? Reservation { get; set; }
     public BookingSession? BookingSession { get; set; }
     public ICollection<PaymentItem> Items { get; set; } = [];
+    public ICollection<PaymentCallbackReceipt> CallbackReceipts { get; set; } = [];
 }

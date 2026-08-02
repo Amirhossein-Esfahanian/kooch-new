@@ -24,6 +24,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentItem> PaymentItems => Set<PaymentItem>();
+    public DbSet<PaymentCallbackReceipt> PaymentCallbackReceipts => Set<PaymentCallbackReceipt>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -827,6 +828,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(payment => payment.TransactionReference).HasMaxLength(200);
             entity.Property(payment => payment.IdempotencyKey).HasMaxLength(200);
             entity.Property(payment => payment.RequestHash).HasMaxLength(128);
+            entity.Property(payment => payment.ProcessingError).HasMaxLength(1000);
             entity.Property(payment => payment.RowVersion).IsRowVersion();
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_Payment_ExactlyOneParent",
@@ -864,6 +866,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(item => item.Reservation)
                 .WithMany(reservation => reservation.PaymentItems)
                 .HasForeignKey(item => item.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<PaymentCallbackReceipt>(entity =>
+        {
+            entity.Property(receipt => receipt.Provider).HasMaxLength(100).IsRequired();
+            entity.Property(receipt => receipt.ProviderEventId).HasMaxLength(200).IsRequired();
+            entity.Property(receipt => receipt.TransactionReference).HasMaxLength(200).IsRequired();
+            entity.Property(receipt => receipt.Amount).HasPrecision(18, 2);
+            entity.Property(receipt => receipt.Currency).HasMaxLength(3).IsRequired();
+            entity.HasIndex(receipt => new { receipt.Provider, receipt.ProviderEventId }).IsUnique();
+            entity.HasIndex(receipt => receipt.PaymentId);
+            entity.HasOne(receipt => receipt.Payment)
+                .WithMany(payment => payment.CallbackReceipts)
+                .HasForeignKey(receipt => receipt.PaymentId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }

@@ -232,6 +232,41 @@ public sealed class PaymentPersistenceModelTests
         AssertForeignKey(paymentItemType, nameof(PaymentItem.ReservationId), typeof(Reservation), true);
     }
 
+    [Fact]
+    public void CallbackReceipt_HasRequiredShapeIndexesAndNoActionRelationship()
+    {
+        using var context = CreateMetadataContext();
+        var receiptType = context.Model.FindEntityType(typeof(PaymentCallbackReceipt));
+        var paymentType = context.Model.FindEntityType(typeof(Payment));
+        Assert.NotNull(receiptType);
+        Assert.NotNull(paymentType);
+
+        Assert.Equal(100, receiptType.FindProperty(nameof(PaymentCallbackReceipt.Provider))?.GetMaxLength());
+        Assert.Equal(200, receiptType.FindProperty(nameof(PaymentCallbackReceipt.ProviderEventId))?.GetMaxLength());
+        Assert.Equal(200, receiptType.FindProperty(nameof(PaymentCallbackReceipt.TransactionReference))?.GetMaxLength());
+        Assert.Equal(3, receiptType.FindProperty(nameof(PaymentCallbackReceipt.Currency))?.GetMaxLength());
+        Assert.Equal(1000, paymentType.FindProperty(nameof(Payment.ProcessingError))?.GetMaxLength());
+        Assert.Null(receiptType.FindProperty("RawPayload"));
+
+        var eventIndex = Assert.Single(
+            receiptType.GetIndexes(),
+            index => index.Properties.Select(property => property.Name)
+                .SequenceEqual([nameof(PaymentCallbackReceipt.Provider), nameof(PaymentCallbackReceipt.ProviderEventId)]));
+        Assert.True(eventIndex.IsUnique);
+        AssertForeignKey(receiptType, nameof(PaymentCallbackReceipt.PaymentId), typeof(Payment), true);
+    }
+
+    [Fact]
+    public void DuplicateProviderEvent_IsRejectedByTheDatabase()
+    {
+        using var database = new PaymentConstraintDatabase();
+        var paymentId = database.InsertPayment(null, 20, "provider", "transaction");
+        database.InsertCallbackReceipt(paymentId, "provider", "event-1");
+
+        Assert.Throws<SqliteException>(() =>
+            database.InsertCallbackReceipt(paymentId, "provider", "event-1"));
+    }
+
     private static void AssertForeignKey(
         IReadOnlyEntityType entityType,
         string propertyName,
@@ -329,6 +364,34 @@ public sealed class PaymentPersistenceModelTests
                     {reservationId},
                     {allocatedAmount},
                     {"IRR"},
+                    {DateTime.UtcNow},
+                    {false});
+                """);
+        }
+
+        public void InsertCallbackReceipt(int paymentId, string provider, string providerEventId)
+        {
+            Context.Database.ExecuteSqlInterpolated($"""
+                INSERT INTO PaymentCallbackReceipts (
+                    PaymentId,
+                    Provider,
+                    ProviderEventId,
+                    TransactionReference,
+                    Amount,
+                    Currency,
+                    IsSuccessful,
+                    ReceivedAtUtc,
+                    CreatedAtUtc,
+                    IsDeleted)
+                VALUES (
+                    {paymentId},
+                    {provider},
+                    {providerEventId},
+                    {"transaction"},
+                    {100m},
+                    {"IRR"},
+                    {true},
+                    {DateTime.UtcNow},
                     {DateTime.UtcNow},
                     {false});
                 """);

@@ -82,6 +82,8 @@ builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabil
 builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IPaymentDomainApplicationHandler, DeferredPaymentDomainApplicationHandler>();
+builder.Services.AddScoped<IPaymentCallbackService, PaymentCallbackService>();
 builder.Services.AddScoped<IChildPricingRuleResolver, ChildPricingRuleResolver>();
 builder.Services.AddScoped<IReservationRulesResolver, ReservationRulesResolver>();
 if (builder.Environment.IsDevelopment())
