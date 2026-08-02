@@ -11,7 +11,7 @@ public interface IPaymentProvider
 }
 
 public sealed record PaymentProviderCallbackContext(
-    string Body,
+    ReadOnlyMemory<byte> Body,
     IReadOnlyDictionary<string, string> Headers,
     string? RemoteAddress = null);
 

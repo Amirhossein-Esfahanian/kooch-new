@@ -84,6 +84,16 @@ builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IPaymentDomainApplicationHandler, PaymentDomainApplicationHandler>();
 builder.Services.AddScoped<IPaymentCallbackService, PaymentCallbackService>();
+if (builder.Environment.IsEnvironment("Testing"))
+{
+    var internalTestSigningSecret = builder.Configuration[
+        InternalTestPaymentProvider.SigningSecretConfigurationKey];
+    if (!string.IsNullOrWhiteSpace(internalTestSigningSecret))
+    {
+        builder.Services.AddSingleton<IPaymentProvider>(
+            new InternalTestPaymentProvider(internalTestSigningSecret));
+    }
+}
 builder.Services.AddScoped<IChildPricingRuleResolver, ChildPricingRuleResolver>();
 builder.Services.AddScoped<IReservationRulesResolver, ReservationRulesResolver>();
 if (builder.Environment.IsDevelopment())
@@ -169,6 +179,9 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy<string>(
         PropertyUserResolveRateLimitPolicy.Name,
         PropertyUserResolveRateLimitPolicy.CreatePartition);
+    options.AddPolicy<string>(
+        PaymentCallbackRateLimitPolicy.Name,
+        PaymentCallbackRateLimitPolicy.CreatePartition);
 });
 
 builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())

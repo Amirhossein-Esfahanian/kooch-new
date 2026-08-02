@@ -1,4 +1,5 @@
 using Kooch.Api.Data;
+using Kooch.Api.Authentication;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -442,7 +443,7 @@ public sealed class PaymentCallbackServiceTests
     {
         var provider = new InternalTestPaymentProvider(PaymentCallbackHarness.SigningSecret);
 
-        Assert.Equal("payment-callback-internal-test", provider.CallbackRateLimitPolicyName);
+        Assert.Equal(PaymentCallbackRateLimitPolicy.Name, provider.CallbackRateLimitPolicyName);
         Assert.Equal(InternalTestPaymentProvider.ProviderName, provider.Name);
     }
 

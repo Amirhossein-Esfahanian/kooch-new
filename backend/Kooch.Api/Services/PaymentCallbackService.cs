@@ -101,7 +101,11 @@ public sealed class PaymentCallbackService(
         {
             ValidateReceiptMatch(existingReceipt, callback);
             await transaction.CommitAsync(cancellationToken);
-            return ToResult(payment, existingReceipt.Id, isDuplicate: true);
+            return ToResult(
+                payment,
+                existingReceipt.Id,
+                isDuplicate: true,
+                providerRejected: !existingReceipt.IsSuccessful);
         }
 
         var now = DateTime.UtcNow;
@@ -131,7 +135,11 @@ public sealed class PaymentCallbackService(
         dbContext.PaymentCallbackReceipts.Add(receipt);
         await dbContext.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        return ToResult(payment, receipt.Id, isDuplicate: false);
+        return ToResult(
+            payment,
+            receipt.Id,
+            isDuplicate: false,
+            providerRejected: !receipt.IsSuccessful);
     }
 
     private async Task<PaymentCallbackResult> ApplyDomainAsync(
@@ -264,23 +272,31 @@ public sealed class PaymentCallbackService(
     private static PaymentCallbackResult ToResult(
         Payment payment,
         int receiptId,
-        bool isDuplicate) =>
+        bool isDuplicate,
+        bool providerRejected = false) =>
         new()
         {
             PaymentId = payment.Id,
             ReceiptId = receiptId,
             IsDuplicate = isDuplicate,
-            ApplicationState = GetApplicationState(payment),
+            ApplicationState = GetApplicationState(payment, providerRejected),
             ProviderConfirmedAtUtc = payment.ProviderConfirmedAtUtc,
             AppliedAtUtc = payment.AppliedAtUtc,
             FailedAtUtc = payment.FailedAtUtc
         };
 
-    private static PaymentCallbackApplicationState GetApplicationState(Payment payment)
+    private static PaymentCallbackApplicationState GetApplicationState(
+        Payment payment,
+        bool providerRejected)
     {
         if (payment.AppliedAtUtc.HasValue)
         {
             return PaymentCallbackApplicationState.Applied;
+        }
+
+        if (providerRejected)
+        {
+            return PaymentCallbackApplicationState.ProviderRejected;
         }
 
         if (payment.FailedAtUtc.HasValue)

@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Kooch.Api.Authentication;
 
 namespace Kooch.Api.Services;
 
@@ -8,9 +9,11 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
 {
     internal const string ProviderName = "internal-test";
     internal const string SignatureHeaderName = "X-Kooch-Test-Signature";
+    internal const string SigningSecretConfigurationKey =
+        "PaymentProviders:InternalTest:SigningSecret";
 
     public string Name => ProviderName;
-    public string CallbackRateLimitPolicyName => "payment-callback-internal-test";
+    public string CallbackRateLimitPolicyName => PaymentCallbackRateLimitPolicy.Name;
 
     public Task<ValidatedPaymentProviderCallback> ValidateCallbackAsync(
         PaymentProviderCallbackContext context,
@@ -27,7 +30,7 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
                 SignatureHeaderName,
                 StringComparison.OrdinalIgnoreCase))
             .Value;
-        var expectedSignature = CreateSignature(context.Body, signingSecret);
+        var expectedSignature = CreateSignature(context.Body.Span, signingSecret);
         if (!SignaturesMatch(suppliedSignature, expectedSignature))
         {
             throw new PaymentProviderValidationException("The payment callback signature is invalid.");
@@ -36,7 +39,7 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
         InternalTestPaymentCallbackPayload? payload;
         try
         {
-            payload = JsonSerializer.Deserialize<InternalTestPaymentCallbackPayload>(context.Body);
+            payload = JsonSerializer.Deserialize<InternalTestPaymentCallbackPayload>(context.Body.Span);
         }
         catch (JsonException)
         {
@@ -62,13 +65,12 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
             payload.ProviderOccurredAtUtc.ToUniversalTime()));
     }
 
-    internal static string SerializePayload(InternalTestPaymentCallbackPayload payload) =>
-        JsonSerializer.Serialize(payload);
+    internal static byte[] SerializePayload(InternalTestPaymentCallbackPayload payload) =>
+        JsonSerializer.SerializeToUtf8Bytes(payload);
 
-    internal static string CreateSignature(string body, string secret)
+    internal static string CreateSignature(ReadOnlySpan<byte> body, string secret)
     {
-        using var hmac = new HMACSHA256(Encoding.UTF8.GetBytes(secret));
-        return Convert.ToHexString(hmac.ComputeHash(Encoding.UTF8.GetBytes(body)));
+        return Convert.ToHexString(HMACSHA256.HashData(Encoding.UTF8.GetBytes(secret), body));
     }
 
     private static bool SignaturesMatch(string? supplied, string expected)
