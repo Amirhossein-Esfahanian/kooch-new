@@ -76,6 +76,7 @@ builder.Services.AddScoped<IReservationNumberGenerator, ReservationNumberGenerat
 builder.Services.AddSingleton<IBookingSessionCodeGenerator, BookingSessionCodeGenerator>();
 builder.Services.AddScoped<IBookingSessionService, BookingSessionService>();
 builder.Services.AddScoped<IBookingSessionQueryService, BookingSessionQueryService>();
+builder.Services.AddScoped<IPublicBookingOptionsService, PublicBookingOptionsService>();
 builder.Services.AddScoped<IReservationStatusWorkflow, ReservationStatusWorkflow>();
 builder.Services.AddScoped<IEffectiveAvailabilityService, EffectiveAvailabilityService>();
 builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabilityService>();

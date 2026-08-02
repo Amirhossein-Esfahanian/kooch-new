@@ -452,7 +452,13 @@ public class ReservationService(
     {
         var reservationSummary = await dbContext.Reservations.AsNoTracking()
             .Where(item => item.Id == reservationId)
-            .Select(item => new { item.PropertyId, item.RoomTypeId, item.Status })
+            .Select(item => new
+            {
+                item.PropertyId,
+                item.RoomTypeId,
+                item.Status,
+                item.BookingSessionId
+            })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
@@ -468,6 +474,15 @@ public class ReservationService(
         statusWorkflow.ValidateTransition(
             reservationSummary.Status,
             ReservationStatus.ApprovedAwaitingPayment);
+
+        if (reservationSummary.BookingSessionId.HasValue)
+        {
+            return await ApproveSessionReservationAsync(
+                reservationId,
+                reservationSummary.BookingSessionId.Value,
+                currentUser,
+                cancellationToken);
+        }
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
@@ -496,6 +511,75 @@ public class ReservationService(
         await transaction.CommitAsync(cancellationToken);
 
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
+        return response;
+    }
+
+    private async Task<ReservationResponse> ApproveSessionReservationAsync(
+        int reservationId,
+        int bookingSessionId,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        var roomTypeIds = await dbContext.Reservations.AsNoTracking()
+            .Where(item => item.BookingSessionId == bookingSessionId)
+            .Select(item => item.RoomTypeId)
+            .Distinct()
+            .Order()
+            .ToListAsync(cancellationToken);
+        foreach (var roomTypeId in roomTypeIds)
+        {
+            await LockRoomTypeAsync(roomTypeId, cancellationToken);
+        }
+
+        var reservations = await LoadLockedSessionReservationsAsync(
+            bookingSessionId,
+            cancellationToken);
+        var reservation = reservations.SingleOrDefault(item => item.Id == reservationId)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+        statusWorkflow.ValidateTransition(
+            reservation.Status,
+            ReservationStatus.ApprovedAwaitingPayment);
+        await ValidateApprovalCapacityAsync(reservation, cancellationToken);
+
+        var completesApproval = reservations
+            .Where(item => item.Id != reservationId)
+            .All(item => item.Status == ReservationStatus.ApprovedAwaitingPayment);
+        DateTime? commonDeadlineUtc = null;
+        if (completesApproval)
+        {
+            commonDeadlineUtc = DateTime.UtcNow.AddMinutes(
+                await ReservationPaymentWindowSettings.GetMinutesAsync(
+                    dbContext,
+                    cancellationToken));
+        }
+
+        var statusNotification = await ApplyApprovalTransitionAsync(
+            reservation,
+            currentUser,
+            cancellationToken,
+            commonDeadlineUtc);
+        if (commonDeadlineUtc.HasValue)
+        {
+            foreach (var approvedReservation in reservations.Where(item =>
+                         item.Status == ReservationStatus.ApprovedAwaitingPayment))
+            {
+                approvedReservation.PaymentExpiresAtUtc = commonDeadlineUtc;
+            }
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await SendStatusNotificationAsync(reservation, statusNotification, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
+        var response = ToResponse(
+            reservation,
+            reservation.Property,
+            reservation.RoomType,
+            reservation.Guest);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         return response;
     }
@@ -829,7 +913,8 @@ public class ReservationService(
     private async Task<(NotificationEventType EventType, string Message)?> ApplyApprovalTransitionAsync(
         Reservation reservation,
         (int UserId, UserRole Role) currentUser,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        DateTime? paymentDeadlineUtc = null)
     {
         await EnsureStatusManagerAsync(currentUser, reservation.PropertyId, cancellationToken);
         statusWorkflow.ValidateTransition(
@@ -842,8 +927,8 @@ public class ReservationService(
         reservation.ChangedByUserId = currentUser.UserId;
         reservation.ApprovedAtUtc = now;
         reservation.ApprovedByUserId = currentUser.UserId;
-        reservation.PaymentExpiresAtUtc = now.AddMinutes(
-            await GetPaymentWindowMinutesAsync(cancellationToken));
+        reservation.PaymentExpiresAtUtc = paymentDeadlineUtc ??
+            now.AddMinutes(await GetPaymentWindowMinutesAsync(cancellationToken));
         auditLogService.Add(
             currentUser.UserId,
             AuditAction.BookingApproved,
@@ -942,6 +1027,12 @@ public class ReservationService(
             .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
         await EnsurePaymentLinkManagerAsync(currentUser, reservation.PropertyId, cancellationToken);
+
+        if (reservation.BookingSessionId.HasValue)
+        {
+            throw new InvalidOperationException(
+                "Booking session reservations must use the session payment flow.");
+        }
 
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment)
         {
@@ -1096,6 +1187,25 @@ public class ReservationService(
 
         await dbContext.RoomTypes.AsNoTracking()
             .SingleAsync(roomType => roomType.Id == roomTypeId, cancellationToken);
+    }
+
+    private async Task<List<Reservation>> LoadLockedSessionReservationsAsync(
+        int bookingSessionId,
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.Database.IsSqlServer()
+            ? dbContext.Reservations.FromSqlInterpolated(
+                $"SELECT * FROM Reservations WITH (UPDLOCK, HOLDLOCK) WHERE BookingSessionId = {bookingSessionId}")
+            : dbContext.Reservations.Where(
+                reservation => reservation.BookingSessionId == bookingSessionId);
+        return await query
+            .Include(item => item.Property)
+            .Include(item => item.RoomType)
+            .Include(item => item.Guest)
+            .Include(item => item.Client)
+            .Include(item => item.ApprovedByUser)
+            .OrderBy(item => item.Id)
+            .ToListAsync(cancellationToken);
     }
 
     private async Task ValidateApprovalCapacityAsync(
@@ -2069,11 +2179,12 @@ public class ReservationService(
 
         response.PaidAmount = paidAmount;
         response.RemainingAmount = remainingAmount;
-        response.IsPaymentEligible = IsPaymentEligible(
-            reservation.Status,
-            reservation.PaymentExpiresAtUtc,
-            remainingAmount,
-            now);
+        response.IsPaymentEligible = !reservation.BookingSessionId.HasValue &&
+            IsPaymentEligible(
+                reservation.Status,
+                reservation.PaymentExpiresAtUtc,
+                remainingAmount,
+                now);
     }
 
     private static int? GetRemainingPaymentSeconds(

@@ -11,4 +11,9 @@ public interface IBookingSessionQueryService
     Task<BookingSessionDetailsResponse> GetBySessionCodeAsync(
         string sessionCode,
         CancellationToken cancellationToken = default);
+
+    Task<AccountBookingSessionResponse> GetBySessionCodeForClientAsync(
+        int clientId,
+        string sessionCode,
+        CancellationToken cancellationToken = default);
 }

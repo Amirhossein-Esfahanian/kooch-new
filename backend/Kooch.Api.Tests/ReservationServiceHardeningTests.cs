@@ -1,6 +1,7 @@
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.AuditLogs;
+using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
@@ -108,6 +109,55 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, approved.Status);
         Assert.NotNull(approved.PaymentExpiresAtUtc);
         Assert.InRange(approved.PaymentExpiresAtUtc.Value, before, after);
+    }
+
+    [Fact]
+    public async Task SessionApproval_LastChildAssignsOneSharedDeadline()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync(paymentWindowMinutes: 37);
+        var session = new BookingSession
+        {
+            SessionCode = "KCH-S-APPROVAL",
+            ClientId = 1,
+            GuestId = 40,
+            PropertyId = 10,
+            Currency = "IRR",
+            RequestHash = new string('A', 64)
+        };
+        harness.DbContext.BookingSessions.Add(session);
+        await harness.DbContext.SaveChangesAsync();
+        var first = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            roomId: 30,
+            roomTypeId: 20);
+        var second = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            roomId: 31,
+            roomTypeId: 21);
+        first.BookingSessionId = session.Id;
+        second.BookingSessionId = session.Id;
+        await harness.DbContext.SaveChangesAsync();
+
+        await harness.Service.ApproveAsync(first.Id, harness.Owner);
+        var partial = await LoadSummaryReservationsAsync(harness, session.Id);
+        Assert.False(BookingSessionQueryService.BuildSummary(partial).IsPaymentReady);
+        Assert.Equal(
+            ReservationStatus.PendingApproval,
+            partial.Single(item => item.ReservationId == second.Id).Status);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            harness.Service.GeneratePaymentLinkAsync(first.Id, harness.SuperAdmin));
+
+        var before = DateTime.UtcNow.AddMinutes(37);
+        await harness.Service.ApproveAsync(second.Id, harness.Owner);
+        var after = DateTime.UtcNow.AddMinutes(37);
+        var completed = await LoadSummaryReservationsAsync(harness, session.Id);
+        var deadline = Assert.Single(
+            completed.Select(item => item.PaymentExpiresAtUtc).Distinct());
+        Assert.NotNull(deadline);
+        Assert.InRange(deadline.Value, before, after);
+        Assert.True(BookingSessionQueryService.BuildSummary(completed).IsPaymentReady);
+        Assert.All(completed, item =>
+            Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, item.Status));
     }
 
     [Theory]
@@ -325,6 +375,27 @@ public sealed class ReservationServiceHardeningTests
                 harness.SuperAdmin));
     }
 
+    private static async Task<IReadOnlyList<BookingSessionReservationDetailsResponse>>
+        LoadSummaryReservationsAsync(
+            ReservationTestHarness harness,
+            int bookingSessionId) =>
+        await harness.DbContext.Reservations.AsNoTracking()
+            .Where(item => item.BookingSessionId == bookingSessionId)
+            .OrderBy(item => item.Id)
+            .Select(item => new BookingSessionReservationDetailsResponse
+            {
+                ReservationId = item.Id,
+                ReservationNumber = item.ReservationNumber ?? string.Empty,
+                RoomTypeId = item.RoomTypeId,
+                CheckInDate = item.CheckInDate,
+                CheckOutDate = item.CheckOutDate,
+                Status = item.Status,
+                PaymentExpiresAtUtc = item.PaymentExpiresAtUtc,
+                FinalAmount = item.FinalAmount,
+                Currency = item.Currency
+            })
+            .ToListAsync();
+
     private static ReservationCancellationRequest ValidCancellation() => new()
     {
         Reason = ReservationCancellationReason.GuestRequest,
@@ -398,24 +469,12 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
             Country = "Iran",
             Status = PropertyStatus.Approved
         });
-        dbContext.RoomTypes.Add(new RoomType
-        {
-            Id = 20,
-            PropertyId = 10,
-            Name = "Room type",
-            Slug = "room-type",
-            Description = "Test",
-            TotalInventory = 1,
-            MaxAdults = 2,
-            IsActive = true
-        });
-        dbContext.Rooms.Add(new Room
-        {
-            Id = 30,
-            RoomTypeId = 20,
-            Name = "Room 1",
-            IsActive = true
-        });
+        dbContext.RoomTypes.AddRange(
+            CreateRoomType(20),
+            CreateRoomType(21));
+        dbContext.Rooms.AddRange(
+            new Room { Id = 30, RoomTypeId = 20, Name = "Room 1", IsActive = true },
+            new Room { Id = 31, RoomTypeId = 21, Name = "Room 2", IsActive = true });
         dbContext.Guests.Add(new Guest
         {
             Id = 40,
@@ -444,7 +503,8 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
     public async Task<Reservation> AddReservationAsync(
         ReservationStatus status,
         int? roomId = 30,
-        DateTime? paymentExpiresAtUtc = null)
+        DateTime? paymentExpiresAtUtc = null,
+        int roomTypeId = 20)
     {
         var reservation = new Reservation
         {
@@ -452,7 +512,7 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
             ClientId = 1,
             GuestId = 40,
             PropertyId = 10,
-            RoomTypeId = 20,
+            RoomTypeId = roomTypeId,
             RoomId = roomId,
             CheckInDate = CheckIn,
             CheckOutDate = CheckOut,
@@ -485,6 +545,18 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
         Email = $"{name}@example.test",
         PasswordHash = "not-used",
         Role = role,
+        IsActive = true
+    };
+
+    private static RoomType CreateRoomType(int id) => new()
+    {
+        Id = id,
+        PropertyId = 10,
+        Name = "Room type " + id,
+        Slug = "room-type-" + id,
+        Description = "Test",
+        TotalInventory = 1,
+        MaxAdults = 2,
         IsActive = true
     };
 }

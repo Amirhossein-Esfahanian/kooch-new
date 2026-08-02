@@ -75,3 +75,41 @@ public sealed class BookingSessionReservationDetailsResponse
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
 }
+
+public sealed class AccountBookingSessionResponse
+{
+    public string SessionCode { get; set; } = string.Empty;
+    public string DisplayCodeLabel { get; set; } = "کد سفارش";
+    public BookingSessionPropertyResponse Property { get; set; } = new();
+    public string Currency { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
+    public BookingSessionDerivedSummaryResponse Summary { get; set; } = new();
+    public DateTime? CommonPaymentDeadlineUtc { get; set; }
+    public AccountBookingSessionPaymentResponse? Payment { get; set; }
+    public IReadOnlyList<AccountBookingSessionReservationResponse> Reservations { get; set; } = [];
+}
+
+public sealed class AccountBookingSessionPaymentResponse
+{
+    public int PaymentId { get; set; }
+    public PaymentStatus Status { get; set; }
+    public decimal Amount { get; set; }
+    public string Currency { get; set; } = string.Empty;
+    public string? Provider { get; set; }
+    public DateTime? AppliedAtUtc { get; set; }
+}
+
+public sealed class AccountBookingSessionReservationResponse
+{
+    public string ReservationNumber { get; set; } = string.Empty;
+    public int RoomTypeId { get; set; }
+    public string RoomTypeName { get; set; } = string.Empty;
+    public int? RoomId { get; set; }
+    public string? RoomName { get; set; }
+    public DateOnly CheckInDate { get; set; }
+    public DateOnly CheckOutDate { get; set; }
+    public ReservationStatus Status { get; set; }
+    public DateTime? PaymentExpiresAtUtc { get; set; }
+    public decimal FinalAmount { get; set; }
+    public string Currency { get; set; } = string.Empty;
+}

@@ -22,13 +22,80 @@ public sealed class BookingSessionService(
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> LocalResourceLocks = new();
 
-    public async Task<BookingSessionCreateResult> CreateAsync(
+    public Task<BookingSessionCreateResult> CreateAsync(
         BookingSessionCreateRequest request,
+        CancellationToken cancellationToken = default) =>
+        CreateCoreAsync(request, BookingSessionCreationKind.Internal, cancellationToken);
+
+    public async Task<BookingSessionCreateResult> CreateForAccountAsync(
+        int clientId,
+        AccountBookingSessionCreateRequest request,
         CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.Items is null)
+        {
+            throw new ArgumentException(nameof(request.Items));
+        }
+
+        var roomTypeIds = request.Items
+            .Select(item => item.RoomTypeId)
+            .Distinct()
+            .ToArray();
+        if (roomTypeIds.Length is 0)
+        {
+            throw new ArgumentException("A booking session must contain at least one reservation item.");
+        }
+
+        var identity = await dbContext.Users.AsNoTracking()
+            .Where(user => user.Id == clientId && user.IsActive)
+            .Select(user => new { GuestId = user.Guest == null ? null : (int?)user.Guest.Id })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Client not found.");
+        if (!identity.GuestId.HasValue)
+        {
+            throw new InvalidOperationException("The authenticated user has no linked guest.");
+        }
+
+        var roomTypeProperties = await dbContext.RoomTypes.AsNoTracking()
+            .Where(roomType => roomTypeIds.Contains(roomType.Id) && roomType.IsActive)
+            .Select(roomType => new { roomType.Id, roomType.PropertyId })
+            .ToListAsync(cancellationToken);
+        if (roomTypeProperties.Count != roomTypeIds.Length)
+        {
+            throw new KeyNotFoundException("Room type not found.");
+        }
+
+        var propertyIds = roomTypeProperties.Select(item => item.PropertyId).Distinct().ToArray();
+        if (propertyIds.Length is not 1)
+        {
+            throw new InvalidOperationException("All reservations in a booking session must belong to one property.");
+        }
+
+        var internalRequest = new BookingSessionCreateRequest
+        {
+            ClientId = clientId,
+            GuestId = identity.GuestId.Value,
+            PropertyId = propertyIds[0],
+            IdempotencyKey = request.IdempotencyKey,
+            Items = request.Items.Select(ToInternalItem).ToArray()
+        };
+        return await CreateCoreAsync(
+            internalRequest,
+            BookingSessionCreationKind.Account,
+            cancellationToken);
+    }
+
+    private async Task<BookingSessionCreateResult> CreateCoreAsync(
+        BookingSessionCreateRequest request,
+        BookingSessionCreationKind creationKind,
+        CancellationToken cancellationToken)
     {
         ValidateRequest(request);
         var normalizedIdempotencyKey = NormalizeIdempotencyKey(request.IdempotencyKey);
-        var requestHash = ComputeRequestHash(request);
+        var requestHash = creationKind == BookingSessionCreationKind.Account
+            ? ComputeAccountRequestHash(request)
+            : ComputeRequestHash(request);
         var lockOrder = BuildLockOrder(request.Items);
         var localResources = BuildLocalResourceNames(
             request.ClientId,
@@ -66,18 +133,32 @@ public sealed class BookingSessionService(
         }
 
         await ValidateClientAndGuestAsync(request, cancellationToken);
-        await ValidatePropertyAsync(request.PropertyId, cancellationToken);
+        await ValidatePropertyAsync(
+            request.PropertyId,
+            creationKind,
+            cancellationToken);
         var roomTypes = await LockRoomTypesAsync(lockOrder.RoomTypeIds, cancellationToken);
         var rooms = await LockRoomsAsync(lockOrder.RoomIds, cancellationToken);
         ValidateRoomRelationships(request, roomTypes, rooms);
 
-        var preparedItems = await PrepareItemsAsync(request, cancellationToken);
+        var preparedItems = await PrepareItemsAsync(
+            request,
+            creationKind,
+            cancellationToken);
+        ValidateAccountBookingMode(preparedItems, creationKind);
         var currency = AssertSameCurrency(preparedItems);
         var reservationNumbers = await reservationNumberGenerator.GenerateBatchAsync(
             preparedItems.Count,
             DateTime.UtcNow,
             cancellationToken);
         var now = DateTime.UtcNow;
+        var commonPaymentDeadlineUtc =
+            creationKind == BookingSessionCreationKind.Account &&
+            preparedItems.All(item => !item.IsOnRequest)
+                ? now.AddMinutes(await ReservationPaymentWindowSettings.GetMinutesAsync(
+                    dbContext,
+                    cancellationToken))
+                : (DateTime?)null;
         var session = new BookingSession
         {
             SessionCode = sessionCodeGenerator.Generate(),
@@ -112,6 +193,8 @@ public sealed class BookingSessionService(
                 FinalAmount = prepared.Price.FinalAmount,
                 Currency = prepared.Currency,
                 Status = prepared.Status,
+                ApprovedAtUtc = commonPaymentDeadlineUtc.HasValue ? now : null,
+                PaymentExpiresAtUtc = commonPaymentDeadlineUtc,
                 ConfirmedAtUtc = prepared.Status == ReservationStatus.Confirmed ? now : null,
                 Source = ReservationSource.Website,
                 GuestNote = NormalizeOptionalText(prepared.Item.Notes)
@@ -129,6 +212,22 @@ public sealed class BookingSessionService(
         var normalized = idempotencyKey?.Trim();
         return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
+
+    private static BookingSessionReservationCreateItem ToInternalItem(
+        AccountBookingSessionReservationCreateItem item) =>
+        new()
+        {
+            RoomTypeId = item.RoomTypeId,
+            RoomId = item.RoomId,
+            CheckInDate = item.CheckInDate,
+            CheckOutDate = item.CheckOutDate,
+            Adults = item.Adults,
+            Children = item.Children,
+            ChildAges = item.ChildAges,
+            GuestType = PricingGuestType.Iranian,
+            Status = null,
+            Notes = item.Notes
+        };
 
     internal static string ComputeRequestHash(BookingSessionCreateRequest request)
     {
@@ -162,6 +261,14 @@ public sealed class BookingSessionService(
             canonicalItems);
         var payload = JsonSerializer.SerializeToUtf8Bytes(canonicalRequest);
         return Convert.ToHexString(SHA256.HashData(payload));
+    }
+
+    private static string ComputeAccountRequestHash(BookingSessionCreateRequest request)
+    {
+        var canonicalHash = ComputeRequestHash(request);
+        var scopedPayload = Encoding.UTF8.GetBytes(
+            nameof(BookingSessionCreationKind.Account) + canonicalHash);
+        return Convert.ToHexString(SHA256.HashData(scopedPayload));
     }
 
     internal static BookingSessionLockOrder BuildLockOrder(
@@ -272,7 +379,10 @@ public sealed class BookingSessionService(
         }
     }
 
-    private async Task ValidatePropertyAsync(int propertyId, CancellationToken cancellationToken)
+    private async Task ValidatePropertyAsync(
+        int propertyId,
+        BookingSessionCreationKind creationKind,
+        CancellationToken cancellationToken)
     {
         var property = await dbContext.Properties.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == propertyId, cancellationToken)
@@ -280,6 +390,12 @@ public sealed class BookingSessionService(
         if (property.Status is PropertyStatus.Rejected or PropertyStatus.Suspended)
         {
             throw new InvalidOperationException("Property is not available for reservations.");
+        }
+
+        if (creationKind == BookingSessionCreationKind.Account &&
+            property.Status != PropertyStatus.Approved)
+        {
+            throw new InvalidOperationException("Property is not available for public booking.");
         }
     }
 
@@ -359,6 +475,7 @@ public sealed class BookingSessionService(
 
     private async Task<IReadOnlyList<PreparedBookingItem>> PrepareItemsAsync(
         BookingSessionCreateRequest request,
+        BookingSessionCreationKind creationKind,
         CancellationToken cancellationToken)
     {
         var indexedItems = request.Items
@@ -448,16 +565,25 @@ public sealed class BookingSessionService(
                     "Pricing result does not match the reservation item.");
             }
 
-            var status = item.Status ??
-                         (onRequestByIndex[index]
-                             ? ReservationStatus.PendingApproval
-                             : ReservationStatus.Pending);
-            statusWorkflow.ValidateManualCreationStatus(onRequestByIndex[index], status);
+            var status = creationKind == BookingSessionCreationKind.Account
+                ? onRequestByIndex[index]
+                    ? ReservationStatus.PendingApproval
+                    : ReservationStatus.ApprovedAwaitingPayment
+                : item.Status ??
+                  (onRequestByIndex[index]
+                      ? ReservationStatus.PendingApproval
+                      : ReservationStatus.Pending);
+            if (creationKind == BookingSessionCreationKind.Internal)
+            {
+                statusWorkflow.ValidateManualCreationStatus(onRequestByIndex[index], status);
+            }
+
             preparedItems.Add(new PreparedBookingItem(
                 item,
                 price,
                 NormalizeCurrency(price.Currency),
-                ReservationStatusNormalizer.Normalize(status)));
+                ReservationStatusNormalizer.Normalize(status),
+                onRequestByIndex[index]));
         }
 
         return preparedItems;
@@ -474,6 +600,18 @@ public sealed class BookingSessionService(
         }
 
         return currency;
+    }
+
+    private static void ValidateAccountBookingMode(
+        IReadOnlyList<PreparedBookingItem> preparedItems,
+        BookingSessionCreationKind creationKind)
+    {
+        if (creationKind == BookingSessionCreationKind.Account &&
+            preparedItems.Select(item => item.IsOnRequest).Distinct().Skip(1).Any())
+        {
+            throw new InvalidOperationException(
+                "Instant and on-request reservations cannot be combined in one booking session.");
+        }
     }
 
     private async Task<BookingSession?> FindExistingSessionAsync(
@@ -616,11 +754,18 @@ public sealed class BookingSessionService(
         int Index,
         BookingSessionReservationCreateItem Item);
 
+    private enum BookingSessionCreationKind
+    {
+        Internal,
+        Account
+    }
+
     private sealed record PreparedBookingItem(
         BookingSessionReservationCreateItem Item,
         ReservationPricePreviewResponse Price,
         string Currency,
-        ReservationStatus Status);
+        ReservationStatus Status,
+        bool IsOnRequest);
 
     private sealed record CanonicalBookingRequest(
         int ClientId,

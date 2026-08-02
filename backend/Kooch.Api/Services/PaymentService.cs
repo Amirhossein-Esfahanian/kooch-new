@@ -124,6 +124,12 @@ public class PaymentService(
 
         var reservation = await dbContext.Reservations
             .SingleAsync(item => item.Id == reservationId, cancellationToken);
+        if (reservation.BookingSessionId.HasValue)
+        {
+            throw new InvalidOperationException(
+                "Booking session reservations must use the session payment flow.");
+        }
+
         var normalizedReference = request.TransactionReference.Trim();
         var existingPayment = await dbContext.Payments.AsNoTracking()
             .SingleOrDefaultAsync(payment =>
@@ -251,6 +257,13 @@ public class PaymentService(
         }
 
         var reservation = token.Reservation;
+        if (reservation.BookingSessionId.HasValue)
+        {
+            return Invalid(
+                normalizedReservationNumber,
+                "Booking session reservations must use the session payment flow.");
+        }
+
         var paidAmount = GetPaidAmount(reservation);
         var remainingAmount = Math.Max(0, reservation.FinalAmount - paidAmount);
         var response = CreateResponse(reservation, paidAmount, remainingAmount, now);

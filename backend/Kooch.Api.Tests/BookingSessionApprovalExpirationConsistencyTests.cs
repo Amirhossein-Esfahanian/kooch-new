@@ -61,7 +61,7 @@ public sealed class BookingSessionApprovalExpirationConsistencyTests
 
         var summary = BookingSessionQueryService.BuildSummary(reservations);
 
-        Assert.True(summary.IsPaymentReady);
+        Assert.False(summary.IsPaymentReady);
         Assert.True(summary.HasInconsistentPaymentDeadlines);
         Assert.Equal(SharedDeadline, summary.EarliestPaymentDeadlineUtc);
         Assert.Equal(SharedDeadline, reservations[0].PaymentExpiresAtUtc);

@@ -11,6 +11,24 @@ public sealed class BookingSessionCreateRequest
     public IReadOnlyList<BookingSessionReservationCreateItem> Items { get; set; } = [];
 }
 
+public sealed class AccountBookingSessionCreateRequest
+{
+    public string? IdempotencyKey { get; set; }
+    public IReadOnlyList<AccountBookingSessionReservationCreateItem> Items { get; set; } = [];
+}
+
+public sealed class AccountBookingSessionReservationCreateItem
+{
+    public int RoomTypeId { get; set; }
+    public int? RoomId { get; set; }
+    public DateOnly CheckInDate { get; set; }
+    public DateOnly CheckOutDate { get; set; }
+    public int Adults { get; set; } = 1;
+    public int Children { get; set; }
+    public IReadOnlyList<int> ChildAges { get; set; } = [];
+    public string? Notes { get; set; }
+}
+
 public sealed class BookingSessionReservationCreateItem
 {
     public int RoomTypeId { get; set; }
@@ -31,6 +49,15 @@ public sealed class BookingSessionCreateResult
     public string SessionCode { get; set; } = string.Empty;
     public int ClientId { get; set; }
     public int? GuestId { get; set; }
+    public int PropertyId { get; set; }
+    public string Currency { get; set; } = string.Empty;
+    public IReadOnlyList<BookingSessionReservationResult> Reservations { get; set; } = [];
+}
+
+public sealed class AccountBookingSessionCreateResponse
+{
+    public int BookingSessionId { get; set; }
+    public string SessionCode { get; set; } = string.Empty;
     public int PropertyId { get; set; }
     public string Currency { get; set; } = string.Empty;
     public IReadOnlyList<BookingSessionReservationResult> Reservations { get; set; } = [];

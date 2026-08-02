@@ -37,6 +37,76 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             cancellationToken);
     }
 
+    public async Task<AccountBookingSessionResponse> GetBySessionCodeForClientAsync(
+        int clientId,
+        string sessionCode,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(clientId));
+        }
+
+        var normalizedSessionCode = sessionCode?.Trim();
+        if (string.IsNullOrEmpty(normalizedSessionCode))
+        {
+            throw new ArgumentException("Session code is required.", nameof(sessionCode));
+        }
+
+        var response = await dbContext.BookingSessions
+            .AsNoTracking()
+            .AsSingleQuery()
+            .Where(session =>
+                session.ClientId == clientId &&
+                session.SessionCode == normalizedSessionCode)
+            .Select(session => new AccountBookingSessionResponse
+            {
+                SessionCode = session.SessionCode,
+                Property = new BookingSessionPropertyResponse
+                {
+                    PropertyId = session.PropertyId,
+                    Name = session.Property.Name,
+                    Slug = session.Property.Slug
+                },
+                Currency = session.Currency,
+                Payment = session.Payments
+                    .OrderByDescending(payment => payment.CreatedAtUtc)
+                    .ThenByDescending(payment => payment.Id)
+                    .Select(payment => new AccountBookingSessionPaymentResponse
+                    {
+                        PaymentId = payment.Id,
+                        Status = payment.Status,
+                        Amount = payment.Amount,
+                        Currency = payment.Currency,
+                        Provider = payment.Provider,
+                        AppliedAtUtc = payment.AppliedAtUtc
+                    })
+                    .FirstOrDefault(),
+                Reservations = session.Reservations
+                    .OrderBy(reservation => reservation.Id)
+                    .Select(reservation => new AccountBookingSessionReservationResponse
+                    {
+                        ReservationNumber = reservation.ReservationNumber ?? string.Empty,
+                        RoomTypeId = reservation.RoomTypeId,
+                        RoomTypeName = reservation.RoomType.Name,
+                        RoomId = reservation.RoomId,
+                        RoomName = reservation.Room == null ? null : reservation.Room.Name,
+                        CheckInDate = reservation.CheckInDate,
+                        CheckOutDate = reservation.CheckOutDate,
+                        Status = reservation.Status,
+                        PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
+                        FinalAmount = reservation.FinalAmount,
+                        Currency = reservation.Currency
+                    })
+                    .ToList()
+            })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Booking session not found.");
+
+        CompleteAccountSummary(response);
+        return response;
+    }
+
     private async Task<BookingSessionDetailsResponse> GetAsync(
         Expression<Func<BookingSession, bool>> predicate,
         CancellationToken cancellationToken)
@@ -100,6 +170,36 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
         return response;
     }
 
+    private static void CompleteAccountSummary(AccountBookingSessionResponse response)
+    {
+        var summaryReservations = response.Reservations
+            .Select(reservation => new BookingSessionReservationDetailsResponse
+            {
+                ReservationNumber = reservation.ReservationNumber,
+                RoomTypeId = reservation.RoomTypeId,
+                RoomTypeName = reservation.RoomTypeName,
+                RoomId = reservation.RoomId,
+                RoomName = reservation.RoomName,
+                CheckInDate = reservation.CheckInDate,
+                CheckOutDate = reservation.CheckOutDate,
+                Status = reservation.Status,
+                PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
+                FinalAmount = reservation.FinalAmount,
+                Currency = reservation.Currency
+            })
+            .ToArray();
+        response.Summary = BuildSummary(summaryReservations);
+        response.TotalAmount = response.Summary.TotalAmount;
+        var deadlines = response.Reservations
+            .Where(reservation =>
+                reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
+                reservation.PaymentExpiresAtUtc.HasValue)
+            .Select(reservation => reservation.PaymentExpiresAtUtc!.Value)
+            .Distinct()
+            .ToArray();
+        response.CommonPaymentDeadlineUtc = deadlines.Length is 1 ? deadlines[0] : null;
+    }
+
     internal static BookingSessionDerivedSummaryResponse BuildSummary(
         IReadOnlyList<BookingSessionReservationDetailsResponse> reservations)
     {
@@ -135,13 +235,11 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             paymentReservations.Any(reservation => !reservation.PaymentExpiresAtUtc.HasValue);
         var hasInconsistentPaymentDeadlines =
             paymentDeadlines.Distinct().Skip(1).Any();
-        var hasBlockingStatus = reservations.Any(reservation => reservation.Status is
-            ReservationStatus.Pending or
-            ReservationStatus.PendingApproval or
-            ReservationStatus.Rejected or
-            ReservationStatus.PaymentExpired or
-            ReservationStatus.Draft or
-            ReservationStatus.CapacityLost);
+        var allReservationsAwaitingPayment = reservations.Count > 0 &&
+            reservations.All(reservation =>
+                reservation.Status == ReservationStatus.ApprovedAwaitingPayment);
+        var hasExpiredPaymentDeadline = paymentDeadlines.Any(deadline =>
+            deadline <= DateTime.UtcNow);
 
         return new BookingSessionDerivedSummaryResponse
         {
@@ -154,9 +252,10 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             LatestCheckOutDate = reservations.Count == 0
                 ? null
                 : reservations.Max(reservation => reservation.CheckOutDate),
-            IsPaymentReady = paymentReservations.Length > 0 &&
-                !hasBlockingStatus &&
-                !hasMissingPaymentDeadline,
+            IsPaymentReady = allReservationsAwaitingPayment &&
+                !hasMissingPaymentDeadline &&
+                !hasInconsistentPaymentDeadlines &&
+                !hasExpiredPaymentDeadline,
             HasPendingApprovals = hasPendingApprovals,
             HasRejectedReservations = hasRejectedReservations,
             HasInconsistentPaymentDeadlines = hasInconsistentPaymentDeadlines,

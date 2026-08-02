@@ -7,6 +7,7 @@ using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Microsoft.EntityFrameworkCore;
@@ -56,6 +57,43 @@ public sealed class BookingSessionQueryApiTests
 
         Assert.Equal(10, result.BookingSessionId);
         Assert.Equal("KCH-S-READ-0001", result.SessionCode);
+    }
+
+    [Fact]
+    public async Task AccountRead_ReturnsOnlyOwnedSessionWithoutSensitiveIdentity()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var service = new BookingSessionQueryService(context);
+
+        var result = await service.GetBySessionCodeForClientAsync(
+            1,
+            " KCH-S-READ-0001 ");
+
+        Assert.Equal("KCH-S-READ-0001", result.SessionCode);
+        Assert.Equal(300, result.TotalAmount);
+        Assert.Equal(2, result.Reservations.Count);
+        Assert.Null(result.Payment);
+        Assert.Null(typeof(AccountBookingSessionResponse).GetProperty("Client"));
+        Assert.Null(typeof(AccountBookingSessionResponse).GetProperty("Guest"));
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.GetBySessionCodeForClientAsync(2, "KCH-S-READ-0001"));
+    }
+
+    [Fact]
+    public void AccountCreateContract_DoesNotAcceptServerOwnedIdentityStatusOrProperty()
+    {
+        var requestType = typeof(AccountBookingSessionCreateRequest);
+        var itemType = typeof(AccountBookingSessionReservationCreateItem);
+
+        Assert.Null(requestType.GetProperty("ClientId"));
+        Assert.Null(requestType.GetProperty("GuestId"));
+        Assert.Null(requestType.GetProperty("PropertyId"));
+        Assert.Null(itemType.GetProperty("Status"));
+        Assert.Single(
+            typeof(AccountBookingSessionsController)
+                .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true));
     }
 
     [Fact]
@@ -405,6 +443,15 @@ public sealed class BookingSessionQueryApiTests
             string sessionCode,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(response);
+
+        public Task<AccountBookingSessionResponse> GetBySessionCodeForClientAsync(
+            int clientId,
+            string sessionCode,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new AccountBookingSessionResponse
+            {
+                SessionCode = response.SessionCode
+            });
     }
 
     private sealed class StubBookingSessionPermissionService(

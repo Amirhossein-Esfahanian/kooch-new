@@ -87,6 +87,116 @@ public sealed class BookingSessionServiceTests
     }
 
     [Fact]
+    public async Task AccountInstantSession_HoldsCapacityAndUsesOneSharedDeadline()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+
+        var before = DateTime.UtcNow.AddMinutes(45);
+        var result = await scope.Service.CreateForAccountAsync(
+            1,
+            CreateAccountRequest(
+                CreateAccountItem(10, 100),
+                CreateAccountItem(20, 200)));
+        var after = DateTime.UtcNow.AddMinutes(45);
+
+        Assert.All(result.Reservations, reservation =>
+            Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status));
+        await using var verification = harness.CreateContext();
+        var persisted = await verification.Reservations
+            .Where(reservation => reservation.BookingSessionId == result.BookingSessionId)
+            .OrderBy(reservation => reservation.Id)
+            .ToListAsync();
+        var deadline = Assert.Single(
+            persisted.Select(reservation => reservation.PaymentExpiresAtUtc).Distinct());
+        Assert.NotNull(deadline);
+        Assert.InRange(deadline.Value, before, after);
+        Assert.All(persisted, reservation => Assert.NotNull(reservation.ApprovedAtUtc));
+
+        var availability = await new EffectiveAvailabilityService(verification).GetRangeAsync(
+            [10],
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3));
+        Assert.All(availability[10].Nights.Values, night =>
+            Assert.Equal(1, night.RemainingCapacity));
+    }
+
+    [Fact]
+    public async Task AccountOnRequestSession_StartsPendingWithoutPaymentDeadline()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Availabilities.Add(new Availability
+            {
+                RoomTypeId = 10,
+                Date = new DateOnly(2035, 2, 1),
+                AvailableCount = 2,
+                Status = AvailabilityStatus.OnRequest
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var result = await scope.Service.CreateForAccountAsync(
+            1,
+            CreateAccountRequest(CreateAccountItem(10, 100)));
+
+        Assert.Equal(
+            ReservationStatus.PendingApproval,
+            Assert.Single(result.Reservations).Status);
+        await using var verification = harness.CreateContext();
+        Assert.Null((await verification.Reservations.SingleAsync()).PaymentExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task AccountSession_RejectsMixedModesAndDifferentProperties()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Availabilities.Add(new Availability
+            {
+                RoomTypeId = 10,
+                Date = new DateOnly(2035, 2, 1),
+                AvailableCount = 2,
+                Status = AvailabilityStatus.OnRequest
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.CreateForAccountAsync(
+                1,
+                CreateAccountRequest(
+                    CreateAccountItem(10, 100),
+                    CreateAccountItem(20, 200))));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.CreateForAccountAsync(
+                1,
+                CreateAccountRequest(
+                    CreateAccountItem(10, 100),
+                    CreateAccountItem(30, 300))));
+    }
+
+    [Fact]
+    public async Task AccountSession_PreservesIdempotentReplay()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+
+        var first = await scope.Service.CreateForAccountAsync(1, request);
+        var replay = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Equal(first.BookingSessionId, replay.BookingSessionId);
+        Assert.Equal(
+            Assert.Single(first.Reservations).ReservationId,
+            Assert.Single(replay.Reservations).ReservationId);
+    }
+
+    [Fact]
     public async Task FailurePreparingSecondItem_RollsBackTheCompleteSession()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
@@ -335,6 +445,26 @@ public sealed class BookingSessionServiceTests
             Notes = notes
         };
 
+    private static AccountBookingSessionCreateRequest CreateAccountRequest(
+        params AccountBookingSessionReservationCreateItem[] items) =>
+        new()
+        {
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            Items = items
+        };
+
+    private static AccountBookingSessionReservationCreateItem CreateAccountItem(
+        int roomTypeId,
+        int? roomId) =>
+        new()
+        {
+            RoomTypeId = roomTypeId,
+            RoomId = roomId,
+            CheckInDate = new DateOnly(2035, 2, 1),
+            CheckOutDate = new DateOnly(2035, 2, 3),
+            Adults = 1
+        };
+
     private static Reservation CreateConsumingReservation(int roomTypeId) =>
         new()
         {
@@ -387,6 +517,16 @@ public sealed class BookingSessionServiceTests
                 UserId = 1,
                 FirstName = "Booking",
                 LastName = "Guest"
+            });
+            context.SiteSettings.Add(new SiteSetting
+            {
+                Id = 1,
+                Key = "reservation.paymentWindowMinutes",
+                Value = "45",
+                Type = SiteSettingType.Number,
+                Group = "Reservation",
+                Label = "Payment window",
+                IsActive = true
             });
             context.Properties.AddRange(
                 new Property
