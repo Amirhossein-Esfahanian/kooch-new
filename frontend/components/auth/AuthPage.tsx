@@ -12,6 +12,7 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { apiRequest, setToken } from "@/lib/owner-api";
+import { safeInternalReturnTo } from "@/lib/safe-return-to";
 
 type AuthMode = "login" | "register";
 type LoginMethod = "password" | "otp";
@@ -49,7 +50,7 @@ function segmentedButtonClass(active: boolean) {
   ].join(" ");
 }
 
-export function AuthPage() {
+export function AuthPage({ returnTo }: { returnTo?: string | null }) {
   const router = useRouter();
   const { refreshSession } = useAuthSession();
 
@@ -85,7 +86,7 @@ export function AuthPage() {
       throw new Error("اطلاعات حساب کاربری دریافت نشد.");
     }
 
-    router.push(resolveSessionDestination(session));
+    router.push(safeInternalReturnTo(returnTo) ?? resolveSessionDestination(session));
   }
 
   function changeMode(nextMode: AuthMode) {

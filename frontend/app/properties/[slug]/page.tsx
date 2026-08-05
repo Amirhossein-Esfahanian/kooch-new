@@ -4,8 +4,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { GuestSelector, GuestSelectorValue } from "@/components/GuestSelector";
-import { KoochDatePicker } from "@/components/KoochDatePicker";
+import type { GuestSelectorValue } from "@/components/GuestSelector";
+import { PropertyBookingPanel } from "@/components/booking/PropertyBookingPanel";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
@@ -467,54 +467,17 @@ export default function PublicPropertyPage() {
             </section>
           </div>
 
-          <aside className="h-fit rounded-2xl border bg-white p-5 shadow-lg lg:sticky lg:top-24">
-            <p className="text-sm text-slate-500">قیمت از</p>
-            <p className="mt-1 text-2xl font-black text-blue-700">
-              {formatPrice(property.startingPrice)}
-            </p>
-            <p className="mt-2 font-bold">{property.name}</p>
-            <div className="mt-5 grid gap-3">
-              <KoochDatePicker
-                calendarType="jalali"
-                controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs"
-                disablePastDates
-                labels={{
-                  start: "تاریخ ورود",
-                  end: "تاریخ خروج",
-                  rangeTitle: "انتخاب تاریخ اقامت",
-                }}
-                labelsAbove
-                mode="range"
-                onChange={setBookingDates}
-                placeholderEnd="انتخاب خروج"
-                placeholderStart="انتخاب ورود"
-                value={bookingDates}
-              />
-              <GuestSelector
-                controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs"
-                label="تعداد مهمان"
-                onChange={setBookingGuests}
-                value={bookingGuests}
-              />
-              <label className="hidden">
-                تعداد مهمان
-                <input
-                  className="rounded-lg border px-3 py-2.5"
-                  defaultValue="2"
-                  min="1"
-                  type="number"
-                />
-              </label>
-            </div>
-            <button
-              className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 font-black text-white"
-              type="button"
-            >
-              بررسی موجودی
-            </button>
-            <p className="mt-3 text-center text-xs text-slate-400">
-              رزرو در نسخه بعدی فعال می‌شود.
-            </p>
+          <aside className="h-fit rounded-2xl border border-border bg-card p-5 shadow-lg lg:sticky lg:top-24">
+            <PropertyBookingPanel
+              dates={bookingDates}
+              guests={bookingGuests}
+              onDatesChange={setBookingDates}
+              onGuestsChange={setBookingGuests}
+              propertyId={property.id}
+              propertyName={property.name}
+              propertySlug={property.slug}
+              startingPrice={property.startingPrice}
+            />
           </aside>
         </div>
       </div>
