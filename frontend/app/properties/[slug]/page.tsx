@@ -218,12 +218,6 @@ export default function PublicPropertyPage() {
               {property.address}، {property.city}
             </p>
           </div>
-          <div className="rounded-xl border bg-white px-4 py-3 shadow-sm">
-            <strong className="text-blue-700">اقامتگاه تایید شده</strong>
-            <p className="mt-1 text-xs text-slate-400">
-              رزرو در نسخه بعدی فعال می‌شود
-            </p>
-          </div>
         </header>
 
         <PromotionCards
@@ -467,7 +461,10 @@ export default function PublicPropertyPage() {
             </section>
           </div>
 
-          <aside className="h-fit rounded-2xl border border-border bg-card p-5 shadow-lg lg:sticky lg:top-24">
+          <aside
+            aria-label="رزرو اقامتگاه"
+            className="h-fit rounded-2xl border border-border bg-card p-5 shadow-lg lg:sticky lg:top-24"
+          >
             <PropertyBookingPanel
               dates={bookingDates}
               guests={bookingGuests}
