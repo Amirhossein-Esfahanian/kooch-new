@@ -204,9 +204,14 @@ describe("Workspace routes", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("link", { name: "مشاهده رزروهای من" })
+        .getByRole("link", { name: "مشاهده رزروهای مستقل" })
         .getAttribute("href"),
     ).toBe("/account/reservations");
+    expect(
+      screen
+        .getByRole("link", { name: "مشاهده سفارش‌های من" })
+        .getAttribute("href"),
+    ).toBe("/account/orders");
   });
 
   it("redirects a single Workspace directly and persists it", async () => {

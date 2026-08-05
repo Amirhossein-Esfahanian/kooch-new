@@ -52,21 +52,37 @@ export default function AccountPage() {
           title="حساب کاربری"
         />
 
-        <KoochCard className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-          <div className="min-w-0">
-            <h2 className="text-lg font-black text-foreground">رزروهای من</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-              فهرست رزروها، وضعیت پرداخت و جزئیات اقامت‌های خود را در این بخش
-              ببینید.
-            </p>
-          </div>
-          <Link
-            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-primary bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-            href="/account/reservations"
-          >
-            مشاهده رزروهای من
-          </Link>
-        </KoochCard>
+        <div className="grid gap-4 md:grid-cols-2">
+          <KoochCard className="flex h-full flex-col items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-black text-foreground">سفارش‌های من</h2>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                سفارش‌های چنداتاقه، وضعیت کلی پرداخت و همه شماره‌های رزرو مرتبط را پیگیری کنید.
+              </p>
+            </div>
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-primary bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              href="/account/orders"
+            >
+              مشاهده سفارش‌های من
+            </Link>
+          </KoochCard>
+
+          <KoochCard className="flex h-full flex-col items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-black text-foreground">رزروهای من</h2>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                رزروهای مستقل و قدیمی که به سفارش گروهی متصل نیستند همچنان در این بخش قابل مشاهده‌اند.
+              </p>
+            </div>
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              href="/account/reservations"
+            >
+              مشاهده رزروهای مستقل
+            </Link>
+          </KoochCard>
+        </div>
       </div>
     </main>
   );

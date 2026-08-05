@@ -4,6 +4,7 @@ using Kooch.Api.Authentication;
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Http;
@@ -79,6 +80,133 @@ public sealed class BookingSessionQueryApiTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             service.GetBySessionCodeForClientAsync(2, "KCH-S-READ-0001"));
+    }
+
+    [Fact]
+    public async Task AccountList_IsOwnedPagedProjectedAndExcludesStandaloneReservations()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        context.Users.Add(new User
+        {
+            Id = 2,
+            FirstName = "Other",
+            LastName = "Client",
+            PhoneNumber = "09120000002",
+            PasswordHash = "hash",
+            Role = UserRole.Client,
+            IsActive = true
+        });
+        context.BookingSessions.Add(new BookingSession
+        {
+            Id = 12,
+            SessionCode = "KCH-S-OTHER",
+            ClientId = 2,
+            PropertyId = 1,
+            Currency = "IRR",
+            RequestHash = new string('C', 64)
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        harness.QueryCounter.Reset();
+        var service = new BookingSessionQueryService(context);
+
+        var result = await service.GetForClientAsync(
+            1,
+            new AccountBookingSessionListQuery { Page = 1, PageSize = 1 });
+
+        var item = Assert.Single(result.Items);
+        Assert.Equal("KCH-S-READ-0001", item.SessionCode);
+        Assert.Equal("Read Property", item.Property.Name);
+        Assert.Equal(2, item.ReservationCount);
+        Assert.Equal(300, item.TotalAmount);
+        Assert.Equal("Mixed", item.DerivedStatus);
+        Assert.Equal(1, result.TotalCount);
+        Assert.Equal(1, result.TotalPages);
+        Assert.DoesNotContain(result.Items, value => value.SessionCode == "KCH-S-OTHER");
+        Assert.Equal(2, harness.QueryCounter.CompilationCount);
+        Assert.Empty(context.ChangeTracker.Entries());
+    }
+
+    [Fact]
+    public async Task AccountList_ReportsReadyPaymentAndCanonicalDeadline()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var deadline = DateTime.UtcNow.AddMinutes(20);
+        var reservations = await context.Reservations
+            .Where(reservation => reservation.BookingSessionId == 10)
+            .ToListAsync();
+        foreach (var reservation in reservations)
+        {
+            reservation.Status = ReservationStatus.ApprovedAwaitingPayment;
+            reservation.PaymentExpiresAtUtc = deadline;
+        }
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var service = new BookingSessionQueryService(context);
+
+        var result = await service.GetForClientAsync(
+            1,
+            new AccountBookingSessionListQuery());
+
+        var item = Assert.Single(result.Items);
+        Assert.True(item.IsPaymentReady);
+        Assert.Equal("ReadyForPayment", item.DerivedStatus);
+        Assert.Equal(deadline, item.PaymentDeadlineUtc);
+    }
+
+    [Fact]
+    public async Task AccountList_AppliesPaginationOnTheDatabaseQuery()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var session = new BookingSession
+        {
+            Id = 13,
+            SessionCode = "KCH-S-READ-0002",
+            ClientId = 1,
+            GuestId = 1,
+            PropertyId = 1,
+            Currency = "IRR",
+            RequestHash = new string('D', 64),
+            CreatedAtUtc = DateTime.UtcNow.AddMinutes(1)
+        };
+        session.Reservations.Add(new Reservation
+        {
+            Id = 1003,
+            ReservationNumber = "KCH-READ-0003",
+            ClientId = 1,
+            GuestId = 1,
+            PropertyId = 1,
+            RoomTypeId = 10,
+            CheckInDate = new DateOnly(2036, 3, 1),
+            CheckOutDate = new DateOnly(2036, 3, 2),
+            AdultCount = 1,
+            TotalPrice = 75,
+            BaseAmount = 75,
+            FinalAmount = 75,
+            Currency = "IRR",
+            Status = ReservationStatus.PendingApproval,
+            Source = ReservationSource.Website
+        });
+        context.BookingSessions.Add(session);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var service = new BookingSessionQueryService(context);
+
+        var firstPage = await service.GetForClientAsync(
+            1,
+            new AccountBookingSessionListQuery { Page = 1, PageSize = 1 });
+        var secondPage = await service.GetForClientAsync(
+            1,
+            new AccountBookingSessionListQuery { Page = 2, PageSize = 1 });
+
+        Assert.Equal(2, firstPage.TotalCount);
+        Assert.Equal(2, firstPage.TotalPages);
+        Assert.Single(firstPage.Items);
+        Assert.Single(secondPage.Items);
+        Assert.NotEqual(firstPage.Items[0].SessionCode, secondPage.Items[0].SessionCode);
     }
 
     [Fact]
@@ -434,6 +562,12 @@ public sealed class BookingSessionQueryApiTests
     private sealed class StubBookingSessionQueryService(BookingSessionDetailsResponse response)
         : IBookingSessionQueryService
     {
+        public Task<PagedResult<AccountBookingSessionListItemResponse>> GetForClientAsync(
+            int clientId,
+            AccountBookingSessionListQuery query,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PagedResult<AccountBookingSessionListItemResponse>());
+
         public Task<BookingSessionDetailsResponse> GetByIdAsync(
             int bookingSessionId,
             CancellationToken cancellationToken = default) =>

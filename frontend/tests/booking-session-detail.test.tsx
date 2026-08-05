@@ -59,6 +59,7 @@ function response() {
 
 describe("account booking session detail", () => {
   beforeEach(() => {
+    vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "true");
     bookingApi.fetch.mockResolvedValue(response());
     bookingApi.initiate.mockResolvedValue({
       paymentId: 10,

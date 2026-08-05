@@ -14,6 +14,7 @@ import { fetchAccountBookingSession, initiateAccountBookingSessionPayment, type 
 import { formatDate, formatDateTime, statusLabels, statusVariant } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { getOrCreatePaymentIdempotencyKey } from "@/lib/payment-idempotency";
+import { isMockPaymentUiEnabled } from "@/lib/account-orders";
 
 export default function AccountBookingSessionPage() {
   const { sessionCode } = useParams<{ sessionCode: string }>();
@@ -74,7 +75,7 @@ export default function AccountBookingSessionPage() {
   return (
     <main className="mx-auto grid max-w-5xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
       <KoochPageHeader
-        actions={<KoochButton onClick={() => router.push("/account/reservations")} variant="outline">رزروهای من</KoochButton>}
+        actions={<KoochButton onClick={() => router.push("/account/orders")} variant="outline">سفارش‌های من</KoochButton>}
         description={`${session.property.name} · ${session.reservations.length.toLocaleString("fa-IR")} رزرو مستقل`}
         eyebrow={session.displayCodeLabel || "کد سفارش"}
         title={<span dir="ltr">{session.sessionCode}</span>}
@@ -94,7 +95,7 @@ export default function AccountBookingSessionPage() {
         <KoochAlert variant="success" title="سفارش آماده پرداخت است">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span>همه اتاق‌ها تأیید شده‌اند و می‌توانید پرداخت را ادامه دهید.</span>
-            <KoochButton loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>
+            {isMockPaymentUiEnabled() && <KoochButton loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>}
           </div>
         </KoochAlert>
       )}

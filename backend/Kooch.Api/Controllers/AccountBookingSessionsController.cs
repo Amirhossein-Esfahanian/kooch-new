@@ -1,5 +1,6 @@
 using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Dtos.Payments;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -14,6 +15,19 @@ public sealed class AccountBookingSessionsController(
     IBookingSessionQueryService bookingSessionQueryService,
     IAccountBookingSessionPaymentService paymentService) : AuthenticatedControllerBase
 {
+    [HttpGet]
+    [ProducesResponseType<PagedResult<AccountBookingSessionListItemResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<AccountBookingSessionListItemResponse>>> GetMine(
+        [FromQuery] AccountBookingSessionListQuery query,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = GetCurrentUser();
+        return Ok(await bookingSessionQueryService.GetForClientAsync(
+            currentUser.UserId,
+            query,
+            cancellationToken));
+    }
+
     [HttpPost]
     [ProducesResponseType<AccountBookingSessionCreateResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<AccountBookingSessionCreateResponse>> Create(

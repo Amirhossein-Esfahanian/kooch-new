@@ -2,12 +2,97 @@ using System.Linq.Expressions;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Entities;
+using Kooch.Api.Dtos.Reservations;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
 public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBookingSessionQueryService
 {
+    public async Task<PagedResult<AccountBookingSessionListItemResponse>> GetForClientAsync(
+        int clientId,
+        AccountBookingSessionListQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        if (clientId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(clientId));
+        }
+
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize, 1, 50);
+        var now = DateTime.UtcNow;
+        var sessions = dbContext.BookingSessions.AsNoTracking()
+            .Where(session => session.ClientId == clientId);
+        var totalCount = await sessions.CountAsync(cancellationToken);
+        var projections = await sessions
+            .OrderByDescending(session => session.CreatedAtUtc)
+            .ThenByDescending(session => session.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(session => new AccountBookingSessionListProjection
+            {
+                SessionCode = session.SessionCode,
+                PropertyId = session.PropertyId,
+                PropertyName = session.Property.Name,
+                PropertySlug = session.Property.Slug,
+                CheckInDate = session.Reservations.Select(reservation => (DateOnly?)reservation.CheckInDate).Min(),
+                CheckOutDate = session.Reservations.Select(reservation => (DateOnly?)reservation.CheckOutDate).Max(),
+                ReservationCount = session.Reservations.Count,
+                TotalAmount = session.Reservations.Sum(reservation => reservation.FinalAmount),
+                Currency = session.Currency,
+                PaymentStatus = session.Payments
+                    .OrderByDescending(payment => payment.CreatedAtUtc)
+                    .ThenByDescending(payment => payment.Id)
+                    .Select(payment => (PaymentStatus?)payment.Status)
+                    .FirstOrDefault(),
+                PaymentDeadlineUtc = session.Reservations
+                    .Where(reservation =>
+                        reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
+                        reservation.PaymentExpiresAtUtc.HasValue)
+                    .Select(reservation => reservation.PaymentExpiresAtUtc)
+                    .Min(),
+                HasPendingApproval = session.Reservations.Any(reservation =>
+                    reservation.Status == ReservationStatus.PendingApproval),
+                AllPendingApproval = session.Reservations.Count != 0 && session.Reservations.All(reservation =>
+                    reservation.Status == ReservationStatus.PendingApproval),
+                HasRejected = session.Reservations.Any(reservation =>
+                    reservation.Status == ReservationStatus.Rejected),
+                AllRejected = session.Reservations.Count != 0 && session.Reservations.All(reservation =>
+                    reservation.Status == ReservationStatus.Rejected),
+                AllExpired = session.Reservations.Count != 0 && session.Reservations.All(reservation =>
+                    reservation.Status == ReservationStatus.PaymentExpired ||
+                    reservation.Status == ReservationStatus.CapacityLost),
+                AllConfirmed = session.Reservations.Count != 0 && session.Reservations.All(reservation =>
+                    reservation.Status == ReservationStatus.Confirmed ||
+                    reservation.Status == ReservationStatus.Paid ||
+                    reservation.Status == ReservationStatus.Completed),
+                AllAwaitingPayment = session.Reservations.Count != 0 && session.Reservations.All(reservation =>
+                    reservation.Status == ReservationStatus.ApprovedAwaitingPayment),
+                HasMissingPaymentDeadline = session.Reservations.Any(reservation =>
+                    reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
+                    !reservation.PaymentExpiresAtUtc.HasValue),
+                MinimumPaymentDeadlineUtc = session.Reservations
+                    .Where(reservation => reservation.Status == ReservationStatus.ApprovedAwaitingPayment)
+                    .Select(reservation => reservation.PaymentExpiresAtUtc)
+                    .Min(),
+                MaximumPaymentDeadlineUtc = session.Reservations
+                    .Where(reservation => reservation.Status == ReservationStatus.ApprovedAwaitingPayment)
+                    .Select(reservation => reservation.PaymentExpiresAtUtc)
+                    .Max()
+            })
+            .ToListAsync(cancellationToken);
+        var items = projections.Select(projection => ToListItem(projection, now)).ToArray();
+
+        return new PagedResult<AccountBookingSessionListItemResponse>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize)
+        };
+    }
     public Task<BookingSessionDetailsResponse> GetByIdAsync(
         int bookingSessionId,
         CancellationToken cancellationToken = default)
@@ -264,5 +349,76 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                 : paymentDeadlines.Min(),
             StatusCounts = statusCounts
         };
+    }
+
+    private static AccountBookingSessionListItemResponse ToListItem(
+        AccountBookingSessionListProjection projection,
+        DateTime now)
+    {
+        var hasConsistentFutureDeadline =
+            projection.MinimumPaymentDeadlineUtc.HasValue &&
+            projection.MinimumPaymentDeadlineUtc == projection.MaximumPaymentDeadlineUtc &&
+            projection.MinimumPaymentDeadlineUtc > now;
+        var isPaymentReady = projection.AllAwaitingPayment &&
+            !projection.HasMissingPaymentDeadline &&
+            hasConsistentFutureDeadline;
+        var derivedStatus = projection.PaymentStatus switch
+        {
+            PaymentStatus.Successful => "PaymentSuccessful",
+            PaymentStatus.Failed => "PaymentFailed",
+            _ when projection.AllPendingApproval => "AwaitingApproval",
+            _ when isPaymentReady => "ReadyForPayment",
+            _ when projection.AllExpired ||
+                projection.AllAwaitingPayment && projection.MinimumPaymentDeadlineUtc <= now => "Expired",
+            _ when projection.AllRejected => "Rejected",
+            _ when projection.AllConfirmed => "PaymentSuccessful",
+            _ when projection.HasPendingApproval || projection.HasRejected => "Mixed",
+            _ => "Mixed"
+        };
+
+        return new AccountBookingSessionListItemResponse
+        {
+            SessionCode = projection.SessionCode,
+            Property = new BookingSessionPropertyResponse
+            {
+                PropertyId = projection.PropertyId,
+                Name = projection.PropertyName,
+                Slug = projection.PropertySlug
+            },
+            CheckInDate = projection.CheckInDate,
+            CheckOutDate = projection.CheckOutDate,
+            ReservationCount = projection.ReservationCount,
+            TotalAmount = projection.TotalAmount,
+            Currency = projection.Currency,
+            DerivedStatus = derivedStatus,
+            PaymentStatus = projection.PaymentStatus,
+            PaymentDeadlineUtc = projection.PaymentDeadlineUtc,
+            IsPaymentReady = isPaymentReady
+        };
+    }
+
+    private sealed class AccountBookingSessionListProjection
+    {
+        public string SessionCode { get; set; } = string.Empty;
+        public int PropertyId { get; set; }
+        public string PropertyName { get; set; } = string.Empty;
+        public string PropertySlug { get; set; } = string.Empty;
+        public DateOnly? CheckInDate { get; set; }
+        public DateOnly? CheckOutDate { get; set; }
+        public int ReservationCount { get; set; }
+        public decimal TotalAmount { get; set; }
+        public string Currency { get; set; } = string.Empty;
+        public PaymentStatus? PaymentStatus { get; set; }
+        public DateTime? PaymentDeadlineUtc { get; set; }
+        public bool HasPendingApproval { get; set; }
+        public bool AllPendingApproval { get; set; }
+        public bool HasRejected { get; set; }
+        public bool AllRejected { get; set; }
+        public bool AllExpired { get; set; }
+        public bool AllConfirmed { get; set; }
+        public bool AllAwaitingPayment { get; set; }
+        public bool HasMissingPaymentDeadline { get; set; }
+        public DateTime? MinimumPaymentDeadlineUtc { get; set; }
+        public DateTime? MaximumPaymentDeadlineUtc { get; set; }
     }
 }

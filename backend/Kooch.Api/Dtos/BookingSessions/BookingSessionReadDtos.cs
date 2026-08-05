@@ -89,6 +89,27 @@ public sealed class AccountBookingSessionResponse
     public IReadOnlyList<AccountBookingSessionReservationResponse> Reservations { get; set; } = [];
 }
 
+public sealed class AccountBookingSessionListQuery
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 10;
+}
+
+public sealed class AccountBookingSessionListItemResponse
+{
+    public string SessionCode { get; set; } = string.Empty;
+    public BookingSessionPropertyResponse Property { get; set; } = new();
+    public DateOnly? CheckInDate { get; set; }
+    public DateOnly? CheckOutDate { get; set; }
+    public int ReservationCount { get; set; }
+    public decimal TotalAmount { get; set; }
+    public string Currency { get; set; } = string.Empty;
+    public string DerivedStatus { get; set; } = string.Empty;
+    public PaymentStatus? PaymentStatus { get; set; }
+    public DateTime? PaymentDeadlineUtc { get; set; }
+    public bool IsPaymentReady { get; set; }
+}
+
 public sealed class AccountBookingSessionPaymentResponse
 {
     public int PaymentId { get; set; }

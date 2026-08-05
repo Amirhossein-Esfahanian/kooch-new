@@ -1,4 +1,5 @@
 using Kooch.Api.Dtos.BookingSessions;
+using Kooch.Api.Dtos.Reservations;
 
 namespace Kooch.Api.Services;
 
@@ -15,5 +16,10 @@ public interface IBookingSessionQueryService
     Task<AccountBookingSessionResponse> GetBySessionCodeForClientAsync(
         int clientId,
         string sessionCode,
+        CancellationToken cancellationToken = default);
+
+    Task<PagedResult<AccountBookingSessionListItemResponse>> GetForClientAsync(
+        int clientId,
+        AccountBookingSessionListQuery query,
         CancellationToken cancellationToken = default);
 }

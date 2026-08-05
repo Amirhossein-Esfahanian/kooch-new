@@ -125,6 +125,28 @@ export interface AccountBookingSession {
   }>;
 }
 
+export interface AccountBookingSessionListItem {
+  sessionCode: string;
+  property: { propertyId: number; name: string; slug: string };
+  checkInDate: string | null;
+  checkOutDate: string | null;
+  reservationCount: number;
+  totalAmount: number;
+  currency: string;
+  derivedStatus: string;
+  paymentStatus: string | null;
+  paymentDeadlineUtc: string | null;
+  isPaymentReady: boolean;
+}
+
+export interface PagedAccountBookingSessions {
+  items: AccountBookingSessionListItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
 export interface AccountBookingSessionPaymentInitiation {
   paymentId: number;
   status: string;
@@ -170,6 +192,16 @@ export function createAccountBookingSession(
 export function fetchAccountBookingSession(sessionCode: string) {
   return apiRequest<AccountBookingSession>(
     `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+  );
+}
+
+export function fetchAccountBookingSessions(page = 1, pageSize = 10) {
+  const params = new URLSearchParams({
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  return apiRequest<PagedAccountBookingSessions>(
+    `/account/booking-sessions?${params.toString()}`,
   );
 }
 
