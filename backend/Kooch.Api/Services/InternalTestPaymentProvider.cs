@@ -9,8 +9,6 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
 {
     internal const string ProviderName = "internal-test";
     internal const string SignatureHeaderName = "X-Kooch-Test-Signature";
-    internal const string SigningSecretConfigurationKey =
-        "PaymentProviders:InternalTest:SigningSecret";
 
     public string Name => ProviderName;
     public string CallbackRateLimitPolicyName => PaymentCallbackRateLimitPolicy.Name;
@@ -67,6 +65,33 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
 
     internal static byte[] SerializePayload(InternalTestPaymentCallbackPayload payload) =>
         JsonSerializer.SerializeToUtf8Bytes(payload);
+
+    internal PaymentProviderCallbackContext CreateSignedCallback(
+        int paymentId,
+        string providerEventId,
+        string transactionReference,
+        decimal amount,
+        string currency,
+        bool succeeded,
+        DateTime occurredAtUtc)
+    {
+        var body = SerializePayload(new InternalTestPaymentCallbackPayload
+        {
+            PaymentId = paymentId,
+            ProviderEventId = providerEventId,
+            TransactionReference = transactionReference,
+            Amount = amount,
+            Currency = currency,
+            IsSuccessful = succeeded,
+            ProviderOccurredAtUtc = occurredAtUtc
+        });
+        return new PaymentProviderCallbackContext(
+            body,
+            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [SignatureHeaderName] = CreateSignature(body, signingSecret)
+            });
+    }
 
     internal static string CreateSignature(ReadOnlySpan<byte> body, string secret)
     {

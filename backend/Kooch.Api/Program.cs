@@ -5,6 +5,7 @@ using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Entities;
 using Kooch.Api.Filters;
+using Kooch.Api.Endpoints;
 using Kooch.Api.Integrations.PnlDev;
 using Kooch.Api.Services;
 using Kooch.Api.Services.Holidays;
@@ -16,6 +17,12 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+var internalTestPaymentOptions = builder.Configuration
+    .GetSection(InternalTestPaymentProviderOptions.SectionName)
+    .Get<InternalTestPaymentProviderOptions>() ?? new InternalTestPaymentProviderOptions();
+var internalTestPaymentsEnabled = InternalTestPaymentProviderOptions.IsEnabled(
+    builder.Environment.EnvironmentName,
+    internalTestPaymentOptions.Enabled);
 
 builder.Services.AddDbContext<KoochDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
@@ -83,17 +90,22 @@ builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabil
 builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
+builder.Services.AddScoped<IAccountBookingSessionPaymentService, AccountBookingSessionPaymentService>();
 builder.Services.AddScoped<IPaymentDomainApplicationHandler, PaymentDomainApplicationHandler>();
 builder.Services.AddScoped<IPaymentCallbackService, PaymentCallbackService>();
-if (builder.Environment.IsEnvironment("Testing"))
+if (internalTestPaymentsEnabled)
 {
-    var internalTestSigningSecret = builder.Configuration[
-        InternalTestPaymentProvider.SigningSecretConfigurationKey];
-    if (!string.IsNullOrWhiteSpace(internalTestSigningSecret))
+    if (string.IsNullOrWhiteSpace(internalTestPaymentOptions.SigningSecret))
     {
-        builder.Services.AddSingleton<IPaymentProvider>(
-            new InternalTestPaymentProvider(internalTestSigningSecret));
+        throw new InvalidOperationException(
+            "The explicitly enabled internal test payment provider requires a signing secret.");
     }
+
+    builder.Services.AddSingleton(
+        new InternalTestPaymentProvider(internalTestPaymentOptions.SigningSecret));
+    builder.Services.AddSingleton<IPaymentProvider>(serviceProvider =>
+        serviceProvider.GetRequiredService<InternalTestPaymentProvider>());
+    builder.Services.AddScoped<IMockPaymentCheckoutService, MockPaymentCheckoutService>();
 }
 builder.Services.AddScoped<IChildPricingRuleResolver, ChildPricingRuleResolver>();
 builder.Services.AddScoped<IReservationRulesResolver, ReservationRulesResolver>();
@@ -183,6 +195,12 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy<string>(
         PaymentCallbackRateLimitPolicy.Name,
         PaymentCallbackRateLimitPolicy.CreatePartition);
+    if (internalTestPaymentsEnabled)
+    {
+        options.AddPolicy<string>(
+            MockPaymentCheckoutRateLimitPolicy.Name,
+            MockPaymentCheckoutRateLimitPolicy.CreatePartition);
+    }
 });
 
 builder.Services.AddControllers(options => options.Filters.Add<ApiExceptionFilter>())
@@ -245,6 +263,7 @@ app.UseAuthentication();
 app.UseRateLimiter();
 app.UseAuthorization();
 app.MapControllers();
+app.MapMockPaymentCheckout(internalTestPaymentsEnabled);
 
 await using (var scope = app.Services.CreateAsyncScope())
 {

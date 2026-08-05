@@ -10,9 +10,10 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { fetchAccountBookingSession, type AccountBookingSession } from "@/lib/booking-sessions";
+import { fetchAccountBookingSession, initiateAccountBookingSessionPayment, type AccountBookingSession } from "@/lib/booking-sessions";
 import { formatDate, formatDateTime, statusLabels, statusVariant } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { getOrCreatePaymentIdempotencyKey } from "@/lib/payment-idempotency";
 
 export default function AccountBookingSessionPage() {
   const { sessionCode } = useParams<{ sessionCode: string }>();
@@ -22,6 +23,27 @@ export default function AccountBookingSessionPage() {
   const [session, setSession] = useState<AccountBookingSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [initiatingPayment, setInitiatingPayment] = useState(false);
+
+  async function beginPayment() {
+    if (!session || initiatingPayment) return;
+    setInitiatingPayment(true);
+    setError("");
+    try {
+      const result = await initiateAccountBookingSessionPayment(
+        session.sessionCode,
+        getOrCreatePaymentIdempotencyKey(session.sessionCode),
+      );
+      if (!result.checkoutDestination.startsWith("/")) {
+        throw new Error("مسیر پرداخت در دسترس نیست.");
+      }
+      router.push(result.checkoutDestination);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "شروع پرداخت انجام نشد.");
+    } finally {
+      setInitiatingPayment(false);
+    }
+  }
 
   useEffect(() => {
     if (auth.loading) return;
@@ -70,7 +92,10 @@ export default function AccountBookingSessionPage() {
       )}
       {session.summary.isPaymentReady && (
         <KoochAlert variant="success" title="سفارش آماده پرداخت است">
-          اتصال پرداخت در مرحله بعدی فعال می‌شود.
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <span>همه اتاق‌ها تأیید شده‌اند و می‌توانید پرداخت را ادامه دهید.</span>
+            <KoochButton loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>
+          </div>
         </KoochAlert>
       )}
 

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const navigation = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
 }));
-const bookingApi = vi.hoisted(() => ({ fetch: vi.fn() }));
+const bookingApi = vi.hoisted(() => ({ fetch: vi.fn(), initiate: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ sessionCode: "BS-1405-001" }),
@@ -15,7 +15,11 @@ vi.mock("@/components/auth/AuthSessionProvider", () => ({
 }));
 vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/booking-sessions")>();
-  return { ...actual, fetchAccountBookingSession: bookingApi.fetch };
+  return {
+    ...actual,
+    fetchAccountBookingSession: bookingApi.fetch,
+    initiateAccountBookingSessionPayment: bookingApi.initiate,
+  };
 });
 vi.mock("@/lib/currency", () => ({
   formatCurrency: (value: number) => `${value.toLocaleString("fa-IR")} تومان`,
@@ -54,7 +58,14 @@ function response() {
 }
 
 describe("account booking session detail", () => {
-  beforeEach(() => bookingApi.fetch.mockResolvedValue(response()));
+  beforeEach(() => {
+    bookingApi.fetch.mockResolvedValue(response());
+    bookingApi.initiate.mockResolvedValue({
+      paymentId: 10,
+      status: "Pending",
+      checkoutDestination: "/booking/sessions/BS-1405-001/mock-payment",
+    });
+  });
 
   it("shows the session code and each independent reservation", async () => {
     render(<AccountBookingSessionPage />);
@@ -71,5 +82,21 @@ describe("account booking session detail", () => {
     expect(await screen.findByText("در انتظار تأیید مالک")).toBeTruthy();
     expect(screen.getByText(/پس از تأیید همه اتاق‌ها/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: /پرداخت/ })).toBeNull();
+  });
+
+  it("shows payment only when ready and initiates server-side checkout", async () => {
+    const ready = response();
+    ready.summary.hasPendingApprovals = false;
+    ready.summary.isPaymentReady = true;
+    bookingApi.fetch.mockResolvedValue(ready);
+    render(<AccountBookingSessionPage />);
+
+    const button = await screen.findByRole("button", { name: "پرداخت" });
+    button.click();
+
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
+    expect(navigation.router.push).toHaveBeenCalledWith(
+      "/booking/sessions/BS-1405-001/mock-payment",
+    );
   });
 });

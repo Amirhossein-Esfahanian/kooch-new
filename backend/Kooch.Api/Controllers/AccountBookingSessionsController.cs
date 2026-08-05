@@ -1,4 +1,5 @@
 using Kooch.Api.Dtos.BookingSessions;
+using Kooch.Api.Dtos.Payments;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,8 @@ namespace Kooch.Api.Controllers;
 [Route("api/account/booking-sessions")]
 public sealed class AccountBookingSessionsController(
     IBookingSessionService bookingSessionService,
-    IBookingSessionQueryService bookingSessionQueryService) : AuthenticatedControllerBase
+    IBookingSessionQueryService bookingSessionQueryService,
+    IAccountBookingSessionPaymentService paymentService) : AuthenticatedControllerBase
 {
     [HttpPost]
     [ProducesResponseType<AccountBookingSessionCreateResponse>(StatusCodes.Status201Created)]
@@ -48,6 +50,23 @@ public sealed class AccountBookingSessionsController(
         return Ok(await bookingSessionQueryService.GetBySessionCodeForClientAsync(
             currentUser.UserId,
             sessionCode,
+            cancellationToken));
+    }
+
+    [HttpPost("{sessionCode}/payments")]
+    [ProducesResponseType<AccountBookingSessionPaymentInitiationResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<AccountBookingSessionPaymentInitiationResponse>> InitiatePayment(
+        string sessionCode,
+        [FromBody] AccountBookingSessionPaymentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = GetCurrentUser();
+        return Ok(await paymentService.InitiateAsync(
+            currentUser.UserId,
+            sessionCode,
+            request.IdempotencyKey,
             cancellationToken));
     }
 }

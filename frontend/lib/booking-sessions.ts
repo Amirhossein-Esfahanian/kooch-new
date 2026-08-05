@@ -125,6 +125,22 @@ export interface AccountBookingSession {
   }>;
 }
 
+export interface AccountBookingSessionPaymentInitiation {
+  paymentId: number;
+  status: string;
+  amount: number;
+  currency: string;
+  checkoutDestination: string;
+  isReplay: boolean;
+}
+
+export interface MockPaymentSimulationResult {
+  paymentId: number;
+  state: "applied" | "failed" | "pending_reconciliation" | "received";
+  isDuplicate: boolean;
+  redirectDestination: string;
+}
+
 export async function fetchBookingOptions(
   slug: string,
   query: BookingOptionsQuery,
@@ -154,5 +170,25 @@ export function createAccountBookingSession(
 export function fetchAccountBookingSession(sessionCode: string) {
   return apiRequest<AccountBookingSession>(
     `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+  );
+}
+
+export function initiateAccountBookingSessionPayment(
+  sessionCode: string,
+  idempotencyKey: string,
+) {
+  return apiRequest<AccountBookingSessionPaymentInitiation>(
+    `/account/booking-sessions/${encodeURIComponent(sessionCode)}/payments`,
+    { method: "POST", body: JSON.stringify({ idempotencyKey }) },
+  );
+}
+
+export function simulateMockBookingSessionPayment(
+  sessionCode: string,
+  succeeded: boolean,
+) {
+  return apiRequest<MockPaymentSimulationResult>(
+    `/dev/booking-sessions/${encodeURIComponent(sessionCode)}/mock-payment`,
+    { method: "POST", body: JSON.stringify({ succeeded }) },
   );
 }
