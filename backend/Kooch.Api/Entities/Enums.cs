@@ -72,6 +72,21 @@ public enum SiteSettingType { Text, LongText, ImageUrl, Color, Boolean, Number }
 public enum PropertyStatus { Draft, PendingReview, Approved, Rejected, Suspended }
 public enum PropertyType { TraditionalHouse, BoutiqueHotel, EcoLodge, Hotel, Villa, Apartment }
 public enum InventoryMode { NamedRooms, TypeBasedInventory }
+public enum RoomKind
+{
+    Single = 1,
+    Double = 2,
+    Twin = 3,
+    Triple = 4,
+    Quad = 5,
+    Family = 6,
+    Suite = 7,
+    JuniorSuite = 8,
+    Apartment = 9,
+    Villa = 10,
+    Dormitory = 11,
+    Other = 12
+}
 public enum BreakfastOption { NoBreakfast, Included, Paid }
 public enum ReservationStatus
 {
