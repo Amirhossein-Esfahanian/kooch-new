@@ -3,9 +3,11 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { GuestSelectorValue } from "@/components/GuestSelector";
 import { PropertyBookingPanel } from "@/components/booking/PropertyBookingPanel";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochDialog } from "@/components/KoochDialog";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
@@ -95,6 +97,13 @@ export default function PublicPropertyPage() {
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [detailsRoomType, setDetailsRoomType] = useState<PublicRoomType | null>(
+    null,
+  );
+  const [preferredRoomTypeId, setPreferredRoomTypeId] = useState<number | null>(
+    null,
+  );
+  const bookingPanelRef = useRef<HTMLElement>(null);
   const [bookingDates, setBookingDates] = useState<{
     startDate: string | null;
     endDate: string | null;
@@ -188,6 +197,24 @@ export default function PublicPropertyPage() {
   const resultsHref = resultQuery
     ? `/properties?${resultQuery}`
     : "/properties";
+
+  function selectRoomType(roomType: PublicRoomType) {
+    setPreferredRoomTypeId(roomType.id);
+    setDetailsRoomType(null);
+
+    if (
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(max-width: 1023px)").matches
+    ) {
+      window.requestAnimationFrame(() => {
+        bookingPanelRef.current?.scrollIntoView?.({
+          behavior: "smooth",
+          block: "start",
+        });
+        bookingPanelRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }
 
   return (
     <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
@@ -402,7 +429,10 @@ export default function PublicPropertyPage() {
                   property.roomTypes.map((roomType) => (
                     <RoomTypeCard
                       galleryFallback={gallery[0].url}
+                      isPreferred={preferredRoomTypeId === roomType.id}
                       key={roomType.id}
+                      onSelect={() => selectRoomType(roomType)}
+                      onShowDetails={() => setDetailsRoomType(roomType)}
                       roomType={roomType}
                     />
                   ))
@@ -464,12 +494,15 @@ export default function PublicPropertyPage() {
           <aside
             aria-label="رزرو اقامتگاه"
             className="h-fit rounded-2xl border border-border bg-card p-5 shadow-lg lg:sticky lg:top-24"
+            ref={bookingPanelRef}
+            tabIndex={-1}
           >
             <PropertyBookingPanel
               dates={bookingDates}
               guests={bookingGuests}
               onDatesChange={setBookingDates}
               onGuestsChange={setBookingGuests}
+              preferredRoomTypeId={preferredRoomTypeId}
               propertyId={property.id}
               propertyName={property.name}
               propertySlug={property.slug}
@@ -478,6 +511,15 @@ export default function PublicPropertyPage() {
           </aside>
         </div>
       </div>
+
+      <RoomTypeDetailsDialog
+        galleryFallback={gallery[0].url}
+        onOpenChange={(open) => {
+          if (!open) setDetailsRoomType(null);
+        }}
+        onSelect={selectRoomType}
+        roomType={detailsRoomType}
+      />
     </div>
   );
 }
@@ -485,9 +527,15 @@ export default function PublicPropertyPage() {
 function RoomTypeCard({
   roomType,
   galleryFallback,
+  isPreferred,
+  onSelect,
+  onShowDetails,
 }: {
   roomType: PublicRoomType;
   galleryFallback: string;
+  isPreferred: boolean;
+  onSelect: () => void;
+  onShowDetails: () => void;
 }) {
   const details = [
     roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
@@ -573,9 +621,123 @@ function RoomTypeCard({
               ? "یک واحد اختصاصی"
               : `${roomType.totalInventory} واحد موجودی`}
           </p>
+          <div className="mt-4 grid gap-2">
+            <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
+              مشاهده جزئیات
+            </KoochButton>
+            <KoochButton
+              aria-pressed={isPreferred}
+              className="w-full"
+              onClick={onSelect}
+            >
+              {isPreferred ? "انتخاب‌شده برای بررسی" : "انتخاب این اتاق"}
+            </KoochButton>
+          </div>
         </div>
       </div>
     </article>
+  );
+}
+
+function RoomTypeDetailsDialog({
+  roomType,
+  galleryFallback,
+  onOpenChange,
+  onSelect,
+}: {
+  roomType: PublicRoomType | null;
+  galleryFallback: string;
+  onOpenChange: (open: boolean) => void;
+  onSelect: (roomType: PublicRoomType) => void;
+}) {
+  const images = roomType?.images.length
+    ? roomType.images
+    : roomType
+      ? [
+          {
+            id: -1,
+            url: galleryFallback,
+            altText: roomType.name,
+            caption: null,
+            tag: null,
+            isCover: true,
+          },
+        ]
+      : [];
+
+  return (
+    <KoochDialog
+      description={roomType?.description || "تصاویر و مشخصات کامل اتاق"}
+      footer={
+        roomType ? (
+          <>
+            <KoochButton onClick={() => onSelect(roomType)}>
+              انتخاب این اتاق
+            </KoochButton>
+            <KoochButton onClick={() => onOpenChange(false)} variant="outline">
+              بستن
+            </KoochButton>
+          </>
+        ) : null
+      }
+      onOpenChange={onOpenChange}
+      open={roomType !== null}
+      size="lg"
+      title={roomType ? `جزئیات ${roomType.name}` : "جزئیات اتاق"}
+    >
+      {roomType && (
+        <div className="grid gap-6">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {images.map((image, index) => (
+              <figure
+                className="min-w-0 overflow-hidden rounded-lg border border-border bg-muted"
+                key={image.id}
+              >
+                <Image
+                  alt={image.altText || `${roomType.name}، تصویر ${index + 1}`}
+                  className="aspect-[4/3] w-full object-cover"
+                  height={720}
+                  loading="lazy"
+                  sizes="(max-width: 639px) calc(100vw - 5rem), 40vw"
+                  src={image.url}
+                  unoptimized={shouldBypassImageOptimization(image.url)}
+                  width={960}
+                />
+                {image.caption && (
+                  <figcaption className="px-3 py-2 text-sm leading-6 text-muted-foreground">
+                    {image.caption}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+
+          <div className="grid gap-3 text-sm leading-7 text-foreground">
+            <p>
+              ظرفیت پایه: {roomType.maxAdults.toLocaleString("fa-IR")} بزرگسال
+              {roomType.maxChildren > 0
+                ? ` و ${roomType.maxChildren.toLocaleString("fa-IR")} کودک`
+                : ""}
+            </p>
+            {roomType.bedInformation.length > 0 && (
+              <p>تخت‌ها: {roomType.bedInformation.map(persianBed).join("، ")}</p>
+            )}
+            {roomType.amenities.length > 0 && (
+              <div className="flex flex-wrap gap-2" aria-label="امکانات اتاق">
+                {roomType.amenities.map((amenity) => (
+                  <span
+                    className="rounded-md bg-muted px-3 py-1 text-xs font-semibold text-muted-foreground"
+                    key={amenity.id}
+                  >
+                    {amenity.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </KoochDialog>
   );
 }
 

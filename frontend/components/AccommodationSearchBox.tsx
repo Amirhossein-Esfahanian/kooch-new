@@ -48,15 +48,13 @@ export type AccommodationSuggestion = {
   city?: string;
 };
 
-const defaultCity = "Kashan";
-
 function normalizeValues(values?: Partial<AccommodationSearchValues>): AccommodationSearchValues {
   const children = Math.max(0, values?.children ?? 0);
   const childAges = (values?.childAges ?? []).slice(0, children);
   while (childAges.length < children) childAges.push(5);
   return {
     q: values?.q ?? "",
-    city: values?.city ?? defaultCity,
+    city: values?.city ?? "",
     checkIn: values?.checkIn ?? null,
     checkOut: values?.checkOut ?? null,
     rooms: Math.max(1, values?.rooms ?? 1),
@@ -69,7 +67,7 @@ function normalizeValues(values?: Partial<AccommodationSearchValues>): Accommoda
 function buildSearchParams(values: AccommodationSearchValues) {
   const query = new URLSearchParams();
   if (values.q.trim()) query.set("q", values.q.trim());
-  query.set("city", values.city.trim() || defaultCity);
+  if (values.city.trim()) query.set("city", values.city.trim());
   if (values.checkIn) query.set("checkIn", values.checkIn);
   if (values.checkOut) query.set("checkOut", values.checkOut);
   query.set("rooms", Math.max(1, values.rooms).toString());
@@ -119,10 +117,8 @@ export function AccommodationSearchBox({
     }
 
     const controller = new AbortController();
-    const query = new URLSearchParams({
-      q: values.q.trim(),
-      city: values.city || defaultCity,
-    });
+    const query = new URLSearchParams({ q: values.q.trim() });
+    if (values.city.trim()) query.set("city", values.city.trim());
 
     fetch(`/api/backend/properties/suggestions?${query.toString()}`, { signal: controller.signal })
       .then((response) => (response.ok ? response.json() : []))
@@ -188,7 +184,7 @@ export function AccommodationSearchBox({
               onQueryChange?.(event.target.value);
             }}
             onFocus={() => setShowSuggestions(true)}
-            placeholder="جستجوی اقامتگاه در کاشان"
+            placeholder="نام اقامتگاه یا مقصد"
             value={values.q}
           />
           {enableSuggestions && showSuggestions && visibleSuggestions.length > 0 && (

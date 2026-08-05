@@ -562,8 +562,11 @@ public class PropertyService(
         var query = dbContext.Properties.AsNoTracking()
             .Where(property => property.Status == PropertyStatus.Approved);
 
-        var normalizedCity = string.IsNullOrWhiteSpace(city) ? "Kashan" : city.Trim();
-        query = query.Where(property => property.City.Contains(normalizedCity));
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            var normalizedCity = city.Trim();
+            query = query.Where(property => property.City.Contains(normalizedCity));
+        }
 
         if (!string.IsNullOrWhiteSpace(q))
         {
@@ -634,9 +637,14 @@ public class PropertyService(
         string? city = null,
         CancellationToken cancellationToken = default)
     {
-        var normalizedCity = string.IsNullOrWhiteSpace(city) ? "Kashan" : city.Trim();
         var query = dbContext.Properties.AsNoTracking()
-            .Where(property => property.Status == PropertyStatus.Approved && property.City.Contains(normalizedCity));
+            .Where(property => property.Status == PropertyStatus.Approved);
+
+        if (!string.IsNullOrWhiteSpace(city))
+        {
+            var normalizedCity = city.Trim();
+            query = query.Where(property => property.City.Contains(normalizedCity));
+        }
 
         if (!string.IsNullOrWhiteSpace(q))
         {

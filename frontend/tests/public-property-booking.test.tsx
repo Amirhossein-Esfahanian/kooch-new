@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -81,7 +81,35 @@ const property = {
   amenities: [],
   nearbyPlaces: [],
   views: [],
-  roomTypes: [],
+  roomTypes: [
+    {
+      id: 10,
+      name: "اتاق شاه‌نشین",
+      englishName: null,
+      description: "اتاقی رو به حیاط مرکزی",
+      basePrice: 2_000_000,
+      availabilityPrice: 2_000_000,
+      displayPrice: 2_000_000,
+      availabilityStatus: "Available" as const,
+      inventoryMode: "TypeBasedInventory" as const,
+      totalInventory: 2,
+      maxAdults: 2,
+      maxChildren: 1,
+      allowExtraGuest: false,
+      maxExtraGuests: 0,
+      notes: null,
+      floorNumber: 1,
+      stairCount: 4,
+      hasWindow: true,
+      hasPrivateBathroom: true,
+      bedInformation: ["1 x Double Bed"],
+      images: [
+        { id: 101, url: "/room-1.jpg", altText: "نمای اتاق شاه‌نشین", caption: "نمای اصلی", tag: null, isCover: true },
+        { id: 102, url: "/room-2.jpg", altText: "حیاط اتاق شاه‌نشین", caption: null, tag: null, isCover: false },
+      ],
+      amenities: [{ id: 1, name: "حمام اختصاصی", category: "اتاق" }],
+    },
+  ],
 };
 
 const availableOptions = {
@@ -154,7 +182,7 @@ describe("public property booking integration", () => {
     api.fetchOptions.mockResolvedValueOnce({ ...availableOptions, roomTypes: [] });
     const firstRender = render(<PublicPropertyPage />);
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
-    expect(await screen.findByText("برای این بازه اتاقی در دسترس نیست.")).toBeTruthy();
+    expect(await screen.findByText(/تاریخ‌ها یا تعداد مهمان را تغییر دهید/)).toBeTruthy();
     firstRender.unmount();
 
     api.fetchOptions.mockRejectedValueOnce(new Error("ارتباط با سرویس موجودی برقرار نشد."));
@@ -163,5 +191,75 @@ describe("public property booking integration", () => {
     await waitFor(() => {
       expect(screen.getByText("ارتباط با سرویس موجودی برقرار نشد.")).toBeTruthy();
     });
+  });
+
+  it("opens accessible room details with every image", async () => {
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "مشاهده جزئیات" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "جزئیات اتاق شاه‌نشین" });
+    expect(within(dialog).getByAltText("نمای اتاق شاه‌نشین")).toBeTruthy();
+    expect(within(dialog).getByAltText("حیاط اتاق شاه‌نشین")).toBeTruthy();
+    expect(within(dialog).getByText("حمام اختصاصی")).toBeTruthy();
+  });
+
+  it("selects the room type from its card and scrolls to the panel on mobile", async () => {
+    const scrollIntoView = vi.fn();
+    const originalMatchMedia = window.matchMedia;
+    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
+    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [
+        { ...availableOptions.roomTypes[0], roomTypeId: 20, name: "اتاق دیگر" },
+        availableOptions.roomTypes[0],
+      ],
+    });
+
+    try {
+      render(<PublicPropertyPage />);
+      fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+      const roomTypeSelect = await screen.findByRole("combobox", { name: "نوع اتاق" });
+      expect((roomTypeSelect as HTMLSelectElement).value).toBe("20");
+
+      fireEvent.click(screen.getByRole("button", { name: "انتخاب این اتاق" }));
+
+      await waitFor(() => {
+        expect((roomTypeSelect as HTMLSelectElement).value).toBe("10");
+        expect(scrollIntoView).toHaveBeenCalled();
+      });
+      expect(document.activeElement).toBe(
+        screen.getByRole("complementary", { name: "رزرو اقامتگاه" }),
+      );
+    } finally {
+      window.matchMedia = originalMatchMedia;
+      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
+    }
+  });
+
+  it("explains how named rooms are added", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [
+        {
+          ...availableOptions.roomTypes[0],
+          inventoryMode: "NamedRooms",
+          availableCount: 2,
+          rooms: [
+            { roomId: 101, name: "اتاق یک" },
+            { roomId: 102, name: "اتاق دو" },
+          ],
+        },
+      ],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+
+    expect(
+      await screen.findByText("اتاق‌های نام‌دار باید جداگانه انتخاب و به سبد رزرو اضافه شوند."),
+    ).toBeTruthy();
   });
 });

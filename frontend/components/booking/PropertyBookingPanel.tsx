@@ -26,6 +26,7 @@ export function PropertyBookingPanel(props: {
   onDatesChange: (value: DateRange) => void;
   guests: GuestSelectorValue;
   onGuestsChange: (value: GuestSelectorValue) => void;
+  preferredRoomTypeId?: number | null;
 }) {
   return <BookingCartProvider><PropertyBookingPanelContent {...props} /></BookingCartProvider>;
 }
@@ -39,6 +40,7 @@ function PropertyBookingPanelContent({
   onDatesChange,
   guests,
   onGuestsChange,
+  preferredRoomTypeId,
 }: {
   propertyId: number;
   propertyName: string;
@@ -48,6 +50,7 @@ function PropertyBookingPanelContent({
   onDatesChange: (value: DateRange) => void;
   guests: GuestSelectorValue;
   onGuestsChange: (value: GuestSelectorValue) => void;
+  preferredRoomTypeId?: number | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -84,12 +87,23 @@ function PropertyBookingPanelContent({
         childAges: guests.childAges,
       });
       setOptions(response);
-      const first = response.roomTypes[0];
+      const preferred = response.roomTypes.find(
+        (item) => item.roomTypeId === preferredRoomTypeId,
+      );
+      const first = preferred ?? response.roomTypes[0];
       setSelectedRoomTypeId(first ? String(first.roomTypeId) : "");
       setSelectedRoomId(first?.rooms[0] ? String(first.rooms[0].roomId) : "");
       setQuantity(Math.min(Math.max(1, guests.rooms), first?.availableCount ?? 1));
       if (response.roomTypes.length === 0) {
-        setMessage({ tone: "info", text: "برای این بازه اتاقی در دسترس نیست." });
+        setMessage({
+          tone: "info",
+          text: "در این بازه و برای تعداد مهمان انتخاب‌شده گزینه‌ای قابل رزرو نیست. تاریخ‌ها یا تعداد مهمان را تغییر دهید و دوباره بررسی کنید.",
+        });
+      } else if (preferredRoomTypeId && !preferred) {
+        setMessage({
+          tone: "info",
+          text: "اتاق انتخاب‌شده در این بازه قابل رزرو نیست؛ گزینه‌های در دسترس را می‌توانید بررسی کنید.",
+        });
       }
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "بررسی موجودی انجام نشد." });
@@ -163,6 +177,22 @@ function PropertyBookingPanelContent({
   }
 
   useEffect(() => {
+    if (!options || !preferredRoomTypeId) return;
+    const preferred = options.roomTypes.find(
+      (item) => item.roomTypeId === preferredRoomTypeId,
+    );
+    if (!preferred) return;
+
+    setSelectedRoomTypeId(String(preferred.roomTypeId));
+    setSelectedRoomId(
+      preferred.rooms[0] ? String(preferred.rooms[0].roomId) : "",
+    );
+    setQuantity(
+      Math.min(Math.max(1, guests.rooms), preferred.availableCount),
+    );
+  }, [guests.rooms, options, preferredRoomTypeId]);
+
+  useEffect(() => {
     if (!cart.hydrated || auth.loading || !auth.authenticated || !cart.checkoutRequested || resumedCheckout.current) return;
     resumedCheckout.current = true;
     void continueCheckout();
@@ -195,11 +225,16 @@ function PropertyBookingPanelContent({
             </KoochSelect>
           </KoochField>
           {selectedOption?.inventoryMode === "NamedRooms" ? (
-            <KoochField label="اتاق مشخص">
-              <KoochSelect value={selectedRoomId} onChange={(event) => setSelectedRoomId(event.target.value)}>
-                {selectedOption.rooms.map((room) => <option key={room.roomId} value={room.roomId}>{room.name}</option>)}
-              </KoochSelect>
-            </KoochField>
+            <div className="grid gap-2">
+              <KoochField label="اتاق مشخص">
+                <KoochSelect value={selectedRoomId} onChange={(event) => setSelectedRoomId(event.target.value)}>
+                  {selectedOption.rooms.map((room) => <option key={room.roomId} value={room.roomId}>{room.name}</option>)}
+                </KoochSelect>
+              </KoochField>
+              <p className="text-xs leading-6 text-muted-foreground">
+                اتاق‌های نام‌دار باید جداگانه انتخاب و به سبد رزرو اضافه شوند.
+              </p>
+            </div>
           ) : selectedOption ? (
             <KoochField label="تعداد اتاق">
               <KoochSelect value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>

@@ -150,7 +150,7 @@ function PropertiesContent() {
   const [usingSamples, setUsingSamples] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const q = searchParams.get("q") ?? "";
-  const city = searchParams.get("city") ?? "Kashan";
+  const city = searchParams.get("city") ?? "";
   const checkIn = searchParams.get("checkIn") ?? "";
   const checkOut = searchParams.get("checkOut") ?? "";
   const rooms = Number(searchParams.get("rooms") ?? 1);
@@ -171,7 +171,7 @@ function PropertiesContent() {
   useEffect(() => {
     const query = new URLSearchParams();
     if (q) query.set("q", q);
-    query.set("city", city);
+    if (city) query.set("city", city);
     if (checkIn) query.set("checkIn", checkIn);
     if (checkOut) query.set("checkOut", checkOut);
     query.set("rooms", Math.max(1, rooms).toString());

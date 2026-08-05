@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
+import { KoochAlert } from "@/components/KoochAlert";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
@@ -84,7 +85,7 @@ function badge(type: string) {
 export default function HomePage() {
   const [properties, setProperties] = useState<PropertyCardData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingSamples, setUsingSamples] = useState(false);
+  const [propertiesError, setPropertiesError] = useState("");
   const [settings, setSettings] =
     useState<SiteSettingsMap>(defaultSiteSettings);
 
@@ -94,17 +95,8 @@ export default function HomePage() {
       .catch(() => setSettings(defaultSiteSettings));
 
     fetchPublicApi<PublicProperty[]>("/properties")
-      .then((items) => {
-        if (items.length > 0) setProperties(items);
-        else {
-          setProperties(sampleProperties);
-          setUsingSamples(true);
-        }
-      })
-      .catch(() => {
-        setProperties(sampleProperties);
-        setUsingSamples(true);
-      })
+      .then(setProperties)
+      .catch(() => setPropertiesError("دریافت اقامتگاه‌ها انجام نشد. لطفاً کمی بعد دوباره تلاش کنید."))
       .finally(() => setLoading(false));
   }, []);
 
@@ -156,7 +148,7 @@ export default function HomePage() {
         <AccommodationSearchBox
           className="-mt-20 sm:-mt-24"
           enableSuggestions
-          initialValues={{ city: "Kashan", rooms: 1, adults: 2, children: 0 }}
+          initialValues={{ rooms: 1, adults: 2, children: 0 }}
           redirectToResults
           searchButtonText={settingValue(settings, "home.searchButtonText")}
           variant="hero"
@@ -177,17 +169,20 @@ export default function HomePage() {
                 {settingValue(settings, "home.popularSectionSubtitle")}
               </p>
             </div>
-            {usingSamples && (
-              <span className="rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-800">
-                نمونه نمایشی
-              </span>
-            )}
           </div>
 
           {loading ? (
             <p className="mt-8 rounded-xl bg-slate-50 p-6 text-slate-500">
               در حال بارگذاری اقامتگاه ها...
             </p>
+          ) : propertiesError ? (
+            <KoochAlert className="mt-8" title="نمایش اقامتگاه‌ها ممکن نیست" variant="destructive">
+              {propertiesError}
+            </KoochAlert>
+          ) : properties.length === 0 ? (
+            <KoochAlert className="mt-8" title="هنوز اقامتگاهی منتشر نشده است" variant="info">
+              پس از انتشار اقامتگاه‌ها، آن‌ها را در این بخش خواهید دید.
+            </KoochAlert>
           ) : (
             <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
               {properties.slice(0, 6).map((property) => (
