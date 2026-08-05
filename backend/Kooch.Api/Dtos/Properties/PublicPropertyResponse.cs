@@ -1,4 +1,5 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Catalogs;
 
 namespace Kooch.Api.Dtos.Properties;
 
@@ -66,6 +67,8 @@ public class PublicRoomTypeSummaryResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
     public bool AllowExtraGuest { get; set; }
@@ -87,6 +90,8 @@ public class PublicRoomTypeResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public string? EnglishName { get; set; }
     public string Description { get; set; } = string.Empty;
     public decimal? BasePrice { get; set; }

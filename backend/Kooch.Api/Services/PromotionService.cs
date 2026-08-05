@@ -332,6 +332,7 @@ public sealed class PromotionService(
                 {
                     Id = room.Id,
                     Name = room.Name,
+                    RoomKind = room.RoomKind,
                     BasePrice = room.BasePrice
                 })
                 .ToListAsync(cancellationToken)
@@ -347,6 +348,7 @@ public sealed class PromotionService(
                     {
                         Id = item.RoomTypeId,
                         Name = item.RoomType.Name,
+                        RoomKind = item.RoomType.RoomKind,
                         BasePrice = item.RoomType.BasePrice
                     }).ToList();
 

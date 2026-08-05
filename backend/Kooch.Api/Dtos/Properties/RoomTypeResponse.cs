@@ -1,4 +1,5 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Catalogs;
 
 namespace Kooch.Api.Dtos.Properties;
 
@@ -17,6 +18,8 @@ public class RoomTypeResponse
     public int TotalInventory { get; set; }
     public int ActiveRoomCount { get; set; }
     public InventoryMode InventoryMode { get; set; }
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public decimal? BasePrice { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }

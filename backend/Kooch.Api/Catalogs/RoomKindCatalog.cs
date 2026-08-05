@@ -19,6 +19,12 @@ internal static class RoomKindCatalog
         new(RoomKind.Dormitory, "dormitory", "خوابگاه", "Dormitory", 110),
         new(RoomKind.Other, "other", "سایر", "Other", 120)
     ];
+
+    public static bool IsDefined(RoomKind roomKind) =>
+        Entries.Any(entry => entry.Value == roomKind);
+
+    public static string GetCode(RoomKind roomKind) =>
+        Entries.Single(entry => entry.Value == roomKind).Code;
 }
 
 internal sealed record RoomKindCatalogEntry(

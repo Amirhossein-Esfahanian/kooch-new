@@ -1,5 +1,6 @@
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
+using Kooch.Api.Catalogs;
 
 namespace Kooch.Api.Dtos.Properties;
 
@@ -21,6 +22,8 @@ public sealed class PublicBookingUnavailableRoomType
 {
     public int RoomTypeId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public PublicBookingUnavailableReason Reason { get; set; }
 }
 
@@ -35,6 +38,8 @@ public sealed class PublicBookingRoomTypeOption
 {
     public int RoomTypeId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public string? EnglishName { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public int AvailableCount { get; set; }

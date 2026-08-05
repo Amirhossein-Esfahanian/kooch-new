@@ -29,7 +29,28 @@ export const inventoryModes = ["NamedRooms", "TypeBasedInventory"] as const;
 
 export type PropertyType = (typeof propertyTypes)[number];
 export type InventoryMode = (typeof inventoryModes)[number];
+export type RoomKind =
+  | "Single"
+  | "Double"
+  | "Twin"
+  | "Triple"
+  | "Quad"
+  | "Family"
+  | "Suite"
+  | "JuniorSuite"
+  | "Apartment"
+  | "Villa"
+  | "Dormitory"
+  | "Other";
 export type BreakfastOption = "NoBreakfast" | "Included" | "Paid";
+
+export interface RoomKindCatalogResponse {
+  value: number;
+  code: string;
+  titleFa: string;
+  titleEn: string;
+  displayOrder: number;
+}
 
 export interface PropertyResponse {
   id: number;
@@ -273,6 +294,8 @@ export interface RoomTypeResponse {
   totalInventory: number;
   activeRoomCount?: number;
   inventoryMode: InventoryMode;
+  roomKind: RoomKind;
+  roomKindCode: string;
   basePrice: number | null;
   notes: string | null;
   floorNumber: number | null;
@@ -318,6 +341,8 @@ export type PromotionWeekday =
 export interface PromotionRoomTypeResponse {
   id: number;
   name: string;
+  roomKind: RoomKind;
+  roomKindCode: string;
   basePrice: number | null;
 }
 
@@ -397,6 +422,19 @@ export interface RoomResponse {
   hasWindow: boolean | null;
   hasPrivateBathroom: boolean | null;
   isActive: boolean;
+}
+
+export interface OwnerRoomResponse extends RoomResponse {
+  roomKind: RoomKind;
+  roomKindCode: string;
+  inventoryMode: InventoryMode;
+  maxAdults: number;
+  maxChildren: number;
+  allowExtraGuest: boolean;
+  maxExtraGuests: number;
+  basePrice: number | null;
+  bedConfigurations: RoomTypeBedResponse[];
+  amenities: RoomTypeAmenityResponse[];
 }
 
 export interface PropertyAmenityResponse {
@@ -485,6 +523,8 @@ export interface InventoryDayResponse {
 export interface InventoryRoomTypeResponse {
   roomTypeId: number;
   name: string;
+  roomKind: RoomKind;
+  roomKindCode: string;
   inventoryMode: InventoryMode;
   totalInventory: number;
   days: InventoryDayResponse[];
@@ -530,6 +570,8 @@ export interface RoomDailyPriceHistoryResponse {
 export interface PricingRoomTypeResponse {
   roomTypeId: number;
   name: string;
+  roomKind: RoomKind;
+  roomKindCode: string;
   days: RoomDailyPriceResponse[];
 }
 

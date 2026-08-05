@@ -356,6 +356,7 @@ public class AvailabilityService(
             {
                 roomType.Id,
                 roomType.Name,
+                roomType.RoomKind,
                 roomType.InventoryMode,
                 roomType.TotalInventory
             })
@@ -383,6 +384,7 @@ public class AvailabilityService(
             {
                 RoomTypeId = roomType.Id,
                 Name = roomType.Name,
+                RoomKind = roomType.RoomKind,
                 InventoryMode = roomType.InventoryMode,
                 TotalInventory = roomType.TotalInventory,
                 Days = days.Select(date =>

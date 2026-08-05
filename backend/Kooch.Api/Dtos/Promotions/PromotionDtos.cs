@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Kooch.Api.Catalogs;
 using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Promotions;
@@ -73,6 +74,8 @@ public sealed class PromotionRoomTypeResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public decimal? BasePrice { get; set; }
 }
 

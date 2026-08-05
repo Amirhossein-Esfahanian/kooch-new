@@ -1,4 +1,5 @@
 using Kooch.Api.Data;
+using Kooch.Api.Catalogs;
 using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -19,6 +20,7 @@ public class RoomTypeService(
     {
         await EnsurePropertyExistsAsync(propertyId, cancellationToken);
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
+        EnsureValidRoomKind(request.RoomKind);
 
         var englishName = CleanOptional(request.EnglishName);
         var slug = EnglishSlugGenerator.Create(englishName, "room-type");
@@ -39,6 +41,7 @@ public class RoomTypeService(
             MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0,
             TotalInventory = request.TotalInventory,
             InventoryMode = request.InventoryMode,
+            RoomKind = request.RoomKind,
             BasePrice = request.BasePrice,
             Notes = CleanOptional(request.Notes),
             FloorNumber = request.FloorNumber,
@@ -86,6 +89,7 @@ public class RoomTypeService(
             ?? throw new KeyNotFoundException("Room type not found.");
 
         await EnsureCanManageAsync(userId, role, roomType.PropertyId, cancellationToken);
+        EnsureValidRoomKind(request.RoomKind);
         var englishName = request.EnglishName is null
             ? roomType.EnglishName
             : CleanOptional(request.EnglishName);
@@ -104,6 +108,7 @@ public class RoomTypeService(
         roomType.MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0;
         roomType.TotalInventory = request.TotalInventory;
         roomType.InventoryMode = request.InventoryMode;
+        roomType.RoomKind = request.RoomKind;
         roomType.BasePrice = request.BasePrice;
         roomType.Notes = CleanOptional(request.Notes);
         roomType.FloorNumber = request.FloorNumber;
@@ -290,6 +295,7 @@ public class RoomTypeService(
             TotalInventory = roomType.TotalInventory,
             ActiveRoomCount = roomType.Rooms.Count(room => room.IsActive),
             InventoryMode = roomType.InventoryMode,
+            RoomKind = roomType.RoomKind,
             BasePrice = roomType.BasePrice,
             Notes = roomType.Notes,
             FloorNumber = roomType.FloorNumber,
@@ -447,4 +453,12 @@ public class RoomTypeService(
     }
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static void EnsureValidRoomKind(RoomKind roomKind)
+    {
+        if (!RoomKindCatalog.IsDefined(roomKind))
+        {
+            throw new ArgumentException("Room kind is invalid.", nameof(roomKind));
+        }
+    }
 }

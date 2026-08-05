@@ -33,6 +33,9 @@ public class CreateRoomTypeRequest
 
     public InventoryMode InventoryMode { get; set; }
 
+    [EnumDataType(typeof(RoomKind))]
+    public RoomKind RoomKind { get; set; }
+
     [Range(0, double.MaxValue)]
     public decimal? BasePrice { get; set; }
 

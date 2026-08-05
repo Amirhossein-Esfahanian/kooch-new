@@ -15,6 +15,7 @@ public class RoomType : BaseEntity
     public int MaxExtraGuests { get; set; }
     public int TotalInventory { get; set; }
     public InventoryMode InventoryMode { get; set; }
+    public RoomKind RoomKind { get; set; } = RoomKind.Double;
     public decimal? BasePrice { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }

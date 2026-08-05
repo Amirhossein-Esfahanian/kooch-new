@@ -460,6 +460,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(roomType => roomType.SeoDescription).HasMaxLength(500);
             entity.Property(roomType => roomType.Notes).HasMaxLength(2000);
             entity.Property(roomType => roomType.BasePrice).HasPrecision(18, 2);
+            entity.Property(roomType => roomType.RoomKind).IsRequired();
             entity.HasIndex(roomType => new { roomType.PropertyId, roomType.Slug }).IsUnique();
             entity.HasOne(roomType => roomType.Property)
                 .WithMany(property => property.RoomTypes)

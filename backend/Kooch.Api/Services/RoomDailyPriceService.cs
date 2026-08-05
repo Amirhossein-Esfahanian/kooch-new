@@ -25,7 +25,7 @@ public class RoomDailyPriceService(
         var roomTypes = await dbContext.RoomTypes.AsNoTracking()
             .Where(roomType => roomType.PropertyId == propertyId && roomType.IsActive)
             .OrderBy(roomType => roomType.Name)
-            .Select(roomType => new { roomType.Id, roomType.Name, roomType.BasePrice })
+            .Select(roomType => new { roomType.Id, roomType.Name, roomType.RoomKind, roomType.BasePrice })
             .ToListAsync(cancellationToken);
         var roomTypeIds = roomTypes.Select(roomType => roomType.Id).ToArray();
         var prices = await dbContext.RoomDailyPrices.AsNoTracking()
@@ -42,6 +42,7 @@ public class RoomDailyPriceService(
             {
                 RoomTypeId = roomType.Id,
                 Name = roomType.Name,
+                RoomKind = roomType.RoomKind,
                 Days = Dates(from, to).Select(date =>
                 {
                     var price = prices.GetValueOrDefault((roomType.Id, date));

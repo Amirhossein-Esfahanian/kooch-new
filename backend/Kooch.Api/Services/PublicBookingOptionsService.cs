@@ -105,6 +105,7 @@ public sealed class PublicBookingOptionsService(
         {
             RoomTypeId = roomType.Id,
             Name = roomType.Name,
+            RoomKind = roomType.RoomKind,
             Reason = reason
         };
 
@@ -188,6 +189,7 @@ public sealed class PublicBookingOptionsService(
         {
             RoomTypeId = roomType.Id,
             Name = roomType.Name,
+            RoomKind = roomType.RoomKind,
             EnglishName = roomType.EnglishName,
             InventoryMode = roomType.InventoryMode,
             AvailableCount = availableCount,

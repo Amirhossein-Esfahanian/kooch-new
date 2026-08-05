@@ -611,6 +611,7 @@ public class PropertyService(
                 {
                     Id = roomType.Id,
                     Name = roomType.Name,
+                    RoomKind = roomType.RoomKind,
                     MaxAdults = roomType.MaxAdults,
                     MaxChildren = roomType.MaxChildren,
                     AllowExtraGuest = roomType.AllowExtraGuest,
@@ -1276,6 +1277,7 @@ public class PropertyService(
                 {
                     Id = roomType.Id,
                     Name = roomType.Name,
+                    RoomKind = roomType.RoomKind,
                     EnglishName = roomType.EnglishName,
                     Description = roomType.Description,
                     BasePrice = roomType.BasePrice,

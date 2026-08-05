@@ -1,6 +1,7 @@
 namespace Kooch.Api.Dtos.Pricing;
 
 using Kooch.Api.Entities;
+using Kooch.Api.Catalogs;
 
 public class PropertyPricingResponse
 {
@@ -15,6 +16,8 @@ public class PricingRoomTypeResponse
 {
     public int RoomTypeId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public IReadOnlyList<RoomDailyPriceResponse> Days { get; set; } = [];
 }
 

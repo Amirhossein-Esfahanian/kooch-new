@@ -2,21 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import {
-  AmenityResponse,
-  apiRequest,
-  BedTypeResponse,
-  bedTypeLabel,
-  PropertyImageResponse,
-  RoomCompletionResponse,
-  RoomResponse,
-  RoomTypeResponse,
-} from "@/lib/owner-api";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
-import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochInput,
@@ -33,17 +22,30 @@ import {
   KoochTableRow,
 } from "@/components/KoochTable";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
+import {
+  AmenityResponse,
+  apiRequest,
+  BedTypeResponse,
+  bedTypeLabel,
+  InventoryMode,
+  OwnerRoomResponse,
+  PropertyImageResponse,
+  RoomKindCatalogResponse,
+} from "@/lib/owner-api";
 
-interface RoomTypeDraft {
-  id?: number;
+type RoomDraft = {
+  roomId?: number;
+  roomTypeId?: number;
   name: string;
   englishName: string;
   description: string;
+  roomKindCode: string;
   maxAdults: number;
   maxChildren: number;
   allowExtraGuest: boolean;
   maxExtraGuests: number;
-  totalInventory: number;
+  inventoryMode: InventoryMode;
+  basePrice: number;
   floorNumber: string;
   stairCount: string;
   hasWindow: boolean | null;
@@ -51,28 +53,19 @@ interface RoomTypeDraft {
   notes: string;
   bedConfigurations: { bedTypeId: number; quantity: number }[];
   amenityIds: number[];
-  isActive: boolean;
-}
+};
 
-type WizardMode = "create" | "edit";
-
-const wizardSteps = [
-  "اطلاعات اصلی",
-  "ویژگی‌ها",
-  "امکانات",
-  "تخت‌ها / چیدمان",
-  "تصاویر",
-] as const;
-
-const emptyRoomType: RoomTypeDraft = {
+const emptyRoom: RoomDraft = {
   name: "",
   englishName: "",
   description: "",
+  roomKindCode: "",
   maxAdults: 2,
   maxChildren: 0,
   allowExtraGuest: false,
   maxExtraGuests: 0,
-  totalInventory: 1,
+  inventoryMode: "NamedRooms",
+  basePrice: 0,
   floorNumber: "",
   stairCount: "",
   hasWindow: null,
@@ -80,588 +73,191 @@ const emptyRoomType: RoomTypeDraft = {
   notes: "",
   bedConfigurations: [],
   amenityIds: [],
-  isActive: false,
 };
+
+const steps = [
+  "اطلاعات اصلی",
+  "ویژگی‌ها",
+  "امکانات",
+  "تخت‌ها و چیدمان",
+  "تصاویر",
+] as const;
 
 function nullableNumber(value: string) {
   return value === "" ? null : Number(value);
 }
 
-function roomInventoryMode(totalInventory: number) {
-  return totalInventory <= 1 ? "NamedRooms" : "TypeBasedInventory";
-}
-
-function booleanLabel(
-  value: boolean | null,
-  trueLabel: string,
-  falseLabel: string,
-) {
-  if (value === null) return "";
-  return value ? trueLabel : falseLabel;
-}
-
-function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
-  return {
-    id: roomType.id,
-    name: roomType.name,
-    englishName: roomType.englishName ?? "",
-    description: roomType.description,
-    maxAdults: roomType.maxAdults,
-    maxChildren: roomType.maxChildren,
-    allowExtraGuest: roomType.allowExtraGuest,
-    maxExtraGuests: roomType.maxExtraGuests,
-    totalInventory: Math.max(1, roomType.totalInventory),
-    floorNumber:
-      roomType.floorNumber == null ? "" : String(roomType.floorNumber),
-    stairCount: roomType.stairCount == null ? "" : String(roomType.stairCount),
-    hasWindow: roomType.hasWindow,
-    hasPrivateBathroom: roomType.hasPrivateBathroom,
-    notes: roomType.notes ?? "",
-    bedConfigurations: roomType.bedConfigurations.map((bed) => ({
-      bedTypeId: bed.bedTypeId,
-      quantity: bed.quantity,
-    })),
-    amenityIds: roomType.amenities.map((amenity) => amenity.amenityId),
-    isActive: roomType.isActive,
-  };
-}
-
-function sectionStatus(
-  missingItems: string[],
-  started: boolean,
-): RoomCompletionResponse["sections"][number]["status"] {
-  if (missingItems.length === 0) return "Complete";
-  return started ? "Incomplete" : "NotStarted";
-}
-
-function calculateDraftCompletion(
-  draft: RoomTypeDraft,
-  hasImages: boolean,
-): RoomCompletionResponse {
-  const sections = [
-    {
-      key: "basic",
-      label: "اطلاعات پایه",
-      missingItems: [
-        draft.name.trim() ? "" : "نام نوع اتاق",
-        draft.description.trim() ? "" : "توضیح نوع اتاق",
-      ].filter(Boolean),
-      started: Boolean(draft.name.trim() || draft.description.trim()),
-    },
-    {
-      key: "capacity",
-      label: "ظرفیت",
-      missingItems: [
-        draft.maxAdults >= 1 ? "" : "ظرفیت بزرگسال",
-        draft.maxChildren >= 0 ? "" : "ظرفیت کودک",
-      ].filter(Boolean),
-      started: draft.maxAdults > 0 || draft.maxChildren > 0,
-    },
-    {
-      key: "inventory",
-      label: "موجودی",
-      missingItems: [draft.totalInventory >= 1 ? "" : "تعداد موجودی"].filter(
-        Boolean,
-      ),
-      started: draft.totalInventory > 0,
-    },
-    {
-      key: "amenities",
-      label: "امکانات",
-      missingItems: [
-        draft.amenityIds.length > 0 ? "" : "حداقل یک امکان نوع اتاق",
-      ].filter(Boolean),
-      started: draft.amenityIds.length > 0,
-    },
-    {
-      key: "images",
-      label: "تصاویر",
-      missingItems: [hasImages ? "" : "حداقل یک تصویر نوع اتاق"].filter(Boolean),
-      started: hasImages,
-    },
-  ].map((section) => ({
-    key: section.key,
-    label: section.label,
-    missingItems: section.missingItems,
-    status: sectionStatus(section.missingItems, section.started),
-  }));
-
-  const missingItems = sections.flatMap((section) => section.missingItems);
-  return {
-    isComplete: missingItems.length === 0,
-    missingItems,
-    sections,
-  };
-}
-
-function namedRoomErrorMessage(caught: unknown) {
-  const message = caught instanceof Error ? caught.message : "";
-  if (/already exists|duplicate/i.test(message)) {
-    return "اتاقی با این نام قبلاً برای این نوع اتاق ثبت شده است.";
-  }
-
-  return message || "دریافت یا ساخت اتاق نام‌دار انجام نشد. دوباره تلاش کنید.";
-}
-
-function NamedRoomManagement({
-  roomType,
-  onRoomCreated,
-}: {
-  roomType: RoomTypeResponse;
-  onRoomCreated: () => Promise<unknown>;
-}) {
-  const [rooms, setRooms] = useState<RoomResponse[]>([]);
-  const [loadingRooms, setLoadingRooms] = useState(true);
-  const [roomsError, setRoomsError] = useState("");
-  const [dialogOpen, setDialogOpen] = useState(false);
-  const [roomName, setRoomName] = useState("");
-  const [savingRoom, setSavingRoom] = useState(false);
-  const [formError, setFormError] = useState("");
-
-  async function loadRooms() {
-    setRoomsError("");
-    try {
-      const items = await apiRequest<RoomResponse[]>(
-        `/owner/room-types/${roomType.id}/rooms`,
-      );
-      setRooms(items);
-      return items;
-    } catch (caught) {
-      const message = namedRoomErrorMessage(caught);
-      setRoomsError(message);
-      return [];
-    } finally {
-      setLoadingRooms(false);
-    }
-  }
-
-  useEffect(() => {
-    void loadRooms();
-  }, [roomType.id]);
-
-  function closeDialog() {
-    if (savingRoom) return;
-    setDialogOpen(false);
-    setRoomName("");
-    setFormError("");
-  }
-
-  async function createNamedRoom() {
-    const name = roomName.trim();
-    if (!name) {
-      setFormError("نام اتاق الزامی است.");
-      return;
-    }
-
-    setSavingRoom(true);
-    setFormError("");
-    try {
-      await apiRequest<RoomResponse>(
-        `/owner/room-types/${roomType.id}/rooms`,
-        {
-          method: "POST",
-          body: JSON.stringify({ name }),
-        },
-      );
-      await Promise.all([loadRooms(), onRoomCreated()]);
-      toast.success("اتاق نام‌دار با موفقیت افزوده شد.");
-      setDialogOpen(false);
-      setRoomName("");
-    } catch (caught) {
-      const message = namedRoomErrorMessage(caught);
-      setFormError(message);
-      toast.error(message);
-    } finally {
-      setSavingRoom(false);
-    }
-  }
-
-  return (
-    <section
-      aria-labelledby={`named-rooms-${roomType.id}`}
-      className="rounded-lg border border-border bg-background p-4"
-      dir="rtl"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h3
-            className="font-black text-foreground"
-            id={`named-rooms-${roomType.id}`}
-          >
-            اتاق‌های نام‌دار «{roomType.name}»
-          </h3>
-          <p className="mt-1 text-sm text-muted-foreground">
-            هر اتاق فیزیکی این نوع را جداگانه ثبت کنید تا در رزرو عمومی قابل
-            انتخاب باشد.
-          </p>
-        </div>
-        <KoochButton
-          onClick={() => setDialogOpen(true)}
-          size="sm"
-          type="button"
-          variant="outline"
-        >
-          افزودن اتاق نام‌دار
-        </KoochButton>
-      </div>
-
-      {loadingRooms && (
-        <p className="mt-4 text-sm text-muted-foreground" role="status">
-          در حال بارگذاری اتاق‌های نام‌دار...
-        </p>
-      )}
-      {!loadingRooms && roomsError && (
-        <KoochAlert className="mt-4" variant="destructive">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>{roomsError}</span>
-            <KoochButton
-              onClick={() => void loadRooms()}
-              size="sm"
-              variant="outline"
-            >
-              تلاش دوباره
-            </KoochButton>
-          </div>
-        </KoochAlert>
-      )}
-      {!loadingRooms && !roomsError && rooms.length === 0 && (
-        <p className="mt-4 rounded-lg border border-dashed border-border p-4 text-center text-sm text-muted-foreground">
-          هنوز اتاق نام‌داری برای این نوع اتاق ثبت نشده است.
-        </p>
-      )}
-      {!loadingRooms && !roomsError && rooms.length > 0 && (
-        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
-          {rooms.map((room) => (
-            <li
-              className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2"
-              key={room.id}
-            >
-              <span className="min-w-0 truncate font-bold text-foreground">
-                {room.name}
-              </span>
-              <KoochBadge variant={room.isActive ? "success" : "muted"}>
-                {room.isActive ? "فعال" : "غیرفعال"}
-              </KoochBadge>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <KoochDialog
-        closeDisabled={savingRoom}
-        description={`یک اتاق فیزیکی برای نوع اتاق «${roomType.name}» ثبت کنید.`}
-        footer={
-          <div className="flex w-full flex-nowrap items-center justify-end gap-2">
-            <KoochButton
-              disabled={savingRoom}
-              onClick={closeDialog}
-              variant="outline"
-            >
-              انصراف
-            </KoochButton>
-            <KoochButton
-              loading={savingRoom}
-              onClick={() => void createNamedRoom()}
-            >
-              افزودن اتاق نام‌دار
-            </KoochButton>
-          </div>
-        }
-        onOpenChange={(open) => {
-          if (open) setDialogOpen(true);
-          else closeDialog();
-        }}
-        open={dialogOpen}
-        size="md"
-        title="افزودن اتاق نام‌دار"
-      >
-        {formError && (
-          <KoochAlert className="mb-4" variant="destructive">
-            {formError}
-          </KoochAlert>
-        )}
-        <label className="grid gap-2 text-sm font-bold text-foreground">
-          نام اتاق <span className="text-destructive">*</span>
-          <KoochInput
-            autoFocus
-            maxLength={100}
-            onChange={(event) => {
-              setRoomName(event.target.value);
-              if (formError) setFormError("");
-            }}
-            placeholder="مثلاً زنبق ۱"
-            value={roomName}
-          />
-        </label>
-      </KoochDialog>
-    </section>
-  );
-}
-
-const completionStatusLabels = {
-  Complete: "کامل",
-  Incomplete: "ناقص",
-  NotStarted: "شروع نشده",
-} as const;
-
-const privateBathroomAmenitySlugs = new Set([
-  "private-bathroom",
-  "ensuite-bathroom",
-  "private-toilet",
-]);
-
-const sharedBathroomAmenitySlugs = new Set([
-  "shared-bathroom",
-  "shared-toilet",
-]);
-
-function isPrivateBathroomAmenity(amenity: AmenityResponse) {
-  return privateBathroomAmenitySlugs.has(amenity.slug);
-}
-
-function isSharedBathroomAmenity(amenity: AmenityResponse) {
-  return sharedBathroomAmenitySlugs.has(amenity.slug);
-}
-
-function roomStatus(roomType: RoomTypeResponse) {
-  if (roomType.isActive)
-    return { label: "Active", variant: "success" as const };
-  if (roomType.completion?.isComplete)
-    return { label: "Inactive", variant: "muted" as const };
-  return { label: "Draft", variant: "warning" as const };
-}
-
-function roomCapacitySummary(roomType: RoomTypeResponse) {
-  const parts = [`${roomType.maxAdults} بزرگسال`];
-  if (roomType.maxChildren > 0) parts.push(`${roomType.maxChildren} کودک`);
-  if (roomType.allowExtraGuest && roomType.maxExtraGuests > 0) {
-    parts.push(`${roomType.maxExtraGuests} نفر اضافه`);
-  }
-  return parts.join("، ");
+function formatPrice(value: number | null) {
+  if (value == null || value <= 0) return "قیمت پایه ثبت نشده";
+  return `${value.toLocaleString("fa-IR")} تومان`;
 }
 
 export function RoomManagement({ propertyId }: { propertyId: number }) {
-  const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
+  const [rooms, setRooms] = useState<OwnerRoomResponse[]>([]);
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
-  const [roomTypeDraft, setRoomTypeDraft] =
-    useState<RoomTypeDraft>(emptyRoomType);
+  const [roomKinds, setRoomKinds] = useState<RoomKindCatalogResponse[]>([]);
+  const [draft, setDraft] = useState<RoomDraft>(emptyRoom);
+  const [activeStep, setActiveStep] = useState(0);
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [deletingRoomTypeId, setDeletingRoomTypeId] = useState<number | null>(
-    null,
-  );
-  const [roomTypeToDelete, setRoomTypeToDelete] =
-    useState<RoomTypeResponse | null>(null);
   const [error, setError] = useState("");
-  const [activationWarning, setActivationWarning] = useState<string[]>([]);
-  const [wizardOpen, setWizardOpen] = useState(false);
-  const [wizardMode, setWizardMode] = useState<WizardMode>("create");
-  const [activeStep, setActiveStep] = useState(0);
 
-  const roomAmenityOptions = useMemo(
+  const roomAmenities = useMemo(
     () => amenities.filter((item) => item.scope !== "Property"),
     [amenities],
   );
 
-  const privateBathroomAmenityIds = useMemo(
-    () =>
-      roomAmenityOptions
-        .filter(isPrivateBathroomAmenity)
-        .map((amenity) => amenity.id),
-    [roomAmenityOptions],
-  );
-
-  const sharedBathroomAmenityIds = useMemo(
-    () =>
-      roomAmenityOptions
-        .filter(isSharedBathroomAmenity)
-        .map((amenity) => amenity.id),
-    [roomAmenityOptions],
-  );
-
-  const draftHasImages = useMemo(
-    () =>
-      Boolean(
-        roomTypeDraft.id &&
-        images.some((image) => image.roomTypeId === roomTypeDraft.id),
-      ),
-    [images, roomTypeDraft.id],
-  );
-
-  const draftCompletion = useMemo(
-    () => calculateDraftCompletion(roomTypeDraft, draftHasImages),
-    [draftHasImages, roomTypeDraft],
-  );
-
   useEffect(() => {
+    setLoading(true);
     Promise.all([
+      loadRooms(),
+      loadImages(),
       apiRequest<BedTypeResponse[]>("/bed-types"),
       apiRequest<AmenityResponse[]>("/amenities"),
-      loadRoomTypes(),
-      loadImages(),
+      apiRequest<RoomKindCatalogResponse[]>("/catalogs/room-kinds"),
     ])
-      .then(([beds, amenityItems]) => {
+      .then(([, , beds, amenityItems, kinds]) => {
         setBedTypes(beds);
         setAmenities(amenityItems);
+        setRoomKinds(kinds);
       })
       .catch((caught: Error) => {
         setError(caught.message);
-        toast.error(caught.message);
+        toast.error("اطلاعات اتاق‌ها بارگذاری نشد.");
       })
       .finally(() => setLoading(false));
   }, [propertyId]);
 
-  async function loadRoomTypes() {
-    const items = await apiRequest<RoomTypeResponse[]>(
-      `/owner/properties/${propertyId}/room-types`,
+  async function loadRooms() {
+    const result = await apiRequest<OwnerRoomResponse[]>(
+      `/owner/properties/${propertyId}/rooms`,
     );
-    setRoomTypes(items);
-    return items;
+    setRooms(result);
+    return result;
   }
 
   async function loadImages() {
-    const items = await apiRequest<PropertyImageResponse[]>(
+    const result = await apiRequest<PropertyImageResponse[]>(
       `/owner/properties/${propertyId}/images`,
     );
-    setImages(items);
-    return items;
+    setImages(result);
+    return result;
   }
 
-  function openCreateWizard() {
-    setRoomTypeDraft(emptyRoomType);
-    setWizardMode("create");
+  function patchDraft(patch: Partial<RoomDraft>) {
+    setDraft((current) => ({ ...current, ...patch }));
+    setError("");
+  }
+
+  function openCreateDialog() {
+    setDraft(emptyRoom);
     setActiveStep(0);
     setError("");
-    setActivationWarning([]);
-    setWizardOpen(true);
+    setDialogOpen(true);
   }
 
-  function editRoomType(roomType: RoomTypeResponse) {
-    setRoomTypeDraft(roomTypeToDraft(roomType));
-    setWizardMode("edit");
+  function closeDialog() {
+    if (saving) return;
+    setDialogOpen(false);
+    setDraft(emptyRoom);
     setActiveStep(0);
     setError("");
-    setActivationWarning([]);
-    setWizardOpen(true);
   }
 
-  function closeWizard() {
-    setWizardOpen(false);
-    setRoomTypeDraft(emptyRoomType);
-    setActiveStep(0);
-    setError("");
-    setActivationWarning([]);
+  function validateStep(step: number) {
+    if (step === 0) {
+      if (!draft.name.trim()) return "نام اتاق الزامی است.";
+      if (!roomKinds.some((item) => item.code === draft.roomKindCode)) {
+        return "نوع اتاق را انتخاب کنید.";
+      }
+      if (draft.maxAdults < 1) return "ظرفیت بزرگسال باید حداقل یک نفر باشد.";
+      if (draft.maxChildren < 0) return "ظرفیت کودک معتبر نیست.";
+      if (draft.basePrice < 0) return "قیمت پایه معتبر نیست.";
+    }
+    if (step === 1 && draft.allowExtraGuest && draft.maxExtraGuests < 1) {
+      return "حداکثر تعداد نفر اضافه را وارد کنید.";
+    }
+    return "";
   }
 
-  function patchDraft(patch: Partial<RoomTypeDraft>) {
-    setActivationWarning([]);
-    setRoomTypeDraft((current) => ({ ...current, ...patch }));
+  function toggleAmenity(amenityId: number, checked: boolean) {
+    patchDraft({
+      amenityIds: checked
+        ? [...new Set([...draft.amenityIds, amenityId])]
+        : draft.amenityIds.filter((id) => id !== amenityId),
+    });
   }
 
   function updateBed(
     index: number,
     patch: Partial<{ bedTypeId: number; quantity: number }>,
   ) {
-    setRoomTypeDraft((current) => {
-      const next = [...current.bedConfigurations];
-      next[index] = { ...next[index], ...patch };
-      return { ...current, bedConfigurations: next };
-    });
+    const next = [...draft.bedConfigurations];
+    next[index] = { ...next[index], ...patch };
+    patchDraft({ bedConfigurations: next });
   }
 
-  function inferPrivateBathroom(amenityIds: number[]) {
-    if (privateBathroomAmenityIds.some((id) => amenityIds.includes(id))) {
-      return true;
+  async function createRoom() {
+    for (let step = 0; step < 4; step += 1) {
+      const validationError = validateStep(step);
+      if (validationError) {
+        setActiveStep(step);
+        toast.error(validationError);
+        return null;
+      }
     }
-    if (sharedBathroomAmenityIds.some((id) => amenityIds.includes(id))) {
-      return false;
-    }
-    return roomTypeDraft.hasPrivateBathroom;
-  }
 
-  function validateStep(step: number, finalActivation = false) {
-    if (step === 0 || finalActivation) {
-      if (!roomTypeDraft.name.trim()) return "نام نوع اتاق الزامی است.";
-      if (roomTypeDraft.totalInventory < 1)
-        return "تعداد موجودی باید حداقل ۱ باشد.";
-      if (roomTypeDraft.maxAdults < 1)
-        return "ظرفیت بزرگسال باید حداقل ۱ باشد.";
-      if (roomTypeDraft.maxChildren < 0) return "ظرفیت کودک معتبر نیست.";
-    }
-    if (
-      (step === 1 || finalActivation) &&
-      roomTypeDraft.allowExtraGuest &&
-      roomTypeDraft.maxExtraGuests < 1
-    ) {
-      return "حداکثر تعداد نفر اضافه را وارد کنید.";
-    }
-    if (finalActivation && !roomTypeDraft.description.trim()) {
-      return "توضیح نوع اتاق برای فعال‌سازی الزامی است.";
-    }
-    return "";
-  }
-
-  function buildPayload(isActive: boolean) {
-    const totalInventory = Math.max(1, roomTypeDraft.totalInventory);
-    const amenityIds = [...new Set(roomTypeDraft.amenityIds)];
-    return {
-      name: roomTypeDraft.name.trim(),
-      englishName: roomTypeDraft.englishName.trim() || null,
-      description:
-        roomTypeDraft.description.trim() || roomTypeDraft.name.trim(),
-      maxAdults: Math.max(1, roomTypeDraft.maxAdults),
-      maxChildren: Math.max(0, roomTypeDraft.maxChildren),
-      allowExtraGuest: roomTypeDraft.allowExtraGuest,
-      maxExtraGuests: roomTypeDraft.allowExtraGuest
-        ? Math.max(0, roomTypeDraft.maxExtraGuests)
-        : 0,
-      inventoryMode: roomInventoryMode(totalInventory),
-      totalInventory,
-      basePrice: null,
-      notes: roomTypeDraft.notes.trim() || null,
-      floorNumber: nullableNumber(roomTypeDraft.floorNumber),
-      stairCount: nullableNumber(roomTypeDraft.stairCount),
-      hasWindow: roomTypeDraft.hasWindow,
-      hasPrivateBathroom: inferPrivateBathroom(amenityIds),
-      bedConfigurations: roomTypeDraft.bedConfigurations.filter(
-        (bed) => bed.bedTypeId && bed.quantity > 0,
-      ),
-      amenityIds,
-      isActive,
-    };
-  }
-
-  async function saveDraftRoom() {
-    const validationError = validateStep(0);
-    if (validationError) {
-      toast.error(validationError);
-      return null;
-    }
+    const roomKind = roomKinds.find(
+      (item) => item.code === draft.roomKindCode,
+    )?.value;
+    if (roomKind == null) return null;
 
     setSaving(true);
     setError("");
     try {
-      const saved = await apiRequest<RoomTypeResponse>(
-        roomTypeDraft.id
-          ? `/owner/room-types/${roomTypeDraft.id}`
-          : `/owner/properties/${propertyId}/room-types`,
+      const room = await apiRequest<OwnerRoomResponse>(
+        `/owner/properties/${propertyId}/rooms`,
         {
-          method: roomTypeDraft.id ? "PUT" : "POST",
-          body: JSON.stringify(
-            buildPayload(roomTypeDraft.id ? roomTypeDraft.isActive : false),
-          ),
+          method: "POST",
+          body: JSON.stringify({
+            name: draft.name.trim(),
+            englishName: draft.englishName.trim() || null,
+            description: draft.description.trim() || null,
+            notes: draft.notes.trim() || null,
+            floorNumber: nullableNumber(draft.floorNumber),
+            stairCount: nullableNumber(draft.stairCount),
+            hasWindow: draft.hasWindow,
+            hasPrivateBathroom: draft.hasPrivateBathroom,
+            roomKind,
+            maxAdults: draft.maxAdults,
+            maxChildren: draft.maxChildren,
+            allowExtraGuest: draft.allowExtraGuest,
+            maxExtraGuests: draft.allowExtraGuest ? draft.maxExtraGuests : 0,
+            inventoryMode: draft.inventoryMode,
+            basePrice: draft.basePrice,
+            bedConfigurations: draft.bedConfigurations.filter(
+              (bed) => bed.bedTypeId > 0 && bed.quantity > 0,
+            ),
+            amenityIds: [...new Set(draft.amenityIds)],
+          }),
         },
       );
-      setRoomTypeDraft(roomTypeToDraft(saved));
-      await Promise.all([loadRoomTypes(), loadImages()]);
-      if (wizardMode === "create" && !roomTypeDraft.id)
-        toast.success("پیش‌نویس نوع اتاق ذخیره شد");
-      return saved;
+      setDraft((current) => ({
+        ...current,
+        roomId: room.id,
+        roomTypeId: room.roomTypeId,
+      }));
+      await Promise.all([loadRooms(), loadImages()]);
+      toast.success("اتاق ثبت شد؛ اکنون می‌توانید تصاویر آن را اضافه کنید.");
+      return room;
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "پیش‌نویس نوع اتاق ذخیره نشد.";
+      const raw = caught instanceof Error ? caught.message : "";
+      const message = /already exists|duplicate/i.test(raw)
+        ? "اتاقی با این نام قبلاً در این اقامتگاه ثبت شده است."
+        : raw || "ثبت اتاق انجام نشد.";
       setError(message);
       toast.error(message);
       return null;
@@ -676,294 +272,252 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       toast.error(validationError);
       return;
     }
-
-    if (activeStep === 0) {
-      const saved = await saveDraftRoom();
-      if (!saved) return;
+    if (activeStep === 3 && !draft.roomId) {
+      const room = await createRoom();
+      if (!room) return;
     }
-
-    setActiveStep((current) => Math.min(current + 1, wizardSteps.length - 1));
+    setActiveStep((current) => Math.min(current + 1, steps.length - 1));
   }
 
-  async function activateRoom() {
-    const validationError = validateStep(activeStep, true);
-    if (validationError) {
-      toast.error(validationError);
-      return;
-    }
-    if (!draftCompletion.isComplete) {
-      setActivationWarning(draftCompletion.missingItems);
-      toast.error("برای فعال‌سازی نوع اتاق، موارد ناقص را تکمیل کنید.");
-      return;
-    }
-
-    setSaving(true);
-    setError("");
-    try {
-      const endpoint = roomTypeDraft.id
-        ? `/owner/room-types/${roomTypeDraft.id}`
-        : `/owner/properties/${propertyId}/room-types`;
-      const saved = await apiRequest<RoomTypeResponse>(endpoint, {
-        method: roomTypeDraft.id ? "PUT" : "POST",
-        body: JSON.stringify(buildPayload(true)),
-      });
-      setRoomTypeDraft(roomTypeToDraft(saved));
-      await Promise.all([loadRoomTypes(), loadImages()]);
-      toast.success("نوع اتاق فعال شد");
-      closeWizard();
-    } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "فعال‌سازی نوع اتاق انجام نشد.";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setSaving(false);
-    }
+  function finish() {
+    toast.success("اتاق با موفقیت افزوده شد.");
+    closeDialog();
   }
 
-  async function confirmDeleteRoomType() {
-    if (!roomTypeToDelete) return;
-
-    setDeletingRoomTypeId(roomTypeToDelete.id);
-    setError("");
-    try {
-      await apiRequest<void>(`/owner/room-types/${roomTypeToDelete.id}`, {
-        method: "DELETE",
-      });
-      await Promise.all([loadRoomTypes(), loadImages()]);
-      toast.success("نوع اتاق حذف شد");
-      setRoomTypeToDelete(null);
-    } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "حذف نوع اتاق انجام نشد.";
-      setError(message);
-      toast.error(message);
-    } finally {
-      setDeletingRoomTypeId(null);
-    }
-  }
-
-  function toggleAmenity(amenity: AmenityResponse, checked: boolean) {
-    setRoomTypeDraft((current) => {
-      const amenityIds = checked
-        ? [...current.amenityIds, amenity.id]
-        : current.amenityIds.filter((id) => id !== amenity.id);
-      let hasPrivateBathroom = current.hasPrivateBathroom;
-      if (isPrivateBathroomAmenity(amenity)) {
-        hasPrivateBathroom = checked
-          ? true
-          : sharedBathroomAmenityIds.some((id) => amenityIds.includes(id))
-            ? false
-            : null;
-      }
-      if (isSharedBathroomAmenity(amenity)) {
-        hasPrivateBathroom = checked
-          ? false
-          : privateBathroomAmenityIds.some((id) => amenityIds.includes(id))
-            ? true
-            : null;
-      }
-
-      return {
-        ...current,
-        amenityIds,
-        hasPrivateBathroom,
-      };
-    });
-  }
-
-  function renderStep() {
-    if (activeStep === 0) {
-      return (
-        <div className="grid gap-5">
-          <div>
-            <h3 className="font-black">اطلاعات اصلی</h3>
-            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
-              فیلدهای ستاره‌دار برای ساخت پیش‌نویس الزامی هستند.
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-sm font-bold">
-              نام نوع اتاق / عنوان <span className="text-destructive">*</span>
-              <KoochInput
-                onChange={(event) => patchDraft({ name: event.target.value })}
-                value={roomTypeDraft.name}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold">
-              نام انگلیسی
-              <KoochInput
-                dir="ltr"
-                onChange={(event) =>
-                  patchDraft({ englishName: event.target.value })
-                }
-                value={roomTypeDraft.englishName}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold md:col-span-2">
-              توضیح
-              <KoochTextarea
-                onChange={(event) =>
-                  patchDraft({ description: event.target.value })
-                }
-                rows={4}
-                value={roomTypeDraft.description}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold">
-              تعداد موجودی / TotalInventory{" "}
-              <span className="text-destructive">*</span>
-              <KoochInput
-                min="1"
-                onChange={(event) =>
-                  patchDraft({ totalInventory: Number(event.target.value) })
-                }
-                type="number"
-                value={roomTypeDraft.totalInventory}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold">
-              ظرفیت بزرگسال <span className="text-destructive">*</span>
-              <KoochInput
-                min="1"
-                onChange={(event) =>
-                  patchDraft({ maxAdults: Number(event.target.value) })
-                }
-                type="number"
-                value={roomTypeDraft.maxAdults}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold">
-              ظرفیت کودک
-              <KoochInput
-                min="0"
-                onChange={(event) =>
-                  patchDraft({ maxChildren: Number(event.target.value) })
-                }
-                type="number"
-                value={roomTypeDraft.maxChildren}
-              />
-            </label>
-          </div>
-        </div>
-      );
-    }
-
-    if (activeStep === 1) {
-      return (
-        <div className="grid gap-5">
-          <div>
-            <h3 className="font-black">ویژگی‌ها</h3>
-            <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
-              اطلاعات فیزیکی و قوانین نفر اضافه را مشخص کنید.
-            </p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-2">
-            <label className="grid gap-1 text-sm font-bold">
-              طبقه
-              <KoochInput
-                onChange={(event) =>
-                  patchDraft({ floorNumber: event.target.value })
-                }
-                type="number"
-                value={roomTypeDraft.floorNumber}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold">
-              تعداد پله
-              <KoochInput
-                min="0"
-                onChange={(event) =>
-                  patchDraft({ stairCount: event.target.value })
-                }
-                type="number"
-                value={roomTypeDraft.stairCount}
-              />
-            </label>
-            <label className="grid gap-1 text-sm font-bold">
-              پنجره دارد
-              <KoochSelect
-                onChange={(event) =>
-                  patchDraft({
-                    hasWindow:
-                      event.target.value === ""
-                        ? null
-                        : event.target.value === "true",
-                  })
-                }
-                value={
-                  roomTypeDraft.hasWindow === null
-                    ? ""
-                    : String(roomTypeDraft.hasWindow)
-                }
-              >
-                <option value="">ثبت نشده</option>
-                <option value="true">دارد</option>
-                <option value="false">ندارد</option>
-              </KoochSelect>
-            </label>
-            <label className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold">
-              <input
-                checked={roomTypeDraft.allowExtraGuest}
-                className="h-4 w-4 accent-primary"
-                onChange={(event) =>
-                  patchDraft({
-                    allowExtraGuest: event.target.checked,
-                    maxExtraGuests: event.target.checked
-                      ? roomTypeDraft.maxExtraGuests
-                      : 0,
-                  })
-                }
-                type="checkbox"
-              />
-              آیا نفر اضافه مجاز است؟
-            </label>
-            {roomTypeDraft.allowExtraGuest && (
-              <label className="grid gap-1 text-sm font-bold">
-                حداکثر تعداد نفر اضافه{" "}
-                <span className="text-destructive">*</span>
-                <KoochInput
-                  min="1"
-                  onChange={(event) =>
-                    patchDraft({ maxExtraGuests: Number(event.target.value) })
-                  }
-                  type="number"
-                  value={roomTypeDraft.maxExtraGuests}
-                />
-              </label>
-            )}
-            <label className="grid gap-1 text-sm font-bold md:col-span-2">
-              یادداشت‌ها
-              <KoochTextarea
-                onChange={(event) => patchDraft({ notes: event.target.value })}
-                rows={4}
-                value={roomTypeDraft.notes}
-              />
-            </label>
-          </div>
-        </div>
-      );
-    }
-
-    if (activeStep === 2) {
-      return (
-        <fieldset>
-          <legend className="font-black">امکانات نوع اتاق</legend>
-          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
-            امکانات مرتبط با نوع اتاق را از لیست موجود انتخاب کنید. حمام، سرویس
-            اختصاصی، توالت ایرانی و توالت فرنگی همگی به عنوان امکان ثبت می‌شوند.
+  function renderMainStep() {
+    return (
+      <div className="grid gap-5">
+        <div>
+          <h3 className="font-black">اطلاعات اصلی</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            نام واحد فیزیکی و نوع استاندارد آن را مشخص کنید.
           </p>
-          <div className="mt-4 grid gap-2 md:grid-cols-3">
-            {roomAmenityOptions.map((amenity) => (
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-1 text-sm font-bold">
+            نام اتاق <span className="text-destructive">*</span>
+            <KoochInput
+              onChange={(event) => patchDraft({ name: event.target.value })}
+              value={draft.name}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            نام انگلیسی
+            <KoochInput
+              dir="ltr"
+              onChange={(event) =>
+                patchDraft({ englishName: event.target.value })
+              }
+              value={draft.englishName}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            نوع اتاق <span className="text-destructive">*</span>
+            <KoochSelect
+              onChange={(event) =>
+                patchDraft({ roomKindCode: event.target.value })
+              }
+              value={draft.roomKindCode}
+            >
+              <option value="">انتخاب نوع اتاق</option>
+              {roomKinds.map((kind) => (
+                <option key={kind.code} value={kind.code}>
+                  {kind.titleFa}
+                </option>
+              ))}
+            </KoochSelect>
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            شیوه مدیریت موجودی <span className="text-destructive">*</span>
+            <KoochSelect
+              onChange={(event) =>
+                patchDraft({ inventoryMode: event.target.value as InventoryMode })
+              }
+              value={draft.inventoryMode}
+            >
+              <option value="NamedRooms">اتاق نام‌دار</option>
+              <option value="TypeBasedInventory">موجودی تعدادی</option>
+            </KoochSelect>
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            ظرفیت بزرگسال <span className="text-destructive">*</span>
+            <KoochInput
+              min="1"
+              onChange={(event) =>
+                patchDraft({ maxAdults: Number(event.target.value) })
+              }
+              type="number"
+              value={draft.maxAdults}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            ظرفیت کودک
+            <KoochInput
+              min="0"
+              onChange={(event) =>
+                patchDraft({ maxChildren: Number(event.target.value) })
+              }
+              type="number"
+              value={draft.maxChildren}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            قیمت پایه (تومان)
+            <KoochInput
+              min="0"
+              onChange={(event) =>
+                patchDraft({ basePrice: Number(event.target.value) })
+              }
+              type="number"
+              value={draft.basePrice}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold md:col-span-2">
+            توضیحات اتاق
+            <KoochTextarea
+              onChange={(event) =>
+                patchDraft({ description: event.target.value })
+              }
+              rows={4}
+              value={draft.description}
+            />
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+  function renderFeaturesStep() {
+    return (
+      <div className="grid gap-5">
+        <div>
+          <h3 className="font-black">ویژگی‌های اتاق</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            ویژگی‌های فیزیکی و شرایط پذیرش نفر اضافه را وارد کنید.
+          </p>
+        </div>
+        <div className="grid gap-4 md:grid-cols-2">
+          <label className="grid gap-1 text-sm font-bold">
+            طبقه
+            <KoochInput
+              onChange={(event) =>
+                patchDraft({ floorNumber: event.target.value })
+              }
+              type="number"
+              value={draft.floorNumber}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            تعداد پله
+            <KoochInput
+              min="0"
+              onChange={(event) =>
+                patchDraft({ stairCount: event.target.value })
+              }
+              type="number"
+              value={draft.stairCount}
+            />
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            وضعیت پنجره
+            <KoochSelect
+              onChange={(event) =>
+                patchDraft({
+                  hasWindow:
+                    event.target.value === ""
+                      ? null
+                      : event.target.value === "true",
+                })
+              }
+              value={draft.hasWindow == null ? "" : String(draft.hasWindow)}
+            >
+              <option value="">نامشخص</option>
+              <option value="true">دارای پنجره</option>
+              <option value="false">بدون پنجره</option>
+            </KoochSelect>
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            سرویس بهداشتی
+            <KoochSelect
+              onChange={(event) =>
+                patchDraft({
+                  hasPrivateBathroom:
+                    event.target.value === ""
+                      ? null
+                      : event.target.value === "true",
+                })
+              }
+              value={
+                draft.hasPrivateBathroom == null
+                  ? ""
+                  : String(draft.hasPrivateBathroom)
+              }
+            >
+              <option value="">نامشخص</option>
+              <option value="true">اختصاصی</option>
+              <option value="false">مشترک</option>
+            </KoochSelect>
+          </label>
+          <label className="flex min-h-11 items-center gap-2 text-sm font-bold">
+            <input
+              checked={draft.allowExtraGuest}
+              onChange={(event) =>
+                patchDraft({ allowExtraGuest: event.target.checked })
+              }
+              type="checkbox"
+            />
+            پذیرش نفر اضافه
+          </label>
+          {draft.allowExtraGuest && (
+            <label className="grid gap-1 text-sm font-bold">
+              حداکثر نفر اضافه
+              <KoochInput
+                min="1"
+                onChange={(event) =>
+                  patchDraft({ maxExtraGuests: Number(event.target.value) })
+                }
+                type="number"
+                value={draft.maxExtraGuests}
+              />
+            </label>
+          )}
+          <label className="grid gap-1 text-sm font-bold md:col-span-2">
+            یادداشت داخلی
+            <KoochTextarea
+              onChange={(event) => patchDraft({ notes: event.target.value })}
+              rows={3}
+              value={draft.notes}
+            />
+          </label>
+        </div>
+      </div>
+    );
+  }
+
+  function renderAmenitiesStep() {
+    return (
+      <div className="grid gap-5">
+        <div>
+          <h3 className="font-black">امکانات</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            امکانات مشترک این الگوی اتاق را انتخاب کنید.
+          </p>
+        </div>
+        {roomAmenities.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+            امکانی برای انتخاب تعریف نشده است.
+          </p>
+        ) : (
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {roomAmenities.map((amenity) => (
               <label
-                className="flex min-h-11 items-center gap-2 rounded-xl border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-3 text-sm font-bold"
+                className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
                 key={amenity.id}
               >
                 <input
-                  checked={roomTypeDraft.amenityIds.includes(amenity.id)}
-                  className="h-4 w-4 accent-primary"
+                  checked={draft.amenityIds.includes(amenity.id)}
                   onChange={(event) =>
-                    toggleAmenity(amenity, event.target.checked)
+                    toggleAmenity(amenity.id, event.target.checked)
                   }
                   type="checkbox"
                 />
@@ -971,575 +525,267 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               </label>
             ))}
           </div>
-        </fieldset>
-      );
-    }
-
-    if (activeStep === 3) {
-      return (
-        <div className="grid gap-4">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="font-black">تخت‌ها / چیدمان</h3>
-              <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
-                اگر چیدمان تخت مشخص است، اینجا اضافه کنید.
-              </p>
-            </div>
-            <KoochButton
-              onClick={() =>
-                patchDraft({
-                  bedConfigurations: [
-                    ...roomTypeDraft.bedConfigurations,
-                    { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 },
-                  ],
-                })
-              }
-              variant="outline"
-              type="button"
-            >
-              افزودن تخت
-            </KoochButton>
-          </div>
-          {roomTypeDraft.bedConfigurations.length === 0 && (
-            <p className="rounded-xl border border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-5 text-center text-sm text-[var(--theme-muted-text)]">
-              هنوز تختی اضافه نشده است.
-            </p>
-          )}
-          {roomTypeDraft.bedConfigurations.map((bed, index) => (
-            <div
-              className="grid gap-2 md:grid-cols-[1fr_120px_auto]"
-              key={index}
-            >
-              <KoochSelect
-                onChange={(event) =>
-                  updateBed(index, { bedTypeId: Number(event.target.value) })
-                }
-                value={bed.bedTypeId}
-              >
-                {bedTypes.map((bedType) => (
-                  <option key={bedType.id} value={bedType.id}>
-                    {bedTypeLabel(bedType.slug, bedType.name)}
-                  </option>
-                ))}
-              </KoochSelect>
-              <KoochInput
-                min="1"
-                onChange={(event) =>
-                  updateBed(index, { quantity: Number(event.target.value) })
-                }
-                type="number"
-                value={bed.quantity}
-              />
-              <KoochButton
-                onClick={() =>
-                  patchDraft({
-                    bedConfigurations: roomTypeDraft.bedConfigurations.filter(
-                      (_, candidate) => candidate !== index,
-                    ),
-                  })
-                }
-                size="sm"
-                type="button"
-                variant="destructive"
-              >
-                حذف
-              </KoochButton>
-            </div>
-          ))}
-        </div>
-      );
-    }
-
-    return (
-      <div className="grid gap-4">
-        <div>
-          <h3 className="font-black">تصاویر نوع اتاق</h3>
-          <p className="mt-1 text-sm text-[var(--theme-muted-text)]">
-            تصاویر این بخش به همین نوع اتاق متصل می‌شوند. این مرحله آخر است.
-          </p>
-        </div>
-        {roomTypeDraft.id ? (
-          <PropertyImageManager
-            fixedRoomTypeId={roomTypeDraft.id}
-            images={images}
-            onImagesChange={setImages}
-            propertyId={propertyId}
-            roomTypes={roomTypes}
-          />
-        ) : (
-          <p className="rounded-xl bg-[var(--theme-surface-muted)] p-4 text-sm text-[var(--theme-muted-text)]">
-            ابتدا مرحله اول را تکمیل کنید تا پیش‌نویس نوع اتاق ذخیره شود.
-          </p>
         )}
       </div>
     );
   }
 
-  return (
-    <div className="grid w-full min-w-0 max-w-full gap-5 overflow-x-hidden">
-      {/* {error && (
-        <KoochCard
-          className="border-destructive text-destructive"
-          variant="elevated"
-        >
-          <p className="text-sm font-semibold">{error}</p>
-        </KoochCard>
-      )} */}
-
-      <KoochCard className="min-w-0 max-w-full" variant="elevated">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-xl font-black text-foreground">
-              مدیریت انواع اتاق
-            </h2>
+  function renderBedsStep() {
+    return (
+      <div className="grid gap-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-black">تخت‌ها و چیدمان</h3>
             <p className="mt-1 text-sm text-muted-foreground">
-              انواع اتاق را از طریق ویزارد مرحله‌ای ایجاد یا ویرایش کنید. انواع
-              اتاق پیش‌نویس فعال و قابل رزرو نیستند.
+              نوع و تعداد تخت‌های این اتاق را مشخص کنید.
             </p>
           </div>
-          <KoochButton onClick={openCreateWizard} type="button">
-            افزودن نوع اتاق
+          <KoochButton
+            onClick={() =>
+              patchDraft({
+                bedConfigurations: [
+                  ...draft.bedConfigurations,
+                  { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 },
+                ],
+              })
+            }
+            size="sm"
+            variant="outline"
+          >
+            افزودن تخت
           </KoochButton>
+        </div>
+        {draft.bedConfigurations.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+            هنوز تختی اضافه نشده است.
+          </p>
+        ) : (
+          <div className="grid gap-3">
+            {draft.bedConfigurations.map((bed, index) => (
+              <div
+                className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,1fr)_120px_auto]"
+                key={`${bed.bedTypeId}-${index}`}
+              >
+                <KoochSelect
+                  aria-label={`نوع تخت ${index + 1}`}
+                  onChange={(event) =>
+                    updateBed(index, { bedTypeId: Number(event.target.value) })
+                  }
+                  value={bed.bedTypeId}
+                >
+                  <option value="0">انتخاب نوع تخت</option>
+                  {bedTypes.map((bedType) => (
+                    <option key={bedType.id} value={bedType.id}>
+                      {bedTypeLabel(bedType.slug, bedType.name)}
+                    </option>
+                  ))}
+                </KoochSelect>
+                <KoochInput
+                  aria-label={`تعداد تخت ${index + 1}`}
+                  min="1"
+                  onChange={(event) =>
+                    updateBed(index, { quantity: Number(event.target.value) })
+                  }
+                  type="number"
+                  value={bed.quantity}
+                />
+                <KoochButton
+                  onClick={() =>
+                    patchDraft({
+                      bedConfigurations: draft.bedConfigurations.filter(
+                        (_, itemIndex) => itemIndex !== index,
+                      ),
+                    })
+                  }
+                  size="sm"
+                  variant="ghost"
+                >
+                  حذف
+                </KoochButton>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  function renderImagesStep() {
+    if (!draft.roomTypeId) {
+      return (
+        <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
+          ابتدا اطلاعات اتاق را ثبت کنید تا بخش تصاویر فعال شود.
+        </p>
+      );
+    }
+    return (
+      <div className="grid gap-4">
+        <div>
+          <h3 className="font-black">تصاویر اتاق</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            این تصاویر برای اتاق‌های دارای مشخصات مشترک استفاده می‌شوند.
+          </p>
+        </div>
+        <PropertyImageManager
+          fixedRoomTypeId={draft.roomTypeId}
+          images={images}
+          onImagesChange={setImages}
+          propertyId={propertyId}
+        />
+      </div>
+    );
+  }
+
+  const currentStep = [
+    renderMainStep,
+    renderFeaturesStep,
+    renderAmenitiesStep,
+    renderBedsStep,
+    renderImagesStep,
+  ][activeStep];
+
+  return (
+    <div className="grid w-full min-w-0 gap-5">
+      <KoochCard variant="elevated">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-xl font-black text-foreground">مدیریت اتاق‌ها</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              هر واحد قابل رزرو را با نام، نوع، ظرفیت و امکانات خودش ثبت کنید.
+            </p>
+          </div>
+          <KoochButton onClick={openCreateDialog}>افزودن اتاق</KoochButton>
         </div>
       </KoochCard>
 
-      <KoochCard className="min-w-0 max-w-full" variant="elevated">
-        <h2 className="text-xl font-black text-foreground">انواع اتاق ثبت‌شده</h2>
-        {loading && (
-          <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-            در حال بارگذاری انواع اتاق...
+      {error && !dialogOpen && (
+        <KoochAlert variant="destructive">{error}</KoochAlert>
+      )}
+
+      <KoochCard variant="elevated">
+        <h2 className="text-xl font-black text-foreground">اتاق‌های ثبت‌شده</h2>
+        {loading ? (
+          <p className="mt-5 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
+            در حال بارگذاری اتاق‌ها...
           </p>
-        )}
-        {!loading && roomTypes.length > 0 && (
-          <div className="mt-5 min-w-0 max-w-full">
+        ) : (
+          <div className="mt-5 min-w-0">
             <KoochTable>
               <KoochTableHeader>
                 <KoochTableRow>
-                  <KoochTableHead className="w-14">ردیف</KoochTableHead>
                   <KoochTableHead>تصویر</KoochTableHead>
-                  <KoochTableHead>نام نوع اتاق</KoochTableHead>
-                  <KoochTableHead>وضعیت</KoochTableHead>
-                  <KoochTableHead>موجودی</KoochTableHead>
+                  <KoochTableHead>نام اتاق</KoochTableHead>
+                  <KoochTableHead>نوع اتاق</KoochTableHead>
                   <KoochTableHead>ظرفیت</KoochTableHead>
-                  <KoochTableHead>موارد ناقص</KoochTableHead>
-                  <KoochTableHead>عملیات</KoochTableHead>
+                  <KoochTableHead>قیمت پایه</KoochTableHead>
+                  <KoochTableHead>وضعیت</KoochTableHead>
                 </KoochTableRow>
               </KoochTableHeader>
               <KoochTableBody>
-                {roomTypes.map((roomType, index) => {
-                  const firstImage = images.find(
-                    (image) => image.roomTypeId === roomType.id,
+                {rooms.map((room) => {
+                  const kind = roomKinds.find(
+                    (item) => item.code === room.roomKindCode,
                   );
-                  const status = roomStatus(roomType);
+                  const image = images.find(
+                    (item) => item.roomTypeId === room.roomTypeId,
+                  );
                   return (
-                    <KoochTableRow key={roomType.id}>
-                      <KoochTableCell className="font-bold text-muted-foreground">
-                        {index + 1}
-                      </KoochTableCell>
+                    <KoochTableRow key={room.id}>
                       <KoochTableCell>
-                        {firstImage ? (
+                        {image ? (
                           <img
-                            alt={
-                              firstImage.altText ||
-                              firstImage.caption ||
-                              roomType.name
-                            }
+                            alt={image.altText || image.caption || room.name}
                             className="h-14 w-20 rounded-lg object-cover"
-                            src={firstImage.url}
+                            src={image.url}
                           />
                         ) : (
-                          <div className="grid h-14 w-20 place-items-center rounded-lg border border-dashed border-border bg-muted text-xs font-bold text-muted-foreground">
+                          <div className="grid h-14 w-20 place-items-center rounded-lg border border-dashed border-border bg-muted text-xs text-muted-foreground">
                             بدون تصویر
                           </div>
                         )}
                       </KoochTableCell>
-                      <KoochTableCell>
-                        <p className="font-black text-foreground">
-                          {roomType.name}
-                        </p>
-                        {roomType.englishName && (
-                          <p
-                            className="text-xs text-muted-foreground"
-                            dir="ltr"
-                          >
-                            {roomType.englishName}
-                          </p>
-                        )}
+                      <KoochTableCell className="font-black">
+                        {room.name}
                       </KoochTableCell>
                       <KoochTableCell>
-                        <KoochBadge variant={status.variant}>
-                          {status.label}
+                        {kind?.titleFa ?? room.roomKindCode}
+                      </KoochTableCell>
+                      <KoochTableCell>
+                        {room.maxAdults} بزرگسال
+                        {room.maxChildren > 0
+                          ? `، ${room.maxChildren} کودک`
+                          : ""}
+                      </KoochTableCell>
+                      <KoochTableCell>{formatPrice(room.basePrice)}</KoochTableCell>
+                      <KoochTableCell>
+                        <KoochBadge variant={room.isActive ? "success" : "muted"}>
+                          {room.isActive ? "فعال" : "غیرفعال"}
                         </KoochBadge>
-                      </KoochTableCell>
-                      <KoochTableCell className="font-bold">
-                        {roomType.totalInventory}
-                      </KoochTableCell>
-                      <KoochTableCell className="text-sm text-muted-foreground">
-                        {roomCapacitySummary(roomType)}
-                      </KoochTableCell>
-                      <KoochTableCell className="max-w-[260px] text-xs text-muted-foreground">
-                        {roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0
-                          ? "برای قابل رزرو شدن، حداقل یک اتاق نام‌دار فعال برای این نوع اتاق ایجاد کنید."
-                          : roomType.completion?.missingItems?.length
-                          ? roomType.completion.missingItems.join("، ")
-                          : "کامل"}
-                      </KoochTableCell>
-                      <KoochTableCell>
-                        <div className="flex flex-wrap gap-2">
-                          <KoochButton
-                            onClick={() => editRoomType(roomType)}
-                            size="sm"
-                            type="button"
-                            variant="outline"
-                          >
-                            ویرایش
-                          </KoochButton>
-                          <KoochButton
-                            disabled={deletingRoomTypeId === roomType.id}
-                            loading={deletingRoomTypeId === roomType.id}
-                            onClick={() => setRoomTypeToDelete(roomType)}
-                            size="sm"
-                            type="button"
-                            variant="destructive"
-                          >
-                            حذف
-                          </KoochButton>
-                        </div>
                       </KoochTableCell>
                     </KoochTableRow>
                   );
                 })}
-                {roomTypes.length === 0 && (
-                  <KoochTableEmpty colSpan={8}>
-                    هنوز نوع اتاقی ثبت نشده است.
+                {rooms.length === 0 && (
+                  <KoochTableEmpty colSpan={6}>
+                    هنوز اتاقی ثبت نشده است. برای شروع «افزودن اتاق» را انتخاب
+                    کنید.
                   </KoochTableEmpty>
                 )}
               </KoochTableBody>
             </KoochTable>
           </div>
         )}
-        <div className="hidden">
-          {roomTypes.map((roomType) => {
-            const details = [
-              roomType.floorNumber != null
-                ? `طبقه ${roomType.floorNumber}`
-                : "",
-              roomType.stairCount != null ? `${roomType.stairCount} پله` : "",
-              booleanLabel(roomType.hasWindow, "دارای پنجره", "بدون پنجره"),
-            ].filter(Boolean);
-
-            return (
-              <KoochCard key={roomType.id} padding="sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <h3 className="text-lg font-black text-foreground">
-                        {roomType.name}
-                      </h3>
-                      {!roomType.isActive && (
-                        <KoochBadge variant="muted">پیش‌نویس</KoochBadge>
-                      )}
-                      {roomType.completion?.isComplete ? (
-                        <KoochBadge variant="success">کامل</KoochBadge>
-                      ) : (
-                        <KoochBadge variant="warning">ناقص</KoochBadge>
-                      )}
-                    </div>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {roomType.maxAdults + roomType.maxChildren} نفر ·{" "}
-                      {roomType.totalInventory === 1
-                        ? "یک واحد اختصاصی"
-                        : `موجودی کل ${roomType.totalInventory}`}
-                    </p>
-                    {roomType.allowExtraGuest && (
-                      <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                        نفر اضافه مجاز: {roomType.maxExtraGuests}
-                      </p>
-                    )}
-                    {roomType.bedConfigurations.length > 0 && (
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {roomType.bedConfigurations
-                          .map(
-                            (bed) =>
-                              `${bed.quantity} × ${bedTypeLabel(bed.bedTypeSlug, bed.bedTypeName)}`,
-                          )
-                          .join("، ")}
-                      </p>
-                    )}
-                    {details.length > 0 && (
-                      <p className="mt-2 text-sm font-semibold text-muted-foreground">
-                        {details.join(" · ")}
-                      </p>
-                    )}
-                    {roomType.notes && (
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {roomType.notes}
-                      </p>
-                    )}
-                    {roomType.completion && !roomType.completion.isComplete && (
-                      <KoochAlert
-                        className="mt-3"
-                        title="موارد ناقص نوع اتاق"
-                        variant="warning"
-                      >
-                        <ul className="grid gap-1">
-                          {roomType.completion.missingItems.map((item) => (
-                            <li key={item}>{item}</li>
-                          ))}
-                        </ul>
-                      </KoochAlert>
-                    )}
-                    {images.some(
-                      (image) => image.roomTypeId === roomType.id,
-                    ) && (
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {images
-                          .filter((image) => image.roomTypeId === roomType.id)
-                          .slice(0, 4)
-                          .map((image) => (
-                            <img
-                              alt={
-                                image.altText || image.caption || roomType.name
-                              }
-                              className="h-[120px] w-[160px] rounded-xl object-cover"
-                              key={image.id}
-                              src={image.url}
-                            />
-                          ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <KoochButton
-                      onClick={() => editRoomType(roomType)}
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      ویرایش نوع اتاق
-                    </KoochButton>
-                    <KoochButton
-                      disabled={deletingRoomTypeId === roomType.id}
-                      loading={deletingRoomTypeId === roomType.id}
-                      onClick={() => setRoomTypeToDelete(roomType)}
-                      size="sm"
-                      type="button"
-                      variant="destructive"
-                    >
-                      حذف
-                    </KoochButton>
-                  </div>
-                </div>
-              </KoochCard>
-            );
-          })}
-        </div>
-        {!loading && roomTypes.length === 0 && (
-          <p className="mt-5 rounded-xl border border-dashed border-border p-6 text-center text-muted-foreground">
-            هنوز نوع اتاقی ثبت نشده است.
-          </p>
-        )}
-
-        {!loading &&
-          roomTypes.some(
-            (roomType) => roomType.inventoryMode === "NamedRooms",
-          ) && (
-            <div className="mt-6 grid gap-3">
-              <div>
-                <h2 className="text-lg font-black text-foreground">
-                  اتاق‌های نام‌دار
-                </h2>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  اتاق‌های فیزیکی هر نوع اتاق نام‌دار را اینجا ثبت و مشاهده
-                  کنید.
-                </p>
-              </div>
-              {roomTypes
-                .filter(
-                  (roomType) => roomType.inventoryMode === "NamedRooms",
-                )
-                .map((roomType) => (
-                  <NamedRoomManagement
-                    key={roomType.id}
-                    onRoomCreated={loadRoomTypes}
-                    roomType={roomType}
-                  />
-                ))}
-            </div>
-          )}
       </KoochCard>
-
-      <KoochConfirmDialog
-        cancelText="انصراف"
-        confirmText="حذف"
-        description={
-          roomTypeToDelete
-            ? `آیا از حذف نوع اتاق «${roomTypeToDelete.name}» مطمئن هستید؟ این عملیات قابل بازگشت نیست و نوع اتاق از لیست مدیریت حذف می‌شود.`
-            : undefined
-        }
-        disabled={!roomTypeToDelete}
-        loading={deletingRoomTypeId !== null}
-        onConfirm={confirmDeleteRoomType}
-        onOpenChange={(open) => {
-          if (!open && deletingRoomTypeId === null) setRoomTypeToDelete(null);
-        }}
-        open={Boolean(roomTypeToDelete)}
-        title="حذف نوع اتاق"
-        variant="destructive"
-      />
 
       <KoochDialog
         closeDisabled={saving}
-        description={
-          roomTypeDraft.id && !roomTypeDraft.isActive
-            ? "این نوع اتاق فعلاً پیش‌نویس است."
-            : "اطلاعات نوع اتاق را مرحله‌به‌مرحله تکمیل کنید."
-        }
+        description="اطلاعات واحد فیزیکی قابل رزرو را مرحله‌به‌مرحله تکمیل کنید."
         footer={
-          <div className="grid w-full gap-3 sm:flex sm:flex-wrap sm:items-center sm:justify-between">
+          <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <KoochButton
-              className="w-full sm:w-auto"
               disabled={saving || activeStep === 0}
-              onClick={() =>
-                setActiveStep((current) => Math.max(0, current - 1))
-              }
+              onClick={() => setActiveStep((current) => current - 1)}
               variant="outline"
             >
               قبلی
             </KoochButton>
-            <div className="grid gap-3 sm:flex sm:flex-wrap">
-              <KoochButton
-                className="w-full sm:w-auto"
-                disabled={saving}
-                onClick={closeWizard}
-                variant="outline"
-              >
+            <div className="flex flex-nowrap items-center gap-2">
+              <KoochButton disabled={saving} onClick={closeDialog} variant="outline">
                 لغو
               </KoochButton>
-              <KoochButton
-                className="w-full sm:w-auto"
-                disabled={saving}
-                loading={saving}
-                onClick={saveDraftRoom}
-                variant="outline"
-              >
-                ذخیره
-              </KoochButton>
-              {activeStep < wizardSteps.length - 1 ? (
-                <KoochButton
-                  className="w-full sm:w-auto"
-                  disabled={saving}
-                  loading={saving}
-                  onClick={goNext}
-                  variant="primary"
-                >
-                  {saving ? "در حال ذخیره..." : "بعدی"}
+              {activeStep < steps.length - 1 ? (
+                <KoochButton loading={saving} onClick={goNext}>
+                  {activeStep === 3 ? "ثبت و ادامه به تصاویر" : "بعدی"}
                 </KoochButton>
               ) : (
-                <KoochButton
-                  className="w-full sm:w-auto"
-                  disabled={saving}
-                  loading={saving}
-                  onClick={activateRoom}
-                  variant="primary"
-                >
-                  {saving ? "در حال فعال‌سازی..." : "فعال‌سازی نوع اتاق"}
-                </KoochButton>
+                <KoochButton onClick={finish}>پایان</KoochButton>
               )}
             </div>
           </div>
         }
         onOpenChange={(open) => {
-          if (!open && !saving) closeWizard();
+          if (!open) closeDialog();
         }}
-        open={wizardOpen}
-        // wizard size
+        open={dialogOpen}
         size="lg"
-        bodyClassName="px-4 py-4 sm:px-6 sm:py-5"
-        footerClassName="px-4 py-3 sm:px-6 sm:py-4"
-        contentClassName="h-[min(760px,90vh)] sm:h-[min(780px,90vh)]"
-        title={wizardMode === "create" ? "افزودن نوع اتاق" : "ویرایش نوع اتاق"}
+        title="افزودن اتاق"
       >
-        <div className="mb-5 border-b border-border pb-4">
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-            {wizardSteps.map((step, index) => (
-              <KoochButton
-                className={`min-h-10 w-full justify-start whitespace-normal text-right leading-5 ${
-                  index === activeStep
-                    ? "border-primary bg-primary text-primary-foreground shadow-md"
-                    : index < activeStep
-                      ? "border-primary bg-muted text-foreground"
-                      : "border-border bg-muted text-muted-foreground hover:text-foreground"
-                }`}
-                disabled={saving || (index > 0 && !roomTypeDraft.id)}
-                key={step}
-                onClick={() => setActiveStep(index)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                <span className="ml-1 inline-grid h-5 w-5 place-items-center rounded-full bg-background/20 text-xs">
-                  {index + 1}
-                </span>
-                {step}
-              </KoochButton>
-            ))}
-          </div>
+        <div className="mb-5 grid gap-2 border-b border-border pb-4 sm:grid-cols-2 lg:grid-cols-5">
+          {steps.map((step, index) => (
+            <KoochButton
+              className="w-full justify-start whitespace-normal text-right"
+              disabled={saving || index > activeStep || (index === 4 && !draft.roomId)}
+              key={step}
+              onClick={() => setActiveStep(index)}
+              size="sm"
+              variant={index === activeStep ? "primary" : "outline"}
+            >
+              {index + 1}. {step}
+            </KoochButton>
+          ))}
         </div>
-
-        {error && (
-          <KoochAlert className="mb-4" variant="destructive">
-            {error}
-          </KoochAlert>
-        )}
-        {activationWarning.length > 0 && (
-          <KoochAlert
-            className="mb-4"
-            title="نوع اتاق هنوز قابل فعال‌سازی نیست"
-            variant="warning"
-          >
-            <ul className="grid gap-1">
-              {activationWarning.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </KoochAlert>
-        )}
-        {!draftCompletion.isComplete && (
-          <KoochAlert
-            className="mb-4"
-            title="وضعیت تکمیل نوع اتاق"
-            variant="default"
-          >
-            <div className="grid gap-2">
-              {draftCompletion.sections.map((section) => (
-                <div
-                  className="flex flex-wrap items-center justify-between gap-2"
-                  key={section.key}
-                >
-                  <span className="font-black">{section.label}</span>
-                  <KoochBadge
-                    variant={
-                      section.status === "Complete"
-                        ? "success"
-                        : section.status === "Incomplete"
-                          ? "warning"
-                          : "muted"
-                    }
-                  >
-                    {completionStatusLabels[section.status]}
-                  </KoochBadge>
-                  {section.missingItems.length > 0 && (
-                    <span className="basis-full text-xs text-muted-foreground">
-                      {section.missingItems.join("، ")}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </KoochAlert>
-        )}
-        {renderStep()}
+        {error && <KoochAlert className="mb-4" variant="destructive">{error}</KoochAlert>}
+        {currentStep()}
       </KoochDialog>
     </div>
   );

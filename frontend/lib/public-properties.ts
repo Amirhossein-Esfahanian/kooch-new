@@ -1,3 +1,5 @@
+import type { RoomKind } from "@/lib/owner-api";
+
 export type PublicInventoryMode = "NamedRooms" | "TypeBasedInventory";
 export type PublicBreakfastOption = "NoBreakfast" | "Included" | "Paid";
 export type PublicPropertyView =
@@ -19,6 +21,8 @@ export interface PublicImage {
 export interface PublicRoomType {
   id: number;
   name: string;
+  roomKind: RoomKind;
+  roomKindCode: string;
   englishName: string | null;
   description: string;
   basePrice: number | null;
@@ -45,6 +49,8 @@ export interface PublicRoomType {
 export interface PublicRoomTypeSummary {
   id: number;
   name: string;
+  roomKind: RoomKind;
+  roomKindCode: string;
   maxAdults: number;
   maxChildren: number;
   totalInventory: number;

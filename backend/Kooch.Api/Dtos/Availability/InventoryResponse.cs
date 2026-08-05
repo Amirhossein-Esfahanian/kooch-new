@@ -1,4 +1,5 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Catalogs;
 
 namespace Kooch.Api.Dtos.Availability;
 
@@ -15,6 +16,8 @@ public class InventoryRoomTypeResponse
 {
     public int RoomTypeId { get; set; }
     public string Name { get; set; } = string.Empty;
+    public RoomKind RoomKind { get; set; }
+    public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public InventoryMode InventoryMode { get; set; }
     public int TotalInventory { get; set; }
     public IReadOnlyList<InventoryDayResponse> Days { get; set; } = [];

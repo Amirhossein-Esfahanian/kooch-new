@@ -1,4 +1,4 @@
-import { apiRequest } from "@/lib/owner-api";
+import { apiRequest, type RoomKind } from "@/lib/owner-api";
 import { fetchPublicApi } from "@/lib/public-properties";
 
 export type BookingMode = "Instant" | "OnRequest";
@@ -20,6 +20,8 @@ export interface PublicBookingRoom {
 export interface PublicBookingRoomTypeOption {
   roomTypeId: number;
   name: string;
+  roomKind: RoomKind;
+  roomKindCode: string;
   englishName: string | null;
   inventoryMode: BookingInventoryMode;
   availableCount: number;
@@ -47,6 +49,8 @@ export interface PublicBookingOptions {
   unavailableRoomTypes?: Array<{
     roomTypeId: number;
     name: string;
+    roomKind: RoomKind;
+    roomKindCode: string;
     reason:
       | "GuestCapacityExceeded"
       | "NoActiveNamedRooms"
