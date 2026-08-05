@@ -44,6 +44,14 @@ export interface PublicBookingOptions {
   children: number;
   childAges: number[];
   roomTypes: PublicBookingRoomTypeOption[];
+  unavailableRoomTypes?: Array<{
+    roomTypeId: number;
+    name: string;
+    reason:
+      | "GuestCapacityExceeded"
+      | "NoActiveNamedRooms"
+      | "InsufficientAvailability";
+  }>;
 }
 
 export interface AccountBookingSessionItemRequest {

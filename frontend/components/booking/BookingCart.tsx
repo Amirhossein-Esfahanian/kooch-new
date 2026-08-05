@@ -69,6 +69,9 @@ export function BookingCartSummary({
         <span>مجموع</span>
         <span>{formatCurrency(total)}</span>
       </div>
+      <p className="mt-3 text-xs leading-6 text-muted-foreground">
+        برای افزودن اتاق دیگر، یک نوع اتاق یا اتاق نام‌دار دیگر را انتخاب کنید و دوباره به سبد اضافه کنید.
+      </p>
       <KoochButton className="mt-4 hidden w-full sm:inline-flex" loading={loading} onClick={onContinue}>
         ادامه رزرو
       </KoochButton>

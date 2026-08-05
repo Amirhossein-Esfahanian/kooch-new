@@ -15,6 +15,7 @@ public class RoomTypeResponse
     public bool AllowExtraGuest { get; set; }
     public int MaxExtraGuests { get; set; }
     public int TotalInventory { get; set; }
+    public int ActiveRoomCount { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public decimal? BasePrice { get; set; }
     public string? Notes { get; set; }

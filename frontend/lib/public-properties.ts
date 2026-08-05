@@ -27,6 +27,7 @@ export interface PublicRoomType {
   availabilityStatus: "Available" | "Unavailable" | "OnRequest" | null;
   inventoryMode: PublicInventoryMode;
   totalInventory: number;
+  activeRoomCount?: number;
   maxAdults: number;
   maxChildren: number;
   allowExtraGuest: boolean;
@@ -136,5 +137,7 @@ export async function fetchPublicApi<T>(path: string): Promise<T> {
 }
 
 export function formatPrice(price: number | null) {
-  return price === null ? "قیمت ثبت نشده" : `${new Intl.NumberFormat("fa-IR").format(price)} تومان / شب`;
+  return price === null || price <= 0
+    ? "قیمت برای تاریخ‌های ثبت‌شده"
+    : `${new Intl.NumberFormat("fa-IR").format(price)} تومان / شب`;
 }

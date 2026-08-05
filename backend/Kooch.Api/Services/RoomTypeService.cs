@@ -162,6 +162,7 @@ public class RoomTypeService(
                 .ThenInclude(join => join.Amenity)
                     .ThenInclude(amenity => amenity.AmenityCategory)
             .Include(roomType => roomType.PropertyImages)
+            .Include(roomType => roomType.Rooms)
             .ToListAsync(cancellationToken);
 
         return roomTypes.Select(MapRoomType).ToList();
@@ -244,6 +245,7 @@ public class RoomTypeService(
                 .ThenInclude(join => join.Amenity)
                     .ThenInclude(amenity => amenity.AmenityCategory)
             .Include(roomType => roomType.PropertyImages)
+            .Include(roomType => roomType.Rooms)
             .SingleAsync(cancellationToken);
 
         return MapRoomType(roomType);
@@ -286,6 +288,7 @@ public class RoomTypeService(
             AllowExtraGuest = roomType.AllowExtraGuest,
             MaxExtraGuests = roomType.MaxExtraGuests,
             TotalInventory = roomType.TotalInventory,
+            ActiveRoomCount = roomType.Rooms.Count(room => room.IsActive),
             InventoryMode = roomType.InventoryMode,
             BasePrice = roomType.BasePrice,
             Notes = roomType.Notes,

@@ -1,5 +1,6 @@
 using Kooch.Api.Data;
 using Kooch.Api.Controllers;
+using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
@@ -42,6 +43,37 @@ public sealed class PublicBookingOptionsTests
         var onRequest = Assert.Single(result.RoomTypes, item => item.RoomTypeId == 20);
         Assert.Equal(ReservationBookingModeFilter.OnRequest, onRequest.BookingMode);
         Assert.Equal(40, onRequest.FinalAmount);
+        Assert.Empty(result.UnavailableRoomTypes);
+    }
+
+    [Fact]
+    public async Task Options_ExplainNamedRoomTypeWithoutAnActiveRoom()
+    {
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var context = new KoochDbContext(options);
+        await SeedAsync(context);
+        context.RoomTypes.Add(RoomType(30, InventoryMode.NamedRooms));
+        await context.SaveChangesAsync();
+        var service = new PublicBookingOptionsService(
+            context,
+            new EffectiveAvailabilityService(context),
+            new RangePricingService());
+
+        var result = await service.GetAsync(
+            "public-property",
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3),
+            1,
+            0,
+            []);
+
+        Assert.DoesNotContain(result.RoomTypes, item => item.RoomTypeId == 30);
+        var unavailable = Assert.Single(
+            result.UnavailableRoomTypes,
+            item => item.RoomTypeId == 30);
+        Assert.Equal(PublicBookingUnavailableReason.NoActiveNamedRooms, unavailable.Reason);
     }
 
     [Fact]

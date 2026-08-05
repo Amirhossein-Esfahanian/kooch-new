@@ -271,6 +271,7 @@ export interface RoomTypeResponse {
   allowExtraGuest: boolean;
   maxExtraGuests: number;
   totalInventory: number;
+  activeRoomCount?: number;
   inventoryMode: InventoryMode;
   basePrice: number | null;
   notes: string | null;

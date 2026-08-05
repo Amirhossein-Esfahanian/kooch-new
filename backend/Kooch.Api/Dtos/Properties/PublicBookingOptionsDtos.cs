@@ -14,6 +14,21 @@ public sealed class PublicBookingOptionsResponse
     public int Children { get; set; }
     public IReadOnlyList<int> ChildAges { get; set; } = [];
     public IReadOnlyList<PublicBookingRoomTypeOption> RoomTypes { get; set; } = [];
+    public IReadOnlyList<PublicBookingUnavailableRoomType> UnavailableRoomTypes { get; set; } = [];
+}
+
+public sealed class PublicBookingUnavailableRoomType
+{
+    public int RoomTypeId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public PublicBookingUnavailableReason Reason { get; set; }
+}
+
+public enum PublicBookingUnavailableReason
+{
+    GuestCapacityExceeded,
+    NoActiveNamedRooms,
+    InsufficientAvailability
 }
 
 public sealed class PublicBookingRoomTypeOption

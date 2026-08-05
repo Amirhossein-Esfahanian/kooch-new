@@ -202,18 +202,13 @@ export default function PublicPropertyPage() {
     setPreferredRoomTypeId(roomType.id);
     setDetailsRoomType(null);
 
-    if (
-      typeof window.matchMedia === "function" &&
-      window.matchMedia("(max-width: 1023px)").matches
-    ) {
-      window.requestAnimationFrame(() => {
-        bookingPanelRef.current?.scrollIntoView?.({
-          behavior: "smooth",
-          block: "start",
-        });
-        bookingPanelRef.current?.focus({ preventScroll: true });
+    window.requestAnimationFrame(() => {
+      bookingPanelRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
       });
-    }
+      bookingPanelRef.current?.focus({ preventScroll: true });
+    });
   }
 
   return (
@@ -503,6 +498,7 @@ export default function PublicPropertyPage() {
               onDatesChange={setBookingDates}
               onGuestsChange={setBookingGuests}
               preferredRoomTypeId={preferredRoomTypeId}
+              preferredRoomTypeName={property.roomTypes.find((roomType) => roomType.id === preferredRoomTypeId)?.name ?? null}
               propertyId={property.id}
               propertyName={property.name}
               propertySlug={property.slug}
@@ -606,7 +602,11 @@ function RoomTypeCard({
           )}
         </div>
         <div className="flex flex-col justify-end border-t p-5 md:border-r md:border-t-0">
-          <p className="text-xs text-slate-400">قیمت از</p>
+          <p className="text-xs text-slate-400">
+            {roomType.basePrice == null && roomType.displayPrice != null && roomType.displayPrice > 0
+              ? "قیمت برای تاریخ‌های ثبت‌شده"
+              : "قیمت از"}
+          </p>
           <p className="mt-1 text-lg font-black text-blue-700">
             {formatPrice(roomType.displayPrice)}
           </p>
@@ -621,6 +621,11 @@ function RoomTypeCard({
               ? "یک واحد اختصاصی"
               : `${roomType.totalInventory} واحد موجودی`}
           </p>
+          {roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0 && (
+            <p className="mt-3 text-xs leading-6 text-amber-700" role="status">
+              این نوع اتاق نام‌دار است، اما هنوز اتاق فعال قابل رزروی برای آن ثبت نشده است.
+            </p>
+          )}
           <div className="mt-4 grid gap-2">
             <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
               مشاهده جزئیات
@@ -628,9 +633,14 @@ function RoomTypeCard({
             <KoochButton
               aria-pressed={isPreferred}
               className="w-full"
+              disabled={roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0}
               onClick={onSelect}
             >
-              {isPreferred ? "انتخاب‌شده برای بررسی" : "انتخاب این اتاق"}
+              {roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0
+                ? "فعلاً قابل رزرو نیست"
+                : isPreferred
+                  ? "رفتن به پنل رزرو"
+                  : "انتخاب این اتاق"}
             </KoochButton>
           </div>
         </div>

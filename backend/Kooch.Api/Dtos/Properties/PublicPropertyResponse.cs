@@ -95,6 +95,7 @@ public class PublicRoomTypeResponse
     public AvailabilityStatus? AvailabilityStatus { get; set; }
     public InventoryMode InventoryMode { get; set; }
     public int TotalInventory { get; set; }
+    public int ActiveRoomCount { get; set; }
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
     public bool AllowExtraGuest { get; set; }

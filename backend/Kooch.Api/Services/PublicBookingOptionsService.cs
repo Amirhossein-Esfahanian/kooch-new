@@ -33,7 +33,6 @@ public sealed class PublicBookingOptionsService(
             ?? throw new KeyNotFoundException("Property not found.");
 
         var roomTypes = property.RoomTypes
-            .Where(roomType => CanAccommodate(roomType, adults, children))
             .OrderBy(roomType => roomType.Name)
             .ToArray();
         var availability = await effectiveAvailabilityService.GetRangeAsync(
@@ -42,11 +41,25 @@ public sealed class PublicBookingOptionsService(
             checkOutDate,
             cancellationToken: cancellationToken);
         var options = new List<PublicBookingRoomTypeOption>();
+        var unavailableRoomTypes = new List<PublicBookingUnavailableRoomType>();
         foreach (var roomType in roomTypes)
         {
+            if (!CanAccommodate(roomType, adults, children))
+            {
+                unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.GuestCapacityExceeded));
+                continue;
+            }
+
+            if (roomType.InventoryMode == InventoryMode.NamedRooms && roomType.Rooms.Count == 0)
+            {
+                unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.NoActiveNamedRooms));
+                continue;
+            }
+
             if (!availability.TryGetValue(roomType.Id, out var effective) ||
                 !effective.HasCapacityForFullRange(1))
             {
+                unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.InsufficientAvailability));
                 continue;
             }
 
@@ -64,6 +77,10 @@ public sealed class PublicBookingOptionsService(
             {
                 options.Add(option);
             }
+            else
+            {
+                unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.InsufficientAvailability));
+            }
         }
 
         return new PublicBookingOptionsResponse
@@ -76,9 +93,20 @@ public sealed class PublicBookingOptionsService(
             Adults = adults,
             Children = children,
             ChildAges = childAges.ToArray(),
-            RoomTypes = options
+            RoomTypes = options,
+            UnavailableRoomTypes = unavailableRoomTypes
         };
     }
+
+    private static PublicBookingUnavailableRoomType Unavailable(
+        RoomType roomType,
+        PublicBookingUnavailableReason reason) =>
+        new()
+        {
+            RoomTypeId = roomType.Id,
+            Name = roomType.Name,
+            Reason = reason
+        };
 
     private static bool CanAccommodate(RoomType roomType, int adults, int children)
     {

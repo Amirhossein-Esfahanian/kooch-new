@@ -27,6 +27,7 @@ export function PropertyBookingPanel(props: {
   guests: GuestSelectorValue;
   onGuestsChange: (value: GuestSelectorValue) => void;
   preferredRoomTypeId?: number | null;
+  preferredRoomTypeName?: string | null;
 }) {
   return <BookingCartProvider><PropertyBookingPanelContent {...props} /></BookingCartProvider>;
 }
@@ -41,6 +42,7 @@ function PropertyBookingPanelContent({
   guests,
   onGuestsChange,
   preferredRoomTypeId,
+  preferredRoomTypeName,
 }: {
   propertyId: number;
   propertyName: string;
@@ -51,6 +53,7 @@ function PropertyBookingPanelContent({
   guests: GuestSelectorValue;
   onGuestsChange: (value: GuestSelectorValue) => void;
   preferredRoomTypeId?: number | null;
+  preferredRoomTypeName?: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -63,7 +66,7 @@ function PropertyBookingPanelContent({
   const [quantity, setQuantity] = useState(1);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
-  const [message, setMessage] = useState<{ tone: "error" | "info"; text: string } | null>(null);
+  const [message, setMessage] = useState<{ tone: "error" | "info" | "success"; text: string } | null>(null);
   const resumedCheckout = useRef(false);
 
   const selectedOption = useMemo(
@@ -95,9 +98,13 @@ function PropertyBookingPanelContent({
       setSelectedRoomId(first?.rooms[0] ? String(first.rooms[0].roomId) : "");
       setQuantity(Math.min(Math.max(1, guests.rooms), first?.availableCount ?? 1));
       if (response.roomTypes.length === 0) {
+        const preferredUnavailable = response.unavailableRoomTypes?.find(
+          (item) => item.roomTypeId === preferredRoomTypeId,
+        );
+        const firstUnavailable = preferredUnavailable ?? response.unavailableRoomTypes?.[0];
         setMessage({
           tone: "info",
-          text: "در این بازه و برای تعداد مهمان انتخاب‌شده گزینه‌ای قابل رزرو نیست. تاریخ‌ها یا تعداد مهمان را تغییر دهید و دوباره بررسی کنید.",
+          text: unavailableMessage(firstUnavailable?.reason),
         });
       } else if (preferredRoomTypeId && !preferred) {
         setMessage({
@@ -138,7 +145,18 @@ function PropertyBookingPanelContent({
         quantity: selectedOption.inventoryMode === "NamedRooms" ? 1 : quantity,
         rooms: namedRoom ? [{ roomId: namedRoom.roomId, roomName: namedRoom.name }] : undefined,
       });
-      setMessage(null);
+      if (selectedOption.inventoryMode === "NamedRooms" && namedRoom) {
+        const usedRoomIds = new Set([
+          ...cart.items.flatMap((item) => item.roomId === null ? [] : [item.roomId]),
+          namedRoom.roomId,
+        ]);
+        const nextRoom = selectedOption.rooms.find((room) => !usedRoomIds.has(room.roomId));
+        setSelectedRoomId(nextRoom ? String(nextRoom.roomId) : "");
+      }
+      setMessage({
+        tone: "success",
+        text: `${selectedOption.name} به سبد رزرو اضافه شد. برای اتاق دوم، یک گزینه دیگر انتخاب کنید و دوباره «افزودن به سبد رزرو» را بزنید.`,
+      });
       toast.success("اتاق به سبد رزرو اضافه شد.");
     } catch (error) {
       setMessage({ tone: "error", text: error instanceof Error ? error.message : "افزودن اتاق انجام نشد." });
@@ -203,13 +221,18 @@ function PropertyBookingPanelContent({
       <p className="text-sm text-muted-foreground">قیمت از</p>
       <p className="mt-1 text-2xl font-black text-primary">{startingPrice === null ? "قیمت ثبت نشده" : formatCurrency(startingPrice)}</p>
       <p className="mt-2 font-bold text-foreground">{propertyName}</p>
+      {preferredRoomTypeId && preferredRoomTypeName && (
+        <KoochAlert className="mt-4" title={`اتاق انتخاب‌شده: ${preferredRoomTypeName}`} variant="info">
+          مرحله بعد: تاریخ و مهمانان را مشخص کنید و «بررسی موجودی» را بزنید. انتخاب کارت هنوز به معنی افزودن به سبد نیست.
+        </KoochAlert>
+      )}
       <div className="mt-5 grid gap-3">
         <KoochDatePicker calendarType="jalali" controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs" disablePastDates labels={{ start: "تاریخ ورود", end: "تاریخ خروج", rangeTitle: "انتخاب تاریخ اقامت" }} labelsAbove mode="range" onChange={onDatesChange} placeholderEnd="انتخاب خروج" placeholderStart="انتخاب ورود" value={dates} />
         <GuestSelector controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs" label="مهمانان هر اتاق و تعداد اتاق" onChange={onGuestsChange} value={guests} />
       </div>
       <KoochButton className="mt-5 w-full" loading={loadingOptions} onClick={checkAvailability}>بررسی موجودی</KoochButton>
 
-      {message && <KoochAlert className="mt-4" variant={message.tone === "error" ? "destructive" : "info"}>{message.text}</KoochAlert>}
+      {message && <KoochAlert className="mt-4" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
 
       {options && options.roomTypes.length > 0 && (
         <div className="mt-5 grid gap-4 rounded-lg border border-border bg-muted/40 p-4">
@@ -243,7 +266,7 @@ function PropertyBookingPanelContent({
             </KoochField>
           ) : null}
           {selectedOption && <p className="text-xs leading-6 text-muted-foreground">{selectedOption.availableCount.toLocaleString("fa-IR")} اتاق قابل رزرو · {selectedOption.bookingMode === "Instant" ? "رزرو آنی" : "نیازمند تأیید مالک"}</p>}
-          <KoochButton onClick={addToCart} variant="outline">افزودن به سبد رزرو</KoochButton>
+          <KoochButton onClick={addToCart}>افزودن این اتاق به سبد رزرو</KoochButton>
         </div>
       )}
 
@@ -251,4 +274,16 @@ function PropertyBookingPanelContent({
       <BookingCartMobileActionBar count={cart.items.length} loading={checkingOut} onContinue={continueCheckout} total={cart.total} />
     </>
   );
+}
+
+function unavailableMessage(
+  reason?: "GuestCapacityExceeded" | "NoActiveNamedRooms" | "InsufficientAvailability",
+) {
+  if (reason === "NoActiveNamedRooms") {
+    return "این نوع اتاق در حالت اتاق نام‌دار است، اما هنوز اتاق فعال قابل انتخابی برای آن ثبت نشده است. نوع دیگری را انتخاب کنید یا پس از فعال‌شدن اتاق‌ها دوباره بررسی کنید.";
+  }
+  if (reason === "GuestCapacityExceeded") {
+    return "ظرفیت این اتاق برای تعداد مهمانان انتخاب‌شده کافی نیست. تعداد مهمانان یا نوع اتاق را تغییر دهید.";
+  }
+  return "در این بازه ظرفیت قابل رزرو وجود ندارد. تاریخ‌ها یا تعداد اتاق را تغییر دهید و دوباره بررسی کنید.";
 }
