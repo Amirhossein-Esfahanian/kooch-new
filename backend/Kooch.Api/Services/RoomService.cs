@@ -11,6 +11,8 @@ public class RoomService(
     KoochDbContext dbContext,
     IPropertyAccessService propertyAccessService) : IRoomService
 {
+    private const InventoryMode CanonicalInventoryMode = InventoryMode.TypeBasedInventory;
+
     public async Task<OwnerRoomResponse> CreatePropertyRoomAsync(
         int userId,
         UserRole role,
@@ -81,10 +83,10 @@ public class RoomService(
                     MaxChildren = request.MaxChildren,
                     AllowExtraGuest = request.AllowExtraGuest,
                     MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0,
-                    TotalInventory = 1,
-                    InventoryMode = request.InventoryMode,
+                    TotalInventory = 0,
+                    InventoryMode = CanonicalInventoryMode,
                     BasePrice = request.BasePrice,
-                    IsActive = true,
+                    IsActive = false,
                     BedConfigurations = beds.Select(bed => new RoomTypeBed
                     {
                         BedTypeId = bed.Key,
@@ -97,12 +99,6 @@ public class RoomService(
                 };
                 dbContext.RoomTypes.Add(roomType);
             }
-            else
-            {
-                roomType.TotalInventory++;
-                roomType.IsActive = true;
-            }
-
             var room = new Room
             {
                 RoomType = roomType,
@@ -256,7 +252,7 @@ public class RoomService(
                 roomType.MaxChildren == request.MaxChildren &&
                 roomType.AllowExtraGuest == request.AllowExtraGuest &&
                 roomType.MaxExtraGuests == normalizedExtraGuests &&
-                roomType.InventoryMode == request.InventoryMode &&
+                roomType.InventoryMode == CanonicalInventoryMode &&
                 roomType.BasePrice == request.BasePrice)
             .Include(roomType => roomType.BedConfigurations)
             .Include(roomType => roomType.RoomTypeAmenities)

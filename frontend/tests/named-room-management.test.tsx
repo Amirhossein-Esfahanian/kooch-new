@@ -1,6 +1,12 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { OwnerRoomResponse } from "@/lib/owner-api";
+import type { RoomTypeResponse } from "@/lib/owner-api";
 
 const ownerApi = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
@@ -12,173 +18,235 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 
 vi.mock("sonner", () => ({ toast: notifications }));
 vi.mock("@/components/owner/PropertyImageManager", () => ({
-  PropertyImageManager: () => <div>مدیریت تصاویر اتاق</div>,
+  PropertyImageManager: () => <div>مدیریت تصاویر نوع اتاق</div>,
 }));
 
 import { RoomManagement } from "@/components/owner/RoomManagement";
 
 const roomKinds = [
-  { value: 2, code: "double", titleFa: "دابل", titleEn: "Double", displayOrder: 20 },
-  { value: 3, code: "twin", titleFa: "تویین", titleEn: "Twin", displayOrder: 30 },
+  {
+    value: 2,
+    code: "double",
+    titleFa: "دابل",
+    titleEn: "Double",
+    displayOrder: 20,
+  },
+  {
+    value: 3,
+    code: "twin",
+    titleFa: "تویین",
+    titleEn: "Twin",
+    displayOrder: 30,
+  },
 ];
 
-const zanbagh: OwnerRoomResponse = {
-  id: 20,
-  roomTypeId: 4,
+const zanbagh: RoomTypeResponse = {
+  id: 4,
+  propertyId: 3,
   name: "زنبق",
   englishName: null,
-  description: null,
+  slug: "room-type-4",
+  description: "اتاق زنبق",
+  maxAdults: 2,
+  maxChildren: 0,
+  allowExtraGuest: false,
+  maxExtraGuests: 0,
+  totalInventory: 0,
+  activeRoomCount: 0,
+  inventoryMode: "TypeBasedInventory",
+  roomKind: "Double",
+  roomKindCode: "double",
+  basePrice: 2_500_000,
   notes: null,
   floorNumber: null,
   stairCount: null,
   hasWindow: true,
   hasPrivateBathroom: true,
-  isActive: true,
-  roomKind: "Double",
-  roomKindCode: "double",
-  inventoryMode: "NamedRooms",
-  maxAdults: 2,
-  maxChildren: 0,
-  allowExtraGuest: false,
-  maxExtraGuests: 0,
-  basePrice: 2_500_000,
+  isActive: false,
+  completion: {
+    isComplete: false,
+    missingItems: ["تعداد موجودی"],
+    sections: [],
+  },
   bedConfigurations: [],
   amenities: [],
 };
 
-function arrangeApi(options: { initialRooms?: OwnerRoomResponse[]; duplicate?: boolean } = {}) {
-  let rooms = [...(options.initialRooms ?? [])];
-  ownerApi.apiRequest.mockImplementation(async (path: string, init?: RequestInit) => {
-    if (path === "/bed-types" || path === "/amenities") return [];
-    if (path === "/catalogs/room-kinds") return roomKinds;
-    if (path === "/owner/properties/3/images") return [];
-    if (path === "/owner/properties/3/rooms" && init?.method === "POST") {
-      if (options.duplicate) {
-        throw new Error("A room with this name already exists for the property.");
+function arrangeApi(initialRoomTypes: RoomTypeResponse[] = []) {
+  let roomTypes = [...initialRoomTypes];
+  ownerApi.apiRequest.mockImplementation(
+    async (path: string, init?: RequestInit) => {
+      if (path === "/bed-types" || path === "/amenities") return [];
+      if (path === "/catalogs/room-kinds") return roomKinds;
+      if (path === "/owner/properties/3/images") return [];
+      if (
+        path === "/owner/properties/3/room-types" &&
+        init?.method === "POST"
+      ) {
+        const payload = JSON.parse(String(init.body)) as Record<
+          string,
+          unknown
+        >;
+        const created: RoomTypeResponse = {
+          ...zanbagh,
+          id: 10,
+          name: String(payload.name),
+          description: String(payload.description),
+          totalInventory: Number(payload.totalInventory),
+          roomKind: payload.roomKind === 3 ? "Twin" : "Double",
+          roomKindCode: payload.roomKind === 3 ? "twin" : "double",
+        };
+        roomTypes = [...roomTypes, created];
+        return created;
       }
-      const payload = JSON.parse(String(init.body)) as Record<string, unknown>;
-      const created: OwnerRoomResponse = {
-        ...zanbagh,
-        id: 20 + rooms.length,
-        roomTypeId: 4,
-        name: String(payload.name),
-        roomKindCode: payload.roomKind === 3 ? "twin" : "double",
-        roomKind: payload.roomKind === 3 ? "Twin" : "Double",
-        basePrice: Number(payload.basePrice),
-      };
-      rooms = [...rooms, created];
-      return created;
-    }
-    if (path === "/owner/properties/3/rooms") return rooms;
-    throw new Error(`Unexpected API request: ${path}`);
-  });
+      if (path.startsWith("/owner/room-types/") && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body)) as Record<
+          string,
+          unknown
+        >;
+        const existing =
+          roomTypes.find((roomType) => path.endsWith(String(roomType.id))) ??
+          zanbagh;
+        const updated: RoomTypeResponse = {
+          ...existing,
+          name: String(payload.name),
+          totalInventory: Number(payload.totalInventory),
+          isActive: Boolean(payload.isActive),
+        };
+        roomTypes = roomTypes.map((roomType) =>
+          roomType.id === updated.id ? updated : roomType,
+        );
+        return updated;
+      }
+      if (path === "/owner/properties/3/room-types") return roomTypes;
+      throw new Error(`Unexpected API request: ${path}`);
+    },
+  );
 }
 
-async function reachCreateStep(name = "زنبق") {
-  fireEvent.click(await screen.findByRole("button", { name: "افزودن اتاق" }));
-  const dialog = await screen.findByRole("dialog");
-  fireEvent.change(within(dialog).getByLabelText(/نام اتاق/), {
-    target: { value: name },
+async function openCreateDialog() {
+  fireEvent.click(
+    await screen.findByRole("button", { name: "افزودن نوع اتاق" }),
+  );
+  return screen.findByRole("dialog");
+}
+
+async function fillRequiredFields(dialog: HTMLElement, inventory = "2") {
+  fireEvent.change(within(dialog).getByLabelText(/نام نوع اتاق/), {
+    target: { value: "دابل دلوکس" },
   });
-  fireEvent.change(within(dialog).getByLabelText(/^نوع اتاق/), {
+  fireEvent.change(within(dialog).getByLabelText(/نوع استاندارد اتاق/), {
     target: { value: "double" },
   });
-  fireEvent.change(within(dialog).getByLabelText(/قیمت پایه/), {
-    target: { value: "2500000" },
+  fireEvent.change(within(dialog).getByLabelText(/تعداد واحد قابل فروش/), {
+    target: { value: inventory },
   });
-  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-  return dialog;
 }
 
-describe("room-first owner management", () => {
+async function saveFromWizard(dialog: HTMLElement) {
+  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+  fireEvent.click(
+    within(dialog).getByRole("button", { name: "ذخیره و ادامه به تصاویر" }),
+  );
+}
+
+describe("unified owner sellable room type management", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it("shows physical rooms and hides internal RoomType terminology and names", async () => {
-    arrangeApi({ initialRooms: [zanbagh] });
+  it("shows sellable RoomTypes and keeps physical-room and InventoryMode concepts out of the main UI", async () => {
+    arrangeApi([zanbagh]);
     render(<RoomManagement propertyId={3} />);
 
-    expect(await screen.findByRole("button", { name: "افزودن اتاق" })).toBeTruthy();
-    expect(screen.queryByText("افزودن نوع اتاق")).toBeNull();
     expect(await screen.findByText("زنبق")).toBeTruthy();
     expect(screen.getByText("دابل")).toBeTruthy();
-    expect(screen.getByText("۲٬۵۰۰٬۰۰۰ تومان")).toBeTruthy();
-    expect(screen.queryByText("Double-1")).toBeNull();
+    expect(screen.getByText("موجودی فروش صفر است")).toBeTruthy();
+    expect(screen.queryByText(/شیوه مدیریت موجودی/)).toBeNull();
+    expect(screen.queryByText(/اتاق‌های نام‌دار/)).toBeNull();
+    expect(screen.queryByText(/Double-1/)).toBeNull();
+    expect(screen.getByRole("button", { name: "ویرایش" })).toBeTruthy();
   });
 
-  it("loads RoomKind choices and creates one physical room with its template specification", async () => {
+  it("loads RoomKind from the catalog and defaults TotalInventory to zero", async () => {
     arrangeApi();
     render(<RoomManagement propertyId={3} />);
-    const dialog = await reachCreateStep();
+    const dialog = await openCreateDialog();
 
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "ثبت و ادامه به تصاویر" }),
+    expect(within(dialog).getByRole("option", { name: "دابل" })).toBeTruthy();
+    expect(
+      (within(dialog).getByLabelText(/تعداد واحد قابل فروش/) as HTMLInputElement)
+        .value,
+    ).toBe("0");
+    expect(within(dialog).queryByLabelText(/شیوه مدیریت موجودی/)).toBeNull();
+  });
+
+  it("requires a sellable name and rejects negative inventory", async () => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    expect(notifications.error).toHaveBeenCalledWith(
+      "نام نوع اتاق الزامی است.",
     );
+
+    await fillRequiredFields(dialog, "-1");
+    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    expect(notifications.error).toHaveBeenCalledWith(
+      "تعداد واحد قابل فروش نمی‌تواند منفی باشد.",
+    );
+    expect(
+      ownerApi.apiRequest.mock.calls.some(
+        ([, init]) => init?.method === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  it("creates a RoomType with the owner name and multiple inventory without sending InventoryMode", async () => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog, "3");
+    await saveFromWizard(dialog);
 
     await waitFor(() => {
       expect(ownerApi.apiRequest).toHaveBeenCalledWith(
-        "/owner/properties/3/rooms",
+        "/owner/properties/3/room-types",
         expect.objectContaining({ method: "POST" }),
       );
     });
     const call = ownerApi.apiRequest.mock.calls.find(
-      ([path, init]) => path === "/owner/properties/3/rooms" && init?.method === "POST",
+      ([path, init]) =>
+        path === "/owner/properties/3/room-types" && init?.method === "POST",
     );
     const payload = JSON.parse(String(call?.[1]?.body));
     expect(payload).toMatchObject({
-      name: "زنبق",
+      name: "دابل دلوکس",
       roomKind: 2,
-      maxAdults: 2,
-      inventoryMode: "NamedRooms",
-      basePrice: 2_500_000,
+      totalInventory: 3,
     });
+    expect(payload).not.toHaveProperty("inventoryMode");
     expect(payload).not.toHaveProperty("propertyId");
-    expect(await within(dialog).findByText("مدیریت تصاویر اتاق")).toBeTruthy();
-    expect(await screen.findByText("زنبق")).toBeTruthy();
-  });
-
-  it("adds a second room and immediately refreshes the physical-room count", async () => {
-    arrangeApi({ initialRooms: [zanbagh] });
-    render(<RoomManagement propertyId={3} />);
-    const dialog = await reachCreateStep("محراب");
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "ثبت و ادامه به تصاویر" }),
-    );
-
-    expect(await screen.findByText("محراب")).toBeTruthy();
-    expect(screen.getByText("زنبق")).toBeTruthy();
-    const roomListCalls = ownerApi.apiRequest.mock.calls.filter(
-      ([path, init]) => path === "/owner/properties/3/rooms" && !init,
-    );
-    expect(roomListCalls).toHaveLength(2);
-  });
-
-  it("rejects blank room names before POST and translates duplicate failures", async () => {
-    arrangeApi({ duplicate: true });
-    render(<RoomManagement propertyId={3} />);
-    fireEvent.click(await screen.findByRole("button", { name: "افزودن اتاق" }));
-    const dialog = await screen.findByRole("dialog");
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-    expect(notifications.error).toHaveBeenCalledWith("نام اتاق الزامی است.");
-    expect(ownerApi.apiRequest.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
-
-    fireEvent.change(within(dialog).getByLabelText(/نام اتاق/), {
-      target: { value: "زنبق" },
-    });
-    fireEvent.change(within(dialog).getByLabelText(/^نوع اتاق/), {
-      target: { value: "double" },
-    });
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-    fireEvent.click(
-      within(dialog).getByRole("button", { name: "ثبت و ادامه به تصاویر" }),
-    );
     expect(
-      await within(dialog).findByText(
-        "اتاقی با این نام قبلاً در این اقامتگاه ثبت شده است.",
-      ),
+      await within(dialog).findByText("مدیریت تصاویر نوع اتاق"),
     ).toBeTruthy();
+    expect(await screen.findByText("دابل دلوکس")).toBeTruthy();
+  });
+
+  it("edits the existing sellable RoomType rather than creating an internal template", async () => {
+    arrangeApi([zanbagh]);
+    render(<RoomManagement propertyId={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
+    const dialog = await screen.findByRole("dialog");
+
+    expect(
+      (within(dialog).getByLabelText(/نام نوع اتاق/) as HTMLInputElement).value,
+    ).toBe("زنبق");
+    expect(
+      (within(dialog).getByLabelText(/تعداد واحد قابل فروش/) as HTMLInputElement)
+        .value,
+    ).toBe("0");
+    expect(within(dialog).getByText("ویرایش نوع اتاق")).toBeTruthy();
   });
 });

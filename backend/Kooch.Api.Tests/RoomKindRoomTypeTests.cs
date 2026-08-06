@@ -128,7 +128,10 @@ public sealed class RoomKindRoomTypeTests
 
         Assert.Equal(RoomKind.Twin, created.RoomKind);
         Assert.Equal("twin", created.RoomKindCode);
-        Assert.Equal(RoomKind.Twin, (await context.RoomTypes.SingleAsync()).RoomKind);
+        var persisted = await context.RoomTypes.SingleAsync();
+        Assert.Equal(RoomKind.Twin, persisted.RoomKind);
+        Assert.Equal(InventoryMode.TypeBasedInventory, persisted.InventoryMode);
+        Assert.Equal("Test room type", persisted.Name);
 
         var updated = await service.UpdateRoomTypeAsync(
             1,
@@ -138,7 +141,55 @@ public sealed class RoomKindRoomTypeTests
 
         Assert.Equal(RoomKind.JuniorSuite, updated.RoomKind);
         Assert.Equal("junior-suite", updated.RoomKindCode);
-        Assert.Equal(RoomKind.JuniorSuite, (await context.RoomTypes.SingleAsync()).RoomKind);
+        persisted = await context.RoomTypes.SingleAsync();
+        Assert.Equal(RoomKind.JuniorSuite, persisted.RoomKind);
+        Assert.Equal(InventoryMode.TypeBasedInventory, persisted.InventoryMode);
+    }
+
+    [Fact]
+    public void RoomTypeRequests_AllowZeroInventoryAndRejectNegativeInventory()
+    {
+        var create = ValidCreateRequest(RoomKind.Double);
+        var update = ValidUpdateRequest(RoomKind.Double);
+        create.TotalInventory = 0;
+        update.TotalInventory = 0;
+
+        Assert.True(IsValid(create));
+        Assert.True(IsValid(update));
+
+        create.TotalInventory = -1;
+        update.TotalInventory = -1;
+        Assert.False(IsValid(create));
+        Assert.False(IsValid(update));
+    }
+
+    [Fact]
+    public async Task CreateAndUpdate_IgnoreLegacyInventoryModeAndUseCanonicalValue()
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var service = new RoomTypeService(
+            context,
+            new PropertyAccessService(context),
+            new NoOpAuditLogService());
+        var create = ValidCreateRequest(RoomKind.Double);
+        create.InventoryMode = null;
+        create.TotalInventory = 0;
+
+        var created = await service.CreateRoomTypeAsync(
+            1, UserRole.SuperAdmin, 10, create);
+
+        Assert.Equal(0, created.TotalInventory);
+        Assert.Equal(InventoryMode.TypeBasedInventory, created.InventoryMode);
+
+        var update = ValidUpdateRequest(RoomKind.Twin);
+        update.InventoryMode = InventoryMode.NamedRooms;
+        update.TotalInventory = 3;
+        var updated = await service.UpdateRoomTypeAsync(
+            1, UserRole.SuperAdmin, created.Id, update);
+
+        Assert.Equal(3, updated.TotalInventory);
+        Assert.Equal(InventoryMode.TypeBasedInventory, updated.InventoryMode);
     }
 
     [Fact]
@@ -175,6 +226,13 @@ public sealed class RoomKindRoomTypeTests
         Assert.Contains(results, result => result.MemberNames.Contains("RoomKind"));
     }
 
+    private static bool IsValid(object request) =>
+        Validator.TryValidateObject(
+            request,
+            new ValidationContext(request),
+            new List<ValidationResult>(),
+            validateAllProperties: true);
+
     private static CreateRoomTypeRequest ValidCreateRequest(RoomKind roomKind) =>
         new()
         {
@@ -183,7 +241,6 @@ public sealed class RoomKindRoomTypeTests
             MaxAdults = 2,
             MaxChildren = 0,
             TotalInventory = 1,
-            InventoryMode = InventoryMode.NamedRooms,
             RoomKind = roomKind,
             IsActive = false
         };
@@ -196,7 +253,6 @@ public sealed class RoomKindRoomTypeTests
             MaxAdults = 2,
             MaxChildren = 0,
             TotalInventory = 1,
-            InventoryMode = InventoryMode.NamedRooms,
             RoomKind = roomKind,
             IsActive = false
         };

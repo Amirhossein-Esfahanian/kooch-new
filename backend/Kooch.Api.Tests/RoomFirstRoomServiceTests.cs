@@ -26,6 +26,8 @@ public sealed class RoomFirstRoomServiceTests
         Assert.Equal("Double-1", roomType.Name);
         Assert.Equal("double-1", roomType.Slug);
         Assert.DoesNotContain("Zanbagh", roomType.Name);
+        Assert.Equal(0, roomType.TotalInventory);
+        Assert.False(roomType.IsActive);
         Assert.Equal(roomType.Id, (await fixture.Context.Rooms.SingleAsync()).RoomTypeId);
     }
 
@@ -42,7 +44,36 @@ public sealed class RoomFirstRoomServiceTests
         Assert.Equal(first.RoomTypeId, second.RoomTypeId);
         Assert.Single(await fixture.Context.RoomTypes.ToListAsync());
         Assert.Equal(2, await fixture.Context.Rooms.CountAsync());
-        Assert.Equal(2, (await fixture.Context.RoomTypes.SingleAsync()).TotalInventory);
+        Assert.Equal(0, (await fixture.Context.RoomTypes.SingleAsync()).TotalInventory);
+    }
+
+    [Fact]
+    public async Task LegacyRoomFirstPath_DoesNotChangeExistingSellableInventoryOrStatus()
+    {
+        await using var fixture = await RoomFirstFixture.CreateAsync();
+        fixture.Context.RoomTypes.Add(new RoomType
+        {
+            PropertyId = 10,
+            Name = "Sellable Double",
+            Slug = "sellable-double",
+            Description = "Sellable Double",
+            RoomKind = RoomKind.Double,
+            MaxAdults = 2,
+            MaxChildren = 1,
+            TotalInventory = 3,
+            InventoryMode = InventoryMode.TypeBasedInventory,
+            BasePrice = 2_500_000,
+            IsActive = true
+        });
+        await fixture.Context.SaveChangesAsync();
+
+        await fixture.Service.CreatePropertyRoomAsync(
+            1, UserRole.SuperAdmin, 10, Request("101", RoomKind.Double));
+
+        var roomType = await fixture.Context.RoomTypes.SingleAsync();
+        Assert.Equal(3, roomType.TotalInventory);
+        Assert.True(roomType.IsActive);
+        Assert.Single(await fixture.Context.Rooms.ToListAsync());
     }
 
     [Fact]

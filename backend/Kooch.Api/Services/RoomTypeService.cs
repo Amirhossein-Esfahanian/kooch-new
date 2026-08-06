@@ -11,6 +11,8 @@ public class RoomTypeService(
     IPropertyAccessService propertyAccessService,
     IAuditLogService auditLogService) : IRoomTypeService
 {
+    private const InventoryMode CanonicalInventoryMode = InventoryMode.TypeBasedInventory;
+
     public async Task<RoomTypeResponse> CreateRoomTypeAsync(
         int userId,
         UserRole role,
@@ -40,7 +42,7 @@ public class RoomTypeService(
             AllowExtraGuest = request.AllowExtraGuest,
             MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0,
             TotalInventory = request.TotalInventory,
-            InventoryMode = request.InventoryMode,
+            InventoryMode = CanonicalInventoryMode,
             RoomKind = request.RoomKind,
             BasePrice = request.BasePrice,
             Notes = CleanOptional(request.Notes),
@@ -107,7 +109,7 @@ public class RoomTypeService(
         roomType.AllowExtraGuest = request.AllowExtraGuest;
         roomType.MaxExtraGuests = request.AllowExtraGuest ? request.MaxExtraGuests : 0;
         roomType.TotalInventory = request.TotalInventory;
-        roomType.InventoryMode = request.InventoryMode;
+        roomType.InventoryMode = CanonicalInventoryMode;
         roomType.RoomKind = request.RoomKind;
         roomType.BasePrice = request.BasePrice;
         roomType.Notes = CleanOptional(request.Notes);

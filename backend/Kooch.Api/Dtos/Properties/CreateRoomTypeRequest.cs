@@ -31,7 +31,8 @@ public class CreateRoomTypeRequest
     [Range(0, int.MaxValue)]
     public int TotalInventory { get; set; }
 
-    public InventoryMode InventoryMode { get; set; }
+    [EnumDataType(typeof(InventoryMode))]
+    public InventoryMode? InventoryMode { get; set; }
 
     [EnumDataType(typeof(RoomKind))]
     public RoomKind RoomKind { get; set; }
