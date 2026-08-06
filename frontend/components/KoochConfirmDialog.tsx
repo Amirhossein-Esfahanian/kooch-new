@@ -218,7 +218,7 @@ export function KoochConfirmDialog({
     <>
       <button
         aria-label="بستن دیالوگ"
-        className="fixed inset-0 z-[90] bg-black/50 backdrop-blur-sm"
+        className="fixed inset-0 z-[110] bg-black/50 backdrop-blur-sm"
         onClick={closeDialog}
         type="button"
       />
@@ -227,7 +227,7 @@ export function KoochConfirmDialog({
         aria-labelledby={titleId}
         aria-modal="true"
         className={joinClasses(
-          "fixed left-1/2 top-1/2 z-[91] w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded border border-border bg-card p-5 text-card-foreground shadow-2xl sm:p-5",
+          "fixed left-1/2 top-1/2 z-[111] w-[calc(100%-2rem)] max-w-[480px] -translate-x-1/2 -translate-y-1/2 rounded border border-border bg-card p-5 text-card-foreground shadow-2xl sm:p-5",
           className,
         )}
         dir="rtl"

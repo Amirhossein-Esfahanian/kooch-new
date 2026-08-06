@@ -818,7 +818,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       const max = maxValueResolver?.(row) ?? Number.MAX_SAFE_INTEGER;
       if (
         effectiveValue < min ||
-        ((row.totalInventory ?? max) === 1 && effectiveValue > 1) ||
         effectiveValue > max
       )
         return mode === "inventory"
@@ -936,9 +935,9 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     mode !== "inventory"
       ? "bg-card text-card-foreground"
       : status === "OnRequest"
-        ? "bg-yellow-50 text-slate-950 dark:bg-yellow-100 dark:text-slate-950"
+        ? "bg-yellow-50 text-amber-950 dark:bg-yellow-100 dark:text-amber-950"
         : status === "Unavailable"
-          ? "bg-red-50 text-slate-950 dark:bg-red-950/20 dark:text-red-50"
+          ? "bg-red-50 text-red-950 dark:bg-red-950/20 dark:text-red-50"
           : "bg-card text-card-foreground";
 
   const editorPanel =
@@ -1056,6 +1055,11 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           activeRow
                             ? (minValueResolver?.(activeRow as Row) ?? 0)
                             : 0
+                        }
+                        max={
+                          activeRow
+                            ? (maxValueResolver?.(activeRow as Row) ?? undefined)
+                            : undefined
                         }
                         inputMode={
                           valueInputType === "number" ? "numeric" : undefined

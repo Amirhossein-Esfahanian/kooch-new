@@ -272,8 +272,6 @@ export function OwnerInventoryGrid({
     const row = rows.find((item) => item.roomTypeId === roomTypeId);
     const max = row?.totalInventory ?? 0;
     if (payload.value < 0) throw new Error("ظرفیت نمی‌تواند منفی باشد.");
-    if (max === 1 && payload.value > 1)
-      throw new Error("برای این اتاق ظرفیت فقط می‌تواند ۰ یا ۱ باشد.");
     if (payload.value > max)
       throw new Error(
         `ظرفیت انتخاب‌شده نمی‌تواند بیشتر از ${toPersianNumber(max)} باشد.`,
