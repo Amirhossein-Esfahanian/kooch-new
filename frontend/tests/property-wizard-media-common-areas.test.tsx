@@ -109,6 +109,10 @@ describe("PropertyWizard media and common areas", () => {
       if (path === "/owner/properties/17/views") return Promise.resolve([]);
       if (path === "/owner/properties/17/room-types") return Promise.resolve([]);
       if (path === "/owner/properties/17/sections/description") return Promise.resolve(property);
+      if (path === "/owner/properties/17/sections/financial" && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body));
+        return Promise.resolve({ ...property, ...payload });
+      }
       throw new Error(`Unexpected API request: ${path}`);
     });
     api.replaceCommonAreas.mockResolvedValue([
@@ -144,5 +148,45 @@ describe("PropertyWizard media and common areas", () => {
       { name: "ایوان", description: null, sortOrder: 2 },
     ]));
     expect(api.replaceCommonAreas).toHaveBeenCalledOnce();
+  });
+
+  it("always identifies the active currency without showing the financial warning early", async () => {
+    window.history.replaceState({}, "", "?step=0");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    expect(await screen.findByText(/واحد پول:/)).toBeTruthy();
+    expect(screen.queryByText("تنظیمات مالی کامل نشده")).toBeNull();
+  });
+
+  it("shows the financial warning only on final review when settings are incomplete", async () => {
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+  });
+
+  it("formats financial inputs in Persian while sending separator-free numbers", async () => {
+    window.history.replaceState({}, "", "?step=8");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    const childPrice = await screen.findByLabelText(/نرخ کودک/);
+    const extraGuestPrice = screen.getByLabelText(/نرخ نفر اضافه/);
+    fireEvent.change(childPrice, { target: { value: "۱٬۲۳۴٬۵۶۷" } });
+    fireEvent.change(extraGuestPrice, { target: { value: "۲٬۰۰۰٬۰۰۰" } });
+
+    expect((childPrice as HTMLInputElement).value).toBe("۱٬۲۳۴٬۵۶۷");
+    expect((extraGuestPrice as HTMLInputElement).value).toBe("۲٬۰۰۰٬۰۰۰");
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(
+        ([path, init]) => path === "/owner/properties/17/sections/financial" && init?.method === "PUT",
+      );
+      const payload = JSON.parse(String(call?.[1]?.body));
+      expect(payload).toMatchObject({
+        childPrice: 1_234_567,
+        extraGuestPrice: 2_000_000,
+      });
+    });
   });
 });

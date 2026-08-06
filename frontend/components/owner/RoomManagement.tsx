@@ -31,6 +31,11 @@ import {
   RoomKindCatalogResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { useSiteCurrencyLabel } from "@/lib/currency";
+import {
+  formatLocalizedAmount,
+  parseLocalizedAmount,
+} from "@/lib/localized-amount";
 
 type RoomTypeDraft = {
   id?: number;
@@ -59,7 +64,7 @@ const emptyRoomType: RoomTypeDraft = {
   englishName: "",
   description: "",
   roomKindCode: "",
-  maxAdults: 2,
+  maxAdults: 0,
   maxChildren: 0,
   allowExtraGuest: false,
   maxExtraGuests: 0,
@@ -76,10 +81,10 @@ const emptyRoomType: RoomTypeDraft = {
 };
 
 const steps = [
-  "اطلاعات اصلی",
-  "ویژگی‌ها",
+  "اطلاعات کلی",
+  "ظرفیت",
   "امکانات",
-  "تخت‌ها و چیدمان",
+  "تخت‌ها",
   "تصاویر",
 ] as const;
 
@@ -87,9 +92,9 @@ function nullableNumber(value: string) {
   return value === "" ? null : Number(value);
 }
 
-function formatPrice(value: number | null) {
+function formatPrice(value: number | null, currencyLabel: string) {
   if (value == null || value <= 0) return "قیمت پایه ثبت نشده";
-  return `${value.toLocaleString("fa-IR")} تومان`;
+  return `${value.toLocaleString("fa-IR")} ${currencyLabel}`;
 }
 
 function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
@@ -121,6 +126,7 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
 }
 
 export function RoomManagement({ propertyId }: { propertyId: number }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
@@ -376,7 +382,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return (
       <div className="grid gap-5">
         <div>
-          <h3 className="font-black">اطلاعات اصلی</h3>
+          <h3 className="font-black">اطلاعات کلی</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             نام قابل نمایش، نوع استاندارد و ظرفیت فروش را مشخص کنید.
           </p>
@@ -452,14 +458,14 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             />
           </label>
           <label className="grid gap-1 text-sm font-bold">
-            قیمت پایه (تومان)
+            قیمت پایه ({currencyLabel})
             <KoochInput
-              min="0"
+              inputMode="numeric"
               onChange={(event) =>
-                patchDraft({ basePrice: Number(event.target.value) })
+                patchDraft({ basePrice: parseLocalizedAmount(event.target.value) ?? 0 })
               }
-              type="number"
-              value={draft.basePrice}
+              type="text"
+              value={formatLocalizedAmount(draft.basePrice)}
             />
           </label>
           <label className="grid gap-1 text-sm font-bold md:col-span-2">
@@ -828,7 +834,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                           : ""}
                       </KoochTableCell>
                       <KoochTableCell>
-                        {formatPrice(roomType.basePrice)}
+                        {formatPrice(roomType.basePrice, currencyLabel)}
                       </KoochTableCell>
                       <KoochTableCell>
                         <KoochBadge
@@ -872,6 +878,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       </KoochCard>
 
       <KoochDialog
+        closeButtonClassName="left-4"
         closeDisabled={saving}
         description="اطلاعات نوع اتاق قابل فروش را مرحله‌به‌مرحله تکمیل کنید."
         footer={
@@ -920,7 +927,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               size="sm"
               variant={index === activeStep ? "primary" : "outline"}
             >
-              {index + 1}. {step}
+              {step}
             </KoochButton>
           ))}
         </div>

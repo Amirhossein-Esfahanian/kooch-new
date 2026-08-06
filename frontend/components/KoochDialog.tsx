@@ -50,6 +50,7 @@ export type KoochDialogProps = {
   bodyClassName?: string;
   className?: string;
   children: ReactNode;
+  closeButtonClassName?: string;
   closeDisabled?: boolean;
   contentClassName?: string;
   description?: ReactNode;
@@ -67,6 +68,7 @@ export function KoochDialog({
   bodyClassName = "",
   className = "",
   children,
+  closeButtonClassName = "",
   closeDisabled = false,
   contentClassName = "",
   description,
@@ -282,7 +284,10 @@ export function KoochDialog({
 
           <button
             aria-label="بستن"
-            className="touch-target-44 absolute right-4 top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring  disabled:pointer-events-none disabled:opacity-40"
+            className={joinClasses(
+              "touch-target-44 absolute top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-40",
+              closeButtonClassName || "right-4",
+            )}
             disabled={closeDisabled}
             onClick={() => onOpenChange(false)}
             type="button"

@@ -102,10 +102,12 @@ export function usePropertyPricingStatus(
 export function PricingSettingsWarning({
   className = "",
   editHref,
+  title = "خظای تنظیمات بخش مالی",
   warnings,
 }: {
   className?: string;
   editHref: string;
+  title?: string;
   warnings: PricingWarningKey[];
 }) {
   const router = useRouter();
@@ -124,7 +126,7 @@ export function PricingSettingsWarning({
     <KoochAlert
       className={className}
       dir="rtl"
-      title="خظای تنظیمات بخش مالی"
+      title={title}
       variant="warning"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">

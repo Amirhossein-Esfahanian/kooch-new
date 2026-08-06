@@ -29,11 +29,21 @@ import {
   resolveDestinationId,
   RoomTypeResponse,
 } from "@/lib/owner-api";
+import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
+import {
+  getPropertyFinancialWarnings,
+  PricingSettingsWarning,
+} from "@/components/pricing/PricingWarnings";
+import { useSiteCurrencyLabel } from "@/lib/currency";
+import {
+  formatLocalizedAmount,
+  rawLocalizedAmount,
+} from "@/lib/localized-amount";
 import { propertyCompletionHref } from "@/lib/property-completion";
 
 const steps = [
@@ -208,6 +218,7 @@ function boolLabel(value: boolean, label: string) {
 
 export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: PropertyWizardProps) {
   const router = useRouter();
+  const currencyLabel = useSiteCurrencyLabel();
   const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const canLoadWorkspace =
     !sessionLoading &&
@@ -770,6 +781,9 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             </Link>
           </div>
         )}
+        <div className="mt-4 border-t border-border px-2 pt-4">
+          <KoochBadge variant="muted">واحد پول: {currencyLabel}</KoochBadge>
+        </div>
       </aside>
 
       <main className="min-w-0">
@@ -935,7 +949,7 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               <label className="grid gap-1 text-sm font-bold">ساعت ورود<input className={inputClass} onChange={(event) => update("checkInTime", event.target.value)} type="time" value={data.checkInTime} /></label>
               <label className="grid gap-1 text-sm font-bold">ساعت خروج<input className={inputClass} onChange={(event) => update("checkOutTime", event.target.value)} type="time" value={data.checkOutTime} /></label>
               <label className="grid gap-1 text-sm font-bold">صبحانه<select className={inputClass} onChange={(event) => update("breakfastOption", event.target.value as BreakfastOption)} value={data.breakfastOption}><option value="NoBreakfast">بدون صبحانه</option><option value="Included">صبحانه رایگان</option><option value="Paid">صبحانه با هزینه</option></select></label>
-              {data.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-bold">هزینه صبحانه<input className={inputClass} min="0" onChange={(event) => update("breakfastPrice", event.target.value)} type="number" value={data.breakfastPrice} /></label>}
+              {data.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-bold">هزینه صبحانه ({currencyLabel})<input className={inputClass} inputMode="numeric" onChange={(event) => update("breakfastPrice", rawLocalizedAmount(event.target.value))} type="text" value={formatLocalizedAmount(data.breakfastPrice)} /></label>}
             </div>
           </section>
         )}
@@ -946,11 +960,11 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-bold">سن کودک رایگان تا<input className={inputClass} max="17" min="0" onChange={(event) => update("freeChildAgeLimit", event.target.value)} type="number" value={data.freeChildAgeLimit} /></label>
               <label className="grid gap-1 text-sm font-bold">حداکثر تعداد کودک رایگان<input className={inputClass} min="0" onChange={(event) => update("maxFreeChildren", event.target.value)} type="number" value={data.maxFreeChildren} /></label>
-              <KoochField label="نرخ کودک">
-                <KoochInput min="0" onChange={(event) => update("childPrice", event.target.value)} type="number" value={data.childPrice} />
+              <KoochField label={`نرخ کودک (${currencyLabel})`}>
+                <KoochInput inputMode="numeric" onChange={(event) => update("childPrice", rawLocalizedAmount(event.target.value))} type="text" value={formatLocalizedAmount(data.childPrice)} />
               </KoochField>
-              <KoochField label="نرخ نفر اضافه">
-                <KoochInput min="0" onChange={(event) => update("extraGuestPrice", event.target.value)} type="number" value={data.extraGuestPrice} />
+              <KoochField label={`نرخ نفر اضافه (${currencyLabel})`}>
+                <KoochInput inputMode="numeric" onChange={(event) => update("extraGuestPrice", rawLocalizedAmount(event.target.value))} type="text" value={formatLocalizedAmount(data.extraGuestPrice)} />
               </KoochField>
             </div>
           </section>
@@ -968,6 +982,13 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 10 && (
           <section className="grid gap-4">
+            {property && (
+              <PricingSettingsWarning
+                editHref={`${isAdmin ? "/admin" : "/owner"}/properties/${property.id}?step=8`}
+                title="تنظیمات مالی کامل نشده"
+                warnings={getPropertyFinancialWarnings(property)}
+              />
+            )}
             {isAdmin && property && (
               <div className={`${cardClass} grid gap-3 md:grid-cols-[1fr_auto] md:items-end`}>
                 <label className="grid gap-1 text-sm font-bold">
