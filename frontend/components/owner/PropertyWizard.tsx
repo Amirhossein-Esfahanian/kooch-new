@@ -25,6 +25,7 @@ import {
   PropertyType,
   PropertyViewResponse,
   PropertyViewType,
+  replacePropertyCommonAreas,
   resolveDestinationId,
   RoomTypeResponse,
 } from "@/lib/owner-api";
@@ -78,12 +79,6 @@ const statusLabels: Record<PropertyStatus, string> = {
   Suspended: "تعلیق شده",
 };
 
-interface ImageDraft {
-  url: string;
-  tag: string;
-  imageId?: number;
-}
-
 interface CommonAreaDraft {
   id?: number;
   name: string;
@@ -115,8 +110,6 @@ interface WizardData {
   hasAccessibleBathroom: boolean;
   inventoryMode: InventoryMode;
   selectedAmenityIds: number[];
-  coverImage: string;
-  propertyImages: ImageDraft[];
   propertyDescription: string;
   additionalNotes: string;
   commonAreas: CommonAreaDraft[];
@@ -151,8 +144,6 @@ const initialData: WizardData = {
   hasAccessibleBathroom: false,
   inventoryMode: "NamedRooms",
   selectedAmenityIds: [],
-  coverImage: "",
-  propertyImages: [{ url: "", tag: "other" }],
   propertyDescription: "",
   additionalNotes: "",
   commonAreas: [{ name: "", description: "" }],
@@ -178,18 +169,6 @@ const choiceClass =
   "flex items-center gap-2 rounded-xl border border-border bg-background p-3 text-sm font-bold text-foreground transition hover:bg-muted";
 const linkButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
-const imageTags = [
-  { value: "exterior", label: "نمای بیرونی" },
-  { value: "courtyard", label: "حیاط" },
-  { value: "lobby", label: "لابی" },
-  { value: "room", label: "اتاق" },
-  { value: "bathroom", label: "حمام" },
-  { value: "breakfast", label: "صبحانه" },
-  { value: "restaurant", label: "رستوران" },
-  { value: "amenities", label: "امکانات" },
-  { value: "other", label: "سایر" },
-];
-
 interface PropertyWizardProps {
   mode: "create" | "edit";
   propertyId?: number;
@@ -204,10 +183,6 @@ interface CompletionSection {
   missingItems: string[];
   recommendedMissingItems: string[];
   targetStepIndex: number;
-}
-
-function cleanImages(values: ImageDraft[]) {
-  return values.filter((image) => image.url.trim());
 }
 
 function cleanCommonAreas(values: CommonAreaDraft[]) {
@@ -247,7 +222,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [allImages, setAllImages] = useState<PropertyImageResponse[]>([]);
   const [completion, setCompletion] = useState<PropertyCompletionResponse | null>(null);
-  const [coverImageId, setCoverImageId] = useState<number | null>(null);
   const [descriptionIds, setDescriptionIds] = useState<Partial<Record<string, number>>>({});
   const [loading, setLoading] = useState(false);
   const [savingSection, setSavingSection] = useState<string | null>(null);
@@ -296,7 +270,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         setRoomTypes(roomTypeItems);
         setCompletion(completionResult);
         setAdminStatus(propertyResult.status as PropertyStatus);
-        setCoverImageId(images.find((image) => image.isCover)?.id ?? null);
         setDescriptionIds(Object.fromEntries(descriptions.map((section) => [section.sectionType, section.id])));
         const intro = descriptions.find((section) => section.sectionType === "PropertyIntroduction");
         const notes = descriptions.find((section) => section.sectionType === "ImportantNotes");
@@ -317,11 +290,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           hasAccessibleBathroom: Boolean(propertyResult.hasAccessibleBathroom),
           inventoryMode: propertyResult.inventoryMode,
           selectedAmenityIds: propertyAmenities.map((amenity) => amenity.amenityId),
-          coverImage: images.find((image) => image.isCover)?.url ?? "",
-          propertyImages: [
-            ...images.filter((image) => !image.isCover && !image.roomTypeId && !image.roomId).map((image) => ({ url: image.url, tag: image.tag ?? "", imageId: image.id })),
-            { url: "", tag: "gallery" },
-          ],
           propertyDescription: intro?.content ?? propertyResult.description ?? "",
           additionalNotes: notes?.content ?? "",
           commonAreas: commonAreas.length ? commonAreas.map((area) => ({ id: area.id, name: area.name, description: area.description ?? "" })) : [{ name: "", description: "" }],
@@ -351,17 +319,17 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     Boolean(data.city.trim() && data.address.trim()),
     Number(data.floors) > 0,
     data.selectedAmenityIds.length > 0 || data.views.length > 0,
-    Boolean(data.coverImage.trim() || cleanImages(data.propertyImages).length),
+    allImages.some((image) => !image.roomTypeId && !image.roomId),
     Boolean(data.propertyDescription.trim() || cleanCommonAreas(data.commonAreas).length),
     cleanNearbyPlaces(data.nearbyPlaces).length > 0,
     Boolean(data.checkInTime && data.checkOutTime),
     Boolean(data.freeChildAgeLimit || data.maxFreeChildren || data.childPrice || data.extraGuestPrice),
     Boolean(data.seoTitle || data.seoDescription),
     Boolean(property),
-  ], [data, property]);
+  ], [allImages, data, property]);
 
   const completionSections = useMemo<CompletionSection[]>(() => {
-    const hasImages = Boolean(data.coverImage.trim() || cleanImages(data.propertyImages).length || allImages.some((image) => !image.roomTypeId && !image.roomId));
+    const hasImages = allImages.some((image) => !image.roomTypeId && !image.roomId);
     const hasDescription = Boolean(data.propertyDescription.trim());
     const hasCommonAreas = cleanCommonAreas(data.commonAreas).length > 0;
     const hasNearbyPlaces = cleanNearbyPlaces(data.nearbyPlaces).length > 0;
@@ -581,33 +549,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     });
   }
 
-  async function saveImages(propertyId: number) {
-    if (data.coverImage.trim()) {
-      const response = await apiRequest<PropertyImageResponse>(coverImageId ? `/owner/property-images/${coverImageId}` : `/owner/properties/${propertyId}/images`, {
-        method: coverImageId ? "PUT" : "POST",
-        body: JSON.stringify({ url: data.coverImage.trim(), tag: "cover", sortOrder: 0, isCover: true, isGallery: true }),
-      });
-      setCoverImageId(response.id);
-      setAllImages((current) => [
-        ...current.map((image) => image.roomTypeId == null && image.roomId == null ? { ...image, isCover: false } : image).filter((image) => image.id !== response.id),
-        response,
-      ]);
-    }
-
-    const images = [...data.propertyImages];
-    for (let index = 0; index < images.length; index += 1) {
-      const image = images[index];
-      if (!image.url.trim()) continue;
-      const response = await apiRequest<PropertyImageResponse>(image.imageId ? `/owner/property-images/${image.imageId}` : `/owner/properties/${propertyId}/images`, {
-        method: image.imageId ? "PUT" : "POST",
-        body: JSON.stringify({ url: image.url.trim(), tag: image.tag.trim() || null, sortOrder: index + 1, isCover: false, isGallery: true }),
-      });
-      images[index] = { ...image, imageId: response.id };
-      setAllImages((current) => [...current.filter((item) => item.id !== response.id), response]);
-    }
-    update("propertyImages", images.some((image) => !image.url.trim()) ? images : [...images, { url: "", tag: "gallery" }]);
-  }
-
   async function saveDescriptions(propertyId: number) {
     const sections = [
       { sectionType: "PropertyIntroduction", title: "معرفی اقامتگاه", content: data.propertyDescription.trim(), sortOrder: 1 },
@@ -624,16 +565,18 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     }
     setDescriptionIds(ids);
 
-    const existing = await apiRequest<PropertyCommonAreaResponse[]>(`/owner/properties/${propertyId}/common-areas`);
     const desired = cleanCommonAreas(data.commonAreas);
-    for (let index = 0; index < desired.length; index += 1) {
-      const area = desired[index];
-      const found = area.id ? existing.find((item) => item.id === area.id) : existing.find((item) => item.name === area.name);
-      await apiRequest<PropertyCommonAreaResponse>(found ? `/owner/common-areas/${found.id}` : `/owner/properties/${propertyId}/common-areas`, {
-        method: found ? "PUT" : "POST",
-        body: JSON.stringify({ name: area.name.trim(), description: area.description.trim() || null, sortOrder: index + 1 }),
-      });
-    }
+    const commonAreas = await replacePropertyCommonAreas(
+      propertyId,
+      desired.map((area, index) => ({
+        name: area.name.trim(),
+        description: area.description.trim() || null,
+        sortOrder: index + 1,
+      })),
+    );
+    update("commonAreas", commonAreas.length
+      ? commonAreas.map((area) => ({ id: area.id, name: area.name, description: area.description ?? "" }))
+      : [{ name: "", description: "" }]);
     await updatePropertySection("description", { description: data.propertyDescription.trim() });
   }
 
@@ -693,7 +636,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       isWheelchairAccessible: data.isWheelchairAccessible, hasGroundFloorRoom: data.hasGroundFloorRoom, hasAccessibleBathroom: data.hasAccessibleBathroom,
     });
     if (step === 3) await saveAmenities(saved.id);
-    if (step === 4) await saveImages(saved.id);
     if (step === 5) await saveDescriptions(saved.id);
     if (step === 6) await saveNearbyPlaces(saved.id);
     if (step === 7) saved = await updatePropertySection("rules", {
@@ -777,24 +719,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     }
   }
 
-  function addImageField() {
-    update("propertyImages", [...data.propertyImages, { url: "", tag: "other" }]);
-  }
-
   function syncImages(images: PropertyImageResponse[]) {
     setAllImages(images);
-    const cover = images.find((image) => image.isCover && !image.roomTypeId && !image.roomId);
-    setCoverImageId(cover?.id ?? null);
-    setData((current) => ({
-      ...current,
-      coverImage: cover?.url ?? "",
-      propertyImages: [
-        ...images
-          .filter((image) => !image.isCover && !image.roomTypeId && !image.roomId)
-          .map((image) => ({ url: image.url, tag: image.tag ?? "", imageId: image.id })),
-        { url: "", tag: "other" },
-      ],
-    }));
   }
 
   if (booting) {
@@ -944,30 +870,6 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
                 roomTypes={roomTypes}
               />
             </div>
-            <div className="rounded-xl border border-border bg-muted p-4">
-              <h3 className="font-black">افزودن تصویر با نشانی</h3>
-              <p className="mt-1 text-sm text-muted-foreground">این روش به عنوان جایگزین ساده برای تصویرهای آماده باقی می‌ماند.</p>
-            </div>
-            <label className="grid gap-1 text-sm font-bold">تصویر کاور<input className={inputClass} dir="ltr" onChange={(event) => update("coverImage", event.target.value)} type="url" value={data.coverImage} /></label>
-            {data.coverImage.trim() && <img alt="تصویر کاور" className="h-[120px] w-[160px] rounded-xl object-cover" src={data.coverImage} />}
-            {data.propertyImages.map((image, index) => (
-              <div className="grid gap-2 rounded-xl border border-border bg-background p-3 md:grid-cols-2" key={index}>
-                {image.url.trim() && <img alt={image.tag || "تصویر اقامتگاه"} className="h-[120px] w-[160px] rounded-xl object-cover md:col-span-2" src={image.url} />}
-                <input className={inputClass} dir="ltr" onChange={(event) => {
-                  const next = [...data.propertyImages];
-                  next[index] = { ...next[index], url: event.target.value };
-                  update("propertyImages", next);
-                }} placeholder="نشانی تصویر" type="url" value={image.url} />
-                <select className={inputClass} onChange={(event) => {
-                  const next = [...data.propertyImages];
-                  next[index] = { ...next[index], tag: event.target.value };
-                  update("propertyImages", next);
-                }} value={image.tag || "other"}>
-                  {imageTags.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                </select>
-              </div>
-            ))}
-            <KoochButton className="justify-self-start" onClick={addImageField} type="button" variant="outline">افزودن تصویر</KoochButton>
           </section>
         )}
 

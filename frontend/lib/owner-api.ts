@@ -495,6 +495,12 @@ export interface PropertyCommonAreaResponse {
   sortOrder: number;
 }
 
+export interface PropertyCommonAreaInput {
+  name: string;
+  description: string | null;
+  sortOrder: number;
+}
+
 export interface PropertyViewResponse {
   viewType: PropertyViewType;
 }
@@ -735,6 +741,19 @@ export async function apiRequest<T>(
   }
 
   return response.status === 204 ? (undefined as T) : response.json();
+}
+
+export function replacePropertyCommonAreas(
+  propertyId: number,
+  commonAreas: PropertyCommonAreaInput[],
+) {
+  return apiRequest<PropertyCommonAreaResponse[]>(
+    `/owner/properties/${propertyId}/common-areas`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ commonAreas }),
+    },
+  );
 }
 
 export function createSlug(value: string) {

@@ -73,14 +73,6 @@ function DotsIcon() {
   );
 }
 
-function CloseIcon() {
-  return (
-    <svg aria-hidden="true" fill="none" height="22" stroke="currentColor" strokeLinecap="round" strokeWidth="2" viewBox="0 0 24 24" width="22">
-      <path d="m6 6 12 12M18 6 6 18" />
-    </svg>
-  );
-}
-
 function GalleryThumbnail({ item, preload }: { item: MediaGalleryItem; preload: boolean }) {
   const [loaded, setLoaded] = useState(false);
   return (
@@ -175,7 +167,6 @@ export function MediaGallery<T extends MediaGalleryItem>({
   const [openMenuImageId, setOpenMenuImageId] = useState<string | number | null>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
-  const previewCloseRef = useRef<HTMLButtonElement>(null);
   const touchStartX = useRef<number | null>(null);
   const [cropTarget, setCropTarget] = useState<T | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
@@ -348,23 +339,21 @@ export function MediaGallery<T extends MediaGalleryItem>({
 
       {preview && (
         <KoochDialog
-          bodyClassName="relative grid place-items-center overflow-hidden bg-slate-950/80 p-4"
-          contentClassName="!fixed !inset-0 !h-full !w-full !max-w-none !transform-none !rounded-none !border-0 !bg-transparent !shadow-none !transition-none [&_[data-slot=dialog-header]]:hidden"
-          initialFocusRef={previewCloseRef}
+          bodyClassName="relative overflow-hidden bg-slate-950 p-0"
+          contentClassName="h-[min(840px,94vh)] w-[calc(100vw-1rem)]"
           onOpenChange={(open) => { if (!open) setPreviewIndex(null); }}
           open
-          title="پیش‌نمایش تصویر"
+          size="xl"
+          title={`پیش‌نمایش تصویر ${previewIndex! + 1} از ${items.length}`}
         >
           <div
-            className="absolute inset-0 grid place-items-center overflow-hidden p-4"
-            onClick={() => setPreviewIndex(null)}
+            className="relative h-full min-h-[55vh] w-full overflow-hidden"
             onTouchEnd={(event) => { if (touchStartX.current === null) return; const distance = event.changedTouches[0].clientX - touchStartX.current; if (Math.abs(distance) > 50) movePreview(distance < 0 ? 1 : -1); touchStartX.current = null; }}
             onTouchStart={(event) => { touchStartX.current = event.touches[0].clientX; }}
           >
-            <button ref={previewCloseRef} aria-label="بستن" className="absolute left-4 top-4 z-10 grid h-11 w-11 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20" onClick={() => setPreviewIndex(null)} type="button"><CloseIcon /></button>
             {items.length > 1 && <><button aria-label="تصویر قبلی" className="absolute right-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(-1); }} type="button">‹</button><button aria-label="تصویر بعدی" className="absolute left-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white hover:bg-white/20" onClick={(event) => { event.stopPropagation(); movePreview(1); }} type="button">›</button></>}
-            <div className="h-[82vh] w-[92vw] max-w-6xl select-none transition-transform" onClick={(event) => event.stopPropagation()} style={{ transform: `scale(${previewZoom})` }}><ProgressiveViewerImage item={preview} key={preview.id} /></div>
-            <div className="absolute bottom-5 flex items-center gap-2 rounded-full bg-slate-950/70 p-2 text-white backdrop-blur">
+            <div className="absolute inset-4 select-none transition-transform motion-reduce:transition-none sm:inset-8" style={{ transform: `scale(${previewZoom})` }}><ProgressiveViewerImage item={preview} key={preview.id} /></div>
+            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950/70 p-2 text-white backdrop-blur">
               <button aria-label="کوچک‌نمایی" className="touch-target-44 h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.max(1, value - 0.25)); }} type="button">−</button>
               <span className="min-w-14 text-center text-sm font-bold">{Math.round(previewZoom * 100)}٪</span>
               <button aria-label="بزرگ‌نمایی" className="touch-target-44 h-9 w-9 rounded-full bg-white/10 text-xl" onClick={(event) => { event.stopPropagation(); setPreviewZoom((value) => Math.min(3, value + 0.25)); }} type="button">+</button>
