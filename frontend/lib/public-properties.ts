@@ -144,6 +144,6 @@ export async function fetchPublicApi<T>(path: string): Promise<T> {
 
 export function formatPrice(price: number | null) {
   return price === null || price <= 0
-    ? "قیمت برای تاریخ‌های ثبت‌شده"
+    ? "قیمت پس از تعیین در تقویم"
     : `${new Intl.NumberFormat("fa-IR").format(price)} تومان / شب`;
 }

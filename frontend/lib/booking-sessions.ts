@@ -54,7 +54,8 @@ export interface PublicBookingOptions {
     reason:
       | "GuestCapacityExceeded"
       | "NoActiveNamedRooms"
-      | "InsufficientAvailability";
+      | "InsufficientAvailability"
+      | "IncompleteDailyPricing";
   }>;
 }
 

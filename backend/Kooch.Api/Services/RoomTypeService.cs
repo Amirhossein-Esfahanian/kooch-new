@@ -111,7 +111,10 @@ public class RoomTypeService(
         roomType.TotalInventory = request.TotalInventory;
         roomType.InventoryMode = CanonicalInventoryMode;
         roomType.RoomKind = request.RoomKind;
-        roomType.BasePrice = request.BasePrice;
+        if (request.BasePrice.HasValue)
+        {
+            roomType.BasePrice = request.BasePrice;
+        }
         roomType.Notes = CleanOptional(request.Notes);
         roomType.FloorNumber = request.FloorNumber;
         roomType.StairCount = request.StairCount;

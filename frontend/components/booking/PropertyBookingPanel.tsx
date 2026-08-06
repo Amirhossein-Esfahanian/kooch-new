@@ -199,8 +199,12 @@ function PropertyBookingPanelContent({
 
   return (
     <>
-      <p className="text-sm text-muted-foreground">قیمت از</p>
-      <p className="mt-1 text-2xl font-black text-primary">{startingPrice === null ? "قیمت ثبت نشده" : formatCurrency(startingPrice)}</p>
+      <p className="text-sm text-muted-foreground">
+        {startingPrice === null ? "قیمت اقامت" : "کمترین قیمت روزانه آینده"}
+      </p>
+      <p className="mt-1 text-2xl font-black text-primary">
+        {startingPrice === null ? "قیمت پس از تعیین در تقویم" : formatCurrency(startingPrice)}
+      </p>
       <p className="mt-2 font-bold text-foreground">{propertyName}</p>
       {preferredRoomTypeId && preferredRoomTypeName && (
         <KoochAlert className="mt-4" title={`اتاق انتخاب‌شده: ${preferredRoomTypeName}`} variant="info">
@@ -235,6 +239,11 @@ function PropertyBookingPanelContent({
             </KoochField>
           ) : null}
           {selectedOption && <p className="text-xs leading-6 text-muted-foreground">{selectedOption.availableCount.toLocaleString("fa-IR")} اتاق قابل رزرو · {selectedOption.bookingMode === "Instant" ? "رزرو آنی" : "نیازمند تأیید مالک"}</p>}
+          {selectedOption && (
+            <p className="text-sm font-bold text-foreground">
+              مبلغ قطعی این بازه برای هر اتاق: {formatCurrency(selectedOption.finalAmount)}
+            </p>
+          )}
           <KoochButton onClick={addToCart}>افزودن این اتاق به سبد رزرو</KoochButton>
         </div>
       )}
@@ -246,10 +255,13 @@ function PropertyBookingPanelContent({
 }
 
 function unavailableMessage(
-  reason?: "GuestCapacityExceeded" | "NoActiveNamedRooms" | "InsufficientAvailability",
+  reason?: "GuestCapacityExceeded" | "NoActiveNamedRooms" | "InsufficientAvailability" | "IncompleteDailyPricing",
 ) {
   if (reason === "GuestCapacityExceeded") {
     return "ظرفیت این اتاق برای تعداد مهمانان انتخاب‌شده کافی نیست. تعداد مهمانان یا نوع اتاق را تغییر دهید.";
+  }
+  if (reason === "IncompleteDailyPricing") {
+    return "قیمت همه شب‌های این بازه هنوز در تقویم تعیین نشده است. تاریخ دیگری را انتخاب کنید یا بعداً دوباره بررسی کنید.";
   }
   return "در این بازه ظرفیت قابل رزرو وجود ندارد. تاریخ‌ها یا تعداد اتاق را تغییر دهید و دوباره بررسی کنید.";
 }

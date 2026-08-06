@@ -31,11 +31,6 @@ import {
   RoomKindCatalogResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
-import { useSiteCurrencyLabel } from "@/lib/currency";
-import {
-  formatLocalizedAmount,
-  parseLocalizedAmount,
-} from "@/lib/localized-amount";
 
 type RoomTypeDraft = {
   id?: number;
@@ -48,7 +43,6 @@ type RoomTypeDraft = {
   allowExtraGuest: boolean;
   maxExtraGuests: number;
   totalInventory: number;
-  basePrice: number;
   floorNumber: string;
   stairCount: string;
   hasWindow: boolean | null;
@@ -69,7 +63,6 @@ const emptyRoomType: RoomTypeDraft = {
   allowExtraGuest: false,
   maxExtraGuests: 0,
   totalInventory: 0,
-  basePrice: 0,
   floorNumber: "",
   stairCount: "",
   hasWindow: null,
@@ -92,11 +85,6 @@ function nullableNumber(value: string) {
   return value === "" ? null : Number(value);
 }
 
-function formatPrice(value: number | null, currencyLabel: string) {
-  if (value == null || value <= 0) return "قیمت پایه ثبت نشده";
-  return `${value.toLocaleString("fa-IR")} ${currencyLabel}`;
-}
-
 function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
   return {
     id: roomType.id,
@@ -109,7 +97,6 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
     allowExtraGuest: roomType.allowExtraGuest,
     maxExtraGuests: roomType.maxExtraGuests,
     totalInventory: roomType.totalInventory,
-    basePrice: roomType.basePrice ?? 0,
     floorNumber:
       roomType.floorNumber == null ? "" : String(roomType.floorNumber),
     stairCount: roomType.stairCount == null ? "" : String(roomType.stairCount),
@@ -126,7 +113,6 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
 }
 
 export function RoomManagement({ propertyId }: { propertyId: number }) {
-  const currencyLabel = useSiteCurrencyLabel();
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
@@ -218,7 +204,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       if (draft.maxChildren < 0) return "ظرفیت کودک معتبر نیست.";
       if (draft.totalInventory < 0)
         return "تعداد واحد قابل فروش نمی‌تواند منفی باشد.";
-      if (draft.basePrice < 0) return "قیمت پایه معتبر نیست.";
     }
     if (step === 1 && draft.allowExtraGuest && draft.maxExtraGuests < 1) {
       return "حداکثر تعداد نفر اضافه را وارد کنید.";
@@ -282,7 +267,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             allowExtraGuest: draft.allowExtraGuest,
             maxExtraGuests: draft.allowExtraGuest ? draft.maxExtraGuests : 0,
             totalInventory: draft.totalInventory,
-            basePrice: draft.basePrice,
             bedConfigurations: draft.bedConfigurations.filter(
               (bed) => bed.bedTypeId > 0 && bed.quantity > 0,
             ),
@@ -348,7 +332,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           allowExtraGuest: roomType.allowExtraGuest,
           maxExtraGuests: roomType.maxExtraGuests,
           totalInventory: roomType.totalInventory,
-          basePrice: roomType.basePrice,
           notes: roomType.notes,
           floorNumber: roomType.floorNumber,
           stairCount: roomType.stairCount,
@@ -455,17 +438,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               }
               type="number"
               value={draft.maxChildren}
-            />
-          </label>
-          <label className="grid gap-1 text-sm font-bold">
-            قیمت پایه ({currencyLabel})
-            <KoochInput
-              inputMode="numeric"
-              onChange={(event) =>
-                patchDraft({ basePrice: parseLocalizedAmount(event.target.value) ?? 0 })
-              }
-              type="text"
-              value={formatLocalizedAmount(draft.basePrice)}
             />
           </label>
           <label className="grid gap-1 text-sm font-bold md:col-span-2">
@@ -779,7 +751,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                   <KoochTableHead>نوع استاندارد</KoochTableHead>
                   <KoochTableHead>موجودی فروش</KoochTableHead>
                   <KoochTableHead>ظرفیت</KoochTableHead>
-                  <KoochTableHead>قیمت پایه</KoochTableHead>
                   <KoochTableHead>وضعیت</KoochTableHead>
                   <KoochTableHead>عملیات</KoochTableHead>
                 </KoochTableRow>
@@ -834,9 +805,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                           : ""}
                       </KoochTableCell>
                       <KoochTableCell>
-                        {formatPrice(roomType.basePrice, currencyLabel)}
-                      </KoochTableCell>
-                      <KoochTableCell>
                         <KoochBadge
                           variant={roomType.isActive ? "success" : "muted"}
                         >
@@ -866,7 +834,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                   );
                 })}
                 {roomTypes.length === 0 && (
-                  <KoochTableEmpty colSpan={8}>
+                  <KoochTableEmpty colSpan={7}>
                     هنوز نوع اتاقی ثبت نشده است. برای شروع «افزودن نوع اتاق» را
                     انتخاب کنید.
                   </KoochTableEmpty>

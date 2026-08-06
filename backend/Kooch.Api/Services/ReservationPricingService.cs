@@ -13,7 +13,18 @@ public class ReservationPricingService(
 {
     public async Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
         ReservationPricePreviewRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        await PreviewCoreAsync(request, requireCompleteDailyPricing: false, cancellationToken);
+
+    public async Task<ReservationPricePreviewResponse> PreviewPublicBookingPriceAsync(
+        ReservationPricePreviewRequest request,
+        CancellationToken cancellationToken = default) =>
+        await PreviewCoreAsync(request, requireCompleteDailyPricing: true, cancellationToken);
+
+    private async Task<ReservationPricePreviewResponse> PreviewCoreAsync(
+        ReservationPricePreviewRequest request,
+        bool requireCompleteDailyPricing,
+        CancellationToken cancellationToken)
     {
         ValidateRequest(request);
 
@@ -34,6 +45,17 @@ public class ReservationPricingService(
                 item.Date >= request.CheckInDate &&
                 item.Date < request.CheckOutDate)
             .ToDictionaryAsync(item => item.Date, cancellationToken);
+
+        if (requireCompleteDailyPricing)
+        {
+            var unavailableDates = nights
+                .Where(night => !prices.TryGetValue(night, out var price) || price.BasePrice <= 0)
+                .ToArray();
+            if (unavailableDates.Length > 0)
+            {
+                throw new IncompleteDailyPricingException(request.RoomTypeId, unavailableDates);
+            }
+        }
 
         var promotions = await dbContext.Promotions.AsNoTracking()
             .Include(item => item.PromotionRoomTypes)
@@ -61,7 +83,9 @@ public class ReservationPricingService(
 
         foreach (var night in nights)
         {
-            var basePrice = prices.GetValueOrDefault(night)?.BasePrice ?? roomType.BasePrice ?? 0;
+            var basePrice = requireCompleteDailyPricing
+                ? prices[night].BasePrice
+                : prices.GetValueOrDefault(night)?.BasePrice ?? roomType.BasePrice ?? 0;
             var calculation = pricingService.CalculateNightPrice(
                 roomType.MaxAdults * request.RoomCount,
                 0,

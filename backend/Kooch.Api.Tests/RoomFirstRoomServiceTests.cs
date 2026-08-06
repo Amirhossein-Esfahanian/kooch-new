@@ -12,7 +12,7 @@ namespace Kooch.Api.Tests;
 public sealed class RoomFirstRoomServiceTests
 {
     [Fact]
-    public async Task CreatePropertyRoom_CreatesInternalTemplateAndPhysicalRoomAtomically()
+    public async Task CreatePropertyRoom_UsesTheOwnerFacingNameForTheTemplateAndRoomAtomically()
     {
         await using var fixture = await RoomFirstFixture.CreateAsync();
 
@@ -23,9 +23,9 @@ public sealed class RoomFirstRoomServiceTests
         Assert.Equal(RoomKind.Double, result.RoomKind);
         Assert.Equal("double", result.RoomKindCode);
         var roomType = await fixture.Context.RoomTypes.SingleAsync();
-        Assert.Equal("Double-1", roomType.Name);
+        Assert.Equal("Zanbagh", roomType.Name);
         Assert.Equal("double-1", roomType.Slug);
-        Assert.DoesNotContain("Zanbagh", roomType.Name);
+        Assert.DoesNotContain("Double-1", roomType.Name);
         Assert.Equal(0, roomType.TotalInventory);
         Assert.False(roomType.IsActive);
         Assert.Equal(roomType.Id, (await fixture.Context.Rooms.SingleAsync()).RoomTypeId);

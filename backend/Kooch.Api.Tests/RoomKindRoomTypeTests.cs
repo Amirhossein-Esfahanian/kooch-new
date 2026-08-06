@@ -193,6 +193,30 @@ public sealed class RoomKindRoomTypeTests
     }
 
     [Fact]
+    public async Task UpdateWithoutBasePrice_PreservesTheLegacyCompatibilityValue()
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var service = new RoomTypeService(
+            context,
+            new PropertyAccessService(context),
+            new NoOpAuditLogService());
+        var create = ValidCreateRequest(RoomKind.Double);
+        create.BasePrice = 2_500_000;
+        var created = await service.CreateRoomTypeAsync(
+            1, UserRole.SuperAdmin, 10, create);
+
+        var update = ValidUpdateRequest(RoomKind.Double);
+        update.BasePrice = null;
+        await service.UpdateRoomTypeAsync(
+            1, UserRole.SuperAdmin, created.Id, update);
+
+        Assert.Equal(
+            2_500_000,
+            (await context.RoomTypes.SingleAsync()).BasePrice);
+    }
+
+    [Fact]
     public async Task Service_RejectsUndefinedRoomKindEvenWhenCalledOutsideModelBinding()
     {
         await using var context = CreateContext();

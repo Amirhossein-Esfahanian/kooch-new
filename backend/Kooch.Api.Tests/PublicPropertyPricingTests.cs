@@ -38,7 +38,7 @@ public sealed class PublicPropertyPricingTests
             MaxAdults = 2,
             TotalInventory = 1,
             InventoryMode = InventoryMode.TypeBasedInventory,
-            BasePrice = null,
+            BasePrice = 9_000_000,
             IsActive = true
         });
         context.Availabilities.Add(new Availability
@@ -53,6 +53,13 @@ public sealed class PublicPropertyPricingTests
         {
             RoomTypeId = 10,
             Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
+            GuestType = PricingGuestType.Iranian,
+            BasePrice = 3_500_000
+        });
+        context.RoomDailyPrices.Add(new RoomDailyPrice
+        {
+            RoomTypeId = 10,
+            Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(2),
             GuestType = PricingGuestType.Iranian,
             BasePrice = 2_500_000
         });
@@ -74,5 +81,16 @@ public sealed class PublicPropertyPricingTests
         var roomType = Assert.Single(result.RoomTypes);
         Assert.Equal(2_500_000, roomType.AvailabilityPrice);
         Assert.Equal(2_500_000, roomType.DisplayPrice);
+        Assert.Equal("Room Type", roomType.Name);
+
+        context.RoomDailyPrices.RemoveRange(context.RoomDailyPrices);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        result = await service.GetPublicPropertyBySlugAsync("daily-price-property");
+
+        Assert.NotNull(result);
+        Assert.Null(result.StartingPrice);
+        Assert.Null(Assert.Single(result.RoomTypes).DisplayPrice);
     }
 }

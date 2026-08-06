@@ -151,6 +151,32 @@ public sealed class PublicBookingOptionsTests
     }
 
     [Fact]
+    public async Task IncompleteDailyPricing_ReturnsAnActionableUnavailableReason()
+    {
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var context = new KoochDbContext(options);
+        await SeedAsync(context);
+        var service = new PublicBookingOptionsService(
+            context,
+            new EffectiveAvailabilityService(context),
+            new IncompleteRangePricingService());
+
+        var result = await service.GetAsync(
+            "public-property",
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3),
+            1,
+            0,
+            []);
+
+        Assert.Empty(result.RoomTypes);
+        Assert.All(result.UnavailableRoomTypes, unavailable =>
+            Assert.Equal(PublicBookingUnavailableReason.IncompleteDailyPricing, unavailable.Reason));
+    }
+
+    [Fact]
     public void PublicController_ExposesBookingOptionsAtTheExpectedRoute()
     {
         var method = typeof(PublicPropertiesController).GetMethod(
@@ -262,5 +288,20 @@ public sealed class PublicBookingOptionsTests
                 Currency = "IRR"
             });
         }
+    }
+
+    private sealed class IncompleteRangePricingService : IReservationPricingService
+    {
+        public Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
+            ReservationPricePreviewRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<ReservationPricePreviewResponse> PreviewPublicBookingPriceAsync(
+            ReservationPricePreviewRequest request,
+            CancellationToken cancellationToken = default) =>
+            throw new IncompleteDailyPricingException(
+                request.RoomTypeId,
+                [request.CheckInDate]);
     }
 }

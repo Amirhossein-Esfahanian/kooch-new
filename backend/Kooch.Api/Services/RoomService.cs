@@ -67,17 +67,17 @@ public class RoomService(
 
             if (roomType is null)
             {
-                var internalIdentity = await GenerateInternalRoomTypeIdentityAsync(
+                var internalSlug = await GenerateInternalRoomTypeSlugAsync(
                     propertyId,
                     request.RoomKind,
                     cancellationToken);
                 roomType = new RoomType
                 {
                     PropertyId = propertyId,
-                    Name = internalIdentity.Name,
-                    EnglishName = internalIdentity.Name,
-                    Slug = internalIdentity.Slug,
-                    Description = internalIdentity.Name,
+                    Name = name,
+                    EnglishName = CleanOptional(request.EnglishName),
+                    Slug = internalSlug,
+                    Description = CleanOptional(request.Description) ?? name,
                     RoomKind = request.RoomKind,
                     MaxAdults = request.MaxAdults,
                     MaxChildren = request.MaxChildren,
@@ -268,7 +268,7 @@ public class RoomService(
                 .SequenceEqual(amenityIds.Order()));
     }
 
-    private async Task<(string Name, string Slug)> GenerateInternalRoomTypeIdentityAsync(
+    private async Task<string> GenerateInternalRoomTypeSlugAsync(
         int propertyId,
         RoomKind roomKind,
         CancellationToken cancellationToken)
@@ -284,7 +284,7 @@ public class RoomService(
             suffix++;
         }
 
-        return ($"{roomKind}-{suffix}", $"{code}-{suffix}");
+        return $"{code}-{suffix}";
     }
 
     private async Task<Dictionary<int, int>> ValidateBedsAsync(

@@ -57,16 +57,27 @@ public sealed class PublicBookingOptionsService(
                 continue;
             }
 
-            var option = await BuildOptionAsync(
-                property.Id,
-                roomType,
-                effective,
-                checkInDate,
-                checkOutDate,
-                adults,
-                children,
-                childAges,
-                cancellationToken);
+            PublicBookingRoomTypeOption option;
+            try
+            {
+                option = await BuildOptionAsync(
+                    property.Id,
+                    roomType,
+                    effective,
+                    checkInDate,
+                    checkOutDate,
+                    adults,
+                    children,
+                    childAges,
+                    cancellationToken);
+            }
+            catch (IncompleteDailyPricingException)
+            {
+                unavailableRoomTypes.Add(Unavailable(
+                    roomType,
+                    PublicBookingUnavailableReason.IncompleteDailyPricing));
+                continue;
+            }
             if (option.AvailableCount > 0)
             {
                 options.Add(option);
@@ -139,7 +150,7 @@ public sealed class PublicBookingOptionsService(
         IReadOnlyList<int> childAges,
         CancellationToken cancellationToken)
     {
-        var price = await pricingService.PreviewReservationPriceAsync(
+        var price = await pricingService.PreviewPublicBookingPriceAsync(
             new ReservationPricePreviewRequest
             {
                 PropertyId = propertyId,

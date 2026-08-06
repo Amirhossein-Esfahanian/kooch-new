@@ -184,6 +184,7 @@ describe("unified owner sellable room type management", () => {
     expect(
       (within(dialog).getByLabelText(/ظرفیت بزرگسال/) as HTMLInputElement).value,
     ).toBe("0");
+    expect(within(dialog).queryByLabelText(/قیمت پایه/)).toBeNull();
     expect(within(dialog).queryByLabelText(/شیوه مدیریت موجودی/)).toBeNull();
   });
 
@@ -197,26 +198,6 @@ describe("unified owner sellable room type management", () => {
     }
     expect(within(dialog).queryByRole("button", { name: /۱[.-]/ })).toBeNull();
     expect(within(dialog).getByRole("button", { name: "بستن" }).className).toContain("left-4");
-  });
-
-  it("formats the base price with Persian digits while preserving a numeric payload", async () => {
-    arrangeApi();
-    render(<RoomManagement propertyId={3} />);
-    const dialog = await openCreateDialog();
-    await fillRequiredFields(dialog);
-
-    const price = within(dialog).getByLabelText(/قیمت پایه/) as HTMLInputElement;
-    fireEvent.change(price, { target: { value: "۱٬۲۳۴٬۵۶۷" } });
-    expect(price.value).toBe("۱٬۲۳۴٬۵۶۷");
-    await saveFromWizard(dialog);
-
-    await waitFor(() => {
-      const call = ownerApi.apiRequest.mock.calls.find(
-        ([path, init]) => path === "/owner/properties/3/room-types" && init?.method === "POST",
-      );
-      const payload = JSON.parse(String(call?.[1]?.body));
-      expect(payload.basePrice).toBe(1_234_567);
-    });
   });
 
   it("requires a sellable name and rejects negative inventory", async () => {
@@ -266,6 +247,7 @@ describe("unified owner sellable room type management", () => {
     });
     expect(payload).not.toHaveProperty("inventoryMode");
     expect(payload).not.toHaveProperty("propertyId");
+    expect(payload).not.toHaveProperty("basePrice");
     expect(
       await within(dialog).findByText("مدیریت تصاویر نوع اتاق"),
     ).toBeTruthy();

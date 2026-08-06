@@ -261,6 +261,25 @@ public sealed class BookingSessionServiceTests
     }
 
     [Fact]
+    public async Task AccountDailyPricingFailureOnSecondItem_RollsBackTheCompleteSession()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        var pricing = new TestReservationPricingService { ThrowOnPublicCall = 2 };
+        await using var scope = harness.CreateService(pricing);
+
+        await Assert.ThrowsAsync<IncompleteDailyPricingException>(() =>
+            scope.Service.CreateForAccountAsync(
+                1,
+                CreateAccountRequest(
+                    CreateAccountItem(10, 100),
+                    CreateAccountItem(20, 200))));
+
+        await using var verification = harness.CreateContext();
+        Assert.Empty(await verification.BookingSessions.ToListAsync());
+        Assert.Empty(await verification.Reservations.ToListAsync());
+    }
+
+    [Fact]
     public async Task RoomTypeFromAnotherProperty_IsRejected()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
@@ -676,8 +695,10 @@ public sealed class BookingSessionServiceTests
     private sealed class TestReservationPricingService : IReservationPricingService
     {
         private int callCount;
+        private int publicCallCount;
 
         public int? ThrowOnCall { get; init; }
+        public int? ThrowOnPublicCall { get; init; }
         public Func<int, string> CurrencyForRoomType { get; init; } = _ => "IRR";
 
         public Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
@@ -690,7 +711,27 @@ public sealed class BookingSessionServiceTests
                 throw new InvalidOperationException("Pricing failed for the requested item.");
             }
 
-            return Task.FromResult(new ReservationPricePreviewResponse
+            return Price(request);
+        }
+
+        public Task<ReservationPricePreviewResponse> PreviewPublicBookingPriceAsync(
+            ReservationPricePreviewRequest request,
+            CancellationToken cancellationToken = default)
+        {
+            var currentCall = Interlocked.Increment(ref publicCallCount);
+            if (ThrowOnPublicCall == currentCall)
+            {
+                throw new IncompleteDailyPricingException(
+                    request.RoomTypeId,
+                    [request.CheckInDate]);
+            }
+
+            return Price(request);
+        }
+
+        private Task<ReservationPricePreviewResponse> Price(
+            ReservationPricePreviewRequest request) =>
+            Task.FromResult(new ReservationPricePreviewResponse
             {
                 PropertyId = request.PropertyId,
                 RoomTypeId = request.RoomTypeId,
@@ -705,6 +746,5 @@ public sealed class BookingSessionServiceTests
                 FinalAmount = 100,
                 Currency = CurrencyForRoomType(request.RoomTypeId)
             });
-        }
     }
 }

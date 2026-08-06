@@ -1196,13 +1196,11 @@ public class PropertyService(
                 .FirstOrDefault(),
             StartingPrice = property.RoomTypes
                 .Where(roomType => roomType.IsActive)
-                .Select(roomType => roomType.DailyPrices
-                    .Where(price => price.Date >= today &&
-                                    price.GuestType == PricingGuestType.Iranian)
-                    .OrderBy(price => price.Date)
-                    .Select(price => (decimal?)price.BasePrice)
-                    .FirstOrDefault() ?? roomType.BasePrice)
-                .Where(price => price != null)
+                .SelectMany(roomType => roomType.DailyPrices)
+                .Where(price => price.Date >= today &&
+                                price.GuestType == PricingGuestType.Iranian &&
+                                price.BasePrice > 0)
+                .Select(price => (decimal?)price.BasePrice)
                 .Min(),
             Images = property.Images
                 .Where(image => image.RoomTypeId == null &&
@@ -1283,16 +1281,16 @@ public class PropertyService(
                     BasePrice = roomType.BasePrice,
                     AvailabilityPrice = roomType.DailyPrices
                         .Where(price => price.Date >= today &&
-                                        price.GuestType == PricingGuestType.Iranian)
-                        .OrderBy(price => price.Date)
+                                        price.GuestType == PricingGuestType.Iranian &&
+                                        price.BasePrice > 0)
                         .Select(price => (decimal?)price.BasePrice)
-                        .FirstOrDefault(),
+                        .Min(),
                     DisplayPrice = roomType.DailyPrices
                         .Where(price => price.Date >= today &&
-                                        price.GuestType == PricingGuestType.Iranian)
-                        .OrderBy(price => price.Date)
+                                        price.GuestType == PricingGuestType.Iranian &&
+                                        price.BasePrice > 0)
                         .Select(price => (decimal?)price.BasePrice)
-                        .FirstOrDefault() ?? roomType.BasePrice,
+                        .Min(),
                     AvailabilityStatus = roomType.Availability
                         .Where(availability => availability.Date >= today)
                         .OrderBy(availability => availability.Date)

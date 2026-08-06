@@ -31,7 +31,8 @@ public enum PublicBookingUnavailableReason
 {
     GuestCapacityExceeded,
     NoActiveNamedRooms,
-    InsufficientAvailability
+    InsufficientAvailability,
+    IncompleteDailyPricing
 }
 
 public sealed class PublicBookingRoomTypeOption

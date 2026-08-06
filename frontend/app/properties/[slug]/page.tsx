@@ -603,9 +603,9 @@ function RoomTypeCard({
         </div>
         <div className="flex flex-col justify-end border-t p-5 md:border-r md:border-t-0">
           <p className="text-xs text-slate-400">
-            {roomType.basePrice == null && roomType.displayPrice != null && roomType.displayPrice > 0
-              ? "قیمت برای تاریخ‌های ثبت‌شده"
-              : "قیمت از"}
+            {roomType.displayPrice != null && roomType.displayPrice > 0
+              ? "کمترین قیمت روزانه آینده"
+              : "قیمت اقامت"}
           </p>
           <p className="mt-1 text-lg font-black text-blue-700">
             {formatPrice(roomType.displayPrice)}

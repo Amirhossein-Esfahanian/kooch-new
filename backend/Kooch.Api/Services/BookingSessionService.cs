@@ -545,9 +545,8 @@ public sealed class BookingSessionService(
         for (var index = 0; index < request.Items.Count; index++)
         {
             var item = request.Items[index];
-            var price = await pricingService.PreviewReservationPriceAsync(
-                new ReservationPricePreviewRequest
-                {
+            var priceRequest = new ReservationPricePreviewRequest
+            {
                     PropertyId = request.PropertyId,
                     RoomTypeId = item.RoomTypeId,
                     CheckInDate = item.CheckInDate,
@@ -557,8 +556,10 @@ public sealed class BookingSessionService(
                     ChildAges = item.ChildAges,
                     RoomCount = 1,
                     GuestType = item.GuestType
-                },
-                cancellationToken);
+            };
+            var price = creationKind == BookingSessionCreationKind.Account
+                ? await pricingService.PreviewPublicBookingPriceAsync(priceRequest, cancellationToken)
+                : await pricingService.PreviewReservationPriceAsync(priceRequest, cancellationToken);
             if (price.PropertyId != request.PropertyId || price.RoomTypeId != item.RoomTypeId)
             {
                 throw new InvalidOperationException(

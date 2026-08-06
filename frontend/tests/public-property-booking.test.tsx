@@ -172,6 +172,7 @@ describe("public property booking integration", () => {
     resolveOptions(availableOptions);
 
     expect(await screen.findByRole("combobox", { name: "نوع اتاق" })).toBeTruthy();
+    expect(screen.getByText("مبلغ قطعی این بازه برای هر اتاق: ۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
     const quantity = screen.getByRole("combobox", { name: "تعداد اتاق" });
     expect(quantity).toBeTruthy();
     fireEvent.change(quantity, { target: { value: "2" } });
@@ -271,8 +272,27 @@ describe("public property booking integration", () => {
 
     render(<PublicPropertyPage />);
 
-    expect(await screen.findByText("قیمت برای تاریخ‌های ثبت‌شده")).toBeTruthy();
+    expect(await screen.findAllByText("قیمت پس از تعیین در تقویم")).toHaveLength(2);
     expect(screen.queryByText(/۰ تومان \/ شب/)).toBeNull();
+  });
+
+  it("explains that incomplete daily pricing makes the selected range unavailable", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [],
+      unavailableRoomTypes: [
+        {
+          roomTypeId: 10,
+          name: "اتاق شاه‌نشین",
+          reason: "IncompleteDailyPricing",
+        },
+      ],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText(/قیمت همه شب‌های این بازه هنوز در تقویم تعیین نشده است/)).toBeTruthy();
   });
 
   it("keeps a sellable room type selectable without physical rooms", async () => {
