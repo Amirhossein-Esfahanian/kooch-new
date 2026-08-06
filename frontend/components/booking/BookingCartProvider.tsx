@@ -37,7 +37,6 @@ export interface BookingCartItem {
 export interface BookingCartSelection
   extends Omit<BookingCartItem, "id" | "roomId" | "roomName"> {
   quantity: number;
-  rooms?: Array<{ roomId: number; roomName: string }>;
 }
 
 export interface BookingCartState {
@@ -102,17 +101,12 @@ export function expandBookingCartSelection(
   selection: BookingCartSelection,
 ): BookingCartItem[] {
   const quantity = Math.max(1, Math.floor(selection.quantity));
-  const rooms = selection.rooms ?? [];
-  if (rooms.length > 0 && rooms.length !== quantity) {
-    throw new Error("برای هر اتاق انتخاب‌شده باید یک شناسه اتاق مشخص باشد.");
-  }
-
-  const { quantity: _quantity, rooms: _rooms, ...item } = selection;
-  return Array.from({ length: quantity }, (_, index) => ({
+  const { quantity: _quantity, ...item } = selection;
+  return Array.from({ length: quantity }, () => ({
     ...item,
     id: createIdentifier(),
-    roomId: rooms[index]?.roomId ?? null,
-    roomName: rooms[index]?.roomName ?? null,
+    roomId: null,
+    roomName: null,
     childAges: [...selection.childAges],
     notes: selection.notes?.trim() || null,
   }));

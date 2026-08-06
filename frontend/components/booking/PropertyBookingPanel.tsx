@@ -62,7 +62,6 @@ function PropertyBookingPanelContent({
   const cart = useBookingCart();
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
   const [selectedRoomTypeId, setSelectedRoomTypeId] = useState("");
-  const [selectedRoomId, setSelectedRoomId] = useState("");
   const [quantity, setQuantity] = useState(1);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
@@ -95,7 +94,6 @@ function PropertyBookingPanelContent({
       );
       const first = preferred ?? response.roomTypes[0];
       setSelectedRoomTypeId(first ? String(first.roomTypeId) : "");
-      setSelectedRoomId(first?.rooms[0] ? String(first.rooms[0].roomId) : "");
       setQuantity(Math.min(Math.max(1, guests.rooms), first?.availableCount ?? 1));
       if (response.roomTypes.length === 0) {
         const preferredUnavailable = response.unavailableRoomTypes?.find(
@@ -121,11 +119,6 @@ function PropertyBookingPanelContent({
 
   function addToCart() {
     if (!selectedOption || !dates.startDate || !dates.endDate) return;
-    const namedRoom = selectedOption.rooms.find((room) => room.roomId === Number(selectedRoomId));
-    if (selectedOption.inventoryMode === "NamedRooms" && !namedRoom) {
-      setMessage({ tone: "error", text: "یک اتاق مشخص انتخاب کنید." });
-      return;
-    }
     try {
       cart.addSelection({
         propertyId,
@@ -142,20 +135,11 @@ function PropertyBookingPanelContent({
         notes: null,
         displayAmount: selectedOption.finalAmount,
         currency: selectedOption.currency,
-        quantity: selectedOption.inventoryMode === "NamedRooms" ? 1 : quantity,
-        rooms: namedRoom ? [{ roomId: namedRoom.roomId, roomName: namedRoom.name }] : undefined,
+        quantity,
       });
-      if (selectedOption.inventoryMode === "NamedRooms" && namedRoom) {
-        const usedRoomIds = new Set([
-          ...cart.items.flatMap((item) => item.roomId === null ? [] : [item.roomId]),
-          namedRoom.roomId,
-        ]);
-        const nextRoom = selectedOption.rooms.find((room) => !usedRoomIds.has(room.roomId));
-        setSelectedRoomId(nextRoom ? String(nextRoom.roomId) : "");
-      }
       setMessage({
         tone: "success",
-        text: `${selectedOption.name} به سبد رزرو اضافه شد. برای اتاق دوم، یک گزینه دیگر انتخاب کنید و دوباره «افزودن به سبد رزرو» را بزنید.`,
+        text: `${quantity.toLocaleString("fa-IR")} واحد از ${selectedOption.name} به سبد رزرو اضافه شد.`,
       });
       toast.success("اتاق به سبد رزرو اضافه شد.");
     } catch (error) {
@@ -202,9 +186,6 @@ function PropertyBookingPanelContent({
     if (!preferred) return;
 
     setSelectedRoomTypeId(String(preferred.roomTypeId));
-    setSelectedRoomId(
-      preferred.rooms[0] ? String(preferred.rooms[0].roomId) : "",
-    );
     setQuantity(
       Math.min(Math.max(1, guests.rooms), preferred.availableCount),
     );
@@ -241,24 +222,12 @@ function PropertyBookingPanelContent({
               const value = event.target.value;
               const next = options.roomTypes.find((item) => item.roomTypeId === Number(value));
               setSelectedRoomTypeId(value);
-              setSelectedRoomId(next?.rooms[0] ? String(next.rooms[0].roomId) : "");
               setQuantity(Math.min(Math.max(1, guests.rooms), next?.availableCount ?? 1));
             }}>
               {options.roomTypes.map((item) => <option key={item.roomTypeId} value={item.roomTypeId}>{item.name} — {formatCurrency(item.finalAmount)}</option>)}
             </KoochSelect>
           </KoochField>
-          {selectedOption?.inventoryMode === "NamedRooms" ? (
-            <div className="grid gap-2">
-              <KoochField label="اتاق مشخص">
-                <KoochSelect value={selectedRoomId} onChange={(event) => setSelectedRoomId(event.target.value)}>
-                  {selectedOption.rooms.map((room) => <option key={room.roomId} value={room.roomId}>{room.name}</option>)}
-                </KoochSelect>
-              </KoochField>
-              <p className="text-xs leading-6 text-muted-foreground">
-                اتاق‌های نام‌دار باید جداگانه انتخاب و به سبد رزرو اضافه شوند.
-              </p>
-            </div>
-          ) : selectedOption ? (
+          {selectedOption ? (
             <KoochField label="تعداد اتاق">
               <KoochSelect value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>
                 {Array.from({ length: selectedOption.availableCount }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value.toLocaleString("fa-IR")}</option>)}
@@ -279,9 +248,6 @@ function PropertyBookingPanelContent({
 function unavailableMessage(
   reason?: "GuestCapacityExceeded" | "NoActiveNamedRooms" | "InsufficientAvailability",
 ) {
-  if (reason === "NoActiveNamedRooms") {
-    return "این نوع اتاق در حالت اتاق نام‌دار است، اما هنوز اتاق فعال قابل انتخابی برای آن ثبت نشده است. نوع دیگری را انتخاب کنید یا پس از فعال‌شدن اتاق‌ها دوباره بررسی کنید.";
-  }
   if (reason === "GuestCapacityExceeded") {
     return "ظرفیت این اتاق برای تعداد مهمانان انتخاب‌شده کافی نیست. تعداد مهمانان یا نوع اتاق را تغییر دهید.";
   }

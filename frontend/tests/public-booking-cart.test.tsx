@@ -56,10 +56,12 @@ function state(items: BookingCartItem[] = []): BookingCartState {
 
 describe("public booking cart", () => {
   it("expands room quantity into independent reservation items", () => {
-    const items = expandBookingCartSelection(selection({ quantity: 3 }));
-    expect(items).toHaveLength(3);
-    expect(new Set(items.map((entry) => entry.id)).size).toBe(3);
+    const items = expandBookingCartSelection(selection({ quantity: 2 }));
+    expect(items).toHaveLength(2);
+    expect(new Set(items.map((entry) => entry.id)).size).toBe(2);
     expect(items.every((entry) => entry.roomTypeId === 10)).toBe(true);
+    expect(items.every((entry) => entry.roomId === null)).toBe(true);
+    expect(items.every((entry) => entry.roomTypeName === "اتاق شاه‌نشین")).toBe(true);
   });
 
   it("rejects a different property, mode, and duplicate named room", () => {
@@ -111,6 +113,7 @@ describe("public booking cart", () => {
       expect(payload).not.toHaveProperty("guestId");
       expect(payload).not.toHaveProperty("propertyId");
       expect(payload.items[0]).not.toHaveProperty("status");
+      expect(payload.items[0]).not.toHaveProperty("roomId");
     }
   });
 

@@ -60,7 +60,6 @@ export interface PublicBookingOptions {
 
 export interface AccountBookingSessionItemRequest {
   roomTypeId: number;
-  roomId?: number | null;
   checkInDate: string;
   checkOutDate: string;
   adults: number;

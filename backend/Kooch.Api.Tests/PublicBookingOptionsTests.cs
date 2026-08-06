@@ -47,14 +47,89 @@ public sealed class PublicBookingOptionsTests
     }
 
     [Fact]
-    public async Task Options_ExplainNamedRoomTypeWithoutAnActiveRoom()
+    public async Task NamedRoomTypeWithoutPhysicalRooms_RemainsSellable()
     {
         var options = new DbContextOptionsBuilder<KoochDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
             .Options;
         await using var context = new KoochDbContext(options);
         await SeedAsync(context);
-        context.RoomTypes.Add(RoomType(30, InventoryMode.NamedRooms));
+        context.RoomTypes.Add(RoomType(30, InventoryMode.NamedRooms, totalInventory: 1));
+        await context.SaveChangesAsync();
+        var service = new PublicBookingOptionsService(
+            context,
+            new EffectiveAvailabilityService(context),
+            new RangePricingService());
+
+        var result = await service.GetAsync(
+            "public-property",
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3),
+            1,
+            0,
+            []);
+
+        var option = Assert.Single(result.RoomTypes, item => item.RoomTypeId == 30);
+        Assert.Equal(1, option.AvailableCount);
+        Assert.Empty(option.Rooms);
+        Assert.DoesNotContain(result.UnavailableRoomTypes, item => item.RoomTypeId == 30);
+    }
+
+    [Fact]
+    public async Task InventoryModes_WithEqualSellableData_ReturnEqualCapacityWithoutRoomClamping()
+    {
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var context = new KoochDbContext(options);
+        await SeedAsync(context);
+        context.RoomTypes.AddRange(
+            RoomType(30, InventoryMode.NamedRooms, totalInventory: 3),
+            RoomType(40, InventoryMode.TypeBasedInventory, totalInventory: 3));
+        context.Rooms.Add(new Room
+        {
+            Id = 300,
+            RoomTypeId = 30,
+            Name = "Optional physical room",
+            IsActive = true
+        });
+        await context.SaveChangesAsync();
+        var service = new PublicBookingOptionsService(
+            context,
+            new EffectiveAvailabilityService(context),
+            new RangePricingService());
+
+        var result = await service.GetAsync(
+            "public-property",
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3),
+            1,
+            0,
+            []);
+
+        var named = Assert.Single(result.RoomTypes, item => item.RoomTypeId == 30);
+        var typeBased = Assert.Single(result.RoomTypes, item => item.RoomTypeId == 40);
+        Assert.Equal(3, named.AvailableCount);
+        Assert.Equal(named.AvailableCount, typeBased.AvailableCount);
+        Assert.Equal(300, Assert.Single(named.Rooms).RoomId);
+    }
+
+    [Fact]
+    public async Task ClosedOrZeroCapacityCalendarNight_RemainsUnavailable()
+    {
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
+            .Options;
+        await using var context = new KoochDbContext(options);
+        await SeedAsync(context);
+        context.RoomTypes.Add(RoomType(30, InventoryMode.NamedRooms, totalInventory: 1));
+        context.Availabilities.Add(new Availability
+        {
+            RoomTypeId = 30,
+            Date = new DateOnly(2035, 2, 1),
+            AvailableCount = 0,
+            Status = AvailabilityStatus.Unavailable
+        });
         await context.SaveChangesAsync();
         var service = new PublicBookingOptionsService(
             context,
@@ -70,10 +145,9 @@ public sealed class PublicBookingOptionsTests
             []);
 
         Assert.DoesNotContain(result.RoomTypes, item => item.RoomTypeId == 30);
-        var unavailable = Assert.Single(
-            result.UnavailableRoomTypes,
-            item => item.RoomTypeId == 30);
-        Assert.Equal(PublicBookingUnavailableReason.NoActiveNamedRooms, unavailable.Reason);
+        Assert.Equal(
+            PublicBookingUnavailableReason.InsufficientAvailability,
+            Assert.Single(result.UnavailableRoomTypes, item => item.RoomTypeId == 30).Reason);
     }
 
     [Fact]
@@ -149,7 +223,10 @@ public sealed class PublicBookingOptionsTests
         await context.SaveChangesAsync();
     }
 
-    private static RoomType RoomType(int id, InventoryMode inventoryMode) =>
+    private static RoomType RoomType(
+        int id,
+        InventoryMode inventoryMode,
+        int totalInventory = 2) =>
         new()
         {
             Id = id,
@@ -159,7 +236,7 @@ public sealed class PublicBookingOptionsTests
             Description = "Description",
             MaxAdults = 2,
             MaxChildren = 2,
-            TotalInventory = 2,
+            TotalInventory = totalInventory,
             InventoryMode = inventoryMode,
             BasePrice = 100,
             IsActive = true

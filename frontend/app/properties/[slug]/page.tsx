@@ -621,11 +621,6 @@ function RoomTypeCard({
               ? "یک واحد اختصاصی"
               : `${roomType.totalInventory} واحد موجودی`}
           </p>
-          {roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0 && (
-            <p className="mt-3 text-xs leading-6 text-amber-700" role="status">
-              این نوع اتاق نام‌دار است، اما هنوز اتاق فعال قابل رزروی برای آن ثبت نشده است.
-            </p>
-          )}
           <div className="mt-4 grid gap-2">
             <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
               مشاهده جزئیات
@@ -633,14 +628,9 @@ function RoomTypeCard({
             <KoochButton
               aria-pressed={isPreferred}
               className="w-full"
-              disabled={roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0}
               onClick={onSelect}
             >
-              {roomType.inventoryMode === "NamedRooms" && roomType.activeRoomCount === 0
-                ? "فعلاً قابل رزرو نیست"
-                : isPreferred
-                  ? "رفتن به پنل رزرو"
-                  : "انتخاب این اتاق"}
+              {isPreferred ? "رفتن به پنل رزرو" : "انتخاب این اتاق"}
             </KoochButton>
           </div>
         </div>

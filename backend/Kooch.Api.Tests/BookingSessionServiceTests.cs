@@ -36,6 +36,7 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(64, persisted.RequestHash?.Length);
         var persistedReservation = Assert.Single(persisted.Reservations);
         Assert.Equal(persisted.Id, persistedReservation.BookingSessionId);
+        Assert.Equal(100, persistedReservation.RoomId);
         Assert.Equal(ReservationSource.Website, persistedReservation.Source);
     }
 
@@ -147,6 +148,51 @@ public sealed class BookingSessionServiceTests
             Assert.Single(result.Reservations).Status);
         await using var verification = harness.CreateContext();
         Assert.Null((await verification.Reservations.SingleAsync()).PaymentExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task AccountQuantityWithinCapacity_CreatesIndependentReservationsWithoutRoomAssignments()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+
+        var result = await scope.Service.CreateForAccountAsync(
+            1,
+            CreateAccountRequest(
+                CreateAccountItem(10, roomId: null),
+                CreateAccountItem(10, roomId: null)));
+
+        Assert.Equal(2, result.Reservations.Count);
+        Assert.All(result.Reservations, reservation => Assert.Null(reservation.RoomId));
+        Assert.Equal(
+            2,
+            result.Reservations.Select(reservation => reservation.ReservationNumber).Distinct().Count());
+
+        await using var verification = harness.CreateContext();
+        var availability = await new EffectiveAvailabilityService(verification).GetRangeAsync(
+            [10],
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3));
+        Assert.All(availability[10].Nights.Values, night => Assert.Equal(0, night.RemainingCapacity));
+    }
+
+    [Fact]
+    public async Task AccountQuantityBeyondCapacity_IsRejectedWithoutPartialPersistence()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.CreateForAccountAsync(
+                1,
+                CreateAccountRequest(
+                    CreateAccountItem(10, roomId: null),
+                    CreateAccountItem(10, roomId: null),
+                    CreateAccountItem(10, roomId: null))));
+
+        await using var verification = harness.CreateContext();
+        Assert.Empty(await verification.BookingSessions.ToListAsync());
+        Assert.Empty(await verification.Reservations.ToListAsync());
     }
 
     [Fact]

@@ -172,18 +172,15 @@ describe("public property booking integration", () => {
     resolveOptions(availableOptions);
 
     expect(await screen.findByRole("combobox", { name: "نوع اتاق" })).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "تعداد اتاق" })).toBeTruthy();
+    const quantity = screen.getByRole("combobox", { name: "تعداد اتاق" });
+    expect(quantity).toBeTruthy();
+    fireEvent.change(quantity, { target: { value: "2" } });
     const addButton = screen.getByRole("button", { name: "افزودن این اتاق به سبد رزرو" });
     fireEvent.click(addButton);
 
     expect(await screen.findByRole("heading", { name: "سبد رزرو" })).toBeTruthy();
     expect(screen.getByTestId("booking-mobile-action-bar")).toBeTruthy();
-    expect(screen.getAllByText("۱ اتاق").length).toBeGreaterThan(0);
-
-    fireEvent.click(addButton);
-    await waitFor(() => {
-      expect(screen.getAllByText("۲ اتاق").length).toBeGreaterThan(0);
-    });
+    expect(screen.getAllByText("۲ اتاق").length).toBeGreaterThan(0);
   });
 
   it("exposes empty and error booking-options states", async () => {
@@ -194,13 +191,13 @@ describe("public property booking integration", () => {
         {
           roomTypeId: 10,
           name: property.roomTypes[0].name,
-          reason: "NoActiveNamedRooms",
+          reason: "InsufficientAvailability",
         },
       ],
     });
     const firstRender = render(<PublicPropertyPage />);
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
-    expect(await screen.findByText(/هنوز اتاق فعال قابل انتخابی/)).toBeTruthy();
+    expect(await screen.findByText(/در این بازه ظرفیت قابل رزرو وجود ندارد/)).toBeTruthy();
     firstRender.unmount();
 
     api.fetchOptions.mockRejectedValueOnce(new Error("ارتباط با سرویس موجودی برقرار نشد."));
@@ -278,7 +275,7 @@ describe("public property booking integration", () => {
     expect(screen.queryByText(/۰ تومان \/ شب/)).toBeNull();
   });
 
-  it("shows an actionable warning for a named room type without active rooms", async () => {
+  it("keeps a sellable room type selectable without physical rooms", async () => {
     api.fetchProperty.mockResolvedValueOnce({
       ...property,
       roomTypes: [
@@ -292,22 +289,19 @@ describe("public property booking integration", () => {
 
     render(<PublicPropertyPage />);
 
-    expect(await screen.findByText(/هنوز اتاق فعال قابل رزروی/)).toBeTruthy();
-    expect(screen.getByRole("button", { name: "فعلاً قابل رزرو نیست" }).hasAttribute("disabled")).toBe(true);
+    expect(await screen.findByRole("button", { name: "انتخاب این اتاق" })).toBeTruthy();
+    expect(screen.queryByText(/هنوز اتاق فعال قابل رزروی/)).toBeNull();
   });
 
-  it("explains how named rooms are added", async () => {
+  it("uses the same quantity flow for named and type-based inventory", async () => {
     api.fetchOptions.mockResolvedValueOnce({
       ...availableOptions,
       roomTypes: [
         {
           ...availableOptions.roomTypes[0],
           inventoryMode: "NamedRooms",
-          availableCount: 2,
-          rooms: [
-            { roomId: 101, name: "اتاق یک" },
-            { roomId: 102, name: "اتاق دو" },
-          ],
+          availableCount: 1,
+          rooms: [],
         },
       ],
     });
@@ -315,8 +309,11 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
 
-    expect(
-      await screen.findByText("اتاق‌های نام‌دار باید جداگانه انتخاب و به سبد رزرو اضافه شوند."),
-    ).toBeTruthy();
+    const quantity = await screen.findByRole("combobox", { name: "تعداد اتاق" });
+    expect(screen.queryByRole("combobox", { name: "اتاق مشخص" })).toBeNull();
+    expect(screen.queryByText(/اتاق‌های نام‌دار باید/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "افزودن این اتاق به سبد رزرو" }));
+    expect(await screen.findByText("۱ واحد از اتاق شاه‌نشین به سبد رزرو اضافه شد.")).toBeTruthy();
+    expect(screen.getAllByText("۱ اتاق").length).toBeGreaterThan(0);
   });
 });

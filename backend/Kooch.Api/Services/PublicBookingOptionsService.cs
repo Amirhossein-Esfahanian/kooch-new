@@ -50,12 +50,6 @@ public sealed class PublicBookingOptionsService(
                 continue;
             }
 
-            if (roomType.InventoryMode == InventoryMode.NamedRooms && roomType.Rooms.Count == 0)
-            {
-                unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.NoActiveNamedRooms));
-                continue;
-            }
-
             if (!availability.TryGetValue(roomType.Id, out var effective) ||
                 !effective.HasCapacityForFullRange(1))
             {
@@ -165,25 +159,17 @@ public sealed class PublicBookingOptionsService(
                 night.ConfiguredStatus == AvailabilityStatus.OnRequest)
             ? ReservationBookingModeFilter.OnRequest
             : ReservationBookingModeFilter.Instant;
-        var availableNamedRooms = roomType.Rooms
+        var physicalRoomMetadata = roomType.Rooms
             .Where(room => !availability.ClaimedRoomIds.Contains(room.Id))
             .OrderBy(room => room.Name)
             .ToArray();
-        if (roomType.InventoryMode == InventoryMode.NamedRooms)
-        {
-            availableCount = Math.Min(availableCount, availableNamedRooms.Length);
-        }
-
-        var rooms = roomType.InventoryMode == InventoryMode.NamedRooms
-            ? availableNamedRooms
-                .Take(availableCount)
-                .Select(room => new PublicBookingRoomOption
-                {
-                    RoomId = room.Id,
-                    Name = room.Name
-                })
-                .ToArray()
-            : [];
+        var rooms = physicalRoomMetadata
+            .Select(room => new PublicBookingRoomOption
+            {
+                RoomId = room.Id,
+                Name = room.Name
+            })
+            .ToArray();
 
         return new PublicBookingRoomTypeOption
         {

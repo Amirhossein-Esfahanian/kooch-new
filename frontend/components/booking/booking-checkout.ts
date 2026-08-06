@@ -110,7 +110,6 @@ export function createBookingSessionFromCart(
     idempotencyKey,
     items: items.map((item) => ({
       roomTypeId: item.roomTypeId,
-      roomId: item.roomId,
       checkInDate: item.checkIn,
       checkOutDate: item.checkOut,
       adults: item.adults,
