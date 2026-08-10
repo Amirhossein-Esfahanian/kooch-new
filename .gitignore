@@ -13,6 +13,7 @@ frontend/.env*.local
 
 # Backend
 backend/**/bin/
+backend/**/uploads/
 backend/**/obj/
 backend/**/appsettings.Development.json
 

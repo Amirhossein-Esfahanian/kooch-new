@@ -96,7 +96,11 @@ export default function HomePage() {
 
     fetchPublicApi<PublicProperty[]>("/properties")
       .then(setProperties)
-      .catch(() => setPropertiesError("دریافت اقامتگاه‌ها انجام نشد. لطفاً کمی بعد دوباره تلاش کنید."))
+      .catch(() =>
+        setPropertiesError(
+          "دریافت اقامتگاه‌ها انجام نشد. لطفاً کمی بعد دوباره تلاش کنید.",
+        ),
+      )
       .finally(() => setLoading(false));
   }, []);
 
@@ -135,7 +139,7 @@ export default function HomePage() {
                 "linear-gradient(180deg, rgb(2 6 23 / 0.68), rgb(15 23 42 / 0.32), color-mix(in srgb, var(--theme-primary) 48%, black))",
             }}
           />
-          <div className="relative z-10 mx-auto flex h-full max-w-7xl flex-col items-center justify-center px-5 pt-6 text-center text-white sm:px-8">
+          <div className="relative z-10 mx-auto flex  max-w-7xl flex-col items-center justify-center px-5 pt-6 text-center text-white sm:px-8">
             <h1 className="mt-3 text-3xl font-black leading-tight sm:text-5xl">
               {settingValue(settings, "home.heroTitle")}
             </h1>
@@ -146,7 +150,7 @@ export default function HomePage() {
         </div>
 
         <AccommodationSearchBox
-          className="-mt-20 sm:-mt-24"
+          className="-mt-40 sm:-mt-44 "
           enableSuggestions
           initialValues={{ rooms: 1, adults: 2, children: 0 }}
           redirectToResults
@@ -176,11 +180,19 @@ export default function HomePage() {
               در حال بارگذاری اقامتگاه ها...
             </p>
           ) : propertiesError ? (
-            <KoochAlert className="mt-8" title="نمایش اقامتگاه‌ها ممکن نیست" variant="destructive">
+            <KoochAlert
+              className="mt-8"
+              title="نمایش اقامتگاه‌ها ممکن نیست"
+              variant="destructive"
+            >
               {propertiesError}
             </KoochAlert>
           ) : properties.length === 0 ? (
-            <KoochAlert className="mt-8" title="هنوز اقامتگاهی منتشر نشده است" variant="info">
+            <KoochAlert
+              className="mt-8"
+              title="هنوز اقامتگاهی منتشر نشده است"
+              variant="info"
+            >
               پس از انتشار اقامتگاه‌ها، آن‌ها را در این بخش خواهید دید.
             </KoochAlert>
           ) : (

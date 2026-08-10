@@ -92,7 +92,7 @@ const property = {
       displayPrice: 2_000_000,
       availabilityStatus: "Available" as const,
       inventoryMode: "TypeBasedInventory" as const,
-      totalInventory: 2,
+      totalInventory: 3,
       activeRoomCount: 0,
       maxAdults: 2,
       maxChildren: 1,
@@ -129,7 +129,7 @@ const availableOptions = {
       name: "اتاق شاه‌نشین",
       englishName: null,
       inventoryMode: "TypeBasedInventory" as const,
-      availableCount: 2,
+      availableCount: 3,
       bookingMode: "Instant" as const,
       maxAdults: 2,
       maxChildren: 0,
@@ -173,15 +173,17 @@ describe("public property booking integration", () => {
 
     expect(await screen.findByRole("combobox", { name: "نوع اتاق" })).toBeTruthy();
     expect(screen.getByText("مبلغ قطعی این بازه برای هر اتاق: ۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
-    const quantity = screen.getByRole("combobox", { name: "تعداد اتاق" });
+    const quantity = screen.getByRole("combobox", { name: "تعداد واحد" });
     expect(quantity).toBeTruthy();
-    fireEvent.change(quantity, { target: { value: "2" } });
-    const addButton = screen.getByRole("button", { name: "افزودن این اتاق به سبد رزرو" });
+    expect(within(quantity).getByRole("option", { name: "۳" })).toBeTruthy();
+    fireEvent.change(quantity, { target: { value: "3" } });
+    const addButton = screen.getByRole("button", { name: "افزودن ۳ واحد به سبد رزرو" });
     fireEvent.click(addButton);
 
     expect(await screen.findByRole("heading", { name: "سبد رزرو" })).toBeTruthy();
     expect(screen.getByTestId("booking-mobile-action-bar")).toBeTruthy();
-    expect(screen.getAllByText("۲ اتاق").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("۳ واحد").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
   });
 
   it("exposes empty and error booking-options states", async () => {
@@ -329,11 +331,11 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
 
-    const quantity = await screen.findByRole("combobox", { name: "تعداد اتاق" });
+    const quantity = await screen.findByRole("combobox", { name: "تعداد واحد" });
     expect(screen.queryByRole("combobox", { name: "اتاق مشخص" })).toBeNull();
     expect(screen.queryByText(/اتاق‌های نام‌دار باید/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "افزودن این اتاق به سبد رزرو" }));
+    fireEvent.click(screen.getByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
     expect(await screen.findByText("۱ واحد از اتاق شاه‌نشین به سبد رزرو اضافه شد.")).toBeTruthy();
-    expect(screen.getAllByText("۱ اتاق").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("۱ واحد").length).toBeGreaterThan(0);
   });
 });

@@ -1,6 +1,15 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { BookingCartMobileActionBar } from "@/components/booking/BookingCart";
+import {
+  BookingCartMobileActionBar,
+  BookingCartSummary,
+  groupBookingCartItems,
+} from "@/components/booking/BookingCart";
+import {
+  bookingModePresentation,
+  formatBookingCountdown,
+  formatBookingDateRange,
+} from "@/components/booking/booking-display";
 import {
   addItemsToBookingCart,
   bookingCartStorageKey,
@@ -62,6 +71,47 @@ describe("public booking cart", () => {
     expect(items.every((entry) => entry.roomTypeId === 10)).toBe(true);
     expect(items.every((entry) => entry.roomId === null)).toBe(true);
     expect(items.every((entry) => entry.roomTypeName === "اتاق شاه‌نشین")).toBe(true);
+  });
+
+  it("groups multiple reservations of one RoomType into one cart line", () => {
+    const items = expandBookingCartSelection(selection({ quantity: 3 }));
+    const lines = groupBookingCartItems(items);
+
+    expect(lines).toHaveLength(1);
+    expect(lines[0].quantity).toBe(3);
+    expect(lines[0].itemIds).toHaveLength(3);
+    expect(lines[0].total).toBe(6_000_000);
+  });
+
+  it("renders Jalali dates, Persian numbers, booking mode, and the cart summary", () => {
+    const items = expandBookingCartSelection(selection({ quantity: 2 }));
+    render(
+      <BookingCartSummary
+        items={items}
+        loading={false}
+        onContinue={vi.fn()}
+        onRemove={vi.fn()}
+        total={4_000_000}
+      />,
+    );
+
+    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.getByText(/۱۴۰۵/)).toBeTruthy();
+    expect(screen.queryByText(/2026-08/)).toBeNull();
+    expect(screen.getByText(/✓ رزرو آنی/)).toBeTruthy();
+    expect(screen.getByText("تعداد نوع اتاق")).toBeTruthy();
+    expect(screen.getByText("تعداد کل واحدها")).toBeTruthy();
+    expect(screen.getByText("تعداد شب")).toBeTruthy();
+    expect(screen.getByText("مبلغ کل")).toBeTruthy();
+    expect(screen.getAllByText("۲").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("formats booking dates and countdowns with the Persian calendar and digits", () => {
+    const range = formatBookingDateRange("2026-08-10", "2026-08-12");
+    expect(range).toContain("۱۴۰۵");
+    expect(range).not.toContain("2026");
+    expect(formatBookingCountdown(3_661)).toBe("۰۱:۰۱:۰۱");
+    expect(bookingModePresentation("OnRequest").label).toBe("نیازمند تأیید مالک");
   });
 
   it("rejects a different property, mode, and duplicate named room", () => {

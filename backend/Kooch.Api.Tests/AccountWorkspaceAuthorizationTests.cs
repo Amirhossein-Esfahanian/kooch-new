@@ -163,6 +163,7 @@ public sealed class AccountWorkspaceAuthorizationTests
         null!,
         null!,
         null!,
+        null!,
         null!);
 
     private static KoochDbContext CreateContext() => new(

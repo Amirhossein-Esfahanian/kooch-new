@@ -2,32 +2,84 @@
 
 import { KoochButton } from "@/components/KoochButton";
 import type { BookingCartItem } from "@/components/booking/BookingCartProvider";
+import {
+  bookingModePresentation,
+  countBookingNights,
+  formatBookingDateRange,
+} from "@/components/booking/booking-display";
 import { formatCurrency } from "@/lib/currency";
 
+export interface BookingCartLine {
+  key: string;
+  item: BookingCartItem;
+  itemIds: string[];
+  quantity: number;
+  total: number;
+}
+
+export function groupBookingCartItems(items: BookingCartItem[]) {
+  const groups = new Map<string, BookingCartLine>();
+  for (const item of items) {
+    const key = JSON.stringify([
+      item.roomTypeId,
+      item.roomName,
+      item.checkIn,
+      item.checkOut,
+      item.adults,
+      item.children,
+      item.childAges,
+      item.notes,
+      item.bookingMode,
+      item.displayAmount,
+      item.currency,
+    ]);
+    const current = groups.get(key);
+    if (current) {
+      current.itemIds.push(item.id);
+      current.quantity += 1;
+      current.total += item.displayAmount;
+    } else {
+      groups.set(key, {
+        key,
+        item,
+        itemIds: [item.id],
+        quantity: 1,
+        total: item.displayAmount,
+      });
+    }
+  }
+  return [...groups.values()];
+}
+
 export function BookingCartItemRow({
-  item,
+  line,
   onRemove,
 }: {
-  item: BookingCartItem;
-  onRemove: (id: string) => void;
+  line: BookingCartLine;
+  onRemove: (ids: string[]) => void;
 }) {
+  const { item } = line;
+  const mode = bookingModePresentation(item.bookingMode);
   return (
     <li className="flex items-start justify-between gap-3 border-b border-border py-3 last:border-0">
       <div className="min-w-0 text-sm">
         <p className="truncate font-bold text-foreground">
           {item.roomTypeName}{item.roomName ? `، ${item.roomName}` : ""}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
-          {item.checkIn} – {item.checkOut}
+        <p className="mt-1 text-xs text-muted-foreground">
+          {formatBookingDateRange(item.checkIn, item.checkOut)}
+        </p>
+        <p className="mt-1 text-xs font-bold text-foreground">
+          <span aria-hidden="true">{mode.icon}</span> {mode.label}
         </p>
         <p className="mt-1 font-semibold text-foreground">
-          {formatCurrency(item.displayAmount)}
+          {line.quantity.toLocaleString("fa-IR")} واحد · {formatCurrency(line.total)}
         </p>
       </div>
       <KoochButton
         aria-label={`حذف ${item.roomTypeName} از سبد رزرو`}
         className="shrink-0"
-        onClick={() => onRemove(item.id)}
+        onClick={() => onRemove(line.itemIds)}
         size="sm"
         variant="ghost"
       >
@@ -51,24 +103,35 @@ export function BookingCartSummary({
   onRemove: (id: string) => void;
 }) {
   if (items.length === 0) return null;
+  const lines = groupBookingCartItems(items);
+  const roomTypeCount = new Set(items.map((item) => item.roomTypeId)).size;
+  const nightsCount = countBookingNights(items);
+  const mode = bookingModePresentation(items[0].bookingMode);
 
   return (
     <section aria-labelledby="booking-cart-title" className="mt-5 rounded-lg border border-border bg-card p-4">
       <div className="flex items-center justify-between gap-3">
         <h3 className="font-black text-foreground" id="booking-cart-title">سبد رزرو</h3>
         <span className="text-xs font-bold text-muted-foreground">
-          {items.length.toLocaleString("fa-IR")} اتاق
+          {items.length.toLocaleString("fa-IR")} واحد
         </span>
       </div>
       <ul className="mt-2">
-        {items.map((item) => (
-          <BookingCartItemRow item={item} key={item.id} onRemove={onRemove} />
+        {lines.map((line) => (
+          <BookingCartItemRow
+            key={line.key}
+            line={line}
+            onRemove={(ids) => ids.forEach(onRemove)}
+          />
         ))}
       </ul>
-      <div className="mt-3 flex items-center justify-between gap-3 font-black">
-        <span>مجموع</span>
-        <span>{formatCurrency(total)}</span>
-      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-3 text-sm sm:grid-cols-3">
+        <SummaryValue label="تعداد نوع اتاق" value={roomTypeCount.toLocaleString("fa-IR")} />
+        <SummaryValue label="تعداد کل واحدها" value={items.length.toLocaleString("fa-IR")} />
+        <SummaryValue label="تعداد شب" value={nightsCount.toLocaleString("fa-IR")} />
+        <SummaryValue label="وضعیت رزرو" value={`${mode.icon} ${mode.label}`} />
+        <SummaryValue label="مبلغ کل" value={formatCurrency(total)} />
+      </dl>
       <p className="mt-3 text-xs leading-6 text-muted-foreground">
         برای افزودن اتاق دیگر، یک نوع اتاق یا اتاق نام‌دار دیگر را انتخاب کنید و دوباره به سبد اضافه کنید.
       </p>
@@ -76,6 +139,15 @@ export function BookingCartSummary({
         ادامه رزرو
       </KoochButton>
     </section>
+  );
+}
+
+function SummaryValue({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words font-black text-foreground">{value}</dd>
+    </div>
   );
 }
 
@@ -95,7 +167,7 @@ export function BookingCartMobileActionBar({
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 shadow-lg backdrop-blur sm:hidden" data-testid="booking-mobile-action-bar" dir="rtl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
         <div className="min-w-0 text-sm">
-          <p className="text-xs font-bold text-muted-foreground">{count.toLocaleString("fa-IR")} اتاق</p>
+          <p className="text-xs font-bold text-muted-foreground">{count.toLocaleString("fa-IR")} واحد</p>
           <p className="truncate font-black text-foreground">{formatCurrency(total)}</p>
         </div>
         <KoochButton loading={loading} onClick={onContinue}>ادامه رزرو</KoochButton>
