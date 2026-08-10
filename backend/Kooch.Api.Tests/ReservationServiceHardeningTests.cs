@@ -321,6 +321,61 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(status, (await harness.DbContext.Reservations.FindAsync(reservation.Id))!.Status);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Expiration_DoesNotChangeApprovedReservationWithoutADueDeadline(bool hasFutureDeadline)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var reservation = await harness.AddReservationAsync(
+            ReservationStatus.ApprovedAwaitingPayment,
+            paymentExpiresAtUtc: hasFutureDeadline ? DateTime.UtcNow.AddMinutes(10) : null);
+
+        Assert.False(await harness.Service.ExpirePaymentWindowAsync(reservation.Id));
+        Assert.Equal(
+            ReservationStatus.ApprovedAwaitingPayment,
+            (await harness.DbContext.Reservations.FindAsync(reservation.Id))!.Status);
+    }
+
+    [Fact]
+    public async Task SuccessfulSessionPaymentWinningTheRacePreventsExpiration()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var session = new BookingSession
+        {
+            SessionCode = "KCH-S-PAID-RACE",
+            ClientId = 1,
+            GuestId = 40,
+            PropertyId = 10,
+            Currency = "IRR",
+            RequestHash = new string('R', 64)
+        };
+        harness.DbContext.BookingSessions.Add(session);
+        var reservation = await harness.AddReservationAsync(
+            ReservationStatus.ApprovedAwaitingPayment,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        reservation.BookingSession = session;
+        var payment = new Payment
+        {
+            BookingSession = session,
+            Amount = reservation.FinalAmount,
+            Currency = reservation.Currency,
+            Status = PaymentStatus.Successful,
+            PaidAtUtc = DateTime.UtcNow
+        };
+        payment.Items.Add(new PaymentItem
+        {
+            Reservation = reservation,
+            AllocatedAmount = reservation.FinalAmount,
+            Currency = reservation.Currency
+        });
+        harness.DbContext.Payments.Add(payment);
+        await harness.DbContext.SaveChangesAsync();
+
+        Assert.False(await harness.Service.ExpirePaymentWindowAsync(reservation.Id));
+        Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status);
+    }
+
     [Fact]
     public async Task OwnerCanRejectAccessiblePendingApprovalReservation()
     {

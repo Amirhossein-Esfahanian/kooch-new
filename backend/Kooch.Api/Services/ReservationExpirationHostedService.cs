@@ -21,6 +21,12 @@ internal sealed class ReservationExpirationHostedService(
 
     internal async Task RunOnceAsync(CancellationToken cancellationToken)
     {
+        await ProcessApprovalExpirationsAsync(cancellationToken);
+        await ProcessPaymentExpirationsAsync(cancellationToken);
+    }
+
+    private async Task ProcessApprovalExpirationsAsync(CancellationToken cancellationToken)
+    {
         try
         {
             using var scope = scopeFactory.CreateScope();
@@ -44,6 +50,34 @@ internal sealed class ReservationExpirationHostedService(
             logger.LogError(
                 exception,
                 "Reservation owner approval expiration processing failed.");
+        }
+    }
+
+    private async Task ProcessPaymentExpirationsAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var scope = scopeFactory.CreateScope();
+            var reservationService = scope.ServiceProvider
+                .GetRequiredService<IReservationService>();
+            var expiredCount = await reservationService
+                .ExpireApprovedUnpaidReservationsAsync(BatchSize, cancellationToken);
+            if (expiredCount > 0)
+            {
+                logger.LogInformation(
+                    "Automatically expired {ReservationCount} reservations after their payment window expired.",
+                    expiredCount);
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                exception,
+                "Reservation payment expiration processing failed.");
         }
     }
 }

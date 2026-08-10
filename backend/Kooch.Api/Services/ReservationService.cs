@@ -798,8 +798,14 @@ public class ReservationService(
     }
 
     public async Task<int> ExpireApprovedUnpaidReservationsAsync(
+        int batchSize,
         CancellationToken cancellationToken = default)
     {
+        if (batchSize is < 1 or > 500)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchSize));
+        }
+
         var now = DateTime.UtcNow;
         var reservationIds = await dbContext.Reservations.AsNoTracking()
             .Where(reservation =>
@@ -810,7 +816,10 @@ public class ReservationService(
                 (reservation.Payments
                     .Where(payment => payment.Status == PaymentStatus.Successful)
                     .Sum(payment => (decimal?)payment.Amount) ?? 0) < reservation.FinalAmount)
+            .OrderBy(reservation => reservation.PaymentExpiresAtUtc)
+            .ThenBy(reservation => reservation.Id)
             .Select(reservation => reservation.Id)
+            .Take(batchSize)
             .ToListAsync(cancellationToken);
 
         var expiredCount = 0;
@@ -830,24 +839,21 @@ public class ReservationService(
         DateTime now,
         CancellationToken cancellationToken)
     {
-        var reservation = await dbContext.Reservations
-            .Include(item => item.Property)
-            .Include(item => item.RoomType)
-            .Include(item => item.Guest)
-            .Include(item => item.Client)
-            .Include(item => item.ApprovedByUser)
-            .Include(item => item.Payments)
-            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
-            ?? throw new KeyNotFoundException("Reservation not found.");
-
-        var paidAmount = reservation.Payments
-            .Where(payment => payment.Status == PaymentStatus.Successful)
-            .Sum(payment => payment.Amount);
+        var relatedPaymentIds = await GetRelatedPaymentIdsAsync(
+            reservationId,
+            cancellationToken);
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        var hasSuccessfulPayment = await LockPaymentsAsync(
+            relatedPaymentIds,
+            cancellationToken);
+        var reservation = await LoadLockedReservationAsync(reservationId, cancellationToken);
         if (reservation.Status != ReservationStatus.ApprovedAwaitingPayment ||
             reservation.PaymentExpiresAtUtc is null ||
-            reservation.PaymentExpiresAtUtc >= now ||
+            reservation.PaymentExpiresAtUtc > now ||
             reservation.PaidAtUtc.HasValue ||
-            paidAmount >= reservation.FinalAmount)
+            hasSuccessfulPayment)
         {
             return false;
         }
@@ -872,7 +878,6 @@ public class ReservationService(
             reservation.ReservationNumber,
             "System marked the unpaid reservation as payment expired.");
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await notificationService.SendAsync(
             CreateReservationNotificationRequest(
@@ -883,6 +888,45 @@ public class ReservationService(
         await transaction.CommitAsync(cancellationToken);
 
         return true;
+    }
+
+    private Task<List<int>> GetRelatedPaymentIdsAsync(
+        int reservationId,
+        CancellationToken cancellationToken) =>
+        dbContext.Payments.AsNoTracking()
+            .Where(payment =>
+                payment.ReservationId == reservationId ||
+                payment.Items.Any(item => item.ReservationId == reservationId))
+            .OrderBy(payment => payment.Id)
+            .Select(payment => payment.Id)
+            .ToListAsync(cancellationToken);
+
+    private async Task<bool> LockPaymentsAsync(
+        IReadOnlyCollection<int> paymentIds,
+        CancellationToken cancellationToken)
+    {
+        var hasSuccessfulPayment = false;
+        foreach (var paymentId in paymentIds.Order())
+        {
+            Payment payment;
+            if (dbContext.Database.IsSqlServer())
+            {
+                payment = await dbContext.Payments
+                    .FromSqlInterpolated(
+                        $"SELECT * FROM Payments WITH (UPDLOCK, HOLDLOCK) WHERE Id = {paymentId}")
+                    .SingleAsync(cancellationToken);
+            }
+            else
+            {
+                payment = await dbContext.Payments.SingleAsync(
+                    item => item.Id == paymentId,
+                    cancellationToken);
+            }
+
+            hasSuccessfulPayment |= payment.Status == PaymentStatus.Successful;
+        }
+
+        return hasSuccessfulPayment;
     }
 
     private async Task<Reservation> ExpireAndReloadIfNeededAsync(
@@ -1755,7 +1799,7 @@ public class ReservationService(
         IReadOnlyCollection<int>? allowedPropertyIds,
         CancellationToken cancellationToken)
     {
-        await ExpireApprovedUnpaidReservationsAsync(cancellationToken);
+        await ExpireApprovedUnpaidReservationsAsync(100, cancellationToken);
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 100);
         var reservations = ApplyFilters(

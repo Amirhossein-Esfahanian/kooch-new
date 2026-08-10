@@ -123,6 +123,30 @@ public sealed class BookingSessionQueryApiTests
     }
 
     [Fact]
+    public async Task AccountRead_ReturnsPersistedPaymentExpiredChildStatus()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var reservation = await context.Reservations
+            .SingleAsync(item => item.Id == 1000);
+        reservation.Status = ReservationStatus.PaymentExpired;
+        reservation.PaymentExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var service = new BookingSessionQueryService(context);
+
+        var result = await service.GetBySessionCodeForClientAsync(
+            1,
+            "KCH-S-READ-0001");
+
+        Assert.Contains(
+            result.Reservations,
+            item =>
+                item.ReservationNumber == reservation.ReservationNumber &&
+                item.Status == ReservationStatus.PaymentExpired);
+    }
+
+    [Fact]
     public async Task AccountList_IsOwnedPagedProjectedAndExcludesStandaloneReservations()
     {
         await using var harness = await BookingSessionReadHarness.CreateAsync();

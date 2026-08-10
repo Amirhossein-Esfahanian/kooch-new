@@ -84,6 +84,7 @@ public interface IReservationService
         CancellationToken cancellationToken = default);
 
     Task<int> ExpireApprovedUnpaidReservationsAsync(
+        int batchSize,
         CancellationToken cancellationToken = default);
 
     Task<bool> ExpireApprovalWindowAsync(

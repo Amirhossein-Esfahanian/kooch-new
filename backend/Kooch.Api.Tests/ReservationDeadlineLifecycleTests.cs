@@ -101,6 +101,74 @@ public sealed class ReservationDeadlineLifecycleTests
     }
 
     [Fact]
+    public async Task HostedService_ProcessesDuePaymentExpirationsInABoundedIdempotentPass()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var session = new BookingSession
+        {
+            SessionCode = "KCH-S-EXPIRATION",
+            ClientId = 1,
+            GuestId = 40,
+            PropertyId = 10,
+            Currency = "IRR",
+            RequestHash = new string('E', 64)
+        };
+        harness.DbContext.BookingSessions.Add(session);
+        await harness.DbContext.SaveChangesAsync();
+        var firstDue = await harness.AddReservationAsync(
+            ReservationStatus.ApprovedAwaitingPayment,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-2));
+        var secondDue = await harness.AddReservationAsync(
+            ReservationStatus.ApprovedAwaitingPayment,
+            roomId: 31,
+            roomTypeId: 21,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        var future = await harness.AddReservationAsync(
+            ReservationStatus.ApprovedAwaitingPayment,
+            roomId: 31,
+            roomTypeId: 21,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(10));
+        var noDeadline = await harness.AddReservationAsync(
+            ReservationStatus.ApprovedAwaitingPayment,
+            roomId: 31,
+            roomTypeId: 21);
+        var confirmed = await harness.AddReservationAsync(
+            ReservationStatus.Confirmed,
+            roomId: 31,
+            roomTypeId: 21,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        var paid = await harness.AddReservationAsync(
+            ReservationStatus.Paid,
+            roomId: 31,
+            roomTypeId: 21,
+            paymentExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        foreach (var reservation in new[] { firstDue, secondDue, future, noDeadline, confirmed, paid })
+        {
+            reservation.BookingSessionId = session.Id;
+        }
+        await harness.DbContext.SaveChangesAsync();
+        using var services = new ServiceCollection()
+            .AddSingleton<IReservationService>(harness.Service)
+            .BuildServiceProvider();
+        var hostedService = new ReservationExpirationHostedService(
+            services.GetRequiredService<IServiceScopeFactory>(),
+            TimeProvider.System,
+            NullLogger<ReservationExpirationHostedService>.Instance);
+
+        await hostedService.RunOnceAsync(CancellationToken.None);
+        await hostedService.RunOnceAsync(CancellationToken.None);
+
+        Assert.Equal(ReservationStatus.PaymentExpired, firstDue.Status);
+        Assert.Equal(ReservationStatus.PaymentExpired, secondDue.Status);
+        Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, future.Status);
+        Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, noDeadline.Status);
+        Assert.Equal(ReservationStatus.Confirmed, confirmed.Status);
+        Assert.Equal(ReservationStatus.Paid, paid.Status);
+        Assert.Equal(1, await harness.GetRemainingCapacityAsync());
+        Assert.Equal(100, ReservationExpirationHostedService.BatchSize);
+    }
+
+    [Fact]
     public async Task ReminderHostedService_UsesOneMinuteScanAndBoundedBatch()
     {
         var now = new DateTimeOffset(2035, 1, 1, 12, 0, 0, TimeSpan.Zero);
