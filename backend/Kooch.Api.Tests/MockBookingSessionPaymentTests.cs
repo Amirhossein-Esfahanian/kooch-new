@@ -48,6 +48,29 @@ public sealed class MockBookingSessionPaymentTests
     }
 
     [Fact]
+    public async Task AccountInitiation_AllowsCanonicalMixedContinuationWithoutASecondEndpoint()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var rejected = await harness.Context.Reservations
+            .OrderBy(reservation => reservation.Id)
+            .LastAsync();
+        rejected.Status = ReservationStatus.Rejected;
+        await harness.Context.SaveChangesAsync();
+
+        var result = await harness.AccountService.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            "mixed-account-key");
+
+        Assert.Equal(100, result.Amount);
+        var payment = await harness.Context.Payments.Include(item => item.Items).SingleAsync();
+        Assert.Equal(100, payment.Amount);
+        Assert.Equal(100, Assert.Single(payment.Items).ReservationId);
+        Assert.Equal(Harness.SessionCode, (await harness.Context.BookingSessions.SingleAsync()).SessionCode);
+        Assert.Equal(2, await harness.Context.Reservations.CountAsync());
+    }
+
+    [Fact]
     public async Task MockSuccess_ConfirmsEveryChildAndDuplicateIsIdempotent()
     {
         await using var harness = await Harness.CreateAsync();

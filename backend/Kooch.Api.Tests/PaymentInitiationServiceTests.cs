@@ -57,22 +57,170 @@ public sealed class PaymentInitiationServiceTests
     }
 
     [Fact]
-    public async Task MixedApprovedAndRejectedSession_RemainsBlocked()
+    public async Task MixedApprovedAndRejectedSession_CreatesPaymentForApprovedChildOnly()
     {
         var deadline = DateTime.UtcNow.AddHours(1);
         await using var harness = await PaymentInitiationHarness.CreateAsync(
             Reservation(deadline, 100),
             Reservation(deadline, 200, ReservationStatus.Rejected));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => harness.Service.InitiateBookingSessionPaymentAsync(Request()));
+        var result = await harness.Service.InitiateBookingSessionPaymentAsync(Request());
 
-        Assert.Contains("rejected reservation", exception.Message, StringComparison.OrdinalIgnoreCase);
-        Assert.Empty(await harness.Context.Payments.ToListAsync());
-        Assert.Empty(await harness.Context.PaymentItems.ToListAsync());
+        Assert.Equal(100, result.Amount);
+        Assert.Equal(deadline, result.PaymentDeadlineUtc);
+        Assert.Equal(10, Assert.Single(result.Items).ReservationId);
+        Assert.Equal(result.Amount, result.Items.Sum(item => item.AllocatedAmount));
         Assert.All(
             await harness.Context.Reservations.ToListAsync(),
             reservation => Assert.Equal(harness.SessionId, reservation.BookingSessionId));
+    }
+
+    [Fact]
+    public async Task MixedApprovedRejectedApproved_UsesAllPayableChildrenInDeterministicOrder()
+    {
+        var laterDeadline = DateTime.UtcNow.AddHours(2);
+        var earlierDeadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(laterDeadline, 100),
+            Reservation(laterDeadline, 200, ReservationStatus.Rejected),
+            Reservation(earlierDeadline, 300));
+
+        var result = await harness.Service.InitiateBookingSessionPaymentAsync(Request());
+
+        Assert.Equal(400, result.Amount);
+        Assert.Equal(earlierDeadline, result.PaymentDeadlineUtc);
+        Assert.Equal(new[] { 10, 12 }, result.Items.Select(item => item.ReservationId));
+        Assert.Equal(result.Amount, result.Items.Sum(item => item.AllocatedAmount));
+        Assert.Equal(600, await harness.Context.Reservations.SumAsync(item => item.FinalAmount));
+        Assert.Equal(
+            ReservationStatus.Rejected,
+            (await harness.Context.Reservations.SingleAsync(item => item.Id == 11)).Status);
+    }
+
+    [Fact]
+    public async Task MixedApprovedAndPendingSession_IsRejected()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.PendingApproval));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Service.InitiateBookingSessionPaymentAsync(Request()));
+
+        Assert.Contains("pending approvals", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task MixedContinuation_WithMissingOrExpiredDeadline_IsRejected(bool expired)
+    {
+        var deadline = expired ? DateTime.UtcNow.AddMinutes(-1) : (DateTime?)null;
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(DateTime.UtcNow.AddHours(1), 200, ReservationStatus.Rejected));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Service.InitiateBookingSessionPaymentAsync(Request()));
+        Assert.Empty(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MixedContinuation_WithCurrencyMismatch_IsRejected()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100, currency: "USD"),
+            Reservation(deadline, 200, ReservationStatus.Rejected));
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Service.InitiateBookingSessionPaymentAsync(Request()));
+        Assert.Empty(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RejectedChildCurrency_DoesNotAffectMixedPayableCurrency()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.Rejected, "USD"));
+
+        var result = await harness.Service.InitiateBookingSessionPaymentAsync(Request());
+
+        Assert.Equal("IRR", result.Currency);
+        Assert.Equal(100, result.Amount);
+        Assert.Equal(10, Assert.Single(result.Items).ReservationId);
+    }
+
+    [Fact]
+    public async Task MixedContinuation_SameKeyAndScope_ReplaysExistingPayment()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.Rejected));
+
+        var first = await harness.Service.InitiateBookingSessionPaymentAsync(Request("mixed-key"));
+        var replay = await harness.Service.InitiateBookingSessionPaymentAsync(Request("mixed-key"));
+
+        Assert.True(replay.IsReplay);
+        Assert.Equal(first.PaymentId, replay.PaymentId);
+        Assert.Equal(first.RequestHash, replay.RequestHash);
+        Assert.Single(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task MixedContinuation_SameKeyWithChangedResolvedScope_IsRejected()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.Rejected));
+        await harness.Service.InitiateBookingSessionPaymentAsync(Request("scope-key"));
+        var rejected = await harness.Context.Reservations.SingleAsync(item => item.Id == 11);
+        rejected.Status = ReservationStatus.ApprovedAwaitingPayment;
+        await harness.Context.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Service.InitiateBookingSessionPaymentAsync(Request("scope-key")));
+
+        Assert.Contains("different payment payload", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Single(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public void InitiationContract_DoesNotAllowClientSelectedReservationIds()
+    {
+        Assert.DoesNotContain(
+            typeof(BookingSessionPaymentInitiationRequest).GetProperties(),
+            property => property.Name.Contains("Reservation", StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public async Task MixedPayment_RemainsBlockedByCurrentDomainApplicationHandler()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.Rejected));
+        await harness.Service.InitiateBookingSessionPaymentAsync(Request());
+        var payment = await harness.Context.Payments.Include(item => item.Items).SingleAsync();
+        var handler = new PaymentDomainApplicationHandler(
+            harness.Context,
+            new EffectiveAvailabilityService(harness.Context));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => handler.ApplyAsync(payment));
+
+        Assert.Contains("cover every reservation", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.Equal(
+            new[] { ReservationStatus.ApprovedAwaitingPayment, ReservationStatus.Rejected },
+            (await harness.Context.Reservations.OrderBy(item => item.Id).ToListAsync())
+                .Select(item => item.Status));
     }
 
     [Fact]
@@ -201,6 +349,30 @@ public sealed class PaymentInitiationServiceTests
     }
 
     [Fact]
+    public async Task ConcurrentMixedRequestsWithTheSameKey_ReturnOnePayment()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.Rejected),
+            Reservation(deadline.AddMinutes(-5), 300));
+        await using var firstScope = harness.CreateServiceScope();
+        await using var secondScope = harness.CreateServiceScope();
+
+        var results = await Task.WhenAll(
+            firstScope.Service.InitiateBookingSessionPaymentAsync(Request("mixed-concurrent-key")),
+            secondScope.Service.InitiateBookingSessionPaymentAsync(Request("mixed-concurrent-key")));
+
+        Assert.Equal(results[0].PaymentId, results[1].PaymentId);
+        Assert.Single(results, result => !result.IsReplay);
+        Assert.Single(results, result => result.IsReplay);
+        Assert.All(results, result => Assert.Equal(new[] { 10, 12 }, result.Items.Select(item => item.ReservationId)));
+        await using var verification = harness.CreateVerificationContext();
+        Assert.Single(await verification.Payments.ToListAsync());
+        Assert.Equal(2, await verification.PaymentItems.CountAsync());
+    }
+
+    [Fact]
     public async Task PaymentItemFailure_RollsBackTheWholePayment()
     {
         var interceptor = new RejectMultiplePaymentItemsInterceptor();
@@ -254,7 +426,7 @@ public sealed class PaymentInitiationServiceTests
         };
 
     private static ReservationSpec Reservation(
-        DateTime deadline,
+        DateTime? deadline,
         decimal amount,
         ReservationStatus status = ReservationStatus.ApprovedAwaitingPayment,
         string currency = "IRR") =>
@@ -262,7 +434,7 @@ public sealed class PaymentInitiationServiceTests
 
     private sealed record ReservationSpec(
         ReservationStatus Status,
-        DateTime Deadline,
+        DateTime? Deadline,
         decimal Amount,
         string Currency);
 

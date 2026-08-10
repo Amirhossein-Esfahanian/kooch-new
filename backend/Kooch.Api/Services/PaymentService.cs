@@ -11,13 +11,34 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class PaymentService(
-    KoochDbContext dbContext,
-    IEffectiveAvailabilityService effectiveAvailabilityService) : IPaymentService
+public class PaymentService : IPaymentService
 {
     private const int MaximumIdempotencyKeyLength = 200;
     private const int MaximumProviderLength = 100;
     private static readonly ConcurrentDictionary<int, SemaphoreSlim> LocalSessionLocks = new();
+    private readonly KoochDbContext dbContext;
+    private readonly IEffectiveAvailabilityService effectiveAvailabilityService;
+    private readonly IBookingSessionPayableScopeResolver payableScopeResolver;
+
+    public PaymentService(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            new BookingSessionPayableScopeResolver())
+    {
+    }
+
+    internal PaymentService(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IBookingSessionPayableScopeResolver payableScopeResolver)
+    {
+        this.dbContext = dbContext;
+        this.effectiveAvailabilityService = effectiveAvailabilityService;
+        this.payableScopeResolver = payableScopeResolver;
+    }
 
     public async Task<BookingSessionPaymentInitiationResult> InitiateBookingSessionPaymentAsync(
         BookingSessionPaymentInitiationRequest request,
@@ -57,16 +78,18 @@ public class PaymentService(
     {
         var session = await LockBookingSessionAsync(request.BookingSessionId, cancellationToken);
         var reservations = await LockSessionReservationsAsync(session.Id, cancellationToken);
+        var now = DateTime.UtcNow;
         var candidate = BuildInitiationCandidate(
             session,
             reservations,
             request.Provider,
-            request.IdempotencyKey);
+            request.IdempotencyKey,
+            now);
         return await PersistOrReplayAsync(
             session.Id,
             reservations,
             candidate,
-            DateTime.UtcNow,
+            now,
             cancellationToken);
     }
 
@@ -87,7 +110,7 @@ public class PaymentService(
         }
 
         await EnsureNoOtherPendingPaymentAsync(bookingSessionId, cancellationToken);
-        ValidateNewPaymentReadiness(reservations, candidate.PaymentDeadlineUtc, now);
+        ValidateNewPaymentReadiness(reservations, candidate, now);
         var payment = CreatePendingPayment(bookingSessionId, candidate);
         dbContext.Payments.Add(payment);
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -469,15 +492,49 @@ public class PaymentService(
                 $"SELECT * FROM Reservations WITH (UPDLOCK, HOLDLOCK) WHERE Id = {id}")
             : dbContext.Reservations.Where(reservation => reservation.Id == id);
 
-    private static PaymentInitiationCandidate BuildInitiationCandidate(
+    private PaymentInitiationCandidate BuildInitiationCandidate(
         BookingSession session,
         IReadOnlyList<Reservation> reservations,
         string provider,
-        string idempotencyKey)
+        string idempotencyKey,
+        DateTime utcNow)
     {
-        var deadline = GetCanonicalPaymentDeadline(reservations);
         var currency = NormalizeCurrency(session.Currency);
-        var allocations = BuildAllocations(reservations, currency);
+        var isFullSessionPayment = reservations.Count > 0 &&
+            reservations.All(reservation =>
+                reservation.Status == ReservationStatus.ApprovedAwaitingPayment);
+        IReadOnlyList<Reservation> payableReservations;
+        DateTime deadline;
+
+        if (isFullSessionPayment)
+        {
+            payableReservations = reservations;
+            deadline = GetCanonicalPaymentDeadline(reservations);
+        }
+        else
+        {
+            var payableScope = payableScopeResolver.Resolve(
+                currency,
+                reservations.Select(reservation => new BookingSessionPayableChild(
+                    reservation.Id,
+                    reservation.Status,
+                    reservation.FinalAmount,
+                    reservation.Currency,
+                    reservation.PaymentExpiresAtUtc))
+                    .ToArray(),
+                utcNow);
+            EnsureMixedContinuationIsEligible(payableScope);
+            var payableIds = payableScope.PayableChildren
+                .Select(child => child.ReservationId)
+                .ToHashSet();
+            payableReservations = reservations
+                .Where(reservation => payableIds.Contains(reservation.Id))
+                .OrderBy(reservation => reservation.Id)
+                .ToArray();
+            deadline = payableScope.EarliestPayableDeadlineUtc!.Value;
+        }
+
+        var allocations = BuildAllocations(payableReservations, currency);
         var amount = allocations.Sum(item => item.AllocatedAmount);
         var requestHash = ComputeInitiationRequestHash(
             session.Id,
@@ -491,7 +548,29 @@ public class PaymentService(
             amount,
             deadline,
             requestHash,
-            allocations);
+            allocations,
+            !isFullSessionPayment);
+    }
+
+    private static void EnsureMixedContinuationIsEligible(
+        BookingSessionPayableScope payableScope)
+    {
+        if (payableScope.PendingApprovalChildren.Count > 0)
+        {
+            throw new InvalidOperationException("The booking session still has pending approvals.");
+        }
+
+        if (payableScope.RejectedChildren.Count > 0 &&
+            payableScope.PayableChildren.Count == 0)
+        {
+            throw new InvalidOperationException("A rejected reservation prevents payment initiation.");
+        }
+
+        if (!payableScope.CanContinueWithApprovedReservations)
+        {
+            throw new InvalidOperationException(
+                "The booking session does not have an eligible mixed payment continuation scope.");
+        }
     }
 
     private static DateTime GetCanonicalPaymentDeadline(
@@ -522,11 +601,15 @@ public class PaymentService(
 
     private static void ValidateNewPaymentReadiness(
         IReadOnlyList<Reservation> reservations,
-        DateTime deadline,
+        PaymentInitiationCandidate candidate,
         DateTime now)
     {
-        ValidatePaymentStatuses(reservations);
-        if (deadline <= now)
+        if (!candidate.IsMixedContinuation)
+        {
+            ValidatePaymentStatuses(reservations);
+        }
+
+        if (candidate.PaymentDeadlineUtc <= now)
         {
             throw new InvalidOperationException("The booking session payment deadline has expired.");
         }
@@ -720,7 +803,8 @@ public class PaymentService(
         decimal Amount,
         DateTime PaymentDeadlineUtc,
         string RequestHash,
-        IReadOnlyList<PaymentInitiationAllocation> Items);
+        IReadOnlyList<PaymentInitiationAllocation> Items,
+        bool IsMixedContinuation);
 
     private sealed record CanonicalPaymentInitiation(
         int BookingSessionId,
