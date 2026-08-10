@@ -14,6 +14,7 @@ public class NotificationLog : BaseEntity
     public string? Subject { get; set; }
     public string Message { get; set; } = string.Empty;
     public string? DataJson { get; set; }
+    public string? DedupeKey { get; set; }
     public NotificationStatus Status { get; set; }
     public DateTime? SentAtUtc { get; set; }
     public string? Error { get; set; }

@@ -44,7 +44,7 @@ const groupLabels: Record<string, string> = {
   Footer: "فوتر",
   Images: "تنظیمات تصاویر",
   Pricing: "تنظیمات قیمت‌گذاری",
-  Reservation: "تنظیمات کمیسیون",
+  Reservation: "تنظیمات رزرو",
 };
 
 const imageLabels: Record<string, string> = {
@@ -69,6 +69,11 @@ const commissionSettingKeys = [
   "ReservationCommissionPercent",
   "ReferralCommissionPercent",
   "CommissionType3Percent",
+] as const;
+const reservationDeadlineSettingKeys = [
+  "reservation.paymentWindowMinutes",
+  "reservation.ownerApprovalWindowMinutes",
+  "reservation.ownerApprovalReminderIntervalMinutes",
 ] as const;
 
 function inputType(type: SiteSettingType) {
@@ -134,6 +139,15 @@ export default function AdminSiteSettingsPage() {
       const percent = Number(drafts[key] ?? 0);
       if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
         toast.error("درصد کمیسیون باید بین ۰ تا ۱۰۰ باشد");
+        return false;
+      }
+    }
+
+    for (const key of reservationDeadlineSettingKeys) {
+      if (!settings.some((setting) => setting.key === key)) continue;
+      const minutes = Number(drafts[key]);
+      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
+        toast.error("مهلت رزرو باید یک عدد صحیح بین ۱ دقیقه و ۷ روز باشد");
         return false;
       }
     }
@@ -303,7 +317,7 @@ export default function AdminSiteSettingsPage() {
       );
     }
 
-    return (
+    const numberInput = (
       <KoochInput
         className="font-bold"
         dir="rtl"
@@ -315,7 +329,11 @@ export default function AdminSiteSettingsPage() {
         }
         type={inputType(setting.type)}
         max={
-          commissionSettingKeys.includes(
+          reservationDeadlineSettingKeys.includes(
+            setting.key as (typeof reservationDeadlineSettingKeys)[number],
+          )
+            ? 10080
+            : commissionSettingKeys.includes(
             setting.key as (typeof commissionSettingKeys)[number],
           )
             ? 100
@@ -343,6 +361,15 @@ export default function AdminSiteSettingsPage() {
         value={value}
       />
     );
+
+    return reservationDeadlineSettingKeys.includes(
+      setting.key as (typeof reservationDeadlineSettingKeys)[number],
+    ) ? (
+      <div className="flex items-center gap-2">
+        <div className="min-w-0 flex-1">{numberInput}</div>
+        <span className="shrink-0 text-sm font-bold text-muted-foreground">دقیقه</span>
+      </div>
+    ) : numberInput;
   }
 
   return (

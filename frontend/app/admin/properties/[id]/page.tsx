@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { ReservationFollowUpRecipients } from "@/components/admin/ReservationFollowUpRecipients";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { PropertyWizard } from "@/components/owner/PropertyWizard";
 
@@ -38,6 +39,7 @@ export default function AdminPropertyEditPage() {
           title="ویرایش اقامتگاه"
         />
         <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
+        <ReservationFollowUpRecipients propertyId={propertyId} />
       </main>
     </AdminLayout>
   );

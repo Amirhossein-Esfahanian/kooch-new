@@ -7,6 +7,7 @@ namespace Kooch.Api.Services;
 internal static class ReservationPaymentWindowSettings
 {
     internal const string SettingKey = "reservation.paymentWindowMinutes";
+    internal const int MaximumMinutes = 10080;
 
     internal static async Task<int> GetMinutesAsync(
         KoochDbContext dbContext,
@@ -26,18 +27,21 @@ internal static class ReservationPaymentWindowSettings
             throw InvalidPaymentWindow();
         }
 
-        return EnsureRange(minutes);
+        return EnsureRange(minutes, SettingKey);
     }
-    private static int EnsureRange(int minutes)
+
+    internal static int EnsureRange(int minutes, string settingKey)
     {
-        if (Math.Clamp(minutes, 1, 10080).CompareTo(minutes) is not 0)
+        if (minutes is < 1 or > MaximumMinutes)
         {
-            throw InvalidPaymentWindow();
+            throw InvalidWindow(settingKey);
         }
 
         return minutes;
     }
 
-    private static InvalidOperationException InvalidPaymentWindow() =>
-        new(SettingKey);
+    private static InvalidOperationException InvalidPaymentWindow() => InvalidWindow(SettingKey);
+
+    internal static InvalidOperationException InvalidWindow(string settingKey) =>
+        new($"Active Site Setting '{settingKey}' must contain a value from 1 to {MaximumMinutes} minutes.");
 }

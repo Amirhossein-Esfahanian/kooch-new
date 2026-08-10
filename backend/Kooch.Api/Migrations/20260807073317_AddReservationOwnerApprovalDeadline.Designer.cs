@@ -4,6 +4,7 @@ using Kooch.Api.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Kooch.Api.Migrations
 {
     [DbContext(typeof(KoochDbContext))]
-    partial class KoochDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260807073317_AddReservationOwnerApprovalDeadline")]
+    partial class AddReservationOwnerApprovalDeadline
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1312,10 +1315,6 @@ namespace Kooch.Api.Migrations
                         .HasMaxLength(4000)
                         .HasColumnType("nvarchar(4000)");
 
-                    b.Property<string>("DedupeKey")
-                        .HasMaxLength(240)
-                        .HasColumnType("nvarchar(240)");
-
                     b.Property<DateTime?>("DeletedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -1379,10 +1378,6 @@ namespace Kooch.Api.Migrations
                         .HasColumnType("int");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("DedupeKey")
-                        .IsUnique()
-                        .HasFilter("[DedupeKey] IS NOT NULL");
 
                     b.HasIndex("PropertyId");
 
@@ -2355,58 +2350,6 @@ namespace Kooch.Api.Migrations
                     b.HasIndex("PropertyId", "Tag");
 
                     b.ToTable("PropertyImages");
-                });
-
-            modelBuilder.Entity("Kooch.Api.Entities.PropertyReservationFollowUpRecipient", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
-
-                    b.Property<DateTime>("CreatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("CreatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("DeletedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("DeletedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<bool>("IsActive")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("bit")
-                        .HasDefaultValue(true);
-
-                    b.Property<bool>("IsDeleted")
-                        .HasColumnType("bit");
-
-                    b.Property<int>("PropertyId")
-                        .HasColumnType("int");
-
-                    b.Property<DateTime?>("UpdatedAtUtc")
-                        .HasColumnType("datetime2");
-
-                    b.Property<int?>("UpdatedByUserId")
-                        .HasColumnType("int");
-
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("UserId");
-
-                    b.HasIndex("PropertyId", "IsActive");
-
-                    b.HasIndex("PropertyId", "UserId")
-                        .IsUnique();
-
-                    b.ToTable("PropertyReservationFollowUpRecipients");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.PropertyTravelPurpose", b =>
@@ -4321,25 +4264,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("RoomType");
                 });
 
-            modelBuilder.Entity("Kooch.Api.Entities.PropertyReservationFollowUpRecipient", b =>
-                {
-                    b.HasOne("Kooch.Api.Entities.Property", "Property")
-                        .WithMany("ReservationFollowUpRecipients")
-                        .HasForeignKey("PropertyId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.HasOne("Kooch.Api.Entities.User", "User")
-                        .WithMany("ReservationFollowUpAssignments")
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.NoAction)
-                        .IsRequired();
-
-                    b.Navigation("Property");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("Kooch.Api.Entities.PropertyTravelPurpose", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.Property", "Property")
@@ -4806,8 +4730,6 @@ namespace Kooch.Api.Migrations
 
                     b.Navigation("PropertyTravelPurposes");
 
-                    b.Navigation("ReservationFollowUpRecipients");
-
                     b.Navigation("Reservations");
 
                     b.Navigation("Reviews");
@@ -4897,8 +4819,6 @@ namespace Kooch.Api.Migrations
                     b.Navigation("OwnedProperties");
 
                     b.Navigation("PasswordSetupTokens");
-
-                    b.Navigation("ReservationFollowUpAssignments");
 
                     b.Navigation("Reservations");
 

@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
@@ -110,7 +111,9 @@ public static class SeedData
             SiteSettingSeed("reservation.halfPriceChildMinAge", "7", SiteSettingType.Number, "Reservation", "حداقل سن کودک نیم‌بها", null, 50),
             SiteSettingSeed("reservation.halfPriceChildMaxAge", "12", SiteSettingType.Number, "Reservation", "حداکثر سن کودک نیم‌بها", null, 60),
             SiteSettingSeed("reservation.halfPriceChildRate", "50", SiteSettingType.Number, "Reservation", "درصد محاسبه کودک نیم‌بها", "۵۰ یعنی نصف قیمت پایه.", 70),
-            SiteSettingSeed("reservation.paymentWindowMinutes", "10", SiteSettingType.Number, "Reservation", "مهلت پرداخت رزرو تاییدشده (دقیقه)", null, 80)
+            SiteSettingSeed("reservation.paymentWindowMinutes", "10", SiteSettingType.Number, "Reservation", "مهلت پرداخت رزرو", "مدت پرداخت پس از تأیید رزرو، بر حسب دقیقه.", 80),
+            SiteSettingSeed("reservation.ownerApprovalWindowMinutes", "10", SiteSettingType.Number, "Reservation", "مهلت پاسخ مالک به رزرو استعلامی", "اگر اقامتگاه تا پایان این زمان درخواست رزرو را تأیید یا رد نکند، درخواست به‌صورت خودکار رد می‌شود.", 90),
+            SiteSettingSeed(ReservationOwnerApprovalReminderSettings.SettingKey, ReservationOwnerApprovalReminderSettings.DefaultMinutes.ToString(CultureInfo.InvariantCulture), SiteSettingType.Number, "Reservation", "فاصله یادآوری رزروهای در انتظار تأیید", "تا زمانی که رزرو استعلامی بدون پاسخ مانده است، افراد مسئول می‌توانند با این فاصله زمانی یادآوری دریافت کنند.", 100)
         };
 
         var existing = await dbContext.SiteSettings.IgnoreQueryFilters().ToListAsync();

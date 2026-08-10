@@ -154,7 +154,11 @@ public enum NotificationEventType
     UserInvitationCreated = 10,
     PasswordSetupRequested = 11,
     OtpRequested = 12,
-    ReservationPaymentLinkCreated = 13
+    ReservationPaymentLinkCreated = 13,
+    ReservationApprovalRequested = 14,
+    ReservationOwnerApprovalTimedOut = 15,
+    ReservationRejected = 16,
+    ReservationApprovalReminder = 17
 }
 [Flags]
 public enum NotificationChannel

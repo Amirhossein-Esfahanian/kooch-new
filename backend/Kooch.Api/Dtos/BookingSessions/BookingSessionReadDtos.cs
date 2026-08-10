@@ -51,6 +51,7 @@ public sealed class BookingSessionDerivedSummaryResponse
     public bool HasRejectedReservations { get; set; }
     public bool HasInconsistentPaymentDeadlines { get; set; }
     public DateTime? EarliestPaymentDeadlineUtc { get; set; }
+    public DateTime? EarliestApprovalDeadlineUtc { get; set; }
     public IReadOnlyList<BookingSessionStatusCountResponse> StatusCounts { get; set; } = [];
 }
 
@@ -72,6 +73,7 @@ public sealed class BookingSessionReservationDetailsResponse
     public DateOnly CheckOutDate { get; set; }
     public ReservationStatus Status { get; set; }
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
 }
@@ -131,6 +133,7 @@ public sealed class AccountBookingSessionReservationResponse
     public DateOnly CheckOutDate { get; set; }
     public ReservationStatus Status { get; set; }
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
 }

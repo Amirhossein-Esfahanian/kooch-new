@@ -103,6 +103,7 @@ export interface AccountBookingSessionSummary {
   hasRejectedReservations: boolean;
   hasInconsistentPaymentDeadlines: boolean;
   earliestPaymentDeadlineUtc: string | null;
+  earliestApprovalDeadlineUtc: string | null;
   statusCounts: Array<{ status: string; count: number }>;
 }
 
@@ -131,6 +132,7 @@ export interface AccountBookingSession {
     checkInDate: string;
     checkOutDate: string;
     status: string;
+    approvalExpiresAtUtc: string | null;
     paymentExpiresAtUtc: string | null;
     finalAmount: number;
     currency: string;

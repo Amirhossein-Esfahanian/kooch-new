@@ -85,6 +85,9 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(
             ReservationStatus.PendingApproval,
             Assert.Single(result.Reservations).Status);
+        Assert.Equal(
+            result.Reservations.Select(reservation => reservation.ReservationId),
+            scope.NotificationDispatcher.PendingApprovalReservationIds);
     }
 
     [Fact]
@@ -103,6 +106,7 @@ public sealed class BookingSessionServiceTests
 
         Assert.All(result.Reservations, reservation =>
             Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status));
+        Assert.Empty(scope.NotificationDispatcher.PendingApprovalReservationIds);
         await using var verification = harness.CreateContext();
         var persisted = await verification.Reservations
             .Where(reservation => reservation.BookingSessionId == result.BookingSessionId)
@@ -113,6 +117,7 @@ public sealed class BookingSessionServiceTests
         Assert.NotNull(deadline);
         Assert.InRange(deadline.Value, before, after);
         Assert.All(persisted, reservation => Assert.NotNull(reservation.ApprovedAtUtc));
+        Assert.All(persisted, reservation => Assert.Null(reservation.ApprovalExpiresAtUtc));
 
         var availability = await new EffectiveAvailabilityService(verification).GetRangeAsync(
             [10],
@@ -139,15 +144,38 @@ public sealed class BookingSessionServiceTests
         }
 
         await using var scope = harness.CreateService();
+        var approvalDeadlineBefore = DateTime.UtcNow.AddMinutes(45);
         var result = await scope.Service.CreateForAccountAsync(
             1,
             CreateAccountRequest(CreateAccountItem(10, 100)));
+        var approvalDeadlineAfter = DateTime.UtcNow.AddMinutes(45);
 
         Assert.Equal(
             ReservationStatus.PendingApproval,
             Assert.Single(result.Reservations).Status);
         await using var verification = harness.CreateContext();
-        Assert.Null((await verification.Reservations.SingleAsync()).PaymentExpiresAtUtc);
+        var persisted = await verification.Reservations.SingleAsync();
+        Assert.Null(persisted.PaymentExpiresAtUtc);
+        Assert.NotNull(persisted.ApprovalExpiresAtUtc);
+        Assert.InRange(
+            persisted.ApprovalExpiresAtUtc.Value,
+            approvalDeadlineBefore,
+            approvalDeadlineAfter);
+        var originalApprovalDeadline = persisted.ApprovalExpiresAtUtc;
+        var setting = await verification.SiteSettings.SingleAsync(item =>
+            item.Key == "reservation.ownerApprovalWindowMinutes");
+        setting.Value = "90";
+        await verification.SaveChangesAsync();
+        verification.ChangeTracker.Clear();
+        Assert.Equal(
+            originalApprovalDeadline,
+            (await verification.Reservations.SingleAsync()).ApprovalExpiresAtUtc);
+        var availability = await new EffectiveAvailabilityService(verification).GetRangeAsync(
+            [10],
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3));
+        Assert.All(availability[10].Nights.Values, night =>
+            Assert.Equal(2, night.RemainingCapacity));
     }
 
     [Fact]
@@ -593,6 +621,16 @@ public sealed class BookingSessionServiceTests
                 Label = "Payment window",
                 IsActive = true
             });
+            context.SiteSettings.Add(new SiteSetting
+            {
+                Id = 2,
+                Key = "reservation.ownerApprovalWindowMinutes",
+                Value = "45",
+                Type = SiteSettingType.Number,
+                Group = "Reservation",
+                Label = "Owner approval window",
+                IsActive = true
+            });
             context.Properties.AddRange(
                 new Property
                 {
@@ -638,14 +676,16 @@ public sealed class BookingSessionServiceTests
         public ServiceScope CreateService(TestReservationPricingService? pricing = null)
         {
             var context = CreateContext();
+            var notificationDispatcher = new RecordingReservationNotificationDispatcher();
             var service = new BookingSessionService(
                 context,
                 new EffectiveAvailabilityService(context),
                 pricing ?? new TestReservationPricingService(),
                 new ReservationStatusWorkflow(),
                 new ReservationNumberGenerator(context),
-                new BookingSessionCodeGenerator());
-            return new ServiceScope(context, service);
+                new BookingSessionCodeGenerator(),
+                notificationDispatcher);
+            return new ServiceScope(context, service, notificationDispatcher);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
@@ -682,9 +722,11 @@ public sealed class BookingSessionServiceTests
 
     private sealed class ServiceScope(
         KoochDbContext context,
-        BookingSessionService service) : IAsyncDisposable
+        BookingSessionService service,
+        RecordingReservationNotificationDispatcher notificationDispatcher) : IAsyncDisposable
     {
         public BookingSessionService Service { get; } = service;
+        public RecordingReservationNotificationDispatcher NotificationDispatcher { get; } = notificationDispatcher;
 
         public async ValueTask DisposeAsync()
         {

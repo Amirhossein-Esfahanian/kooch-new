@@ -103,11 +103,13 @@ public class AdminSiteSettingsController(
                 throw new ArgumentException("درصد کمیسیون باید بین ۰ تا ۱۰۰ باشد.");
             }
         }
-        else if (setting.Key == "reservation.paymentWindowMinutes" &&
-                 (!int.TryParse(value, out var paymentWindowMinutes) ||
-                  paymentWindowMinutes is < 1 or > 10080))
+        else if (setting.Key is ReservationPaymentWindowSettings.SettingKey or
+                 ReservationOwnerApprovalWindowSettings.SettingKey or
+                 ReservationOwnerApprovalReminderSettings.SettingKey &&
+                 (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var deadlineMinutes) ||
+                  deadlineMinutes is < 1 or > ReservationPaymentWindowSettings.MaximumMinutes))
         {
-            throw new ArgumentException("مهلت پرداخت باید بین ۱ دقیقه و ۷ روز باشد.");
+            throw new ArgumentException("مهلت رزرو باید بین ۱ دقیقه و ۷ روز باشد.");
         }
 
         else if (ChildPricingKeys.Contains(setting.Key))

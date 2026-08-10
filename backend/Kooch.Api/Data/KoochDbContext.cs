@@ -14,6 +14,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<UserPropertyAccess> UserPropertyAccesses => Set<UserPropertyAccess>();
     public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+    public DbSet<PropertyReservationFollowUpRecipient> PropertyReservationFollowUpRecipients => Set<PropertyReservationFollowUpRecipient>();
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<RoomType> RoomTypes => Set<RoomType>();
     public DbSet<Room> Rooms => Set<Room>();
@@ -240,7 +241,11 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(log => log.Subject).HasMaxLength(500);
             entity.Property(log => log.Message).HasMaxLength(4000).IsRequired();
             entity.Property(log => log.DataJson).HasMaxLength(4000);
+            entity.Property(log => log.DedupeKey).HasMaxLength(240);
             entity.Property(log => log.Error).HasMaxLength(4000);
+            entity.HasIndex(log => log.DedupeKey)
+                .IsUnique()
+                .HasFilter("[DedupeKey] IS NOT NULL");
             entity.HasIndex(log => log.Status);
             entity.HasIndex(log => log.SentAtUtc);
             entity.HasOne(log => log.RecipientUser)
@@ -710,6 +715,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasForeignKey(session => session.PropertyId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
+
+        modelBuilder.Entity<PropertyReservationFollowUpRecipient>(entity =>
+        {
+            entity.Property(recipient => recipient.IsActive).HasDefaultValue(true);
+            entity.HasIndex(recipient => new { recipient.PropertyId, recipient.UserId }).IsUnique();
+            entity.HasIndex(recipient => new { recipient.PropertyId, recipient.IsActive });
+            entity.HasOne(recipient => recipient.Property)
+                .WithMany(property => property.ReservationFollowUpRecipients)
+                .HasForeignKey(recipient => recipient.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(recipient => recipient.User)
+                .WithMany(user => user.ReservationFollowUpAssignments)
+                .HasForeignKey(recipient => recipient.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
     }
 
     private static void ConfigureReservations(ModelBuilder modelBuilder)
@@ -749,6 +769,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasFilter("[ReservationNumber] IS NOT NULL AND [ReservationNumber] <> ''");
             entity.HasIndex(reservation => reservation.Status);
             entity.HasIndex(reservation => new { reservation.Status, reservation.HoldUntilUtc });
+            entity.HasIndex(reservation => new { reservation.Status, reservation.ApprovalExpiresAtUtc });
             entity.HasIndex(reservation => new { reservation.Status, reservation.PaymentExpiresAtUtc });
             entity.HasOne(reservation => reservation.BookingSession)
                 .WithMany(session => session.Reservations)

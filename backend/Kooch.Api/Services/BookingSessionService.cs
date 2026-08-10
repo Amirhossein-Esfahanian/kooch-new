@@ -18,7 +18,8 @@ public sealed class BookingSessionService(
     IReservationPricingService pricingService,
     IReservationStatusWorkflow statusWorkflow,
     IReservationNumberGenerator reservationNumberGenerator,
-    IBookingSessionCodeGenerator sessionCodeGenerator) : IBookingSessionService
+    IBookingSessionCodeGenerator sessionCodeGenerator,
+    IReservationNotificationDispatcher notificationDispatcher) : IBookingSessionService
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> LocalResourceLocks = new();
 
@@ -159,6 +160,12 @@ public sealed class BookingSessionService(
                     dbContext,
                     cancellationToken))
                 : (DateTime?)null;
+        var commonApprovalDeadlineUtc = preparedItems.Any(item =>
+                item.Status == ReservationStatus.PendingApproval)
+            ? now.AddMinutes(await ReservationOwnerApprovalWindowSettings.GetMinutesAsync(
+                dbContext,
+                cancellationToken))
+            : (DateTime?)null;
         var session = new BookingSession
         {
             SessionCode = sessionCodeGenerator.Generate(),
@@ -194,6 +201,9 @@ public sealed class BookingSessionService(
                 Currency = prepared.Currency,
                 Status = prepared.Status,
                 ApprovedAtUtc = commonPaymentDeadlineUtc.HasValue ? now : null,
+                ApprovalExpiresAtUtc = prepared.Status == ReservationStatus.PendingApproval
+                    ? commonApprovalDeadlineUtc
+                    : null,
                 PaymentExpiresAtUtc = commonPaymentDeadlineUtc,
                 ConfirmedAtUtc = prepared.Status == ReservationStatus.Confirmed ? now : null,
                 Source = ReservationSource.Website,
@@ -203,6 +213,16 @@ public sealed class BookingSessionService(
 
         dbContext.BookingSessions.Add(session);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var pendingApprovalIds = session.Reservations
+            .Where(reservation => reservation.Status == ReservationStatus.PendingApproval)
+            .Select(reservation => reservation.Id)
+            .ToArray();
+        if (pendingApprovalIds.Length > 0)
+        {
+            await notificationDispatcher.NotifyPendingApprovalAsync(
+                pendingApprovalIds,
+                cancellationToken);
+        }
         await transaction.CommitAsync(cancellationToken);
         return ToResult(session);
     }

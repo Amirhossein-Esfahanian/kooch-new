@@ -49,13 +49,14 @@ function session(paymentStatus = "Pending") {
       hasRejectedReservations: false,
       hasInconsistentPaymentDeadlines: false,
       earliestPaymentDeadlineUtc: "2026-08-09T10:00:00Z",
+      earliestApprovalDeadlineUtc: null,
       statusCounts: [],
     },
     commonPaymentDeadlineUtc: "2026-08-09T10:00:00Z",
     payment: { paymentId: 50, status: paymentStatus, amount: 300, currency: "IRR", provider: "internal-test", appliedAtUtc: paymentStatus === "Successful" ? "2026-08-05T10:00:00Z" : null },
     reservations: [
-      { reservationNumber: "R-1", roomTypeId: 10, roomTypeName: "اتاق یک", roomId: 101, roomName: "۱۰۱", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", paymentExpiresAtUtc: "2026-08-09T10:00:00Z", finalAmount: 100, currency: "IRR" },
-      { reservationNumber: "R-2", roomTypeId: 11, roomTypeName: "اتاق دو", roomId: 102, roomName: "۱۰۲", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", paymentExpiresAtUtc: "2026-08-09T10:00:00Z", finalAmount: 200, currency: "IRR" },
+      { reservationNumber: "R-1", roomTypeId: 10, roomTypeName: "اتاق یک", roomId: 101, roomName: "۱۰۱", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", approvalExpiresAtUtc: null, paymentExpiresAtUtc: "2026-08-09T10:00:00Z", finalAmount: 100, currency: "IRR" },
+      { reservationNumber: "R-2", roomTypeId: 11, roomTypeName: "اتاق دو", roomId: 102, roomName: "۱۰۲", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", approvalExpiresAtUtc: null, paymentExpiresAtUtc: "2026-08-09T10:00:00Z", finalAmount: 200, currency: "IRR" },
     ],
   };
 }

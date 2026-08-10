@@ -60,6 +60,16 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, approved.Status);
         Assert.NotNull(approved.PaymentExpiresAtUtc);
         Assert.InRange(approved.PaymentExpiresAtUtc.Value, before, after);
+        var originalDeadline = approved.PaymentExpiresAtUtc;
+        var setting = await harness.DbContext.SiteSettings.SingleAsync(item =>
+            item.Key == "reservation.paymentWindowMinutes");
+        setting.Value = "90";
+        await harness.DbContext.SaveChangesAsync();
+        harness.DbContext.ChangeTracker.Clear();
+        Assert.Equal(
+            originalDeadline,
+            (await harness.DbContext.Reservations.SingleAsync(item => item.Id == pending.Id))
+                .PaymentExpiresAtUtc);
         Assert.Equal(0, await harness.GetRemainingCapacityAsync());
     }
 
@@ -109,6 +119,108 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, approved.Status);
         Assert.NotNull(approved.PaymentExpiresAtUtc);
         Assert.InRange(approved.PaymentExpiresAtUtc.Value, before, after);
+    }
+
+    [Fact]
+    public async Task ApprovalAfterOwnerDeadline_RejectsOnlyThatReservation()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var session = new BookingSession
+        {
+            SessionCode = "KCH-S-OWNER-TIMEOUT",
+            ClientId = 1,
+            GuestId = 40,
+            PropertyId = 10,
+            Currency = "IRR",
+            RequestHash = new string('B', 64)
+        };
+        harness.DbContext.BookingSessions.Add(session);
+        await harness.DbContext.SaveChangesAsync();
+        var expired = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        var stillPending = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            roomId: 31,
+            roomTypeId: 21,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(10));
+        expired.BookingSessionId = session.Id;
+        stillPending.BookingSessionId = session.Id;
+        await harness.DbContext.SaveChangesAsync();
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            harness.Service.ApproveAsync(expired.Id, harness.Owner));
+
+        Assert.Contains("approval deadline", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(ReservationStatus.Rejected, expired.Status);
+        Assert.Equal(ReservationStatus.PendingApproval, stillPending.Status);
+        Assert.Null(stillPending.PaymentExpiresAtUtc);
+    }
+
+    [Fact]
+    public async Task ScheduledApprovalExpiration_IsBoundedAndIdempotent()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var first = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(-2));
+        var second = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            roomId: 31,
+            roomTypeId: 21,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+
+        Assert.Equal(1, await harness.Service.ExpirePendingApprovalReservationsAsync(1));
+        Assert.Equal(1, await harness.Service.ExpirePendingApprovalReservationsAsync(100));
+        Assert.Equal(0, await harness.Service.ExpirePendingApprovalReservationsAsync(100));
+        Assert.Equal(ReservationStatus.Rejected, first.Status);
+        Assert.Equal(ReservationStatus.Rejected, second.Status);
+    }
+
+    [Fact]
+    public async Task OwnerApprovalExpiration_RecordsCanonicalTimeoutCauseDistinctFromManualRejection()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var expired = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+        var manuallyRejected = await harness.AddReservationAsync(
+            ReservationStatus.PendingApproval,
+            roomId: 31,
+            roomTypeId: 21,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(10));
+
+        Assert.True(await harness.Service.ExpireApprovalWindowAsync(expired.Id));
+        await harness.Service.UpdateStatusAsync(
+            manuallyRejected.Id,
+            new ReservationStatusUpdateRequest { Status = ReservationStatus.Rejected },
+            harness.Owner);
+
+        var timeoutAudit = Assert.Single(harness.AuditLogService.Entries);
+        Assert.Equal(AuditAction.BookingExpired, timeoutAudit.Action);
+        Assert.StartsWith(
+            ReservationRejectionReasons.OwnerApprovalTimeout + ":",
+            timeoutAudit.Description,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain(
+            harness.AuditLogService.Entries,
+            entry => entry.EntityId == manuallyRejected.Id);
+    }
+
+    [Theory]
+    [InlineData(ReservationStatus.Rejected)]
+    [InlineData(ReservationStatus.Cancelled)]
+    [InlineData(ReservationStatus.Confirmed)]
+    [InlineData(ReservationStatus.Paid)]
+    public async Task ApprovalExpiration_DoesNotChangeTerminalOrPaidStates(ReservationStatus status)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var reservation = await harness.AddReservationAsync(
+            status,
+            approvalExpiresAtUtc: DateTime.UtcNow.AddMinutes(-1));
+
+        Assert.False(await harness.Service.ExpireApprovalWindowAsync(reservation.Id));
+        Assert.Equal(status, reservation.Status);
     }
 
     [Fact]
@@ -410,13 +522,15 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
         DbContext = dbContext;
         var permissions = new StubPermissionService(permissionGranted);
         EffectiveAvailability = new EffectiveAvailabilityService(dbContext);
+        AuditLogService = new RecordingAuditLogService();
         Service = new ReservationService(
             dbContext,
             new StubReservationAvailabilityService(),
             new StubReservationPricingService(),
             new StubReservationNumberGenerator(),
             new RecordingNotificationService(),
-            new NoOpAuditLogService(),
+            new RecordingReservationNotificationDispatcher(),
+            AuditLogService,
             permissions,
             new StubPropertyAuthorizationService(permissionGranted),
             new ReservationStatusWorkflow(),
@@ -429,13 +543,16 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
     public (int UserId, UserRole Role) Owner => (2, UserRole.Client);
     public (int UserId, UserRole Role) SuperAdmin => (1, UserRole.SuperAdmin);
     public KoochDbContext DbContext { get; }
+    public RecordingAuditLogService AuditLogService { get; }
     public EffectiveAvailabilityService EffectiveAvailability { get; }
     public ReservationService Service { get; }
 
     public static async Task<ReservationTestHarness> CreateAsync(
         bool permissionGranted = true,
         int? paymentWindowMinutes = 10,
-        string? paymentWindowValue = null)
+        string? paymentWindowValue = null,
+        int? ownerApprovalWindowMinutes = 10,
+        string? ownerApprovalWindowValue = null)
     {
         var options = new DbContextOptionsBuilder<KoochDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
@@ -495,6 +612,19 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
                 IsActive = true
             });
         }
+        if (ownerApprovalWindowMinutes.HasValue || ownerApprovalWindowValue is not null)
+        {
+            dbContext.SiteSettings.Add(new SiteSetting
+            {
+                Id = 51,
+                Key = "reservation.ownerApprovalWindowMinutes",
+                Value = ownerApprovalWindowValue ?? ownerApprovalWindowMinutes!.Value.ToString(),
+                Type = SiteSettingType.Number,
+                Group = "Reservation",
+                Label = "Owner approval window",
+                IsActive = true
+            });
+        }
 
         await dbContext.SaveChangesAsync();
         return harness;
@@ -504,7 +634,8 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
         ReservationStatus status,
         int? roomId = 30,
         DateTime? paymentExpiresAtUtc = null,
-        int roomTypeId = 20)
+        int roomTypeId = 20,
+        DateTime? approvalExpiresAtUtc = null)
     {
         var reservation = new Reservation
         {
@@ -522,6 +653,7 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
             FinalAmount = 100,
             Status = status,
             Source = ReservationSource.AdminCreated,
+            ApprovalExpiresAtUtc = approvalExpiresAtUtc,
             PaymentExpiresAtUtc = paymentExpiresAtUtc
         };
         DbContext.Reservations.Add(reservation);
@@ -559,6 +691,34 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
         MaxAdults = 2,
         IsActive = true
     };
+}
+
+internal sealed class RecordingReservationNotificationDispatcher : IReservationNotificationDispatcher
+{
+    public List<int> PendingApprovalReservationIds { get; } = [];
+    public List<int> TimedOutReservationIds { get; } = [];
+
+    public Task NotifyPendingApprovalAsync(
+        IReadOnlyCollection<int> reservationIds,
+        CancellationToken cancellationToken = default)
+    {
+        PendingApprovalReservationIds.AddRange(reservationIds);
+        return Task.CompletedTask;
+    }
+
+    public Task NotifyOwnerApprovalTimeoutAsync(
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        TimedOutReservationIds.Add(reservationId);
+        return Task.CompletedTask;
+    }
+
+    public Task<bool> NotifyApprovalReminderAsync(
+        int reservationId,
+        DateTime nowUtc,
+        string occurrenceKey,
+        CancellationToken cancellationToken = default) => Task.FromResult(false);
 }
 
 internal sealed class StubPermissionService(bool allowed) : IPermissionService
@@ -673,6 +833,46 @@ internal sealed class RecordingNotificationService : INotificationService
         return Task.CompletedTask;
     }
 }
+
+internal sealed class RecordingAuditLogService : IAuditLogService
+{
+    public List<AuditLogEntry> Entries { get; } = [];
+
+    public void Add(
+        int userId,
+        AuditAction action,
+        string entityType,
+        int? entityId = null,
+        int? propertyId = null,
+        string? entityName = null,
+        string? description = null)
+    {
+        Entries.Add(new AuditLogEntry(
+            userId,
+            action,
+            entityType,
+            entityId,
+            propertyId,
+            entityName,
+            description));
+    }
+
+    public Task<IReadOnlyList<AuditLogResponse>> GetByPropertyAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default) =>
+        Task.FromResult<IReadOnlyList<AuditLogResponse>>([]);
+}
+
+internal sealed record AuditLogEntry(
+    int UserId,
+    AuditAction Action,
+    string EntityType,
+    int? EntityId,
+    int? PropertyId,
+    string? EntityName,
+    string? Description);
 
 internal sealed class NoOpAuditLogService : IAuditLogService
 {

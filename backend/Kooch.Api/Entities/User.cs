@@ -22,6 +22,7 @@ public class User : BaseEntity
     public ICollection<UserPropertyAccess> UserPropertyAccesses { get; set; } = [];
     public ICollection<NotificationSubscription> NotificationSubscriptions { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
+    public ICollection<PropertyReservationFollowUpRecipient> ReservationFollowUpAssignments { get; set; } = [];
     public ICollection<PasswordSetupToken> PasswordSetupTokens { get; set; } = [];
     public ICollection<Property> OwnedProperties { get; set; } = [];
     public ICollection<BookingSession> BookingSessions { get; set; } = [];

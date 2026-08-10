@@ -57,5 +57,6 @@ public class Property : BaseEntity
     public ICollection<UserPropertyAccess> UserPropertyAccesses { get; set; } = [];
     public ICollection<NotificationSubscription> NotificationSubscriptions { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
+    public ICollection<PropertyReservationFollowUpRecipient> ReservationFollowUpRecipients { get; set; } = [];
     public ICollection<PropertyDescriptionSection> DescriptionSections { get; set; } = [];
 }

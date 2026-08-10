@@ -179,6 +179,7 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                         CheckInDate = reservation.CheckInDate,
                         CheckOutDate = reservation.CheckOutDate,
                         Status = reservation.Status,
+                        ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                         PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
                         Currency = reservation.Currency
@@ -242,6 +243,7 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                         CheckInDate = reservation.CheckInDate,
                         CheckOutDate = reservation.CheckOutDate,
                         Status = reservation.Status,
+                        ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                         PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
                         Currency = reservation.Currency
@@ -268,6 +270,7 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                 CheckInDate = reservation.CheckInDate,
                 CheckOutDate = reservation.CheckOutDate,
                 Status = reservation.Status,
+                ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                 PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                 FinalAmount = reservation.FinalAmount,
                 Currency = reservation.Currency
@@ -314,6 +317,12 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             .ToArray();
         var hasPendingApprovals = reservations.Any(reservation =>
             reservation.Status == ReservationStatus.PendingApproval);
+        var approvalDeadlines = reservations
+            .Where(reservation =>
+                reservation.Status == ReservationStatus.PendingApproval &&
+                reservation.ApprovalExpiresAtUtc.HasValue)
+            .Select(reservation => reservation.ApprovalExpiresAtUtc!.Value)
+            .ToArray();
         var hasRejectedReservations = reservations.Any(reservation =>
             reservation.Status == ReservationStatus.Rejected);
         var hasMissingPaymentDeadline =
@@ -347,6 +356,9 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             EarliestPaymentDeadlineUtc = paymentDeadlines.Length == 0
                 ? null
                 : paymentDeadlines.Min(),
+            EarliestApprovalDeadlineUtc = approvalDeadlines.Length == 0
+                ? null
+                : approvalDeadlines.Min(),
             StatusCounts = statusCounts
         };
     }

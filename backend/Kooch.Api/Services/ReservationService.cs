@@ -16,6 +16,7 @@ public class ReservationService(
     IReservationPricingService pricingService,
     IReservationNumberGenerator reservationNumberGenerator,
     INotificationService notificationService,
+    IReservationNotificationDispatcher notificationDispatcher,
     IAuditLogService auditLogService,
     IPermissionService permissionService,
     IPropertyAuthorizationService propertyAuthorizationService,
@@ -23,7 +24,6 @@ public class ReservationService(
     IEffectiveAvailabilityService effectiveAvailabilityService,
     IHostEnvironment hostEnvironment) : IReservationService
 {
-    private const string PaymentWindowMinutesSettingKey = "reservation.paymentWindowMinutes";
     private const decimal MaximumStoredAmount = 9999999999999999.99m;
 
     public async Task<PagedResult<ReservationListItemResponse>> SearchAsync(
@@ -275,6 +275,11 @@ public class ReservationService(
         reservation.ConfirmedAtUtc = reservation.Status == ReservationStatus.Confirmed
             ? now
             : null;
+        reservation.ApprovalExpiresAtUtc = reservation.Status == ReservationStatus.PendingApproval
+            ? now.AddMinutes(await ReservationOwnerApprovalWindowSettings.GetMinutesAsync(
+                dbContext,
+                cancellationToken))
+            : null;
         await ValidateFinalCapacityAsync(
             request.RoomTypeId,
             request.CheckInDate,
@@ -289,9 +294,18 @@ public class ReservationService(
         dbContext.Reservations.Add(reservation);
         await dbContext.SaveChangesAsync(cancellationToken);
 
-        await notificationService.SendAsync(
-            CreateNotificationRequest(reservation, request, guest, isOnRequest),
-            cancellationToken);
+        if (reservation.Status == ReservationStatus.PendingApproval)
+        {
+            await notificationDispatcher.NotifyPendingApprovalAsync(
+                [reservation.Id],
+                cancellationToken);
+        }
+        else
+        {
+            await notificationService.SendAsync(
+                CreateNotificationRequest(reservation, request, guest, isOnRequest),
+                cancellationToken);
+        }
 
         await transaction.CommitAsync(cancellationToken);
 
@@ -488,14 +502,18 @@ public class ReservationService(
             IsolationLevel.Serializable,
             cancellationToken);
         await LockRoomTypeAsync(reservationSummary.RoomTypeId, cancellationToken);
-        var reservation = await dbContext.Reservations
-            .Include(item => item.Property)
-            .Include(item => item.RoomType)
-            .Include(item => item.Guest)
-            .Include(item => item.Client)
-            .Include(item => item.ApprovedByUser)
-            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
-            ?? throw new KeyNotFoundException("Reservation not found.");
+        var reservation = await LoadLockedReservationAsync(reservationId, cancellationToken);
+
+        if (IsApprovalExpired(reservation, DateTime.UtcNow))
+        {
+            ApplyOwnerApprovalTimeout(reservation, DateTime.UtcNow);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await notificationDispatcher.NotifyOwnerApprovalTimeoutAsync(
+                reservation.Id,
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            throw ApprovalDeadlineExpiredException();
+        }
 
         statusWorkflow.ValidateTransition(
             reservation.Status,
@@ -540,6 +558,16 @@ public class ReservationService(
             cancellationToken);
         var reservation = reservations.SingleOrDefault(item => item.Id == reservationId)
             ?? throw new KeyNotFoundException("Reservation not found.");
+        if (IsApprovalExpired(reservation, DateTime.UtcNow))
+        {
+            ApplyOwnerApprovalTimeout(reservation, DateTime.UtcNow);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await notificationDispatcher.NotifyOwnerApprovalTimeoutAsync(
+                reservation.Id,
+                cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            throw ApprovalDeadlineExpiredException();
+        }
         statusWorkflow.ValidateTransition(
             reservation.Status,
             ReservationStatus.ApprovedAwaitingPayment);
@@ -708,6 +736,67 @@ public class ReservationService(
         CancellationToken cancellationToken = default) =>
         ExpirePaymentWindowAtAsync(reservationId, DateTime.UtcNow, cancellationToken);
 
+    public Task<bool> ExpireApprovalWindowAsync(
+        int reservationId,
+        CancellationToken cancellationToken = default) =>
+        ExpireApprovalWindowAtAsync(reservationId, DateTime.UtcNow, cancellationToken);
+
+    public async Task<int> ExpirePendingApprovalReservationsAsync(
+        int batchSize,
+        CancellationToken cancellationToken = default)
+    {
+        if (batchSize is < 1 or > 500)
+        {
+            throw new ArgumentOutOfRangeException(nameof(batchSize));
+        }
+
+        var now = DateTime.UtcNow;
+        var reservationIds = await dbContext.Reservations.AsNoTracking()
+            .Where(reservation =>
+                reservation.Status == ReservationStatus.PendingApproval &&
+                reservation.ApprovalExpiresAtUtc.HasValue &&
+                reservation.ApprovalExpiresAtUtc.Value <= now)
+            .OrderBy(reservation => reservation.ApprovalExpiresAtUtc)
+            .ThenBy(reservation => reservation.Id)
+            .Select(reservation => reservation.Id)
+            .Take(batchSize)
+            .ToListAsync(cancellationToken);
+
+        var expiredCount = 0;
+        foreach (var reservationId in reservationIds)
+        {
+            if (await ExpireApprovalWindowAtAsync(reservationId, now, cancellationToken))
+            {
+                expiredCount++;
+            }
+        }
+
+        return expiredCount;
+    }
+
+    private async Task<bool> ExpireApprovalWindowAtAsync(
+        int reservationId,
+        DateTime now,
+        CancellationToken cancellationToken)
+    {
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable,
+            cancellationToken);
+        var reservation = await LoadLockedReservationAsync(reservationId, cancellationToken);
+        if (!IsApprovalExpired(reservation, now))
+        {
+            return false;
+        }
+
+        ApplyOwnerApprovalTimeout(reservation, now);
+        await dbContext.SaveChangesAsync(cancellationToken);
+        await notificationDispatcher.NotifyOwnerApprovalTimeoutAsync(
+            reservation.Id,
+            cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+        return true;
+    }
+
     public async Task<int> ExpireApprovedUnpaidReservationsAsync(
         CancellationToken cancellationToken = default)
     {
@@ -800,7 +889,12 @@ public class ReservationService(
         Reservation reservation,
         CancellationToken cancellationToken)
     {
-        if (!await ExpirePaymentWindowAsync(reservation.Id, cancellationToken))
+        var approvalExpired = await ExpireApprovalWindowAsync(
+            reservation.Id,
+            cancellationToken);
+        var paymentExpired = !approvalExpired &&
+            await ExpirePaymentWindowAsync(reservation.Id, cancellationToken);
+        if (!approvalExpired && !paymentExpired)
         {
             return reservation;
         }
@@ -928,7 +1022,9 @@ public class ReservationService(
         reservation.ApprovedAtUtc = now;
         reservation.ApprovedByUserId = currentUser.UserId;
         reservation.PaymentExpiresAtUtc = paymentDeadlineUtc ??
-            now.AddMinutes(await GetPaymentWindowMinutesAsync(cancellationToken));
+            now.AddMinutes(await ReservationPaymentWindowSettings.GetMinutesAsync(
+                dbContext,
+                cancellationToken));
         auditLogService.Add(
             currentUser.UserId,
             AuditAction.BookingApproved,
@@ -1189,6 +1285,23 @@ public class ReservationService(
             .SingleAsync(roomType => roomType.Id == roomTypeId, cancellationToken);
     }
 
+    private async Task<Reservation> LoadLockedReservationAsync(
+        int reservationId,
+        CancellationToken cancellationToken)
+    {
+        var query = dbContext.Database.IsSqlServer()
+            ? dbContext.Reservations.FromSqlInterpolated(
+                $"SELECT * FROM Reservations WITH (UPDLOCK, HOLDLOCK) WHERE Id = {reservationId}")
+            : dbContext.Reservations.Where(reservation => reservation.Id == reservationId);
+        return await query
+            .Include(item => item.Property)
+            .Include(item => item.RoomType)
+            .Include(item => item.Guest)
+            .Include(item => item.Client)
+            .Include(item => item.ApprovedByUser)
+            .SingleAsync(cancellationToken);
+    }
+
     private async Task<List<Reservation>> LoadLockedSessionReservationsAsync(
         int bookingSessionId,
         CancellationToken cancellationToken)
@@ -1251,6 +1364,32 @@ public class ReservationService(
     private static InvalidOperationException CapacityChangedException() =>
         new("Availability changed. There is no longer enough capacity for the selected dates.");
 
+    private void ApplyOwnerApprovalTimeout(
+        Reservation reservation,
+        DateTime now)
+    {
+        reservation.Status = ReservationStatus.Rejected;
+        reservation.ExpiredAtUtc = now;
+        reservation.ChangedAtUtc = now;
+        reservation.ChangedByUserId = null;
+        auditLogService.Add(
+            reservation.ClientId,
+            AuditAction.BookingExpired,
+            nameof(Reservation),
+            reservation.Id,
+            reservation.PropertyId,
+            reservation.ReservationNumber,
+            $"{ReservationRejectionReasons.OwnerApprovalTimeout}: reservation {reservation.ReservationNumber} was automatically rejected.");
+    }
+
+    private static bool IsApprovalExpired(Reservation reservation, DateTime now) =>
+        ReservationStatusNormalizer.Normalize(reservation.Status) == ReservationStatus.PendingApproval &&
+        reservation.ApprovalExpiresAtUtc.HasValue &&
+        reservation.ApprovalExpiresAtUtc.Value <= now;
+
+    private static InvalidOperationException ApprovalDeadlineExpiredException() =>
+        new("The owner approval deadline has expired.");
+
     private async Task<bool> CanApproveAsync(
         int userId,
         UserRole role,
@@ -1262,29 +1401,6 @@ public class ReservationService(
             propertyId,
             "bookings.edit",
             cancellationToken);
-    }
-
-    private async Task<int> GetPaymentWindowMinutesAsync(CancellationToken cancellationToken)
-    {
-        var configuredValue = await dbContext.SiteSettings.AsNoTracking()
-            .Where(setting =>
-                setting.IsActive &&
-                setting.Key == PaymentWindowMinutesSettingKey)
-            .Select(setting => setting.Value)
-            .SingleOrDefaultAsync(cancellationToken);
-
-        if (!int.TryParse(
-                configuredValue,
-                NumberStyles.Integer,
-                CultureInfo.InvariantCulture,
-                out var minutes) ||
-            minutes is <= 0 or > 10080)
-        {
-            throw new InvalidOperationException(
-                $"Active Site Setting '{PaymentWindowMinutesSettingKey}' must contain a value from 1 to 10080 minutes.");
-        }
-
-        return minutes;
     }
 
     private async Task EnsureAdminReservationPermissionAsync(
@@ -1681,6 +1797,7 @@ public class ReservationService(
                 Source = reservation.Source,
                 CreatedAtUtc = reservation.CreatedAtUtc,
                 PaidAtUtc = reservation.PaidAtUtc,
+                ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                 PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc
             })
             .ToListAsync(cancellationToken);
@@ -1962,6 +2079,7 @@ public class ReservationService(
             Status = ReservationStatusNormalizer.Normalize(reservation.Status),
             Source = reservation.Source,
             CreatedAtUtc = reservation.CreatedAtUtc,
+            ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
             PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
             IsPaymentExpired = IsPaymentExpired(reservation.Status, reservation.PaymentExpiresAtUtc, DateTime.UtcNow),
             IsPaymentEligible = IsPaymentEligible(
@@ -2013,6 +2131,7 @@ public class ReservationService(
             Status = ReservationStatusNormalizer.Normalize(row.Status),
             Source = row.Source,
             CreatedAtUtc = row.CreatedAtUtc,
+            ApprovalExpiresAtUtc = row.ApprovalExpiresAtUtc,
             PaymentExpiresAtUtc = row.PaymentExpiresAtUtc,
             IsPaymentExpired = IsPaymentExpired(row.Status, row.PaymentExpiresAtUtc, now),
             IsPaymentEligible = IsPaymentEligible(
@@ -2128,6 +2247,7 @@ public class ReservationService(
             ChangedAtUtc = reservation.ChangedAtUtc,
             ChangedByUserId = reservation.ChangedByUserId,
             CreatedAtUtc = reservation.CreatedAtUtc,
+            ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
             PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
             IsPaymentExpired = IsPaymentExpired(
                 reservation.Status,
@@ -2252,6 +2372,10 @@ public class ReservationService(
                 eventType = NotificationEventType.ReservationPaymentExpired;
                 message = "Payment window expired for reservation {0}.";
                 return true;
+            case ReservationStatus.Rejected:
+                eventType = NotificationEventType.ReservationRejected;
+                message = "درخواست رزرو {0} توسط اقامتگاه تأیید نشد.";
+                return true;
             default:
                 eventType = default;
                 message = string.Empty;
@@ -2279,6 +2403,8 @@ public class ReservationService(
             EventType = eventType,
             RecipientUserId = reservation.ClientId,
             RecipientGuestId = reservation.GuestId,
+            PropertyId = reservation.PropertyId,
+            ReservationId = reservation.Id,
             Mobile = reservation.Guest?.Mobile,
             Email = reservation.Guest?.Email,
             Subject = reservation.ReservationNumber,
@@ -2292,10 +2418,23 @@ public class ReservationService(
                 reservation.GuestId,
                 reservation.CheckInDate,
                 reservation.CheckOutDate,
+                reservation.ApprovalExpiresAtUtc,
                 reservation.PaymentExpiresAtUtc
             }),
-            Channels = NotificationChannel.InApp
+            DedupeKey = $"reservation:{reservation.Id}:{eventType}:guest:{reservation.ClientId}",
+            Channels = eventType is NotificationEventType.ReservationApprovedAwaitingPayment or
+                NotificationEventType.ReservationRejected
+                ? ResolveGuestChannels(reservation.Guest?.Mobile, reservation.Guest?.Email)
+                : NotificationChannel.InApp
         };
+
+    private static NotificationChannel ResolveGuestChannels(string? mobile, string? email)
+    {
+        var channels = NotificationChannel.InApp;
+        if (!string.IsNullOrWhiteSpace(mobile)) channels |= NotificationChannel.Sms;
+        if (!string.IsNullOrWhiteSpace(email)) channels |= NotificationChannel.Email;
+        return channels;
+    }
 
     private ReservationResponse ToResponse(
         Reservation reservation,
@@ -2364,6 +2503,7 @@ public class ReservationService(
             ChangedAtUtc = reservation.ChangedAtUtc,
             ChangedByUserId = reservation.ChangedByUserId,
             CreatedAtUtc = reservation.CreatedAtUtc,
+            ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
             PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
             IsPaymentExpired = IsPaymentExpired(
                 reservation.Status,
@@ -2411,6 +2551,7 @@ public class ReservationService(
         public ReservationSource Source { get; set; }
         public DateTime CreatedAtUtc { get; set; }
         public DateTime? PaidAtUtc { get; set; }
+        public DateTime? ApprovalExpiresAtUtc { get; set; }
         public DateTime? PaymentExpiresAtUtc { get; set; }
     }
 

@@ -28,6 +28,7 @@ public class Reservation : BaseEntity
     public DateTime? HoldUntilUtc { get; set; }
     public DateTime? ApprovedAtUtc { get; set; }
     public int? ApprovedByUserId { get; set; }
+    public DateTime? ApprovalExpiresAtUtc { get; set; }
     public DateTime? PaymentExpiresAtUtc { get; set; }
     public DateTime? PaidAtUtc { get; set; }
     public DateTime? ConfirmedAtUtc { get; set; }

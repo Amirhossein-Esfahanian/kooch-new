@@ -34,6 +34,7 @@ public class ReservationListItemResponse
     public ReservationSource Source { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    public DateTime? ApprovalExpiresAtUtc { get; set; }
     public bool IsPaymentExpired { get; set; }
     public bool IsPaymentEligible { get; set; }
     public int? RemainingPaymentSeconds { get; set; }
