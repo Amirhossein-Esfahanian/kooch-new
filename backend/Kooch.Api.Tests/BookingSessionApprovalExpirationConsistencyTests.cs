@@ -147,6 +147,23 @@ public sealed class BookingSessionApprovalExpirationConsistencyTests
     }
 
     [Fact]
+    public void ConfirmedAndRejectedChildren_RemainHistoryAwareMixedSummary()
+    {
+        var summary = BuildSummary(
+            Reservation(ReservationStatus.Confirmed, finalAmount: 100),
+            Reservation(ReservationStatus.Rejected, finalAmount: 200),
+            Reservation(ReservationStatus.Confirmed, finalAmount: 300));
+
+        Assert.Equal("Mixed", summary.DerivedStatus);
+        Assert.Equal(600, summary.TotalAmount);
+        Assert.Equal(600, summary.OriginalTotalAmount);
+        Assert.Equal(0, summary.PayableAmount);
+        Assert.False(summary.IsPaymentReady);
+        Assert.False(summary.CanContinueWithApprovedReservations);
+        Assert.True(summary.HasRejectedReservations);
+    }
+
+    [Fact]
     public void MixedOpenSummary_DoesNotExposeContinuation()
     {
         var summary = BuildSummary(

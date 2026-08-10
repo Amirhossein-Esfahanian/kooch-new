@@ -55,21 +55,33 @@ public sealed class PaymentDomainApplicationHandler(
             .Select(reservation => reservation.Id)
             .ToListAsync(cancellationToken);
         var itemReservationIds = items.Select(item => item.ReservationId).Order().ToArray();
-        if (sessionReservationIds.Count == 0 || !sessionReservationIds.SequenceEqual(itemReservationIds))
+        if (sessionReservationIds.Count == 0 ||
+            itemReservationIds.Except(sessionReservationIds).Any())
         {
             throw new InvalidOperationException(
-                "Payment allocations must cover every reservation in the booking session.");
+                "A payment item targets a reservation outside the booking session.");
         }
 
         var lockTargets = await GetReservationLockTargetsAsync(sessionReservationIds, cancellationToken);
         await LockCapacityResourcesAsync(lockTargets, cancellationToken);
-        var reservations = await LockReservationsAsync(sessionReservationIds, cancellationToken);
+        var allReservations = await LockReservationsAsync(sessionReservationIds, cancellationToken);
         var now = DateTime.UtcNow;
-        ValidateSessionReservations(session, payment, items, reservations, now);
-        await EnsureNoPreviousSuccessfulPaymentAsync(payment.Id, sessionReservationIds, cancellationToken);
-        await EnsureSessionCapacityIsStillHeldAsync(reservations, cancellationToken);
+        var includedReservations = ValidateAndResolveSessionApplicationScope(
+            session,
+            payment,
+            items,
+            allReservations,
+            now);
+        var includedReservationIds = includedReservations
+            .Select(reservation => reservation.Id)
+            .ToArray();
+        await EnsureNoPreviousSuccessfulPaymentAsync(
+            payment.Id,
+            includedReservationIds,
+            cancellationToken);
+        await EnsureSessionCapacityIsStillHeldAsync(includedReservations, cancellationToken);
 
-        ApplySuccessfulPayment(payment, reservations, now);
+        ApplySuccessfulPayment(payment, includedReservations, now);
     }
 
     private async Task ApplyLegacyPaymentAsync(
@@ -129,11 +141,11 @@ public sealed class PaymentDomainApplicationHandler(
         }
     }
 
-    private static void ValidateSessionReservations(
+    private static IReadOnlyList<Reservation> ValidateAndResolveSessionApplicationScope(
         BookingSession session,
         Payment payment,
         IReadOnlyList<PaymentItem> items,
-        IReadOnlyList<Reservation> reservations,
+        IReadOnlyList<Reservation> allReservations,
         DateTime now)
     {
         if (!CurrencyEquals(session.Currency, payment.Currency))
@@ -142,21 +154,41 @@ public sealed class PaymentDomainApplicationHandler(
         }
 
         var itemsByReservationId = items.ToDictionary(item => item.ReservationId);
-        foreach (var reservation in reservations)
+        var includedReservations = new List<Reservation>(items.Count);
+        foreach (var reservation in allReservations)
         {
             if (reservation.BookingSessionId != session.Id)
             {
                 throw new InvalidOperationException("A payment item targets a reservation outside the booking session.");
             }
 
-            ValidatePayableReservation(reservation, payment.Currency, now);
-            if (!itemsByReservationId.TryGetValue(reservation.Id, out var item) ||
-                item.AllocatedAmount != reservation.FinalAmount)
+            if (itemsByReservationId.TryGetValue(reservation.Id, out var item))
+            {
+                ValidatePayableReservation(reservation, payment.Currency, now);
+                if (item.AllocatedAmount != reservation.FinalAmount)
+                {
+                    throw new InvalidOperationException(
+                        "Payment allocation does not match the reservation payable amount.");
+                }
+
+                includedReservations.Add(reservation);
+                continue;
+            }
+
+            if (reservation.Status != ReservationStatus.Rejected)
             {
                 throw new InvalidOperationException(
-                    "Payment allocation does not match the reservation payable amount.");
+                    "Only rejected reservations may be excluded from a session payment.");
             }
         }
+
+        if (includedReservations.Count != items.Count)
+        {
+            throw new InvalidOperationException(
+                "A payment item targets a reservation outside the booking session.");
+        }
+
+        return includedReservations;
     }
 
     private static void ValidatePayableReservation(

@@ -90,6 +90,35 @@ public sealed class MockBookingSessionPaymentTests
     }
 
     [Fact]
+    public async Task MockSuccess_AppliesMixedInitiatedScopeAndPreservesRejectedChild()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var rejected = await harness.Context.Reservations
+            .OrderBy(reservation => reservation.Id)
+            .LastAsync();
+        rejected.Status = ReservationStatus.Rejected;
+        await harness.Context.SaveChangesAsync();
+        await harness.AccountService.InitiateAsync(1, Harness.SessionCode, "mixed-pay-key");
+
+        var result = await harness.MockService.SimulateAsync(1, Harness.SessionCode, true);
+
+        Assert.Equal("applied", result.State);
+        Assert.Equal(
+            new[] { ReservationStatus.Confirmed, ReservationStatus.Rejected },
+            (await harness.Context.Reservations.OrderBy(reservation => reservation.Id).ToListAsync())
+                .Select(reservation => reservation.Status));
+        var payment = await harness.Context.Payments.Include(candidate => candidate.Items).SingleAsync();
+        Assert.Equal(PaymentStatus.Successful, payment.Status);
+        Assert.Equal(100, payment.Amount);
+        Assert.Equal(100, Assert.Single(payment.Items).ReservationId);
+        Assert.Single(await harness.Context.AuditLogs.ToListAsync());
+        Assert.Single(await harness.Context.NotificationLogs.ToListAsync());
+        Assert.DoesNotContain(
+            await harness.Context.NotificationLogs.ToListAsync(),
+            notification => notification.ReservationId == rejected.Id);
+    }
+
+    [Fact]
     public async Task MockFailure_DoesNotChangeAnyChildReservation()
     {
         await using var harness = await Harness.CreateAsync();

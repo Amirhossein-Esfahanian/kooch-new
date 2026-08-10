@@ -200,7 +200,7 @@ public sealed class PaymentInitiationServiceTests
     }
 
     [Fact]
-    public async Task MixedPayment_RemainsBlockedByCurrentDomainApplicationHandler()
+    public async Task MixedPayment_DomainApplicationConfirmsOnlyIncludedChild()
     {
         var deadline = DateTime.UtcNow.AddHours(1);
         await using var harness = await PaymentInitiationHarness.CreateAsync(
@@ -212,15 +212,16 @@ public sealed class PaymentInitiationServiceTests
             harness.Context,
             new EffectiveAvailabilityService(harness.Context));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
-            () => handler.ApplyAsync(payment));
+        var outcome = await handler.ApplyAsync(payment);
 
-        Assert.Contains("cover every reservation", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(PaymentDomainApplicationOutcome.Applied, outcome);
         Assert.Equal(PaymentStatus.Pending, payment.Status);
         Assert.Equal(
-            new[] { ReservationStatus.ApprovedAwaitingPayment, ReservationStatus.Rejected },
+            new[] { ReservationStatus.Confirmed, ReservationStatus.Rejected },
             (await harness.Context.Reservations.OrderBy(item => item.Id).ToListAsync())
                 .Select(item => item.Status));
+        Assert.Single(harness.Context.AuditLogs.Local);
+        Assert.Single(harness.Context.NotificationLogs.Local);
     }
 
     [Fact]
@@ -502,6 +503,15 @@ public sealed class PaymentInitiationServiceTests
             for (var index = 0; index < reservations.Length; index++)
             {
                 var item = reservations[index];
+                context.RoomTypes.Add(new RoomType
+                {
+                    Id = index + 1,
+                    PropertyId = 1,
+                    Name = $"Room type {index + 1}",
+                    Slug = $"room-type-{index + 1}",
+                    TotalInventory = 1,
+                    InventoryMode = InventoryMode.TypeBasedInventory
+                });
                 context.Reservations.Add(new Reservation
                 {
                     Id = index + 10,
