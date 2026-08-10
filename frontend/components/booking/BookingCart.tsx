@@ -72,8 +72,17 @@ export function BookingCartItemRow({
         <p className="mt-1 text-xs font-bold text-foreground">
           <span aria-hidden="true">{mode.icon}</span> {mode.label}
         </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {item.adults.toLocaleString("fa-IR")} بزرگسال
+          {item.children > 0
+            ? ` و ${item.children.toLocaleString("fa-IR")} کودک`
+            : ""}
+          {line.quantity > 1
+            ? ` برای هر یک از ${line.quantity.toLocaleString("fa-IR")} واحد`
+            : ""}
+        </p>
         <p className="mt-1 font-semibold text-foreground">
-          {line.quantity.toLocaleString("fa-IR")} واحد · {formatCurrency(line.total)}
+          {line.quantity.toLocaleString("fa-IR")} واحد · جمع این ردیف: {formatCurrency(line.total)}
         </p>
       </div>
       <KoochButton
@@ -107,6 +116,10 @@ export function BookingCartSummary({
   const roomTypeCount = new Set(items.map((item) => item.roomTypeId)).size;
   const nightsCount = countBookingNights(items);
   const mode = bookingModePresentation(items[0].bookingMode);
+  const checkIn = items.map((item) => item.checkIn).sort()[0];
+  const checkOut = items.map((item) => item.checkOut).sort().at(-1)!;
+  const adults = items.reduce((sum, item) => sum + item.adults, 0);
+  const children = items.reduce((sum, item) => sum + item.children, 0);
 
   return (
     <section aria-labelledby="booking-cart-title" className="mt-5 rounded-lg border border-border bg-card p-4">
@@ -126,11 +139,18 @@ export function BookingCartSummary({
         ))}
       </ul>
       <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-3 text-sm sm:grid-cols-3">
+        <SummaryValue label="اقامتگاه" value={items[0].propertyName} />
         <SummaryValue label="تعداد نوع اتاق" value={roomTypeCount.toLocaleString("fa-IR")} />
         <SummaryValue label="تعداد کل واحدها" value={items.length.toLocaleString("fa-IR")} />
         <SummaryValue label="تعداد شب" value={nightsCount.toLocaleString("fa-IR")} />
+        <SummaryValue label="ورود و خروج" value={formatBookingDateRange(checkIn, checkOut)} />
+        <SummaryValue
+          label="مهمانان"
+          value={`${adults.toLocaleString("fa-IR")} بزرگسال${children > 0 ? ` و ${children.toLocaleString("fa-IR")} کودک` : ""}`}
+        />
         <SummaryValue label="وضعیت رزرو" value={`${mode.icon} ${mode.label}`} />
         <SummaryValue label="مبلغ کل" value={formatCurrency(total)} />
+        <SummaryValue label="آمادگی ادامه" value="آماده بررسی نهایی و ثبت سفارش" />
       </dl>
       <p className="mt-3 text-xs leading-6 text-muted-foreground">
         برای افزودن اتاق دیگر، یک نوع اتاق یا اتاق نام‌دار دیگر را انتخاب کنید و دوباره به سبد اضافه کنید.

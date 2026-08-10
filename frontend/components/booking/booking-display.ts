@@ -56,7 +56,7 @@ export function formatBookingCountdown(
 export function bookingModePresentation(mode: BookingMode) {
   return mode === "Instant"
     ? { icon: "✓", label: "رزرو آنی" }
-    : { icon: "⌛", label: "نیازمند تأیید مالک" };
+    : { icon: "⌛", label: "نیازمند تأیید اقامتگاه" };
 }
 
 export function countBookingNights(

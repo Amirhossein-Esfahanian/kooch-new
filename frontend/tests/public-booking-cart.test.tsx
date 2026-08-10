@@ -96,13 +96,18 @@ describe("public booking cart", () => {
     );
 
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
-    expect(screen.getByText(/۱۴۰۵/)).toBeTruthy();
+    expect(screen.getAllByText(/۱۴۰۵/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/2026-08/)).toBeNull();
     expect(screen.getByText(/✓ رزرو آنی/)).toBeTruthy();
     expect(screen.getByText("تعداد نوع اتاق")).toBeTruthy();
     expect(screen.getByText("تعداد کل واحدها")).toBeTruthy();
     expect(screen.getByText("تعداد شب")).toBeTruthy();
     expect(screen.getByText("مبلغ کل")).toBeTruthy();
+    expect(screen.getByText("اقامتگاه")).toBeTruthy();
+    expect(screen.getByText("ورود و خروج")).toBeTruthy();
+    expect(screen.getByText("مهمانان")).toBeTruthy();
+    expect(screen.getByText("آمادگی ادامه")).toBeTruthy();
+    expect(screen.getByText(/برای هر یک از ۲ واحد/)).toBeTruthy();
     expect(screen.getAllByText("۲").length).toBeGreaterThanOrEqual(2);
   });
 
@@ -111,7 +116,7 @@ describe("public booking cart", () => {
     expect(range).toContain("۱۴۰۵");
     expect(range).not.toContain("2026");
     expect(formatBookingCountdown(3_661)).toBe("۰۱:۰۱:۰۱");
-    expect(bookingModePresentation("OnRequest").label).toBe("نیازمند تأیید مالک");
+    expect(bookingModePresentation("OnRequest").label).toBe("نیازمند تأیید اقامتگاه");
   });
 
   it("rejects a different property, mode, and duplicate named room", () => {
@@ -150,6 +155,22 @@ describe("public booking cart", () => {
     }));
     expect(result.priceChanged).toBe(true);
     expect(result.items[0].displayAmount).toBe(2_500_000);
+  });
+
+  it("reports the actionable current limit when cart quantity exceeds revalidated availability", async () => {
+    const originals = expandBookingCartSelection(selection({ quantity: 2 }));
+
+    await expect(revalidateBookingCart(originals, vi.fn().mockResolvedValue({
+      propertyId: 1,
+      propertyName: "خانه کاشان",
+      propertySlug: "kashan-house",
+      checkInDate: originals[0].checkIn,
+      checkOutDate: originals[0].checkOut,
+      adults: 2,
+      children: 0,
+      childAges: [],
+      roomTypes: [{ roomTypeId: 10, name: "اتاق شاه‌نشین", englishName: null, inventoryMode: "TypeBasedInventory", availableCount: 1, bookingMode: "Instant", maxAdults: 2, maxChildren: 0, allowExtraGuest: false, maxExtraGuests: 0, nightsCount: 2, finalAmount: 2_000_000, currency: "IRR", rooms: [] }],
+    }))).rejects.toThrow(/حداکثر ۱ واحد در دسترس است/);
   });
 
   it("creates an idempotent safe payload without identity or status fields", async () => {

@@ -78,7 +78,9 @@ export async function revalidateBookingCart(
       throw new Error("شرایط رزرو این اتاق تغییر کرده است؛ سبد را دوباره بررسی کنید.");
     }
     if ((counts.get(`${queryKey(item)}:${item.roomTypeId}`) ?? 0) > option.availableCount) {
-      throw new Error("تعداد اتاق‌های انتخاب‌شده بیشتر از موجودی فعلی است.");
+      throw new Error(
+        `موجودی ${option.name} تغییر کرده است. حداکثر ${option.availableCount.toLocaleString("fa-IR")} واحد در دسترس است؛ تعداد را کاهش دهید یا دوباره موجودی را بررسی کنید.`,
+      );
     }
     if (
       item.roomId !== null &&

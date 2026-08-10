@@ -11,6 +11,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
+  bookingModePresentation,
   formatBookingCountdown,
   formatBookingDate,
   formatBookingDeadline,
@@ -47,6 +48,27 @@ export default function AccountBookingSessionPage() {
     approvalDeadlineUtc,
     undefined,
     `${session?.sessionCode ?? sessionCode}:approval`,
+  );
+  const sessionBookingMode = session?.reservations.some(
+    (reservation) => reservation.approvalExpiresAtUtc !== null,
+  )
+    ? "OnRequest"
+    : "Instant";
+  const paymentDeadlineReached = remainingPaymentSeconds === 0;
+  const canInitiatePayment = Boolean(
+    session?.summary.isPaymentReady && !paymentDeadlineReached,
+  );
+  const mockPaymentEnabled = isMockPaymentUiEnabled();
+  const hasExpiredPaymentWindow = Boolean(
+    session &&
+      !session.summary.isPaymentReady &&
+      (session.reservations.some(
+        (reservation) => reservation.status === "PaymentExpired",
+      ) ||
+        (paymentDeadlineReached &&
+          session.reservations.some(
+            (reservation) => reservation.status === "ApprovedAwaitingPayment",
+          ))),
   );
 
   async function beginPayment() {
@@ -119,6 +141,41 @@ export default function AccountBookingSessionPage() {
     };
   }, [approvalDeadlineUtc, remainingApprovalSeconds, session?.summary.hasPendingApprovals, sessionCode]);
 
+  useEffect(() => {
+    if (
+      remainingPaymentSeconds !== 0 ||
+      !paymentDeadlineUtc ||
+      !session?.summary.isPaymentReady
+    ) {
+      return;
+    }
+
+    let active = true;
+    let attempts = 0;
+    const refreshStatus = async () => {
+      attempts += 1;
+      try {
+        const result = await fetchAccountBookingSession(sessionCode);
+        if (active) setSession(result);
+      } catch {
+        // A transient refresh failure must not make an expired payment action available locally.
+      }
+    };
+    void refreshStatus();
+    const timer = window.setInterval(() => {
+      if (attempts >= 12) {
+        window.clearInterval(timer);
+        return;
+      }
+      void refreshStatus();
+    }, 5_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [paymentDeadlineUtc, remainingPaymentSeconds, session?.summary.isPaymentReady, sessionCode]);
+
   if (auth.loading || loading) {
     return <main className="mx-auto max-w-5xl px-4 py-10 text-center text-muted-foreground" dir="rtl">در حال بارگذاری سفارش رزرو...</main>;
   }
@@ -131,7 +188,7 @@ export default function AccountBookingSessionPage() {
   }
 
   return (
-    <main className="mx-auto grid max-w-5xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
+    <main className="mx-auto grid max-w-5xl gap-5 px-4 pb-28 pt-8 sm:px-6 sm:pb-8" dir="rtl">
       <KoochPageHeader
         actions={<KoochButton onClick={() => router.push("/account/orders")} variant="outline">سفارش‌های من</KoochButton>}
         description={`${session.property.name} · ${session.reservations.length.toLocaleString("fa-IR")} رزرو مستقل`}
@@ -140,9 +197,9 @@ export default function AccountBookingSessionPage() {
       />
 
       {session.summary.hasPendingApprovals && (
-        <KoochAlert variant="info" title="در انتظار پاسخ اقامتگاه">
+        <KoochAlert variant="info" title="در انتظار تأیید اقامتگاه">
           <div className="grid gap-3">
-            <span>رزرو پس از تأیید مالک قابل پرداخت خواهد شد.</span>
+            <span>رزرو پس از تأیید اقامتگاه قابل پرداخت خواهد شد.</span>
             {approvalDeadlineUtc && remainingApprovalSeconds !== null && (
               <ReservationDeadline
                 deadlineUtc={approvalDeadlineUtc}
@@ -155,21 +212,35 @@ export default function AccountBookingSessionPage() {
         </KoochAlert>
       )}
       {session.summary.hasRejectedReservations && (
-        <KoochAlert variant="destructive" title="یک یا چند رزرو رد شده است">
-          این سفارش در حال حاضر آماده پرداخت نیست.
+        <KoochAlert variant="destructive" title="بخشی از درخواست رزرو تأیید نشده است">
+          پرداخت بخشی از سفارش امکان‌پذیر نیست. وضعیت هر رزرو را در ادامه بررسی کنید.
         </KoochAlert>
       )}
-      {session.summary.isPaymentReady && (
+      {canInitiatePayment && (
         <KoochAlert variant="success" title="سفارش آماده پرداخت است">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span>ظرفیت این اتاق تا پایان مهلت پرداخت برای شما نگه داشته شده است.</span>
-            {isMockPaymentUiEnabled() && <KoochButton loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>}
+            <div className="grid gap-1">
+              <span>ظرفیت این رزرو تا پایان مهلت پرداخت برای شما نگه داشته شده است.</span>
+              {!mockPaymentEnabled && (
+                <span className="text-sm">درگاه پرداخت در حال حاضر در دسترس نیست. وضعیت سفارش شما محفوظ می‌ماند.</span>
+              )}
+            </div>
+            {mockPaymentEnabled && <KoochButton className="hidden sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>}
           </div>
+        </KoochAlert>
+      )}
+      {hasExpiredPaymentWindow && (
+        <KoochAlert variant="destructive" title="مهلت پرداخت به پایان رسیده است">
+          امکان پرداخت این سفارش دیگر فعال نیست. وضعیت پرداخت از سرور به‌روزرسانی شده است.
         </KoochAlert>
       )}
 
       <KoochCard className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Detail label="اقامتگاه" value={<Link className="font-bold text-primary hover:underline" href={`/properties/${session.property.slug}`}>{session.property.name}</Link>} />
+        <Detail
+          label="نوع رزرو"
+          value={`${bookingModePresentation(sessionBookingMode).icon} ${bookingModePresentation(sessionBookingMode).label}`}
+        />
         <Detail label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
         {paymentDeadlineUtc && remainingPaymentSeconds !== null && (
           <ReservationDeadline
@@ -198,6 +269,18 @@ export default function AccountBookingSessionPage() {
           </KoochCard>
         ))}
       </section>
+
+      {canInitiatePayment && mockPaymentEnabled && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 shadow-lg backdrop-blur sm:hidden" data-testid="session-payment-mobile-action" dir="rtl">
+          <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-bold text-muted-foreground">مبلغ قابل پرداخت</p>
+              <p className="truncate font-black text-foreground">{formatCurrency(session.totalAmount, { currencyLabel })}</p>
+            </div>
+            <KoochButton loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
