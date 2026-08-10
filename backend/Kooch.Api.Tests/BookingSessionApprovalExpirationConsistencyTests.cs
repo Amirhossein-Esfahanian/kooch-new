@@ -39,14 +39,59 @@ public sealed class BookingSessionApprovalExpirationConsistencyTests
     public void AllApprovedWithSharedDeadline_ArePaymentReady()
     {
         var summary = BuildSummary(
-            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline),
-            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline));
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 100),
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 200));
 
         Assert.True(summary.IsPaymentReady);
+        Assert.False(summary.CanContinueWithApprovedReservations);
+        Assert.Equal(2, summary.PayableReservationCount);
+        Assert.Equal(300, summary.PayableAmount);
+        Assert.Equal(300, summary.OriginalTotalAmount);
+        Assert.Null(summary.ContinuationPaymentDeadlineUtc);
         Assert.False(summary.HasPendingApprovals);
         Assert.False(summary.HasRejectedReservations);
         Assert.False(summary.HasInconsistentPaymentDeadlines);
         Assert.Equal(SharedDeadline, summary.EarliestPaymentDeadlineUtc);
+    }
+
+    [Fact]
+    public void SingleApprovedReservation_PreservesNormalPaymentSemantics()
+    {
+        var summary = BuildSummary(
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 100));
+
+        Assert.True(summary.IsPaymentReady);
+        Assert.False(summary.CanContinueWithApprovedReservations);
+        Assert.Equal(1, summary.PayableReservationCount);
+        Assert.Equal(100, summary.PayableAmount);
+    }
+
+    [Fact]
+    public void RejectedOnlySession_HasNoPayableContinuation()
+    {
+        var summary = BuildSummary(
+            Reservation(ReservationStatus.Rejected, finalAmount: 100));
+
+        Assert.False(summary.IsPaymentReady);
+        Assert.False(summary.CanContinueWithApprovedReservations);
+        Assert.Equal(0, summary.PayableReservationCount);
+        Assert.Equal(0, summary.PayableAmount);
+        Assert.Equal(100, summary.OriginalTotalAmount);
+    }
+
+    [Fact]
+    public void MixedCurrencyPayableChildren_AreNotContinuationEligible()
+    {
+        var summary = BookingSessionQueryService.BuildSummary(
+        [
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 100),
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 200, "USD"),
+            Reservation(ReservationStatus.Rejected, finalAmount: 300)
+        ], "IRR");
+
+        Assert.False(summary.CanContinueWithApprovedReservations);
+        Assert.Equal(2, summary.PayableReservationCount);
+        Assert.Equal(300, summary.PayableAmount);
     }
 
     [Fact]
@@ -72,11 +117,58 @@ public sealed class BookingSessionApprovalExpirationConsistencyTests
     public void RejectedChild_PreventsPaymentReadiness()
     {
         var summary = BuildSummary(
-            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline),
-            Reservation(ReservationStatus.Rejected));
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 100),
+            Reservation(ReservationStatus.Rejected, finalAmount: 200));
 
         Assert.False(summary.IsPaymentReady);
         Assert.True(summary.HasRejectedReservations);
+        Assert.True(summary.CanContinueWithApprovedReservations);
+        Assert.Equal(1, summary.PayableReservationCount);
+        Assert.Equal(100, summary.PayableAmount);
+        Assert.Equal(300, summary.OriginalTotalAmount);
+        Assert.Equal(SharedDeadline, summary.ContinuationPaymentDeadlineUtc);
+    }
+
+    [Fact]
+    public void MixedClosedSummary_UsesAllApprovedChildrenAndEarliestDeadline()
+    {
+        var earlierDeadline = SharedDeadline.AddMinutes(-10);
+        var summary = BuildSummary(
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 100),
+            Reservation(ReservationStatus.Rejected, finalAmount: 200),
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, earlierDeadline, 300));
+
+        Assert.False(summary.IsPaymentReady);
+        Assert.True(summary.CanContinueWithApprovedReservations);
+        Assert.Equal(2, summary.PayableReservationCount);
+        Assert.Equal(400, summary.PayableAmount);
+        Assert.Equal(600, summary.OriginalTotalAmount);
+        Assert.Equal(earlierDeadline, summary.ContinuationPaymentDeadlineUtc);
+    }
+
+    [Fact]
+    public void MixedOpenSummary_DoesNotExposeContinuation()
+    {
+        var summary = BuildSummary(
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, SharedDeadline, 100),
+            Reservation(ReservationStatus.PendingApproval, finalAmount: 200));
+
+        Assert.False(summary.IsPaymentReady);
+        Assert.False(summary.CanContinueWithApprovedReservations);
+        Assert.True(summary.HasPendingApprovals);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void InvalidApprovedDeadline_PreventsContinuation(bool expired)
+    {
+        var deadline = expired ? DateTime.UtcNow.AddMinutes(-1) : (DateTime?)null;
+        var summary = BuildSummary(
+            Reservation(ReservationStatus.ApprovedAwaitingPayment, deadline, 100),
+            Reservation(ReservationStatus.Rejected, finalAmount: 200));
+
+        Assert.False(summary.CanContinueWithApprovedReservations);
     }
 
     [Fact]
@@ -124,13 +216,17 @@ public sealed class BookingSessionApprovalExpirationConsistencyTests
 
     private static BookingSessionReservationDetailsResponse Reservation(
         ReservationStatus status,
-        DateTime? paymentExpiresAtUtc = null) =>
+        DateTime? paymentExpiresAtUtc = null,
+        decimal finalAmount = 0,
+        string currency = "IRR") =>
         new()
         {
             CheckInDate = new DateOnly(2036, 1, 1),
             CheckOutDate = new DateOnly(2036, 1, 2),
             Status = status,
-            PaymentExpiresAtUtc = paymentExpiresAtUtc
+            PaymentExpiresAtUtc = paymentExpiresAtUtc,
+            FinalAmount = finalAmount,
+            Currency = currency
         };
 
     private static async Task<BookingSession> AddSessionAsync(ReservationTestHarness harness)

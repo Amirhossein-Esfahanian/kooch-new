@@ -83,6 +83,46 @@ public sealed class BookingSessionQueryApiTests
     }
 
     [Fact]
+    public async Task AccountRead_MixedClosedSessionPreservesCompositionAndHistoricalTotal()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var deadline = DateTime.UtcNow.AddMinutes(20);
+        var reservations = await context.Reservations
+            .Where(reservation => reservation.BookingSessionId == 10)
+            .OrderBy(reservation => reservation.Id)
+            .ToListAsync();
+        reservations[0].Status = ReservationStatus.ApprovedAwaitingPayment;
+        reservations[0].PaymentExpiresAtUtc = deadline;
+        reservations[1].Status = ReservationStatus.Rejected;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var service = new BookingSessionQueryService(context);
+
+        var result = await service.GetBySessionCodeForClientAsync(
+            1,
+            "KCH-S-READ-0001");
+
+        Assert.False(result.Summary.IsPaymentReady);
+        Assert.True(result.Summary.CanContinueWithApprovedReservations);
+        Assert.Equal(1, result.Summary.PayableReservationCount);
+        Assert.Equal(100, result.Summary.PayableAmount);
+        Assert.Equal(300, result.Summary.OriginalTotalAmount);
+        Assert.Equal(300, result.TotalAmount);
+        Assert.Equal(deadline, result.Summary.ContinuationPaymentDeadlineUtc);
+        Assert.Equal(2, result.Reservations.Count);
+        Assert.Contains(result.Reservations, reservation =>
+            reservation.Status == ReservationStatus.Rejected);
+        Assert.All(
+            await context.Reservations.AsNoTracking()
+                .Where(reservation => reservation.Id == 1000 || reservation.Id == 1001)
+                .ToListAsync(),
+            reservation => Assert.Equal(10, reservation.BookingSessionId));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.GetBySessionCodeForClientAsync(2, "KCH-S-READ-0001"));
+    }
+
+    [Fact]
     public async Task AccountList_IsOwnedPagedProjectedAndExcludesStandaloneReservations()
     {
         await using var harness = await BookingSessionReadHarness.CreateAsync();

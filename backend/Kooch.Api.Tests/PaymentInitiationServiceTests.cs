@@ -57,6 +57,25 @@ public sealed class PaymentInitiationServiceTests
     }
 
     [Fact]
+    public async Task MixedApprovedAndRejectedSession_RemainsBlocked()
+    {
+        var deadline = DateTime.UtcNow.AddHours(1);
+        await using var harness = await PaymentInitiationHarness.CreateAsync(
+            Reservation(deadline, 100),
+            Reservation(deadline, 200, ReservationStatus.Rejected));
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Service.InitiateBookingSessionPaymentAsync(Request()));
+
+        Assert.Contains("rejected reservation", exception.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(await harness.Context.Payments.ToListAsync());
+        Assert.Empty(await harness.Context.PaymentItems.ToListAsync());
+        Assert.All(
+            await harness.Context.Reservations.ToListAsync(),
+            reservation => Assert.Equal(harness.SessionId, reservation.BookingSessionId));
+    }
+
+    [Fact]
     public async Task ExpiredDeadline_RejectsInitiation()
     {
         await using var harness = await PaymentInitiationHarness.CreateAsync(

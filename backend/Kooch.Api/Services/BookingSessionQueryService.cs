@@ -7,8 +7,27 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBookingSessionQueryService
+public sealed class BookingSessionQueryService : IBookingSessionQueryService
 {
+    private readonly KoochDbContext dbContext;
+    private readonly IBookingSessionPayableScopeResolver payableScopeResolver;
+    private readonly TimeProvider timeProvider;
+
+    public BookingSessionQueryService(KoochDbContext dbContext)
+        : this(dbContext, new BookingSessionPayableScopeResolver(), TimeProvider.System)
+    {
+    }
+
+    internal BookingSessionQueryService(
+        KoochDbContext dbContext,
+        IBookingSessionPayableScopeResolver payableScopeResolver,
+        TimeProvider timeProvider)
+    {
+        this.dbContext = dbContext;
+        this.payableScopeResolver = payableScopeResolver;
+        this.timeProvider = timeProvider;
+    }
+
     public async Task<PagedResult<AccountBookingSessionListItemResponse>> GetForClientAsync(
         int clientId,
         AccountBookingSessionListQuery query,
@@ -21,7 +40,7 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
 
         var page = Math.Max(1, query.Page);
         var pageSize = Math.Clamp(query.PageSize, 1, 50);
-        var now = DateTime.UtcNow;
+        var now = timeProvider.GetUtcNow().UtcDateTime;
         var sessions = dbContext.BookingSessions.AsNoTracking()
             .Where(session => session.ClientId == clientId);
         var totalCount = await sessions.CountAsync(cancellationToken);
@@ -253,11 +272,15 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Booking session not found.");
 
-        response.Summary = BuildSummary(response.Reservations);
+        response.Summary = BuildSummary(
+            response.Reservations,
+            response.Currency,
+            payableScopeResolver,
+            timeProvider.GetUtcNow().UtcDateTime);
         return response;
     }
 
-    private static void CompleteAccountSummary(AccountBookingSessionResponse response)
+    private void CompleteAccountSummary(AccountBookingSessionResponse response)
     {
         var summaryReservations = response.Reservations
             .Select(reservation => new BookingSessionReservationDetailsResponse
@@ -276,7 +299,11 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                 Currency = reservation.Currency
             })
             .ToArray();
-        response.Summary = BuildSummary(summaryReservations);
+        response.Summary = BuildSummary(
+            summaryReservations,
+            response.Currency,
+            payableScopeResolver,
+            timeProvider.GetUtcNow().UtcDateTime);
         response.TotalAmount = response.Summary.TotalAmount;
         var deadlines = response.Reservations
             .Where(reservation =>
@@ -289,7 +316,19 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
     }
 
     internal static BookingSessionDerivedSummaryResponse BuildSummary(
-        IReadOnlyList<BookingSessionReservationDetailsResponse> reservations)
+        IReadOnlyList<BookingSessionReservationDetailsResponse> reservations,
+        string? sessionCurrency = null) =>
+        BuildSummary(
+            reservations,
+            sessionCurrency ?? reservations.FirstOrDefault()?.Currency ?? string.Empty,
+            new BookingSessionPayableScopeResolver(),
+            DateTime.UtcNow);
+
+    internal static BookingSessionDerivedSummaryResponse BuildSummary(
+        IReadOnlyList<BookingSessionReservationDetailsResponse> reservations,
+        string sessionCurrency,
+        IBookingSessionPayableScopeResolver payableScopeResolver,
+        DateTime utcNow)
     {
         var statusCounts = reservations
             .GroupBy(reservation => reservation.Status)
@@ -333,13 +372,25 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
             reservations.All(reservation =>
                 reservation.Status == ReservationStatus.ApprovedAwaitingPayment);
         var hasExpiredPaymentDeadline = paymentDeadlines.Any(deadline =>
-            deadline <= DateTime.UtcNow);
+            deadline <= utcNow);
+        var payableScope = payableScopeResolver.Resolve(
+            sessionCurrency,
+            reservations.Select((reservation, index) => new BookingSessionPayableChild(
+                reservation.ReservationId == 0 ? index + 1 : reservation.ReservationId,
+                reservation.Status,
+                reservation.FinalAmount,
+                reservation.Currency,
+                reservation.PaymentExpiresAtUtc))
+                .ToArray(),
+            utcNow);
+        var originalTotalAmount = reservations.Sum(reservation => reservation.FinalAmount);
 
         return new BookingSessionDerivedSummaryResponse
         {
             DerivedStatus = derivedStatus,
             ReservationCount = reservations.Count,
-            TotalAmount = reservations.Sum(reservation => reservation.FinalAmount),
+            TotalAmount = originalTotalAmount,
+            OriginalTotalAmount = originalTotalAmount,
             EarliestCheckInDate = reservations.Count == 0
                 ? null
                 : reservations.Min(reservation => reservation.CheckInDate),
@@ -350,6 +401,13 @@ public sealed class BookingSessionQueryService(KoochDbContext dbContext) : IBook
                 !hasMissingPaymentDeadline &&
                 !hasInconsistentPaymentDeadlines &&
                 !hasExpiredPaymentDeadline,
+            CanContinueWithApprovedReservations =
+                payableScope.CanContinueWithApprovedReservations,
+            PayableReservationCount = payableScope.PayableChildren.Count,
+            PayableAmount = payableScope.PayableAmount,
+            ContinuationPaymentDeadlineUtc = payableScope.RejectedChildren.Count > 0
+                ? payableScope.EarliestPayableDeadlineUtc
+                : null,
             HasPendingApprovals = hasPendingApprovals,
             HasRejectedReservations = hasRejectedReservations,
             HasInconsistentPaymentDeadlines = hasInconsistentPaymentDeadlines,

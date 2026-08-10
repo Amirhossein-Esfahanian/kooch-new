@@ -96,9 +96,14 @@ export interface AccountBookingSessionSummary {
   derivedStatus: string;
   reservationCount: number;
   totalAmount: number;
+  originalTotalAmount: number;
   earliestCheckInDate: string | null;
   latestCheckOutDate: string | null;
   isPaymentReady: boolean;
+  canContinueWithApprovedReservations: boolean;
+  payableReservationCount: number;
+  payableAmount: number;
+  continuationPaymentDeadlineUtc: string | null;
   hasPendingApprovals: boolean;
   hasRejectedReservations: boolean;
   hasInconsistentPaymentDeadlines: boolean;

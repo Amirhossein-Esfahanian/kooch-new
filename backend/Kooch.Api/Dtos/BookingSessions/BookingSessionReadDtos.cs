@@ -44,9 +44,14 @@ public sealed class BookingSessionDerivedSummaryResponse
     public string DerivedStatus { get; set; } = string.Empty;
     public int ReservationCount { get; set; }
     public decimal TotalAmount { get; set; }
+    public decimal OriginalTotalAmount { get; set; }
     public DateOnly? EarliestCheckInDate { get; set; }
     public DateOnly? LatestCheckOutDate { get; set; }
     public bool IsPaymentReady { get; set; }
+    public bool CanContinueWithApprovedReservations { get; set; }
+    public int PayableReservationCount { get; set; }
+    public decimal PayableAmount { get; set; }
+    public DateTime? ContinuationPaymentDeadlineUtc { get; set; }
     public bool HasPendingApprovals { get; set; }
     public bool HasRejectedReservations { get; set; }
     public bool HasInconsistentPaymentDeadlines { get; set; }
