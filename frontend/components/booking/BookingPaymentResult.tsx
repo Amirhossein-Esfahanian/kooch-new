@@ -79,12 +79,17 @@ export function BookingPaymentResult({
   if (!session) return <StateAlert error>{error || "سفارش رزرو پیدا نشد."}</StateAlert>;
 
   const successful = session.payment?.status === "Successful";
+  const mixedOutcome = session.summary.hasRejectedReservations;
   return (
     <main className="mx-auto grid max-w-4xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
       <KoochPageHeader eyebrow="نتیجه پرداخت" title={mode === "success" ? "نتیجه سفارش رزرو" : "پرداخت ناموفق"} description={<span>کد سفارش: <b dir="ltr">{session.sessionCode}</b></span>} />
       {mode === "success" ? (
         <KoochAlert variant={successful ? "success" : "info"} title={successful ? "پرداخت با موفقیت ثبت شد" : "در حال نهایی‌سازی پرداخت"}>
-          {successful ? "تمام رزروهای این سفارش تأیید شدند." : "نتیجه امن پرداخت دریافت شده و وضعیت به‌صورت خودکار بررسی می‌شود."}
+          {successful
+            ? mixedOutcome
+              ? "پرداخت رزروهای تأییدشده با موفقیت ثبت شد. رزروهای ردشده در سابقه سفارش باقی می‌مانند."
+              : "تمام رزروهای این سفارش تأیید شدند."
+            : "نتیجه امن پرداخت دریافت شده و وضعیت به‌صورت خودکار بررسی می‌شود."}
         </KoochAlert>
       ) : (
         <KoochAlert variant="destructive" title="پرداخت تکمیل نشد">
@@ -94,7 +99,14 @@ export function BookingPaymentResult({
       {error && <KoochAlert variant="destructive">{error}</KoochAlert>}
       <KoochCard className="grid gap-3 sm:grid-cols-2">
         <Summary label="اقامتگاه" value={session.property.name} />
-        <Summary label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
+        {mixedOutcome ? (
+          <>
+            <Summary label="مبلغ اولیه سفارش" value={formatCurrency(session.summary.originalTotalAmount, { currencyLabel })} />
+            <Summary label={successful ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"} value={formatCurrency(session.payment?.amount ?? session.summary.payableAmount, { currencyLabel })} />
+          </>
+        ) : (
+          <Summary label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
+        )}
         <Summary label="وضعیت پرداخت" value={session.payment?.status ?? "ثبت نشده"} />
         <Summary label="تعداد رزرو" value={session.reservations.length.toLocaleString("fa-IR")} />
       </KoochCard>

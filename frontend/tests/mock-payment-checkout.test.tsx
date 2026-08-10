@@ -93,6 +93,25 @@ describe("mock booking session payment", () => {
     expect(screen.getByText("Successful")).toBeTruthy();
   });
 
+  it("describes a successful mixed payment without claiming every child was confirmed", async () => {
+    const mixed = session("Successful");
+    mixed.summary.derivedStatus = "Mixed";
+    mixed.summary.hasRejectedReservations = true;
+    mixed.summary.originalTotalAmount = 300;
+    mixed.summary.payableAmount = 100;
+    mixed.payment.amount = 100;
+    mixed.reservations[1].status = "Rejected";
+    api.fetch.mockResolvedValue(mixed);
+
+    render(<BookingPaymentResult mode="success" sessionCode="BS-PAY-1" />);
+
+    expect(await screen.findByText(/پرداخت رزروهای تأییدشده با موفقیت ثبت شد/)).toBeTruthy();
+    expect(screen.queryByText("تمام رزروهای این سفارش تأیید شدند.")).toBeNull();
+    expect(screen.getByText("مبلغ اولیه سفارش")).toBeTruthy();
+    expect(screen.getByText("مبلغ پرداخت‌شده")).toBeTruthy();
+    expect(screen.getByText("R-2")).toBeTruthy();
+  });
+
   it("failure page offers a safe idempotent retry", async () => {
     render(<BookingPaymentResult mode="failure" sessionCode="BS-PAY-1" />);
     const retry = await screen.findByRole("button", { name: "تلاش دوباره برای پرداخت" });

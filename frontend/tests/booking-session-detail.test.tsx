@@ -81,8 +81,28 @@ function readyResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOStr
   return ready;
 }
 
+function mixedResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOString()): AccountBookingSession {
+  const mixed = readyResponse(deadline);
+  mixed.summary.derivedStatus = "Mixed";
+  mixed.summary.isPaymentReady = false;
+  mixed.summary.canContinueWithApprovedReservations = true;
+  mixed.summary.payableReservationCount = 1;
+  mixed.summary.payableAmount = 2_000_000;
+  mixed.summary.continuationPaymentDeadlineUtc = deadline;
+  mixed.summary.hasRejectedReservations = true;
+  mixed.summary.earliestPaymentDeadlineUtc = deadline;
+  mixed.commonPaymentDeadlineUtc = null;
+  mixed.reservations[1] = {
+    ...mixed.reservations[1],
+    status: "Rejected",
+    paymentExpiresAtUtc: null,
+  };
+  return mixed;
+}
+
 describe("account booking session detail", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "true");
     bookingApi.fetch.mockResolvedValue(response());
     bookingApi.initiate.mockResolvedValue({
@@ -104,7 +124,7 @@ describe("account booking session detail", () => {
 
   it("shows the OnRequest waiting state without a payment action", async () => {
     render(<AccountBookingSessionPage />);
-    expect(await screen.findByText("در انتظار تأیید اقامتگاه")).toBeTruthy();
+    expect(await screen.findByText("در انتظار تعیین وضعیت همه رزروها")).toBeTruthy();
     expect(screen.getByText("رزرو پس از تأیید اقامتگاه قابل پرداخت خواهد شد.")).toBeTruthy();
     expect(screen.getByText("⌛ نیازمند تأیید اقامتگاه")).toBeTruthy();
     expect(screen.getByText("مهلت باقی‌مانده برای پاسخ مالک")).toBeTruthy();
@@ -136,7 +156,9 @@ describe("account booking session detail", () => {
     render(<AccountBookingSessionPage />);
 
     expect(await screen.findByText("بخشی از درخواست رزرو تأیید نشده است")).toBeTruthy();
-    expect(bookingApi.fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
+    await vi.waitFor(() =>
+      expect(bookingApi.fetch.mock.calls.length).toBeGreaterThanOrEqual(2),
+    );
   });
 
   it("shows payment only when ready and initiates server-side checkout", async () => {
@@ -171,24 +193,130 @@ describe("account booking session detail", () => {
     expect(screen.queryByRole("button", { name: "پرداخت" })).toBeNull();
   });
 
-  it("explains mixed rejected children and never offers partial payment", async () => {
-    const mixed = readyResponse();
-    mixed.summary.isPaymentReady = false;
-    mixed.summary.hasRejectedReservations = true;
-    mixed.summary.earliestPaymentDeadlineUtc = null;
-    mixed.commonPaymentDeadlineUtc = null;
-    mixed.reservations[1] = {
-      ...mixed.reservations[1],
-      status: "Rejected",
-      paymentExpiresAtUtc: null,
-    };
+  it("groups a closed mixed outcome and continues with every approved reservation together", async () => {
+    bookingApi.fetch.mockResolvedValue(mixedResponse());
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("بخشی از درخواست رزرو تأیید شده است")).toBeTruthy();
+    expect(screen.getByText("تأییدشده و قابل پرداخت")).toBeTruthy();
+    expect(screen.getByText("ردشده")).toBeTruthy();
+    expect(within(screen.getByTestId("payable-reservations")).getByText("R-001")).toBeTruthy();
+    expect(within(screen.getByTestId("rejected-reservations")).getByText("R-002")).toBeTruthy();
+    expect(screen.getByText("مبلغ اولیه سفارش")).toBeTruthy();
+    expect(screen.getAllByText("مبلغ قابل پرداخت")).not.toHaveLength(0);
+    expect(screen.getByText("۱ رزرو")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /^پرداخت R-/ })).toBeNull();
+  });
+
+  it("uses the existing session payment initiation without sending reservation ids", async () => {
+    bookingApi.fetch.mockResolvedValue(mixedResponse());
+    render(<AccountBookingSessionPage />);
+
+    const buttons = await screen.findAllByRole("button", { name: "ادامه با رزروهای تأییدشده" });
+    buttons[0].click();
+
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
+    expect(bookingApi.initiate.mock.calls[0]).toHaveLength(2);
+    expect(bookingApi.initiate.mock.calls[0][0]).toBe("BS-1405-001");
+  });
+
+  it("offers one session-level continuation scope for two approved children", async () => {
+    const mixed = mixedResponse();
+    mixed.totalAmount = 6_000_000;
+    mixed.summary.reservationCount = 3;
+    mixed.summary.totalAmount = 6_000_000;
+    mixed.summary.originalTotalAmount = 6_000_000;
+    mixed.summary.payableReservationCount = 2;
+    mixed.summary.payableAmount = 4_000_000;
+    mixed.reservations.push({
+      ...mixed.reservations[0],
+      reservationNumber: "R-003",
+      roomId: 103,
+      roomName: "اتاق ۱۰۳",
+    });
     bookingApi.fetch.mockResolvedValue(mixed);
 
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText("بخشی از درخواست رزرو تأیید نشده است")).toBeTruthy();
-    expect(screen.getByText(/پرداخت بخشی از سفارش امکان‌پذیر نیست/)).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "پرداخت" })).toBeNull();
+    expect(await screen.findByText("۲ رزرو")).toBeTruthy();
+    expect(within(screen.getByTestId("payable-reservations")).getAllByText(/R-00[13]/)).toHaveLength(2);
+    expect(screen.getAllByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /R-001|R-003/ })).toBeNull();
+  });
+
+  it("waits when a mixed OnRequest session still has an unresolved child", async () => {
+    const open = mixedResponse();
+    open.summary.canContinueWithApprovedReservations = false;
+    open.summary.payableReservationCount = 0;
+    open.summary.payableAmount = 0;
+    open.summary.continuationPaymentDeadlineUtc = null;
+    open.summary.hasRejectedReservations = false;
+    open.summary.hasPendingApprovals = true;
+    open.reservations[1] = { ...open.reservations[1], status: "PendingApproval" };
+    bookingApi.fetch.mockResolvedValue(open);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("در انتظار تعیین وضعیت همه رزروها")).toBeTruthy();
+    expect(screen.getByText(/پرداخت تا مشخص‌شدن وضعیت همه رزروها/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
+  });
+
+  it("removes continuation immediately at expiry and refreshes authoritative state", async () => {
+    const deadline = new Date(Date.now() - 1_000).toISOString();
+    const expiredLocally = mixedResponse(deadline);
+    const expiredOnServer = mixedResponse(deadline);
+    expiredOnServer.summary.canContinueWithApprovedReservations = false;
+    expiredOnServer.summary.payableReservationCount = 0;
+    expiredOnServer.summary.payableAmount = 0;
+    expiredOnServer.summary.continuationPaymentDeadlineUtc = null;
+    expiredOnServer.reservations[0] = { ...expiredOnServer.reservations[0], status: "PaymentExpired" };
+    bookingApi.fetch.mockResolvedValueOnce(expiredLocally).mockResolvedValueOnce(expiredOnServer);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("مهلت پرداخت به پایان رسیده است")).toBeTruthy();
+    await vi.waitFor(() =>
+      expect(bookingApi.fetch.mock.calls.length).toBeGreaterThanOrEqual(2),
+    );
+    expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
+  });
+
+  it("keeps mixed continuation safe when mock payment UI is disabled", async () => {
+    vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "false");
+    bookingApi.fetch.mockResolvedValue(mixedResponse());
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText(/درگاه پرداخت در حال حاضر در دسترس نیست/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
+  });
+
+  it("keeps confirmed and rejected children visible after a successful mixed payment", async () => {
+    const successful = mixedResponse();
+    successful.summary.canContinueWithApprovedReservations = false;
+    successful.summary.payableReservationCount = 0;
+    successful.summary.payableAmount = 0;
+    successful.summary.continuationPaymentDeadlineUtc = null;
+    successful.reservations[0] = { ...successful.reservations[0], status: "Confirmed" };
+    successful.payment = {
+      paymentId: 20,
+      status: "Successful",
+      amount: 2_000_000,
+      currency: "IRR",
+      provider: "internal-test",
+      appliedAtUtc: new Date().toISOString(),
+    };
+    bookingApi.fetch.mockResolvedValue(successful);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("نتیجه این سفارش ترکیبی است")).toBeTruthy();
+    expect(within(screen.getByTestId("payable-reservations")).getByText("تایید شده")).toBeTruthy();
+    expect(within(screen.getByTestId("rejected-reservations")).getAllByText("ردشده")).not.toHaveLength(0);
+    expect(screen.getByText("مبلغ پرداخت‌شده")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
   });
 
   it("refreshes server state after the payment deadline and keeps payment disabled", async () => {

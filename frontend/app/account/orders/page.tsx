@@ -180,7 +180,9 @@ function OrderCard({
           <p className="mt-1 text-xs text-muted-foreground">{stayDates}</p>
         </div>
         <div>
-          <p className="text-xs font-bold text-muted-foreground">رزروها و مبلغ کل</p>
+          <p className="text-xs font-bold text-muted-foreground">
+            {order.derivedStatus === "Mixed" ? "رزروها و مبلغ اولیه سفارش" : "رزروها و مبلغ کل"}
+          </p>
           <p className="mt-1 text-sm font-bold">{order.reservationCount.toLocaleString("fa-IR")} رزرو مستقل</p>
           <p className="mt-1 text-xs text-muted-foreground">{formatCurrency(order.totalAmount, { currencyLabel })}</p>
         </div>
@@ -197,7 +199,7 @@ function OrderCard({
           </div>
         )}
         <Link className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}>جزئیات</Link>
-        {canUseMockPayment && <KoochButton loading={paying} onClick={onPay}>ادامه پرداخت</KoochButton>}
+        {canUseMockPayment && order.derivedStatus !== "Mixed" && <KoochButton loading={paying} onClick={onPay}>ادامه پرداخت</KoochButton>}
       </div>
     </KoochCard>
   );

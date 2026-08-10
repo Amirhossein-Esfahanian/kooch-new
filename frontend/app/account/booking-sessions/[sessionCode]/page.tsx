@@ -32,10 +32,16 @@ export default function AccountBookingSessionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [initiatingPayment, setInitiatingPayment] = useState(false);
-  const paymentDeadlineUtc =
-    session?.commonPaymentDeadlineUtc ??
-    session?.summary.earliestPaymentDeadlineUtc ??
-    null;
+  const isContinuationAvailable = Boolean(
+    session?.summary.canContinueWithApprovedReservations,
+  );
+  const paymentDeadlineUtc = isContinuationAvailable
+    ? session?.summary.continuationPaymentDeadlineUtc ?? null
+    : session?.summary.isPaymentReady
+      ? session.commonPaymentDeadlineUtc ??
+        session.summary.earliestPaymentDeadlineUtc ??
+        null
+      : null;
   const approvalDeadlineUtc = session?.summary.earliestApprovalDeadlineUtc ?? null;
   const remainingPaymentSeconds = useReservationPaymentCountdown(
     Boolean(paymentDeadlineUtc),
@@ -55,13 +61,27 @@ export default function AccountBookingSessionPage() {
     ? "OnRequest"
     : "Instant";
   const paymentDeadlineReached = remainingPaymentSeconds === 0;
-  const canInitiatePayment = Boolean(
-    session?.summary.isPaymentReady && !paymentDeadlineReached,
+  const canInitiateContinuation = Boolean(
+    isContinuationAvailable &&
+      (session?.summary.payableReservationCount ?? 0) > 0 &&
+      paymentDeadlineUtc &&
+      remainingPaymentSeconds !== null &&
+      remainingPaymentSeconds > 0,
   );
+  const canInitiatePayment = Boolean(
+    (session?.summary.isPaymentReady || canInitiateContinuation) &&
+      !paymentDeadlineReached,
+  );
+  const payableAmount = isContinuationAvailable
+    ? session?.summary.payableAmount ?? 0
+    : session?.totalAmount ?? 0;
+  const paymentActionLabel = isContinuationAvailable
+    ? "ادامه با رزروهای تأییدشده"
+    : "پرداخت";
   const mockPaymentEnabled = isMockPaymentUiEnabled();
   const hasExpiredPaymentWindow = Boolean(
     session &&
-      !session.summary.isPaymentReady &&
+      !canInitiatePayment &&
       (session.reservations.some(
         (reservation) => reservation.status === "PaymentExpired",
       ) ||
@@ -145,7 +165,7 @@ export default function AccountBookingSessionPage() {
     if (
       remainingPaymentSeconds !== 0 ||
       !paymentDeadlineUtc ||
-      !session?.summary.isPaymentReady
+      !(session?.summary.isPaymentReady || isContinuationAvailable)
     ) {
       return;
     }
@@ -174,7 +194,7 @@ export default function AccountBookingSessionPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, [paymentDeadlineUtc, remainingPaymentSeconds, session?.summary.isPaymentReady, sessionCode]);
+  }, [isContinuationAvailable, paymentDeadlineUtc, remainingPaymentSeconds, session?.summary.isPaymentReady, sessionCode]);
 
   if (auth.loading || loading) {
     return <main className="mx-auto max-w-5xl px-4 py-10 text-center text-muted-foreground" dir="rtl">در حال بارگذاری سفارش رزرو...</main>;
@@ -187,6 +207,19 @@ export default function AccountBookingSessionPage() {
     );
   }
 
+  const acceptedReservations = session.reservations.filter((reservation) =>
+    ["ApprovedAwaitingPayment", "Confirmed", "Paid"].includes(reservation.status),
+  );
+  const rejectedReservations = session.reservations.filter(
+    (reservation) => reservation.status === "Rejected",
+  );
+  const otherClosedReservations = session.reservations.filter(
+    (reservation) =>
+      !["ApprovedAwaitingPayment", "Confirmed", "Paid", "Rejected"].includes(
+        reservation.status,
+      ),
+  );
+
   return (
     <main className="mx-auto grid max-w-5xl gap-5 px-4 pb-28 pt-8 sm:px-6 sm:pb-8" dir="rtl">
       <KoochPageHeader
@@ -197,9 +230,13 @@ export default function AccountBookingSessionPage() {
       />
 
       {session.summary.hasPendingApprovals && (
-        <KoochAlert variant="info" title="در انتظار تأیید اقامتگاه">
+        <KoochAlert variant="info" title="در انتظار تعیین وضعیت همه رزروها">
           <div className="grid gap-3">
-            <span>رزرو پس از تأیید اقامتگاه قابل پرداخت خواهد شد.</span>
+            <span>
+              {session.reservations.some((reservation) => reservation.status === "ApprovedAwaitingPayment")
+                ? "برخی رزروها تأیید شده‌اند، اما پرداخت تا مشخص‌شدن وضعیت همه رزروها در دسترس نیست."
+                : "رزرو پس از تأیید اقامتگاه قابل پرداخت خواهد شد."}
+            </span>
             {approvalDeadlineUtc && remainingApprovalSeconds !== null && (
               <ReservationDeadline
                 deadlineUtc={approvalDeadlineUtc}
@@ -211,12 +248,37 @@ export default function AccountBookingSessionPage() {
           </div>
         </KoochAlert>
       )}
-      {session.summary.hasRejectedReservations && (
-        <KoochAlert variant="destructive" title="بخشی از درخواست رزرو تأیید نشده است">
-          پرداخت بخشی از سفارش امکان‌پذیر نیست. وضعیت هر رزرو را در ادامه بررسی کنید.
+      {session.summary.hasRejectedReservations && isContinuationAvailable && (
+        <KoochAlert variant="info" title="بخشی از درخواست رزرو تأیید شده است">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="grid gap-1">
+              <span>برخی رزروها تأیید و برخی رد شده‌اند. می‌توانید همه رزروهای تأییدشده را با یک پرداخت ادامه دهید.</span>
+              <span className="text-sm">امکان انتخاب یا پرداخت جداگانه رزروها وجود ندارد.</span>
+              {!mockPaymentEnabled && canInitiateContinuation && (
+                <span className="text-sm">درگاه پرداخت در حال حاضر در دسترس نیست. وضعیت سفارش شما محفوظ می‌ماند.</span>
+              )}
+            </div>
+            {mockPaymentEnabled && canInitiateContinuation && (
+              <KoochButton className="hidden sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>
+                {paymentActionLabel}
+              </KoochButton>
+            )}
+          </div>
         </KoochAlert>
       )}
-      {canInitiatePayment && (
+      {session.summary.hasRejectedReservations &&
+        !isContinuationAvailable &&
+        session.payment?.status !== "Successful" && (
+        <KoochAlert variant="destructive" title="بخشی از درخواست رزرو تأیید نشده است">
+          وضعیت هر رزرو را در ادامه بررسی کنید. در حال حاضر پرداختی برای این سفارش در دسترس نیست.
+        </KoochAlert>
+      )}
+      {session.summary.hasRejectedReservations && session.payment?.status === "Successful" && (
+        <KoochAlert variant="info" title="نتیجه این سفارش ترکیبی است">
+          پرداخت رزروهای تأییدشده با موفقیت انجام شده و رزروهای ردشده برای حفظ سابقه سفارش نمایش داده می‌شوند.
+        </KoochAlert>
+      )}
+      {canInitiatePayment && !isContinuationAvailable && (
         <KoochAlert variant="success" title="سفارش آماده پرداخت است">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="grid gap-1">
@@ -225,7 +287,7 @@ export default function AccountBookingSessionPage() {
                 <span className="text-sm">درگاه پرداخت در حال حاضر در دسترس نیست. وضعیت سفارش شما محفوظ می‌ماند.</span>
               )}
             </div>
-            {mockPaymentEnabled && <KoochButton className="hidden sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>}
+            {mockPaymentEnabled && <KoochButton className="hidden sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>{paymentActionLabel}</KoochButton>}
           </div>
         </KoochAlert>
       )}
@@ -241,7 +303,23 @@ export default function AccountBookingSessionPage() {
           label="نوع رزرو"
           value={`${bookingModePresentation(sessionBookingMode).icon} ${bookingModePresentation(sessionBookingMode).label}`}
         />
-        <Detail label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
+        {session.summary.hasRejectedReservations ? (
+          <>
+            <Detail label="مبلغ اولیه سفارش" value={formatCurrency(session.summary.originalTotalAmount, { currencyLabel })} />
+            <Detail
+              label={session.payment?.status === "Successful" ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"}
+              value={formatCurrency(session.payment?.status === "Successful" ? session.payment.amount : session.summary.payableAmount, { currencyLabel })}
+            />
+            {isContinuationAvailable && (
+              <Detail
+                label="تعداد رزروهای قابل پرداخت"
+                value={`${session.summary.payableReservationCount.toLocaleString("fa-IR")} رزرو`}
+              />
+            )}
+          </>
+        ) : (
+          <Detail label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
+        )}
         {paymentDeadlineUtc && remainingPaymentSeconds !== null && (
           <ReservationDeadline
             deadlineUtc={paymentDeadlineUtc}
@@ -252,22 +330,32 @@ export default function AccountBookingSessionPage() {
         )}
       </KoochCard>
 
-      <section aria-labelledby="session-reservations-title" className="grid gap-3">
+      <section aria-labelledby="session-reservations-title" className="grid gap-4">
         <h2 className="text-xl font-black" id="session-reservations-title">رزروهای این سفارش</h2>
-        {session.reservations.map((reservation) => (
-          <KoochCard className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]" key={reservation.reservationNumber}>
-            <div className="grid min-w-0 gap-3 sm:grid-cols-2">
-              <Detail label="شماره رزرو" value={<span dir="ltr">{reservation.reservationNumber}</span>} />
-              <Detail label="اتاق" value={`${reservation.roomTypeName}${reservation.roomName ? `، ${reservation.roomName}` : ""}`} />
-              <Detail label="تاریخ ورود" value={formatBookingDate(reservation.checkInDate)} />
-              <Detail label="تاریخ خروج" value={formatBookingDate(reservation.checkOutDate)} />
-            </div>
-            <div className="flex min-w-36 flex-col items-start justify-between gap-3 sm:items-end">
-              <KoochBadge variant={statusVariant(reservation.status)}>{statusLabels[reservation.status] ?? reservation.status}</KoochBadge>
-              <strong>{formatCurrency(reservation.finalAmount, { currencyLabel })}</strong>
-            </div>
-          </KoochCard>
-        ))}
+        {session.summary.hasRejectedReservations && !session.summary.hasPendingApprovals ? (
+          <>
+            <ReservationGroup
+              currencyLabel={currencyLabel}
+              reservations={acceptedReservations}
+              testId="payable-reservations"
+              title={session.payment?.status === "Successful" ? "رزروهای تأییدشده" : "تأییدشده و قابل پرداخت"}
+            />
+            <ReservationGroup
+              currencyLabel={currencyLabel}
+              reservations={rejectedReservations}
+              testId="rejected-reservations"
+              title="ردشده"
+            />
+            <ReservationGroup
+              currencyLabel={currencyLabel}
+              reservations={otherClosedReservations}
+              testId="other-reservations"
+              title="سایر رزروها"
+            />
+          </>
+        ) : (
+          <ReservationCards currencyLabel={currencyLabel} reservations={session.reservations} />
+        )}
       </section>
 
       {canInitiatePayment && mockPaymentEnabled && (
@@ -275,14 +363,62 @@ export default function AccountBookingSessionPage() {
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs font-bold text-muted-foreground">مبلغ قابل پرداخت</p>
-              <p className="truncate font-black text-foreground">{formatCurrency(session.totalAmount, { currencyLabel })}</p>
+              <p className="truncate font-black text-foreground">{formatCurrency(payableAmount, { currencyLabel })}</p>
+              {remainingPaymentSeconds !== null && (
+                <p className="text-xs font-bold text-primary">{formatBookingCountdown(remainingPaymentSeconds, "مهلت پایان یافته است.")}</p>
+              )}
             </div>
-            <KoochButton loading={initiatingPayment} onClick={beginPayment}>پرداخت</KoochButton>
+            <KoochButton loading={initiatingPayment} onClick={beginPayment}>{paymentActionLabel}</KoochButton>
           </div>
         </div>
       )}
     </main>
   );
+}
+
+type SessionReservation = AccountBookingSession["reservations"][number];
+
+function ReservationGroup({
+  currencyLabel,
+  reservations,
+  testId,
+  title,
+}: {
+  currencyLabel: string;
+  reservations: SessionReservation[];
+  testId: string;
+  title: string;
+}) {
+  if (reservations.length === 0) return null;
+  return (
+    <section aria-labelledby={`${testId}-title`} className="grid gap-3" data-testid={testId}>
+      <h3 className="text-base font-black text-foreground" id={`${testId}-title`}>{title}</h3>
+      <ReservationCards currencyLabel={currencyLabel} reservations={reservations} />
+    </section>
+  );
+}
+
+function ReservationCards({
+  currencyLabel,
+  reservations,
+}: {
+  currencyLabel: string;
+  reservations: SessionReservation[];
+}) {
+  return reservations.map((reservation) => (
+    <KoochCard className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto]" key={reservation.reservationNumber}>
+      <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+        <Detail label="شماره رزرو" value={<span dir="ltr">{reservation.reservationNumber}</span>} />
+        <Detail label="اتاق" value={`${reservation.roomTypeName}${reservation.roomName ? `، ${reservation.roomName}` : ""}`} />
+        <Detail label="تاریخ ورود" value={formatBookingDate(reservation.checkInDate)} />
+        <Detail label="تاریخ خروج" value={formatBookingDate(reservation.checkOutDate)} />
+      </div>
+      <div className="flex min-w-36 flex-col items-start justify-between gap-3 sm:items-end">
+        <KoochBadge variant={statusVariant(reservation.status)}>{statusLabels[reservation.status] ?? reservation.status}</KoochBadge>
+        <strong>{formatCurrency(reservation.finalAmount, { currencyLabel })}</strong>
+      </div>
+    </KoochCard>
+  ));
 }
 
 function ReservationDeadline({

@@ -9,7 +9,7 @@ export const orderStatusLabels: Record<string, string> = {
   PaymentFailed: "پرداخت ناموفق",
   Expired: "منقضی",
   Rejected: "ردشده",
-  Mixed: "وضعیت ترکیبی",
+  Mixed: "نتیجه ترکیبی",
 };
 
 export const paymentStatusLabels: Record<string, string> = {

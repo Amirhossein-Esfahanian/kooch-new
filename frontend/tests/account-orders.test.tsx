@@ -85,7 +85,7 @@ describe("account orders", () => {
       PaymentFailed: "پرداخت ناموفق",
       Expired: "منقضی",
       Rejected: "ردشده",
-      Mixed: "وضعیت ترکیبی",
+      Mixed: "نتیجه ترکیبی",
     });
   });
 
@@ -117,6 +117,22 @@ describe("account orders", () => {
     vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "false");
     render(<AccountOrdersPage />);
     expect(await screen.findByText("BS-READY-1")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ادامه پرداخت" })).toBeNull();
+  });
+
+  it("labels a mixed order total as its original amount and defers payment to details", async () => {
+    bookingApi.fetchList.mockResolvedValue({
+      items: [{ ...readyOrder, derivedStatus: "Mixed", paymentStatus: null }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+
+    render(<AccountOrdersPage />);
+
+    expect(await screen.findByText("نتیجه ترکیبی")).toBeTruthy();
+    expect(screen.getByText("رزروها و مبلغ اولیه سفارش")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ادامه پرداخت" })).toBeNull();
   });
 
