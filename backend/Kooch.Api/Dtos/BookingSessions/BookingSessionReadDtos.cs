@@ -1,4 +1,6 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Kooch.Api.Dtos.BookingSessions;
 
@@ -51,11 +53,14 @@ public sealed class BookingSessionDerivedSummaryResponse
     public bool CanContinueWithApprovedReservations { get; set; }
     public int PayableReservationCount { get; set; }
     public decimal PayableAmount { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? ContinuationPaymentDeadlineUtc { get; set; }
     public bool HasPendingApprovals { get; set; }
     public bool HasRejectedReservations { get; set; }
     public bool HasInconsistentPaymentDeadlines { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? EarliestPaymentDeadlineUtc { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? EarliestApprovalDeadlineUtc { get; set; }
     public IReadOnlyList<BookingSessionStatusCountResponse> StatusCounts { get; set; } = [];
 }
@@ -77,7 +82,9 @@ public sealed class BookingSessionReservationDetailsResponse
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }
     public ReservationStatus Status { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
@@ -91,6 +98,7 @@ public sealed class AccountBookingSessionResponse
     public string Currency { get; set; } = string.Empty;
     public decimal TotalAmount { get; set; }
     public BookingSessionDerivedSummaryResponse Summary { get; set; } = new();
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? CommonPaymentDeadlineUtc { get; set; }
     public AccountBookingSessionPaymentResponse? Payment { get; set; }
     public IReadOnlyList<AccountBookingSessionReservationResponse> Reservations { get; set; } = [];
@@ -113,6 +121,7 @@ public sealed class AccountBookingSessionListItemResponse
     public string Currency { get; set; } = string.Empty;
     public string DerivedStatus { get; set; } = string.Empty;
     public PaymentStatus? PaymentStatus { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? PaymentDeadlineUtc { get; set; }
     public bool IsPaymentReady { get; set; }
 }
@@ -137,7 +146,9 @@ public sealed class AccountBookingSessionReservationResponse
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }
     public ReservationStatus Status { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;

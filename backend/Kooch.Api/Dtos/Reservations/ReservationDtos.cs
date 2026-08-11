@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Kooch.Api.Entities;
+using Kooch.Api.Serialization;
 
 namespace Kooch.Api.Dtos.Reservations;
 
@@ -33,7 +35,9 @@ public class ReservationListItemResponse
     public ReservationStatus Status { get; set; }
     public ReservationSource Source { get; set; }
     public DateTime CreatedAtUtc { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? PaymentExpiresAtUtc { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public bool IsPaymentExpired { get; set; }
     public bool IsPaymentEligible { get; set; }
@@ -63,6 +67,7 @@ public class ReservationResponse : ReservationListItemResponse
     public decimal TaxAmount { get; set; }
     public decimal PayableAmount { get; set; }
     public string? Notes { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? HoldUntilUtc { get; set; }
     public int? CreatedByUserId { get; set; }
     public string? CreatedBy { get; set; }
@@ -306,6 +311,7 @@ public class ReservationPaymentLinkResponse
     public string ReservationNumber { get; set; } = string.Empty;
     public string PaymentLink { get; set; } = string.Empty;
     public string? DevPaymentLink { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime ExpiresAtUtc { get; set; }
 }
 

@@ -1,9 +1,11 @@
 using System.Linq.Expressions;
 using System.Security.Claims;
+using System.Text.Json;
 using Kooch.Api.Authentication;
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
+using Kooch.Api.Dtos.Payments;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
@@ -19,6 +21,74 @@ namespace Kooch.Api.Tests;
 
 public sealed class BookingSessionQueryApiTests
 {
+    [Fact]
+    public void BookingAndReservationDeadlines_SerializeAsUtcWithoutChangingClockTime()
+    {
+        var paymentDeadline = new DateTime(2026, 8, 11, 9, 20, 45, DateTimeKind.Unspecified)
+            .AddTicks(7_150_209);
+        var approvalDeadline = new DateTime(2026, 8, 11, 10, 20, 45, DateTimeKind.Utc)
+            .AddTicks(7_150_209);
+        var response = new AccountBookingSessionResponse
+        {
+            CommonPaymentDeadlineUtc = paymentDeadline,
+            Summary = new BookingSessionDerivedSummaryResponse
+            {
+                ContinuationPaymentDeadlineUtc = paymentDeadline,
+                EarliestPaymentDeadlineUtc = paymentDeadline,
+                EarliestApprovalDeadlineUtc = approvalDeadline
+            },
+            Reservations =
+            [
+                new AccountBookingSessionReservationResponse
+                {
+                    PaymentExpiresAtUtc = paymentDeadline,
+                    ApprovalExpiresAtUtc = approvalDeadline
+                }
+            ]
+        };
+        var reservationResponse = new ReservationListItemResponse
+        {
+            PaymentExpiresAtUtc = paymentDeadline,
+            ApprovalExpiresAtUtc = approvalDeadline
+        };
+        var paymentInitiationResponse = new BookingSessionPaymentInitiationResult
+        {
+            PaymentDeadlineUtc = paymentDeadline
+        };
+
+        using var bookingDocument = JsonDocument.Parse(JsonSerializer.Serialize(
+            response,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        using var reservationDocument = JsonDocument.Parse(JsonSerializer.Serialize(
+            reservationResponse,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+        using var paymentDocument = JsonDocument.Parse(JsonSerializer.Serialize(
+            paymentInitiationResponse,
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
+
+        AssertUtcTimestamp(
+            bookingDocument.RootElement.GetProperty("commonPaymentDeadlineUtc"),
+            paymentDeadline);
+        AssertUtcTimestamp(
+            bookingDocument.RootElement.GetProperty("summary").GetProperty("earliestApprovalDeadlineUtc"),
+            approvalDeadline);
+        AssertUtcTimestamp(
+            bookingDocument.RootElement.GetProperty("reservations")[0].GetProperty("paymentExpiresAtUtc"),
+            paymentDeadline);
+        AssertUtcTimestamp(
+            bookingDocument.RootElement.GetProperty("reservations")[0].GetProperty("approvalExpiresAtUtc"),
+            approvalDeadline);
+        AssertUtcTimestamp(
+            reservationDocument.RootElement.GetProperty("paymentExpiresAtUtc"),
+            paymentDeadline);
+        AssertUtcTimestamp(
+            reservationDocument.RootElement.GetProperty("approvalExpiresAtUtc"),
+            approvalDeadline);
+        AssertUtcTimestamp(
+            paymentDocument.RootElement.GetProperty("paymentDeadlineUtc"),
+            paymentDeadline);
+    }
+
     [Fact]
     public async Task GetById_ReturnsProjectedSessionRelationshipsAndChildReservations()
     {
@@ -45,6 +115,17 @@ public sealed class BookingSessionQueryApiTests
                 reservation.RoomTypeName == "Room Type One" &&
                 reservation.RoomName == "Room One" &&
                 reservation.FinalAmount == 100);
+    }
+
+    private static void AssertUtcTimestamp(JsonElement element, DateTime expectedClockTime)
+    {
+        var serialized = element.GetString();
+        Assert.NotNull(serialized);
+        Assert.EndsWith("Z", serialized, StringComparison.Ordinal);
+
+        var parsed = element.GetDateTime();
+        Assert.Equal(DateTimeKind.Utc, parsed.Kind);
+        Assert.Equal(expectedClockTime.Ticks, parsed.Ticks);
     }
 
     [Fact]

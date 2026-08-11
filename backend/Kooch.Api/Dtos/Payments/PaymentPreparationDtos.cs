@@ -1,4 +1,6 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Kooch.Api.Dtos.Payments;
 
@@ -18,6 +20,7 @@ public class ReservationPaymentPreparationResponse
     public decimal PaidAmount { get; set; }
     public decimal RemainingAmount { get; set; }
     public string Currency { get; set; } = "IRR";
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? PaymentExpiresAtUtc { get; set; }
     public int? RemainingPaymentSeconds { get; set; }
     public string PlaceholderMessage { get; set; } = string.Empty;

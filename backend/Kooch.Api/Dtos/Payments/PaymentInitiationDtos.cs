@@ -1,4 +1,6 @@
 using Kooch.Api.Entities;
+using Kooch.Api.Serialization;
+using System.Text.Json.Serialization;
 
 namespace Kooch.Api.Dtos.Payments;
 
@@ -18,6 +20,7 @@ public sealed class BookingSessionPaymentInitiationResult
     public PaymentStatus Status { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string? TransactionReference { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime PaymentDeadlineUtc { get; set; }
     public string RequestHash { get; set; } = string.Empty;
     public bool IsReplay { get; set; }
