@@ -1,4 +1,7 @@
-import type { BookingCartItem } from "@/components/booking/BookingCartProvider";
+import {
+  bookingCartItemsShareContext,
+  type BookingCartItem,
+} from "@/components/booking/BookingCartProvider";
 import {
   createAccountBookingSession,
   fetchBookingOptions,
@@ -32,6 +35,9 @@ export async function revalidateBookingCart(
   fetcher: BookingOptionsFetcher = fetchBookingOptions,
 ): Promise<RevalidatedBookingCart> {
   if (items.length === 0) throw new Error("سبد رزرو خالی است.");
+  if (!bookingCartItemsShareContext(items)) {
+    throw new Error("همه اتاق‌های سبد باید تاریخ اقامت و ترکیب مهمان یکسان داشته باشند.");
+  }
   const propertySlug = items[0].propertySlug;
   const groups = new Map<string, BookingCartItem[]>();
   for (const item of items) {
@@ -108,6 +114,9 @@ export function createBookingSessionFromCart(
   idempotencyKey: string,
   create: typeof createAccountBookingSession = createAccountBookingSession,
 ): Promise<AccountBookingSessionCreateResponse> {
+  if (!bookingCartItemsShareContext(items)) {
+    throw new Error("همه اتاق‌های سبد باید تاریخ اقامت و ترکیب مهمان یکسان داشته باشند.");
+  }
   return create({
     idempotencyKey,
     items: items.map((item) => ({

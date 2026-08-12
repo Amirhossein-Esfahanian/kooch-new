@@ -6,13 +6,22 @@ import { toast } from "sonner";
 import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochField, KoochSelect } from "@/components/KoochFormControls";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { BookingCartMobileActionBar, BookingCartSummary } from "@/components/booking/BookingCart";
-import { BookingCartProvider, getCartAwareAvailableCount, lastBookingSessionCodeKey, useBookingCart } from "@/components/booking/BookingCartProvider";
+import {
+  bookingCartSelectionMatchesItems,
+  BookingCartProvider,
+  getBookingCartStayContext,
+  getCartAwareAvailableCount,
+  lastBookingSessionCodeKey,
+  type BookingCartSelection,
+  useBookingCart,
+} from "@/components/booking/BookingCartProvider";
 import { createBookingSessionFromCart, revalidateBookingCart } from "@/components/booking/booking-checkout";
-import { bookingModePresentation } from "@/components/booking/booking-display";
+import { bookingModePresentation, formatBookingDateRange } from "@/components/booking/booking-display";
 import { fetchBookingOptions, type PublicBookingOptions } from "@/lib/booking-sessions";
 import { formatCurrency } from "@/lib/currency";
 
@@ -67,6 +76,7 @@ function PropertyBookingPanelContent({
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "info" | "success"; text: string } | null>(null);
+  const [replacementSelection, setReplacementSelection] = useState<BookingCartSelection | null>(null);
   const resumedCheckout = useRef(false);
 
   const optionsMatchSearch =
@@ -77,10 +87,21 @@ function PropertyBookingPanelContent({
       : null,
     [options, optionsMatchSearch, selectedRoomTypeId],
   );
+  const selectedContextMatchesCart = Boolean(
+    selectedOption && dates.startDate && dates.endDate &&
+      bookingCartSelectionMatchesItems(cart.items, {
+        propertyId,
+        checkIn: dates.startDate,
+        checkOut: dates.endDate,
+        adults: guests.adults,
+        children: guests.children,
+        childAges: guests.childAges,
+      }),
+  );
   const availableToAdd = useMemo(
     () => selectedOption && dates.startDate && dates.endDate
       ? getCartAwareAvailableCount({
-          items: cart.items,
+          items: selectedContextMatchesCart ? cart.items : [],
           propertyId,
           roomTypeId: selectedOption.roomTypeId,
           checkIn: dates.startDate,
@@ -88,7 +109,7 @@ function PropertyBookingPanelContent({
           serverAvailableCount: selectedOption.availableCount,
         })
       : 0,
-    [cart.items, dates.endDate, dates.startDate, propertyId, selectedOption],
+    [cart.items, dates.endDate, dates.startDate, propertyId, selectedContextMatchesCart, selectedOption],
   );
 
   async function checkAvailability() {
@@ -142,8 +163,7 @@ function PropertyBookingPanelContent({
       !dates.endDate ||
       availableToAdd === 0
     ) return;
-    try {
-      cart.addSelection({
+    const selection: BookingCartSelection = {
         propertyId,
         propertyName,
         propertySlug,
@@ -159,10 +179,21 @@ function PropertyBookingPanelContent({
         displayAmount: selectedOption.finalAmount,
         currency: selectedOption.currency,
         quantity,
-      });
+      };
+    if (!bookingCartSelectionMatchesItems(cart.items, selection)) {
+      setReplacementSelection(selection);
+      return;
+    }
+    addSelectionToCart(selection);
+  }
+
+  function addSelectionToCart(selection: BookingCartSelection, replace = false) {
+    try {
+      if (replace) cart.replaceWithSelection(selection);
+      else cart.addSelection(selection);
       setMessage({
         tone: "success",
-        text: `${quantity.toLocaleString("fa-IR")} واحد از ${selectedOption.name} به سبد رزرو اضافه شد.`,
+        text: `${selection.quantity.toLocaleString("fa-IR")} واحد از ${selection.roomTypeName} به سبد رزرو اضافه شد.`,
       });
       toast.success("اتاق به سبد رزرو اضافه شد.");
     } catch (error) {
@@ -297,8 +328,71 @@ function PropertyBookingPanelContent({
 
       <BookingCartSummary items={cart.items} loading={checkingOut} onContinue={continueCheckout} onRemove={cart.removeItem} total={cart.total} />
       <BookingCartMobileActionBar count={cart.items.length} loading={checkingOut} onContinue={continueCheckout} total={cart.total} />
+      <KoochConfirmDialog
+        cancelText="حفظ سبد فعلی"
+        confirmText="شروع رزرو جدید"
+        description={replacementSelection ? (
+          <CartReplacementDetails
+            current={getBookingCartStayContext(cart.items)}
+            currentPropertyName={cart.items[0]?.propertyName ?? ""}
+            next={replacementSelection}
+          />
+        ) : undefined}
+        onConfirm={() => {
+          if (!replacementSelection) return;
+          addSelectionToCart(replacementSelection, true);
+          setReplacementSelection(null);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setReplacementSelection(null);
+        }}
+        open={replacementSelection !== null}
+        title="سبد رزرو شما مربوط به اقامت دیگری است"
+        variant="warning"
+      />
     </>
   );
+}
+
+function CartReplacementDetails({
+  current,
+  currentPropertyName,
+  next,
+}: {
+  current: ReturnType<typeof getBookingCartStayContext>;
+  currentPropertyName: string;
+  next: BookingCartSelection;
+}) {
+  if (!current) return null;
+  return (
+    <div className="grid gap-3">
+      <p>برای افزودن این انتخاب باید سبد فعلی با رزرو جدید جایگزین شود.</p>
+      <dl className="grid gap-2 rounded-lg bg-muted p-3 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="font-bold text-foreground">اقامت فعلی سبد</dt>
+          <dd className="mt-1 text-muted-foreground">
+            {currentPropertyName}<br />
+            {formatBookingDateRange(current.checkIn, current.checkOut)}<br />
+            {formatGuestComposition(current)}
+          </dd>
+        </div>
+        <div>
+          <dt className="font-bold text-foreground">اقامت جدید</dt>
+          <dd className="mt-1 text-muted-foreground">
+            {next.propertyName}<br />
+            {formatBookingDateRange(next.checkIn, next.checkOut)}<br />
+            {formatGuestComposition(next)}
+          </dd>
+        </div>
+      </dl>
+    </div>
+  );
+}
+
+function formatGuestComposition({ adults, children }: { adults: number; children: number }) {
+  return children > 0
+    ? `${adults.toLocaleString("fa-IR")} بزرگسال و ${children.toLocaleString("fa-IR")} کودک`
+    : `${adults.toLocaleString("fa-IR")} بزرگسال`;
 }
 
 function unavailableMessage(

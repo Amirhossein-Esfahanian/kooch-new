@@ -66,20 +66,8 @@ export function BookingCartItemRow({
         <p className="truncate font-bold text-foreground">
           {item.roomTypeName}{item.roomName ? `، ${item.roomName}` : ""}
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {formatBookingDateRange(item.checkIn, item.checkOut)}
-        </p>
         <p className="mt-1 text-xs font-bold text-foreground">
           <span aria-hidden="true">{mode.icon}</span> {mode.label}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          {item.adults.toLocaleString("fa-IR")} بزرگسال
-          {item.children > 0
-            ? ` و ${item.children.toLocaleString("fa-IR")} کودک`
-            : ""}
-          {line.quantity > 1
-            ? ` برای هر یک از ${line.quantity.toLocaleString("fa-IR")} واحد`
-            : ""}
         </p>
         <p className="mt-1 font-semibold text-foreground">
           {line.quantity.toLocaleString("fa-IR")} واحد · جمع این ردیف: {formatCurrency(line.total)}
@@ -116,10 +104,10 @@ export function BookingCartSummary({
   const roomTypeCount = new Set(items.map((item) => item.roomTypeId)).size;
   const nightsCount = countBookingNights(items);
   const mode = bookingModePresentation(items[0].bookingMode);
-  const checkIn = items.map((item) => item.checkIn).sort()[0];
-  const checkOut = items.map((item) => item.checkOut).sort().at(-1)!;
-  const adults = items.reduce((sum, item) => sum + item.adults, 0);
-  const children = items.reduce((sum, item) => sum + item.children, 0);
+  const checkIn = items[0].checkIn;
+  const checkOut = items[0].checkOut;
+  const adults = items[0].adults;
+  const children = items[0].children;
 
   return (
     <section aria-labelledby="booking-cart-title" className="mt-5 rounded-lg border border-border bg-card p-4">

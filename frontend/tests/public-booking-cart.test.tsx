@@ -12,6 +12,8 @@ import {
 } from "@/components/booking/booking-display";
 import {
   addItemsToBookingCart,
+  bookingCartItemsShareContext,
+  bookingCartSelectionMatchesItems,
   bookingCartStorageKey,
   BookingCartProvider,
   expandStayNights,
@@ -207,7 +209,7 @@ describe("public booking cart", () => {
     expect(screen.getByText("ورود و خروج")).toBeTruthy();
     expect(screen.getByText("مهمانان")).toBeTruthy();
     expect(screen.getByText("آمادگی ادامه")).toBeTruthy();
-    expect(screen.getByText(/برای هر یک از ۲ واحد/)).toBeTruthy();
+    expect(screen.queryByText(/برای هر یک از ۲ واحد/)).toBeNull();
     expect(screen.getAllByText("۲").length).toBeGreaterThanOrEqual(2);
   });
 
@@ -227,6 +229,44 @@ describe("public booking cart", () => {
     expect(() => addItemsToBookingCart(current, [item({ roomId: 101 })])).toThrow(/قبلاً/);
   });
 
+  it("establishes one stay context and allows multiple room types and quantities within it", () => {
+    const firstItems = expandBookingCartSelection(selection({ quantity: 2 }));
+    const established = addItemsToBookingCart(state(), firstItems);
+    const secondRoomType = item({
+      roomTypeId: 20,
+      roomTypeName: "اتاق دوقلو",
+      displayAmount: 1_500_000,
+    });
+
+    const combined = addItemsToBookingCart(established, [secondRoomType]);
+
+    expect(combined.items).toHaveLength(3);
+    expect(new Set(combined.items.map((entry) => entry.roomTypeId))).toEqual(new Set([10, 20]));
+    expect(bookingCartItemsShareContext(combined.items)).toBe(true);
+  });
+
+  it("rejects partial date overlap and a changed guest composition", () => {
+    const current = state([item()]);
+
+    expect(() => addItemsToBookingCart(current, [item({
+      checkIn: "2026-08-11",
+      checkOut: "2026-08-12",
+    })])).toThrow(/یک تاریخ اقامت/);
+    expect(() => addItemsToBookingCart(current, [item({
+      adults: 1,
+      children: 1,
+      childAges: [7],
+    })])).toThrow(/ترکیب مهمان/);
+    expect(bookingCartSelectionMatchesItems(current.items, {
+      propertyId: 1,
+      checkIn: "2026-08-10",
+      checkOut: "2026-08-12",
+      adults: 2,
+      children: 0,
+      childAges: [],
+    })).toBe(true);
+  });
+
   it("restores the cart and checkout intent from sessionStorage", async () => {
     const saved = { ...state([item()]), checkoutRequested: true };
     const { hydrated: _hydrated, ...stored } = saved;
@@ -238,6 +278,23 @@ describe("public booking cart", () => {
     render(<BookingCartProvider><Probe /></BookingCartProvider>);
     expect(await screen.findByText("1:true")).toBeTruthy();
     expect(restoreBookingCart(sessionStorage.getItem(bookingCartStorageKey))?.idempotencyKey).toBe("stable-key");
+  });
+
+  it("rejects an inconsistent legacy cart instead of mixing stay contexts", () => {
+    const stored = {
+      propertyId: 1,
+      propertyName: "خانه کاشان",
+      propertySlug: "kashan-house",
+      bookingMode: "Instant",
+      idempotencyKey: "legacy-key",
+      checkoutRequested: false,
+      items: [
+        item(),
+        item({ id: "legacy-second", checkIn: "2026-08-11", checkOut: "2026-08-13" }),
+      ],
+    };
+
+    expect(restoreBookingCart(JSON.stringify(stored))).toBeNull();
   });
 
   it("revalidates availability and reports a changed price", async () => {
@@ -273,10 +330,11 @@ describe("public booking cart", () => {
     }))).rejects.toThrow(/حداکثر ۱ واحد در دسترس است/);
   });
 
-  it("creates an idempotent safe payload without identity or status fields", async () => {
+  it("creates an idempotent safe payload whose independent children share one stay context", async () => {
     const create = vi.fn().mockResolvedValue({ sessionCode: "BS-1" });
-    await createBookingSessionFromCart([item()], "same-key", create);
-    await createBookingSessionFromCart([item()], "same-key", create);
+    const items = [item(), item({ id: "second-room", roomTypeId: 20, roomTypeName: "اتاق دوقلو" })];
+    await createBookingSessionFromCart(items, "same-key", create);
+    await createBookingSessionFromCart(items, "same-key", create);
     expect(create).toHaveBeenCalledTimes(2);
     for (const [payload] of create.mock.calls) {
       expect(payload.idempotencyKey).toBe("same-key");
@@ -285,6 +343,12 @@ describe("public booking cart", () => {
       expect(payload).not.toHaveProperty("propertyId");
       expect(payload.items[0]).not.toHaveProperty("status");
       expect(payload.items[0]).not.toHaveProperty("roomId");
+      expect(payload.items).toHaveLength(2);
+      expect(payload.items.every((entry: { checkInDate: string; checkOutDate: string; adults: number }) =>
+        entry.checkInDate === "2026-08-10" &&
+        entry.checkOutDate === "2026-08-12" &&
+        entry.adults === 2,
+      )).toBe(true);
     }
   });
 

@@ -50,6 +50,15 @@ export interface BookingCartState {
   items: BookingCartItem[];
 }
 
+export interface BookingCartStayContext {
+  propertyId: number;
+  checkIn: string;
+  checkOut: string;
+  adults: number;
+  children: number;
+  childAges: number[];
+}
+
 interface CartAwareAvailabilityInput {
   items: BookingCartItem[];
   propertyId: number;
@@ -179,6 +188,53 @@ export function expandBookingCartSelection(
   }));
 }
 
+export function getBookingCartStayContext(
+  items: BookingCartItem[],
+): BookingCartStayContext | null {
+  if (items.length === 0) return null;
+  const first = items[0];
+  return {
+    propertyId: first.propertyId,
+    checkIn: first.checkIn,
+    checkOut: first.checkOut,
+    adults: first.adults,
+    children: first.children,
+    childAges: [...first.childAges],
+  };
+}
+
+export function bookingCartContextMatches(
+  context: BookingCartStayContext,
+  candidate: BookingCartStayContext,
+) {
+  return context.propertyId === candidate.propertyId &&
+    context.checkIn === candidate.checkIn &&
+    context.checkOut === candidate.checkOut &&
+    context.adults === candidate.adults &&
+    context.children === candidate.children &&
+    context.childAges.length === candidate.childAges.length &&
+    context.childAges.every((age, index) => age === candidate.childAges[index]);
+}
+
+export function bookingCartSelectionMatchesItems(
+  items: BookingCartItem[],
+  selection: BookingCartStayContext,
+) {
+  const context = getBookingCartStayContext(items);
+  return context === null || bookingCartContextMatches(context, selection);
+}
+
+export function bookingCartItemsShareContext(items: BookingCartItem[]) {
+  const context = getBookingCartStayContext(items);
+  if (context === null) return true;
+  const bookingMode = items[0].bookingMode;
+  return items.every(
+    (item) =>
+      bookingCartContextMatches(context, item) &&
+      item.bookingMode === bookingMode,
+  );
+}
+
 export function addItemsToBookingCart(
   state: BookingCartState,
   additions: BookingCartItem[],
@@ -199,6 +255,15 @@ export function addItemsToBookingCart(
     )
   ) {
     throw new Error("همه اتاق‌های افزوده‌شده باید شرایط یکسان داشته باشند.");
+  }
+  if (!bookingCartItemsShareContext(additions)) {
+    throw new Error("همه اتاق‌های افزوده‌شده باید یک تاریخ و ترکیب مهمان داشته باشند.");
+  }
+  if (!bookingCartItemsShareContext(state.items)) {
+    throw new Error("سبد رزرو فعلی دارای اطلاعات اقامت ناسازگار است و باید دوباره ساخته شود.");
+  }
+  if (!bookingCartSelectionMatchesItems(state.items, first)) {
+    throw new Error("سبد رزرو فقط می‌تواند شامل یک تاریخ اقامت و ترکیب مهمان باشد.");
   }
 
   const existingRoomIds = new Set(
@@ -236,6 +301,18 @@ export function restoreBookingCart(value: string | null): StoredBookingCart | nu
     ) {
       return null;
     }
+    if (!parsed.items.every(isBookingCartItem)) return null;
+    const items = parsed.items;
+    if (
+      !bookingCartItemsShareContext(items) ||
+      items.some(
+        (item) =>
+          item.propertyId !== parsed.propertyId ||
+          item.bookingMode !== parsed.bookingMode,
+      )
+    ) {
+      return null;
+    }
     return {
       propertyId: parsed.propertyId,
       propertyName: parsed.propertyName ?? "",
@@ -243,16 +320,41 @@ export function restoreBookingCart(value: string | null): StoredBookingCart | nu
       bookingMode: parsed.bookingMode,
       idempotencyKey: parsed.idempotencyKey,
       checkoutRequested: Boolean(parsed.checkoutRequested),
-      items: parsed.items as BookingCartItem[],
+      items,
     };
   } catch {
     return null;
   }
 }
 
+function isBookingCartItem(value: unknown): value is BookingCartItem {
+  if (!value || typeof value !== "object") return false;
+  const item = value as Partial<BookingCartItem>;
+  return typeof item.id === "string" &&
+    typeof item.propertyId === "number" &&
+    typeof item.propertyName === "string" &&
+    typeof item.propertySlug === "string" &&
+    (item.bookingMode === "Instant" || item.bookingMode === "OnRequest") &&
+    typeof item.roomTypeId === "number" &&
+    typeof item.roomTypeName === "string" &&
+    (item.roomId === null || typeof item.roomId === "number") &&
+    (item.roomName === null || typeof item.roomName === "string") &&
+    typeof item.checkIn === "string" &&
+    typeof item.checkOut === "string" &&
+    expandStayNights(item.checkIn, item.checkOut).length > 0 &&
+    typeof item.adults === "number" &&
+    typeof item.children === "number" &&
+    Array.isArray(item.childAges) &&
+    item.childAges.every((age) => typeof age === "number") &&
+    (item.notes === null || typeof item.notes === "string") &&
+    typeof item.displayAmount === "number" &&
+    typeof item.currency === "string";
+}
+
 interface BookingCartContextValue extends BookingCartState {
   total: number;
   addSelection: (selection: BookingCartSelection) => void;
+  replaceWithSelection: (selection: BookingCartSelection) => void;
   removeItem: (itemId: string) => void;
   setCheckoutRequested: (value: boolean) => void;
   replaceItems: (items: BookingCartItem[]) => void;
@@ -290,8 +392,22 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const replaceItems = useCallback((items: BookingCartItem[]) => {
+    if (!bookingCartItemsShareContext(items)) {
+      throw new Error("اطلاعات اقامت سبد رزرو یکسان نیست.");
+    }
     dispatch({ type: "replace", payload: { ...state, items } });
   }, [state]);
+
+  const replaceWithSelection = useCallback((selection: BookingCartSelection) => {
+    const additions = expandBookingCartSelection(selection);
+    dispatch({
+      type: "replace",
+      payload: addItemsToBookingCart(
+        { ...emptyCart, hydrated: true },
+        additions,
+      ),
+    });
+  }, []);
 
   const setCheckoutRequested = useCallback((next: boolean) => {
     const nextState = { ...state, checkoutRequested: next };
@@ -312,12 +428,13 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
       ...state,
       total: state.items.reduce((sum, item) => sum + item.displayAmount, 0),
       addSelection,
+      replaceWithSelection,
       removeItem: (itemId) => dispatch({ type: "remove", itemId }),
       setCheckoutRequested,
       replaceItems,
       clear,
     }),
-    [addSelection, clear, replaceItems, setCheckoutRequested, state],
+    [addSelection, clear, replaceItems, replaceWithSelection, setCheckoutRequested, state],
   );
 
   return (

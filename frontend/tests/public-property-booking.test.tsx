@@ -26,7 +26,14 @@ vi.mock("@/components/KoochDatePicker", () => ({
   KoochDatePicker: () => <div data-testid="booking-date-picker">انتخاب تاریخ اقامت</div>,
 }));
 vi.mock("@/components/GuestSelector", () => ({
-  GuestSelector: () => <div data-testid="booking-guest-selector">انتخاب مهمان و تعداد اتاق</div>,
+  GuestSelector: ({ onChange }: { onChange: (value: { adults: number; children: number; childAges: number[]; rooms: number }) => void }) => (
+    <div data-testid="booking-guest-selector">
+      انتخاب مهمان و تعداد اتاق
+      <button type="button" onClick={() => onChange({ adults: 3, children: 0, childAges: [], rooms: 1 })}>
+        تغییر مهمانان آزمایشی
+      </button>
+    </div>
+  ),
 }));
 vi.mock("@/lib/public-properties", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/public-properties")>();
@@ -202,8 +209,8 @@ describe("public property booking integration", () => {
       bookingMode: "Instant",
       roomTypeId: 10,
       roomTypeName: property.roomTypes[0].name,
-      checkIn: "2030-08-09",
-      checkOut: "2030-08-11",
+      checkIn: "2030-08-10",
+      checkOut: "2030-08-12",
       adults: 2,
       children: 0,
       childAges: [],
@@ -233,6 +240,104 @@ describe("public property booking integration", () => {
       "ظرفیت این نوع اتاق با توجه به موارد موجود در سبد رزرو شما تکمیل شده است.",
     )).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "تعداد واحد" }).hasAttribute("disabled")).toBe(true);
+  });
+
+  it("keeps the current cart or replaces it only after confirming a changed stay", async () => {
+    const existingItems = expandBookingCartSelection({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      roomTypeId: 10,
+      roomTypeName: property.roomTypes[0].name,
+      checkIn: "2030-08-08",
+      checkOut: "2030-08-10",
+      adults: 2,
+      children: 0,
+      childAges: [],
+      notes: null,
+      displayAmount: 4_000_000,
+      currency: "IRR",
+      quantity: 1,
+    });
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      idempotencyKey: "old-stay",
+      checkoutRequested: false,
+      items: existingItems,
+    }));
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+
+    let dialog = await screen.findByRole("alertdialog", {
+      name: "سبد رزرو شما مربوط به اقامت دیگری است",
+    });
+    expect(within(dialog).getByText("اقامت فعلی سبد")).toBeTruthy();
+    expect(within(dialog).getByText("اقامت جدید")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "حفظ سبد فعلی" }));
+
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items[0].checkIn).toBe("2030-08-08");
+
+    fireEvent.click(screen.getByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+    dialog = await screen.findByRole("alertdialog", {
+      name: "سبد رزرو شما مربوط به اقامت دیگری است",
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "شروع رزرو جدید" }));
+
+    await waitFor(() => {
+      const stored = JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!);
+      expect(stored.items).toHaveLength(1);
+      expect(stored.items[0].checkIn).toBe("2030-08-10");
+      expect(stored.idempotencyKey).not.toBe("old-stay");
+    });
+  });
+
+  it("requires replacement confirmation when the guest composition changes", async () => {
+    const existingItems = expandBookingCartSelection({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      roomTypeId: 10,
+      roomTypeName: property.roomTypes[0].name,
+      checkIn: "2030-08-10",
+      checkOut: "2030-08-12",
+      adults: 2,
+      children: 0,
+      childAges: [],
+      notes: null,
+      displayAmount: 4_000_000,
+      currency: "IRR",
+      quantity: 1,
+    });
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      idempotencyKey: "old-guests",
+      checkoutRequested: false,
+      items: existingItems,
+    }));
+    api.fetchOptions.mockResolvedValueOnce({ ...availableOptions, adults: 3 });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "تغییر مهمانان آزمایشی" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "سبد رزرو شما مربوط به اقامت دیگری است",
+    });
+    const stayDetails = within(dialog).getAllByRole("definition");
+    expect(stayDetails[0].textContent).toContain("۲ بزرگسال");
+    expect(stayDetails[1].textContent).toContain("۳ بزرگسال");
   });
 
   it("exposes empty and error booking-options states", async () => {
