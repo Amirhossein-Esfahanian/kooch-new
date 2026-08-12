@@ -19,8 +19,9 @@ import {
 import { fetchAccountBookingSession, initiateAccountBookingSessionPayment, type AccountBookingSession } from "@/lib/booking-sessions";
 import { statusLabels, statusVariant } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { getOrCreatePaymentIdempotencyKey } from "@/lib/payment-idempotency";
+import { getPaymentIdempotencyKeyForCurrentAttempt } from "@/lib/payment-idempotency";
 import { isMockPaymentUiEnabled } from "@/lib/account-orders";
+import { getBookingSessionPaymentEligibility } from "@/lib/booking-payment-eligibility";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
 export default function AccountBookingSessionPage() {
@@ -32,16 +33,11 @@ export default function AccountBookingSessionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [initiatingPayment, setInitiatingPayment] = useState(false);
-  const isContinuationAvailable = Boolean(
-    session?.summary.canContinueWithApprovedReservations,
-  );
-  const paymentDeadlineUtc = isContinuationAvailable
-    ? session?.summary.continuationPaymentDeadlineUtc ?? null
-    : session?.summary.isPaymentReady
-      ? session.commonPaymentDeadlineUtc ??
-        session.summary.earliestPaymentDeadlineUtc ??
-        null
-      : null;
+  const paymentEligibility = session
+    ? getBookingSessionPaymentEligibility(session)
+    : null;
+  const isContinuationAvailable = paymentEligibility?.isContinuation ?? false;
+  const paymentDeadlineUtc = paymentEligibility?.deadlineUtc ?? null;
   const approvalDeadlineUtc = session?.summary.earliestApprovalDeadlineUtc ?? null;
   const remainingPaymentSeconds = useReservationPaymentCountdown(
     Boolean(paymentDeadlineUtc),
@@ -75,9 +71,11 @@ export default function AccountBookingSessionPage() {
   const payableAmount = isContinuationAvailable
     ? session?.summary.payableAmount ?? 0
     : session?.totalAmount ?? 0;
-  const paymentActionLabel = isContinuationAvailable
-    ? "ادامه با رزروهای تأییدشده"
-    : "پرداخت";
+  const paymentActionLabel = session?.payment?.status === "Failed"
+    ? "تلاش مجدد برای پرداخت"
+    : isContinuationAvailable
+      ? "ادامه با رزروهای تأییدشده"
+      : "پرداخت";
   const mockPaymentEnabled = isMockPaymentUiEnabled();
   const hasExpiredPaymentWindow = Boolean(
     session &&
@@ -98,7 +96,10 @@ export default function AccountBookingSessionPage() {
     try {
       const result = await initiateAccountBookingSessionPayment(
         session.sessionCode,
-        getOrCreatePaymentIdempotencyKey(session.sessionCode),
+      getPaymentIdempotencyKeyForCurrentAttempt(
+        session.sessionCode,
+        session.payment?.status === "Failed" ? session.payment.paymentId : null,
+      ),
       );
       if (!result.checkoutDestination.startsWith("/")) {
         throw new Error("مسیر پرداخت در دسترس نیست.");

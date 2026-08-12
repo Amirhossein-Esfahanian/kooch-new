@@ -22,11 +22,9 @@ import {
 import { formatDate, formatDuration } from "@/lib/account-reservations";
 import {
   fetchAccountBookingSessions,
-  initiateAccountBookingSessionPayment,
   type AccountBookingSessionListItem,
 } from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { getOrCreatePaymentIdempotencyKey } from "@/lib/payment-idempotency";
 
 const PAGE_SIZE = 10;
 
@@ -39,7 +37,6 @@ export default function AccountOrdersPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [payingCode, setPayingCode] = useState<string | null>(null);
   const hasAccountWorkspace = auth.workspaces.includes("account");
 
   const loadOrders = useCallback(async () => {
@@ -68,26 +65,6 @@ export default function AccountOrdersPage() {
     }
     void loadOrders();
   }, [auth, hasAccountWorkspace, loadOrders, router]);
-
-  async function beginPayment(order: AccountBookingSessionListItem) {
-    if (payingCode) return;
-    setPayingCode(order.sessionCode);
-    setError("");
-    try {
-      const result = await initiateAccountBookingSessionPayment(
-        order.sessionCode,
-        getOrCreatePaymentIdempotencyKey(order.sessionCode),
-      );
-      if (!result.checkoutDestination.startsWith("/")) {
-        throw new Error("مسیر پرداخت در دسترس نیست.");
-      }
-      router.push(result.checkoutDestination);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "شروع پرداخت انجام نشد.");
-    } finally {
-      setPayingCode(null);
-    }
-  }
 
   if (auth.loading || !auth.authenticated || !hasAccountWorkspace) {
     return (
@@ -128,9 +105,7 @@ export default function AccountOrdersPage() {
               <OrderCard
                 currencyLabel={currencyLabel}
                 key={order.sessionCode}
-                onPay={() => beginPayment(order)}
                 order={order}
-                paying={payingCode === order.sessionCode}
               />
             ))}
           </section>
@@ -152,17 +127,19 @@ export default function AccountOrdersPage() {
 
 function OrderCard({
   currencyLabel,
-  onPay,
   order,
-  paying,
 }: {
   currencyLabel: string;
-  onPay: () => void;
   order: AccountBookingSessionListItem;
-  paying: boolean;
 }) {
   const remainingSeconds = useOrderPaymentCountdown(order.paymentDeadlineUtc, order.sessionCode);
-  const canUseMockPayment = order.isPaymentReady && isMockPaymentUiEnabled();
+  const canContinuePayment = Boolean(
+    isMockPaymentUiEnabled() &&
+      order.isPaymentReady &&
+      remainingSeconds !== null &&
+      remainingSeconds > 0 &&
+      order.paymentStatus !== "Successful",
+  );
   const stayDates = order.checkInDate && order.checkOutDate
     ? `${formatDate(order.checkInDate)} تا ${formatDate(order.checkOutDate)}`
     : "تاریخ اقامت ثبت نشده";
@@ -199,7 +176,14 @@ function OrderCard({
           </div>
         )}
         <Link className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2" href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}>جزئیات</Link>
-        {canUseMockPayment && order.derivedStatus !== "Mixed" && <KoochButton loading={paying} onClick={onPay}>ادامه پرداخت</KoochButton>}
+        {canContinuePayment && order.derivedStatus !== "Mixed" && (
+          <Link
+            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}
+          >
+            {order.paymentStatus === "Failed" ? "تلاش مجدد برای پرداخت" : "ادامه پرداخت"}
+          </Link>
+        )}
       </div>
     </KoochCard>
   );

@@ -100,24 +100,59 @@ describe("account orders", () => {
     expect(bookingApi.fetchList).toHaveBeenCalledWith(1, 10);
   });
 
-  it("uses backend pagination and continues mock payment with a server destination", async () => {
+  it("uses backend pagination and routes payment through canonical session details", async () => {
     render(<AccountOrdersPage />);
-    const paymentButton = await screen.findByRole("button", { name: "ادامه پرداخت" });
-    fireEvent.click(paymentButton);
-    await waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
-    expect(navigation.router.push).toHaveBeenCalledWith(
-      "/booking/sessions/BS-READY-1/mock-payment",
+    const paymentLink = await screen.findByRole("link", { name: "ادامه پرداخت" });
+    expect(paymentLink.getAttribute("href")).toBe(
+      "/account/booking-sessions/BS-READY-1",
     );
+    expect(bookingApi.initiate).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
     await waitFor(() => expect(bookingApi.fetchList).toHaveBeenCalledWith(2, 10));
+  });
+
+  it("shows a canonical retry link for a failed but still-payable order", async () => {
+    bookingApi.fetchList.mockResolvedValue({
+      items: [{ ...readyOrder, paymentStatus: "Failed" }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+
+    render(<AccountOrdersPage />);
+
+    const retry = await screen.findByRole("link", { name: "تلاش مجدد برای پرداخت" });
+    expect(retry.getAttribute("href")).toBe(
+      "/account/booking-sessions/BS-READY-1",
+    );
+  });
+
+  it.each([
+    { paymentStatus: "Successful", isPaymentReady: false, paymentDeadlineUtc: null },
+    { paymentStatus: "Failed", isPaymentReady: true, paymentDeadlineUtc: "2000-08-10T10:00:00Z" },
+    { paymentStatus: null, isPaymentReady: false, paymentDeadlineUtc: null },
+  ])("hides retry when the order is not currently payable", async (overrides) => {
+    bookingApi.fetchList.mockResolvedValue({
+      items: [{ ...readyOrder, ...overrides }],
+      totalCount: 1,
+      page: 1,
+      pageSize: 10,
+      totalPages: 1,
+    });
+
+    render(<AccountOrdersPage />);
+
+    expect(await screen.findByText("BS-READY-1")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /پرداخت/ })).toBeNull();
   });
 
   it("does not expose mock payment when its public UI flag is disabled", async () => {
     vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "false");
     render(<AccountOrdersPage />);
     expect(await screen.findByText("BS-READY-1")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "ادامه پرداخت" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "ادامه پرداخت" })).toBeNull();
   });
 
   it("labels a mixed order total as its original amount and defers payment to details", async () => {
@@ -133,7 +168,7 @@ describe("account orders", () => {
 
     expect(await screen.findByText("نتیجه ترکیبی")).toBeTruthy();
     expect(screen.getByText("رزروها و مبلغ اولیه سفارش")).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "ادامه پرداخت" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "ادامه پرداخت" })).toBeNull();
   });
 
   it("keeps grouped orders and legacy independent reservations visibly separate", () => {

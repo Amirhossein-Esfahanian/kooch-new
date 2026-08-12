@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccountBookingSession } from "@/lib/booking-sessions";
+import { getPaymentIdempotencyKeyForCurrentAttempt } from "@/lib/payment-idempotency";
 
 const navigation = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
@@ -103,6 +104,7 @@ function mixedResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOStr
 describe("account booking session detail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "true");
     bookingApi.fetch.mockResolvedValue(response());
     bookingApi.initiate.mockResolvedValue({
@@ -181,6 +183,46 @@ describe("account booking session detail", () => {
       "/booking/sessions/BS-1405-001/mock-payment",
     );
     expect(screen.getByTestId("session-payment-mobile-action")).toBeTruthy();
+  });
+
+  it("uses a new logical idempotency key after a definitive failed payment", async () => {
+    const ready = readyResponse();
+    ready.payment = {
+      paymentId: 77,
+      status: "Failed",
+      amount: ready.totalAmount,
+      currency: ready.currency,
+      provider: "internal-test",
+      appliedAtUtc: null,
+    };
+    sessionStorage.setItem(
+      "kooch_booking_session_payment_BS-1405-001",
+      "failed-attempt-key",
+    );
+    bookingApi.fetch.mockResolvedValue(ready);
+    render(<AccountBookingSessionPage />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "تلاش مجدد برای پرداخت" }))[0]);
+
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
+    const newAttemptKey = bookingApi.initiate.mock.calls[0][1];
+    expect(newAttemptKey).not.toBe("failed-attempt-key");
+    expect(sessionStorage.getItem(
+      "kooch_booking_session_failed_payment_BS-1405-001",
+    )).toBe("77");
+  });
+
+  it("keeps the new key stable for a network retry of the same logical attempt", () => {
+    const firstKey = getPaymentIdempotencyKeyForCurrentAttempt(
+      "BS-1405-001",
+      77,
+    );
+    const retryKey = getPaymentIdempotencyKeyForCurrentAttempt(
+      "BS-1405-001",
+      77,
+    );
+
+    expect(retryKey).toBe(firstKey);
   });
 
   it("does not expose a broken payment route when mock checkout is disabled", async () => {

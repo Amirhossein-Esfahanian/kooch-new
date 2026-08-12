@@ -9,10 +9,10 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { fetchAccountBookingSession, initiateAccountBookingSessionPayment, type AccountBookingSession } from "@/lib/booking-sessions";
+import { fetchAccountBookingSession, type AccountBookingSession } from "@/lib/booking-sessions";
+import { getBookingSessionPaymentEligibility } from "@/lib/booking-payment-eligibility";
 import { formatDate, statusLabels, statusVariant } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { getOrCreatePaymentIdempotencyKey } from "@/lib/payment-idempotency";
 
 export function BookingPaymentResult({
   sessionCode,
@@ -26,7 +26,6 @@ export function BookingPaymentResult({
   const currencyLabel = useSiteCurrencyLabel();
   const [session, setSession] = useState<AccountBookingSession | null>(null);
   const [loading, setLoading] = useState(true);
-  const [retrying, setRetrying] = useState(false);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -58,28 +57,13 @@ export function BookingPaymentResult({
     return () => { active = false; if (timer) window.clearTimeout(timer); };
   }, [auth.authenticated, auth.loading, mode, router, sessionCode]);
 
-  async function retry() {
-    setRetrying(true);
-    setError("");
-    try {
-      const result = await initiateAccountBookingSessionPayment(
-        sessionCode,
-        getOrCreatePaymentIdempotencyKey(sessionCode),
-      );
-      if (!result.checkoutDestination.startsWith("/")) throw new Error();
-      router.push(result.checkoutDestination);
-    } catch {
-      setError("شروع دوباره پرداخت انجام نشد. وضعیت سفارش را بررسی کنید.");
-    } finally {
-      setRetrying(false);
-    }
-  }
-
   if (auth.loading || loading) return <StateAlert>در حال بررسی نتیجه پرداخت...</StateAlert>;
   if (!session) return <StateAlert error>{error || "سفارش رزرو پیدا نشد."}</StateAlert>;
 
   const successful = session.payment?.status === "Successful";
   const mixedOutcome = session.summary.hasRejectedReservations;
+  const paymentEligibility = getBookingSessionPaymentEligibility(session);
+  const canRetry = mode === "failure" && !successful && paymentEligibility.canPay;
   return (
     <main className="mx-auto grid max-w-4xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
       <KoochPageHeader eyebrow="نتیجه پرداخت" title={mode === "success" ? "نتیجه سفارش رزرو" : "پرداخت ناموفق"} description={<span>کد سفارش: <b dir="ltr">{session.sessionCode}</b></span>} />
@@ -124,7 +108,11 @@ export function BookingPaymentResult({
         ))}
       </section>
       <div className="flex flex-wrap gap-3">
-        {mode === "failure" && <KoochButton loading={retrying} onClick={retry}>تلاش دوباره برای پرداخت</KoochButton>}
+        {canRetry && (
+          <KoochButton onClick={() => router.push(`/account/booking-sessions/${encodeURIComponent(sessionCode)}`)}>
+            تلاش مجدد برای پرداخت
+          </KoochButton>
+        )}
         <KoochButton onClick={() => router.push(`/account/booking-sessions/${encodeURIComponent(sessionCode)}`)} variant="outline">جزئیات سفارش</KoochButton>
         <Link className="inline-flex min-h-11 items-center rounded-md px-4 text-sm font-bold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/account/reservations">رزروهای من</Link>
       </div>

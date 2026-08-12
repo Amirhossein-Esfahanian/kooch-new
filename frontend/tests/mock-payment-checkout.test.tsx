@@ -30,8 +30,10 @@ vi.mock("@/lib/currency", () => ({
 
 import { BookingPaymentResult } from "@/components/booking/BookingPaymentResult";
 import { MockPaymentCheckout } from "@/components/booking/MockPaymentCheckout";
+import type { AccountBookingSession } from "@/lib/booking-sessions";
 
 function session(paymentStatus = "Pending") {
+  const paymentDeadline = new Date(Date.now() + 10 * 60 * 1000).toISOString();
   return {
     sessionCode: "BS-PAY-1",
     displayCodeLabel: "کد سفارش",
@@ -53,15 +55,15 @@ function session(paymentStatus = "Pending") {
       hasPendingApprovals: false,
       hasRejectedReservations: false,
       hasInconsistentPaymentDeadlines: false,
-      earliestPaymentDeadlineUtc: "2026-08-09T10:00:00Z",
+      earliestPaymentDeadlineUtc: paymentDeadline,
       earliestApprovalDeadlineUtc: null,
       statusCounts: [],
     },
-    commonPaymentDeadlineUtc: "2026-08-09T10:00:00Z",
+    commonPaymentDeadlineUtc: paymentDeadline,
     payment: { paymentId: 50, status: paymentStatus, amount: 300, currency: "IRR", provider: "internal-test", appliedAtUtc: paymentStatus === "Successful" ? "2026-08-05T10:00:00Z" : null },
     reservations: [
-      { reservationNumber: "R-1", roomTypeId: 10, roomTypeName: "اتاق یک", roomId: 101, roomName: "۱۰۱", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", approvalExpiresAtUtc: null, paymentExpiresAtUtc: "2026-08-09T10:00:00Z", finalAmount: 100, currency: "IRR" },
-      { reservationNumber: "R-2", roomTypeId: 11, roomTypeName: "اتاق دو", roomId: 102, roomName: "۱۰۲", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", approvalExpiresAtUtc: null, paymentExpiresAtUtc: "2026-08-09T10:00:00Z", finalAmount: 200, currency: "IRR" },
+      { reservationNumber: "R-1", roomTypeId: 10, roomTypeName: "اتاق یک", roomId: 101, roomName: "۱۰۱", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", approvalExpiresAtUtc: null, paymentExpiresAtUtc: paymentDeadline, finalAmount: 100, currency: "IRR" },
+      { reservationNumber: "R-2", roomTypeId: 11, roomTypeName: "اتاق دو", roomId: 102, roomName: "۱۰۲", checkInDate: "2026-08-10", checkOutDate: "2026-08-12", status: paymentStatus === "Successful" ? "Confirmed" : "ApprovedAwaitingPayment", approvalExpiresAtUtc: null, paymentExpiresAtUtc: paymentDeadline, finalAmount: 200, currency: "IRR" },
     ],
   };
 }
@@ -112,13 +114,45 @@ describe("mock booking session payment", () => {
     expect(screen.getByText("R-2")).toBeTruthy();
   });
 
-  it("failure page offers a safe idempotent retry", async () => {
+  it("failure page routes a payable retry through canonical session details", async () => {
+    api.fetch.mockResolvedValue(session("Failed"));
     render(<BookingPaymentResult mode="failure" sessionCode="BS-PAY-1" />);
-    const retry = await screen.findByRole("button", { name: "تلاش دوباره برای پرداخت" });
+    const retry = await screen.findByRole("button", { name: "تلاش مجدد برای پرداخت" });
     fireEvent.click(retry);
-    await vi.waitFor(() => expect(api.initiate).toHaveBeenCalledOnce());
     expect(navigation.router.push).toHaveBeenCalledWith(
-      "/booking/sessions/BS-PAY-1/mock-payment",
+      "/account/booking-sessions/BS-PAY-1",
     );
+    expect(api.initiate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { name: "expired", deadline: new Date(Date.now() - 1_000).toISOString(), status: "Failed" },
+    { name: "successful", deadline: new Date(Date.now() + 60_000).toISOString(), status: "Successful" },
+  ])("failure page hides retry for a $name session", async ({ deadline, status }) => {
+    const value = session(status);
+    value.commonPaymentDeadlineUtc = deadline;
+    value.summary.earliestPaymentDeadlineUtc = deadline;
+    value.reservations.forEach((reservation) => { reservation.paymentExpiresAtUtc = deadline; });
+    api.fetch.mockResolvedValue(value);
+
+    render(<BookingPaymentResult mode="failure" sessionCode="BS-PAY-1" />);
+
+    expect(await screen.findByText("BS-PAY-1")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "تلاش مجدد برای پرداخت" })).toBeNull();
+  });
+
+  it("keeps mixed continuation retry available after a failed attempt", async () => {
+    const value = session("Failed") as AccountBookingSession;
+    value.summary.isPaymentReady = false;
+    value.summary.canContinueWithApprovedReservations = true;
+    value.summary.payableReservationCount = 1;
+    value.summary.continuationPaymentDeadlineUtc = value.commonPaymentDeadlineUtc;
+    value.summary.hasRejectedReservations = true;
+    value.reservations[1].status = "Rejected";
+    api.fetch.mockResolvedValue(value);
+
+    render(<BookingPaymentResult mode="failure" sessionCode="BS-PAY-1" />);
+
+    expect(await screen.findByRole("button", { name: "تلاش مجدد برای پرداخت" })).toBeTruthy();
   });
 });
