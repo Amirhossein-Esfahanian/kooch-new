@@ -10,7 +10,7 @@ import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochField, KoochSelect } from "@/components/KoochFormControls";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { BookingCartMobileActionBar, BookingCartSummary } from "@/components/booking/BookingCart";
-import { BookingCartProvider, lastBookingSessionCodeKey, useBookingCart } from "@/components/booking/BookingCartProvider";
+import { BookingCartProvider, getCartAwareAvailableCount, lastBookingSessionCodeKey, useBookingCart } from "@/components/booking/BookingCartProvider";
 import { createBookingSessionFromCart, revalidateBookingCart } from "@/components/booking/booking-checkout";
 import { bookingModePresentation } from "@/components/booking/booking-display";
 import { fetchBookingOptions, type PublicBookingOptions } from "@/lib/booking-sessions";
@@ -69,25 +69,26 @@ function PropertyBookingPanelContent({
   const [message, setMessage] = useState<{ tone: "error" | "info" | "success"; text: string } | null>(null);
   const resumedCheckout = useRef(false);
 
+  const optionsMatchSearch =
+    options?.checkInDate === dates.startDate && options?.checkOutDate === dates.endDate;
   const selectedOption = useMemo(
-    () => options?.roomTypes.find((item) => item.roomTypeId === Number(selectedRoomTypeId)) ?? null,
-    [options, selectedRoomTypeId],
+    () => optionsMatchSearch
+      ? options?.roomTypes.find((item) => item.roomTypeId === Number(selectedRoomTypeId)) ?? null
+      : null,
+    [options, optionsMatchSearch, selectedRoomTypeId],
   );
-  const selectedRoomTypeCartCount = useMemo(
-    () =>
-      selectedOption
-        ? cart.items.filter(
-            (item) =>
-              item.roomTypeId === selectedOption.roomTypeId &&
-              item.checkIn === dates.startDate &&
-              item.checkOut === dates.endDate,
-          ).length
-        : 0,
-    [cart.items, dates.endDate, dates.startDate, selectedOption],
-  );
-  const availableToAdd = Math.max(
-    0,
-    (selectedOption?.availableCount ?? 0) - selectedRoomTypeCartCount,
+  const availableToAdd = useMemo(
+    () => selectedOption && dates.startDate && dates.endDate
+      ? getCartAwareAvailableCount({
+          items: cart.items,
+          propertyId,
+          roomTypeId: selectedOption.roomTypeId,
+          checkIn: dates.startDate,
+          checkOut: dates.endDate,
+          serverAvailableCount: selectedOption.availableCount,
+        })
+      : 0,
+    [cart.items, dates.endDate, dates.startDate, propertyId, selectedOption],
   );
 
   async function checkAvailability() {
@@ -246,7 +247,7 @@ function PropertyBookingPanelContent({
 
       {message && <KoochAlert className="mt-4" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
 
-      {options && options.roomTypes.length > 0 && (
+      {optionsMatchSearch && options && options.roomTypes.length > 0 && (
         <div className="mt-5 grid gap-4 rounded-lg border border-border bg-muted/40 p-4">
           <KoochField label="نوع اتاق">
             <KoochSelect value={selectedRoomTypeId} onChange={(event) => {
@@ -272,9 +273,14 @@ function PropertyBookingPanelContent({
                 {bookingModePresentation(selectedOption.bookingMode).label}
               </span>
               <span className="text-muted-foreground">
-                {selectedOption.availableCount.toLocaleString("fa-IR")} واحد قابل رزرو
+                {availableToAdd.toLocaleString("fa-IR")} واحد دیگر با توجه به سبد قابل افزودن
               </span>
             </div>
+          )}
+          {selectedOption && availableToAdd === 0 && (
+            <KoochAlert variant="info">
+              ظرفیت این نوع اتاق با توجه به موارد موجود در سبد رزرو شما تکمیل شده است.
+            </KoochAlert>
           )}
           {selectedOption && (
             <p className="text-sm font-bold text-foreground">
@@ -283,7 +289,7 @@ function PropertyBookingPanelContent({
           )}
           <KoochButton disabled={availableToAdd === 0} onClick={addToCart}>
             {availableToAdd === 0
-              ? "همه واحدهای در دسترس در سبد هستند"
+              ? "ظرفیت قابل افزودن تکمیل شده است"
               : `افزودن ${quantity.toLocaleString("fa-IR")} واحد به سبد رزرو`}
           </KoochButton>
         </div>

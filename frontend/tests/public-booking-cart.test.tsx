@@ -14,7 +14,9 @@ import {
   addItemsToBookingCart,
   bookingCartStorageKey,
   BookingCartProvider,
+  expandStayNights,
   expandBookingCartSelection,
+  getCartAwareAvailableCount,
   restoreBookingCart,
   type BookingCartItem,
   type BookingCartSelection,
@@ -64,6 +66,104 @@ function state(items: BookingCartItem[] = []): BookingCartState {
 }
 
 describe("public booking cart", () => {
+  it("uses half-open stay nights", () => {
+    expect(expandStayNights("2026-08-20", "2026-08-22")).toEqual([
+      "2026-08-20",
+      "2026-08-21",
+    ]);
+    expect(expandStayNights("2026-08-22", "2026-08-23")).toEqual(["2026-08-22"]);
+  });
+
+  it.each([
+    {
+      name: "blocks an overlapping stay when the only unit is already in the cart",
+      items: [item({ checkIn: "2026-08-20", checkOut: "2026-08-22" })],
+      checkIn: "2026-08-21",
+      checkOut: "2026-08-22",
+      serverAvailableCount: 1,
+      expected: 0,
+    },
+    {
+      name: "allows an adjacent non-overlapping stay",
+      items: [item({ checkIn: "2026-08-20", checkOut: "2026-08-21" })],
+      checkIn: "2026-08-21",
+      checkOut: "2026-08-22",
+      serverAvailableCount: 1,
+      expected: 1,
+    },
+    {
+      name: "limits additional quantity by overlapping cart demand",
+      items: [item({ checkIn: "2026-08-20", checkOut: "2026-08-22" })],
+      checkIn: "2026-08-21",
+      checkOut: "2026-08-22",
+      serverAvailableCount: 3,
+      expected: 2,
+    },
+    {
+      name: "aggregates multiple overlapping cart items per night",
+      items: [
+        item({ checkIn: "2026-08-20", checkOut: "2026-08-22" }),
+        item({ checkIn: "2026-08-21", checkOut: "2026-08-23" }),
+      ],
+      checkIn: "2026-08-20",
+      checkOut: "2026-08-23",
+      serverAvailableCount: 3,
+      expected: 1,
+    },
+    {
+      name: "ignores a different RoomType",
+      items: [item({ roomTypeId: 20, checkIn: "2026-08-20", checkOut: "2026-08-22" })],
+      checkIn: "2026-08-20",
+      checkOut: "2026-08-22",
+      serverAvailableCount: 1,
+      expected: 1,
+    },
+    {
+      name: "ignores a different Property",
+      items: [item({ propertyId: 2, checkIn: "2026-08-20", checkOut: "2026-08-22" })],
+      checkIn: "2026-08-20",
+      checkOut: "2026-08-22",
+      serverAvailableCount: 1,
+      expected: 1,
+    },
+    {
+      name: "calculates partial overlaps per night instead of subtracting globally",
+      items: [
+        item({ checkIn: "2026-08-20", checkOut: "2026-08-21" }),
+        item({ checkIn: "2026-08-22", checkOut: "2026-08-23" }),
+      ],
+      checkIn: "2026-08-21",
+      checkOut: "2026-08-22",
+      serverAvailableCount: 1,
+      expected: 1,
+    },
+  ])("$name", ({ items, checkIn, checkOut, serverAvailableCount, expected }) => {
+    expect(getCartAwareAvailableCount({
+      items,
+      propertyId: 1,
+      roomTypeId: 10,
+      checkIn,
+      checkOut,
+      serverAvailableCount,
+    })).toBe(expected);
+  });
+
+  it("recalculates remaining capacity when the requested dates change", () => {
+    const items = [item({ checkIn: "2026-08-20", checkOut: "2026-08-22" })];
+    const remaining = (checkIn: string, checkOut: string) =>
+      getCartAwareAvailableCount({
+        items,
+        propertyId: 1,
+        roomTypeId: 10,
+        checkIn,
+        checkOut,
+        serverAvailableCount: 1,
+      });
+
+    expect(remaining("2026-08-21", "2026-08-22")).toBe(0);
+    expect(remaining("2026-08-22", "2026-08-23")).toBe(1);
+  });
+
   it("expands room quantity into independent reservation items", () => {
     const items = expandBookingCartSelection(selection({ quantity: 2 }));
     expect(items).toHaveLength(2);

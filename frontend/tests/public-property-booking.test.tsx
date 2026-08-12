@@ -38,6 +38,10 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
 });
 
 import PublicPropertyPage from "@/app/properties/[slug]/page";
+import {
+  bookingCartStorageKey,
+  expandBookingCartSelection,
+} from "@/components/booking/BookingCartProvider";
 
 const property = {
   id: 1,
@@ -184,6 +188,51 @@ describe("public property booking integration", () => {
     expect(screen.getByTestId("booking-mobile-action-bar")).toBeTruthy();
     expect(screen.getAllByText("۳ واحد").length).toBeGreaterThan(0);
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
+  });
+
+  it("disables adding when an overlapping cart stay consumes the server availability", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 1 }],
+    });
+    const existingItems = expandBookingCartSelection({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      roomTypeId: 10,
+      roomTypeName: property.roomTypes[0].name,
+      checkIn: "2030-08-09",
+      checkOut: "2030-08-11",
+      adults: 2,
+      children: 0,
+      childAges: [],
+      notes: null,
+      displayAmount: 4_000_000,
+      currency: "IRR",
+      quantity: 1,
+    });
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      idempotencyKey: "overlap-test",
+      checkoutRequested: false,
+      items: existingItems,
+    }));
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+
+    const addButton = await screen.findByRole("button", {
+      name: "ظرفیت قابل افزودن تکمیل شده است",
+    });
+    expect(addButton.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText(
+      "ظرفیت این نوع اتاق با توجه به موارد موجود در سبد رزرو شما تکمیل شده است.",
+    )).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "تعداد واحد" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("exposes empty and error booking-options states", async () => {

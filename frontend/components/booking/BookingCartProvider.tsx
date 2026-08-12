@@ -50,6 +50,15 @@ export interface BookingCartState {
   items: BookingCartItem[];
 }
 
+interface CartAwareAvailabilityInput {
+  items: BookingCartItem[];
+  propertyId: number;
+  roomTypeId: number;
+  checkIn: string;
+  checkOut: string;
+  serverAvailableCount: number;
+}
+
 type StoredBookingCart = Omit<BookingCartState, "hydrated">;
 type BookingCartAction =
   | { type: "hydrate"; payload: StoredBookingCart | null }
@@ -95,6 +104,64 @@ function createIdentifier() {
   return typeof crypto !== "undefined" && "randomUUID" in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+export function expandStayNights(checkIn: string, checkOut: string): string[] {
+  const start = parseIsoDate(checkIn);
+  const end = parseIsoDate(checkOut);
+  if (start === null || end === null || start >= end) return [];
+
+  const nights: string[] = [];
+  for (let current = start; current < end; current += 86_400_000) {
+    nights.push(new Date(current).toISOString().slice(0, 10));
+  }
+  return nights;
+}
+
+export function getCartAwareAvailableCount({
+  items,
+  propertyId,
+  roomTypeId,
+  checkIn,
+  checkOut,
+  serverAvailableCount,
+}: CartAwareAvailabilityInput): number {
+  const requestedNights = expandStayNights(checkIn, checkOut);
+  if (requestedNights.length === 0) return 0;
+
+  const requestedNightSet = new Set(requestedNights);
+  const demandByNight = new Map<string, number>();
+  for (const item of items) {
+    if (item.propertyId !== propertyId || item.roomTypeId !== roomTypeId) continue;
+    for (const night of expandStayNights(item.checkIn, item.checkOut)) {
+      if (!requestedNightSet.has(night)) continue;
+      demandByNight.set(night, (demandByNight.get(night) ?? 0) + 1);
+    }
+  }
+
+  return Math.max(
+    0,
+    Math.min(
+      ...requestedNights.map(
+        (night) => Math.floor(serverAvailableCount) - (demandByNight.get(night) ?? 0),
+      ),
+    ),
+  );
+}
+
+function parseIsoDate(value: string): number | null {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const timestamp = Date.UTC(year, month - 1, day);
+  const parsed = new Date(timestamp);
+  return parsed.getUTCFullYear() === year &&
+    parsed.getUTCMonth() === month - 1 &&
+    parsed.getUTCDate() === day
+    ? timestamp
+    : null;
 }
 
 export function expandBookingCartSelection(
