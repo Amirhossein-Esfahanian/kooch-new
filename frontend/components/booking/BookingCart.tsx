@@ -70,7 +70,7 @@ export function BookingCartItemRow({
           <span aria-hidden="true">{mode.icon}</span> {mode.label}
         </p>
         <p className="mt-1 font-semibold text-foreground">
-          {line.quantity.toLocaleString("fa-IR")} واحد · جمع این ردیف: {formatCurrency(line.total)}
+          {line.quantity.toLocaleString("fa-IR")} اتاق · {formatCurrency(line.total)}
         </p>
       </div>
       <KoochButton
@@ -92,60 +92,82 @@ export function BookingCartSummary({
   loading,
   onContinue,
   onRemove,
+  className,
 }: {
   items: BookingCartItem[];
   total: number;
   loading: boolean;
   onContinue: () => void;
   onRemove: (id: string) => void;
+  className?: string;
 }) {
-  if (items.length === 0) return null;
   const lines = groupBookingCartItems(items);
   const roomTypeCount = new Set(items.map((item) => item.roomTypeId)).size;
   const nightsCount = countBookingNights(items);
-  const mode = bookingModePresentation(items[0].bookingMode);
-  const checkIn = items[0].checkIn;
-  const checkOut = items[0].checkOut;
-  const adults = items[0].adults;
-  const children = items[0].children;
+  const firstItem = items[0];
+  const mode = firstItem ? bookingModePresentation(firstItem.bookingMode) : null;
 
   return (
-    <section aria-labelledby="booking-cart-title" className="mt-5 rounded-lg border border-border bg-card p-4">
+    <section
+      aria-labelledby="booking-choices-title"
+      className={`${className ?? "mt-5"} rounded-lg border border-border bg-card p-4`}
+      data-testid="booking-choices-summary"
+    >
       <div className="flex items-center justify-between gap-3">
-        <h3 className="font-black text-foreground" id="booking-cart-title">سبد رزرو</h3>
-        <span className="text-xs font-bold text-muted-foreground">
-          {items.length.toLocaleString("fa-IR")} واحد
-        </span>
+        <h3 className="text-lg font-black text-foreground" id="booking-choices-title">
+          انتخاب‌های شما
+        </h3>
+        {items.length > 0 && (
+          <span className="text-xs font-bold text-muted-foreground">
+            {items.length.toLocaleString("fa-IR")} اتاق
+          </span>
+        )}
       </div>
-      <ul className="mt-2">
-        {lines.map((line) => (
-          <BookingCartItemRow
-            key={line.key}
-            line={line}
-            onRemove={(ids) => ids.forEach(onRemove)}
-          />
-        ))}
-      </ul>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 rounded-lg bg-muted p-3 text-sm sm:grid-cols-3">
-        <SummaryValue label="اقامتگاه" value={items[0].propertyName} />
-        <SummaryValue label="تعداد نوع اتاق" value={roomTypeCount.toLocaleString("fa-IR")} />
-        <SummaryValue label="تعداد کل واحدها" value={items.length.toLocaleString("fa-IR")} />
-        <SummaryValue label="تعداد شب" value={nightsCount.toLocaleString("fa-IR")} />
-        <SummaryValue label="ورود و خروج" value={formatBookingDateRange(checkIn, checkOut)} />
-        <SummaryValue
-          label="مهمانان"
-          value={`${adults.toLocaleString("fa-IR")} بزرگسال${children > 0 ? ` و ${children.toLocaleString("fa-IR")} کودک` : ""}`}
-        />
-        <SummaryValue label="وضعیت رزرو" value={`${mode.icon} ${mode.label}`} />
-        <SummaryValue label="مبلغ کل" value={formatCurrency(total)} />
-        <SummaryValue label="آمادگی ادامه" value="آماده بررسی نهایی و ثبت سفارش" />
-      </dl>
-      <p className="mt-3 text-xs leading-6 text-muted-foreground">
-        برای افزودن اتاق دیگر، یک نوع اتاق یا اتاق نام‌دار دیگر را انتخاب کنید و دوباره به سبد اضافه کنید.
-      </p>
-      <KoochButton className="mt-4 hidden w-full sm:inline-flex" loading={loading} onClick={onContinue}>
-        ادامه رزرو
-      </KoochButton>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          هنوز اتاقی انتخاب نکرده‌اید.
+        </p>
+      ) : (
+        <>
+          <ul className="mt-2">
+            {lines.map((line) => (
+              <BookingCartItemRow
+                key={line.key}
+                line={line}
+                onRemove={(ids) => ids.forEach(onRemove)}
+              />
+            ))}
+          </ul>
+
+          <div className="mt-3 border-y border-border py-3 text-sm">
+            <p className="font-black leading-7 text-foreground">
+              {formatBookingDateRange(firstItem.checkIn, firstItem.checkOut)}
+            </p>
+            <p className="mt-1 text-muted-foreground">
+              {nightsCount.toLocaleString("fa-IR")} شب · {firstItem.adults.toLocaleString("fa-IR")} بزرگسال
+              {firstItem.children > 0
+                ? ` · ${firstItem.children.toLocaleString("fa-IR")} کودک`
+                : ""}
+            </p>
+            <p className="mt-1 text-xs font-bold text-foreground">
+              <span aria-hidden="true">{mode?.icon}</span> {mode?.label}
+            </p>
+          </div>
+
+          <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+            <SummaryValue label="تعداد نوع اتاق" value={roomTypeCount.toLocaleString("fa-IR")} />
+            <SummaryValue label="تعداد اتاق" value={items.length.toLocaleString("fa-IR")} />
+            <div className="col-span-2 flex items-end justify-between gap-3 rounded-lg bg-muted p-3">
+              <dt className="text-xs font-bold text-muted-foreground">مبلغ کل</dt>
+              <dd className="text-base font-black text-foreground">{formatCurrency(total)}</dd>
+            </div>
+          </dl>
+
+          <KoochButton className="mt-4 hidden w-full sm:inline-flex" loading={loading} onClick={onContinue}>
+            ادامه رزرو
+          </KoochButton>
+        </>
+      )}
     </section>
   );
 }
@@ -175,7 +197,7 @@ export function BookingCartMobileActionBar({
     <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 shadow-lg backdrop-blur sm:hidden" data-testid="booking-mobile-action-bar" dir="rtl">
       <div className="mx-auto flex max-w-7xl items-center justify-between gap-3">
         <div className="min-w-0 text-sm">
-          <p className="text-xs font-bold text-muted-foreground">{count.toLocaleString("fa-IR")} واحد</p>
+          <p className="text-xs font-bold text-muted-foreground">{count.toLocaleString("fa-IR")} اتاق انتخاب‌شده</p>
           <p className="truncate font-black text-foreground">{formatCurrency(total)}</p>
         </div>
         <KoochButton loading={loading} onClick={onContinue}>ادامه رزرو</KoochButton>

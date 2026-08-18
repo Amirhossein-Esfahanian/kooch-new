@@ -273,7 +273,7 @@ export default function PublicPropertyPage() {
           </button>
         </section>
 
-        <div className="mt-8 grid gap-8 lg:grid-cols-[minmax(0,1fr)_330px]">
+        <div className="mt-8">
           <div className="grid gap-8">
             <section>
               <h2 className="text-2xl font-black">اطلاعات سریع</h2>
@@ -419,21 +419,43 @@ export default function PublicPropertyPage() {
 
             <section>
               <h2 className="text-2xl font-black">انتخاب اتاق</h2>
-              <div className="mt-5 grid gap-5">
-                {property.roomTypes.length ? (
-                  property.roomTypes.map((roomType) => (
-                    <RoomTypeCard
-                      galleryFallback={gallery[0].url}
-                      isPreferred={preferredRoomTypeId === roomType.id}
-                      key={roomType.id}
-                      onSelect={() => selectRoomType(roomType)}
-                      onShowDetails={() => setDetailsRoomType(roomType)}
-                      roomType={roomType}
-                    />
-                  ))
-                ) : (
-                  <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>
-                )}
+              <div className="mt-5 grid gap-6">
+                <div className="grid gap-5">
+                  {property.roomTypes.length ? (
+                    property.roomTypes.map((roomType) => (
+                      <RoomTypeCard
+                        galleryFallback={gallery[0].url}
+                        isPreferred={preferredRoomTypeId === roomType.id}
+                        key={roomType.id}
+                        onSelect={() => selectRoomType(roomType)}
+                        onShowDetails={() => setDetailsRoomType(roomType)}
+                        roomType={roomType}
+                      />
+                    ))
+                  ) : (
+                    <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>
+                  )}
+                </div>
+
+                <aside
+                  aria-label="رزرو اقامتگاه"
+                  className="rounded-2xl border border-border bg-card p-5 shadow-lg"
+                  ref={bookingPanelRef}
+                  tabIndex={-1}
+                >
+                  <PropertyBookingPanel
+                    dates={bookingDates}
+                    guests={bookingGuests}
+                    onDatesChange={setBookingDates}
+                    onGuestsChange={setBookingGuests}
+                    preferredRoomTypeId={preferredRoomTypeId}
+                    preferredRoomTypeName={property.roomTypes.find((roomType) => roomType.id === preferredRoomTypeId)?.name ?? null}
+                    propertyId={property.id}
+                    propertyName={property.name}
+                    propertySlug={property.slug}
+                    startingPrice={property.startingPrice}
+                  />
+                </aside>
               </div>
             </section>
 
@@ -486,25 +508,6 @@ export default function PublicPropertyPage() {
             </section>
           </div>
 
-          <aside
-            aria-label="رزرو اقامتگاه"
-            className="h-fit rounded-2xl border border-border bg-card p-5 shadow-lg lg:sticky lg:top-24"
-            ref={bookingPanelRef}
-            tabIndex={-1}
-          >
-            <PropertyBookingPanel
-              dates={bookingDates}
-              guests={bookingGuests}
-              onDatesChange={setBookingDates}
-              onGuestsChange={setBookingGuests}
-              preferredRoomTypeId={preferredRoomTypeId}
-              preferredRoomTypeName={property.roomTypes.find((roomType) => roomType.id === preferredRoomTypeId)?.name ?? null}
-              propertyId={property.id}
-              propertyName={property.name}
-              propertySlug={property.slug}
-              startingPrice={property.startingPrice}
-            />
-          </aside>
         </div>
       </div>
 

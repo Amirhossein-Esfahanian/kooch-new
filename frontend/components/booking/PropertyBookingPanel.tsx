@@ -224,6 +224,20 @@ function PropertyBookingPanelContent({
     void continueCheckout();
   }, [auth.authenticated, auth.loading, cart.checkoutRequested, cart.hydrated]);
 
+  const hasAvailableRoomTypes = Boolean(
+    optionsMatchSearch && options && options.roomTypes.length > 0,
+  );
+  const cartSummary = (
+    <BookingCartSummary
+      className={hasAvailableRoomTypes ? "lg:sticky lg:top-24" : undefined}
+      items={cart.items}
+      loading={checkingOut}
+      onContinue={continueCheckout}
+      onRemove={cart.removeItem}
+      total={cart.total}
+    />
+  );
+
   return (
     <>
       <p className="text-sm text-muted-foreground">
@@ -246,48 +260,50 @@ function PropertyBookingPanelContent({
 
       {message && <KoochAlert className="mt-4" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
 
-      {optionsMatchSearch && options && options.roomTypes.length > 0 && (
-        <div className="mt-5 grid gap-4 rounded-lg border border-border bg-muted/40 p-4">
-          <div>
-            <h3 className="font-black text-foreground" id="available-room-types-title">
-              اتاق‌های قابل انتخاب
-            </h3>
-            <p className="mt-1 text-xs leading-6 text-muted-foreground">
-              می‌توانید چند نوع اتاق یا چند واحد از یک نوع را برای همین اقامت انتخاب کنید.
-            </p>
+      {hasAvailableRoomTypes && options ? (
+        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
+          <div className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4">
+            <div>
+              <h3 className="font-black text-foreground" id="available-room-types-title">
+                اتاق‌های قابل انتخاب
+              </h3>
+              <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                می‌توانید چند نوع اتاق یا چند واحد از یک نوع را برای همین اقامت انتخاب کنید.
+              </p>
+            </div>
+            <ul aria-labelledby="available-room-types-title" className="divide-y divide-border">
+              {options.roomTypes.map((option) => {
+                const selectedItems = currentStayCartItems.filter(
+                  (item) => item.roomTypeId === option.roomTypeId,
+                );
+                const availableToAdd = dates.startDate && dates.endDate
+                  ? getCartAwareAvailableCount({
+                      items: currentStayCartItems,
+                      propertyId,
+                      roomTypeId: option.roomTypeId,
+                      checkIn: dates.startDate,
+                      checkOut: dates.endDate,
+                      serverAvailableCount: option.availableCount,
+                    })
+                  : 0;
+                return (
+                  <RoomTypeSelectionRow
+                    availableToAdd={availableToAdd}
+                    isPreferred={option.roomTypeId === preferredRoomTypeId}
+                    key={option.roomTypeId}
+                    onAdd={() => addToCart(option)}
+                    onRemove={() => removeOneFromCart(option.roomTypeId)}
+                    option={option}
+                    selectedQuantity={selectedItems.length}
+                  />
+                );
+              })}
+            </ul>
           </div>
-          <ul aria-labelledby="available-room-types-title" className="divide-y divide-border">
-            {options.roomTypes.map((option) => {
-              const selectedItems = currentStayCartItems.filter(
-                (item) => item.roomTypeId === option.roomTypeId,
-              );
-              const availableToAdd = dates.startDate && dates.endDate
-                ? getCartAwareAvailableCount({
-                    items: currentStayCartItems,
-                    propertyId,
-                    roomTypeId: option.roomTypeId,
-                    checkIn: dates.startDate,
-                    checkOut: dates.endDate,
-                    serverAvailableCount: option.availableCount,
-                  })
-                : 0;
-              return (
-                <RoomTypeSelectionRow
-                  availableToAdd={availableToAdd}
-                  isPreferred={option.roomTypeId === preferredRoomTypeId}
-                  key={option.roomTypeId}
-                  onAdd={() => addToCart(option)}
-                  onRemove={() => removeOneFromCart(option.roomTypeId)}
-                  option={option}
-                  selectedQuantity={selectedItems.length}
-                />
-              );
-            })}
-          </ul>
+          {cartSummary}
         </div>
-      )}
+      ) : cartSummary}
 
-      <BookingCartSummary items={cart.items} loading={checkingOut} onContinue={continueCheckout} onRemove={cart.removeItem} total={cart.total} />
       <BookingCartMobileActionBar count={cart.items.length} loading={checkingOut} onContinue={continueCheckout} total={cart.total} />
       <KoochConfirmDialog
         cancelText="حفظ سبد فعلی"

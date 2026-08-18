@@ -52,6 +52,7 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
 });
 
 import PublicPropertyPage from "@/app/properties/[slug]/page";
+import { formatBookingDateRange } from "@/components/booking/booking-display";
 import {
   bookingCartStorageKey,
   expandBookingCartSelection,
@@ -177,6 +178,11 @@ describe("public property booking integration", () => {
     expect(screen.getByTestId("booking-date-picker")).toBeTruthy();
     expect(screen.getByTestId("booking-guest-selector")).toBeTruthy();
     expect(screen.getByRole("button", { name: "بررسی موجودی" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "انتخاب‌های شما" })).toBeTruthy();
+    expect(screen.getByText("هنوز اتاقی انتخاب نکرده‌اید.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
+    expect(screen.getByRole("complementary", { name: "رزرو اقامتگاه" }).parentElement?.className)
+      .not.toContain("lg:grid-cols");
   });
 
   it("uses an accessible multi-unit stepper and keeps the mobile action bar", async () => {
@@ -190,6 +196,9 @@ describe("public property booking integration", () => {
     resolveOptions(availableOptions);
 
     expect(await screen.findByRole("list", { name: "اتاق‌های قابل انتخاب" })).toBeTruthy();
+    expect(screen.getByTestId("booking-choices-summary").parentElement?.className)
+      .toContain("lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]");
+    expect(screen.getByTestId("booking-choices-summary").className).toContain("lg:sticky");
     expect(screen.queryByRole("combobox", { name: "تعداد واحد" })).toBeNull();
     expect(screen.getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
@@ -198,9 +207,9 @@ describe("public property booking integration", () => {
     fireEvent.click(increase);
     fireEvent.click(increase);
 
-    expect(await screen.findByRole("heading", { name: "سبد رزرو" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "انتخاب‌های شما" })).toBeTruthy();
     expect(screen.getByTestId("booking-mobile-action-bar")).toBeTruthy();
-    expect(screen.getAllByText("۳ واحد").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/۳ اتاق/).length).toBeGreaterThan(0);
     expect(increase.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("۳", { selector: "output" })).toBeTruthy();
   });
@@ -235,6 +244,8 @@ describe("public property booking integration", () => {
     expect(removeSelection.textContent).toContain("انتخاب شد");
     fireEvent.click(removeSelection);
     expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+    expect(screen.getByText("هنوز اتاقی انتخاب نکرده‌اید.")).toBeTruthy();
+    expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
   });
 
   it("increments and decrements a multi-unit selection through zero", async () => {
@@ -357,6 +368,9 @@ describe("public property booking integration", () => {
       expect(stored.items).toHaveLength(1);
       expect(stored.items[0].checkIn).toBe("2030-08-10");
       expect(stored.idempotencyKey).not.toBe("old-stay");
+      expect(within(screen.getByTestId("booking-choices-summary")).getByText(
+        formatBookingDateRange("2030-08-10", "2030-08-12"),
+      )).toBeTruthy();
     });
   });
 
@@ -424,7 +438,7 @@ describe("public property booking integration", () => {
 
     expect(screen.getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "حذف انتخاب اتاق نیلوفر" })).toBeTruthy();
-    expect(screen.getAllByText(/۱ واحد/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.getAllByText(/۱ اتاق/).length).toBeGreaterThanOrEqual(2);
   });
 
   it("uses the refreshed maximum after dates change without deleting the old cart", async () => {
@@ -451,7 +465,7 @@ describe("public property booking integration", () => {
 
     expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" })).toBeNull();
-    expect(screen.getAllByText("۲ واحد").length).toBeGreaterThanOrEqual(1);
+    expect(screen.getAllByText(/۲ اتاق/).length).toBeGreaterThanOrEqual(1);
   });
 
   it("surfaces an actionable state when refreshed availability drops below cart quantity", async () => {

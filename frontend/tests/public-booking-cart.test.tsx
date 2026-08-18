@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import {
   BookingCartMobileActionBar,
@@ -186,7 +186,11 @@ describe("public booking cart", () => {
   });
 
   it("renders Jalali dates, Persian numbers, booking mode, and the cart summary", () => {
-    const items = expandBookingCartSelection(selection({ quantity: 2 }));
+    const items = expandBookingCartSelection(selection({
+      childAges: [7],
+      children: 1,
+      quantity: 2,
+    }));
     render(
       <BookingCartSummary
         items={items}
@@ -197,20 +201,61 @@ describe("public booking cart", () => {
       />,
     );
 
+    expect(screen.getByRole("heading", { name: "انتخاب‌های شما" })).toBeTruthy();
     expect(screen.getAllByRole("listitem")).toHaveLength(1);
     expect(screen.getAllByText(/۱۴۰۵/).length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/2026-08/)).toBeNull();
-    expect(screen.getByText(/✓ رزرو آنی/)).toBeTruthy();
+    expect(screen.getAllByText("رزرو آنی").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("تعداد نوع اتاق")).toBeTruthy();
-    expect(screen.getByText("تعداد کل واحدها")).toBeTruthy();
-    expect(screen.getByText("تعداد شب")).toBeTruthy();
+    expect(screen.getByText("تعداد اتاق")).toBeTruthy();
     expect(screen.getByText("مبلغ کل")).toBeTruthy();
-    expect(screen.getByText("اقامتگاه")).toBeTruthy();
-    expect(screen.getByText("ورود و خروج")).toBeTruthy();
-    expect(screen.getByText("مهمانان")).toBeTruthy();
-    expect(screen.getByText("آمادگی ادامه")).toBeTruthy();
-    expect(screen.queryByText(/برای هر یک از ۲ واحد/)).toBeNull();
-    expect(screen.getAllByText("۲").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText(/۲ شب · ۲ بزرگسال · ۱ کودک/)).toBeTruthy();
+    expect(screen.getAllByText("۲").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("keeps an empty Your Choices summary visible without an active continuation", () => {
+    render(
+      <BookingCartSummary
+        items={[]}
+        loading={false}
+        onContinue={vi.fn()}
+        onRemove={vi.fn()}
+        total={0}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "انتخاب‌های شما" })).toBeTruthy();
+    expect(screen.getByText("هنوز اتاقی انتخاب نکرده‌اید.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
+  });
+
+  it("shows two RoomTypes, their subtotals, and the combined live total", () => {
+    const items = [
+      item(),
+      item({
+        id: "second-room-type",
+        roomTypeId: 20,
+        roomTypeName: "اتاق نیلوفر",
+        displayAmount: 3_000_000,
+      }),
+    ];
+    render(
+      <BookingCartSummary
+        items={items}
+        loading={false}
+        onContinue={vi.fn()}
+        onRemove={vi.fn()}
+        total={5_000_000}
+      />,
+    );
+
+    const summary = screen.getByTestId("booking-choices-summary");
+    expect(within(summary).getByText("اتاق شاه‌نشین")).toBeTruthy();
+    expect(within(summary).getByText("اتاق نیلوفر")).toBeTruthy();
+    expect(within(summary).getByText(/۲٬۰۰۰٬۰۰۰ تومان/)).toBeTruthy();
+    expect(within(summary).getByText(/۳٬۰۰۰٬۰۰۰ تومان/)).toBeTruthy();
+    expect(within(summary).getByText("۵٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(summary).getAllByText("۲").length).toBeGreaterThanOrEqual(2);
   });
 
   it("formats booking dates and countdowns with the Persian calendar and digits", () => {
