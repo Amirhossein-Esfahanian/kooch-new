@@ -23,7 +23,14 @@ vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({ authenticated: false, loading: false }),
 }));
 vi.mock("@/components/KoochDatePicker", () => ({
-  KoochDatePicker: () => <div data-testid="booking-date-picker">انتخاب تاریخ اقامت</div>,
+  KoochDatePicker: ({ onChange }: { onChange: (value: { startDate: string; endDate: string }) => void }) => (
+    <div data-testid="booking-date-picker">
+      انتخاب تاریخ اقامت
+      <button type="button" onClick={() => onChange({ startDate: "2030-08-20", endDate: "2030-08-22" })}>
+        تغییر تاریخ آزمایشی
+      </button>
+    </div>
+  ),
 }));
 vi.mock("@/components/GuestSelector", () => ({
   GuestSelector: ({ onChange }: { onChange: (value: { adults: number; children: number; childAges: number[]; rooms: number }) => void }) => (
@@ -172,7 +179,7 @@ describe("public property booking integration", () => {
     expect(screen.getByRole("button", { name: "بررسی موجودی" })).toBeTruthy();
   });
 
-  it("shows loading, room selection, quantity, add-to-cart, and the mobile action bar", async () => {
+  it("uses an accessible multi-unit stepper and keeps the mobile action bar", async () => {
     let resolveOptions: (value: typeof availableOptions) => void = () => undefined;
     api.fetchOptions.mockReturnValue(new Promise((resolve) => { resolveOptions = resolve; }));
     render(<PublicPropertyPage />);
@@ -182,25 +189,83 @@ describe("public property booking integration", () => {
     expect(availabilityButton.hasAttribute("disabled")).toBe(true);
     resolveOptions(availableOptions);
 
-    expect(await screen.findByRole("combobox", { name: "نوع اتاق" })).toBeTruthy();
-    expect(screen.getByText("مبلغ قطعی این بازه برای هر اتاق: ۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
-    const quantity = screen.getByRole("combobox", { name: "تعداد واحد" });
-    expect(quantity).toBeTruthy();
-    expect(within(quantity).getByRole("option", { name: "۳" })).toBeTruthy();
-    fireEvent.change(quantity, { target: { value: "3" } });
-    const addButton = screen.getByRole("button", { name: "افزودن ۳ واحد به سبد رزرو" });
-    fireEvent.click(addButton);
+    expect(await screen.findByRole("list", { name: "اتاق‌های قابل انتخاب" })).toBeTruthy();
+    expect(screen.queryByRole("combobox", { name: "تعداد واحد" })).toBeNull();
+    expect(screen.getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    expect(screen.getByText("۱", { selector: "output" })).toBeTruthy();
+    const increase = screen.getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" });
+    fireEvent.click(increase);
+    fireEvent.click(increase);
 
     expect(await screen.findByRole("heading", { name: "سبد رزرو" })).toBeTruthy();
     expect(screen.getByTestId("booking-mobile-action-bar")).toBeTruthy();
     expect(screen.getAllByText("۳ واحد").length).toBeGreaterThan(0);
-    expect(screen.getAllByRole("listitem")).toHaveLength(1);
+    expect(increase.hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("۳", { selector: "output" })).toBeTruthy();
   });
 
-  it("disables adding when an overlapping cart stay consumes the server availability", async () => {
+  it("shows a disabled sold-out state when no unit is selectable", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 0 }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+
+    const soldOut = await screen.findByRole("button", { name: "تکمیل ظرفیت اتاق شاه‌نشین" });
+    expect(soldOut.hasAttribute("disabled")).toBe(true);
+    expect(soldOut.textContent).toBe("تکمیل ظرفیت");
+  });
+
+  it("selects and unselects a single available unit without a quantity control", async () => {
     api.fetchOptions.mockResolvedValueOnce({
       ...availableOptions,
       roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 1 }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+
+    expect(screen.queryByRole("button", { name: /افزایش تعداد/ })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "تعداد واحد" })).toBeNull();
+    const removeSelection = screen.getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین" });
+    expect(removeSelection.textContent).toContain("انتخاب شد");
+    fireEvent.click(removeSelection);
+    expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+  });
+
+  it("increments and decrements a multi-unit selection through zero", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 2 }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+
+    const increase = screen.getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" });
+    const decrease = screen.getByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین" });
+    expect(increase.className).toContain("[@media(pointer:coarse)]:min-w-11");
+    expect(decrease.className).toContain("[@media(pointer:coarse)]:min-h-11");
+    expect(screen.getByText("۱", { selector: "output" })).toBeTruthy();
+    fireEvent.click(increase);
+    expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
+    expect(increase.hasAttribute("disabled")).toBe(true);
+
+    fireEvent.click(decrease);
+    expect(screen.getByText("۱", { selector: "output" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین" }));
+    expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+  });
+
+  it("respects cart-aware remaining capacity for the same RoomType", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 2 }],
     });
     const existingItems = expandBookingCartSelection({
       propertyId: 1,
@@ -232,14 +297,11 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
 
-    const addButton = await screen.findByRole("button", {
-      name: "ظرفیت قابل افزودن تکمیل شده است",
-    });
-    expect(addButton.hasAttribute("disabled")).toBe(true);
-    expect(screen.getByText(
-      "ظرفیت این نوع اتاق با توجه به موارد موجود در سبد رزرو شما تکمیل شده است.",
-    )).toBeTruthy();
-    expect(screen.getByRole("combobox", { name: "تعداد واحد" }).hasAttribute("disabled")).toBe(true);
+    const increase = await screen.findByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" });
+    expect(screen.getByText("۱", { selector: "output" })).toBeTruthy();
+    fireEvent.click(increase);
+    expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
+    expect(increase.hasAttribute("disabled")).toBe(true);
   });
 
   it("keeps the current cart or replaces it only after confirming a changed stay", async () => {
@@ -272,7 +334,7 @@ describe("public property booking integration", () => {
     render(<PublicPropertyPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
-    fireEvent.click(await screen.findByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
 
     let dialog = await screen.findByRole("alertdialog", {
       name: "سبد رزرو شما مربوط به اقامت دیگری است",
@@ -284,7 +346,7 @@ describe("public property booking integration", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items[0].checkIn).toBe("2030-08-08");
 
-    fireEvent.click(screen.getByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+    fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
     dialog = await screen.findByRole("alertdialog", {
       name: "سبد رزرو شما مربوط به اقامت دیگری است",
     });
@@ -330,7 +392,7 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "تغییر مهمانان آزمایشی" }));
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
-    fireEvent.click(await screen.findByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
 
     const dialog = await screen.findByRole("alertdialog", {
       name: "سبد رزرو شما مربوط به اقامت دیگری است",
@@ -338,6 +400,80 @@ describe("public property booking integration", () => {
     const stayDetails = within(dialog).getAllByRole("definition");
     expect(stayDetails[0].textContent).toContain("۲ بزرگسال");
     expect(stayDetails[1].textContent).toContain("۳ بزرگسال");
+  });
+
+  it("allows two different RoomTypes to be selected in the same stay", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [
+        { ...availableOptions.roomTypes[0], availableCount: 1 },
+        {
+          ...availableOptions.roomTypes[0],
+          roomTypeId: 20,
+          name: "اتاق نیلوفر",
+          availableCount: 1,
+          finalAmount: 3_000_000,
+        },
+      ],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق نیلوفر" }));
+
+    expect(screen.getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "حذف انتخاب اتاق نیلوفر" })).toBeTruthy();
+    expect(screen.getAllByText(/۱ واحد/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("uses the refreshed maximum after dates change without deleting the old cart", async () => {
+    api.fetchOptions
+      .mockResolvedValueOnce({
+        ...availableOptions,
+        roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 2 }],
+      })
+      .mockResolvedValueOnce({
+        ...availableOptions,
+        checkInDate: "2030-08-20",
+        checkOutDate: "2030-08-22",
+        roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 1 }],
+      });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" }));
+    expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" })).toBeNull();
+    expect(screen.getAllByText("۲ واحد").length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("surfaces an actionable state when refreshed availability drops below cart quantity", async () => {
+    api.fetchOptions
+      .mockResolvedValueOnce({
+        ...availableOptions,
+        roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 2 }],
+      })
+      .mockResolvedValueOnce({
+        ...availableOptions,
+        roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 1 }],
+      });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    fireEvent.click(screen.getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText(/موجودی جدید حداکثر ۱ واحد است/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" }).hasAttribute("disabled")).toBe(true);
+    expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
   });
 
   it("exposes empty and error booking-options states", async () => {
@@ -393,14 +529,13 @@ describe("public property booking integration", () => {
     try {
       render(<PublicPropertyPage />);
       fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
-      const roomTypeSelect = await screen.findByRole("combobox", { name: "نوع اتاق" });
-      expect((roomTypeSelect as HTMLSelectElement).value).toBe("20");
+      expect(await screen.findByRole("list", { name: "اتاق‌های قابل انتخاب" })).toBeTruthy();
 
       fireEvent.click(screen.getByRole("button", { name: "انتخاب این اتاق" }));
 
       await waitFor(() => {
-        expect((roomTypeSelect as HTMLSelectElement).value).toBe("10");
         expect(scrollIntoView).toHaveBeenCalled();
+        expect(screen.getByText("انتخاب‌شده از صفحه اتاق‌ها")).toBeTruthy();
       });
       expect(document.activeElement).toBe(
         screen.getByRole("complementary", { name: "رزرو اقامتگاه" }),
@@ -485,11 +620,12 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
 
-    const quantity = await screen.findByRole("combobox", { name: "تعداد واحد" });
+    expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "اتاق مشخص" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "تعداد واحد" })).toBeNull();
     expect(screen.queryByText(/اتاق‌های نام‌دار باید/)).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "افزودن ۱ واحد به سبد رزرو" }));
+    fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
     expect(await screen.findByText("۱ واحد از اتاق شاه‌نشین به سبد رزرو اضافه شد.")).toBeTruthy();
-    expect(screen.getAllByText("۱ واحد").length).toBeGreaterThan(0);
+    expect(screen.getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین" })).toBeTruthy();
   });
 });

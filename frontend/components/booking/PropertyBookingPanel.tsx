@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
@@ -8,7 +8,6 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
-import { KoochField, KoochSelect } from "@/components/KoochFormControls";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { BookingCartMobileActionBar, BookingCartSummary } from "@/components/booking/BookingCart";
 import {
@@ -22,7 +21,11 @@ import {
 } from "@/components/booking/BookingCartProvider";
 import { createBookingSessionFromCart, revalidateBookingCart } from "@/components/booking/booking-checkout";
 import { bookingModePresentation, formatBookingDateRange } from "@/components/booking/booking-display";
-import { fetchBookingOptions, type PublicBookingOptions } from "@/lib/booking-sessions";
+import {
+  fetchBookingOptions,
+  type PublicBookingOptions,
+  type PublicBookingRoomTypeOption,
+} from "@/lib/booking-sessions";
 import { formatCurrency } from "@/lib/currency";
 
 type DateRange = { startDate: string | null; endDate: string | null };
@@ -71,8 +74,6 @@ function PropertyBookingPanelContent({
   const auth = useAuthSession();
   const cart = useBookingCart();
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
-  const [selectedRoomTypeId, setSelectedRoomTypeId] = useState("");
-  const [quantity, setQuantity] = useState(1);
   const [loadingOptions, setLoadingOptions] = useState(false);
   const [checkingOut, setCheckingOut] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "info" | "success"; text: string } | null>(null);
@@ -81,14 +82,8 @@ function PropertyBookingPanelContent({
 
   const optionsMatchSearch =
     options?.checkInDate === dates.startDate && options?.checkOutDate === dates.endDate;
-  const selectedOption = useMemo(
-    () => optionsMatchSearch
-      ? options?.roomTypes.find((item) => item.roomTypeId === Number(selectedRoomTypeId)) ?? null
-      : null,
-    [options, optionsMatchSearch, selectedRoomTypeId],
-  );
-  const selectedContextMatchesCart = Boolean(
-    selectedOption && dates.startDate && dates.endDate &&
+  const cartMatchesCurrentStay = Boolean(
+    dates.startDate && dates.endDate &&
       bookingCartSelectionMatchesItems(cart.items, {
         propertyId,
         checkIn: dates.startDate,
@@ -98,19 +93,7 @@ function PropertyBookingPanelContent({
         childAges: guests.childAges,
       }),
   );
-  const availableToAdd = useMemo(
-    () => selectedOption && dates.startDate && dates.endDate
-      ? getCartAwareAvailableCount({
-          items: selectedContextMatchesCart ? cart.items : [],
-          propertyId,
-          roomTypeId: selectedOption.roomTypeId,
-          checkIn: dates.startDate,
-          checkOut: dates.endDate,
-          serverAvailableCount: selectedOption.availableCount,
-        })
-      : 0,
-    [cart.items, dates.endDate, dates.startDate, propertyId, selectedContextMatchesCart, selectedOption],
-  );
+  const currentStayCartItems = cartMatchesCurrentStay ? cart.items : [];
 
   async function checkAvailability() {
     if (!dates.startDate || !dates.endDate) {
@@ -131,9 +114,6 @@ function PropertyBookingPanelContent({
       const preferred = response.roomTypes.find(
         (item) => item.roomTypeId === preferredRoomTypeId,
       );
-      const first = preferred ?? response.roomTypes[0];
-      setSelectedRoomTypeId(first ? String(first.roomTypeId) : "");
-      setQuantity(Math.min(Math.max(1, guests.rooms), first?.availableCount ?? 1));
       if (response.roomTypes.length === 0) {
         const preferredUnavailable = response.unavailableRoomTypes?.find(
           (item) => item.roomTypeId === preferredRoomTypeId,
@@ -156,35 +136,41 @@ function PropertyBookingPanelContent({
     }
   }
 
-  function addToCart() {
+  function addToCart(option: PublicBookingRoomTypeOption) {
     if (
-      !selectedOption ||
       !dates.startDate ||
-      !dates.endDate ||
-      availableToAdd === 0
+      !dates.endDate
     ) return;
     const selection: BookingCartSelection = {
         propertyId,
         propertyName,
         propertySlug,
-        bookingMode: selectedOption.bookingMode,
-        roomTypeId: selectedOption.roomTypeId,
-        roomTypeName: selectedOption.name,
+        bookingMode: option.bookingMode,
+        roomTypeId: option.roomTypeId,
+        roomTypeName: option.name,
         checkIn: dates.startDate,
         checkOut: dates.endDate,
         adults: guests.adults,
         children: guests.children,
         childAges: guests.childAges,
         notes: null,
-        displayAmount: selectedOption.finalAmount,
-        currency: selectedOption.currency,
-        quantity,
+        displayAmount: option.finalAmount,
+        currency: option.currency,
+        quantity: 1,
       };
     if (!bookingCartSelectionMatchesItems(cart.items, selection)) {
       setReplacementSelection(selection);
       return;
     }
     addSelectionToCart(selection);
+  }
+
+  function removeOneFromCart(roomTypeId: number) {
+    const selectedItems = currentStayCartItems.filter(
+      (item) => item.roomTypeId === roomTypeId,
+    );
+    const itemToRemove = selectedItems.at(-1);
+    if (itemToRemove) cart.removeItem(itemToRemove.id);
   }
 
   function addSelectionToCart(selection: BookingCartSelection, replace = false) {
@@ -233,24 +219,6 @@ function PropertyBookingPanelContent({
   }
 
   useEffect(() => {
-    if (!options || !preferredRoomTypeId) return;
-    const preferred = options.roomTypes.find(
-      (item) => item.roomTypeId === preferredRoomTypeId,
-    );
-    if (!preferred) return;
-
-    setSelectedRoomTypeId(String(preferred.roomTypeId));
-    setQuantity(
-      Math.min(Math.max(1, guests.rooms), preferred.availableCount),
-    );
-  }, [guests.rooms, options, preferredRoomTypeId]);
-
-  useEffect(() => {
-    if (!selectedOption || availableToAdd === 0) return;
-    setQuantity((current) => Math.min(Math.max(1, current), availableToAdd));
-  }, [availableToAdd, selectedOption]);
-
-  useEffect(() => {
     if (!cart.hydrated || auth.loading || !auth.authenticated || !cart.checkoutRequested || resumedCheckout.current) return;
     resumedCheckout.current = true;
     void continueCheckout();
@@ -280,49 +248,42 @@ function PropertyBookingPanelContent({
 
       {optionsMatchSearch && options && options.roomTypes.length > 0 && (
         <div className="mt-5 grid gap-4 rounded-lg border border-border bg-muted/40 p-4">
-          <KoochField label="نوع اتاق">
-            <KoochSelect value={selectedRoomTypeId} onChange={(event) => {
-              const value = event.target.value;
-              const next = options.roomTypes.find((item) => item.roomTypeId === Number(value));
-              setSelectedRoomTypeId(value);
-              setQuantity(Math.min(Math.max(1, guests.rooms), next?.availableCount ?? 1));
-            }}>
-              {options.roomTypes.map((item) => <option key={item.roomTypeId} value={item.roomTypeId}>{item.name} — {formatCurrency(item.finalAmount)}</option>)}
-            </KoochSelect>
-          </KoochField>
-          {selectedOption ? (
-            <KoochField label="تعداد واحد">
-              <KoochSelect disabled={availableToAdd === 0} value={quantity} onChange={(event) => setQuantity(Number(event.target.value))}>
-                {Array.from({ length: availableToAdd }, (_, index) => index + 1).map((value) => <option key={value} value={value}>{value.toLocaleString("fa-IR")}</option>)}
-              </KoochSelect>
-            </KoochField>
-          ) : null}
-          {selectedOption && (
-            <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-background px-3 py-2 text-xs font-bold">
-              <span className="text-foreground">
-                <span aria-hidden="true">{bookingModePresentation(selectedOption.bookingMode).icon}</span>{" "}
-                {bookingModePresentation(selectedOption.bookingMode).label}
-              </span>
-              <span className="text-muted-foreground">
-                {availableToAdd.toLocaleString("fa-IR")} واحد دیگر با توجه به سبد قابل افزودن
-              </span>
-            </div>
-          )}
-          {selectedOption && availableToAdd === 0 && (
-            <KoochAlert variant="info">
-              ظرفیت این نوع اتاق با توجه به موارد موجود در سبد رزرو شما تکمیل شده است.
-            </KoochAlert>
-          )}
-          {selectedOption && (
-            <p className="text-sm font-bold text-foreground">
-              مبلغ قطعی این بازه برای هر اتاق: {formatCurrency(selectedOption.finalAmount)}
+          <div>
+            <h3 className="font-black text-foreground" id="available-room-types-title">
+              اتاق‌های قابل انتخاب
+            </h3>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              می‌توانید چند نوع اتاق یا چند واحد از یک نوع را برای همین اقامت انتخاب کنید.
             </p>
-          )}
-          <KoochButton disabled={availableToAdd === 0} onClick={addToCart}>
-            {availableToAdd === 0
-              ? "ظرفیت قابل افزودن تکمیل شده است"
-              : `افزودن ${quantity.toLocaleString("fa-IR")} واحد به سبد رزرو`}
-          </KoochButton>
+          </div>
+          <ul aria-labelledby="available-room-types-title" className="divide-y divide-border">
+            {options.roomTypes.map((option) => {
+              const selectedItems = currentStayCartItems.filter(
+                (item) => item.roomTypeId === option.roomTypeId,
+              );
+              const availableToAdd = dates.startDate && dates.endDate
+                ? getCartAwareAvailableCount({
+                    items: currentStayCartItems,
+                    propertyId,
+                    roomTypeId: option.roomTypeId,
+                    checkIn: dates.startDate,
+                    checkOut: dates.endDate,
+                    serverAvailableCount: option.availableCount,
+                  })
+                : 0;
+              return (
+                <RoomTypeSelectionRow
+                  availableToAdd={availableToAdd}
+                  isPreferred={option.roomTypeId === preferredRoomTypeId}
+                  key={option.roomTypeId}
+                  onAdd={() => addToCart(option)}
+                  onRemove={() => removeOneFromCart(option.roomTypeId)}
+                  option={option}
+                  selectedQuantity={selectedItems.length}
+                />
+              );
+            })}
+          </ul>
         </div>
       )}
 
@@ -351,6 +312,94 @@ function PropertyBookingPanelContent({
         variant="warning"
       />
     </>
+  );
+}
+
+function RoomTypeSelectionRow({
+  availableToAdd,
+  isPreferred,
+  onAdd,
+  onRemove,
+  option,
+  selectedQuantity,
+}: {
+  availableToAdd: number;
+  isPreferred: boolean;
+  onAdd: () => void;
+  onRemove: () => void;
+  option: PublicBookingRoomTypeOption;
+  selectedQuantity: number;
+}) {
+  const maximumSelectable = selectedQuantity + availableToAdd;
+  const isOverCapacity = selectedQuantity > option.availableCount;
+  const isSingleUnit = selectedQuantity <= 1 && maximumSelectable <= 1;
+  const mode = bookingModePresentation(option.bookingMode);
+
+  return (
+    <li
+      className="grid min-w-0 gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+      data-preferred={isPreferred || undefined}
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <h4 className="font-black text-foreground">{option.name}</h4>
+          {isPreferred && <span className="text-xs font-bold text-primary">انتخاب‌شده از صفحه اتاق‌ها</span>}
+        </div>
+        <p className="mt-1 text-sm font-bold text-foreground">
+          {formatCurrency(option.finalAmount)}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          <span aria-hidden="true">{mode.icon}</span>{" "}{mode.label}
+          {selectedQuantity === 0 && availableToAdd > 0
+            ? ` · ${availableToAdd.toLocaleString("fa-IR")} واحد موجود`
+            : ""}
+        </p>
+        {isOverCapacity && (
+          <p className="mt-2 text-xs font-bold leading-6 text-destructive" role="status">
+            موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")} واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
+          </p>
+        )}
+      </div>
+      <div className="flex min-h-11 items-center justify-start sm:justify-end">
+        {selectedQuantity === 0 ? (
+          <KoochButton
+            aria-label={availableToAdd === 0 ? `تکمیل ظرفیت ${option.name}` : `انتخاب ${option.name}`}
+            disabled={availableToAdd === 0}
+            onClick={onAdd}
+            variant={availableToAdd === 0 ? "outline" : "primary"}
+          >
+            {availableToAdd === 0 ? "تکمیل ظرفیت" : "انتخاب"}
+          </KoochButton>
+        ) : isSingleUnit ? (
+          <KoochButton
+            aria-label={`حذف انتخاب ${option.name}`}
+            aria-pressed={true}
+            onClick={onRemove}
+            variant="outline"
+          >
+            <span aria-hidden="true">✓</span> انتخاب شد؛ حذف
+          </KoochButton>
+        ) : (
+          <div aria-label={`تعداد انتخاب‌شده ${option.name}`} className="flex items-center gap-2" role="group">
+            <KoochButton aria-label={`کاهش تعداد ${option.name}`} onClick={onRemove} size="icon" variant="outline">
+              <span aria-hidden="true" className="text-lg">−</span>
+            </KoochButton>
+            <output aria-atomic="true" aria-live="polite" className="min-w-8 text-center text-base font-black text-foreground">
+              {selectedQuantity.toLocaleString("fa-IR")}
+            </output>
+            <KoochButton
+              aria-label={`افزایش تعداد ${option.name}`}
+              disabled={availableToAdd === 0 || isOverCapacity}
+              onClick={onAdd}
+              size="icon"
+              variant="outline"
+            >
+              <span aria-hidden="true" className="text-lg">+</span>
+            </KoochButton>
+          </div>
+        )}
+      </div>
+    </li>
   );
 }
 
