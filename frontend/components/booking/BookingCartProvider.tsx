@@ -74,6 +74,7 @@ type BookingCartAction =
   | { type: "replace"; payload: BookingCartState }
   | { type: "remove"; itemId: string }
   | { type: "checkout-requested"; value: boolean }
+  | { type: "renew-idempotency"; value: string }
   | { type: "clear" };
 
 const emptyCart: BookingCartState = {
@@ -99,6 +100,9 @@ function cartReducer(
   if (action.type === "replace") return action.payload;
   if (action.type === "checkout-requested") {
     return { ...state, checkoutRequested: action.value };
+  }
+  if (action.type === "renew-idempotency") {
+    return { ...state, idempotencyKey: action.value };
   }
   if (action.type === "remove") {
     const items = state.items.filter((item) => item.id !== action.itemId);
@@ -357,6 +361,7 @@ interface BookingCartContextValue extends BookingCartState {
   replaceWithSelection: (selection: BookingCartSelection) => void;
   removeItem: (itemId: string) => void;
   setCheckoutRequested: (value: boolean) => void;
+  renewIdempotencyKey: () => void;
   replaceItems: (items: BookingCartItem[]) => void;
   clear: () => void;
 }
@@ -423,6 +428,10 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "clear" });
   }, []);
 
+  const renewIdempotencyKey = useCallback(() => {
+    dispatch({ type: "renew-idempotency", value: createIdentifier() });
+  }, []);
+
   const value = useMemo<BookingCartContextValue>(
     () => ({
       ...state,
@@ -431,10 +440,11 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
       replaceWithSelection,
       removeItem: (itemId) => dispatch({ type: "remove", itemId }),
       setCheckoutRequested,
+      renewIdempotencyKey,
       replaceItems,
       clear,
     }),
-    [addSelection, clear, replaceItems, replaceWithSelection, setCheckoutRequested, state],
+    [addSelection, clear, renewIdempotencyKey, replaceItems, replaceWithSelection, setCheckoutRequested, state],
   );
 
   return (

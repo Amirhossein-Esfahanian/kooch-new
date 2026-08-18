@@ -6,6 +6,7 @@ import {
   createAccountBookingSession,
   fetchBookingOptions,
   type AccountBookingSessionCreateResponse,
+  type AccountBookingSessionPrimaryGuestRequest,
   type BookingOptionsQuery,
   type PublicBookingOptions,
 } from "@/lib/booking-sessions";
@@ -18,6 +19,13 @@ type BookingOptionsFetcher = (
 export interface RevalidatedBookingCart {
   items: BookingCartItem[];
   priceChanged: boolean;
+}
+
+export interface BookingCheckoutStayDetails {
+  bookingForSelf: boolean;
+  primaryGuest: AccountBookingSessionPrimaryGuestRequest | null;
+  expectedArrivalTime: string | null;
+  specialRequest: string | null;
 }
 
 function queryKey(item: BookingCartItem) {
@@ -112,6 +120,7 @@ export async function revalidateBookingCart(
 export function createBookingSessionFromCart(
   items: BookingCartItem[],
   idempotencyKey: string,
+  stayDetails: BookingCheckoutStayDetails,
   create: typeof createAccountBookingSession = createAccountBookingSession,
 ): Promise<AccountBookingSessionCreateResponse> {
   if (!bookingCartItemsShareContext(items)) {
@@ -119,6 +128,10 @@ export function createBookingSessionFromCart(
   }
   return create({
     idempotencyKey,
+    bookingForSelf: stayDetails.bookingForSelf,
+    primaryGuest: stayDetails.bookingForSelf ? null : stayDetails.primaryGuest,
+    expectedArrivalTime: stayDetails.expectedArrivalTime,
+    specialRequest: stayDetails.specialRequest,
     items: items.map((item) => ({
       roomTypeId: item.roomTypeId,
       checkInDate: item.checkIn,

@@ -71,7 +71,18 @@ export interface AccountBookingSessionItemRequest {
 
 export interface AccountBookingSessionCreateRequest {
   idempotencyKey: string;
+  bookingForSelf: boolean;
+  primaryGuest: AccountBookingSessionPrimaryGuestRequest | null;
+  expectedArrivalTime: string | null;
+  specialRequest: string | null;
   items: AccountBookingSessionItemRequest[];
+}
+
+export interface AccountBookingSessionPrimaryGuestRequest {
+  firstName: string;
+  lastName: string;
+  mobile: string | null;
+  email: string | null;
 }
 
 export interface AccountBookingSessionCreateResponse {
@@ -116,7 +127,10 @@ export interface AccountBookingSession {
   sessionCode: string;
   displayCodeLabel: string;
   property: { propertyId: number; name: string; slug: string };
+  primaryGuest?: AccountBookingSessionPrimaryGuestRequest | null;
   currency: string;
+  expectedArrivalTime?: string | null;
+  specialRequest?: string | null;
   totalAmount: number;
   summary: AccountBookingSessionSummary;
   commonPaymentDeadlineUtc: string | null;

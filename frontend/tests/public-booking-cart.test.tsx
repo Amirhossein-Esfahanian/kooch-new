@@ -378,16 +378,32 @@ describe("public booking cart", () => {
   it("creates an idempotent safe payload whose independent children share one stay context", async () => {
     const create = vi.fn().mockResolvedValue({ sessionCode: "BS-1" });
     const items = [item(), item({ id: "second-room", roomTypeId: 20, roomTypeName: "اتاق دوقلو" })];
-    await createBookingSessionFromCart(items, "same-key", create);
-    await createBookingSessionFromCart(items, "same-key", create);
+    const stayDetails = {
+      bookingForSelf: false,
+      primaryGuest: {
+        firstName: "مریم",
+        lastName: "کریمی",
+        mobile: null,
+        email: "guest@example.test",
+      },
+      expectedArrivalTime: "14:30:00",
+      specialRequest: "اتاق آرام لطفاً",
+    };
+    await createBookingSessionFromCart(items, "same-key", stayDetails, create);
+    await createBookingSessionFromCart(items, "same-key", stayDetails, create);
     expect(create).toHaveBeenCalledTimes(2);
     for (const [payload] of create.mock.calls) {
       expect(payload.idempotencyKey).toBe("same-key");
       expect(payload).not.toHaveProperty("clientId");
       expect(payload).not.toHaveProperty("guestId");
       expect(payload).not.toHaveProperty("propertyId");
+      expect(payload.bookingForSelf).toBe(false);
+      expect(payload.primaryGuest).toEqual(stayDetails.primaryGuest);
+      expect(payload.expectedArrivalTime).toBe("14:30:00");
+      expect(payload.specialRequest).toBe("اتاق آرام لطفاً");
       expect(payload.items[0]).not.toHaveProperty("status");
       expect(payload.items[0]).not.toHaveProperty("roomId");
+      expect(payload.items[0].notes).toBeNull();
       expect(payload.items).toHaveLength(2);
       expect(payload.items.every((entry: { checkInDate: string; checkOutDate: string; adults: number }) =>
         entry.checkInDate === "2026-08-10" &&
