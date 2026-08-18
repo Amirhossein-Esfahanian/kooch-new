@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
@@ -35,6 +35,8 @@ import {
   validateCheckoutStayDetailsDraft,
   type CheckoutStayDetailsDraft,
 } from "@/components/booking/CheckoutStayDetails";
+import { bookingModePresentation } from "@/components/booking/booking-display";
+import { formatCurrency } from "@/lib/currency";
 
 export function BookingCheckoutFlow() {
   return (
@@ -49,6 +51,7 @@ function BookingCheckoutContent() {
   const searchParams = useSearchParams();
   const auth = useAuthSession();
   const cart = useBookingCart();
+  const submissionLockRef = useRef(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizationMessage, setFinalizationMessage] = useState<{
     tone: "error" | "info";
@@ -108,7 +111,7 @@ function BookingCheckoutContent() {
   }, [identityComplete, router, stayDetailsComplete]);
 
   const finalizeCheckout = useCallback(async () => {
-    if (cart.items.length === 0 || finalizing) return;
+    if (cart.items.length === 0 || submissionLockRef.current) return;
 
     if (!hasCompleteCheckoutIdentity(auth)) {
       cart.setCheckoutRequested(false);
@@ -118,6 +121,7 @@ function BookingCheckoutContent() {
 
     if (!cart.idempotencyKey) return;
 
+    submissionLockRef.current = true;
     setFinalizing(true);
     setFinalizationMessage(null);
     try {
@@ -153,9 +157,10 @@ function BookingCheckoutContent() {
             : "ساخت سفارش رزرو انجام نشد.",
       });
     } finally {
+      submissionLockRef.current = false;
       setFinalizing(false);
     }
-  }, [auth, cart, finalizing, router, stayDetailsDraft]);
+  }, [auth, cart, router, stayDetailsDraft]);
 
   if (!cart.hydrated) {
     return (
@@ -188,6 +193,9 @@ function BookingCheckoutContent() {
   }
 
   const propertyReturnHref = buildPropertyReturnHref(cart.items);
+  const bookingMode = cart.items[0].bookingMode;
+  const finalActionLabel =
+    bookingMode === "OnRequest" ? "ارسال درخواست رزرو" : "ادامه به پرداخت";
 
   return (
     <div className="bg-background px-4 py-8 text-foreground sm:px-6 sm:py-12" dir="rtl">
@@ -249,6 +257,18 @@ function BookingCheckoutContent() {
               </KoochAlert>
             ) : null}
 
+            {currentStep === "review" ? (
+              <div
+                className="mt-6 flex items-center justify-between gap-4 rounded-lg bg-muted px-4 py-3 sm:hidden"
+                data-testid="checkout-mobile-total"
+              >
+                <span className="text-sm font-bold text-muted-foreground">مبلغ کل</span>
+                <strong className="text-base font-black text-foreground">
+                  {formatCurrency(cart.total)}
+                </strong>
+              </div>
+            ) : null}
+
             <div
               className="mt-8 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:justify-between"
               data-testid="checkout-mobile-actions"
@@ -274,10 +294,11 @@ function BookingCheckoutContent() {
                 </KoochButton>
               ) : (
                 <KoochButton
+                  disabled={finalizing}
                   loading={finalizing}
                   onClick={() => void finalizeCheckout()}
                 >
-                  ثبت نهایی رزرو
+                  {finalActionLabel}
                 </KoochButton>
               )}
             </div>
@@ -306,17 +327,29 @@ function ReviewStep({
   items: BookingCartItem[];
   user: NonNullable<ReturnType<typeof useAuthSession>["user"]>;
 }) {
+  const mode = bookingModePresentation(items[0].bookingMode);
+  const isOnRequest = items[0].bookingMode === "OnRequest";
+
   return (
     <div>
       <h2 className="text-xl font-black text-foreground" id="checkout-step-title">
         مرور و نهایی‌سازی
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-        پیش از ثبت نهایی، انتخاب‌ها و مبلغ رزرو را در خلاصه بررسی کنید.
+        پیش از ادامه، اطلاعات اقامت، مهمانان و مبلغ سفارش را بررسی کنید.
       </p>
       <CheckoutStayDetailsReview draft={draft} items={items} user={user} />
-      <KoochAlert className="mt-6" title="ثبت نهایی با رفتار فعلی" variant="info">
-        تا پیش از انتخاب «ثبت نهایی رزرو» هیچ سفارشی ایجاد نمی‌شود. موجودی و قیمت پیش از ساخت سفارش دوباره بررسی می‌شوند.
+      <KoochAlert className="mt-6" title={`${mode.icon} ${mode.label}`} variant="info">
+        {isOnRequest ? (
+          <div className="grid gap-2">
+            <p>درخواست رزرو برای اقامتگاه ارسال می‌شود.</p>
+            <p>تا پیش از تأیید اقامتگاه، پرداختی انجام نمی‌شود.</p>
+            <p>مهلت پاسخ اقامتگاه طبق سازوکار فعلی سیستم اعمال می‌شود.</p>
+            <p>پس از تأیید، می‌توانید از صفحه سفارش وارد مرحله پرداخت شوید.</p>
+          </div>
+        ) : (
+          <p>پس از ثبت رزرو، برای تکمیل رزرو وارد مرحله پرداخت می‌شوید.</p>
+        )}
       </KoochAlert>
     </div>
   );

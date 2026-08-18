@@ -304,9 +304,11 @@ export function CheckoutStayDetailsReview({
 
       <div className="grid gap-5 sm:grid-cols-2">
         <ReviewSurface title="زمان ورود"><p className="text-sm font-bold text-foreground">{arrival}</p></ReviewSurface>
-        <ReviewSurface title="درخواست ویژه">
-          <p className="break-words text-sm leading-7 text-foreground">{draft.specialRequest.trim() || "درخواستی ثبت نشده است."}</p>
-        </ReviewSurface>
+        {draft.specialRequest.trim() ? (
+          <ReviewSurface title="درخواست ویژه">
+            <p className="break-words text-sm leading-7 text-foreground">{draft.specialRequest.trim()}</p>
+          </ReviewSurface>
+        ) : null}
       </div>
     </div>
   );
@@ -316,30 +318,54 @@ function StayAndGuestSummary({ items, review = false }: { items: BookingCartItem
   const first = items[0];
   if (!first) return null;
   const lines = groupBookingCartItems(items);
-  const mode = bookingModePresentation(first.bookingMode);
   const childrenDescription = first.children > 0
     ? `${first.children.toLocaleString("fa-IR")} کودک (${first.childAges.map((age) => `${age.toLocaleString("fa-IR")} سال`).join("، ")})`
     : "بدون کودک";
 
   return (
     <section className={review ? "rounded-lg border border-border bg-background p-4" : ""} aria-labelledby={review ? "review-stay-title" : "stay-summary-title"}>
-      <h3 className="text-base font-black text-foreground" id={review ? "review-stay-title" : "stay-summary-title"}>خلاصه اقامت و مهمانان</h3>
+      <h3 className="text-base font-black text-foreground" id={review ? "review-stay-title" : "stay-summary-title"}>{review ? "اقامت" : "خلاصه اقامت و مهمانان"}</h3>
       <dl className="mt-4 grid gap-4 sm:grid-cols-2">
         <ReviewValue label="اقامتگاه" value={first.propertyName} />
         <ReviewValue label="تاریخ اقامت" value={formatBookingDateRange(first.checkIn, first.checkOut)} />
         <ReviewValue label="مدت اقامت" value={`${countBookingNights(items).toLocaleString("fa-IR")} شب`} />
-        <ReviewValue label="مهمانان" value={`${first.adults.toLocaleString("fa-IR")} بزرگسال، ${childrenDescription}`} />
-        <ReviewValue label="نوع رزرو" value={`${mode.icon} ${mode.label}`} />
-        <ReviewValue label="مبلغ کل" value={formatCurrency(items.reduce((sum, item) => sum + item.displayAmount, 0))} />
+        {!review ? <ReviewValue label="مهمانان" value={`${first.adults.toLocaleString("fa-IR")} بزرگسال، ${childrenDescription}`} /> : null}
+        {!review ? <ReviewValue label="مبلغ کل" value={formatCurrency(items.reduce((sum, item) => sum + item.displayAmount, 0))} /> : null}
       </dl>
+      {review ? <h4 className="mt-5 border-t border-border pt-5 text-sm font-black text-foreground">اتاق‌ها</h4> : null}
       <ul className="mt-4 grid gap-2" aria-label="اتاق‌های انتخاب‌شده">
-        {lines.map((line) => (
-          <li className="flex min-w-0 items-center justify-between gap-3 rounded-lg bg-muted px-3 py-2 text-sm" key={line.key}>
-            <span className="min-w-0 truncate font-bold text-foreground">{line.item.roomTypeName}</span>
-            <span className="shrink-0 font-black text-foreground">{line.quantity.toLocaleString("fa-IR")} اتاق</span>
-          </li>
-        ))}
+        {lines.map((line) => {
+          const lineMode = bookingModePresentation(line.item.bookingMode);
+          return (
+            <li className="grid min-w-0 gap-2 rounded-lg bg-muted px-3 py-3 text-sm sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" key={line.key}>
+              <div className="min-w-0">
+                <p className="break-words font-black text-foreground">{line.item.roomTypeName}</p>
+                <p className="mt-1 text-xs font-bold text-muted-foreground">
+                  {lineMode.icon} {lineMode.label}
+                </p>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 sm:justify-end">
+                <span className="font-bold text-foreground">{line.quantity.toLocaleString("fa-IR")} اتاق</span>
+                <span className="font-black text-foreground">{formatCurrency(line.total)}</span>
+              </div>
+            </li>
+          );
+        })}
       </ul>
+      {review ? (
+        <>
+          <div className="mt-5 border-t border-border pt-5">
+            <h4 className="text-sm font-black text-foreground">مهمانان</h4>
+            <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+              <ReviewValue label="بزرگسال" value={first.adults.toLocaleString("fa-IR")} />
+              <ReviewValue label="کودک و سن" value={childrenDescription} />
+            </dl>
+          </div>
+          <dl className="mt-5 border-t border-border pt-5">
+            <ReviewValue label="مبلغ کل" value={formatCurrency(items.reduce((sum, item) => sum + item.displayAmount, 0))} />
+          </dl>
+        </>
+      ) : null}
     </section>
   );
 }
