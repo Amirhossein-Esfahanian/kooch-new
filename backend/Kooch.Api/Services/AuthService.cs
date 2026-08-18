@@ -93,8 +93,61 @@ public class AuthService(
     {
         var mobile = UserIdentityNormalization.NormalizePhoneNumber(request.Mobile)
             ?? throw new ArgumentException("Mobile number is required.");
-        var user = await FindUserByMobileAsync(mobile, cancellationToken)
-            ?? throw new InvalidOperationException("No active account was found for this mobile number.");
+        var user = await FindUserByMobileAsync(mobile, cancellationToken);
+
+        if (user is null && request.AllowRegistration)
+        {
+            if (string.IsNullOrWhiteSpace(request.FirstName) ||
+                string.IsNullOrWhiteSpace(request.LastName))
+            {
+                return new RequestOtpResponse
+                {
+                    Sent = false,
+                    RequiresRegistration = true
+                };
+            }
+
+            var identity = CreateUserIdentity(
+                request.FirstName,
+                request.LastName,
+                mobile,
+                request.Email);
+            if (!string.IsNullOrWhiteSpace(identity.Email))
+            {
+                await EnsureUniqueEmailAsync(identity.Email, null, cancellationToken);
+            }
+            await EnsureUniqueMobileAsync(identity.PhoneNumber, null, cancellationToken);
+            await EnsurePassengerGuestCanBeLinkedAsync(
+                identity.PhoneNumber,
+                identity.Email,
+                cancellationToken);
+
+            user = new User
+            {
+                FirstName = identity.FirstName,
+                LastName = identity.LastName,
+                Email = identity.Email,
+                PhoneNumber = identity.PhoneNumber,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(
+                    Convert.ToHexString(RandomNumberGenerator.GetBytes(32))),
+                Role = UserRole.Client,
+                IsActive = false
+            };
+
+            dbContext.Users.Add(user);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await CreateOrLinkGuestForPassengerAsync(
+                user,
+                identity.PhoneNumber,
+                identity.Email,
+                cancellationToken);
+        }
+
+        if (user is null)
+        {
+            throw new InvalidOperationException(
+                "No active account was found for this mobile number.");
+        }
 
         if (user.PasswordSetupRequired || (!user.IsActive && user.Role != UserRole.Client))
         {
@@ -577,6 +630,7 @@ public class AuthService(
         return new RequestOtpResponse
         {
             Sent = true,
+            RequiresRegistration = false,
             ExpiresAtUtc = expiresAtUtc,
             DevOtpCode = appEnvironment.IsDevelopment() ? rawCode : null
         };

@@ -8,10 +8,25 @@ const navigation = vi.hoisted(() => ({
 const auth = vi.hoisted(() => ({
   authenticated: false,
   loading: false,
+  refreshSession: vi.fn(),
+  user: null as null | {
+    userId: number;
+    firstName: string;
+    lastName: string;
+    guestId: number | null;
+    fullName: string;
+    email: string;
+    phoneNumber: string | null;
+    isActive: boolean;
+  },
 }));
 const checkout = vi.hoisted(() => ({
   create: vi.fn(),
   revalidate: vi.fn(),
+}));
+const authApi = vi.hoisted(() => ({
+  request: vi.fn(),
+  setToken: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -25,6 +40,14 @@ vi.mock("@/components/booking/booking-checkout", () => ({
   createBookingSessionFromCart: checkout.create,
   revalidateBookingCart: checkout.revalidate,
 }));
+vi.mock("@/lib/owner-api", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/lib/owner-api")>();
+  return {
+    ...original,
+    apiRequest: authApi.request,
+    setToken: authApi.setToken,
+  };
+});
 
 import {
   BookingCheckoutFlow,
@@ -36,6 +59,7 @@ import {
   lastBookingSessionCodeKey,
   type BookingCartItem,
 } from "@/components/booking/BookingCartProvider";
+import { ApiRequestError } from "@/lib/owner-api";
 
 function bookingItems(): BookingCartItem[] {
   return [
@@ -88,18 +112,34 @@ function persistCart(items = bookingItems()) {
   }));
 }
 
+function signIn() {
+  auth.authenticated = true;
+  auth.user = {
+    userId: 7,
+    firstName: "سارا",
+    lastName: "احمدی",
+    guestId: 12,
+    fullName: "سارا احمدی",
+    email: "sara@example.test",
+    phoneNumber: "09121234567",
+    isActive: true,
+  };
+}
+
 describe("multi-step booking checkout skeleton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
     auth.authenticated = false;
     auth.loading = false;
+    auth.user = null;
     navigation.step = "information";
     checkout.revalidate.mockImplementation(async (items: BookingCartItem[]) => ({
       items,
       priceChanged: false,
     }));
     checkout.create.mockResolvedValue({ sessionCode: "BS-100" });
+    auth.refreshSession.mockResolvedValue(null);
   });
 
   it("restores Step 2 from the persisted cart and shows its read-only summary", async () => {
@@ -112,6 +152,7 @@ describe("multi-step booking checkout skeleton", () => {
     expect(within(stepper).getByText("اطلاعات").closest("li")?.getAttribute("aria-current")).toBe("step");
     expect(within(stepper).getByText("نهایی‌سازی")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "اطلاعات رزروکننده" })).toBeTruthy();
+    expect(screen.getByLabelText(/شماره موبایل/)).toBeTruthy();
     expect(screen.getByText("اتاق شاه‌نشین")).toBeTruthy();
     expect(screen.getByText("اتاق نیلوفر")).toBeTruthy();
     expect(screen.getByText("۷٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
@@ -134,6 +175,7 @@ describe("multi-step booking checkout skeleton", () => {
 
   it("navigates from Step 2 to the Step 3 review skeleton and back", async () => {
     persistCart();
+    signIn();
     const view = render(<BookingCheckoutFlow />);
 
     fireEvent.click(await screen.findByRole("button", { name: "ادامه به نهایی‌سازی" }));
@@ -142,6 +184,9 @@ describe("multi-step booking checkout skeleton", () => {
     navigation.step = "review";
     view.rerender(<BookingCheckoutFlow />);
     expect(await screen.findByRole("heading", { name: "مرور و نهایی‌سازی", level: 2 })).toBeTruthy();
+    expect(screen.getByText("سارا احمدی")).toBeTruthy();
+    expect(screen.getByText("۰۹۱۲۱۲۳۴۵۶۷")).toBeTruthy();
+    expect(screen.getByText("sara@example.test")).toBeTruthy();
     expect(screen.getByText(/تا پیش از انتخاب «ثبت نهایی رزرو» هیچ سفارشی ایجاد نمی‌شود/)).toBeTruthy();
     expect(screen.getByRole("button", { name: "ثبت نهایی رزرو" }).hasAttribute("disabled")).toBe(false);
 
@@ -171,8 +216,9 @@ describe("multi-step booking checkout skeleton", () => {
     expect(navigation.push).toHaveBeenCalledWith("/properties");
   });
 
-  it("does not call an API or create a BookingSession merely by entering Steps 2 and 3", async () => {
+  it("does not call a booking API merely by entering Steps 2 and 3", async () => {
     persistCart();
+    signIn();
     const view = render(<BookingCheckoutFlow />);
     fireEvent.click(await screen.findByRole("button", { name: "ادامه به نهایی‌سازی" }));
     navigation.step = "review";
@@ -182,26 +228,29 @@ describe("multi-step booking checkout skeleton", () => {
     expect(checkout.create).not.toHaveBeenCalled();
   });
 
-  it("preserves the cart and returns to Step 3 through the real login flow", async () => {
+  it("blocks Step 3 for an anonymous user and retains traditional login as a fallback", async () => {
     persistCart();
     navigation.step = "review";
     render(<BookingCheckoutFlow />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "ثبت نهایی رزرو" }));
+    expect(await screen.findByText(/نشست شما در دسترس نیست/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ثبت نهایی رزرو" })).toBeNull();
+    expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
+      .toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "ورود به حساب از مسیر دیگر" }));
 
     expect(navigation.push).toHaveBeenCalledWith(
-      `/login?returnTo=${encodeURIComponent("/booking/checkout?step=review")}`,
+      `/login?returnTo=${encodeURIComponent("/booking/checkout?step=information")}`,
     );
     expect(checkout.revalidate).not.toHaveBeenCalled();
     expect(checkout.create).not.toHaveBeenCalled();
-    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).checkoutRequested)
-      .toBe(true);
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(3);
   });
 
   it("revalidates and creates the BookingSession only after authenticated final submit", async () => {
     const items = bookingItems();
     persistCart(items);
-    auth.authenticated = true;
+    signIn();
     navigation.step = "review";
     render(<BookingCheckoutFlow />);
 
@@ -217,22 +266,183 @@ describe("multi-step booking checkout skeleton", () => {
     expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/BS-100");
   });
 
-  it("resumes the same final submission after returning authenticated from login", async () => {
-    const items = bookingItems();
-    persistCart(items);
-    const stored = JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!);
-    sessionStorage.setItem(
-      bookingCartStorageKey,
-      JSON.stringify({ ...stored, checkoutRequested: true }),
-    );
-    auth.authenticated = true;
-    navigation.step = "review";
-
+  it("prefills an authenticated identity without asking for OTP", async () => {
+    persistCart();
+    signIn();
     render(<BookingCheckoutFlow />);
 
-    await waitFor(() => expect(checkout.create).toHaveBeenCalledWith(
-      items,
-      "checkout-stable-key",
-    ));
+    expect(await screen.findByText("وارد حساب خود هستید")).toBeTruthy();
+    expect(screen.getByText("سارا احمدی")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ارسال کد تأیید" })).toBeNull();
+    expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
+      .toBe(false);
   });
+
+  it("sends OTP for an existing user, reflects cooldown, and stays in checkout after verification", async () => {
+    persistCart();
+    authApi.request
+      .mockResolvedValueOnce({
+        sent: true,
+        requiresRegistration: false,
+        expiresAtUtc: "2026-08-18T10:03:00Z",
+        devOtpCode: null,
+      })
+      .mockResolvedValueOnce({ token: "checkout-token" });
+    auth.refreshSession.mockImplementation(async () => {
+      signIn();
+      return { user: auth.user };
+    });
+    render(<BookingCheckoutFlow />);
+
+    fireEvent.change(await screen.findByLabelText(/شماره موبایل/), {
+      target: { value: "۰۹۱۲۱۲۳۴۵۶۷" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
+
+    expect(await screen.findByLabelText(/کد تأیید/)).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ارسال مجدد تا ۶۰ ثانیه" }).hasAttribute("disabled"))
+      .toBe(true);
+    expect(authApi.request).toHaveBeenNthCalledWith(1, "/auth/request-otp", expect.objectContaining({
+      method: "POST",
+    }));
+
+    fireEvent.change(screen.getByLabelText(/کد تأیید/), {
+      target: { value: "۱۲۳۴۵۶" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "تأیید و ادامه" }));
+
+    expect(await screen.findByText("وارد حساب خود هستید")).toBeTruthy();
+    expect(authApi.setToken).toHaveBeenCalledWith("checkout-token");
+    expect(navigation.push).not.toHaveBeenCalledWith(expect.stringMatching(/^\/login/));
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(3);
+  });
+
+  it("creates a new User through the existing OTP endpoint and preserves the cart", async () => {
+    persistCart();
+    authApi.request
+      .mockResolvedValueOnce({
+        sent: false,
+        requiresRegistration: true,
+        expiresAtUtc: null,
+      })
+      .mockResolvedValueOnce({
+        sent: true,
+        requiresRegistration: false,
+        expiresAtUtc: "2026-08-18T10:03:00Z",
+        devOtpCode: null,
+      })
+      .mockResolvedValueOnce({ token: "new-user-token" });
+    auth.refreshSession.mockImplementation(async () => {
+      signIn();
+      return { user: auth.user };
+    });
+    render(<BookingCheckoutFlow />);
+
+    fireEvent.change(await screen.findByLabelText(/شماره موبایل/), {
+      target: { value: "09129876543" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
+
+    expect(await screen.findByText("تکمیل اطلاعات حساب")).toBeTruthy();
+    fireEvent.change(screen.getAllByLabelText(/نام/)[0], { target: { value: "مینا" } });
+    fireEvent.change(screen.getByLabelText(/نام خانوادگی/), { target: { value: "کریمی" } });
+    fireEvent.change(screen.getByLabelText("ایمیل"), { target: { value: "mina@example.test" } });
+    fireEvent.click(screen.getByRole("button", { name: "ساخت حساب و ارسال کد" }));
+
+    expect(await screen.findByLabelText(/کد تأیید/)).toBeTruthy();
+    const registrationPayload = JSON.parse(
+      (authApi.request.mock.calls[1][1] as RequestInit).body as string,
+    );
+    expect(registrationPayload).toEqual(expect.objectContaining({
+      allowRegistration: true,
+      email: "mina@example.test",
+      firstName: "مینا",
+      lastName: "کریمی",
+      mobile: "09129876543",
+    }));
+
+    fireEvent.change(screen.getByLabelText(/کد تأیید/), { target: { value: "123456" } });
+    fireEvent.click(screen.getByRole("button", { name: "تأیید و ادامه" }));
+    expect(await screen.findByText("وارد حساب خود هستید")).toBeTruthy();
+    expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
+  });
+
+  it("shows a safe invalid OTP error and does not allow progression", async () => {
+    persistCart();
+    authApi.request
+      .mockResolvedValueOnce({
+        sent: true,
+        requiresRegistration: false,
+        expiresAtUtc: "2026-08-18T10:03:00Z",
+        devOtpCode: null,
+      })
+      .mockRejectedValueOnce(new ApiRequestError("Invalid or expired OTP code.", 401));
+    render(<BookingCheckoutFlow />);
+
+    fireEvent.change(await screen.findByLabelText(/شماره موبایل/), {
+      target: { value: "09121234567" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
+    fireEvent.change(await screen.findByLabelText(/کد تأیید/), {
+      target: { value: "000000" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "تأیید و ادامه" }));
+
+    expect(await screen.findByText(/کد تأیید نامعتبر یا منقضی شده است/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ثبت نهایی رزرو" })).toBeNull();
+    expect(checkout.create).not.toHaveBeenCalled();
+  });
+
+  it("allows changing the mobile before OTP verification", async () => {
+    persistCart();
+    authApi.request.mockResolvedValueOnce({
+      sent: true,
+      requiresRegistration: false,
+      expiresAtUtc: "2026-08-18T10:03:00Z",
+      devOtpCode: null,
+    });
+    render(<BookingCheckoutFlow />);
+
+    fireEvent.change(await screen.findByLabelText(/شماره موبایل/), {
+      target: { value: "09121234567" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
+    fireEvent.click(await screen.findByRole("button", { name: "تغییر شماره موبایل" }));
+
+    const mobileInput = screen.getByLabelText(/شماره موبایل/) as HTMLInputElement;
+    expect(mobileInput.value).toBe("09121234567");
+    fireEvent.change(mobileInput, { target: { value: "09129876543" } });
+    expect(mobileInput.value).toBe("09129876543");
+    expect(screen.queryByLabelText(/کد تأیید/)).toBeNull();
+  });
+
+  it("restores the authenticated checkout and cart after a refresh", async () => {
+    persistCart();
+    signIn();
+    const first = render(<BookingCheckoutFlow />);
+    expect(await screen.findByText("وارد حساب خود هستید")).toBeTruthy();
+    first.unmount();
+
+    render(<BookingCheckoutFlow />);
+    expect(await screen.findByText("سارا احمدی")).toBeTruthy();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(3);
+  });
+
+  it("returns to identity resolution if the session disappears before final submission", async () => {
+    persistCart();
+    signIn();
+    navigation.step = "review";
+    const view = render(<BookingCheckoutFlow />);
+    expect(await screen.findByRole("button", { name: "ثبت نهایی رزرو" })).toBeTruthy();
+
+    auth.authenticated = false;
+    auth.user = null;
+    view.rerender(<BookingCheckoutFlow />);
+
+    expect(await screen.findByText(/نشست شما در دسترس نیست/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ثبت نهایی رزرو" })).toBeNull();
+    expect(checkout.create).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
+  });
+
 });

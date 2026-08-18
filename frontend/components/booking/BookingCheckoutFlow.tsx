@@ -1,10 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
-import { useAuthSession } from "@/components/auth/AuthSessionProvider";
+import {
+  type AuthSessionUser,
+  useAuthSession,
+} from "@/components/auth/AuthSessionProvider";
 import { BookingCartSummary } from "@/components/booking/BookingCart";
 import {
   BookingCartProvider,
@@ -20,6 +23,11 @@ import {
   BookingCheckoutStepper,
   type BookingCheckoutStep,
 } from "@/components/booking/BookingCheckoutStepper";
+import {
+  CheckoutIdentityStep,
+  formatPersianDigits,
+  hasCompleteCheckoutIdentity,
+} from "@/components/booking/CheckoutIdentityStep";
 
 export function BookingCheckoutFlow() {
   return (
@@ -34,23 +42,26 @@ function BookingCheckoutContent() {
   const searchParams = useSearchParams();
   const auth = useAuthSession();
   const cart = useBookingCart();
-  const resumedCheckout = useRef(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizationMessage, setFinalizationMessage] = useState<{
     tone: "error" | "info";
     text: string;
   } | null>(null);
+  const requestedReview = searchParams.get("step") === "review";
+  const identityComplete = hasCompleteCheckoutIdentity(auth);
   const currentStep: BookingCheckoutStep =
-    searchParams.get("step") === "review" ? "review" : "information";
+    requestedReview && identityComplete ? "review" : "information";
+  const identityInterruptionMessage =
+    requestedReview && !auth.loading && !identityComplete
+      ? "نشست شما در دسترس نیست یا اطلاعات هویتی کامل نشده است. سبد رزرو حفظ شده؛ شماره موبایل را تأیید کنید و سپس ادامه دهید."
+      : null;
 
   const finalizeCheckout = useCallback(async () => {
     if (cart.items.length === 0 || finalizing) return;
 
-    if (!auth.authenticated) {
-      cart.setCheckoutRequested(true);
-      router.push(
-        `/login?returnTo=${encodeURIComponent("/booking/checkout?step=review")}`,
-      );
+    if (!hasCompleteCheckoutIdentity(auth)) {
+      cart.setCheckoutRequested(false);
+      router.push("/booking/checkout?step=information");
       return;
     }
 
@@ -91,30 +102,7 @@ function BookingCheckoutContent() {
     } finally {
       setFinalizing(false);
     }
-  }, [auth.authenticated, cart, finalizing, router]);
-
-  useEffect(() => {
-    if (
-      currentStep !== "review" ||
-      !cart.hydrated ||
-      auth.loading ||
-      !auth.authenticated ||
-      !cart.checkoutRequested ||
-      resumedCheckout.current
-    ) {
-      return;
-    }
-
-    resumedCheckout.current = true;
-    void finalizeCheckout();
-  }, [
-    auth.authenticated,
-    auth.loading,
-    cart.checkoutRequested,
-    cart.hydrated,
-    currentStep,
-    finalizeCheckout,
-  ]);
+  }, [auth, cart, finalizing, router]);
 
   if (!cart.hydrated) {
     return (
@@ -169,9 +157,12 @@ function BookingCheckoutContent() {
             className="rounded-lg border border-border bg-card p-5 sm:p-6"
           >
             {currentStep === "information" ? (
-              <InformationStep />
+              <CheckoutIdentityStep
+                interruptionMessage={identityInterruptionMessage}
+                onAuthenticated={() => cart.setCheckoutRequested(false)}
+              />
             ) : (
-              <ReviewStep />
+              <ReviewStep user={auth.user!} />
             )}
 
             {currentStep === "review" && finalizationMessage ? (
@@ -207,7 +198,10 @@ function BookingCheckoutContent() {
                 {currentStep === "information" ? "بازگشت به انتخاب اقامت" : "بازگشت به اطلاعات"}
               </KoochButton>
               {currentStep === "information" ? (
-                <KoochButton onClick={() => router.push("/booking/checkout?step=review")}>
+                <KoochButton
+                  disabled={!identityComplete}
+                  onClick={() => router.push("/booking/checkout?step=review")}
+                >
                   ادامه به نهایی‌سازی
                 </KoochButton>
               ) : (
@@ -235,23 +229,7 @@ function BookingCheckoutContent() {
   );
 }
 
-function InformationStep() {
-  return (
-    <div>
-      <h2 className="text-xl font-black text-foreground" id="checkout-step-title">
-        اطلاعات رزروکننده
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-        در این مرحله اطلاعات لازم برای ادامه رزرو تکمیل خواهد شد.
-      </p>
-      <KoochAlert className="mt-6" title="این بخش در مرحله بعد تکمیل می‌شود" variant="info">
-        اطلاعات رزروکننده در مرحله بعد تکمیل می‌شود. انتخاب‌های اقامت و مبلغ فعلی تا آن زمان در سبد رزرو شما حفظ می‌شوند.
-      </KoochAlert>
-    </div>
-  );
-}
-
-function ReviewStep() {
+function ReviewStep({ user }: { user: AuthSessionUser }) {
   return (
     <div>
       <h2 className="text-xl font-black text-foreground" id="checkout-step-title">
@@ -260,9 +238,42 @@ function ReviewStep() {
       <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
         پیش از ثبت نهایی، انتخاب‌ها و مبلغ رزرو را در خلاصه بررسی کنید.
       </p>
+      <section aria-labelledby="checkout-contact-title" className="mt-6 rounded-lg border border-border bg-background p-4">
+        <h3 className="text-base font-black text-foreground" id="checkout-contact-title">
+          اطلاعات رزروکننده
+        </h3>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          <ReviewIdentityValue label="نام و نام خانوادگی" value={user.fullName} />
+          <ReviewIdentityValue dir="ltr" label="شماره موبایل" value={formatPersianDigits(user.phoneNumber ?? "—")} />
+          {user.email ? (
+            <ReviewIdentityValue className="sm:col-span-2" dir="ltr" label="ایمیل" value={user.email} />
+          ) : null}
+        </dl>
+      </section>
       <KoochAlert className="mt-6" title="ثبت نهایی با رفتار فعلی" variant="info">
-        تا پیش از انتخاب «ثبت نهایی رزرو» هیچ سفارشی ایجاد نمی‌شود. پس از آن، در صورت نیاز ورود انجام می‌شود و موجودی و قیمت پیش از ساخت سفارش دوباره بررسی می‌شوند.
+        تا پیش از انتخاب «ثبت نهایی رزرو» هیچ سفارشی ایجاد نمی‌شود. موجودی و قیمت پیش از ساخت سفارش دوباره بررسی می‌شوند.
       </KoochAlert>
+    </div>
+  );
+}
+
+function ReviewIdentityValue({
+  className = "",
+  dir,
+  label,
+  value,
+}: {
+  className?: string;
+  dir?: "ltr" | "rtl";
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className={`min-w-0 ${className}`}>
+      <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
+      <dd className="mt-1 break-words text-sm font-black text-foreground" dir={dir}>
+        {value}
+      </dd>
     </div>
   );
 }

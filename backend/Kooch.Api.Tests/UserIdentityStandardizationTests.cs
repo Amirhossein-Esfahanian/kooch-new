@@ -61,6 +61,90 @@ public sealed class UserIdentityStandardizationTests
     }
 
     [Fact]
+    public async Task CheckoutOtp_RequestsIdentityBeforeCreatingANewUser()
+    {
+        await using var database = await CreateDatabaseAsync();
+        var service = CreateAuthService(database.Context);
+
+        var response = await service.RequestOtpAsync(new RequestOtpRequest
+        {
+            Mobile = "۰۹۱۲۱۲۳۴۵۶۷",
+            AllowRegistration = true
+        });
+
+        Assert.False(response.Sent);
+        Assert.True(response.RequiresRegistration);
+        Assert.Null(response.ExpiresAtUtc);
+        Assert.Empty(database.Context.Users);
+        Assert.Empty(database.Context.MobileOtpCodes);
+    }
+
+    [Fact]
+    public async Task CheckoutOtp_CreatesAndAuthenticatesNewUserThroughExistingOtpFlow()
+    {
+        await using var database = await CreateDatabaseAsync();
+        var service = CreateAuthService(database.Context, Environments.Development);
+
+        var requested = await service.RequestOtpAsync(new RequestOtpRequest
+        {
+            Mobile = "+989121234567",
+            AllowRegistration = true,
+            FirstName = "  Ali  ",
+            LastName = "  Rezaei  ",
+            Email = " ALI@EXAMPLE.TEST "
+        });
+
+        Assert.True(requested.Sent);
+        Assert.False(requested.RequiresRegistration);
+        Assert.NotNull(requested.ExpiresAtUtc);
+        Assert.False(string.IsNullOrWhiteSpace(requested.DevOtpCode));
+
+        var user = await database.Context.Users.SingleAsync();
+        Assert.Equal("Ali", user.FirstName);
+        Assert.Equal("Rezaei", user.LastName);
+        Assert.Equal("09121234567", user.PhoneNumber);
+        Assert.Equal("ali@example.test", user.Email);
+        Assert.False(user.IsActive);
+        Assert.False(string.IsNullOrWhiteSpace(user.PasswordHash));
+
+        var authenticated = await service.VerifyOtpAsync(new VerifyOtpRequest
+        {
+            Mobile = "۰۹۱۲۱۲۳۴۵۶۷",
+            Code = requested.DevOtpCode!
+        });
+
+        Assert.NotNull(authenticated);
+        Assert.Equal(user.Id, authenticated.UserId);
+        Assert.True((await database.Context.Users.SingleAsync()).IsActive);
+    }
+
+    [Fact]
+    public async Task CheckoutOtp_ReusesExistingUserAndKeepsCooldown()
+    {
+        await using var database = await CreateDatabaseAsync();
+        database.Context.Users.Add(
+            CreateUser(1, UserRole.Client, "existing", "09121234567", null));
+        await database.Context.SaveChangesAsync();
+        var service = CreateAuthService(database.Context);
+
+        var requested = await service.RequestOtpAsync(new RequestOtpRequest
+        {
+            Mobile = "00989121234567",
+            AllowRegistration = true
+        });
+
+        Assert.True(requested.Sent);
+        Assert.False(requested.RequiresRegistration);
+        Assert.Single(database.Context.Users);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.RequestOtpAsync(new RequestOtpRequest
+            {
+                Mobile = "09121234567",
+                AllowRegistration = true
+            }));
+    }
+
+    [Fact]
     public async Task AdminCreate_NormalizesNamesPhoneEmailAndAllowsMissingEmail()
     {
         await using var database = await CreateDatabaseAsync();
@@ -160,7 +244,9 @@ public sealed class UserIdentityStandardizationTests
         return new TestDatabase(connection, context);
     }
 
-    private static AuthService CreateAuthService(KoochDbContext dbContext)
+    private static AuthService CreateAuthService(
+        KoochDbContext dbContext,
+        string environmentName = "Production")
     {
         var authorization = new PropertyAccessService(dbContext);
         return new AuthService(
@@ -172,7 +258,7 @@ public sealed class UserIdentityStandardizationTests
                 Audience = "tests"
             }),
             authorization,
-            new TestHostEnvironment(),
+            new TestHostEnvironment { EnvironmentName = environmentName },
             new RecordingNotificationService());
     }
 
