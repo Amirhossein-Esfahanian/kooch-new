@@ -5,6 +5,7 @@ const api = vi.hoisted(() => ({
   fetchProperty: vi.fn(),
   fetchOptions: vi.fn(),
 }));
+const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 
 const searchParams = new URLSearchParams({
   checkIn: "2030-08-10",
@@ -16,7 +17,7 @@ const searchParams = new URLSearchParams({
 vi.mock("next/navigation", () => ({
   useParams: () => ({ slug: "kashan-house" }),
   usePathname: () => "/properties/kashan-house",
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => navigation,
   useSearchParams: () => searchParams,
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
@@ -212,6 +213,8 @@ describe("public property booking integration", () => {
     expect(screen.getAllByText(/۳ اتاق/).length).toBeGreaterThan(0);
     expect(increase.hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("۳", { selector: "output" })).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
+    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
   });
 
   it("shows a disabled sold-out state when no unit is selectable", async () => {

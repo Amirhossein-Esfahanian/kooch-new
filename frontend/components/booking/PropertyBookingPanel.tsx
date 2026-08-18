@@ -1,25 +1,22 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
-import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { BookingCartMobileActionBar, BookingCartSummary } from "@/components/booking/BookingCart";
 import {
   bookingCartSelectionMatchesItems,
   BookingCartProvider,
   getBookingCartStayContext,
   getCartAwareAvailableCount,
-  lastBookingSessionCodeKey,
   type BookingCartSelection,
   useBookingCart,
 } from "@/components/booking/BookingCartProvider";
-import { createBookingSessionFromCart, revalidateBookingCart } from "@/components/booking/booking-checkout";
 import { bookingModePresentation, formatBookingDateRange } from "@/components/booking/booking-display";
 import {
   fetchBookingOptions,
@@ -69,16 +66,11 @@ function PropertyBookingPanelContent({
   preferredRoomTypeName?: string | null;
 }) {
   const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
-  const auth = useAuthSession();
   const cart = useBookingCart();
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
-  const [checkingOut, setCheckingOut] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "info" | "success"; text: string } | null>(null);
   const [replacementSelection, setReplacementSelection] = useState<BookingCartSelection | null>(null);
-  const resumedCheckout = useRef(false);
 
   const optionsMatchSearch =
     options?.checkInDate === dates.startDate && options?.checkOutDate === dates.endDate;
@@ -187,42 +179,11 @@ function PropertyBookingPanelContent({
     }
   }
 
-  async function continueCheckout() {
-    if (cart.items.length === 0 || checkingOut) return;
-    if (!auth.authenticated) {
-      cart.setCheckoutRequested(true);
-      const current = `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`;
-      router.push(`/login?returnTo=${encodeURIComponent(current)}`);
-      return;
-    }
-    if (!cart.idempotencyKey) return;
-    setCheckingOut(true);
-    setMessage(null);
-    try {
-      const refreshed = await revalidateBookingCart(cart.items);
-      cart.replaceItems(refreshed.items);
-      if (refreshed.priceChanged) {
-        cart.setCheckoutRequested(false);
-        setMessage({ tone: "info", text: "قیمت به‌روز شده است. مبلغ جدید را بررسی و دوباره ادامه دهید." });
-        return;
-      }
-      const created = await createBookingSessionFromCart(refreshed.items, cart.idempotencyKey);
-      sessionStorage.setItem(lastBookingSessionCodeKey, created.sessionCode);
-      cart.clear();
-      router.push(`/account/booking-sessions/${encodeURIComponent(created.sessionCode)}`);
-    } catch (error) {
-      cart.setCheckoutRequested(false);
-      setMessage({ tone: "error", text: error instanceof Error ? error.message : "ساخت سفارش رزرو انجام نشد." });
-    } finally {
-      setCheckingOut(false);
-    }
+  function continueCheckout() {
+    if (cart.items.length === 0) return;
+    cart.setCheckoutRequested(false);
+    router.push("/booking/checkout?step=information");
   }
-
-  useEffect(() => {
-    if (!cart.hydrated || auth.loading || !auth.authenticated || !cart.checkoutRequested || resumedCheckout.current) return;
-    resumedCheckout.current = true;
-    void continueCheckout();
-  }, [auth.authenticated, auth.loading, cart.checkoutRequested, cart.hydrated]);
 
   const hasAvailableRoomTypes = Boolean(
     optionsMatchSearch && options && options.roomTypes.length > 0,
@@ -231,7 +192,7 @@ function PropertyBookingPanelContent({
     <BookingCartSummary
       className={hasAvailableRoomTypes ? "lg:sticky lg:top-24" : undefined}
       items={cart.items}
-      loading={checkingOut}
+      loading={false}
       onContinue={continueCheckout}
       onRemove={cart.removeItem}
       total={cart.total}
@@ -304,7 +265,7 @@ function PropertyBookingPanelContent({
         </div>
       ) : cartSummary}
 
-      <BookingCartMobileActionBar count={cart.items.length} loading={checkingOut} onContinue={continueCheckout} total={cart.total} />
+      <BookingCartMobileActionBar count={cart.items.length} loading={false} onContinue={continueCheckout} total={cart.total} />
       <KoochConfirmDialog
         cancelText="حفظ سبد فعلی"
         confirmText="شروع رزرو جدید"

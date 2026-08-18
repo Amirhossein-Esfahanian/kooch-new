@@ -56,7 +56,7 @@ export function BookingCartItemRow({
   onRemove,
 }: {
   line: BookingCartLine;
-  onRemove: (ids: string[]) => void;
+  onRemove?: (ids: string[]) => void;
 }) {
   const { item } = line;
   const mode = bookingModePresentation(item.bookingMode);
@@ -73,15 +73,17 @@ export function BookingCartItemRow({
           {line.quantity.toLocaleString("fa-IR")} اتاق · {formatCurrency(line.total)}
         </p>
       </div>
-      <KoochButton
-        aria-label={`حذف ${item.roomTypeName} از سبد رزرو`}
-        className="shrink-0"
-        onClick={() => onRemove(line.itemIds)}
-        size="sm"
-        variant="ghost"
-      >
-        حذف
-      </KoochButton>
+      {onRemove && (
+        <KoochButton
+          aria-label={`حذف ${item.roomTypeName} از سبد رزرو`}
+          className="shrink-0"
+          onClick={() => onRemove(line.itemIds)}
+          size="sm"
+          variant="ghost"
+        >
+          حذف
+        </KoochButton>
+      )}
     </li>
   );
 }
@@ -93,13 +95,15 @@ export function BookingCartSummary({
   onContinue,
   onRemove,
   className,
+  title = "انتخاب‌های شما",
 }: {
   items: BookingCartItem[];
   total: number;
-  loading: boolean;
-  onContinue: () => void;
-  onRemove: (id: string) => void;
+  loading?: boolean;
+  onContinue?: () => void;
+  onRemove?: (id: string) => void;
   className?: string;
+  title?: string;
 }) {
   const lines = groupBookingCartItems(items);
   const roomTypeCount = new Set(items.map((item) => item.roomTypeId)).size;
@@ -115,7 +119,7 @@ export function BookingCartSummary({
     >
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-lg font-black text-foreground" id="booking-choices-title">
-          انتخاب‌های شما
+          {title}
         </h3>
         {items.length > 0 && (
           <span className="text-xs font-bold text-muted-foreground">
@@ -134,7 +138,7 @@ export function BookingCartSummary({
               <BookingCartItemRow
                 key={line.key}
                 line={line}
-                onRemove={(ids) => ids.forEach(onRemove)}
+                onRemove={onRemove ? (ids) => ids.forEach(onRemove) : undefined}
               />
             ))}
           </ul>
@@ -163,9 +167,11 @@ export function BookingCartSummary({
             </div>
           </dl>
 
-          <KoochButton className="mt-4 hidden w-full sm:inline-flex" loading={loading} onClick={onContinue}>
-            ادامه رزرو
-          </KoochButton>
+          {onContinue && (
+            <KoochButton className="mt-4 hidden w-full sm:inline-flex" loading={loading} onClick={onContinue}>
+              ادامه رزرو
+            </KoochButton>
+          )}
         </>
       )}
     </section>
