@@ -692,6 +692,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(session => session.SessionCode).HasMaxLength(32).IsRequired();
             entity.Property(session => session.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(session => session.ExpectedArrivalTime).HasColumnType("time");
             entity.Property(session => session.IdempotencyKey).HasMaxLength(200);
             entity.Property(session => session.RequestHash).HasMaxLength(128);
             entity.Property(session => session.RowVersion).IsRowVersion();

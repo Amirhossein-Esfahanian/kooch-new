@@ -107,6 +107,8 @@ public sealed class BookingSessionQueryApiTests
         Assert.Equal("Client", result.Client.FirstName);
         Assert.NotNull(result.Guest);
         Assert.Equal(1, result.Guest.GuestId);
+        Assert.Equal(new TimeOnly(18, 30), result.ExpectedArrivalTime);
+        Assert.Equal("اتاق آرام باشد", result.SpecialRequest);
         Assert.Equal(2, result.Reservations.Count);
         Assert.Contains(
             result.Reservations,
@@ -158,9 +160,33 @@ public sealed class BookingSessionQueryApiTests
         Assert.Null(result.Payment);
         Assert.Null(typeof(AccountBookingSessionResponse).GetProperty("Client"));
         Assert.Null(typeof(AccountBookingSessionResponse).GetProperty("Guest"));
+        Assert.NotNull(result.PrimaryGuest);
+        Assert.Equal("Guest", result.PrimaryGuest.FirstName);
+        Assert.Equal("09120000000", result.PrimaryGuest.Mobile);
+        Assert.Equal(new TimeOnly(18, 30), result.ExpectedArrivalTime);
+        Assert.Equal("اتاق آرام باشد", result.SpecialRequest);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             service.GetBySessionCodeForClientAsync(2, "KCH-S-READ-0001"));
+    }
+
+    [Fact]
+    public async Task AccountRead_DoesNotInventOneSpecialRequestFromDifferentChildNotes()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var reservations = await context.Reservations
+            .Where(reservation => reservation.BookingSessionId == 10)
+            .OrderBy(reservation => reservation.Id)
+            .ToListAsync();
+        reservations[1].GuestNote = "درخواست متفاوت";
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var result = await new BookingSessionQueryService(context)
+            .GetBySessionCodeForClientAsync(1, "KCH-S-READ-0001");
+
+        Assert.Null(result.SpecialRequest);
     }
 
     [Fact]
@@ -591,6 +617,7 @@ public sealed class BookingSessionQueryApiTests
                 GuestId = 1,
                 PropertyId = 1,
                 Currency = "IRR",
+                ExpectedArrivalTime = new TimeOnly(18, 30),
                 RequestHash = new string('A', 64)
             };
             session.Reservations.Add(CreateReservation(
@@ -611,6 +638,10 @@ public sealed class BookingSessionQueryApiTests
                 new DateOnly(2036, 1, 5),
                 ReservationStatus.PendingApproval,
                 200));
+            foreach (var reservation in session.Reservations)
+            {
+                reservation.GuestNote = "اتاق آرام باشد";
+            }
             context.BookingSessions.Add(session);
             context.BookingSessions.Add(new BookingSession
             {

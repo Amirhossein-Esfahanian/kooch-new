@@ -166,12 +166,22 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             .Select(session => new AccountBookingSessionResponse
             {
                 SessionCode = session.SessionCode,
+                ExpectedArrivalTime = session.ExpectedArrivalTime,
                 Property = new BookingSessionPropertyResponse
                 {
                     PropertyId = session.PropertyId,
                     Name = session.Property.Name,
                     Slug = session.Property.Slug
                 },
+                PrimaryGuest = session.Guest == null
+                    ? null
+                    : new AccountBookingSessionPrimaryGuestResponse
+                    {
+                        FirstName = session.Guest.FirstName,
+                        LastName = session.Guest.LastName,
+                        Mobile = session.Guest.Mobile,
+                        Email = session.Guest.Email
+                    },
                 Currency = session.Currency,
                 Payment = session.Payments
                     .OrderByDescending(payment => payment.CreatedAtUtc)
@@ -201,7 +211,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                         PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
-                        Currency = reservation.Currency
+                        Currency = reservation.Currency,
+                        GuestNote = reservation.GuestNote
                     })
                     .ToList()
             })
@@ -225,6 +236,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 BookingSessionId = session.Id,
                 SessionCode = session.SessionCode,
                 Currency = session.Currency,
+                ExpectedArrivalTime = session.ExpectedArrivalTime,
                 Property = new BookingSessionPropertyResponse
                 {
                     PropertyId = session.PropertyId,
@@ -265,7 +277,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                         PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                         FinalAmount = reservation.FinalAmount,
-                        Currency = reservation.Currency
+                        Currency = reservation.Currency,
+                        GuestNote = reservation.GuestNote
                     })
                     .ToList()
             })
@@ -277,6 +290,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             response.Currency,
             payableScopeResolver,
             timeProvider.GetUtcNow().UtcDateTime);
+        response.SpecialRequest = ResolveSharedSpecialRequest(
+            response.Reservations.Select(reservation => reservation.GuestNote));
         return response;
     }
 
@@ -296,7 +311,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc,
                 PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
                 FinalAmount = reservation.FinalAmount,
-                Currency = reservation.Currency
+                Currency = reservation.Currency,
+                GuestNote = reservation.GuestNote
             })
             .ToArray();
         response.Summary = BuildSummary(
@@ -305,6 +321,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             payableScopeResolver,
             timeProvider.GetUtcNow().UtcDateTime);
         response.TotalAmount = response.Summary.TotalAmount;
+        response.SpecialRequest = ResolveSharedSpecialRequest(
+            response.Reservations.Select(reservation => reservation.GuestNote));
         var deadlines = response.Reservations
             .Where(reservation =>
                 reservation.Status == ReservationStatus.ApprovedAwaitingPayment &&
@@ -313,6 +331,16 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             .Distinct()
             .ToArray();
         response.CommonPaymentDeadlineUtc = deadlines.Length is 1 ? deadlines[0] : null;
+    }
+
+    private static string? ResolveSharedSpecialRequest(IEnumerable<string?> notes)
+    {
+        var distinctNotes = notes
+            .Select(note => string.IsNullOrWhiteSpace(note) ? null : note.Trim())
+            .Distinct(StringComparer.Ordinal)
+            .Take(2)
+            .ToArray();
+        return distinctNotes.Length == 1 ? distinctNotes[0] : null;
     }
 
     internal static BookingSessionDerivedSummaryResponse BuildSummary(

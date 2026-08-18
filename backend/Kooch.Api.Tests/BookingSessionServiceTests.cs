@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Dtos.Reservations;
@@ -268,6 +270,313 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(
             Assert.Single(first.Reservations).ReservationId,
             Assert.Single(replay.Reservations).ReservationId);
+    }
+
+    [Fact]
+    public async Task AccountBookingForSelf_DefaultPayloadPreservesLegacyRequestHash()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var accountItem = CreateAccountItem(10, 100);
+        var accountRequest = CreateAccountRequest(accountItem);
+        var internalRequest = new BookingSessionCreateRequest
+        {
+            ClientId = 1,
+            GuestId = 1,
+            PropertyId = 1,
+            IdempotencyKey = accountRequest.IdempotencyKey,
+            Items =
+            [
+                new BookingSessionReservationCreateItem
+                {
+                    RoomTypeId = accountItem.RoomTypeId,
+                    RoomId = accountItem.RoomId,
+                    CheckInDate = accountItem.CheckInDate,
+                    CheckOutDate = accountItem.CheckOutDate,
+                    Adults = accountItem.Adults,
+                    Children = accountItem.Children,
+                    ChildAges = accountItem.ChildAges,
+                    GuestType = PricingGuestType.Iranian
+                }
+            ]
+        };
+        var canonicalHash = BookingSessionService.ComputeRequestHash(internalRequest);
+        var expectedLegacyHash = Convert.ToHexString(SHA256.HashData(
+            Encoding.UTF8.GetBytes("Account" + canonicalHash)));
+
+        await scope.Service.CreateForAccountAsync(1, accountRequest);
+
+        await using var verification = harness.CreateContext();
+        Assert.Equal(expectedLegacyHash, (await verification.BookingSessions.SingleAsync()).RequestHash);
+    }
+
+    [Fact]
+    public async Task AccountBookingForSelf_ReusesTheLinkedGuest()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+
+        var result = await scope.Service.CreateForAccountAsync(
+            1,
+            CreateAccountRequest(CreateAccountItem(10, 100)));
+
+        Assert.Equal(1, result.GuestId);
+        await using var verification = harness.CreateContext();
+        Assert.Single(await verification.Guests.ToListAsync());
+        Assert.All(
+            await verification.Reservations.ToListAsync(),
+            reservation => Assert.Equal(1, reservation.GuestId));
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_CreatesIndependentGuestForEveryChild()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(
+            CreateAccountItem(10, 100),
+            CreateAccountItem(20, 200));
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.NotNull(result.GuestId);
+        Assert.NotEqual(1, result.GuestId);
+        await using var verification = harness.CreateContext();
+        var session = await verification.BookingSessions
+            .Include(item => item.Reservations)
+            .SingleAsync();
+        Assert.Equal(1, session.ClientId);
+        Assert.Equal(result.GuestId, session.GuestId);
+        Assert.All(session.Reservations, reservation => Assert.Equal(session.GuestId, reservation.GuestId));
+        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == session.GuestId);
+        Assert.Null(traveler.UserId);
+        Assert.Equal(1, await verification.Users.CountAsync());
+    }
+
+    [Theory]
+    [InlineData(null, "Traveler", "0912 345 6789", null, "نام مهمان")]
+    [InlineData("Niloofar", null, "0912 345 6789", null, "نام خانوادگی")]
+    [InlineData("Niloofar", "Traveler", null, null, "شماره موبایل یا ایمیل")]
+    public async Task AccountBookingForAnother_RejectsMissingRequiredGuestData(
+        string? firstName,
+        string? lastName,
+        string? mobile,
+        string? email,
+        string expectedMessage)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+        {
+            FirstName = firstName,
+            LastName = lastName,
+            Mobile = mobile,
+            Email = email
+        };
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(
+            () => scope.Service.CreateForAccountAsync(1, request));
+
+        Assert.Contains(expectedMessage, exception.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_AcceptsMobileOnlyAndNormalizesIt()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.Mobile = "+98 912 345 6789";
+        request.PrimaryGuest.Email = null;
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId);
+        Assert.Equal("09123456789", traveler.Mobile);
+        Assert.Equal("09123456789", traveler.NormalizedMobile);
+        Assert.Null(traveler.Email);
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_AcceptsEmailOnlyAndNormalizesIt()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.Mobile = null;
+        request.PrimaryGuest.Email = "  TRAVELER@EXAMPLE.TEST ";
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId);
+        Assert.Equal("traveler@example.test", traveler.Email);
+        Assert.Equal("traveler@example.test", traveler.NormalizedEmail);
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_ResolvesOneExactExistingGuest()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Guests.Add(new Guest
+            {
+                Id = 2,
+                FirstName = "Niloofar",
+                LastName = "Traveler",
+                Mobile = "09123456789",
+                NormalizedMobile = "09123456789"
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+
+        var result = await scope.Service.CreateForAccountAsync(
+            1,
+            CreateOtherGuestAccountRequest(CreateAccountItem(10, 100)));
+
+        Assert.Equal(2, result.GuestId);
+        await using var verification = harness.CreateContext();
+        Assert.Equal(2, await verification.Guests.CountAsync());
+    }
+
+    [Fact]
+    public async Task AccountStayDetails_PersistArrivalAndSharedSpecialRequest()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(
+            CreateAccountItem(10, 100),
+            CreateAccountItem(20, 200));
+        request.ExpectedArrivalTime = new TimeOnly(18, 30);
+        request.SpecialRequest = "  اتاق آرام باشد  ";
+        request.Items[0].Notes = "یادداشت قدیمی";
+
+        await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        var session = await verification.BookingSessions.Include(item => item.Reservations).SingleAsync();
+        Assert.Equal(new TimeOnly(18, 30), session.ExpectedArrivalTime);
+        Assert.All(session.Reservations, reservation => Assert.Equal("اتاق آرام باشد", reservation.GuestNote));
+    }
+
+    [Fact]
+    public async Task AccountStayDetails_NullArrivalAndLegacyItemNotesRemainSupported()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var item = CreateAccountItem(10, 100);
+        item.Notes = "  یادداشت آیتم  ";
+
+        await scope.Service.CreateForAccountAsync(1, CreateAccountRequest(item));
+
+        await using var verification = harness.CreateContext();
+        Assert.Null((await verification.BookingSessions.SingleAsync()).ExpectedArrivalTime);
+        Assert.Equal("یادداشت آیتم", (await verification.Reservations.SingleAsync()).GuestNote);
+    }
+
+    [Fact]
+    public async Task AccountStayDetails_RejectsOversizedSpecialRequest()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.SpecialRequest = new string('x', 2001);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => scope.Service.CreateForAccountAsync(1, request));
+    }
+
+    [Fact]
+    public async Task AccountOtherGuest_PricingFailureLeavesNoOrphanGuest()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        var pricing = new TestReservationPricingService { ThrowOnPublicCall = 2 };
+        await using var scope = harness.CreateService(pricing);
+
+        await Assert.ThrowsAsync<IncompleteDailyPricingException>(() =>
+            scope.Service.CreateForAccountAsync(
+                1,
+                CreateOtherGuestAccountRequest(
+                    CreateAccountItem(10, 100),
+                    CreateAccountItem(20, 200))));
+
+        await using var verification = harness.CreateContext();
+        Assert.Single(await verification.Guests.ToListAsync());
+        Assert.Empty(await verification.BookingSessions.ToListAsync());
+        Assert.Empty(await verification.Reservations.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AccountStayDetails_ArePartOfIdempotencySemantics()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.IdempotencyKey = "stay-details-1";
+        request.ExpectedArrivalTime = new TimeOnly(17, 0);
+        request.SpecialRequest = "بالش اضافه";
+
+        var first = await scope.Service.CreateForAccountAsync(1, request);
+        var replay = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Equal(first.BookingSessionId, replay.BookingSessionId);
+        await using var verification = harness.CreateContext();
+        Assert.Equal(2, await verification.Guests.CountAsync());
+
+        request.ExpectedArrivalTime = new TimeOnly(18, 0);
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => scope.Service.CreateForAccountAsync(1, request));
+    }
+
+    [Fact]
+    public async Task AccountOtherGuest_NormalizedPayloadReplaysIdempotently()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var original = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        original.IdempotencyKey = "normalized-stay-details";
+        original.PrimaryGuest!.FirstName = "  Niloofar ";
+        original.PrimaryGuest.Mobile = "+98 912 345 6789";
+        original.SpecialRequest = "  بالش اضافه ";
+
+        var first = await scope.Service.CreateForAccountAsync(1, original);
+        var replay = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        replay.IdempotencyKey = "normalized-stay-details";
+        replay.PrimaryGuest!.FirstName = "Niloofar";
+        replay.PrimaryGuest.Mobile = "09123456789";
+        replay.SpecialRequest = "بالش اضافه";
+
+        var replayResult = await scope.Service.CreateForAccountAsync(1, replay);
+
+        Assert.Equal(first.BookingSessionId, replayResult.BookingSessionId);
+    }
+
+    [Fact]
+    public async Task AccountOtherGuest_ChangedGuestOrSpecialRequestConflictsWithExistingKey()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var original = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        original.IdempotencyKey = "changed-stay-details";
+        original.SpecialRequest = "بالش اضافه";
+        await scope.Service.CreateForAccountAsync(1, original);
+
+        var changedGuest = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        changedGuest.IdempotencyKey = "changed-stay-details";
+        changedGuest.SpecialRequest = "بالش اضافه";
+        changedGuest.PrimaryGuest!.LastName = "Different";
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => scope.Service.CreateForAccountAsync(1, changedGuest));
+
+        var changedRequest = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        changedRequest.IdempotencyKey = "changed-stay-details";
+        changedRequest.SpecialRequest = "اتاق آرام";
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => scope.Service.CreateForAccountAsync(1, changedRequest));
     }
 
     [Fact]
@@ -543,6 +852,21 @@ public sealed class BookingSessionServiceTests
         new()
         {
             IdempotencyKey = Guid.NewGuid().ToString("N"),
+            Items = items
+        };
+
+    private static AccountBookingSessionCreateRequest CreateOtherGuestAccountRequest(
+        params AccountBookingSessionReservationCreateItem[] items) =>
+        new()
+        {
+            IdempotencyKey = Guid.NewGuid().ToString("N"),
+            BookingForSelf = false,
+            PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+            {
+                FirstName = "Niloofar",
+                LastName = "Traveler",
+                Mobile = "09123456789"
+            },
             Items = items
         };
 

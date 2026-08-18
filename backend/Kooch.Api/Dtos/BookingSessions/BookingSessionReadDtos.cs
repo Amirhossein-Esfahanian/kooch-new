@@ -9,6 +9,8 @@ public sealed class BookingSessionDetailsResponse
     public int BookingSessionId { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     public string Currency { get; set; } = string.Empty;
+    public TimeOnly? ExpectedArrivalTime { get; set; }
+    public string? SpecialRequest { get; set; }
     public BookingSessionPropertyResponse Property { get; set; } = new();
     public BookingSessionClientResponse Client { get; set; } = new();
     public BookingSessionGuestResponse? Guest { get; set; }
@@ -88,6 +90,7 @@ public sealed class BookingSessionReservationDetailsResponse
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
+    internal string? GuestNote { get; set; }
 }
 
 public sealed class AccountBookingSessionResponse
@@ -95,13 +98,24 @@ public sealed class AccountBookingSessionResponse
     public string SessionCode { get; set; } = string.Empty;
     public string DisplayCodeLabel { get; set; } = "کد سفارش";
     public BookingSessionPropertyResponse Property { get; set; } = new();
+    public AccountBookingSessionPrimaryGuestResponse? PrimaryGuest { get; set; }
     public string Currency { get; set; } = string.Empty;
+    public TimeOnly? ExpectedArrivalTime { get; set; }
+    public string? SpecialRequest { get; set; }
     public decimal TotalAmount { get; set; }
     public BookingSessionDerivedSummaryResponse Summary { get; set; } = new();
     [JsonConverter(typeof(UtcDateTimeJsonConverter))]
     public DateTime? CommonPaymentDeadlineUtc { get; set; }
     public AccountBookingSessionPaymentResponse? Payment { get; set; }
     public IReadOnlyList<AccountBookingSessionReservationResponse> Reservations { get; set; } = [];
+}
+
+public sealed class AccountBookingSessionPrimaryGuestResponse
+{
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string? Mobile { get; set; }
+    public string? Email { get; set; }
 }
 
 public sealed class AccountBookingSessionListQuery
@@ -152,4 +166,5 @@ public sealed class AccountBookingSessionReservationResponse
     public DateTime? ApprovalExpiresAtUtc { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
+    internal string? GuestNote { get; set; }
 }
