@@ -12,6 +12,7 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   bookingModePresentation,
+  countBookingNights,
   formatBookingCountdown,
   formatBookingDate,
   formatBookingDeadline,
@@ -197,10 +198,32 @@ export default function AccountBookingSessionPage() {
     };
   }, [isContinuationAvailable, paymentDeadlineUtc, remainingPaymentSeconds, session?.summary.isPaymentReady, sessionCode]);
 
+  useEffect(() => {
+    const shouldPoll = Boolean(
+      session?.summary.hasPendingApprovals || session?.payment?.status === "Pending",
+    );
+    if (!shouldPoll) return;
+
+    let active = true;
+    const timer = window.setInterval(async () => {
+      try {
+        const result = await fetchAccountBookingSession(sessionCode);
+        if (active) setSession(result);
+      } catch {
+        // Keep the last authoritative state during transient polling failures.
+      }
+    }, 8_000);
+
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [session?.payment?.status, session?.summary.hasPendingApprovals, sessionCode]);
+
   if (auth.loading || loading) {
     return <main className="mx-auto max-w-5xl px-4 py-10 text-center text-muted-foreground" dir="rtl">در حال بارگذاری سفارش رزرو...</main>;
   }
-  if (error || !session) {
+  if (!session) {
     return (
       <main className="mx-auto max-w-3xl px-4 py-10" dir="rtl">
         <KoochAlert variant="destructive">{error || "سفارش رزرو پیدا نشد."}</KoochAlert>
@@ -220,6 +243,19 @@ export default function AccountBookingSessionPage() {
         reservation.status,
       ),
   );
+  const fullyConfirmed = session.reservations.length > 0 && session.reservations.every(
+    (reservation) => ["Confirmed", "Paid", "Completed"].includes(reservation.status),
+  );
+  const fullyRejected = session.reservations.length > 0 && session.reservations.every(
+    (reservation) => reservation.status === "Rejected",
+  );
+  const failedPaymentStillPayable = Boolean(
+    session.payment?.status === "Failed" && canInitiatePayment,
+  );
+  const bookingMode = bookingModePresentation(sessionBookingMode);
+  const roomTypeGroups = groupSessionReservations(session.reservations);
+  const checkInDate = session.summary.earliestCheckInDate ?? session.reservations[0]?.checkInDate ?? null;
+  const checkOutDate = session.summary.latestCheckOutDate ?? session.reservations[0]?.checkOutDate ?? null;
 
   return (
     <main className="mx-auto grid max-w-5xl gap-5 px-4 pb-28 pt-8 sm:px-6 sm:pb-8" dir="rtl">
@@ -230,19 +266,21 @@ export default function AccountBookingSessionPage() {
         title={<span dir="ltr">{session.sessionCode}</span>}
       />
 
+      {error && <KoochAlert variant="destructive">{error}</KoochAlert>}
+
       {session.summary.hasPendingApprovals && (
-        <KoochAlert variant="info" title="در انتظار تعیین وضعیت همه رزروها">
+        <KoochAlert variant="info" title="در انتظار تأیید اقامتگاه">
           <div className="grid gap-3">
             <span>
               {session.reservations.some((reservation) => reservation.status === "ApprovedAwaitingPayment")
                 ? "برخی رزروها تأیید شده‌اند، اما پرداخت تا مشخص‌شدن وضعیت همه رزروها در دسترس نیست."
-                : "رزرو پس از تأیید اقامتگاه قابل پرداخت خواهد شد."}
+                : "درخواست رزرو برای اقامتگاه ارسال شده است. پس از تأیید، امکان پرداخت برای شما فعال می‌شود."}
             </span>
             {approvalDeadlineUtc && remainingApprovalSeconds !== null && (
               <ReservationDeadline
                 deadlineUtc={approvalDeadlineUtc}
                 expiredLabel="مهلت پاسخ پایان یافته؛ وضعیت در حال به‌روزرسانی است."
-                label="مهلت باقی‌مانده برای پاسخ مالک"
+                label="مهلت پاسخ اقامتگاه"
                 remainingSeconds={remainingApprovalSeconds}
               />
             )}
@@ -270,8 +308,13 @@ export default function AccountBookingSessionPage() {
       {session.summary.hasRejectedReservations &&
         !isContinuationAvailable &&
         session.payment?.status !== "Successful" && (
-        <KoochAlert variant="destructive" title="بخشی از درخواست رزرو تأیید نشده است">
-          وضعیت هر رزرو را در ادامه بررسی کنید. در حال حاضر پرداختی برای این سفارش در دسترس نیست.
+        <KoochAlert
+          variant="destructive"
+          title={fullyRejected ? "درخواست رزرو تأیید نشد" : "بخشی از درخواست رزرو تأیید نشده است"}
+        >
+          {fullyRejected
+            ? "اقامتگاه این درخواست را تأیید نکرده است. جزئیات رزرو برای سابقه سفارش حفظ شده‌اند."
+            : "وضعیت هر رزرو را در ادامه بررسی کنید. در حال حاضر پرداختی برای این سفارش در دسترس نیست."}
         </KoochAlert>
       )}
       {session.summary.hasRejectedReservations && session.payment?.status === "Successful" && (
@@ -279,57 +322,160 @@ export default function AccountBookingSessionPage() {
           پرداخت رزروهای تأییدشده با موفقیت انجام شده و رزروهای ردشده برای حفظ سابقه سفارش نمایش داده می‌شوند.
         </KoochAlert>
       )}
+      {fullyConfirmed && !session.summary.hasRejectedReservations && (
+        <KoochAlert variant="success" title="رزرو شما تأیید شده است">
+          پرداخت با موفقیت ثبت شده و رزروهای این سفارش تأیید شده‌اند.
+        </KoochAlert>
+      )}
+      {failedPaymentStillPayable && (
+        <KoochAlert variant="warning" title="تلاش قبلی پرداخت ناموفق بود">
+          مهلت پرداخت هنوز فعال است و می‌توانید دوباره از همین سفارش برای پرداخت اقدام کنید.
+        </KoochAlert>
+      )}
       {canInitiatePayment && !isContinuationAvailable && (
-        <KoochAlert variant="success" title="سفارش آماده پرداخت است">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="grid gap-1">
-              <span>ظرفیت این رزرو تا پایان مهلت پرداخت برای شما نگه داشته شده است.</span>
+        <KoochAlert
+          variant="info"
+          title={sessionBookingMode === "OnRequest"
+            ? "اقامتگاه درخواست شما را تأیید کرد"
+            : "رزرو ثبت شد؛ پرداخت را تکمیل کنید"}
+        >
+          <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+            <div className="grid min-w-0 gap-3">
+              <span>
+                {sessionBookingMode === "OnRequest"
+                  ? "برای تکمیل رزرو، پرداخت را تا پایان مهلت انجام دهید."
+                  : "ظرفیت این رزرو تا پایان مهلت پرداخت برای شما نگه داشته شده است."}
+              </span>
+              <strong className="text-sm text-foreground">
+                مبلغ قابل پرداخت: {formatCurrency(payableAmount, { currencyLabel })}
+              </strong>
+              {paymentDeadlineUtc && remainingPaymentSeconds !== null && (
+                <ReservationDeadline
+                  deadlineUtc={paymentDeadlineUtc}
+                  expiredLabel="مهلت پرداخت پایان یافته است."
+                  label="مهلت پرداخت"
+                  remainingSeconds={remainingPaymentSeconds}
+                />
+              )}
               {!mockPaymentEnabled && (
                 <span className="text-sm">درگاه پرداخت در حال حاضر در دسترس نیست. وضعیت سفارش شما محفوظ می‌ماند.</span>
               )}
             </div>
-            {mockPaymentEnabled && <KoochButton className="hidden sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>{paymentActionLabel}</KoochButton>}
+            {mockPaymentEnabled && <KoochButton className="hidden shrink-0 sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>{paymentActionLabel}</KoochButton>}
           </div>
         </KoochAlert>
       )}
       {hasExpiredPaymentWindow && (
-        <KoochAlert variant="destructive" title="مهلت پرداخت به پایان رسیده است">
-          امکان پرداخت این سفارش دیگر فعال نیست. وضعیت پرداخت از سرور به‌روزرسانی شده است.
+        <KoochAlert variant="destructive" title="مهلت پرداخت گذشته است">
+          این رزرو دیگر برای پرداخت فعال نیست.
         </KoochAlert>
       )}
 
-      <KoochCard className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Detail label="اقامتگاه" value={<Link className="font-bold text-primary hover:underline" href={`/properties/${session.property.slug}`}>{session.property.name}</Link>} />
-        <Detail
-          label="نوع رزرو"
-          value={`${bookingModePresentation(sessionBookingMode).icon} ${bookingModePresentation(sessionBookingMode).label}`}
-        />
-        {session.summary.hasRejectedReservations ? (
-          <>
-            <Detail label="مبلغ اولیه سفارش" value={formatCurrency(session.summary.originalTotalAmount, { currencyLabel })} />
+      <section aria-labelledby="stay-details-title" className="grid gap-3">
+        <h2 className="text-xl font-black text-foreground" id="stay-details-title">جزئیات اقامت</h2>
+        <KoochCard className="grid gap-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Detail label={session.displayCodeLabel || "کد سفارش"} value={<span dir="ltr">{session.sessionCode}</span>} />
+            <Detail label="اقامتگاه" value={<Link className="font-bold text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href={`/properties/${session.property.slug}`}>{session.property.name}</Link>} />
+            <Detail label="نوع رزرو" value={`${bookingMode.icon} ${bookingMode.label}`} />
+            <Detail label="تاریخ ورود" value={checkInDate ? formatBookingDate(checkInDate) : "مشخص نشده"} />
+            <Detail label="تاریخ خروج" value={checkOutDate ? formatBookingDate(checkOutDate) : "مشخص نشده"} />
             <Detail
-              label={session.payment?.status === "Successful" ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"}
-              value={formatCurrency(session.payment?.status === "Successful" ? session.payment.amount : session.summary.payableAmount, { currencyLabel })}
+              label="مدت اقامت"
+              value={`${countBookingNights(session.reservations.map((reservation) => ({
+                checkIn: reservation.checkInDate,
+                checkOut: reservation.checkOutDate,
+              }))).toLocaleString("fa-IR")} شب`}
             />
-            {isContinuationAvailable && (
-              <Detail
-                label="تعداد رزروهای قابل پرداخت"
-                value={`${session.summary.payableReservationCount.toLocaleString("fa-IR")} رزرو`}
-              />
+            {session.summary.hasRejectedReservations ? (
+              <>
+                <Detail label="مبلغ اولیه سفارش" value={formatCurrency(session.summary.originalTotalAmount, { currencyLabel })} />
+                <Detail
+                  label={session.payment?.status === "Successful" ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"}
+                  value={formatCurrency(session.payment?.status === "Successful" ? session.payment.amount : session.summary.payableAmount, { currencyLabel })}
+                />
+                {isContinuationAvailable && (
+                  <Detail label="تعداد رزروهای قابل پرداخت" value={`${session.summary.payableReservationCount.toLocaleString("fa-IR")} رزرو`} />
+                )}
+              </>
+            ) : (
+              <Detail label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
             )}
-          </>
-        ) : (
-          <Detail label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
-        )}
-        {paymentDeadlineUtc && remainingPaymentSeconds !== null && (
-          <ReservationDeadline
-            deadlineUtc={paymentDeadlineUtc}
-            expiredLabel="مهلت پرداخت پایان یافته است."
-            label="مهلت پرداخت"
-            remainingSeconds={remainingPaymentSeconds}
-          />
-        )}
-      </KoochCard>
+            {session.payment && (
+              <>
+                <Detail label="وضعیت پرداخت" value={paymentStatusLabel(session.payment.status)} />
+                {session.payment.status === "Successful" && !session.summary.hasRejectedReservations && (
+                  <Detail label="مبلغ پرداخت‌شده" value={formatCurrency(session.payment.amount, { currencyLabel })} />
+                )}
+              </>
+            )}
+          </div>
+
+          <div className="border-t border-border pt-5">
+            <h3 className="text-base font-black text-foreground">اتاق‌ها</h3>
+            <ul className="mt-3 grid gap-3" aria-label="خلاصه اتاق‌های سفارش">
+              {roomTypeGroups.map((group) => (
+                <li className="grid min-w-0 gap-2 rounded-lg bg-muted px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center" key={group.key}>
+                  <div className="min-w-0">
+                    <p className="break-words text-sm font-black text-foreground">{group.roomTypeName}</p>
+                    <p className="mt-1 text-xs font-bold text-muted-foreground">
+                      {group.statuses.map((status) => statusLabels[status] ?? status).join("، ")}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-sm sm:justify-end">
+                    <span className="font-bold text-foreground">{group.quantity.toLocaleString("fa-IR")} اتاق</span>
+                    <strong className="text-foreground">{formatCurrency(group.amount, { currencyLabel })}</strong>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </KoochCard>
+      </section>
+
+      <section aria-labelledby="guest-details-title" className="grid gap-3">
+        <h2 className="text-xl font-black text-foreground" id="guest-details-title">اطلاعات مهمان و اقامت</h2>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {auth.user && (
+            <KoochCard>
+              <h3 className="text-base font-black text-foreground">اطلاعات رزروکننده</h3>
+              <div className="mt-4 grid gap-3">
+                <Detail label="نام و نام خانوادگی" value={auth.user.fullName} />
+                {auth.user.phoneNumber && <Detail label="شماره موبایل" value={<span dir="ltr">{toPersianDigits(auth.user.phoneNumber)}</span>} />}
+                {auth.user.email && <Detail label="ایمیل" value={<span dir="ltr">{auth.user.email}</span>} />}
+              </div>
+            </KoochCard>
+          )}
+          <KoochCard>
+            <h3 className="text-base font-black text-foreground">مهمان اصلی</h3>
+            <div className="mt-4 grid gap-3">
+              {session.primaryGuest ? (
+                <>
+                  <Detail label="نام و نام خانوادگی" value={`${session.primaryGuest.firstName} ${session.primaryGuest.lastName}`} />
+                  {session.primaryGuest.mobile && <Detail label="شماره موبایل" value={<span dir="ltr">{toPersianDigits(session.primaryGuest.mobile)}</span>} />}
+                  {session.primaryGuest.email && <Detail label="ایمیل" value={<span dir="ltr">{session.primaryGuest.email}</span>} />}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">اطلاعات مهمان اصلی در دسترس نیست.</p>
+              )}
+            </div>
+          </KoochCard>
+          <KoochCard>
+            <h3 className="text-base font-black text-foreground">زمان تقریبی ورود</h3>
+            <p className="mt-4 text-sm font-bold text-foreground">
+              {session.expectedArrivalTime
+                ? toPersianDigits(session.expectedArrivalTime.slice(0, 5))
+                : "مشخص نشده"}
+            </p>
+          </KoochCard>
+          {session.specialRequest?.trim() && (
+            <KoochCard>
+              <h3 className="text-base font-black text-foreground">درخواست ویژه</h3>
+              <p className="mt-4 break-words whitespace-pre-wrap text-sm leading-7 text-foreground">{session.specialRequest}</p>
+            </KoochCard>
+          )}
+        </div>
+      </section>
 
       <section aria-labelledby="session-reservations-title" className="grid gap-4">
         <h2 className="text-xl font-black" id="session-reservations-title">رزروهای این سفارش</h2>
@@ -453,4 +599,53 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
       <div className="mt-1 break-words text-sm font-semibold text-foreground">{value}</div>
     </div>
   );
+}
+
+function groupSessionReservations(reservations: SessionReservation[]) {
+  const groups = new Map<number, {
+    key: number;
+    roomTypeName: string;
+    quantity: number;
+    amount: number;
+    statuses: string[];
+  }>();
+
+  for (const reservation of reservations) {
+    const current = groups.get(reservation.roomTypeId);
+    if (current) {
+      current.quantity += 1;
+      current.amount += reservation.finalAmount;
+      if (!current.statuses.includes(reservation.status)) {
+        current.statuses.push(reservation.status);
+      }
+      continue;
+    }
+
+    groups.set(reservation.roomTypeId, {
+      key: reservation.roomTypeId,
+      roomTypeName: reservation.roomTypeName,
+      quantity: 1,
+      amount: reservation.finalAmount,
+      statuses: [reservation.status],
+    });
+  }
+
+  return [...groups.values()];
+}
+
+function paymentStatusLabel(status: string) {
+  switch (status) {
+    case "Successful":
+      return "پرداخت موفق";
+    case "Failed":
+      return "پرداخت ناموفق";
+    case "Pending":
+      return "در انتظار پرداخت";
+    default:
+      return status;
+  }
+}
+
+function toPersianDigits(value: string) {
+  return value.replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
 }

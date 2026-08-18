@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AccountBookingSession } from "@/lib/booking-sessions";
 import { getPaymentIdempotencyKeyForCurrentAttempt } from "@/lib/payment-idempotency";
+import { formatBookingDeadline } from "@/components/booking/booking-display";
 
 const navigation = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
@@ -14,7 +15,15 @@ vi.mock("next/navigation", () => ({
   useRouter: () => navigation.router,
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
-  useAuthSession: () => ({ authenticated: true, loading: false }),
+  useAuthSession: () => ({
+    authenticated: true,
+    loading: false,
+    user: {
+      fullName: "سارا احمدی",
+      phoneNumber: "09121234567",
+      email: "sara@example.test",
+    },
+  }),
 }));
 vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/booking-sessions")>();
@@ -37,7 +46,15 @@ function response(): AccountBookingSession {
     sessionCode: "BS-1405-001",
     displayCodeLabel: "کد سفارش",
     property: { propertyId: 1, name: "خانه کاشان", slug: "kashan-house" },
+    primaryGuest: {
+      firstName: "مریم",
+      lastName: "کریمی",
+      mobile: "09129876543",
+      email: "maryam@example.test",
+    },
     currency: "IRR",
+    expectedArrivalTime: "14:30:00",
+    specialRequest: "اتاق آرام لطفاً",
     totalAmount: 4_000_000,
     summary: {
       derivedStatus: "AwaitingApprovals",
@@ -82,6 +99,15 @@ function readyResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOStr
   return ready;
 }
 
+function instantReadyResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOString()): AccountBookingSession {
+  const ready = readyResponse(deadline);
+  ready.reservations = ready.reservations.map((reservation) => ({
+    ...reservation,
+    approvalExpiresAtUtc: null,
+  }));
+  return ready;
+}
+
 function mixedResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOString()): AccountBookingSession {
   const mixed = readyResponse(deadline);
   mixed.summary.derivedStatus = "Mixed";
@@ -116,7 +142,7 @@ describe("account booking session detail", () => {
 
   it("shows the session code and each independent reservation", async () => {
     render(<AccountBookingSessionPage />);
-    expect(await screen.findByText("BS-1405-001")).toBeTruthy();
+    expect((await screen.findAllByText("BS-1405-001")).length).toBeGreaterThan(0);
     const section = screen.getByRole("heading", { name: "رزروهای این سفارش" }).closest("section");
     expect(section).toBeTruthy();
     expect(within(section!).getByText("R-001")).toBeTruthy();
@@ -126,10 +152,10 @@ describe("account booking session detail", () => {
 
   it("shows the OnRequest waiting state without a payment action", async () => {
     render(<AccountBookingSessionPage />);
-    expect(await screen.findByText("در انتظار تعیین وضعیت همه رزروها")).toBeTruthy();
-    expect(screen.getByText("رزرو پس از تأیید اقامتگاه قابل پرداخت خواهد شد.")).toBeTruthy();
+    expect(await screen.findByText("در انتظار تأیید اقامتگاه")).toBeTruthy();
+    expect(screen.getByText("درخواست رزرو برای اقامتگاه ارسال شده است. پس از تأیید، امکان پرداخت برای شما فعال می‌شود.")).toBeTruthy();
     expect(screen.getByText("⌛ نیازمند تأیید اقامتگاه")).toBeTruthy();
-    expect(screen.getByText("مهلت باقی‌مانده برای پاسخ مالک")).toBeTruthy();
+    expect(screen.getByText("مهلت پاسخ اقامتگاه")).toBeTruthy();
     expect(screen.getByRole("timer").textContent).toMatch(/[۰-۹]/);
     expect(screen.queryByRole("button", { name: /پرداخت/ })).toBeNull();
     expect(screen.queryByText("مهلت پرداخت")).toBeNull();
@@ -157,18 +183,20 @@ describe("account booking session detail", () => {
 
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText("بخشی از درخواست رزرو تأیید نشده است")).toBeTruthy();
+    expect(await screen.findByText("درخواست رزرو تأیید نشد")).toBeTruthy();
     await vi.waitFor(() =>
       expect(bookingApi.fetch.mock.calls.length).toBeGreaterThanOrEqual(2),
     );
   });
 
   it("shows payment only when ready and initiates server-side checkout", async () => {
-    const ready = readyResponse();
+    const ready = instantReadyResponse();
     bookingApi.fetch.mockResolvedValue(ready);
     render(<AccountBookingSessionPage />);
 
     const buttons = await screen.findAllByRole("button", { name: "پرداخت" });
+    expect(screen.getByText("رزرو ثبت شد؛ پرداخت را تکمیل کنید")).toBeTruthy();
+    expect(screen.queryByText("رزرو قطعی شد")).toBeNull();
     expect(
       screen.getByText(
         "ظرفیت این رزرو تا پایان مهلت پرداخت برای شما نگه داشته شده است.",
@@ -183,6 +211,84 @@ describe("account booking session detail", () => {
       "/booking/sessions/BS-1405-001/mock-payment",
     );
     expect(screen.getByTestId("session-payment-mobile-action")).toBeTruthy();
+  });
+
+  it("shows the approved OnRequest continuation with the persisted payment deadline", async () => {
+    const deadline = new Date(Date.now() + 12 * 60 * 1000).toISOString();
+    bookingApi.fetch.mockResolvedValue(readyResponse(deadline));
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("اقامتگاه درخواست شما را تأیید کرد")).toBeTruthy();
+    expect(screen.getByText("برای تکمیل رزرو، پرداخت را تا پایان مهلت انجام دهید.")).toBeTruthy();
+    expect(screen.getByText("مهلت پرداخت")).toBeTruthy();
+    expect(screen.getByText(formatBookingDeadline(deadline))).toBeTruthy();
+    expect(screen.getByRole("timer")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "پرداخت" })).toHaveLength(2);
+  });
+
+  it("refreshes PendingApproval into the authoritative payment-ready state", async () => {
+    bookingApi.fetch
+      .mockResolvedValueOnce(response())
+      .mockResolvedValue(readyResponse());
+    const nativeSetTimeout = window.setTimeout.bind(window);
+    const intervalSpy = vi.spyOn(window, "setInterval").mockImplementation((handler, delay) => {
+      if (delay === 8_000) {
+        nativeSetTimeout(() => (handler as () => void)(), 0);
+      }
+      return undefined as unknown as ReturnType<typeof window.setInterval>;
+    });
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("در انتظار تأیید اقامتگاه")).toBeTruthy();
+    expect(await screen.findByText("اقامتگاه درخواست شما را تأیید کرد")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "پرداخت" })).toHaveLength(2);
+    intervalSpy.mockRestore();
+  });
+
+  it("shows a fully confirmed order without a payment action", async () => {
+    const confirmed = instantReadyResponse();
+    confirmed.summary.isPaymentReady = false;
+    confirmed.summary.earliestPaymentDeadlineUtc = null;
+    confirmed.commonPaymentDeadlineUtc = null;
+    confirmed.reservations = confirmed.reservations.map((reservation) => ({
+      ...reservation,
+      status: "Confirmed",
+      paymentExpiresAtUtc: null,
+    }));
+    confirmed.payment = {
+      paymentId: 30,
+      status: "Successful",
+      amount: 4_000_000,
+      currency: "IRR",
+      provider: "internal-test",
+      appliedAtUtc: new Date().toISOString(),
+    };
+    bookingApi.fetch.mockResolvedValue(confirmed);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("رزرو شما تأیید شده است")).toBeTruthy();
+    expect(screen.getByText("پرداخت موفق")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /پرداخت/ })).toBeNull();
+  });
+
+  it("shows a fully rejected request as historical and non-payable", async () => {
+    const rejected = response();
+    rejected.summary.hasPendingApprovals = false;
+    rejected.summary.hasRejectedReservations = true;
+    rejected.summary.earliestApprovalDeadlineUtc = null;
+    rejected.reservations = rejected.reservations.map((reservation) => ({
+      ...reservation,
+      status: "Rejected",
+    }));
+    bookingApi.fetch.mockResolvedValue(rejected);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("درخواست رزرو تأیید نشد")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /پرداخت/ })).toBeNull();
   });
 
   it("uses a new logical idempotency key after a definitive failed payment", async () => {
@@ -202,6 +308,7 @@ describe("account booking session detail", () => {
     bookingApi.fetch.mockResolvedValue(ready);
     render(<AccountBookingSessionPage />);
 
+    expect(await screen.findByText("تلاش قبلی پرداخت ناموفق بود")).toBeTruthy();
     fireEvent.click((await screen.findAllByRole("button", { name: "تلاش مجدد برای پرداخت" }))[0]);
 
     await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
@@ -223,6 +330,24 @@ describe("account booking session detail", () => {
     );
 
     expect(retryKey).toBe(firstKey);
+  });
+
+  it("does not offer failed-payment retry after the persisted deadline expires", async () => {
+    const expired = readyResponse(new Date(Date.now() - 1_000).toISOString());
+    expired.payment = {
+      paymentId: 78,
+      status: "Failed",
+      amount: expired.totalAmount,
+      currency: expired.currency,
+      provider: "internal-test",
+      appliedAtUtc: null,
+    };
+    bookingApi.fetch.mockResolvedValue(expired);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("مهلت پرداخت گذشته است")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "تلاش مجدد برای پرداخت" })).toBeNull();
   });
 
   it("does not expose a broken payment route when mock checkout is disabled", async () => {
@@ -301,7 +426,7 @@ describe("account booking session detail", () => {
 
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText("در انتظار تعیین وضعیت همه رزروها")).toBeTruthy();
+    expect(await screen.findByText("در انتظار تأیید اقامتگاه")).toBeTruthy();
     expect(screen.getByText(/پرداخت تا مشخص‌شدن وضعیت همه رزروها/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
   });
@@ -319,7 +444,7 @@ describe("account booking session detail", () => {
 
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText("مهلت پرداخت به پایان رسیده است")).toBeTruthy();
+    expect(await screen.findByText("مهلت پرداخت گذشته است")).toBeTruthy();
     await vi.waitFor(() =>
       expect(bookingApi.fetch.mock.calls.length).toBeGreaterThanOrEqual(2),
     );
@@ -357,7 +482,7 @@ describe("account booking session detail", () => {
     expect(await screen.findByText("نتیجه این سفارش ترکیبی است")).toBeTruthy();
     expect(within(screen.getByTestId("payable-reservations")).getByText("تایید شده")).toBeTruthy();
     expect(within(screen.getByTestId("rejected-reservations")).getAllByText("ردشده")).not.toHaveLength(0);
-    expect(screen.getByText("مبلغ پرداخت‌شده")).toBeTruthy();
+    expect(screen.getAllByText("مبلغ پرداخت‌شده").length).toBeGreaterThan(0);
     expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
   });
 
@@ -378,7 +503,7 @@ describe("account booking session detail", () => {
 
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText("مهلت پرداخت به پایان رسیده است")).toBeTruthy();
+    expect(await screen.findByText("مهلت پرداخت گذشته است")).toBeTruthy();
     expect(bookingApi.fetch.mock.calls.length).toBeGreaterThanOrEqual(2);
     expect(screen.queryByRole("button", { name: "پرداخت" })).toBeNull();
   });
@@ -388,5 +513,30 @@ describe("account booking session detail", () => {
 
     expect(await screen.findAllByText(/۱۴۰۵/)).not.toHaveLength(0);
     expect(screen.queryByText(/2030-08-/)).toBeNull();
+  });
+
+  it("renders booking owner, primary guest, arrival time, and special request safely", async () => {
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByRole("heading", { name: "اطلاعات رزروکننده" })).toBeTruthy();
+    expect(screen.getByText("سارا احمدی")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "مهمان اصلی" })).toBeTruthy();
+    expect(screen.getByText("مریم کریمی")).toBeTruthy();
+    expect(screen.getByText("۱۴:۳۰")).toBeTruthy();
+    expect(screen.getByText("اتاق آرام لطفاً")).toBeTruthy();
+    expect(screen.getAllByText("شاه‌نشین").length).toBeGreaterThan(0);
+    expect(screen.getByText("۲ اتاق")).toBeTruthy();
+  });
+
+  it("uses a quiet fallback for missing arrival and omits an empty special request", async () => {
+    const noOptionalDetails = response();
+    noOptionalDetails.expectedArrivalTime = null;
+    noOptionalDetails.specialRequest = null;
+    bookingApi.fetch.mockResolvedValue(noOptionalDetails);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("مشخص نشده")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "درخواست ویژه" })).toBeNull();
   });
 });
