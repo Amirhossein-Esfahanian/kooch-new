@@ -205,7 +205,9 @@ export default function PublicPropertyPage() {
       roomTypes={property.roomTypes}
     >
       {({ searchBar, roomSelection }) => (
-      <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
+      <div className="bg-slate-50 text-slate-900" dir="rtl">
+      {searchBar}
+      <div className="px-5 py-8 sm:px-8">
       <div className="mx-auto max-w-7xl">
         <Link className="text-sm font-bold text-blue-700" href={resultsHref}>
           بازگشت به نتایج جست‌وجو
@@ -234,8 +236,6 @@ export default function PublicPropertyPage() {
             </p>
           </div>
         </header>
-
-        {searchBar}
 
         <PromotionCards
           className="mt-6"
@@ -414,7 +414,7 @@ export default function PublicPropertyPage() {
 
             <section
               aria-labelledby="property-rooms-title"
-              className="scroll-mt-80 sm:scroll-mt-60 xl:scroll-mt-44"
+              className="scroll-mt-80 sm:scroll-mt-64 xl:scroll-mt-44"
               id={propertyRoomsAnchorId}
             >
               <h2 className="text-2xl font-black" id="property-rooms-title">اتاق‌ها</h2>
@@ -427,7 +427,7 @@ export default function PublicPropertyPage() {
               </div>
             </section>
 
-            <section>
+            <section className="min-w-0">
               <h2 className="text-2xl font-black">مکان‌های نزدیک</h2>
               {property.nearbyPlaces.length ? (
                 <div className="mt-5 overflow-x-auto rounded-xl border bg-white">
@@ -477,6 +477,7 @@ export default function PublicPropertyPage() {
           </div>
 
         </div>
+      </div>
       </div>
 
       <RoomTypeDetailsDialog

@@ -230,70 +230,81 @@ function PropertyBookingPanelContent({
   );
 
   const searchBar = (
-    <div
-      className="sticky top-16 z-40 mt-6 rounded-2xl border border-border bg-background p-3 shadow-lg sm:p-4"
-      data-testid="property-search-bar"
-    >
-      <form
-        aria-label="جستجوی موجودی این اقامتگاه"
-        className="grid grid-cols-2 items-end gap-3 xl:grid-cols-[minmax(180px,0.8fr)_minmax(320px,1.5fr)_minmax(240px,1fr)_auto]"
-        data-testid="room-availability-controls"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void checkAvailability();
-        }}
+    <>
+      <div
+        className="sticky top-16 z-40 w-full border-b border-border bg-background shadow-sm"
+        data-testid="property-search-bar"
       >
-        <div className="col-span-2 grid gap-2 text-sm font-bold text-foreground sm:col-span-1">
-          <span id="property-search-context-label">اقامتگاه</span>
-          <div
-            aria-labelledby="property-search-context-label"
-            className="flex h-12 min-w-0 items-center rounded-lg border border-border bg-muted px-3 text-sm font-semibold text-foreground"
-            data-testid="property-search-context"
-          >
-            <span className="truncate">{propertyName}</span>
-          </div>
-        </div>
-
-        <div className="col-span-2 grid min-w-0 gap-2 text-sm font-bold text-foreground sm:col-span-1">
-          <span>تاریخ اقامت</span>
-          <KoochCompactDateRangePicker
-            calendarType="jalali"
-            daySpacing="compact"
-            disablePastDates
-            fieldSize="compact"
-            onChange={(nextDates) => {
-              if (!nextDates.startDate || !nextDates.endDate) return;
-              onDatesChange(nextDates);
-            }}
-            value={dates}
-          />
-        </div>
-
-        <GuestSelector
-          className="col-span-1 gap-2"
-          controlClassName="h-12 w-full rounded-lg border border-border bg-background px-3 text-right text-xs text-foreground"
-          label="مهمانان هر اتاق"
-          onChange={onGuestsChange}
-          value={guests}
-        />
-
-        <KoochButton
-          className="col-span-1 h-12 w-full px-5"
-          loading={loadingOptions}
-          type="submit"
+        <div
+          className="mx-auto max-w-7xl px-5 py-2 sm:px-8 sm:py-3"
+          data-testid="property-search-inner"
         >
-          بررسی موجودی
-        </KoochButton>
-      </form>
+          <form
+            aria-label="جستجوی موجودی این اقامتگاه"
+            className="grid grid-cols-2 items-end gap-2 sm:gap-3 xl:grid-cols-[minmax(180px,0.8fr)_minmax(320px,1.5fr)_minmax(240px,1fr)_auto]"
+            data-testid="room-availability-controls"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void checkAvailability();
+            }}
+          >
+            <div className="col-span-2 grid gap-1.5 text-sm font-bold text-foreground sm:col-span-1">
+              <span id="property-search-context-label">اقامتگاه</span>
+              <div
+                aria-labelledby="property-search-context-label"
+                className="flex h-12 min-w-0 items-center rounded-lg border border-border bg-muted px-3 text-sm font-semibold text-foreground"
+                data-testid="property-search-context"
+              >
+                <span className="truncate">{propertyName}</span>
+              </div>
+            </div>
 
-      {message && <KoochAlert className="mt-3" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
+            <div className="col-span-2 grid min-w-0 gap-1.5 text-sm font-bold text-foreground sm:col-span-1">
+              <span>تاریخ اقامت</span>
+              <KoochCompactDateRangePicker
+                calendarType="jalali"
+                daySpacing="compact"
+                disablePastDates
+                fieldSize="compact"
+                onChange={(nextDates) => {
+                  if (!nextDates.startDate || !nextDates.endDate) return;
+                  onDatesChange(nextDates);
+                }}
+                value={dates}
+              />
+            </div>
 
-      {!hasSearchResults && !message && (
-        <p className="mt-3 text-sm leading-7 text-muted-foreground">
-          تاریخ و تعداد مهمان را برای بررسی موجودی انتخاب کنید.
-        </p>
+            <GuestSelector
+              className="col-span-1 gap-1.5"
+              controlClassName="h-12 w-full rounded-lg border border-border bg-background px-3 text-right text-xs text-foreground"
+              label="مهمانان هر اتاق"
+              onChange={onGuestsChange}
+              value={guests}
+            />
+
+            <KoochButton
+              className="col-span-1 h-12 w-full px-5"
+              loading={loadingOptions}
+              type="submit"
+            >
+              بررسی موجودی
+            </KoochButton>
+          </form>
+        </div>
+      </div>
+
+      {(message || !hasSearchResults) && (
+        <div className="mx-auto max-w-7xl px-5 sm:px-8">
+          {message && <KoochAlert className="mt-3" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
+
+          {!hasSearchResults && !message && (
+            <p className="mt-3 text-sm leading-7 text-muted-foreground">
+              تاریخ و تعداد مهمان را برای بررسی موجودی انتخاب کنید.
+            </p>
+          )}
+        </div>
       )}
-    </div>
+    </>
   );
 
   const roomSelection = (

@@ -279,6 +279,7 @@ describe("public property booking integration", () => {
     expect(screen.queryByText("رزرو در نسخه بعدی فعال می‌شود")).toBeNull();
     const datePicker = screen.getByTestId("booking-date-picker");
     const searchBar = screen.getByTestId("property-search-bar");
+    const searchInner = screen.getByTestId("property-search-inner");
     const searchForm = screen.getByRole("form", {
       name: "جستجوی موجودی این اقامتگاه",
     });
@@ -286,6 +287,16 @@ describe("public property booking integration", () => {
     expect(datePicker).toBeTruthy();
     expect(searchBar.className).toContain("sticky");
     expect(searchBar.className).toContain("top-16");
+    expect(searchBar.className).toContain("z-40");
+    expect(searchBar.className).toContain("w-full");
+    expect(searchBar.className).toContain("border-b");
+    expect(searchBar.className).not.toContain("rounded");
+    expect(searchBar.parentElement?.firstElementChild).toBe(searchBar);
+    expect(searchInner.className).toContain("mx-auto");
+    expect(searchInner.className).toContain("max-w-7xl");
+    expect(searchInner.className).toContain("px-5");
+    expect(searchInner.className).toContain("sm:px-8");
+    expect(searchInner.contains(searchForm)).toBe(true);
     expect(screen.getAllByRole("form", {
       name: "جستجوی موجودی این اقامتگاه",
     })).toHaveLength(1);
@@ -294,6 +305,8 @@ describe("public property booking integration", () => {
     expect(screen.getByRole("button", { name: "بررسی موجودی" })).toBeTruthy();
     expect(datePicker.compareDocumentPosition(roomList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(roomSection.className).toContain("scroll-mt-80");
+    expect(roomSection.className).toContain("sm:scroll-mt-64");
+    expect(roomSection.className).toContain("xl:scroll-mt-44");
     expect(within(roomSection).queryByTestId("booking-date-picker")).toBeNull();
     expect(within(roomSection).queryByTestId("booking-guest-selector")).toBeNull();
     expect(within(roomSection).queryByRole("button", { name: "بررسی موجودی" })).toBeNull();
@@ -301,6 +314,29 @@ describe("public property booking integration", () => {
     expect(screen.queryByRole("heading", { name: "انتخاب‌های شما" })).toBeNull();
     expect(screen.queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
+  });
+
+  it("contains the wide nearby-places table inside its own mobile scroller", async () => {
+    api.fetchProperty.mockResolvedValue({
+      ...property,
+      nearbyPlaces: [{
+        id: 1,
+        title: "بازار تاریخی",
+        category: "Landmark",
+        distanceInMeters: 500,
+        walkingMinutes: 7,
+        drivingMinutes: 2,
+        description: null,
+      }],
+    });
+
+    render(<PublicPropertyPage />);
+
+    const heading = await screen.findByRole("heading", { name: "مکان‌های نزدیک" });
+    const section = heading.closest("section")!;
+    const table = within(section).getByRole("table");
+    expect(section.className).toContain("min-w-0");
+    expect(table.parentElement?.className).toContain("overflow-x-auto");
   });
 
   it("uses the compact committed range without triggering availability automatically", async () => {
