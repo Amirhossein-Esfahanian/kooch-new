@@ -152,14 +152,12 @@ function displayDate(
   );
 }
 
-function displayDateParts(
-  isoDate: string,
-  calendarType: CalendarType,
-) {
+function displayDateParts(isoDate: string, calendarType: CalendarType) {
   const date = asCalendar(dayjs(isoDate), calendarType);
-  const monthName = calendarType === "jalali"
-    ? jalaliMonths[date.month()]
-    : gregorianMonths[date.month()];
+  const monthName =
+    calendarType === "jalali"
+      ? jalaliMonths[date.month()]
+      : gregorianMonths[date.month()];
 
   return {
     date: `${toPersianDigits(date.format("D"))} ${monthName} ${toPersianDigits(date.format("YYYY"))}`,
@@ -167,14 +165,19 @@ function displayDateParts(
   };
 }
 
-function CalendarFieldIcon() {
+function CalendarFieldIcon({ type }: { type: "in" | "out" }) {
+  const icon =
+    type === "in"
+      ? "/svgs/calendar-arrow-down.svg"
+      : "/svgs/calendar-arrow-up.svg";
+
   return (
     <span
       aria-hidden="true"
-      className="h-5 w-5 shrink-0 bg-current"
+      className="h-7 w-7 shrink-0 bg-current"
       style={{
-        WebkitMask: 'url("/svgs/calendar-check.svg") center / contain no-repeat',
-        mask: 'url("/svgs/calendar-check.svg") center / contain no-repeat',
+        WebkitMask: `url("${icon}") center / contain no-repeat`,
+        mask: `url("${icon}") center / contain no-repeat`,
       }}
     />
   );
@@ -414,42 +417,66 @@ export function SharedDateRangePicker({
         }}
         type="button"
       >
-        <span className={`flex min-w-0 items-center ${compact ? "gap-2" : "gap-3"}`}>
-          <CalendarFieldIcon />
+        <span
+          className={`flex min-w-0 items-center ${compact ? "gap-2" : "gap-3"}`}
+        >
+          <CalendarFieldIcon type="in" />
           <span className={`grid min-w-0 ${compact ? "gap-0" : "gap-0.5"}`}>
             {start ? (
               <>
-                <span className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5`} data-date-primary="start">
+                <span
+                  className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5`}
+                  data-date-primary="start"
+                >
                   {start.date}
                 </span>
-                <span className="text-xs leading-4 text-muted-foreground" data-date-weekday="start">
+                <span
+                  className="text-xs leading-4 text-muted-foreground"
+                  data-date-weekday="start"
+                >
                   {start.weekday}
                 </span>
               </>
             ) : (
-              <span className={`${compact ? "text-xs" : "text-sm"} font-medium text-muted-foreground`}>
+              <span
+                className={`${compact ? "text-xs" : "text-sm"} font-medium text-muted-foreground`}
+              >
                 {placeholderStart}
               </span>
             )}
           </span>
         </span>
 
-        <span aria-hidden="true" className="my-1 w-px bg-border" data-date-divider="true" />
+        <span
+          aria-hidden="true"
+          className="my-1 w-px bg-border"
+          data-date-divider="true"
+        />
 
-        <span className={`flex min-w-0 items-center ${compact ? "gap-2 pe-3" : "gap-3 pe-4"}`}>
-          <CalendarFieldIcon />
+        <span
+          className={`flex min-w-0 items-center ${compact ? "gap-2 pe-3" : "gap-3 pe-4"}`}
+        >
+          <CalendarFieldIcon type="out" />
           <span className={`grid min-w-0 ${compact ? "gap-0" : "gap-0.5"}`}>
             {end ? (
               <>
-                <span className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5`} data-date-primary="end">
+                <span
+                  className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5`}
+                  data-date-primary="end"
+                >
                   {end.date}
                 </span>
-                <span className="text-xs leading-4 text-muted-foreground" data-date-weekday="end">
+                <span
+                  className="text-xs leading-4 text-muted-foreground"
+                  data-date-weekday="end"
+                >
                   {end.weekday}
                 </span>
               </>
             ) : (
-              <span className={`${compact ? "text-xs" : "text-sm"} font-medium text-muted-foreground`}>
+              <span
+                className={`${compact ? "text-xs" : "text-sm"} font-medium text-muted-foreground`}
+              >
                 {placeholderEnd}
               </span>
             )}
@@ -504,7 +531,9 @@ export function SharedDateRangePicker({
       data-calendar-day-spacing={daySpacing}
       role={combinedField ? "dialog" : undefined}
     >
-      <div className={`${daySpacing === "compact" ? "mb-3" : daySpacing === "comfortable" ? "mb-5" : "mb-4"} flex flex-wrap items-center justify-between gap-3`}>
+      <div
+        className={`${daySpacing === "compact" ? "mb-3" : daySpacing === "comfortable" ? "mb-5" : "mb-4"} flex flex-wrap items-center justify-between gap-3`}
+      >
         <div>
           {/* <p className="text-xs font-semibold text-muted-foreground">
                 مبدا · مقصد
@@ -554,7 +583,9 @@ export function SharedDateRangePicker({
           ‹
         </button>
 
-        <div className={`grid min-w-0 text-center sm:grid-cols-2 ${daySpacing === "compact" ? "gap-3" : daySpacing === "comfortable" ? "gap-7" : "gap-5"}`}>
+        <div
+          className={`grid min-w-0 text-center sm:grid-cols-2 ${daySpacing === "compact" ? "gap-3" : daySpacing === "comfortable" ? "gap-7" : "gap-5"}`}
+        >
           {months.map((month, monthIndex) => (
             <h3
               className={`truncate text-base font-bold text-foreground ${
@@ -582,7 +613,9 @@ export function SharedDateRangePicker({
           ›
         </button>
       </div>
-      <div className={`grid sm:grid-cols-2 ${daySpacing === "compact" ? "gap-3" : daySpacing === "comfortable" ? "gap-7" : "gap-5"}`}>
+      <div
+        className={`grid sm:grid-cols-2 ${daySpacing === "compact" ? "gap-3" : daySpacing === "comfortable" ? "gap-7" : "gap-5"}`}
+      >
         {months.map((month, monthIndex) => (
           <section
             className={monthIndex === 1 ? "hidden sm:block" : ""}
@@ -595,7 +628,9 @@ export function SharedDateRangePicker({
                 </span>
               ))}
             </div>
-            <div className={`${daySpacing === "compact" ? "mt-0" : daySpacing === "comfortable" ? "mt-2 gap-y-1" : "mt-1"} grid grid-cols-7`}>
+            <div
+              className={`${daySpacing === "compact" ? "mt-0" : daySpacing === "comfortable" ? "mt-2 gap-y-1" : "mt-1"} grid grid-cols-7`}
+            >
               {buildMonthDays(month, activeCalendar).map((date, index) => {
                 if (!date)
                   return <span className="h-10" key={`empty-${index}`} />;
@@ -660,74 +695,75 @@ export function SharedDateRangePicker({
           className="mt-5 border-t border-border pt-3"
           data-picker-footer="true"
         >
-        <div
-          className="sm:hidden"
-          data-mobile-holiday-details-row="true"
-        >
-          {showOccasions && <HolidayCalendarDetails titles={holidayDetails.titles} />}
-        </div>
-        <div
-          className="grid min-h-12 w-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)]"
-          data-picker-footer-grid="true"
-          dir="rtl"
-        >
+          <div className="sm:hidden" data-mobile-holiday-details-row="true">
+            {showOccasions && (
+              <HolidayCalendarDetails titles={holidayDetails.titles} />
+            )}
+          </div>
           <div
-            className="col-start-1 flex flex-nowrap items-center gap-2 justify-self-start whitespace-nowrap"
-            data-picker-action-group="true"
+            className="grid min-h-12 w-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)]"
+            data-picker-footer-grid="true"
+            dir="rtl"
           >
+            <div
+              className="col-start-1 flex flex-nowrap items-center gap-2 justify-self-start whitespace-nowrap"
+              data-picker-action-group="true"
+            >
+              <button
+                className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!tempStartDate || !tempEndDate}
+                onClick={() => {
+                  if (!tempStartDate || !tempEndDate) return;
+
+                  onChange({
+                    startDate: tempStartDate,
+                    endDate: tempEndDate,
+                  });
+
+                  setActiveField(null);
+                }}
+                type="button"
+              >
+                {toPersianDigits(confirmText)}
+              </button>
+
+              <button
+                className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
+                onClick={() => setActiveField(null)}
+                type="button"
+              >
+                {toPersianDigits(cancelText)}
+              </button>
+            </div>
+
+            <span
+              aria-hidden="true"
+              className="col-start-2 sm:hidden"
+              data-mobile-footer-spacer="true"
+            />
+
+            <div
+              className="col-start-2 hidden min-w-0 justify-self-stretch sm:block"
+              data-desktop-holiday-details="true"
+            >
+              {showOccasions && (
+                <HolidayCalendarDetails titles={holidayDetails.titles} />
+              )}
+            </div>
+
             <button
-              className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-semibold text-primary-foreground hover:bg-[var(--theme-primary-hover)] disabled:cursor-not-allowed disabled:opacity-50"
-              disabled={!tempStartDate || !tempEndDate}
-              onClick={() => {
-                if (!tempStartDate || !tempEndDate) return;
-
-                onChange({
-                  startDate: tempStartDate,
-                  endDate: tempEndDate,
-                });
-
-                setActiveField(null);
-              }}
+              className="col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
+              data-picker-today-action="true"
+              onClick={() =>
+                setVisibleMonth(
+                  asCalendar(dayjs(), activeCalendar).startOf("month"),
+                )
+              }
               type="button"
             >
-              {toPersianDigits(confirmText)}
-            </button>
-
-            <button
-              className="shrink-0 rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted"
-              onClick={() => setActiveField(null)}
-              type="button"
-            >
-              {toPersianDigits(cancelText)}
+              {toPersianDigits(text.today)}
             </button>
           </div>
-
-          <span
-            aria-hidden="true"
-            className="col-start-2 sm:hidden"
-            data-mobile-footer-spacer="true"
-          />
-
-          <div
-            className="col-start-2 hidden min-w-0 justify-self-stretch sm:block"
-            data-desktop-holiday-details="true"
-          >
-            {showOccasions && <HolidayCalendarDetails titles={holidayDetails.titles} />}
-          </div>
-
-          <button
-            className="col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-lg border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground hover:bg-muted hover:text-foreground"
-            data-picker-today-action="true"
-            onClick={() =>
-              setVisibleMonth(
-                asCalendar(dayjs(), activeCalendar).startOf("month"),
-              )
-            }
-            type="button"
-          >
-            {toPersianDigits(text.today)}
-          </button>
-        </div>
         </div>
       )}
     </div>
@@ -735,7 +771,9 @@ export function SharedDateRangePicker({
 
   return (
     <div className="relative" ref={wrapperRef} dir="rtl">
-      {combinedField ? renderCombinedField() : (
+      {combinedField ? (
+        renderCombinedField()
+      ) : (
         <div className="grid gap-3 sm:grid-cols-2">
           {renderDateButton(
             "startDate",
