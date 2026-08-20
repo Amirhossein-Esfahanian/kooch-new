@@ -30,6 +30,9 @@ vi.mock("@/components/KoochDatePicker", () => ({
       <button type="button" onClick={() => onChange({ startDate: "2030-08-20", endDate: "2030-08-22" })}>
         تغییر تاریخ آزمایشی
       </button>
+      <button type="button" onClick={() => onChange({ startDate: "2030-08-10", endDate: "2030-08-12" })}>
+        بازگشت به تاریخ اولیه
+      </button>
     </div>
   ),
 }));
@@ -39,6 +42,9 @@ vi.mock("@/components/GuestSelector", () => ({
       انتخاب مهمان و تعداد اتاق
       <button type="button" onClick={() => onChange({ adults: 3, children: 0, childAges: [], rooms: 1 })}>
         تغییر مهمانان آزمایشی
+      </button>
+      <button type="button" onClick={() => onChange({ adults: 2, children: 1, childAges: [7], rooms: 1 })}>
+        افزودن کودک آزمایشی
       </button>
     </div>
   ),
@@ -163,6 +169,49 @@ const availableOptions = {
   ],
 };
 
+const changedStayHint = "این نتایج برای تاریخ یا مهمان‌های متفاوتی است. با انتخاب اتاق جدید می‌توانید انتخاب‌های فعلی را جایگزین کنید.";
+
+function storeExistingCart({
+  checkIn = "2030-08-10",
+  checkOut = "2030-08-12",
+  adults = 2,
+  children = 0,
+  childAges = [],
+}: {
+  checkIn?: string;
+  checkOut?: string;
+  adults?: number;
+  children?: number;
+  childAges?: number[];
+} = {}) {
+  const items = expandBookingCartSelection({
+    propertyId: 1,
+    propertyName: property.name,
+    propertySlug: property.slug,
+    bookingMode: "Instant",
+    roomTypeId: 10,
+    roomTypeName: property.roomTypes[0].name,
+    checkIn,
+    checkOut,
+    adults,
+    children,
+    childAges,
+    notes: null,
+    displayAmount: 4_000_000,
+    currency: "IRR",
+    quantity: 1,
+  });
+  sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
+    propertyId: 1,
+    propertyName: property.name,
+    propertySlug: property.slug,
+    bookingMode: "Instant",
+    idempotencyKey: "context-hint-test",
+    checkoutRequested: false,
+    items,
+  }));
+}
+
 describe("public property booking integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -198,6 +247,7 @@ describe("public property booking integration", () => {
     resolveOptions(availableOptions);
 
     expect(await screen.findByRole("list", { name: "نوع‌های اتاق" })).toBeTruthy();
+    expect(screen.queryByText(changedStayHint)).toBeNull();
     expect(screen.getByTestId("booking-choices-summary").parentElement?.className)
       .toContain("lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]");
     expect(screen.getByTestId("booking-choices-summary").className).toContain("lg:sticky");
@@ -312,6 +362,8 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
 
+    expect(screen.queryByText(changedStayHint)).toBeNull();
+
     const increase = await screen.findByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" });
     expect(screen.getByText("۱", { selector: "output" })).toBeTruthy();
     fireEvent.click(increase);
@@ -349,6 +401,7 @@ describe("public property booking integration", () => {
     render(<PublicPropertyPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    expect(await screen.findByText(changedStayHint)).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
 
     let dialog = await screen.findByRole("alertdialog", {
@@ -360,6 +413,7 @@ describe("public property booking integration", () => {
 
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items[0].checkIn).toBe("2030-08-08");
+    expect(screen.getByText(changedStayHint)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
     dialog = await screen.findByRole("alertdialog", {
@@ -375,6 +429,7 @@ describe("public property booking integration", () => {
       expect(within(screen.getByTestId("booking-choices-summary")).getByText(
         formatBookingDateRange("2030-08-10", "2030-08-12"),
       )).toBeTruthy();
+      expect(screen.queryByText(changedStayHint)).toBeNull();
     });
   });
 
@@ -410,6 +465,7 @@ describe("public property booking integration", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "تغییر مهمانان آزمایشی" }));
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(await screen.findByText(changedStayHint)).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
 
     const dialog = await screen.findByRole("alertdialog", {
@@ -418,6 +474,72 @@ describe("public property booking integration", () => {
     const stayDetails = within(dialog).getAllByRole("definition");
     expect(stayDetails[0].textContent).toContain("۲ بزرگسال");
     expect(stayDetails[1].textContent).toContain("۳ بزرگسال");
+  });
+
+  it("shows the context hint when the child count differs", async () => {
+    storeExistingCart();
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      children: 1,
+      childAges: [7],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "افزودن کودک آزمایشی" }));
+    expect(screen.queryByText(changedStayHint)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText(changedStayHint)).toBeTruthy();
+  });
+
+  it("shows the context hint when only a child age differs", async () => {
+    storeExistingCart({ children: 1, childAges: [5] });
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      children: 1,
+      childAges: [7],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "افزودن کودک آزمایشی" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText(changedStayHint)).toBeTruthy();
+  });
+
+  it("does not show a new-context hint when availability fails", async () => {
+    storeExistingCart();
+    api.fetchOptions.mockRejectedValueOnce(new Error("ارتباط با سرویس موجودی برقرار نشد."));
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText("ارتباط با سرویس موجودی برقرار نشد.")).toBeTruthy();
+    expect(screen.queryByText(changedStayHint)).toBeNull();
+  });
+
+  it("removes the hint after searching the original cart context again", async () => {
+    storeExistingCart();
+    api.fetchOptions
+      .mockResolvedValueOnce({
+        ...availableOptions,
+        checkInDate: "2030-08-20",
+        checkOutDate: "2030-08-22",
+      })
+      .mockResolvedValueOnce(availableOptions);
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    expect(screen.queryByText(changedStayHint)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(await screen.findByText(changedStayHint)).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت به تاریخ اولیه" }));
+    expect(screen.queryByText(changedStayHint)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    await waitFor(() => expect(screen.queryByText(changedStayHint)).toBeNull());
   });
 
   it("allows two different RoomTypes to be selected in the same stay", async () => {
@@ -472,6 +594,7 @@ describe("public property booking integration", () => {
     expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    expect(screen.queryByText(changedStayHint)).toBeNull();
     expect(screen.queryByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
 

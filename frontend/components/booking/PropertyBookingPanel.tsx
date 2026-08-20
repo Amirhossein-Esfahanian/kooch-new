@@ -72,6 +72,7 @@ function PropertyBookingPanelContent({
   const cart = useBookingCart();
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(false);
+  const [hasSuccessfulAvailabilitySearch, setHasSuccessfulAvailabilitySearch] = useState(false);
   const [message, setMessage] = useState<{ tone: "error" | "info" | "success"; text: string } | null>(null);
   const [replacementSelection, setReplacementSelection] = useState<BookingCartSelection | null>(null);
 
@@ -101,10 +102,12 @@ function PropertyBookingPanelContent({
 
   async function checkAvailability() {
     if (!dates.startDate || !dates.endDate) {
+      setHasSuccessfulAvailabilitySearch(false);
       setMessage({ tone: "error", text: "تاریخ ورود و خروج را انتخاب کنید." });
       return;
     }
     setLoadingOptions(true);
+    setHasSuccessfulAvailabilitySearch(false);
     setMessage(null);
     try {
       const response = await fetchBookingOptions(propertySlug, {
@@ -115,6 +118,7 @@ function PropertyBookingPanelContent({
         childAges: guests.childAges,
       });
       setOptions(response);
+      setHasSuccessfulAvailabilitySearch(true);
       if (response.roomTypes.length === 0) {
         setMessage({
           tone: "info",
@@ -186,6 +190,20 @@ function PropertyBookingPanelContent({
   }
 
   const hasSearchResults = Boolean(optionsMatchSearch && options);
+  const searchContextDiffersFromCart = Boolean(
+    hasSuccessfulAvailabilitySearch &&
+      optionsMatchSearch &&
+      options &&
+      cart.items.length > 0 &&
+      !bookingCartSelectionMatchesItems(cart.items, {
+        propertyId: options.propertyId,
+        checkIn: options.checkInDate,
+        checkOut: options.checkOutDate,
+        adults: options.adults,
+        children: options.children,
+        childAges: options.childAges,
+      }),
+  );
   const showCartSummary = hasSearchResults || cart.items.length > 0;
   const cartSummary = (
     <BookingCartSummary
@@ -218,6 +236,12 @@ function PropertyBookingPanelContent({
           </p>
         )}
       </div>
+
+      {searchContextDiffersFromCart && (
+        <KoochAlert className="mt-4" title="جست‌وجوی جدید" variant="info">
+          این نتایج برای تاریخ یا مهمان‌های متفاوتی است. با انتخاب اتاق جدید می‌توانید انتخاب‌های فعلی را جایگزین کنید.
+        </KoochAlert>
+      )}
 
       <div
         className={`mt-5 grid items-start gap-5 ${cart.items.length > 0 ? "pb-24 sm:pb-0" : ""} ${hasSearchResults ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : ""}`}
