@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { GuestSelectorValue } from "@/components/GuestSelector";
 import { PropertyBookingPanel } from "@/components/booking/PropertyBookingPanel";
 import { KoochButton } from "@/components/KoochButton";
@@ -53,12 +53,6 @@ const bedLabels: Record<string, string> = {
   "Traditional Floor Bedding": "رختخواب سنتی",
 };
 
-const availabilityLabels: Record<string, string> = {
-  Available: "موجود",
-  Unavailable: "ناموجود",
-  OnRequest: "نیازمند استعلام",
-};
-
 function readPositiveNumber(value: string | null, fallback: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
@@ -100,10 +94,6 @@ export default function PublicPropertyPage() {
   const [detailsRoomType, setDetailsRoomType] = useState<PublicRoomType | null>(
     null,
   );
-  const [preferredRoomTypeId, setPreferredRoomTypeId] = useState<number | null>(
-    null,
-  );
-  const bookingPanelRef = useRef<HTMLElement>(null);
   const [bookingDates, setBookingDates] = useState<{
     startDate: string | null;
     endDate: string | null;
@@ -197,19 +187,6 @@ export default function PublicPropertyPage() {
   const resultsHref = resultQuery
     ? `/properties?${resultQuery}`
     : "/properties";
-
-  function selectRoomType(roomType: PublicRoomType) {
-    setPreferredRoomTypeId(roomType.id);
-    setDetailsRoomType(null);
-
-    window.requestAnimationFrame(() => {
-      bookingPanelRef.current?.scrollIntoView?.({
-        behavior: "smooth",
-        block: "start",
-      });
-      bookingPanelRef.current?.focus({ preventScroll: true });
-    });
-  }
 
   return (
     <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
@@ -417,45 +394,25 @@ export default function PublicPropertyPage() {
               )}
             </section>
 
-            <section>
-              <h2 className="text-2xl font-black">انتخاب اتاق</h2>
-              <div className="mt-5 grid gap-6">
-                <div className="grid gap-5">
-                  {property.roomTypes.length ? (
-                    property.roomTypes.map((roomType) => (
-                      <RoomTypeCard
-                        galleryFallback={gallery[0].url}
-                        isPreferred={preferredRoomTypeId === roomType.id}
-                        key={roomType.id}
-                        onSelect={() => selectRoomType(roomType)}
-                        onShowDetails={() => setDetailsRoomType(roomType)}
-                        roomType={roomType}
-                      />
-                    ))
-                  ) : (
-                    <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>
-                  )}
-                </div>
-
-                <aside
-                  aria-label="رزرو اقامتگاه"
-                  className="rounded-2xl border border-border bg-card p-5 shadow-lg"
-                  ref={bookingPanelRef}
-                  tabIndex={-1}
-                >
+            <section aria-labelledby="property-rooms-title">
+              <h2 className="text-2xl font-black" id="property-rooms-title">اتاق‌ها</h2>
+              <div className="mt-5">
+                {property.roomTypes.length ? (
                   <PropertyBookingPanel
                     dates={bookingDates}
+                    galleryFallback={gallery[0].url}
                     guests={bookingGuests}
                     onDatesChange={setBookingDates}
                     onGuestsChange={setBookingGuests}
-                    preferredRoomTypeId={preferredRoomTypeId}
-                    preferredRoomTypeName={property.roomTypes.find((roomType) => roomType.id === preferredRoomTypeId)?.name ?? null}
+                    onShowRoomDetails={setDetailsRoomType}
                     propertyId={property.id}
                     propertyName={property.name}
                     propertySlug={property.slug}
-                    startingPrice={property.startingPrice}
+                    roomTypes={property.roomTypes}
                   />
-                </aside>
+                ) : (
+                  <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>
+                )}
               </div>
             </section>
 
@@ -516,129 +473,9 @@ export default function PublicPropertyPage() {
         onOpenChange={(open) => {
           if (!open) setDetailsRoomType(null);
         }}
-        onSelect={selectRoomType}
         roomType={detailsRoomType}
       />
     </div>
-  );
-}
-
-function RoomTypeCard({
-  roomType,
-  galleryFallback,
-  isPreferred,
-  onSelect,
-  onShowDetails,
-}: {
-  roomType: PublicRoomType;
-  galleryFallback: string;
-  isPreferred: boolean;
-  onSelect: () => void;
-  onShowDetails: () => void;
-}) {
-  const details = [
-    roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
-    roomType.stairCount != null ? `${roomType.stairCount} پله` : "",
-    roomType.hasPrivateBathroom == null
-      ? ""
-      : roomType.hasPrivateBathroom
-        ? "سرویس بهداشتی اختصاصی"
-        : "سرویس مشترک",
-    roomType.hasWindow == null
-      ? ""
-      : roomType.hasWindow
-        ? "دارای پنجره"
-        : "بدون پنجره",
-  ].filter(Boolean);
-
-  return (
-    <article className="overflow-hidden rounded-2xl border bg-white shadow-sm">
-      <div className="grid md:grid-cols-[220px_minmax(0,1fr)_190px]">
-        <Image
-          alt={roomType.name}
-          className="h-full min-h-52 w-full object-cover"
-          height={624}
-          loading="lazy"
-          sizes="(max-width: 767px) calc(100vw - 2.5rem), 220px"
-          src={roomType.images[0]?.url ?? galleryFallback}
-          unoptimized={shouldBypassImageOptimization(
-            roomType.images[0]?.url ?? galleryFallback,
-          )}
-          width={660}
-        />
-        <div className="p-5">
-          <h3 className="text-xl font-black">{roomType.name}</h3>
-          {roomType.englishName && (
-            <p className="mt-1 text-xs text-slate-400" dir="ltr">
-              {roomType.englishName}
-            </p>
-          )}
-          <p className="mt-3 text-sm font-semibold text-slate-700">
-            {roomType.maxAdults + roomType.maxChildren} نفر |{" "}
-            {roomType.bedInformation.map(persianBed).join(" | ") ||
-              "ترکیب تخت ثبت نشده"}
-          </p>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
-            {roomType.description}
-          </p>
-          {details.length > 0 && (
-            <p className="mt-3 text-sm font-semibold text-slate-700">
-              {details.join(" | ")}
-            </p>
-          )}
-          {roomType.notes && (
-            <p className="mt-2 text-sm leading-7 text-slate-600">
-              {roomType.notes}
-            </p>
-          )}
-          {roomType.amenities.length > 0 && (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {roomType.amenities.map((amenity) => (
-                <span
-                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold"
-                  key={amenity.id}
-                >
-                  {amenity.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
-        <div className="flex flex-col justify-end border-t p-5 md:border-r md:border-t-0">
-          <p className="text-xs text-slate-400">
-            {roomType.displayPrice != null && roomType.displayPrice > 0
-              ? "کمترین قیمت روزانه آینده"
-              : "قیمت اقامت"}
-          </p>
-          <p className="mt-1 text-lg font-black text-blue-700">
-            {formatPrice(roomType.displayPrice)}
-          </p>
-          {roomType.availabilityStatus && (
-            <p className="mt-2 text-sm font-bold text-slate-700">
-              {availabilityLabels[roomType.availabilityStatus] ??
-                roomType.availabilityStatus}
-            </p>
-          )}
-          <p className="mt-3 text-xs text-slate-500">
-            {roomType.totalInventory === 1
-              ? "یک واحد اختصاصی"
-              : `${roomType.totalInventory} واحد موجودی`}
-          </p>
-          <div className="mt-4 grid gap-2">
-            <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
-              مشاهده جزئیات
-            </KoochButton>
-            <KoochButton
-              aria-pressed={isPreferred}
-              className="w-full"
-              onClick={onSelect}
-            >
-              {isPreferred ? "رفتن به پنل رزرو" : "انتخاب این اتاق"}
-            </KoochButton>
-          </div>
-        </div>
-      </div>
-    </article>
   );
 }
 
@@ -646,12 +483,10 @@ function RoomTypeDetailsDialog({
   roomType,
   galleryFallback,
   onOpenChange,
-  onSelect,
 }: {
   roomType: PublicRoomType | null;
   galleryFallback: string;
   onOpenChange: (open: boolean) => void;
-  onSelect: (roomType: PublicRoomType) => void;
 }) {
   const images = roomType?.images.length
     ? roomType.images
@@ -671,18 +506,11 @@ function RoomTypeDetailsDialog({
   return (
     <KoochDialog
       description={roomType?.description || "تصاویر و مشخصات کامل اتاق"}
-      footer={
-        roomType ? (
-          <>
-            <KoochButton onClick={() => onSelect(roomType)}>
-              انتخاب این اتاق
-            </KoochButton>
-            <KoochButton onClick={() => onOpenChange(false)} variant="outline">
-              بستن
-            </KoochButton>
-          </>
-        ) : null
-      }
+      footer={roomType ? (
+        <KoochButton onClick={() => onOpenChange(false)} variant="outline">
+          بستن
+        </KoochButton>
+      ) : null}
       onOpenChange={onOpenChange}
       open={roomType !== null}
       size="lg"

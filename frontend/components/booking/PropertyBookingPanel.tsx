@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { GuestSelector, type GuestSelectorValue } from "@/components/GuestSelector";
@@ -10,6 +10,9 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { BookingCartMobileActionBar, BookingCartSummary } from "@/components/booking/BookingCart";
 import {
+  PublicRoomTypeCard,
+} from "@/components/booking/PublicRoomTypeCard";
+import {
   bookingCartSelectionMatchesItems,
   BookingCartProvider,
   getBookingCartStayContext,
@@ -17,13 +20,13 @@ import {
   type BookingCartSelection,
   useBookingCart,
 } from "@/components/booking/BookingCartProvider";
-import { bookingModePresentation, formatBookingDateRange } from "@/components/booking/booking-display";
+import { formatBookingDateRange } from "@/components/booking/booking-display";
 import {
   fetchBookingOptions,
   type PublicBookingOptions,
   type PublicBookingRoomTypeOption,
 } from "@/lib/booking-sessions";
-import { formatCurrency } from "@/lib/currency";
+import type { PublicRoomType } from "@/lib/public-properties";
 
 type DateRange = { startDate: string | null; endDate: string | null };
 
@@ -31,13 +34,13 @@ export function PropertyBookingPanel(props: {
   propertyId: number;
   propertyName: string;
   propertySlug: string;
-  startingPrice: number | null;
+  roomTypes: PublicRoomType[];
+  galleryFallback: string;
+  onShowRoomDetails: (roomType: PublicRoomType) => void;
   dates: DateRange;
   onDatesChange: (value: DateRange) => void;
   guests: GuestSelectorValue;
   onGuestsChange: (value: GuestSelectorValue) => void;
-  preferredRoomTypeId?: number | null;
-  preferredRoomTypeName?: string | null;
 }) {
   return <BookingCartProvider><PropertyBookingPanelContent {...props} /></BookingCartProvider>;
 }
@@ -46,24 +49,24 @@ function PropertyBookingPanelContent({
   propertyId,
   propertyName,
   propertySlug,
-  startingPrice,
+  roomTypes,
+  galleryFallback,
+  onShowRoomDetails,
   dates,
   onDatesChange,
   guests,
   onGuestsChange,
-  preferredRoomTypeId,
-  preferredRoomTypeName,
 }: {
   propertyId: number;
   propertyName: string;
   propertySlug: string;
-  startingPrice: number | null;
+  roomTypes: PublicRoomType[];
+  galleryFallback: string;
+  onShowRoomDetails: (roomType: PublicRoomType) => void;
   dates: DateRange;
   onDatesChange: (value: DateRange) => void;
   guests: GuestSelectorValue;
   onGuestsChange: (value: GuestSelectorValue) => void;
-  preferredRoomTypeId?: number | null;
-  preferredRoomTypeName?: string | null;
 }) {
   const router = useRouter();
   const cart = useBookingCart();
@@ -73,7 +76,12 @@ function PropertyBookingPanelContent({
   const [replacementSelection, setReplacementSelection] = useState<BookingCartSelection | null>(null);
 
   const optionsMatchSearch =
-    options?.checkInDate === dates.startDate && options?.checkOutDate === dates.endDate;
+    options?.checkInDate === dates.startDate &&
+    options?.checkOutDate === dates.endDate &&
+    options?.adults === guests.adults &&
+    options?.children === guests.children &&
+    options?.childAges.length === guests.childAges.length &&
+    options.childAges.every((age, index) => age === guests.childAges[index]);
   const cartMatchesCurrentStay = Boolean(
     dates.startDate && dates.endDate &&
       bookingCartSelectionMatchesItems(cart.items, {
@@ -86,6 +94,10 @@ function PropertyBookingPanelContent({
       }),
   );
   const currentStayCartItems = cartMatchesCurrentStay ? cart.items : [];
+
+  useEffect(() => {
+    if (options && !optionsMatchSearch) setMessage(null);
+  }, [options, optionsMatchSearch]);
 
   async function checkAvailability() {
     if (!dates.startDate || !dates.endDate) {
@@ -103,22 +115,10 @@ function PropertyBookingPanelContent({
         childAges: guests.childAges,
       });
       setOptions(response);
-      const preferred = response.roomTypes.find(
-        (item) => item.roomTypeId === preferredRoomTypeId,
-      );
       if (response.roomTypes.length === 0) {
-        const preferredUnavailable = response.unavailableRoomTypes?.find(
-          (item) => item.roomTypeId === preferredRoomTypeId,
-        );
-        const firstUnavailable = preferredUnavailable ?? response.unavailableRoomTypes?.[0];
         setMessage({
           tone: "info",
-          text: unavailableMessage(firstUnavailable?.reason),
-        });
-      } else if (preferredRoomTypeId && !preferred) {
-        setMessage({
-          tone: "info",
-          text: "اتاق انتخاب‌شده در این بازه قابل رزرو نیست؛ گزینه‌های در دسترس را می‌توانید بررسی کنید.",
+          text: "برای این بازه اتاق قابل رزروی پیدا نشد؛ وضعیت هر اتاق را در کارت آن بررسی کنید.",
         });
       }
     } catch (error) {
@@ -185,12 +185,11 @@ function PropertyBookingPanelContent({
     router.push("/booking/checkout?step=information");
   }
 
-  const hasAvailableRoomTypes = Boolean(
-    optionsMatchSearch && options && options.roomTypes.length > 0,
-  );
+  const hasSearchResults = Boolean(optionsMatchSearch && options);
+  const showCartSummary = hasSearchResults || cart.items.length > 0;
   const cartSummary = (
     <BookingCartSummary
-      className={hasAvailableRoomTypes ? "lg:sticky lg:top-24" : undefined}
+      className={hasSearchResults ? "lg:sticky lg:top-24" : undefined}
       items={cart.items}
       loading={false}
       onContinue={continueCheckout}
@@ -201,69 +200,76 @@ function PropertyBookingPanelContent({
 
   return (
     <>
-      <p className="text-sm text-muted-foreground">
-        {startingPrice === null ? "قیمت اقامت" : "کمترین قیمت روزانه آینده"}
-      </p>
-      <p className="mt-1 text-2xl font-black text-primary">
-        {startingPrice === null ? "قیمت پس از تعیین در تقویم" : formatCurrency(startingPrice)}
-      </p>
-      <p className="mt-2 font-bold text-foreground">{propertyName}</p>
-      {preferredRoomTypeId && preferredRoomTypeName && (
-        <KoochAlert className="mt-4" title={`اتاق انتخاب‌شده: ${preferredRoomTypeName}`} variant="info">
-          مرحله بعد: تاریخ و مهمانان را مشخص کنید و «بررسی موجودی» را بزنید. انتخاب کارت هنوز به معنی افزودن به سبد نیست.
-        </KoochAlert>
-      )}
-      <div className="mt-5 grid gap-3">
-        <KoochDatePicker calendarType="jalali" controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs" disablePastDates labels={{ start: "تاریخ ورود", end: "تاریخ خروج", rangeTitle: "انتخاب تاریخ اقامت" }} labelsAbove mode="range" onChange={onDatesChange} placeholderEnd="انتخاب خروج" placeholderStart="انتخاب ورود" value={dates} />
-        <GuestSelector controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs" label="مهمانان هر اتاق و تعداد اتاق" onChange={onGuestsChange} value={guests} />
-      </div>
-      <KoochButton className="mt-5 w-full" loading={loadingOptions} onClick={checkAvailability}>بررسی موجودی</KoochButton>
-
-      {message && <KoochAlert className="mt-4" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
-
-      {hasAvailableRoomTypes && options ? (
-        <div className="mt-5 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]">
-          <div className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4">
-            <div>
-              <h3 className="font-black text-foreground" id="available-room-types-title">
-                اتاق‌های قابل انتخاب
-              </h3>
-              <p className="mt-1 text-xs leading-6 text-muted-foreground">
-                می‌توانید چند نوع اتاق یا چند واحد از یک نوع را برای همین اقامت انتخاب کنید.
-              </p>
-            </div>
-            <ul aria-labelledby="available-room-types-title" className="divide-y divide-border">
-              {options.roomTypes.map((option) => {
-                const selectedItems = currentStayCartItems.filter(
-                  (item) => item.roomTypeId === option.roomTypeId,
-                );
-                const availableToAdd = dates.startDate && dates.endDate
-                  ? getCartAwareAvailableCount({
-                      items: currentStayCartItems,
-                      propertyId,
-                      roomTypeId: option.roomTypeId,
-                      checkIn: dates.startDate,
-                      checkOut: dates.endDate,
-                      serverAvailableCount: option.availableCount,
-                    })
-                  : 0;
-                return (
-                  <RoomTypeSelectionRow
-                    availableToAdd={availableToAdd}
-                    isPreferred={option.roomTypeId === preferredRoomTypeId}
-                    key={option.roomTypeId}
-                    onAdd={() => addToCart(option)}
-                    onRemove={() => removeOneFromCart(option.roomTypeId)}
-                    option={option}
-                    selectedQuantity={selectedItems.length}
-                  />
-                );
-              })}
-            </ul>
-          </div>
-          {cartSummary}
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div
+          className="grid gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(240px,1fr)_auto] lg:items-end"
+          data-testid="room-availability-controls"
+        >
+          <KoochDatePicker calendarType="jalali" controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs" disablePastDates labels={{ start: "تاریخ ورود", end: "تاریخ خروج", rangeTitle: "انتخاب تاریخ اقامت" }} labelsAbove mode="range" onChange={onDatesChange} placeholderEnd="انتخاب خروج" placeholderStart="انتخاب ورود" value={dates} />
+          <GuestSelector controlClassName="rounded-lg border px-3 py-2.5 text-right text-xs" label="مهمانان هر اتاق و تعداد اتاق" onChange={onGuestsChange} value={guests} />
+          <KoochButton className="w-full lg:w-auto" loading={loadingOptions} onClick={checkAvailability}>بررسی موجودی</KoochButton>
         </div>
-      ) : cartSummary}
+
+        {message && <KoochAlert className="mt-4" variant={message.tone === "error" ? "destructive" : message.tone}>{message.text}</KoochAlert>}
+
+        {!hasSearchResults && !message && (
+          <p className="mt-4 text-sm leading-7 text-muted-foreground">
+            تاریخ و تعداد مهمان را برای بررسی موجودی انتخاب کنید.
+          </p>
+        )}
+      </div>
+
+      <div
+        className={`mt-5 grid items-start gap-5 ${cart.items.length > 0 ? "pb-24 sm:pb-0" : ""} ${hasSearchResults ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : ""}`}
+        data-testid="room-selection-region"
+      >
+        <div
+          aria-label="نوع‌های اتاق"
+          className="grid gap-5"
+          data-testid="canonical-room-type-list"
+          role="list"
+        >
+          {roomTypes.map((roomType) => {
+            const option = hasSearchResults
+              ? options?.roomTypes.find((item) => item.roomTypeId === roomType.id) ?? null
+              : null;
+            const unavailable = hasSearchResults
+              ? options?.unavailableRoomTypes?.find((item) => item.roomTypeId === roomType.id)
+              : undefined;
+            const selectedItems = currentStayCartItems.filter(
+              (item) => item.roomTypeId === roomType.id,
+            );
+            const availableToAdd = option && dates.startDate && dates.endDate
+              ? getCartAwareAvailableCount({
+                  items: currentStayCartItems,
+                  propertyId,
+                  roomTypeId: roomType.id,
+                  checkIn: dates.startDate,
+                  checkOut: dates.endDate,
+                  serverAvailableCount: option.availableCount,
+                })
+              : 0;
+
+            return (
+              <PublicRoomTypeCard
+                booking={hasSearchResults ? {
+                  option,
+                  unavailableReason: unavailable?.reason,
+                  availableToAdd,
+                  selectedQuantity: selectedItems.length,
+                  onAdd: () => option && addToCart(option),
+                  onRemove: () => removeOneFromCart(roomType.id),
+                } : undefined}
+                galleryFallback={galleryFallback}
+                key={roomType.id}
+                onShowDetails={() => onShowRoomDetails(roomType)}
+                roomType={roomType}
+              />
+            );
+          })}
+        </div>
+        {showCartSummary && cartSummary}
+      </div>
 
       <BookingCartMobileActionBar count={cart.items.length} loading={false} onContinue={continueCheckout} total={cart.total} />
       <KoochConfirmDialog
@@ -289,94 +295,6 @@ function PropertyBookingPanelContent({
         variant="warning"
       />
     </>
-  );
-}
-
-function RoomTypeSelectionRow({
-  availableToAdd,
-  isPreferred,
-  onAdd,
-  onRemove,
-  option,
-  selectedQuantity,
-}: {
-  availableToAdd: number;
-  isPreferred: boolean;
-  onAdd: () => void;
-  onRemove: () => void;
-  option: PublicBookingRoomTypeOption;
-  selectedQuantity: number;
-}) {
-  const maximumSelectable = selectedQuantity + availableToAdd;
-  const isOverCapacity = selectedQuantity > option.availableCount;
-  const isSingleUnit = selectedQuantity <= 1 && maximumSelectable <= 1;
-  const mode = bookingModePresentation(option.bookingMode);
-
-  return (
-    <li
-      className="grid min-w-0 gap-3 py-4 first:pt-0 last:pb-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
-      data-preferred={isPreferred || undefined}
-    >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <h4 className="font-black text-foreground">{option.name}</h4>
-          {isPreferred && <span className="text-xs font-bold text-primary">انتخاب‌شده از صفحه اتاق‌ها</span>}
-        </div>
-        <p className="mt-1 text-sm font-bold text-foreground">
-          {formatCurrency(option.finalAmount)}
-        </p>
-        <p className="mt-1 text-xs text-muted-foreground">
-          <span aria-hidden="true">{mode.icon}</span>{" "}{mode.label}
-          {selectedQuantity === 0 && availableToAdd > 0
-            ? ` · ${availableToAdd.toLocaleString("fa-IR")} واحد موجود`
-            : ""}
-        </p>
-        {isOverCapacity && (
-          <p className="mt-2 text-xs font-bold leading-6 text-destructive" role="status">
-            موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")} واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
-          </p>
-        )}
-      </div>
-      <div className="flex min-h-11 items-center justify-start sm:justify-end">
-        {selectedQuantity === 0 ? (
-          <KoochButton
-            aria-label={availableToAdd === 0 ? `تکمیل ظرفیت ${option.name}` : `انتخاب ${option.name}`}
-            disabled={availableToAdd === 0}
-            onClick={onAdd}
-            variant={availableToAdd === 0 ? "outline" : "primary"}
-          >
-            {availableToAdd === 0 ? "تکمیل ظرفیت" : "انتخاب"}
-          </KoochButton>
-        ) : isSingleUnit ? (
-          <KoochButton
-            aria-label={`حذف انتخاب ${option.name}`}
-            aria-pressed={true}
-            onClick={onRemove}
-            variant="outline"
-          >
-            <span aria-hidden="true">✓</span> انتخاب شد؛ حذف
-          </KoochButton>
-        ) : (
-          <div aria-label={`تعداد انتخاب‌شده ${option.name}`} className="flex items-center gap-2" role="group">
-            <KoochButton aria-label={`کاهش تعداد ${option.name}`} onClick={onRemove} size="icon" variant="outline">
-              <span aria-hidden="true" className="text-lg">−</span>
-            </KoochButton>
-            <output aria-atomic="true" aria-live="polite" className="min-w-8 text-center text-base font-black text-foreground">
-              {selectedQuantity.toLocaleString("fa-IR")}
-            </output>
-            <KoochButton
-              aria-label={`افزایش تعداد ${option.name}`}
-              disabled={availableToAdd === 0 || isOverCapacity}
-              onClick={onAdd}
-              size="icon"
-              variant="outline"
-            >
-              <span aria-hidden="true" className="text-lg">+</span>
-            </KoochButton>
-          </div>
-        )}
-      </div>
-    </li>
   );
 }
 
@@ -419,16 +337,4 @@ function formatGuestComposition({ adults, children }: { adults: number; children
   return children > 0
     ? `${adults.toLocaleString("fa-IR")} بزرگسال و ${children.toLocaleString("fa-IR")} کودک`
     : `${adults.toLocaleString("fa-IR")} بزرگسال`;
-}
-
-function unavailableMessage(
-  reason?: "GuestCapacityExceeded" | "NoActiveNamedRooms" | "InsufficientAvailability" | "IncompleteDailyPricing",
-) {
-  if (reason === "GuestCapacityExceeded") {
-    return "ظرفیت این اتاق برای تعداد مهمانان انتخاب‌شده کافی نیست. تعداد مهمانان یا نوع اتاق را تغییر دهید.";
-  }
-  if (reason === "IncompleteDailyPricing") {
-    return "قیمت همه شب‌های این بازه هنوز در تقویم تعیین نشده است. تاریخ دیگری را انتخاب کنید یا بعداً دوباره بررسی کنید.";
-  }
-  return "در این بازه ظرفیت قابل رزرو وجود ندارد. تاریخ‌ها یا تعداد اتاق را تغییر دهید و دوباره بررسی کنید.";
 }

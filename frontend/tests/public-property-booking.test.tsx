@@ -174,16 +174,17 @@ describe("public property booking integration", () => {
   it("renders the real booking panel and removes the obsolete placeholder", async () => {
     render(<PublicPropertyPage />);
 
-    expect(await screen.findByRole("complementary", { name: "رزرو اقامتگاه" })).toBeTruthy();
+    const roomList = await screen.findByRole("list", { name: "نوع‌های اتاق" });
     expect(screen.queryByText("رزرو در نسخه بعدی فعال می‌شود")).toBeNull();
-    expect(screen.getByTestId("booking-date-picker")).toBeTruthy();
+    const datePicker = screen.getByTestId("booking-date-picker");
+    expect(datePicker).toBeTruthy();
     expect(screen.getByTestId("booking-guest-selector")).toBeTruthy();
     expect(screen.getByRole("button", { name: "بررسی موجودی" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "انتخاب‌های شما" })).toBeTruthy();
-    expect(screen.getByText("هنوز اتاقی انتخاب نکرده‌اید.")).toBeTruthy();
+    expect(datePicker.compareDocumentPosition(roomList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(roomList).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByRole("heading", { name: "انتخاب‌های شما" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
-    expect(screen.getByRole("complementary", { name: "رزرو اقامتگاه" }).parentElement?.className)
-      .not.toContain("lg:grid-cols");
   });
 
   it("uses an accessible multi-unit stepper and keeps the mobile action bar", async () => {
@@ -196,7 +197,7 @@ describe("public property booking integration", () => {
     expect(availabilityButton.hasAttribute("disabled")).toBe(true);
     resolveOptions(availableOptions);
 
-    expect(await screen.findByRole("list", { name: "اتاق‌های قابل انتخاب" })).toBeTruthy();
+    expect(await screen.findByRole("list", { name: "نوع‌های اتاق" })).toBeTruthy();
     expect(screen.getByTestId("booking-choices-summary").parentElement?.className)
       .toContain("lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]");
     expect(screen.getByTestId("booking-choices-summary").className).toContain("lg:sticky");
@@ -420,6 +421,13 @@ describe("public property booking integration", () => {
   });
 
   it("allows two different RoomTypes to be selected in the same stay", async () => {
+    api.fetchProperty.mockResolvedValueOnce({
+      ...property,
+      roomTypes: [
+        property.roomTypes[0],
+        { ...property.roomTypes[0], id: 20, name: "اتاق نیلوفر", images: [] },
+      ],
+    });
     api.fetchOptions.mockResolvedValueOnce({
       ...availableOptions,
       roomTypes: [
@@ -464,10 +472,12 @@ describe("public property booking integration", () => {
     expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    expect(screen.queryByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
 
     expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" })).toBeNull();
+    expect(screen.getAllByRole("heading", { name: "اتاق شاه‌نشین" })).toHaveLength(1);
     expect(screen.getAllByText(/۲ اتاق/).length).toBeGreaterThanOrEqual(1);
   });
 
@@ -529,39 +539,28 @@ describe("public property booking integration", () => {
     expect(within(dialog).getByText("حمام اختصاصی")).toBeTruthy();
   });
 
-  it("selects the room type from its card and scrolls to the panel on mobile", async () => {
-    const scrollIntoView = vi.fn();
-    const originalMatchMedia = window.matchMedia;
-    const originalScrollIntoView = HTMLElement.prototype.scrollIntoView;
-    window.matchMedia = vi.fn().mockReturnValue({ matches: true });
-    HTMLElement.prototype.scrollIntoView = scrollIntoView;
+  it("enriches the canonical card after search without rendering a duplicate room list", async () => {
     api.fetchOptions.mockResolvedValueOnce({
       ...availableOptions,
       roomTypes: [
-        { ...availableOptions.roomTypes[0], roomTypeId: 20, name: "اتاق دیگر" },
+        { ...availableOptions.roomTypes[0], roomTypeId: 20, name: "گزینه بدون کارت عمومی" },
         availableOptions.roomTypes[0],
       ],
     });
+    render(<PublicPropertyPage />);
 
-    try {
-      render(<PublicPropertyPage />);
-      fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
-      expect(await screen.findByRole("list", { name: "اتاق‌های قابل انتخاب" })).toBeTruthy();
+    const canonicalCard = await screen.findByTestId("room-type-card-10");
+    expect(screen.getAllByRole("heading", { name: "اتاق شاه‌نشین" })).toHaveLength(1);
+    expect(within(canonicalCard).queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
 
-      fireEvent.click(screen.getByRole("button", { name: "انتخاب این اتاق" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
 
-      await waitFor(() => {
-        expect(scrollIntoView).toHaveBeenCalled();
-        expect(screen.getByText("انتخاب‌شده از صفحه اتاق‌ها")).toBeTruthy();
-      });
-      expect(document.activeElement).toBe(
-        screen.getByRole("complementary", { name: "رزرو اقامتگاه" }),
-      );
-      expect(screen.getByText(/انتخاب کارت هنوز به معنی افزودن به سبد نیست/)).toBeTruthy();
-    } finally {
-      window.matchMedia = originalMatchMedia;
-      HTMLElement.prototype.scrollIntoView = originalScrollIntoView;
-    }
+    expect(await within(canonicalCard).findByText("مبلغ کل اقامت")).toBeTruthy();
+    expect(within(canonicalCard).getByText("رزرو آنی")).toBeTruthy();
+    expect(within(canonicalCard).getByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: "اتاق شاه‌نشین" })).toHaveLength(1);
+    expect(screen.queryByRole("list", { name: "اتاق‌های قابل انتخاب" })).toBeNull();
+    expect(screen.queryByText("گزینه بدون کارت عمومی")).toBeNull();
   });
 
   it("does not present a zero public price as a valid starting price", async () => {
@@ -580,7 +579,7 @@ describe("public property booking integration", () => {
 
     render(<PublicPropertyPage />);
 
-    expect(await screen.findAllByText("قیمت پس از تعیین در تقویم")).toHaveLength(2);
+    expect(await screen.findAllByText("قیمت پس از تعیین در تقویم")).toHaveLength(1);
     expect(screen.queryByText(/۰ تومان \/ شب/)).toBeNull();
   });
 
@@ -617,7 +616,10 @@ describe("public property booking integration", () => {
 
     render(<PublicPropertyPage />);
 
-    expect(await screen.findByRole("button", { name: "انتخاب این اتاق" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "مشاهده جزئیات" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
     expect(screen.queryByText(/هنوز اتاق فعال قابل رزروی/)).toBeNull();
   });
 
