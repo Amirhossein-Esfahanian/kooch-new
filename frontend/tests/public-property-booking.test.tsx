@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
@@ -290,6 +292,10 @@ describe("public property booking integration", () => {
     expect(searchBar.className).toContain("z-40");
     expect(searchBar.className).toContain("w-full");
     expect(searchBar.className).toContain("border-b");
+    expect(searchBar.className).toContain(
+      "bg-[var(--property-search-background)]",
+    );
+    expect(searchBar.className).not.toContain("bg-background");
     expect(searchBar.className).not.toContain("rounded");
     expect(searchBar.parentElement?.firstElementChild).toBe(searchBar);
     expect(searchInner.className).toContain("mx-auto");
@@ -314,6 +320,37 @@ describe("public property booking integration", () => {
     expect(screen.queryByRole("heading", { name: "انتخاب‌های شما" })).toBeNull();
     expect(screen.queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
+  });
+
+  it("defines a property search surface for every color theme and appearance", () => {
+    const css = readFileSync(resolve(process.cwd(), "app/globals.css"), "utf8");
+    const panelSource = readFileSync(
+      resolve(process.cwd(), "components/booking/PropertyBookingPanel.tsx"),
+      "utf8",
+    );
+    const expectedTokens = [
+      [':root[data-theme="ocean"]', "#20274d"],
+      [':root[data-theme="forest"]', "#183d2a"],
+      [':root[data-theme="royal"]', "#37254f"],
+      [':root[data-theme="sunset"]', "#4a2d24"],
+      [':root.dark[data-theme="ocean"]', "#53608a"],
+      [':root.dark[data-theme="forest"]', "#426d53"],
+      [':root.dark[data-theme="royal"]', "#6e5883"],
+      [':root.dark[data-theme="sunset"]', "#7b5848"],
+    ] as const;
+
+    for (const [selector, value] of expectedTokens) {
+      const escapedSelector = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      expect(css).toMatch(
+        new RegExp(
+          `${escapedSelector}\\s*\\{[^}]*--property-search-background:\\s*${value};`,
+          "i",
+        ),
+      );
+    }
+
+    expect(panelSource).not.toMatch(/theme\s*===|data-theme|kooch_theme/);
+    expect(panelSource).not.toMatch(/#20274d|rgb\(32\s*,?\s*39\s*,?\s*77\)/i);
   });
 
   it("contains the wide nearby-places table inside its own mobile scroller", async () => {

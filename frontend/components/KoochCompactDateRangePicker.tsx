@@ -50,6 +50,7 @@ export function KoochCompactDateRangePicker({
         }}
         maxDate={maxDate}
         minDate={minDate}
+        loadHolidayData
         onChange={onChange}
         placeholderEnd="تاریخ خروج"
         placeholderStart="تاریخ ورود"

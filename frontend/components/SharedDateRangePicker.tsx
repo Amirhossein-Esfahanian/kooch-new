@@ -78,7 +78,9 @@ export interface SharedDateRangePickerProps {
   autoCommit?: boolean;
   /** Keep the existing footer actions by default. */
   showFooterActions?: boolean;
-  /** Keep holiday occasion details and data loading by default. */
+  /** Load holiday metadata for day classification, styling, and labels. */
+  loadHolidayData?: boolean;
+  /** Show holiday occasion details in the picker footer. */
   showOccasions?: boolean;
   /** Calendar density. The normal value preserves the existing layout. */
   daySpacing?: CalendarDaySpacing;
@@ -270,6 +272,7 @@ export function SharedDateRangePicker({
   combinedField = false,
   autoCommit = false,
   showFooterActions = true,
+  loadHolidayData = true,
   showOccasions = true,
   daySpacing = "normal",
   fieldSize = "standard",
@@ -303,7 +306,7 @@ export function SharedDateRangePicker({
     visibleMonth,
     calendarType: activeCalendar,
     includeResponsiveSecondMonth: true,
-    enabled: isOpen && showOccasions,
+    enabled: isOpen && loadHolidayData,
   });
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);

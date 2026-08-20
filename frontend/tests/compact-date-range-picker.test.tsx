@@ -10,6 +10,7 @@ import {
   SharedDateRangePicker,
   type SharedDateRangeValue,
 } from "@/components/SharedDateRangePicker";
+import type { HolidayCalendarDay } from "@/lib/holiday-calendar";
 
 const committedRange: SharedDateRangeValue = {
   startDate: "2026-03-21",
@@ -22,6 +23,42 @@ function findDay(date: string) {
   );
   expect(day).not.toBeNull();
   return day!;
+}
+
+function installHolidayFetch(days: readonly HolidayCalendarDay[]) {
+  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    const url = new URL(String(input), "http://localhost");
+    return new Response(
+      JSON.stringify({
+        from: url.searchParams.get("from"),
+        to: url.searchParams.get("to"),
+        isRangeFullyCovered: true,
+        coveredSolarYearFrom: 1405,
+        coveredSolarYearTo: 1407,
+        lastSuccessfulSyncAtUtc: "2026-07-28T06:00:00Z",
+        days,
+      }),
+      { status: 200, headers: { "Content-Type": "application/json" } },
+    );
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function officialHoliday(
+  date: string,
+  occasionTitles: readonly string[],
+): HolidayCalendarDay {
+  return {
+    date,
+    solarYear: 1405,
+    solarMonth: 1,
+    solarDay: Number(date.slice(-2)),
+    isHoliday: true,
+    isWeeklyHoliday: false,
+    isOfficialHoliday: true,
+    occasionTitles,
+  };
 }
 
 function ControlledPicker({
@@ -221,20 +258,46 @@ describe("KoochCompactDateRangePicker", () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger));
   });
 
-  it("omits footer actions and occasion loading from the compact picker", () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
+  it("loads holiday styling without rendering occasion details", async () => {
+    const fetchMock = installHolidayFetch([
+      officialHoliday("2026-03-21", ["Nowruz occasion"]),
+    ]);
     render(<ControlledPicker daySpacing="compact" />);
     fireEvent.click(screen.getByRole("button", { name: /تاریخ ورود/ }));
+
+    const holiday = findDay("2026-03-21");
+    await waitFor(() => expect(holiday.dataset.holidayKind).toBe("official"));
 
     expect(document.querySelector("[data-picker-footer]")).toBeNull();
     expect(screen.queryByRole("button", { name: "تایید" })).toBeNull();
     expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
     expect(document.querySelector("[data-holiday-details]")).toBeNull();
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(document.body.textContent).not.toContain("Nowruz occasion");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(holiday.dataset.holidayKind).toBe("official");
+    expect(holiday.className).toContain("bg-[var(--theme-primary)]");
+    expect(holiday.className).not.toContain("text-destructive");
     expect(document.querySelector("[data-calendar-day-spacing]")?.getAttribute(
       "data-calendar-day-spacing",
     )).toBe("compact");
+  });
+
+  it("uses the existing holiday class only for an unselected holiday", async () => {
+    installHolidayFetch([
+      officialHoliday("2026-03-24", ["Second holiday"]),
+    ]);
+    render(<ControlledPicker />);
+    fireEvent.click(screen.getByRole("button", { name: /تاریخ ورود/ }));
+
+    const holiday = findDay("2026-03-24");
+    await waitFor(() => expect(holiday.dataset.holidayKind).toBe("official"));
+    const regularDay = findDay("2026-03-25");
+
+    expect(holiday.className).toContain("text-destructive");
+    expect(holiday.className).toContain("hover:bg-[var(--destructive-soft)]");
+    expect(regularDay.dataset.holiday).toBeUndefined();
+    expect(regularDay.className).not.toContain("text-destructive");
+    expect(document.body.textContent).not.toContain("Second holiday");
   });
 
   it("preserves default spacing, footer actions, and confirmation in the regular picker", () => {
