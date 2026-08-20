@@ -17,6 +17,8 @@ import { useHolidayCalendarMonths } from "@/hooks/useHolidayCalendarMonths";
 dayjs.extend(jalaliday);
 
 export type CalendarType = "jalali" | "gregorian";
+export type CalendarDaySpacing = "compact" | "normal" | "comfortable";
+export type DateRangeFieldSize = "standard" | "compact";
 
 export type SharedDateRangeValue = {
   startDate: string | null;
@@ -70,6 +72,18 @@ export interface SharedDateRangePickerProps {
   controlClassName?: string;
   /** Open the calendar panel inside KoochDialog instead of the inline popover. */
   openOnDialog?: boolean;
+  /** @internal Render a single two-part range control. */
+  combinedField?: boolean;
+  /** @internal Commit and close as soon as the second date is selected. */
+  autoCommit?: boolean;
+  /** Keep the existing footer actions by default. */
+  showFooterActions?: boolean;
+  /** Keep holiday occasion details and data loading by default. */
+  showOccasions?: boolean;
+  /** Calendar density. The normal value preserves the existing layout. */
+  daySpacing?: CalendarDaySpacing;
+  /** @internal Size of the combined field presentation. */
+  fieldSize?: DateRangeFieldSize;
 }
 
 type ActiveField = "startDate" | "endDate";
@@ -135,6 +149,34 @@ function displayDate(
     asCalendar(dayjs(isoDate), calendarType).format(
       calendarType === "jalali" ? "YYYY/MM/DD" : "YYYY-MM-DD",
     ),
+  );
+}
+
+function displayDateParts(
+  isoDate: string,
+  calendarType: CalendarType,
+) {
+  const date = asCalendar(dayjs(isoDate), calendarType);
+  const monthName = calendarType === "jalali"
+    ? jalaliMonths[date.month()]
+    : gregorianMonths[date.month()];
+
+  return {
+    date: `${toPersianDigits(date.format("D"))} ${monthName} ${toPersianDigits(date.format("YYYY"))}`,
+    weekday: dayjs(isoDate).locale("fa").format("dddd"),
+  };
+}
+
+function CalendarFieldIcon() {
+  return (
+    <span
+      aria-hidden="true"
+      className="h-5 w-5 shrink-0 bg-current"
+      style={{
+        WebkitMask: 'url("/svgs/calendar-check.svg") center / contain no-repeat',
+        mask: 'url("/svgs/calendar-check.svg") center / contain no-repeat',
+      }}
+    />
   );
 }
 
@@ -222,6 +264,12 @@ export function SharedDateRangePicker({
   dialogContentClassName = "",
   dialogBodyClassName = "",
   dialogFooterClassName = "",
+  combinedField = false,
+  autoCommit = false,
+  showFooterActions = true,
+  showOccasions = true,
+  daySpacing = "normal",
+  fieldSize = "standard",
 }: SharedDateRangePickerProps) {
   const text = {
     start: labels?.start ?? "تاریخ رفت",
@@ -243,6 +291,7 @@ export function SharedDateRangePicker({
   );
   const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const combinedTriggerRef = useRef<HTMLButtonElement>(null);
   const dateButtonBase =
     controlClassName ??
     "grid rounded-lg border border-border bg-background px-4 py-3 text-right text-foreground transition hover:bg-muted";
@@ -251,7 +300,7 @@ export function SharedDateRangePicker({
     visibleMonth,
     calendarType: activeCalendar,
     includeResponsiveSecondMonth: true,
-    enabled: isOpen,
+    enabled: isOpen && showOccasions,
   });
 
   useEffect(() => setActiveCalendar(calendarType), [calendarType]);
@@ -263,12 +312,31 @@ export function SharedDateRangePicker({
     if (openOnDialog) return;
 
     function onPointerDown(event: PointerEvent) {
-      if (!wrapperRef.current?.contains(event.target as Node))
+      if (!wrapperRef.current?.contains(event.target as Node)) {
+        setTempStartDate(value.startDate);
+        setTempEndDate(value.endDate);
         setActiveField(null);
+      }
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [openOnDialog]);
+  }, [openOnDialog, value.endDate, value.startDate]);
+
+  useEffect(() => {
+    if (!isOpen || openOnDialog) return;
+
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      setTempStartDate(value.startDate);
+      setTempEndDate(value.endDate);
+      setActiveField(null);
+      window.requestAnimationFrame(() => combinedTriggerRef.current?.focus());
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [isOpen, openOnDialog, value.endDate, value.startDate]);
 
   const months = useMemo(
     () => [
@@ -296,17 +364,99 @@ export function SharedDateRangePicker({
     const iso = toIso(date);
     const holiday = holidayByDate.get(iso);
     holidayDetails.selectHoliday(holiday);
+    let nextStartDate: string;
+    let nextEndDate: string | null;
+
     if (!tempStartDate || tempEndDate) {
-      setTempStartDate(iso);
-      setTempEndDate(null);
-      return;
+      nextStartDate = iso;
+      nextEndDate = null;
+    } else if (isBefore(iso, tempStartDate)) {
+      nextStartDate = iso;
+      nextEndDate = tempStartDate;
+    } else {
+      nextStartDate = tempStartDate;
+      nextEndDate = iso;
     }
-    if (isBefore(iso, tempStartDate)) {
-      setTempStartDate(iso);
-      setTempEndDate(tempStartDate);
-      return;
+
+    setTempStartDate(nextStartDate);
+    setTempEndDate(nextEndDate);
+
+    if (autoCommit && nextEndDate) {
+      onChange({ startDate: nextStartDate, endDate: nextEndDate });
+      setActiveField(null);
+      window.requestAnimationFrame(() => combinedTriggerRef.current?.focus());
     }
-    setTempEndDate(iso);
+  }
+
+  function renderCombinedField() {
+    const start = value.startDate
+      ? displayDateParts(value.startDate, activeCalendar)
+      : null;
+    const end = value.endDate
+      ? displayDateParts(value.endDate, activeCalendar)
+      : null;
+    const compact = fieldSize === "compact";
+
+    return (
+      <button
+        ref={combinedTriggerRef}
+        aria-expanded={isOpen}
+        aria-haspopup="dialog"
+        aria-label={`${text.start}: ${start?.date ?? placeholderStart}، ${text.end}: ${end?.date ?? placeholderEnd}`}
+        className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-stretch rounded-lg border bg-background text-right text-foreground transition hover:border-[var(--theme-primary-border)] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${compact ? "min-h-12 px-3 py-1.5" : "min-h-16 px-4 py-2.5"} ${isOpen ? "border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary-border)]" : "border-border"}`}
+        data-combined-date-field="true"
+        data-field-size={fieldSize}
+        onClick={() => open("startDate")}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          event.preventDefault();
+          open("startDate");
+        }}
+        type="button"
+      >
+        <span className={`flex min-w-0 items-center ${compact ? "gap-2" : "gap-3"}`}>
+          <CalendarFieldIcon />
+          <span className={`grid min-w-0 ${compact ? "gap-0" : "gap-0.5"}`}>
+            {start ? (
+              <>
+                <span className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5`} data-date-primary="start">
+                  {start.date}
+                </span>
+                <span className="text-xs leading-4 text-muted-foreground" data-date-weekday="start">
+                  {start.weekday}
+                </span>
+              </>
+            ) : (
+              <span className={`${compact ? "text-xs" : "text-sm"} font-medium text-muted-foreground`}>
+                {placeholderStart}
+              </span>
+            )}
+          </span>
+        </span>
+
+        <span aria-hidden="true" className="my-1 w-px bg-border" data-date-divider="true" />
+
+        <span className={`flex min-w-0 items-center ${compact ? "gap-2 pe-3" : "gap-3 pe-4"}`}>
+          <CalendarFieldIcon />
+          <span className={`grid min-w-0 ${compact ? "gap-0" : "gap-0.5"}`}>
+            {end ? (
+              <>
+                <span className={`${compact ? "text-xs" : "text-sm"} font-semibold leading-5`} data-date-primary="end">
+                  {end.date}
+                </span>
+                <span className="text-xs leading-4 text-muted-foreground" data-date-weekday="end">
+                  {end.weekday}
+                </span>
+              </>
+            ) : (
+              <span className={`${compact ? "text-xs" : "text-sm"} font-medium text-muted-foreground`}>
+                {placeholderEnd}
+              </span>
+            )}
+          </span>
+        </span>
+      </button>
+    );
   }
 
   function renderDateButton(
@@ -348,10 +498,13 @@ export function SharedDateRangePicker({
       className={
         openOnDialog
           ? "text-card-foreground"
-          : "absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-2xl sm:w-[680px]"
+          : `absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl sm:w-[680px] ${daySpacing === "compact" ? "p-3" : daySpacing === "comfortable" ? "p-5" : "p-4"}`
       }
+      aria-label={combinedField ? toPersianDigits(text.rangeTitle) : undefined}
+      data-calendar-day-spacing={daySpacing}
+      role={combinedField ? "dialog" : undefined}
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className={`${daySpacing === "compact" ? "mb-3" : daySpacing === "comfortable" ? "mb-5" : "mb-4"} flex flex-wrap items-center justify-between gap-3`}>
         <div>
           {/* <p className="text-xs font-semibold text-muted-foreground">
                 مبدا · مقصد
@@ -383,7 +536,7 @@ export function SharedDateRangePicker({
         )}
       </div>
       <div
-        className="mb-4 grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3"
+        className={`${daySpacing === "compact" ? "mb-3" : daySpacing === "comfortable" ? "mb-5" : "mb-4"} grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3`}
         dir="rtl"
       >
         <button
@@ -401,7 +554,7 @@ export function SharedDateRangePicker({
           ‹
         </button>
 
-        <div className="grid min-w-0 gap-5 text-center sm:grid-cols-2">
+        <div className={`grid min-w-0 text-center sm:grid-cols-2 ${daySpacing === "compact" ? "gap-3" : daySpacing === "comfortable" ? "gap-7" : "gap-5"}`}>
           {months.map((month, monthIndex) => (
             <h3
               className={`truncate text-base font-bold text-foreground ${
@@ -429,7 +582,7 @@ export function SharedDateRangePicker({
           ›
         </button>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2">
+      <div className={`grid sm:grid-cols-2 ${daySpacing === "compact" ? "gap-3" : daySpacing === "comfortable" ? "gap-7" : "gap-5"}`}>
         {months.map((month, monthIndex) => (
           <section
             className={monthIndex === 1 ? "hidden sm:block" : ""}
@@ -442,7 +595,7 @@ export function SharedDateRangePicker({
                 </span>
               ))}
             </div>
-            <div className="mt-1 grid grid-cols-7">
+            <div className={`${daySpacing === "compact" ? "mt-0" : daySpacing === "comfortable" ? "mt-2 gap-y-1" : "mt-1"} grid grid-cols-7`}>
               {buildMonthDays(month, activeCalendar).map((date, index) => {
                 if (!date)
                   return <span className="h-10" key={`empty-${index}`} />;
@@ -502,15 +655,16 @@ export function SharedDateRangePicker({
           </section>
         ))}
       </div>
-      <div
-        className="mt-5 border-t border-border pt-3"
-        data-picker-footer="true"
-      >
+      {showFooterActions && (
+        <div
+          className="mt-5 border-t border-border pt-3"
+          data-picker-footer="true"
+        >
         <div
           className="sm:hidden"
           data-mobile-holiday-details-row="true"
         >
-          <HolidayCalendarDetails titles={holidayDetails.titles} />
+          {showOccasions && <HolidayCalendarDetails titles={holidayDetails.titles} />}
         </div>
         <div
           className="grid min-h-12 w-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3 sm:grid-cols-[minmax(max-content,1fr)_minmax(220px,360px)_minmax(max-content,1fr)]"
@@ -558,7 +712,7 @@ export function SharedDateRangePicker({
             className="col-start-2 hidden min-w-0 justify-self-stretch sm:block"
             data-desktop-holiday-details="true"
           >
-            <HolidayCalendarDetails titles={holidayDetails.titles} />
+            {showOccasions && <HolidayCalendarDetails titles={holidayDetails.titles} />}
           </div>
 
           <button
@@ -574,21 +728,24 @@ export function SharedDateRangePicker({
             {toPersianDigits(text.today)}
           </button>
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 
   return (
     <div className="relative" ref={wrapperRef} dir="rtl">
-      <div className="grid gap-3 sm:grid-cols-2">
-        {renderDateButton(
-          "startDate",
-          text.start,
-          value.startDate,
-          placeholderStart,
-        )}
-        {renderDateButton("endDate", text.end, value.endDate, placeholderEnd)}
-      </div>
+      {combinedField ? renderCombinedField() : (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {renderDateButton(
+            "startDate",
+            text.start,
+            value.startDate,
+            placeholderStart,
+          )}
+          {renderDateButton("endDate", text.end, value.endDate, placeholderEnd)}
+        </div>
+      )}
       {isOpen && !openOnDialog && pickerPanel}
       {openOnDialog && (
         <KoochDialog
@@ -596,7 +753,11 @@ export function SharedDateRangePicker({
           footerClassName={dialogFooterClassName}
           bodyClassName={`px-4 py-4 sm:px-6 ${dialogBodyClassName}`}
           onOpenChange={(nextOpen) => {
-            if (!nextOpen) setActiveField(null);
+            if (!nextOpen) {
+              setTempStartDate(value.startDate);
+              setTempEndDate(value.endDate);
+              setActiveField(null);
+            }
           }}
           open={isOpen}
           size="md"

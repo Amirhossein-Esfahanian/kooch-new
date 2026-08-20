@@ -26,6 +26,27 @@ const workspaceLabels: Record<AuthWorkspace, string> = {
   account: "حساب کاربری",
 };
 
+export function shouldShowDevelopmentNavigation(environment: string | undefined) {
+  return environment === "development";
+}
+
+export function DevelopmentDatePickerNavigation({
+  environment = process.env.NODE_ENV,
+}: {
+  environment?: string;
+}) {
+  if (!shouldShowDevelopmentNavigation(environment)) return null;
+
+  return (
+    <Link
+      className="rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+      href="/dev/date-picker-test"
+    >
+      تست تقویم
+    </Link>
+  );
+}
+
 export function Header() {
   const pathname = usePathname();
   const { authenticated: isLoggedIn, workspaces } = useAuthSession();
@@ -92,6 +113,7 @@ export function Header() {
           >
             اقامتگاه‌ها
           </Link>
+          <DevelopmentDatePickerNavigation />
           <Link
             className="hidden rounded-xl px-3 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 sm:block"
             href="/owner/properties/new"
