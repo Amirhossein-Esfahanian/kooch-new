@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KoochGuestAuthDialog } from "@/components/auth/KoochGuestAuthDialog";
 import {
   type AuthWorkspace,
@@ -48,6 +48,7 @@ export function DevelopmentDatePickerNavigation({
 }
 
 export function Header() {
+  const headerRef = useRef<HTMLElement>(null);
   const pathname = usePathname();
   const { authenticated: isLoggedIn, workspaces } = useAuthSession();
   const [settings, setSettings] =
@@ -70,11 +71,37 @@ export function Header() {
       .catch(() => setSettings(defaultSiteSettings));
   }, []);
 
+  useEffect(() => {
+    const header = headerRef.current;
+    if (!header) return;
+
+    const publishHeight = () => {
+      document.documentElement.style.setProperty(
+        "--header-height",
+        `${header.getBoundingClientRect().height}px`,
+      );
+    };
+
+    publishHeight();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(publishHeight);
+    observer?.observe(header);
+    return () => {
+      observer?.disconnect();
+      document.documentElement.style.removeProperty("--header-height");
+    };
+  }, []);
+
   const siteName = settingValue(settings, "site.name");
   const logoUrl = settingValue(settings, "site.logoUrl");
   const [loginOpen, setLoginOpen] = useState(false);
   return (
-    <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md">
+    <header
+      ref={headerRef}
+      className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur-md"
+    >
       <div className="mx-auto flex min-h-16 max-w-7xl flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
         <div className="flex items-center gap-3">
           <Link

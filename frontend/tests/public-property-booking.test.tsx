@@ -288,7 +288,8 @@ describe("public property booking integration", () => {
     const roomSection = document.getElementById("property-rooms")!;
     expect(datePicker).toBeTruthy();
     expect(searchBar.className).toContain("sticky");
-    expect(searchBar.className).toContain("top-16");
+    expect(searchBar.className).toContain("top-[var(--header-height)]");
+    expect(searchBar.className).not.toContain("top-16");
     expect(searchBar.className).toContain("z-40");
     expect(searchBar.className).toContain("w-full");
     expect(searchBar.className).toContain("border-b");

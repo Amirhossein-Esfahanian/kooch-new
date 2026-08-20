@@ -87,6 +87,8 @@
   --input-radius: 12px;
   --button-radius: 12px;
   --modal-radius: 20px;
+  /* Hydration fallback; Header publishes its rendered height at runtime. */
+  --header-height: 65px;
   --shadow-subtle: 0 14px 40px rgb(15 23 42 / 0.08);
   --font-kooch: var(--font-iran-yekan), sans-serif;
 }

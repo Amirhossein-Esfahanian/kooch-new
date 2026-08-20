@@ -31,6 +31,7 @@ import {
   type PublicBookingRoomTypeOption,
 } from "@/lib/booking-sessions";
 import type { PublicRoomType } from "@/lib/public-properties";
+import { KoochSvgIcon } from "../KoochSvgIcon";
 
 type DateRange = { startDate: string | null; endDate: string | null };
 type PropertyBookingPanelSlots = {
@@ -253,7 +254,7 @@ function PropertyBookingPanelContent({
   const searchBar = (
     <>
       <div
-        className="sticky top-16 z-40 w-full border-b border-border bg-[var(--property-search-background)] shadow-sm"
+        className="sticky top-[var(--header-height)] z-40 w-full border-b border-border bg-[var(--property-search-background)] shadow-sm"
         data-testid="property-search-bar"
       >
         <div
@@ -276,6 +277,7 @@ function PropertyBookingPanelContent({
                 className="flex h-12 min-w-0 items-center rounded-lg border border-border bg-muted px-3 text-sm font-semibold text-foreground"
                 data-testid="property-search-context"
               >
+                <KoochSvgIcon src="/svgs/search-3.svg" size="lg" />
                 <span className="truncate">{propertyName}</span>
               </div>
             </div>
@@ -299,6 +301,7 @@ function PropertyBookingPanelContent({
               className="col-span-1 gap-1.5"
               controlClassName="h-12 w-full rounded-lg border border-border bg-background px-3 text-right text-xs text-foreground"
               label=""
+              icon={<KoochSvgIcon src="/svgs/users-2.svg" size="lg" />}
               onChange={onGuestsChange}
               value={guests}
             />
