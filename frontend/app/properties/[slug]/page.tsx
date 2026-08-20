@@ -5,7 +5,10 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import type { GuestSelectorValue } from "@/components/GuestSelector";
-import { PropertyBookingPanel } from "@/components/booking/PropertyBookingPanel";
+import {
+  PropertyBookingPanel,
+  propertyRoomsAnchorId,
+} from "@/components/booking/PropertyBookingPanel";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
@@ -189,7 +192,20 @@ export default function PublicPropertyPage() {
     : "/properties";
 
   return (
-    <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
+    <PropertyBookingPanel
+      dates={bookingDates}
+      galleryFallback={gallery[0].url}
+      guests={bookingGuests}
+      onDatesChange={setBookingDates}
+      onGuestsChange={setBookingGuests}
+      onShowRoomDetails={setDetailsRoomType}
+      propertyId={property.id}
+      propertyName={property.name}
+      propertySlug={property.slug}
+      roomTypes={property.roomTypes}
+    >
+      {({ searchBar, roomSelection }) => (
+      <div className="bg-slate-50 px-5 py-8 text-slate-900 sm:px-8" dir="rtl">
       <div className="mx-auto max-w-7xl">
         <Link className="text-sm font-bold text-blue-700" href={resultsHref}>
           بازگشت به نتایج جست‌وجو
@@ -218,6 +234,8 @@ export default function PublicPropertyPage() {
             </p>
           </div>
         </header>
+
+        {searchBar}
 
         <PromotionCards
           className="mt-6"
@@ -394,22 +412,15 @@ export default function PublicPropertyPage() {
               )}
             </section>
 
-            <section aria-labelledby="property-rooms-title">
+            <section
+              aria-labelledby="property-rooms-title"
+              className="scroll-mt-80 sm:scroll-mt-60 xl:scroll-mt-44"
+              id={propertyRoomsAnchorId}
+            >
               <h2 className="text-2xl font-black" id="property-rooms-title">اتاق‌ها</h2>
               <div className="mt-5">
                 {property.roomTypes.length ? (
-                  <PropertyBookingPanel
-                    dates={bookingDates}
-                    galleryFallback={gallery[0].url}
-                    guests={bookingGuests}
-                    onDatesChange={setBookingDates}
-                    onGuestsChange={setBookingGuests}
-                    onShowRoomDetails={setDetailsRoomType}
-                    propertyId={property.id}
-                    propertyName={property.name}
-                    propertySlug={property.slug}
-                    roomTypes={property.roomTypes}
-                  />
+                  roomSelection
                 ) : (
                   <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>
                 )}
@@ -476,6 +487,8 @@ export default function PublicPropertyPage() {
         roomType={detailsRoomType}
       />
     </div>
+      )}
+    </PropertyBookingPanel>
   );
 }
 

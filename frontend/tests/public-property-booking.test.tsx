@@ -5,9 +5,13 @@ const api = vi.hoisted(() => ({
   fetchProperty: vi.fn(),
   fetchOptions: vi.fn(),
 }));
-const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+const navigation = vi.hoisted(() => ({
+  push: vi.fn(),
+  replace: vi.fn(),
+  scrollIntoView: vi.fn(),
+}));
 
-const searchParams = new URLSearchParams({
+let searchParams = new URLSearchParams({
   checkIn: "2030-08-10",
   checkOut: "2030-08-12",
   adults: "2",
@@ -23,10 +27,36 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({ authenticated: false, loading: false }),
 }));
-vi.mock("@/components/KoochDatePicker", () => ({
-  KoochDatePicker: ({ onChange }: { onChange: (value: { startDate: string; endDate: string }) => void }) => (
-    <div data-testid="booking-date-picker">
+vi.mock("@/components/KoochCompactDateRangePicker", () => ({
+  KoochCompactDateRangePicker: ({
+    calendarType,
+    daySpacing,
+    disablePastDates,
+    fieldSize,
+    onChange,
+    value,
+  }: {
+    calendarType: string;
+    daySpacing: string;
+    disablePastDates: boolean;
+    fieldSize: string;
+    onChange: (value: { startDate: string | null; endDate: string | null }) => void;
+    value: { startDate: string | null; endDate: string | null };
+  }) => (
+    <div
+      data-calendar-type={calendarType}
+      data-day-spacing={daySpacing}
+      data-disable-past-dates={String(disablePastDates)}
+      data-field-size={fieldSize}
+      data-testid="booking-date-picker"
+    >
       انتخاب تاریخ اقامت
+      <output data-testid="booking-date-value">
+        {value.startDate ?? ""}|{value.endDate ?? ""}
+      </output>
+      <button type="button" onClick={() => onChange({ startDate: "2030-08-20", endDate: null })}>
+        انتخاب فقط ورود آزمایشی
+      </button>
       <button type="button" onClick={() => onChange({ startDate: "2030-08-20", endDate: "2030-08-22" })}>
         تغییر تاریخ آزمایشی
       </button>
@@ -37,8 +67,20 @@ vi.mock("@/components/KoochDatePicker", () => ({
   ),
 }));
 vi.mock("@/components/GuestSelector", () => ({
-  GuestSelector: ({ onChange }: { onChange: (value: { adults: number; children: number; childAges: number[]; rooms: number }) => void }) => (
-    <div data-testid="booking-guest-selector">
+  GuestSelector: ({
+    className,
+    controlClassName,
+    onChange,
+  }: {
+    className?: string;
+    controlClassName?: string;
+    onChange: (value: { adults: number; children: number; childAges: number[]; rooms: number }) => void;
+  }) => (
+    <div
+      className={className}
+      data-control-class={controlClassName}
+      data-testid="booking-guest-selector"
+    >
       انتخاب مهمان و تعداد اتاق
       <button type="button" onClick={() => onChange({ adults: 3, children: 0, childAges: [], rooms: 1 })}>
         تغییر مهمانان آزمایشی
@@ -216,6 +258,16 @@ describe("public property booking integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    searchParams = new URLSearchParams({
+      checkIn: "2030-08-10",
+      checkOut: "2030-08-12",
+      adults: "2",
+      rooms: "1",
+    });
+    Object.defineProperty(Element.prototype, "scrollIntoView", {
+      configurable: true,
+      value: navigation.scrollIntoView,
+    });
     api.fetchProperty.mockResolvedValue(property);
     api.fetchOptions.mockResolvedValue(availableOptions);
   });
@@ -226,14 +278,85 @@ describe("public property booking integration", () => {
     const roomList = await screen.findByRole("list", { name: "نوع‌های اتاق" });
     expect(screen.queryByText("رزرو در نسخه بعدی فعال می‌شود")).toBeNull();
     const datePicker = screen.getByTestId("booking-date-picker");
+    const searchBar = screen.getByTestId("property-search-bar");
+    const searchForm = screen.getByRole("form", {
+      name: "جستجوی موجودی این اقامتگاه",
+    });
+    const roomSection = document.getElementById("property-rooms")!;
     expect(datePicker).toBeTruthy();
+    expect(searchBar.className).toContain("sticky");
+    expect(searchBar.className).toContain("top-16");
+    expect(screen.getAllByRole("form", {
+      name: "جستجوی موجودی این اقامتگاه",
+    })).toHaveLength(1);
+    expect(within(searchForm).getByText(property.name)).toBeTruthy();
     expect(screen.getByTestId("booking-guest-selector")).toBeTruthy();
     expect(screen.getByRole("button", { name: "بررسی موجودی" })).toBeTruthy();
     expect(datePicker.compareDocumentPosition(roomList) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(roomSection.className).toContain("scroll-mt-80");
+    expect(within(roomSection).queryByTestId("booking-date-picker")).toBeNull();
+    expect(within(roomSection).queryByTestId("booking-guest-selector")).toBeNull();
+    expect(within(roomSection).queryByRole("button", { name: "بررسی موجودی" })).toBeNull();
     expect(within(roomList).getAllByRole("listitem")).toHaveLength(1);
     expect(screen.queryByRole("heading", { name: "انتخاب‌های شما" })).toBeNull();
     expect(screen.queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
     expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
+  });
+
+  it("uses the compact committed range without triggering availability automatically", async () => {
+    render(<PublicPropertyPage />);
+
+    const datePicker = await screen.findByTestId("booking-date-picker");
+    const controls = screen.getByTestId("room-availability-controls");
+    expect(datePicker.dataset.calendarType).toBe("jalali");
+    expect(datePicker.dataset.daySpacing).toBe("compact");
+    expect(datePicker.dataset.fieldSize).toBe("compact");
+    expect(datePicker.dataset.disablePastDates).toBe("true");
+    expect(controls.className).toContain("grid");
+    expect(controls.className).toContain("grid-cols-2");
+    expect(controls.className).toContain("xl:grid-cols-[minmax(180px,0.8fr)_minmax(320px,1.5fr)_minmax(240px,1fr)_auto]");
+    expect(screen.getByTestId("property-search-context").className).toContain("h-12");
+    expect(screen.getByTestId("booking-guest-selector").dataset.controlClass).toContain("h-12");
+    expect(screen.getByRole("button", { name: "بررسی موجودی" }).className).toContain("h-12");
+    expect(screen.queryByText("انتخاب ورود")).toBeNull();
+    expect(screen.queryByText("انتخاب خروج")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "انتخاب فقط ورود آزمایشی" }));
+    expect(screen.getByTestId("booking-date-value").textContent)
+      .toBe("2030-08-10|2030-08-12");
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+    expect(navigation.scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    expect(screen.getByTestId("booking-date-value").textContent)
+      .toBe("2030-08-20|2030-08-22");
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+    expect(navigation.scrollIntoView).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    await waitFor(() => expect(api.fetchOptions).toHaveBeenCalledWith(
+      "kashan-house",
+      expect.objectContaining({
+        checkIn: "2030-08-20",
+        checkOut: "2030-08-22",
+      }),
+    ));
+    expect(navigation.scrollIntoView).toHaveBeenCalledWith({
+      behavior: "smooth",
+      block: "start",
+    });
+  });
+
+  it("does not scroll when committed search inputs are invalid", async () => {
+    searchParams.delete("checkIn");
+    searchParams.delete("checkOut");
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText("تاریخ ورود و خروج را انتخاب کنید.")).toBeTruthy();
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+    expect(navigation.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("uses an accessible multi-unit stepper and keeps the mobile action bar", async () => {
@@ -517,6 +640,7 @@ describe("public property booking integration", () => {
 
     expect(await screen.findByText("ارتباط با سرویس موجودی برقرار نشد.")).toBeTruthy();
     expect(screen.queryByText(changedStayHint)).toBeNull();
+    expect(navigation.scrollIntoView).not.toHaveBeenCalled();
   });
 
   it("removes the hint after searching the original cart context again", async () => {
