@@ -168,10 +168,7 @@ function displayDateParts(isoDate: string, calendarType: CalendarType) {
 }
 
 function CalendarFieldIcon({ type }: { type: "in" | "out" }) {
-  const icon =
-    type === "in"
-      ? "/svgs/calendar-arrow-down.svg"
-      : "/svgs/calendar-arrow-up.svg";
+  const icon = type === "in" ? "/svgs/calin.svg" : "/svgs/calout.svg";
 
   return (
     <span

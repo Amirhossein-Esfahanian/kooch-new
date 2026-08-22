@@ -301,7 +301,7 @@ function PropertyBookingPanelContent({
               className="col-span-1 gap-1.5"
               controlClassName="h-12 w-full rounded-lg border border-border bg-background px-3 text-right text-xs text-foreground"
               label=""
-              icon={<KoochSvgIcon src="/svgs/users-2.svg" size="lg" />}
+              icon={<KoochSvgIcon src="/svgs/users-3.svg" size="lg" />}
               onChange={onGuestsChange}
               value={guests}
             />
