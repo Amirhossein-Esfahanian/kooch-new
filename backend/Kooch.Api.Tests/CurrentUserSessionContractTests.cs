@@ -7,6 +7,7 @@ using Kooch.Api.Dtos.Auth;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -191,6 +192,105 @@ public sealed class CurrentUserSessionContractTests
         var response = Assert.IsType<CurrentUserResponse>(ok.Value);
         Assert.Equal(UserRole.Client, response.PlatformRole);
         Assert.Equal([WorkspaceNames.Account], response.Workspaces);
+    }
+
+    [Fact]
+    public async Task UpdateProfile_UpdatesOnlyCurrentUserAndPreservesAccountIdentityAndAccess()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var original = await dbContext.Users.AsNoTracking().SingleAsync(user => user.Id == 5);
+        var controller = new AuthController(CreateService(dbContext))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.NameIdentifier, "5")],
+                        "Test"))
+                }
+            }
+        };
+
+        var result = await controller.UpdateProfile(
+            new UpdateCurrentUserProfileRequest
+            {
+                FirstName = "  Updated  ",
+                LastName = "  Client  "
+            },
+            CancellationToken.None);
+
+        var ok = Assert.IsType<OkObjectResult>(result.Result);
+        var response = Assert.IsType<CurrentUserResponse>(ok.Value);
+        Assert.Equal("Updated", response.FirstName);
+        Assert.Equal("Client", response.LastName);
+        Assert.Equal(original.PhoneNumber, response.PhoneNumber);
+        Assert.Equal(original.Email, response.Email);
+        Assert.Equal(original.Role, response.PlatformRole);
+        Assert.Equal([WorkspaceNames.Account], response.Workspaces);
+
+        var updated = await dbContext.Users.AsNoTracking().SingleAsync(user => user.Id == 5);
+        Assert.Equal(original.PhoneNumber, updated.PhoneNumber);
+        Assert.Equal(original.Email, updated.Email);
+        Assert.Equal(original.PasswordHash, updated.PasswordHash);
+        Assert.Equal(original.Role, updated.Role);
+        Assert.Equal(original.IsActive, updated.IsActive);
+        var otherUser = await dbContext.Users.AsNoTracking().SingleAsync(user => user.Id == 4);
+        Assert.Equal("property", otherUser.FirstName);
+        Assert.Equal("assistant", otherUser.LastName);
+    }
+
+    [Theory]
+    [InlineData("", "Client")]
+    [InlineData("Updated", "   ")]
+    public async Task UpdateProfile_RejectsMissingRequiredNames(string firstName, string lastName)
+    {
+        await using var dbContext = await CreateContextAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService(dbContext).UpdateCurrentUserProfileAsync(
+                5,
+                new UpdateCurrentUserProfileRequest
+                {
+                    FirstName = firstName,
+                    LastName = lastName
+                }));
+    }
+
+    [Fact]
+    public async Task UpdateProfile_WithoutAuthenticatedUserIsRejected()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var controller = new AuthController(CreateService(dbContext))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.UpdateProfile(
+            new UpdateCurrentUserProfileRequest
+            {
+                FirstName = "Updated",
+                LastName = "Client"
+            },
+            CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
+    }
+
+    [Fact]
+    public void UpdateProfile_IsAuthenticatedPatchAndCannotAcceptAUserId()
+    {
+        var method = typeof(AuthController).GetMethod(nameof(AuthController.UpdateProfile));
+
+        Assert.NotNull(method);
+        Assert.NotNull(method.GetCustomAttributes(typeof(AuthorizeAttribute), true).SingleOrDefault());
+        var patch = Assert.IsType<HttpPatchAttribute>(
+            method.GetCustomAttributes(typeof(HttpPatchAttribute), true).Single());
+        Assert.Equal("me/profile", patch.Template);
+        Assert.Null(typeof(UpdateCurrentUserProfileRequest).GetProperty("UserId"));
     }
 
     private static AuthService CreateService(KoochDbContext dbContext) => new(

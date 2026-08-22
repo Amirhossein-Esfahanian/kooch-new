@@ -192,6 +192,86 @@ public sealed class RoomKindRoomTypeTests
         Assert.Equal(InventoryMode.TypeBasedInventory, updated.InventoryMode);
     }
 
+    [Theory]
+    [InlineData(2, 0)]
+    [InlineData(10, 1)]
+    public async Task UpdateLegacyActiveRoomType_AllowsNumericInventoryBeyondPhysicalRoomCount(
+        int totalInventory,
+        int physicalRoomCount)
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var roomType = new RoomType
+        {
+            PropertyId = 10,
+            Name = "Legacy named room type",
+            Slug = "legacy-named-room-type",
+            Description = "Legacy room type created before completion checks.",
+            MaxAdults = 2,
+            MaxChildren = 0,
+            TotalInventory = 1,
+            InventoryMode = InventoryMode.NamedRooms,
+            RoomKind = RoomKind.Double,
+            IsActive = true
+        };
+        context.RoomTypes.Add(roomType);
+        for (var index = 0; index < physicalRoomCount; index++)
+        {
+            roomType.Rooms.Add(new Room
+            {
+                Name = $"Physical room {index + 1}",
+                IsActive = true
+            });
+        }
+        await context.SaveChangesAsync();
+        var service = new RoomTypeService(
+            context,
+            new PropertyAccessService(context),
+            new NoOpAuditLogService());
+        var request = ValidUpdateRequest(RoomKind.Double);
+        request.TotalInventory = totalInventory;
+        request.IsActive = true;
+
+        var updated = await service.UpdateRoomTypeAsync(
+            1,
+            UserRole.SuperAdmin,
+            roomType.Id,
+            request);
+
+        Assert.Equal(totalInventory, updated.TotalInventory);
+        Assert.Equal(InventoryMode.TypeBasedInventory, updated.InventoryMode);
+        Assert.Equal(physicalRoomCount, await context.Rooms.CountAsync());
+    }
+
+    [Fact]
+    public async Task UpdateInactiveRoomType_StillRequiresCompletionBeforeActivation()
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var service = new RoomTypeService(
+            context,
+            new PropertyAccessService(context),
+            new NoOpAuditLogService());
+        var created = await service.CreateRoomTypeAsync(
+            1,
+            UserRole.SuperAdmin,
+            10,
+            ValidCreateRequest(RoomKind.Double));
+        var request = ValidUpdateRequest(RoomKind.Double);
+        request.TotalInventory = 10;
+        request.IsActive = true;
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.UpdateRoomTypeAsync(
+                1,
+                UserRole.SuperAdmin,
+                created.Id,
+                request));
+
+        Assert.Contains("Room cannot be activated", exception.Message);
+        Assert.False((await context.RoomTypes.SingleAsync()).IsActive);
+    }
+
     [Fact]
     public async Task UpdateWithoutBasePrice_PreservesTheLegacyCompatibilityValue()
     {

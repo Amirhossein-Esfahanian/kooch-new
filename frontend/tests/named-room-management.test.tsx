@@ -254,8 +254,8 @@ describe("unified owner sellable room type management", () => {
     expect(await screen.findByText("دابل دلوکس")).toBeTruthy();
   });
 
-  it("edits the existing sellable RoomType rather than creating an internal template", async () => {
-    arrangeApi([zanbagh]);
+  it("updates a legacy RoomType from one to multiple sellable units without legacy validation", async () => {
+    arrangeApi([{ ...zanbagh, totalInventory: 1 }]);
     render(<RoomManagement propertyId={3} />);
     fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
     const dialog = await screen.findByRole("dialog");
@@ -266,7 +266,29 @@ describe("unified owner sellable room type management", () => {
     expect(
       (within(dialog).getByLabelText(/تعداد واحد قابل فروش/) as HTMLInputElement)
         .value,
-    ).toBe("0");
+    ).toBe("1");
     expect(within(dialog).getByText("ویرایش نوع اتاق")).toBeTruthy();
+
+    fireEvent.change(within(dialog).getByLabelText(/تعداد واحد قابل فروش/), {
+      target: { value: "10" },
+    });
+    await saveFromWizard(dialog);
+
+    await waitFor(() => {
+      expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+        "/owner/room-types/4",
+        expect.objectContaining({ method: "PUT" }),
+      );
+    });
+    const call = ownerApi.apiRequest.mock.calls.find(
+      ([path, init]) => path === "/owner/room-types/4" && init?.method === "PUT",
+    );
+    expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+      name: "زنبق",
+      totalInventory: 10,
+    });
+    expect(notifications.error).not.toHaveBeenCalledWith(
+      "تعداد واحد قابل فروش نمی‌تواند منفی باشد.",
+    );
   });
 });

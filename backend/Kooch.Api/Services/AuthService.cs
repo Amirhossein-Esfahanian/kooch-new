@@ -464,6 +464,43 @@ public class AuthService(
         };
     }
 
+    public async Task<CurrentUserResponse?> UpdateCurrentUserProfileAsync(
+        int userId,
+        UpdateCurrentUserProfileRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        var firstName = NormalizeRequiredProfileName(request.FirstName, "First name");
+        var lastName = NormalizeRequiredProfileName(request.LastName, "Last name");
+        var user = await dbContext.Users
+            .SingleOrDefaultAsync(user => user.Id == userId && user.IsActive, cancellationToken);
+        if (user is null)
+        {
+            return null;
+        }
+
+        user.FirstName = firstName;
+        user.LastName = lastName;
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return await GetCurrentUserAsync(userId, cancellationToken);
+    }
+
+    private static string NormalizeRequiredProfileName(string? value, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            throw new ArgumentException($"{fieldName} is required.");
+        }
+
+        var normalized = UserIdentityNormalization.NormalizeName(value);
+        if (normalized.Length > 100)
+        {
+            throw new ArgumentException($"{fieldName} cannot exceed 100 characters.");
+        }
+
+        return normalized;
+    }
+
     private async Task<IReadOnlyList<PermissionKey>> ResolvePlatformPermissionsAsync(
         int userId,
         UserRole platformRole,

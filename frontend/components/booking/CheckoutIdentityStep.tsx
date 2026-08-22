@@ -57,6 +57,10 @@ export function CheckoutIdentityStep({
   const [sending, setSending] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [error, setError] = useState("");
+  const [profileFirstName, setProfileFirstName] = useState("");
+  const [profileLastName, setProfileLastName] = useState("");
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileError, setProfileError] = useState("");
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -66,6 +70,50 @@ export function CheckoutIdentityStep({
     }, 1_000);
     return () => window.clearInterval(timer);
   }, [cooldownSeconds]);
+
+  useEffect(() => {
+    if (!auth.authenticated || !auth.user) return;
+
+    setProfileFirstName(auth.user.firstName);
+    setProfileLastName(auth.user.lastName);
+    setProfileError("");
+  }, [auth.authenticated, auth.user]);
+
+  async function saveProfile(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (profileSaving) return;
+
+    if (!profileFirstName.trim() || !profileLastName.trim()) {
+      setProfileError("نام و نام خانوادگی را کامل وارد کنید.");
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileError("");
+    try {
+      await apiRequest("/auth/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify({
+          firstName: profileFirstName,
+          lastName: profileLastName,
+        }),
+      });
+      const session = await auth.refreshSession();
+      if (
+        !session ||
+        !hasCompleteCheckoutIdentity({ authenticated: true, user: session.user })
+      ) {
+        throw new Error("PROFILE_REFRESH_INCOMPLETE");
+      }
+
+      onAuthenticated();
+      toast.success("اطلاعات حساب تکمیل شد.");
+    } catch (caught) {
+      setProfileError(profileUpdateErrorMessage(caught));
+    } finally {
+      setProfileSaving(false);
+    }
+  }
 
   if (auth.loading) {
     return (
@@ -89,7 +137,14 @@ export function CheckoutIdentityStep({
           برای این شماره موبایل نیازی به دریافت دوباره کد تأیید نیست.
         </KoochAlert>
         <dl className="mt-6 grid gap-4 rounded-lg border border-border bg-background p-4 sm:grid-cols-2">
-          <IdentityValue label="نام و نام خانوادگی" value={auth.user.fullName} />
+          {complete ? (
+            <IdentityValue label="نام و نام خانوادگی" value={auth.user.fullName} />
+          ) : (
+            <>
+              <IdentityValue label="نام" value={auth.user.firstName.trim() || "تکمیل نشده"} />
+              <IdentityValue label="نام خانوادگی" value={auth.user.lastName.trim() || "تکمیل نشده"} />
+            </>
+          )}
           <IdentityValue
             dir="ltr"
             label="شماره موبایل"
@@ -100,9 +155,47 @@ export function CheckoutIdentityStep({
           ) : null}
         </dl>
         {!complete ? (
-          <KoochAlert className="mt-5" title="اطلاعات حساب کامل نیست" variant="warning">
-            نام، نام خانوادگی و شماره موبایل تأییدشده برای ادامه رزرو لازم است. در حال حاضر API عمومی امنی برای ویرایش این اطلاعات در checkout وجود ندارد.
-          </KoochAlert>
+          <section
+            aria-labelledby="checkout-profile-completion-title"
+            className="mt-5 rounded-lg border border-border bg-background p-4 sm:p-5"
+          >
+            <h3 className="text-base font-black text-foreground" id="checkout-profile-completion-title">
+              تکمیل اطلاعات حساب
+            </h3>
+            <p className="mt-2 text-sm leading-7 text-muted-foreground">
+              برای ادامه رزرو، نام و نام خانوادگی خود را تکمیل کنید.
+            </p>
+            {profileError ? (
+              <KoochAlert className="mt-4" title="ذخیره اطلاعات انجام نشد" variant="destructive">
+                {profileError}
+              </KoochAlert>
+            ) : null}
+            <form className="mt-4 grid gap-4" onSubmit={saveProfile}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <KoochField label="نام" required>
+                  <KoochInput
+                    autoComplete="given-name"
+                    maxLength={100}
+                    onChange={(event) => setProfileFirstName(event.target.value)}
+                    required
+                    value={profileFirstName}
+                  />
+                </KoochField>
+                <KoochField label="نام خانوادگی" required>
+                  <KoochInput
+                    autoComplete="family-name"
+                    maxLength={100}
+                    onChange={(event) => setProfileLastName(event.target.value)}
+                    required
+                    value={profileLastName}
+                  />
+                </KoochField>
+              </div>
+              <KoochButton className="sm:w-fit sm:min-w-44" loading={profileSaving} type="submit">
+                ذخیره و ادامه
+              </KoochButton>
+            </form>
+          </section>
         ) : null}
       </div>
     );
@@ -403,6 +496,19 @@ function otpVerificationErrorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : "تأیید شماره موبایل انجام نشد. دوباره تلاش کنید.";
+}
+
+function profileUpdateErrorMessage(error: unknown) {
+  if (error instanceof ApiRequestError) {
+    if (error.status === 400) {
+      return "نام و نام خانوادگی را کامل و صحیح وارد کنید.";
+    }
+    if (error.status === 401) {
+      return "نشست شما منقضی شده است. دوباره وارد حساب شوید.";
+    }
+  }
+
+  return "ذخیره اطلاعات حساب موقتاً ممکن نیست. اطلاعات واردشده حفظ شده است؛ دوباره تلاش کنید.";
 }
 
 export function formatPersianDigits(value: string) {

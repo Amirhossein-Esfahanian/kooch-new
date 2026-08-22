@@ -124,7 +124,7 @@ function persistCart(items = bookingItems()) {
   }));
 }
 
-function signIn() {
+function signIn(overrides: Partial<NonNullable<typeof auth.user>> = {}) {
   auth.authenticated = true;
   auth.user = {
     userId: 7,
@@ -135,6 +135,7 @@ function signIn() {
     email: "sara@example.test",
     phoneNumber: "09121234567",
     isActive: true,
+    ...overrides,
   };
 }
 
@@ -388,6 +389,106 @@ describe("multi-step booking checkout skeleton", () => {
     expect(screen.queryByRole("button", { name: "ارسال کد تأیید" })).toBeNull();
     expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
       .toBe(false);
+  });
+
+  it("allows a complete authenticated identity to continue without email", async () => {
+    persistCart();
+    signIn({ email: "" });
+    render(<BookingCheckoutFlow />);
+
+    expect(await screen.findByText("وارد حساب خود هستید")).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "تکمیل اطلاعات حساب" })).toBeNull();
+    expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
+      .toBe(false);
+  });
+
+  it.each([
+    ["lastName", { lastName: "", fullName: "سارا" }, "نام خانوادگی"],
+    ["firstName", { firstName: "", fullName: "احمدی" }, "نام"],
+  ])("shows canonical profile completion when authenticated %s is missing", async (_, overrides, missingLabel) => {
+    persistCart();
+    signIn(overrides);
+    render(<BookingCheckoutFlow />);
+
+    const completion = await screen.findByRole("heading", { name: "تکمیل اطلاعات حساب" });
+    const section = completion.closest("section")!;
+    expect(within(section).getByLabelText(/^نام\s*\*/, { selector: "input" })).toBeTruthy();
+    expect(within(section).getByLabelText(/^نام خانوادگی/, { selector: "input" })).toBeTruthy();
+    expect(within(section).queryByLabelText("شماره موبایل", { selector: "input" })).toBeNull();
+    expect(screen.getByText(missingLabel, { selector: "dt" }).parentElement?.textContent).toContain("تکمیل نشده");
+    expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
+      .toBe(true);
+    expect(screen.queryByText("این رزرو برای چه کسی است؟", { selector: "legend" })).toBeNull();
+  });
+
+  it("refreshes the authoritative session after profile completion and reveals stay details without losing checkout state", async () => {
+    const items = bookingItems();
+    persistCart(items);
+    sessionStorage.setItem(checkoutStayDetailsStorageKey, JSON.stringify({
+      version: 1,
+      bookingForSelf: true,
+      primaryGuest: { firstName: "", lastName: "", mobile: "", email: "" },
+      expectedArrivalTime: "14:30:00",
+      specialRequest: "اتاق آرام",
+    }));
+    signIn({ lastName: "", fullName: "سارا" });
+    authApi.request.mockResolvedValueOnce({});
+    auth.refreshSession.mockImplementationOnce(async () => {
+      signIn({ lastName: "احمدی", fullName: "سارا احمدی" });
+      return { user: auth.user };
+    });
+    const view = render(<BookingCheckoutFlow />);
+
+    const completion = (await screen.findByRole("heading", { name: "تکمیل اطلاعات حساب" })).closest("section")!;
+    fireEvent.change(within(completion).getByLabelText(/^نام خانوادگی/, { selector: "input" }), {
+      target: { value: "  احمدی  " },
+    });
+    fireEvent.click(within(completion).getByRole("button", { name: "ذخیره و ادامه" }));
+
+    await waitFor(() => expect(auth.refreshSession).toHaveBeenCalledTimes(1));
+    expect(authApi.request).toHaveBeenCalledWith("/auth/me/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ firstName: "سارا", lastName: "  احمدی  " }),
+    });
+    view.rerender(<BookingCheckoutFlow />);
+
+    expect(screen.queryByRole("heading", { name: "تکمیل اطلاعات حساب" })).toBeNull();
+    expect(await screen.findByText("این رزرو برای چه کسی است؟", { selector: "legend" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /برای خودم/ })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: /برای شخص دیگری/ })).toBeTruthy();
+    expect((screen.getByLabelText("زمان تقریبی ورود") as HTMLSelectElement).value).toBe("14:30:00");
+    expect((screen.getByLabelText("درخواست ویژه") as HTMLTextAreaElement).value).toBe("اتاق آرام");
+    expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
+    expect(sessionStorage.getItem(checkoutStayDetailsStorageKey)).not.toBeNull();
+    expect(navigation.push).not.toHaveBeenCalled();
+  });
+
+  it("preserves entered identity and checkout state when profile completion fails", async () => {
+    persistCart();
+    sessionStorage.setItem(checkoutStayDetailsStorageKey, JSON.stringify({
+      version: 1,
+      bookingForSelf: true,
+      primaryGuest: { firstName: "", lastName: "", mobile: "", email: "" },
+      expectedArrivalTime: "",
+      specialRequest: "بدون پله",
+    }));
+    signIn({ lastName: "", fullName: "سارا" });
+    authApi.request.mockRejectedValueOnce(new ApiRequestError("Internal error", 500));
+    render(<BookingCheckoutFlow />);
+
+    const completion = (await screen.findByRole("heading", { name: "تکمیل اطلاعات حساب" })).closest("section")!;
+    const lastNameInput = within(completion).getByLabelText(/^نام خانوادگی/, { selector: "input" }) as HTMLInputElement;
+    fireEvent.change(lastNameInput, { target: { value: "احمدی" } });
+    fireEvent.click(within(completion).getByRole("button", { name: "ذخیره و ادامه" }));
+
+    expect(await screen.findByText(/ذخیره اطلاعات حساب موقتاً ممکن نیست/)).toBeTruthy();
+    expect(lastNameInput.value).toBe("احمدی");
+    expect(auth.refreshSession).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
+      .toBe(true);
+    expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
+    expect(sessionStorage.getItem(checkoutStayDetailsStorageKey)).not.toBeNull();
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("defaults an authenticated user to booking for self without duplicate traveler fields", async () => {

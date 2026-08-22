@@ -131,4 +131,32 @@ public class AuthController(IAuthService authService) : ControllerBase
         var response = await authService.GetCurrentUserAsync(userId, cancellationToken);
         return response is null ? Unauthorized() : Ok(response);
     }
+
+    [Authorize]
+    [HttpPatch("me/profile")]
+    [ProducesResponseType<CurrentUserResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<CurrentUserResponse>> UpdateProfile(
+        UpdateCurrentUserProfileRequest request,
+        CancellationToken cancellationToken)
+    {
+        if (!int.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+        {
+            return Unauthorized();
+        }
+
+        try
+        {
+            var response = await authService.UpdateCurrentUserProfileAsync(
+                userId,
+                request,
+                cancellationToken);
+            return response is null ? Unauthorized() : Ok(response);
+        }
+        catch (ArgumentException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
+    }
 }

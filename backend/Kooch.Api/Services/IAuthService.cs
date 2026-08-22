@@ -17,5 +17,10 @@ public interface IAuthService
     Task SendPasswordSetupNotificationAsync(int userId, string setupLink, CancellationToken cancellationToken = default) =>
         Task.CompletedTask;
     Task<CurrentUserResponse?> GetCurrentUserAsync(int userId, CancellationToken cancellationToken = default);
+    Task<CurrentUserResponse?> UpdateCurrentUserProfileAsync(
+        int userId,
+        UpdateCurrentUserProfileRequest request,
+        CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
     string GenerateJwtToken(User user, DateTime expiresAtUtc);
 }

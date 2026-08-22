@@ -120,7 +120,7 @@ public class RoomTypeService(
         roomType.StairCount = request.StairCount;
         roomType.HasWindow = request.HasWindow;
         roomType.HasPrivateBathroom = request.HasPrivateBathroom;
-        if (request.IsActive)
+        if (request.IsActive && !roomType.IsActive)
         {
             EnsureCanActivate(request, await HasRoomImagesAsync(roomTypeId, cancellationToken));
         }
