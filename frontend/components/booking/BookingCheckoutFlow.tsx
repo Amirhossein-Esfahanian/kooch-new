@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { BookingCartSummary } from "@/components/booking/BookingCart";
+import { BookingCheckoutSummary } from "@/components/booking/BookingCheckoutSummary";
 import {
   BookingCartProvider,
   lastBookingSessionCodeKey,
@@ -32,11 +32,11 @@ import {
   restoreCheckoutStayDetailsDraft,
   serializeCheckoutStayDetailsDraft,
   toBookingCheckoutStayDetails,
+  type CheckoutGuestDraft,
   validateCheckoutStayDetailsDraft,
   type CheckoutStayDetailsDraft,
 } from "@/components/booking/CheckoutStayDetails";
 import { bookingModePresentation } from "@/components/booking/booking-display";
-import { formatCurrency } from "@/lib/currency";
 
 export function BookingCheckoutFlow() {
   return (
@@ -52,6 +52,7 @@ function BookingCheckoutContent() {
   const auth = useAuthSession();
   const cart = useBookingCart();
   const submissionLockRef = useRef(false);
+  const linkedGuestInitializedRef = useRef(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizationMessage, setFinalizationMessage] = useState<{
     tone: "error" | "info";
@@ -62,7 +63,6 @@ function BookingCheckoutContent() {
   );
   const [stayDetailsHydrated, setStayDetailsHydrated] = useState(false);
   const [showStayDetailsErrors, setShowStayDetailsErrors] = useState(false);
-  const [guestDetailsConfirmed, setGuestDetailsConfirmed] = useState(false);
   const requestedReview = searchParams.get("step") === "review";
   const identityComplete = hasCompleteCheckoutIdentity(auth);
   const stayDetailsErrors = useMemo(
@@ -89,6 +89,33 @@ function BookingCheckoutContent() {
   }, []);
 
   useEffect(() => {
+    if (
+      !stayDetailsHydrated ||
+      !identityComplete ||
+      !auth.user ||
+      linkedGuestInitializedRef.current
+    ) return;
+
+    linkedGuestInitializedRef.current = true;
+    const linkedGuest = buildSelfGuestDraft(auth.user);
+    setStayDetailsDraft((current) => {
+      if (current.bookingForSelf && hasGuestDraftValue(current.primaryGuest)) {
+        return { ...current, selfGuest: { ...current.primaryGuest } };
+      }
+      if (current.bookingForSelf) {
+        return {
+          ...current,
+          primaryGuest: { ...linkedGuest },
+          selfGuest: { ...linkedGuest },
+        };
+      }
+      return current.selfGuest
+        ? current
+        : { ...current, selfGuest: { ...linkedGuest } };
+    });
+  }, [auth.user, identityComplete, stayDetailsHydrated]);
+
+  useEffect(() => {
     if (!stayDetailsHydrated) return;
     sessionStorage.setItem(
       checkoutStayDetailsStorageKey,
@@ -110,23 +137,6 @@ function BookingCheckoutContent() {
     }
     router.push("/booking/checkout?step=review");
   }, [identityComplete, router, stayDetailsComplete]);
-
-  const confirmGuestDetails = useCallback(() => {
-    const errors = validateCheckoutStayDetailsDraft(stayDetailsDraft);
-    const hasGuestError = Boolean(
-      errors.firstName ||
-        errors.lastName ||
-        errors.mobile ||
-        errors.email ||
-        errors.contact,
-    );
-    if (hasGuestError) {
-      setShowStayDetailsErrors(true);
-      return;
-    }
-
-    setGuestDetailsConfirmed(true);
-  }, [stayDetailsDraft]);
 
   const finalizeCheckout = useCallback(async () => {
     if (cart.items.length === 0 || submissionLockRef.current) return;
@@ -217,23 +227,28 @@ function BookingCheckoutContent() {
 
   return (
     <div
-      className="min-w-0 overflow-x-clip bg-background px-4 py-5 text-foreground sm:px-6 sm:py-7"
+      className="min-w-0 overflow-x-clip bg-background text-foreground [--checkout-timeline-height:3.5rem]"
       data-testid="booking-checkout-page"
       dir="rtl"
     >
-      <div className="mx-auto max-w-6xl">
-        <header className="mx-auto max-w-3xl">
-          <h1 className="text-xl font-black">
-            تکمیل رزرو
-          </h1>
-          <div className="mt-3">
+      <div
+        className="sticky top-[var(--header-height)] z-40 h-[var(--checkout-timeline-height)] w-full border-b border-border bg-background shadow-sm"
+        data-testid="checkout-sticky-timeline"
+      >
+        <div className="mx-auto max-w-7xl px-4 sm:px-6">
+          <div className="mx-auto max-w-3xl">
             <BookingCheckoutStepper currentStep={currentStep} />
           </div>
-        </header>
+        </div>
+      </div>
+
+      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">
+        <h1 className="text-xl font-black">تکمیل رزرو</h1>
 
         <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           <section
-            aria-labelledby="checkout-step-title"
+            aria-label={currentStep === "information" ? "اطلاعات رزرو" : undefined}
+            aria-labelledby={currentStep === "review" ? "checkout-step-title" : undefined}
             className={`min-w-0 rounded-lg border border-border bg-card ${
               currentStep === "information" ? "p-4 sm:p-5" : "p-5 sm:p-6"
             }`}
@@ -248,11 +263,7 @@ function BookingCheckoutContent() {
                   <CheckoutStayDetails
                     draft={stayDetailsDraft}
                     errors={showStayDetailsErrors ? stayDetailsErrors : {}}
-                    guestConfirmed={guestDetailsConfirmed}
-                    items={cart.items}
                     onChange={updateStayDetails}
-                    onConfirmGuest={confirmGuestDetails}
-                    onEditGuest={() => setGuestDetailsConfirmed(false)}
                   />
                 ) : null}
               </>
@@ -260,7 +271,6 @@ function BookingCheckoutContent() {
               <ReviewStep
                 draft={stayDetailsDraft}
                 items={cart.items}
-                user={auth.user!}
               />
             )}
 
@@ -280,65 +290,47 @@ function BookingCheckoutContent() {
               </KoochAlert>
             ) : null}
 
-            {currentStep === "review" ? (
-              <div
-                className="mt-6 flex items-center justify-between gap-4 rounded-lg bg-muted px-4 py-3 sm:hidden"
-                data-testid="checkout-mobile-total"
-              >
-                <span className="text-sm font-bold text-muted-foreground">مبلغ کل</span>
-                <strong className="text-base font-black text-foreground">
-                  {formatCurrency(cart.total)}
-                </strong>
-              </div>
-            ) : null}
-
-            <div
-              className={`flex flex-col gap-3 border-t border-border sm:flex-row sm:justify-between ${
-                currentStep === "information" ? "mt-6 pt-4" : "mt-8 pt-5"
-              }`}
-              data-testid="checkout-mobile-actions"
-            >
-              <KoochButton
-                onClick={() =>
-                  router.push(
-                    currentStep === "information"
-                      ? propertyReturnHref
-                      : "/booking/checkout?step=information",
-                  )
-                }
-                variant="outline"
-              >
-                {currentStep === "information" ? "بازگشت به انتخاب اقامت" : "بازگشت به اطلاعات"}
-              </KoochButton>
-              {currentStep === "information" ? (
-                <KoochButton
-                  disabled={!identityComplete}
-                  onClick={continueToReview}
-                >
-                  ادامه به نهایی‌سازی
-                </KoochButton>
-              ) : (
-                <KoochButton
-                  disabled={finalizing}
-                  loading={finalizing}
-                  onClick={() => void finalizeCheckout()}
-                >
-                  {finalActionLabel}
-                </KoochButton>
-              )}
-            </div>
           </section>
 
-          <aside aria-label="خلاصه رزرو" className="lg:sticky lg:top-24">
-            <BookingCartSummary
-              className=""
-              items={cart.items}
-              title="خلاصه رزرو"
-              total={cart.total}
-            />
+          <aside
+            aria-label="خلاصه رزرو"
+            className="lg:sticky lg:top-[calc(var(--header-height)+var(--checkout-timeline-height)+1rem)] lg:col-start-2 lg:row-span-2 lg:row-start-1"
+          >
+            <BookingCheckoutSummary items={cart.items} total={cart.total} />
           </aside>
+
+          <div
+            className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:justify-between lg:col-start-1"
+            data-testid="checkout-mobile-actions"
+          >
+            <KoochButton
+              onClick={() =>
+                router.push(
+                  currentStep === "information"
+                    ? propertyReturnHref
+                    : "/booking/checkout?step=information",
+                )
+              }
+              variant="outline"
+            >
+              {currentStep === "information" ? "بازگشت به انتخاب اقامت" : "بازگشت به اطلاعات"}
+            </KoochButton>
+            {currentStep === "information" ? (
+              <KoochButton disabled={!identityComplete} onClick={continueToReview}>
+                ادامه به نهایی‌سازی
+              </KoochButton>
+            ) : (
+              <KoochButton
+                disabled={finalizing}
+                loading={finalizing}
+                onClick={() => void finalizeCheckout()}
+              >
+                {finalActionLabel}
+              </KoochButton>
+            )}
+          </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }
@@ -346,11 +338,9 @@ function BookingCheckoutContent() {
 function ReviewStep({
   draft,
   items,
-  user,
 }: {
   draft: CheckoutStayDetailsDraft;
   items: BookingCartItem[];
-  user: NonNullable<ReturnType<typeof useAuthSession>["user"]>;
 }) {
   const mode = bookingModePresentation(items[0].bookingMode);
   const isOnRequest = items[0].bookingMode === "OnRequest";
@@ -363,7 +353,7 @@ function ReviewStep({
       <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
         پیش از ادامه، اطلاعات اقامت، مهمانان و مبلغ سفارش را بررسی کنید.
       </p>
-      <CheckoutStayDetailsReview draft={draft} items={items} user={user} />
+      <CheckoutStayDetailsReview draft={draft} />
       <KoochAlert className="mt-6" title={`${mode.icon} ${mode.label}`} variant="info">
         {isOnRequest ? (
           <div className="grid gap-2">
@@ -393,4 +383,21 @@ export function buildPropertyReturnHref(items: BookingCartItem[]) {
   });
   firstItem.childAges.forEach((age) => query.append("childAges", String(age)));
   return `/properties/${encodeURIComponent(firstItem.propertySlug)}?${query.toString()}`;
+}
+
+export function buildSelfGuestDraft(
+  user: NonNullable<ReturnType<typeof useAuthSession>["user"]>,
+): CheckoutGuestDraft {
+  const guest = user.linkedGuest;
+  return {
+    firstName: guest?.firstName ?? user.firstName,
+    lastName: guest?.lastName ?? user.lastName,
+    mobile: guest?.mobile ?? user.phoneNumber ?? "",
+    email: guest?.email ?? user.email ?? "",
+    nationalCode: guest?.nationalCode ?? "",
+  };
+}
+
+function hasGuestDraftValue(guest: CheckoutGuestDraft) {
+  return Object.values(guest).some((value) => value.trim().length > 0);
 }

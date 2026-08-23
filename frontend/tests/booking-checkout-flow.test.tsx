@@ -17,6 +17,13 @@ const auth = vi.hoisted(() => ({
     fullName: string;
     email: string;
     phoneNumber: string | null;
+    linkedGuest?: {
+      firstName: string;
+      lastName: string;
+      mobile: string | null;
+      email: string | null;
+      nationalCode: string | null;
+    } | null;
     isActive: boolean;
   },
 }));
@@ -134,6 +141,13 @@ function signIn(overrides: Partial<NonNullable<typeof auth.user>> = {}) {
     fullName: "سارا احمدی",
     email: "sara@example.test",
     phoneNumber: "09121234567",
+    linkedGuest: {
+      firstName: "سارا",
+      lastName: "احمدی",
+      mobile: "09121234567",
+      email: "sara@example.test",
+      nationalCode: "0012345678",
+    },
     isActive: true,
     ...overrides,
   };
@@ -166,6 +180,10 @@ describe("multi-step booking checkout skeleton", () => {
     expect(within(stepper).getByText("نهایی‌سازی")).toBeTruthy();
     expect(screen.queryByText("مرحله ۲ از ۳")).toBeNull();
     expect(screen.getByTestId("booking-checkout-page").className).toContain("overflow-x-clip");
+    const timeline = screen.getByTestId("checkout-sticky-timeline");
+    expect(timeline.className).toContain("sticky");
+    expect(timeline.className).toContain("top-[var(--header-height)]");
+    expect(timeline.className).toContain("z-40");
     expect(screen.getByRole("heading", { name: "اطلاعات رزروکننده" })).toBeTruthy();
     expect(screen.getByLabelText(/شماره موبایل/)).toBeTruthy();
     expect(screen.getByText("اتاق شاه‌نشین")).toBeTruthy();
@@ -271,24 +289,22 @@ describe("multi-step booking checkout skeleton", () => {
     navigation.step = "review";
     render(<BookingCheckoutFlow />);
 
-    expect(await screen.findByRole("heading", { name: "اقامت" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "اتاق‌ها" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "مهمانان" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "اطلاعات مهمان" })).toBeTruthy();
+    expect(screen.getByTestId("checkout-date-summary")).toBeTruthy();
+    expect(screen.getByTestId("checkout-property-summary")).toBeTruthy();
+    expect(screen.getByTestId("checkout-price-summary")).toBeTruthy();
     expect(screen.getByText("خانه کاشان")).toBeTruthy();
-    expect(screen.getAllByText("۱۹ مرداد ۱۴۰۵ تا ۲۱ مرداد ۱۴۰۵").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("۲ شب").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("۲ اتاق").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("۴٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("۳٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("۱ کودک (۷ سال)").length).toBeGreaterThan(0);
-    expect(screen.getByText("رزرو برای خودم")).toBeTruthy();
+    expect(screen.getByText("۲ شب")).toBeTruthy();
+    expect(screen.getByText("۲ اتاق")).toBeTruthy();
+    expect(screen.getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(screen.getByText("۳٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(screen.getByText("سارا احمدی")).toBeTruthy();
+    expect(within(screen.getByTestId("checkout-date-summary")).queryByText(/تومان/)).toBeNull();
     expect(screen.getByText("۱۴:۳۰")).toBeTruthy();
     expect(screen.getByText("تخت کودک لطفاً")).toBeTruthy();
     expect(screen.getAllByText("۷٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
     expect(screen.getAllByText("رزرو آنی").length).toBeGreaterThanOrEqual(2);
 
-    const mobileTotal = screen.getByTestId("checkout-mobile-total");
-    expect(mobileTotal.className).toContain("sm:hidden");
     expect(within(screen.getByTestId("checkout-mobile-actions")).getByRole("button", { name: "ادامه به پرداخت" })).toBeTruthy();
     expect(screen.queryByText(/مهلت پرداخت|مهلت تأیید/)).toBeNull();
     expect(screen.queryByText(/رزرو شما قطعی شد/)).toBeNull();
@@ -328,7 +344,13 @@ describe("multi-step booking checkout skeleton", () => {
       {
         bookingForSelf: true,
         expectedArrivalTime: null,
-        primaryGuest: null,
+        primaryGuest: {
+          firstName: "سارا",
+          lastName: "احمدی",
+          mobile: "09121234567",
+          email: "sara@example.test",
+          nationalCode: "0012345678",
+        },
         specialRequest: null,
       },
     ));
@@ -386,14 +408,12 @@ describe("multi-step booking checkout skeleton", () => {
     signIn();
     render(<BookingCheckoutFlow />);
 
-    expect(await screen.findByText("سارا احمدی")).toBeTruthy();
+    await waitFor(() => expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا"));
     expect(screen.queryByText("وارد حساب خود هستید")).toBeNull();
-    const contact = screen.getByTestId("checkout-booking-contact");
-    expect(within(contact).getByText("نام و نام خانوادگی")).toBeTruthy();
-    expect(within(contact).getByText("شماره موبایل")).toBeTruthy();
-    expect(within(contact).getByText("ایمیل")).toBeTruthy();
-    expect(contact.className).toContain("sm:grid-cols-3");
-    expect(screen.getByText("سارا احمدی")).toBeTruthy();
+    expect((screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }) as HTMLInputElement).value).toBe("احمدی");
+    expect((screen.getByLabelText(/شماره موبایل/, { selector: "input" }) as HTMLInputElement).value).toBe("09121234567");
+    expect((screen.getByLabelText("ایمیل", { selector: "input" }) as HTMLInputElement).value).toBe("sara@example.test");
+    expect((screen.getByLabelText("کد ملی (اختیاری)", { selector: "input" }) as HTMLInputElement).value).toBe("0012345678");
     expect(screen.queryByRole("button", { name: "ارسال کد تأیید" })).toBeNull();
     expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
       .toBe(false);
@@ -401,10 +421,19 @@ describe("multi-step booking checkout skeleton", () => {
 
   it("allows a complete authenticated identity to continue without email", async () => {
     persistCart();
-    signIn({ email: "" });
+    signIn({
+      email: "",
+      linkedGuest: {
+        firstName: "سارا",
+        lastName: "احمدی",
+        mobile: "09121234567",
+        email: null,
+        nationalCode: null,
+      },
+    });
     render(<BookingCheckoutFlow />);
 
-    expect(await screen.findByText("ثبت نشده")).toBeTruthy();
+    expect((await screen.findByLabelText("ایمیل", { selector: "input" }) as HTMLInputElement).value).toBe("");
     expect(screen.queryByText("وارد حساب خود هستید")).toBeNull();
     expect(screen.queryByRole("heading", { name: "تکمیل اطلاعات حساب" })).toBeNull();
     expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
@@ -412,9 +441,9 @@ describe("multi-step booking checkout skeleton", () => {
   });
 
   it.each([
-    ["lastName", { lastName: "", fullName: "سارا" }, "نام خانوادگی"],
-    ["firstName", { firstName: "", fullName: "احمدی" }, "نام"],
-  ])("shows canonical profile completion when authenticated %s is missing", async (_, overrides, missingLabel) => {
+    ["lastName", { lastName: "", fullName: "سارا" }],
+    ["firstName", { firstName: "", fullName: "احمدی" }],
+  ])("shows canonical profile completion when authenticated %s is missing", async (_, overrides) => {
     persistCart();
     signIn(overrides);
     render(<BookingCheckoutFlow />);
@@ -424,7 +453,6 @@ describe("multi-step booking checkout skeleton", () => {
     expect(within(section).getByLabelText(/^نام\s*\*/, { selector: "input" })).toBeTruthy();
     expect(within(section).getByLabelText(/^نام خانوادگی/, { selector: "input" })).toBeTruthy();
     expect(within(section).queryByLabelText("شماره موبایل", { selector: "input" })).toBeNull();
-    expect(screen.getByText(missingLabel, { selector: "dt" }).parentElement?.textContent).toContain("تکمیل نشده");
     expect(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }).hasAttribute("disabled"))
       .toBe(true);
     expect(screen.queryByText("این رزرو برای چه کسی است؟", { selector: "legend" })).toBeNull();
@@ -462,11 +490,10 @@ describe("multi-step booking checkout skeleton", () => {
     view.rerender(<BookingCheckoutFlow />);
 
     expect(screen.queryByRole("heading", { name: "تکمیل اطلاعات حساب" })).toBeNull();
-    expect(await screen.findByText("این رزرو برای چه کسی است؟", { selector: "legend" })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: /برای خودم/ })).toBeTruthy();
-    expect(screen.getByRole("radio", { name: /رزرو برای دیگری/ })).toBeTruthy();
-    expect((screen.getByLabelText("زمان تقریبی ورود") as HTMLSelectElement).value).toBe("14:30:00");
-    expect((screen.getByLabelText("درخواست ویژه") as HTMLTextAreaElement).value).toBe("اتاق آرام");
+    expect(await screen.findByRole("heading", { name: "اطلاعات مهمان" })).toBeTruthy();
+    expect((screen.getByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText("زمان تقریبی ورود", { selector: "select" }) as HTMLSelectElement).value).toBe("14:30:00");
+    expect((screen.getByLabelText("درخواست ویژه", { selector: "textarea" }) as HTMLTextAreaElement).value).toBe("اتاق آرام");
     expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
     expect(sessionStorage.getItem(checkoutStayDetailsStorageKey)).not.toBeNull();
     expect(navigation.push).not.toHaveBeenCalled();
@@ -505,8 +532,9 @@ describe("multi-step booking checkout skeleton", () => {
     signIn();
     render(<BookingCheckoutFlow />);
 
-    expect((await screen.findByRole("radio", { name: /برای خودم/ }) as HTMLInputElement).checked).toBe(true);
-    expect(screen.queryByLabelText("نام خانوادگی", { selector: "input" })).toBeNull();
+    expect((await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا");
+    expect((screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }) as HTMLInputElement).value).toBe("احمدی");
     expect(screen.queryByText(/رزرو برای سارا احمدی ثبت خواهد شد/)).toBeNull();
     expect(screen.queryByRole("heading", { name: "مهمان اصلی" })).toBeNull();
   });
@@ -516,19 +544,19 @@ describe("multi-step booking checkout skeleton", () => {
     signIn();
     render(<BookingCheckoutFlow />);
 
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
-    expect(screen.getByRole("heading", { name: "اطلاعات مهمان اصلی" })).toBeTruthy();
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
+    expect(screen.getByRole("heading", { name: "اطلاعات مهمان" })).toBeTruthy();
     expect(screen.getByLabelText(/^نام\s*\*/, { selector: "input" })).toBeTruthy();
     expect(screen.getByLabelText(/^نام خانوادگی\s*\*/, { selector: "input" })).toBeTruthy();
     expect(screen.queryByText(/کد تأیید.*مهمان/)).toBeNull();
   });
 
-  it("confirms another guest locally, collapses to a summary, and reopens with values preserved", async () => {
+  it("restores both self and other guest drafts when the mode changes", async () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
 
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام\s*\*/, { selector: "input" }), {
       target: { value: "مریم" },
     });
@@ -538,40 +566,34 @@ describe("multi-step booking checkout skeleton", () => {
     fireEvent.change(screen.getByLabelText("شماره موبایل", { selector: "input" }), {
       target: { value: "09121234567" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "تأیید اطلاعات مهمان" }));
-
-    const summary = screen.getByTestId("confirmed-primary-guest");
-    expect(within(summary).getByText(/مریم کریمی/)).toBeTruthy();
-    expect(within(summary).getByText(/۰۹۱۲۱۲۳۴۵۶۷/)).toBeTruthy();
-    expect(screen.queryByLabelText(/^نام\s*\*/, { selector: "input" })).toBeNull();
-    expect(authApi.request).not.toHaveBeenCalled();
-    expect(checkout.create).not.toHaveBeenCalled();
-
-    fireEvent.click(within(summary).getByRole("button", { name: "ویرایش" }));
+    const toggle = screen.getByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" });
+    fireEvent.click(toggle);
+    expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا");
+    fireEvent.click(toggle);
     expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value)
       .toBe("مریم");
     expect((screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }) as HTMLInputElement).value)
       .toBe("کریمی");
   });
 
-  it("keeps the guest form open and exposes existing validation on invalid local confirmation", async () => {
+  it("keeps the guest form visible and exposes validation when continuing with an empty other guest", async () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
 
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
-    fireEvent.click(screen.getByRole("button", { name: "تأیید اطلاعات مهمان" }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
+    fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
 
     expect(screen.getByText("نام مهمان اصلی را وارد کنید.")).toBeTruthy();
     expect(screen.getByText("نام خانوادگی مهمان اصلی را وارد کنید.")).toBeTruthy();
-    expect(screen.queryByTestId("confirmed-primary-guest")).toBeNull();
+    expect(screen.getByTestId("checkout-primary-guest-panel")).toBeTruthy();
   });
 
   it("requires the other guest first name", async () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }), { target: { value: "احمدی" } });
     fireEvent.change(screen.getByLabelText("ایمیل", { selector: "input" }), { target: { value: "guest@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
@@ -583,7 +605,7 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام\s*\*/, { selector: "input" }), { target: { value: "مریم" } });
     fireEvent.change(screen.getByLabelText("ایمیل", { selector: "input" }), { target: { value: "guest@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
@@ -594,7 +616,7 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام\s*\*/, { selector: "input" }), { target: { value: "مریم" } });
     fireEvent.change(screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }), { target: { value: "احمدی" } });
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
@@ -610,12 +632,39 @@ describe("multi-step booking checkout skeleton", () => {
         lastName: "احمدی",
         mobile: "123",
         email: "invalid-email",
+        nationalCode: "",
       },
       specialRequest: "x".repeat(2001),
     });
     expect(errors.mobile).toBe("فرمت شماره موبایل معتبر نیست.");
     expect(errors.email).toBe("فرمت ایمیل معتبر نیست.");
     expect(errors.specialRequest).toBe("درخواست ویژه نمی‌تواند بیشتر از ۲۰۰۰ نویسه باشد.");
+  });
+
+  it("keeps NationalCode optional and enforces only its contract length", () => {
+    const valid = validateCheckoutStayDetailsDraft({
+      ...emptyCheckoutStayDetailsDraft,
+      primaryGuest: {
+        firstName: "سارا",
+        lastName: "احمدی",
+        mobile: "09121234567",
+        email: "",
+        nationalCode: "",
+      },
+    });
+    expect(valid.nationalCode).toBeUndefined();
+
+    const tooLong = validateCheckoutStayDetailsDraft({
+      ...emptyCheckoutStayDetailsDraft,
+      primaryGuest: {
+        firstName: "سارا",
+        lastName: "احمدی",
+        mobile: "09121234567",
+        email: "",
+        nationalCode: "1".repeat(21),
+      },
+    });
+    expect(tooLong.nationalCode).toBe("کد ملی نمی‌تواند بیشتر از ۲۰ نویسه باشد.");
   });
 
   it.each([
@@ -625,7 +674,7 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام\s*\*/, { selector: "input" }), { target: { value: "مریم" } });
     fireEvent.change(screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }), { target: { value: "احمدی" } });
     fireEvent.change(screen.getByLabelText(field === "mobile" ? "شماره موبایل" : "ایمیل", { selector: "input" }), { target: { value } });
@@ -637,10 +686,11 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
-    fireEvent.click(screen.getByRole("radio", { name: /برای خودم/ }));
+    const otherGuest = await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" });
+    fireEvent.click(otherGuest);
+    fireEvent.click(otherGuest);
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
-    expect(screen.queryByLabelText(/^نام\s*\*/, { selector: "input" })).toBeNull();
+    expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا");
     expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=review");
   });
 
@@ -648,7 +698,7 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     const view = render(<BookingCheckoutFlow />);
-    const arrival = await screen.findByLabelText("زمان تقریبی ورود");
+    const arrival = await screen.findByLabelText("زمان تقریبی ورود", { selector: "select" });
     fireEvent.change(arrival, { target: { value: "14:30:00" } });
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
     navigation.step = "review";
@@ -657,10 +707,10 @@ describe("multi-step booking checkout skeleton", () => {
     fireEvent.click(screen.getByRole("button", { name: "بازگشت به اطلاعات" }));
     navigation.step = "information";
     view.rerender(<BookingCheckoutFlow />);
-    expect((await screen.findByLabelText("زمان تقریبی ورود") as HTMLSelectElement).value).toBe("14:30:00");
+    expect((await screen.findByLabelText("زمان تقریبی ورود", { selector: "select" }) as HTMLSelectElement).value).toBe("14:30:00");
     view.unmount();
     const restored = render(<BookingCheckoutFlow />);
-    expect((await screen.findByLabelText("زمان تقریبی ورود") as HTMLSelectElement).value).toBe("14:30:00");
+    expect((await screen.findByLabelText("زمان تقریبی ورود", { selector: "select" }) as HTMLSelectElement).value).toBe("14:30:00");
     restored.unmount();
   });
 
@@ -668,12 +718,12 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     const view = render(<BookingCheckoutFlow />);
-    const request = await screen.findByLabelText("درخواست ویژه");
+    const request = await screen.findByLabelText("درخواست ویژه", { selector: "textarea" });
     fireEvent.change(request, { target: { value: "اتاق آرام لطفاً" } });
     expect(JSON.parse(sessionStorage.getItem(checkoutStayDetailsStorageKey)!).specialRequest).toBe("اتاق آرام لطفاً");
     view.unmount();
     const restored = render(<BookingCheckoutFlow />);
-    expect((await screen.findByLabelText("درخواست ویژه") as HTMLTextAreaElement).value).toBe("اتاق آرام لطفاً");
+    expect((await screen.findByLabelText("درخواست ویژه", { selector: "textarea" }) as HTMLTextAreaElement).value).toBe("اتاق آرام لطفاً");
 
     sessionStorage.setItem(checkoutStayDetailsStorageKey, JSON.stringify({
       version: 1,
@@ -684,7 +734,7 @@ describe("multi-step booking checkout skeleton", () => {
     }));
     restored.unmount();
     render(<BookingCheckoutFlow />);
-    expect((await screen.findByLabelText("درخواست ویژه") as HTMLTextAreaElement).value).toBe("");
+    expect((await screen.findByLabelText("درخواست ویژه", { selector: "textarea" }) as HTMLTextAreaElement).value).toBe("");
   });
 
   it("shows child ages read-only without asking for them again", async () => {
@@ -695,20 +745,19 @@ describe("multi-step booking checkout skeleton", () => {
     expect(screen.queryByLabelText(/سن کودک/)).toBeNull();
   });
 
-  it("reviews booking contact and another primary guest separately", async () => {
+  it("reviews the selected primary guest without duplicating booking-owner identity", async () => {
     persistCart();
     signIn();
     const view = render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام\s*\*/, { selector: "input" }), { target: { value: "مریم" } });
     fireEvent.change(screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }), { target: { value: "کریمی" } });
     fireEvent.change(screen.getByLabelText("ایمیل", { selector: "input" }), { target: { value: "guest@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
     navigation.step = "review";
     view.rerender(<BookingCheckoutFlow />);
-    expect(await screen.findByRole("heading", { name: "اطلاعات رزروکننده" })).toBeTruthy();
-    expect(screen.getByRole("heading", { name: "مهمان اصلی" })).toBeTruthy();
-    expect(screen.getByText("سارا احمدی")).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "اطلاعات مهمان" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "اطلاعات رزروکننده" })).toBeNull();
     expect(screen.getByText("مریم کریمی")).toBeTruthy();
   });
 
@@ -717,12 +766,12 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart(items);
     signIn();
     const view = render(<BookingCheckoutFlow />);
-    fireEvent.click(await screen.findByRole("radio", { name: /رزرو برای دیگری/ }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: "مهمان اصلی شخص دیگری است" }));
     fireEvent.change(screen.getByLabelText(/^نام\s*\*/, { selector: "input" }), { target: { value: " مریم " } });
     fireEvent.change(screen.getByLabelText(/^نام خانوادگی/, { selector: "input" }), { target: { value: " کریمی " } });
     fireEvent.change(screen.getByLabelText("شماره موبایل", { selector: "input" }), { target: { value: "۰۹۱۲۱۲۳۴۵۶۷" } });
-    fireEvent.change(screen.getByLabelText("زمان تقریبی ورود"), { target: { value: "15:00:00" } });
-    fireEvent.change(screen.getByLabelText("درخواست ویژه"), { target: { value: "  تخت کودک  " } });
+    fireEvent.change(screen.getByLabelText("زمان تقریبی ورود", { selector: "select" }), { target: { value: "15:00:00" } });
+    fireEvent.change(screen.getByLabelText("درخواست ویژه", { selector: "textarea" }), { target: { value: "  تخت کودک  " } });
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
     navigation.step = "review";
     view.rerender(<BookingCheckoutFlow />);
@@ -732,7 +781,13 @@ describe("multi-step booking checkout skeleton", () => {
     const details = checkout.create.mock.calls[0][2];
     expect(details).toEqual({
       bookingForSelf: false,
-      primaryGuest: { firstName: "مریم", lastName: "کریمی", mobile: "09121234567", email: null },
+      primaryGuest: {
+        firstName: "مریم",
+        lastName: "کریمی",
+        mobile: "09121234567",
+        email: null,
+        nationalCode: null,
+      },
       expectedArrivalTime: "15:00:00",
       specialRequest: "تخت کودک",
     });
@@ -758,7 +813,7 @@ describe("multi-step booking checkout skeleton", () => {
     signIn();
     const view = render(<BookingCheckoutFlow />);
     const initialKey = JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey;
-    fireEvent.change(await screen.findByLabelText("زمان تقریبی ورود"), { target: { value: "16:00:00" } });
+    fireEvent.change(await screen.findByLabelText("زمان تقریبی ورود", { selector: "select" }), { target: { value: "16:00:00" } });
     await waitFor(() => expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey).not.toBe(initialKey));
     const editedKey = JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey;
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
@@ -801,7 +856,7 @@ describe("multi-step booking checkout skeleton", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "تأیید و ادامه" }));
 
-    expect(await screen.findByText("سارا احمدی")).toBeTruthy();
+    await waitFor(() => expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا"));
     expect(authApi.setToken).toHaveBeenCalledWith("checkout-token");
     expect(navigation.push).not.toHaveBeenCalledWith(expect.stringMatching(/^\/login/));
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(3);
@@ -853,7 +908,7 @@ describe("multi-step booking checkout skeleton", () => {
 
     fireEvent.change(screen.getByLabelText(/کد تأیید/), { target: { value: "123456" } });
     fireEvent.click(screen.getByRole("button", { name: "تأیید و ادامه" }));
-    expect(await screen.findByText("سارا احمدی")).toBeTruthy();
+    await waitFor(() => expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا"));
     expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
   });
 
@@ -910,11 +965,11 @@ describe("multi-step booking checkout skeleton", () => {
     persistCart();
     signIn();
     const first = render(<BookingCheckoutFlow />);
-    expect(await screen.findByText("سارا احمدی")).toBeTruthy();
+    expect((await screen.findByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا");
     first.unmount();
 
     render(<BookingCheckoutFlow />);
-    expect(await screen.findByText("سارا احمدی")).toBeTruthy();
+    expect((await screen.findByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا");
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(3);
   });
 

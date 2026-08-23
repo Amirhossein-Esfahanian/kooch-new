@@ -125,79 +125,46 @@ export function CheckoutIdentityStep({
 
   if (auth.authenticated && auth.user) {
     const complete = hasCompleteCheckoutIdentity(auth);
+    if (complete) return null;
+
     return (
       <div>
         <h2 className="text-lg font-black text-foreground" id="checkout-step-title">
-          اطلاعات رزروکننده
+          تکمیل اطلاعات حساب
         </h2>
-        <dl
-          className={`mt-3 grid gap-x-5 gap-y-3 border-y border-border py-3 ${
-            complete ? "sm:grid-cols-3" : "sm:grid-cols-2"
-          }`}
-          data-testid="checkout-booking-contact"
-        >
-          {complete ? (
-            <IdentityValue label="نام و نام خانوادگی" value={auth.user.fullName} />
-          ) : (
-            <>
-              <IdentityValue label="نام" value={auth.user.firstName.trim() || "تکمیل نشده"} />
-              <IdentityValue label="نام خانوادگی" value={auth.user.lastName.trim() || "تکمیل نشده"} />
-            </>
-          )}
-          <IdentityValue
-            dir="ltr"
-            label="شماره موبایل"
-            value={formatPersianDigits(auth.user.phoneNumber ?? "—")}
-          />
-          <IdentityValue
-            dir={auth.user.email ? "ltr" : "rtl"}
-            label="ایمیل"
-            value={auth.user.email || "ثبت نشده"}
-          />
-        </dl>
-        {!complete ? (
-          <section
-            aria-labelledby="checkout-profile-completion-title"
-            className="mt-4 rounded-lg border border-border bg-background p-4"
-          >
-            <h3 className="text-base font-black text-foreground" id="checkout-profile-completion-title">
-              تکمیل اطلاعات حساب
-            </h3>
-            <p className="mt-2 text-sm leading-7 text-muted-foreground">
-              برای ادامه رزرو، نام و نام خانوادگی خود را تکمیل کنید.
-            </p>
-            {profileError ? (
-              <KoochAlert className="mt-4" title="ذخیره اطلاعات انجام نشد" variant="destructive">
-                {profileError}
-              </KoochAlert>
-            ) : null}
-            <form className="mt-4 grid gap-4" onSubmit={saveProfile}>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <KoochField label="نام" required>
-                  <KoochInput
-                    autoComplete="given-name"
-                    maxLength={100}
-                    onChange={(event) => setProfileFirstName(event.target.value)}
-                    required
-                    value={profileFirstName}
-                  />
-                </KoochField>
-                <KoochField label="نام خانوادگی" required>
-                  <KoochInput
-                    autoComplete="family-name"
-                    maxLength={100}
-                    onChange={(event) => setProfileLastName(event.target.value)}
-                    required
-                    value={profileLastName}
-                  />
-                </KoochField>
-              </div>
-              <KoochButton className="sm:w-fit sm:min-w-44" loading={profileSaving} type="submit">
-                ذخیره و ادامه
-              </KoochButton>
-            </form>
-          </section>
+        <p className="mt-2 text-sm leading-7 text-muted-foreground">
+          برای ادامه رزرو، نام و نام خانوادگی خود را تکمیل کنید.
+        </p>
+        {profileError ? (
+          <KoochAlert className="mt-4" title="ذخیره اطلاعات انجام نشد" variant="destructive">
+            {profileError}
+          </KoochAlert>
         ) : null}
+        <form className="mt-4 grid gap-4" onSubmit={saveProfile}>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <KoochField label="نام" required>
+              <KoochInput
+                autoComplete="given-name"
+                maxLength={100}
+                onChange={(event) => setProfileFirstName(event.target.value)}
+                required
+                value={profileFirstName}
+              />
+            </KoochField>
+            <KoochField label="نام خانوادگی" required>
+              <KoochInput
+                autoComplete="family-name"
+                maxLength={100}
+                onChange={(event) => setProfileLastName(event.target.value)}
+                required
+                value={profileLastName}
+              />
+            </KoochField>
+          </div>
+          <KoochButton className="sm:w-fit sm:min-w-44" loading={profileSaving} type="submit">
+            ذخیره و ادامه
+          </KoochButton>
+        </form>
       </div>
     );
   }
@@ -444,27 +411,6 @@ export function CheckoutIdentityStep({
           </KoochButton>
         </form>
       )}
-    </div>
-  );
-}
-
-function IdentityValue({
-  className = "",
-  dir,
-  label,
-  value,
-}: {
-  className?: string;
-  dir?: "ltr" | "rtl";
-  label: string;
-  value: string;
-}) {
-  return (
-    <div className={`min-w-0 ${className}`}>
-      <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
-      <dd className="mt-1 break-words text-sm font-black text-foreground" dir={dir}>
-        {value}
-      </dd>
     </div>
   );
 }
