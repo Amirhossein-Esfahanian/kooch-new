@@ -1109,14 +1109,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
 
                                 if (option.value === "Unavailable") {
                                   setValue(0);
-                                  return;
-                                }
-
-                                if (
-                                  option.value === "Available" ||
-                                  option.value === "OnRequest"
-                                ) {
-                                  setValue(1);
                                 }
                               }}
                               type="button"
