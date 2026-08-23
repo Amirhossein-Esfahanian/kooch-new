@@ -216,7 +216,7 @@ export function CheckoutStayDetails({
           </label>
         </div>
 
-        <div className="mt-4 grid min-w-0 gap-4 sm:grid-cols-2" data-testid="checkout-primary-guest-panel">
+        <div className="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2" data-testid="checkout-primary-guest-panel">
           <KoochField error={errors.firstName} label="نام" required>
             <KoochInput
               autoComplete="given-name"

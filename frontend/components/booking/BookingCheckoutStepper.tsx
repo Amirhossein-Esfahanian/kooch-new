@@ -20,40 +20,53 @@ export function BookingCheckoutStepper({
   return (
     <nav
       aria-label="مراحل تکمیل رزرو"
-      className="py-1"
+      className="flex h-[var(--checkout-timeline-height)] items-center"
       data-testid="booking-checkout-stepper"
     >
-      <ol
-        className="relative grid grid-cols-3 before:absolute before:inset-x-[16.667%] before:top-3 before:h-px before:bg-border before:content-['']"
-        dir="rtl"
-      >
+      <ol className="flex w-full min-w-0 items-center" dir="rtl">
         {checkoutSteps.map((step, index) => {
           const isCurrent = step.id === currentStep;
           const isCompleted = index < currentIndex;
           return (
             <li
               aria-current={isCurrent ? "step" : undefined}
-              className="relative z-10 min-w-0 text-center"
+              className={`flex min-w-0 items-center ${
+                index < checkoutSteps.length - 1 ? "flex-1" : "shrink-0"
+              }`}
               key={step.id}
             >
               <div
-                className={`mx-auto flex h-6 w-6 items-center justify-center rounded-full border text-[11px] font-black ${
+                className="flex shrink-0 items-center gap-1 sm:gap-2"
+                data-testid={`checkout-step-group-${step.id}`}
+              >
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
                   isCurrent
                     ? "border-primary bg-primary text-primary-foreground"
                     : isCompleted
                       ? "border-primary bg-card text-primary"
                       : "border-border bg-background text-muted-foreground"
-                }`}
-              >
-                {step.number}
+                  }`}
+                >
+                  {step.number}
+                </span>
+                <span
+                  className={`whitespace-nowrap text-[10px] font-bold sm:text-xs ${
+                    isCurrent || isCompleted ? "text-white" : "text-white/70"
+                  }`}
+                >
+                  {step.label}
+                </span>
               </div>
-              <span
-                className={`mt-1.5 block truncate px-1 text-[11px] font-bold sm:text-xs ${
-                  isCurrent || isCompleted ? "text-foreground" : "text-muted-foreground"
-                }`}
-              >
-                {step.label}
-              </span>
+              {index < checkoutSteps.length - 1 ? (
+                <span
+                  aria-hidden="true"
+                  className={`mx-1 h-px min-w-2 flex-1 sm:mx-3 ${
+                    isCompleted ? "bg-primary" : "bg-white/30"
+                  }`}
+                  data-testid="checkout-step-connector"
+                />
+              ) : null}
               <span className="sr-only">
                 {isCurrent ? "مرحله فعلی" : isCompleted ? "تکمیل‌شده" : "انجام‌نشده"}
               </span>
