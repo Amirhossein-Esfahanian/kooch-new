@@ -41,6 +41,7 @@ public sealed class BookingSessionGuestResponse
     public string LastName { get; set; } = string.Empty;
     public string? Mobile { get; set; }
     public string? Email { get; set; }
+    public string? NationalCode { get; set; }
 }
 
 public sealed class BookingSessionDerivedSummaryResponse
@@ -116,6 +117,7 @@ public sealed class AccountBookingSessionPrimaryGuestResponse
     public string LastName { get; set; } = string.Empty;
     public string? Mobile { get; set; }
     public string? Email { get; set; }
+    public string? NationalCode { get; set; }
 }
 
 public sealed class AccountBookingSessionListQuery

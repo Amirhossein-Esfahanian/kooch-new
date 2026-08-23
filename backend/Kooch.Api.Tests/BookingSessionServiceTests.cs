@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Dtos.Reservations;
@@ -311,6 +312,56 @@ public sealed class BookingSessionServiceTests
     }
 
     [Fact]
+    public async Task AccountBookingForAnother_WithoutNationalCodePreservesLegacyRequestHash()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var accountItem = CreateAccountItem(10, 100);
+        var request = CreateOtherGuestAccountRequest(accountItem);
+        var internalRequest = new BookingSessionCreateRequest
+        {
+            ClientId = 1,
+            PropertyId = 1,
+            IdempotencyKey = request.IdempotencyKey,
+            Items =
+            [
+                new BookingSessionReservationCreateItem
+                {
+                    RoomTypeId = accountItem.RoomTypeId,
+                    RoomId = accountItem.RoomId,
+                    CheckInDate = accountItem.CheckInDate,
+                    CheckOutDate = accountItem.CheckOutDate,
+                    Adults = accountItem.Adults,
+                    Children = accountItem.Children,
+                    ChildAges = accountItem.ChildAges,
+                    GuestType = PricingGuestType.Iranian
+                }
+            ]
+        };
+        var canonicalHash = BookingSessionService.ComputeRequestHash(internalRequest);
+        var legacyPayload = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            BookingHash = canonicalHash,
+            BookingForSelf = false,
+            ExpectedArrivalTime = (string?)null,
+            SpecialRequest = (string?)null,
+            PrimaryGuest = new
+            {
+                FirstName = "Niloofar",
+                LastName = "Traveler",
+                Mobile = "09123456789",
+                Email = (string?)null
+            }
+        });
+        var expectedLegacyHash = Convert.ToHexString(SHA256.HashData(legacyPayload));
+
+        await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        Assert.Equal(expectedLegacyHash, (await verification.BookingSessions.SingleAsync()).RequestHash);
+    }
+
+    [Fact]
     public async Task AccountBookingForSelf_ReusesTheLinkedGuest()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
@@ -326,6 +377,27 @@ public sealed class BookingSessionServiceTests
         Assert.All(
             await verification.Reservations.ToListAsync(),
             reservation => Assert.Equal(1, reservation.GuestId));
+    }
+
+    [Fact]
+    public async Task AccountBookingForSelf_WithNationalCode_UpdatesAndReusesLinkedGuest()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+        {
+            NationalCode = "  ۰۰۱۲۳۴۵۶۷۸  "
+        };
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Equal(1, result.GuestId);
+        await using var verification = harness.CreateContext();
+        var linkedGuest = await verification.Guests.SingleAsync();
+        Assert.Equal(1, linkedGuest.UserId);
+        Assert.Equal("0012345678", linkedGuest.NationalCode);
+        Assert.Equal(1, await verification.Users.CountAsync());
     }
 
     [Fact]
@@ -351,6 +423,79 @@ public sealed class BookingSessionServiceTests
         var traveler = await verification.Guests.SingleAsync(guest => guest.Id == session.GuestId);
         Assert.Null(traveler.UserId);
         Assert.Equal(1, await verification.Users.CountAsync());
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_WithNationalCode_PersistsNormalizedValueWithoutCreatingUser()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.NationalCode = "  ۱۲۳۴۵۶۷۸۹۰  ";
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId);
+        Assert.Equal("1234567890", traveler.NationalCode);
+        Assert.Equal(1, await verification.Users.CountAsync());
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_WhitespaceNationalCode_PersistsNull()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.NationalCode = "   ";
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        Assert.Null((await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId)).NationalCode);
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_NationalCodeOverTwentyCharacters_IsRejected()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.NationalCode = new string('1', 21);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            scope.Service.CreateForAccountAsync(1, request));
+
+        await using var verification = harness.CreateContext();
+        Assert.Empty(await verification.BookingSessions.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_NationalCodeIsNotAResolveKey()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Guests.Add(new Guest
+            {
+                Id = 2,
+                FirstName = "Existing",
+                LastName = "Traveler",
+                Mobile = "09121111111",
+                NormalizedMobile = "09121111111",
+                NationalCode = "1234567890"
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.NationalCode = "1234567890";
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.NotEqual(2, result.GuestId);
+        await using var verification = harness.CreateContext();
+        Assert.Equal(3, await verification.Guests.CountAsync());
     }
 
     [Theory]
@@ -441,6 +586,34 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(2, result.GuestId);
         await using var verification = harness.CreateContext();
         Assert.Equal(2, await verification.Guests.CountAsync());
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_NationalCodeFillsMatchedGuestWithoutChangingResolveKey()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Guests.Add(new Guest
+            {
+                Id = 2,
+                FirstName = "Niloofar",
+                LastName = "Traveler",
+                Mobile = "09123456789",
+                NormalizedMobile = "09123456789"
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+        var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest!.NationalCode = "1234567890";
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Equal(2, result.GuestId);
+        await using var verification = harness.CreateContext();
+        Assert.Equal(2, await verification.Guests.CountAsync());
+        Assert.Equal("1234567890", (await verification.Guests.FindAsync(2))!.NationalCode);
     }
 
     [Fact]
@@ -553,6 +726,43 @@ public sealed class BookingSessionServiceTests
         var replayResult = await scope.Service.CreateForAccountAsync(1, replay);
 
         Assert.Equal(first.BookingSessionId, replayResult.BookingSessionId);
+    }
+
+    [Fact]
+    public async Task AccountOtherGuest_NormalizedNationalCodeReplaysIdempotently()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var original = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        original.IdempotencyKey = "normalized-national-code";
+        original.PrimaryGuest!.NationalCode = "  ۱۲۳۴۵۶۷۸۹۰  ";
+
+        var first = await scope.Service.CreateForAccountAsync(1, original);
+        var replay = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        replay.IdempotencyKey = "normalized-national-code";
+        replay.PrimaryGuest!.NationalCode = "1234567890";
+
+        var replayResult = await scope.Service.CreateForAccountAsync(1, replay);
+
+        Assert.Equal(first.BookingSessionId, replayResult.BookingSessionId);
+    }
+
+    [Fact]
+    public async Task AccountOtherGuest_ChangedNationalCodeConflictsWithExistingKey()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var original = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        original.IdempotencyKey = "changed-national-code";
+        original.PrimaryGuest!.NationalCode = "1234567890";
+        await scope.Service.CreateForAccountAsync(1, original);
+
+        var changed = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
+        changed.IdempotencyKey = "changed-national-code";
+        changed.PrimaryGuest!.NationalCode = "1234567891";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.CreateForAccountAsync(1, changed));
     }
 
     [Fact]

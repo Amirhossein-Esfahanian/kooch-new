@@ -180,7 +180,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         FirstName = session.Guest.FirstName,
                         LastName = session.Guest.LastName,
                         Mobile = session.Guest.Mobile,
-                        Email = session.Guest.Email
+                        Email = session.Guest.Email,
+                        NationalCode = session.Guest.NationalCode
                     },
                 Currency = session.Currency,
                 Payment = session.Payments
@@ -259,7 +260,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         FirstName = session.Guest.FirstName,
                         LastName = session.Guest.LastName,
                         Mobile = session.Guest.Mobile,
-                        Email = session.Guest.Email
+                        Email = session.Guest.Email,
+                        NationalCode = session.Guest.NationalCode
                     },
                 Reservations = session.Reservations
                     .OrderBy(reservation => reservation.Id)

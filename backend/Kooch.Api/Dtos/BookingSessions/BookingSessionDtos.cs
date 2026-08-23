@@ -30,10 +30,14 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
     {
         if (BookingForSelf)
         {
-            if (PrimaryGuest is not null)
+            if (PrimaryGuest is not null &&
+                (GuestNormalization.NormalizeText(PrimaryGuest.FirstName) is not null ||
+                 GuestNormalization.NormalizeText(PrimaryGuest.LastName) is not null ||
+                 GuestNormalization.NormalizeMobile(PrimaryGuest.Mobile) is not null ||
+                 GuestNormalization.NormalizeEmail(PrimaryGuest.Email) is not null))
             {
                 yield return new ValidationResult(
-                    "برای رزرو شخصی نباید اطلاعات مهمان دیگری ارسال شود.",
+                    "برای رزرو شخصی فقط کد ملی اختیاری مهمان قابل ارسال است.",
                     [nameof(PrimaryGuest)]);
             }
 
@@ -92,6 +96,9 @@ public sealed class AccountBookingSessionPrimaryGuestRequest
 
     [MaxLength(320)]
     public string? Email { get; set; }
+
+    [MaxLength(20)]
+    public string? NationalCode { get; set; }
 }
 
 public sealed class AccountBookingSessionReservationCreateItem

@@ -79,10 +79,19 @@ export interface AccountBookingSessionCreateRequest {
 }
 
 export interface AccountBookingSessionPrimaryGuestRequest {
+  firstName: string | null;
+  lastName: string | null;
+  mobile: string | null;
+  email: string | null;
+  nationalCode?: string | null;
+}
+
+export interface AccountBookingSessionPrimaryGuestResponse {
   firstName: string;
   lastName: string;
   mobile: string | null;
   email: string | null;
+  nationalCode?: string | null;
 }
 
 export interface AccountBookingSessionCreateResponse {
@@ -127,7 +136,7 @@ export interface AccountBookingSession {
   sessionCode: string;
   displayCodeLabel: string;
   property: { propertyId: number; name: string; slug: string };
-  primaryGuest?: AccountBookingSessionPrimaryGuestRequest | null;
+  primaryGuest?: AccountBookingSessionPrimaryGuestResponse | null;
   currency: string;
   expectedArrivalTime?: string | null;
   specialRequest?: string | null;

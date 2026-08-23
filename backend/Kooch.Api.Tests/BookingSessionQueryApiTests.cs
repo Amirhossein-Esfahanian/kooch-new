@@ -107,6 +107,7 @@ public sealed class BookingSessionQueryApiTests
         Assert.Equal("Client", result.Client.FirstName);
         Assert.NotNull(result.Guest);
         Assert.Equal(1, result.Guest.GuestId);
+        Assert.Equal("1234567890", result.Guest.NationalCode);
         Assert.Equal(new TimeOnly(18, 30), result.ExpectedArrivalTime);
         Assert.Equal("اتاق آرام باشد", result.SpecialRequest);
         Assert.Equal(2, result.Reservations.Count);
@@ -163,6 +164,7 @@ public sealed class BookingSessionQueryApiTests
         Assert.NotNull(result.PrimaryGuest);
         Assert.Equal("Guest", result.PrimaryGuest.FirstName);
         Assert.Equal("09120000000", result.PrimaryGuest.Mobile);
+        Assert.Equal("1234567890", result.PrimaryGuest.NationalCode);
         Assert.Equal(new TimeOnly(18, 30), result.ExpectedArrivalTime);
         Assert.Equal("اتاق آرام باشد", result.SpecialRequest);
 
@@ -587,7 +589,8 @@ public sealed class BookingSessionQueryApiTests
                 FirstName = "Guest",
                 LastName = "Reader",
                 Mobile = "09120000000",
-                Email = "guest@example.test"
+                Email = "guest@example.test",
+                NationalCode = "1234567890"
             });
             context.Properties.Add(new Property
             {

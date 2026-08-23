@@ -399,6 +399,7 @@ describe("public booking cart", () => {
       expect(payload).not.toHaveProperty("propertyId");
       expect(payload.bookingForSelf).toBe(false);
       expect(payload.primaryGuest).toEqual(stayDetails.primaryGuest);
+      expect(payload.primaryGuest).not.toHaveProperty("nationalCode");
       expect(payload.expectedArrivalTime).toBe("14:30:00");
       expect(payload.specialRequest).toBe("اتاق آرام لطفاً");
       expect(payload.items[0]).not.toHaveProperty("status");
@@ -411,6 +412,52 @@ describe("public booking cart", () => {
         entry.adults === 2,
       )).toBe(true);
     }
+  });
+
+  it("serializes an optional primary guest national code without changing legacy fields", async () => {
+    const create = vi.fn().mockResolvedValue({ sessionCode: "BS-NATIONAL" });
+    const stayDetails = {
+      bookingForSelf: false,
+      primaryGuest: {
+        firstName: "مریم",
+        lastName: "کریمی",
+        mobile: "09121234567",
+        email: null,
+        nationalCode: "  ۱۲۳۴۵۶۷۸۹۰  ",
+      },
+      expectedArrivalTime: null,
+      specialRequest: null,
+    };
+
+    await createBookingSessionFromCart([item()], "national-code-key", stayDetails, create);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      bookingForSelf: false,
+      primaryGuest: stayDetails.primaryGuest,
+    }));
+  });
+
+  it("supports the existing primaryGuest contract for a self guest national code", async () => {
+    const create = vi.fn().mockResolvedValue({ sessionCode: "BS-SELF-NATIONAL" });
+    const primaryGuest = {
+      firstName: null,
+      lastName: null,
+      mobile: null,
+      email: null,
+      nationalCode: "1234567890",
+    };
+
+    await createBookingSessionFromCart([item()], "self-national-code-key", {
+      bookingForSelf: true,
+      primaryGuest,
+      expectedArrivalTime: null,
+      specialRequest: null,
+    }, create);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      bookingForSelf: true,
+      primaryGuest,
+    }));
   });
 
   it("uses repeated childAges query parameters", async () => {

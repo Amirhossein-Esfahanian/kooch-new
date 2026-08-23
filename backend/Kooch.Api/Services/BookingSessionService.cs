@@ -315,18 +315,33 @@ public sealed class BookingSessionService(
             return Convert.ToHexString(SHA256.HashData(legacyPayload));
         }
 
-        var canonicalRequest = new CanonicalAccountBookingRequest(
-            canonicalHash,
-            accountContext.BookingForSelf,
-            accountContext.ExpectedArrivalTime?.ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture),
-            accountContext.SpecialRequest,
-            accountContext.PrimaryGuest is null
-                ? null
-                : new CanonicalPrimaryGuest(
+        var expectedArrivalTime = accountContext.ExpectedArrivalTime?.ToString(
+            "HH:mm:ss.fffffff",
+            CultureInfo.InvariantCulture);
+        object canonicalRequest = accountContext.PrimaryGuest?.NationalCode is null
+            ? new CanonicalAccountBookingRequest(
+                canonicalHash,
+                accountContext.BookingForSelf,
+                expectedArrivalTime,
+                accountContext.SpecialRequest,
+                accountContext.PrimaryGuest is null
+                    ? null
+                    : new CanonicalPrimaryGuest(
+                        accountContext.PrimaryGuest.FirstName,
+                        accountContext.PrimaryGuest.LastName,
+                        accountContext.PrimaryGuest.Mobile,
+                        accountContext.PrimaryGuest.Email))
+            : new CanonicalAccountBookingRequestWithNationalCode(
+                canonicalHash,
+                accountContext.BookingForSelf,
+                expectedArrivalTime,
+                accountContext.SpecialRequest,
+                new CanonicalPrimaryGuestWithNationalCode(
                     accountContext.PrimaryGuest.FirstName,
                     accountContext.PrimaryGuest.LastName,
                     accountContext.PrimaryGuest.Mobile,
-                    accountContext.PrimaryGuest.Email));
+                    accountContext.PrimaryGuest.Email,
+                    accountContext.PrimaryGuest.NationalCode));
         var scopedPayload = JsonSerializer.SerializeToUtf8Bytes(canonicalRequest);
         return Convert.ToHexString(SHA256.HashData(scopedPayload));
     }
@@ -375,7 +390,21 @@ public sealed class BookingSessionService(
         }
 
         NormalizedPrimaryGuest? primaryGuest = null;
-        if (!request.BookingForSelf)
+        if (request.BookingForSelf)
+        {
+            var nationalCode = GuestNormalization.NormalizeNationalCode(
+                request.PrimaryGuest?.NationalCode);
+            if (nationalCode is not null)
+            {
+                primaryGuest = new NormalizedPrimaryGuest(
+                    null,
+                    null,
+                    null,
+                    null,
+                    nationalCode);
+            }
+        }
+        else
         {
             var input = request.PrimaryGuest
                 ?? throw new ArgumentException("Primary guest is required.", nameof(request));
@@ -383,7 +412,8 @@ public sealed class BookingSessionService(
                 GuestNormalization.NormalizeText(input.FirstName)!,
                 GuestNormalization.NormalizeText(input.LastName)!,
                 GuestNormalization.NormalizeMobile(input.Mobile),
-                GuestNormalization.NormalizeEmail(input.Email));
+                GuestNormalization.NormalizeEmail(input.Email),
+                GuestNormalization.NormalizeNationalCode(input.NationalCode));
         }
 
         return new AccountBookingContext(
@@ -398,8 +428,21 @@ public sealed class BookingSessionService(
         AccountBookingContext? accountContext,
         CancellationToken cancellationToken)
     {
-        if (accountContext is null || accountContext.BookingForSelf)
+        if (accountContext is null)
         {
+            return new PrimaryGuestAssignment(currentGuestId, null);
+        }
+
+        if (accountContext.BookingForSelf)
+        {
+            if (accountContext.PrimaryGuest?.NationalCode is { } nationalCode)
+            {
+                var linkedGuest = await dbContext.Guests.SingleAsync(
+                    guest => guest.Id == currentGuestId,
+                    cancellationToken);
+                linkedGuest.NationalCode = nationalCode;
+            }
+
             return new PrimaryGuestAssignment(currentGuestId, null);
         }
 
@@ -420,6 +463,7 @@ public sealed class BookingSessionService(
         {
             var guest = matchingGuests[0];
             EnsureContactsDoNotConflict(input, guest.NormalizedMobile, guest.NormalizedEmail);
+            ApplyNationalCodeIfProvided(input.NationalCode, guest);
             return new PrimaryGuestAssignment(guest.Id, null);
         }
 
@@ -458,12 +502,13 @@ public sealed class BookingSessionService(
         var newGuest = new Guest
         {
             UserId = linkedUserId,
-            FirstName = input.FirstName,
-            LastName = input.LastName,
+            FirstName = input.FirstName!,
+            LastName = input.LastName!,
             Mobile = input.Mobile,
             NormalizedMobile = input.Mobile,
             Email = input.Email,
             NormalizedEmail = input.Email,
+            NationalCode = input.NationalCode,
             Nationality = "ایران"
         };
         dbContext.Guests.Add(newGuest);
@@ -480,6 +525,21 @@ public sealed class BookingSessionService(
         {
             throw new ArgumentException("اطلاعات تماس مهمان با پرونده موجود هم‌خوانی ندارد.");
         }
+    }
+
+    private static void ApplyNationalCodeIfProvided(string? nationalCode, Guest guest)
+    {
+        if (nationalCode is null || string.Equals(guest.NationalCode, nationalCode, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (guest.NationalCode is not null)
+        {
+            throw new ArgumentException("کد ملی مهمان با پرونده موجود هم‌خوانی ندارد.");
+        }
+
+        guest.NationalCode = nationalCode;
     }
 
     private static void ValidateRequest(BookingSessionCreateRequest request)
@@ -982,11 +1042,25 @@ public sealed class BookingSessionService(
         string? SpecialRequest,
         CanonicalPrimaryGuest? PrimaryGuest);
 
+    private sealed record CanonicalAccountBookingRequestWithNationalCode(
+        string BookingHash,
+        bool BookingForSelf,
+        string? ExpectedArrivalTime,
+        string? SpecialRequest,
+        CanonicalPrimaryGuestWithNationalCode PrimaryGuest);
+
     private sealed record CanonicalPrimaryGuest(
-        string FirstName,
-        string LastName,
+        string? FirstName,
+        string? LastName,
         string? Mobile,
         string? Email);
+
+    private sealed record CanonicalPrimaryGuestWithNationalCode(
+        string? FirstName,
+        string? LastName,
+        string? Mobile,
+        string? Email,
+        string NationalCode);
 
     private sealed record CanonicalBookingItem(
         int RoomTypeId,
@@ -1007,10 +1081,11 @@ public sealed class BookingSessionService(
         string? SpecialRequest);
 
     private sealed record NormalizedPrimaryGuest(
-        string FirstName,
-        string LastName,
+        string? FirstName,
+        string? LastName,
         string? Mobile,
-        string? Email);
+        string? Email,
+        string? NationalCode);
 
     private sealed record PrimaryGuestAssignment(
         int? GuestId,
