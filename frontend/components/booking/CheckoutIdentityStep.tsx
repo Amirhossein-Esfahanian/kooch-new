@@ -127,16 +127,15 @@ export function CheckoutIdentityStep({
     const complete = hasCompleteCheckoutIdentity(auth);
     return (
       <div>
-        <h2 className="text-xl font-black text-foreground" id="checkout-step-title">
+        <h2 className="text-lg font-black text-foreground" id="checkout-step-title">
           اطلاعات رزروکننده
         </h2>
-        <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-          رزرو با هویت تأییدشده حساب شما ثبت خواهد شد.
-        </p>
-        <KoochAlert className="mt-6" title="وارد حساب خود هستید" variant="success">
-          برای این شماره موبایل نیازی به دریافت دوباره کد تأیید نیست.
-        </KoochAlert>
-        <dl className="mt-6 grid gap-4 rounded-lg border border-border bg-background p-4 sm:grid-cols-2">
+        <dl
+          className={`mt-3 grid gap-x-5 gap-y-3 border-y border-border py-3 ${
+            complete ? "sm:grid-cols-3" : "sm:grid-cols-2"
+          }`}
+          data-testid="checkout-booking-contact"
+        >
           {complete ? (
             <IdentityValue label="نام و نام خانوادگی" value={auth.user.fullName} />
           ) : (
@@ -150,14 +149,16 @@ export function CheckoutIdentityStep({
             label="شماره موبایل"
             value={formatPersianDigits(auth.user.phoneNumber ?? "—")}
           />
-          {auth.user.email ? (
-            <IdentityValue className="sm:col-span-2" dir="ltr" label="ایمیل" value={auth.user.email} />
-          ) : null}
+          <IdentityValue
+            dir={auth.user.email ? "ltr" : "rtl"}
+            label="ایمیل"
+            value={auth.user.email || "ثبت نشده"}
+          />
         </dl>
         {!complete ? (
           <section
             aria-labelledby="checkout-profile-completion-title"
-            className="mt-5 rounded-lg border border-border bg-background p-4 sm:p-5"
+            className="mt-4 rounded-lg border border-border bg-background p-4"
           >
             <h3 className="text-base font-black text-foreground" id="checkout-profile-completion-title">
               تکمیل اطلاعات حساب

@@ -1,6 +1,6 @@
 "use client";
 
-import { KoochAlert } from "@/components/KoochAlert";
+import { KoochButton } from "@/components/KoochButton";
 import {
   KoochField,
   KoochInput,
@@ -149,93 +149,160 @@ export function toBookingCheckoutStayDetails(
 export function CheckoutStayDetails({
   draft,
   errors,
+  guestConfirmed,
   items,
   onChange,
-  user,
+  onConfirmGuest,
+  onEditGuest,
 }: {
   draft: CheckoutStayDetailsDraft;
   errors: CheckoutStayDetailsErrors;
+  guestConfirmed: boolean;
   items: BookingCartItem[];
   onChange: (draft: CheckoutStayDetailsDraft) => void;
-  user: AuthSessionUser;
+  onConfirmGuest: () => void;
+  onEditGuest: () => void;
 }) {
   const updateGuest = (field: keyof CheckoutStayDetailsDraft["primaryGuest"], value: string) =>
     onChange({ ...draft, primaryGuest: { ...draft.primaryGuest, [field]: value } });
+  const confirmedGuest = toBookingCheckoutStayDetails(draft).primaryGuest;
+  const confirmedGuestContact = confirmedGuest?.mobile
+    ? toPersianDigits(confirmedGuest.mobile)
+    : confirmedGuest?.email;
 
   return (
-    <div className="mt-8 grid gap-8 border-t border-border pt-8">
+    <div className="mt-5 min-w-0 border-t border-border pt-5">
       <fieldset>
-        <legend className="text-base font-black text-foreground">این رزرو برای چه کسی است؟</legend>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <legend className="text-sm font-black text-foreground">
+          این رزرو برای چه کسی است؟
+        </legend>
+        <div
+          className="mt-3 grid min-w-0 grid-cols-2 gap-1 rounded-lg bg-muted p-1"
+          data-testid="checkout-recipient-selector"
+        >
           <BookingRecipientOption
             checked={draft.bookingForSelf}
-            description={`مهمان اصلی ${user.fullName} خواهد بود.`}
-            label="برای خودم"
+            label="رزرو برای خودم"
             onChange={() => onChange({ ...draft, bookingForSelf: true })}
           />
           <BookingRecipientOption
             checked={!draft.bookingForSelf}
-            description="اطلاعات مهمان اصلی را بدون ساخت حساب جدا ثبت کنید."
-            label="برای شخص دیگری"
+            label="رزرو برای دیگری"
             onChange={() => onChange({ ...draft, bookingForSelf: false })}
           />
         </div>
       </fieldset>
 
-      {draft.bookingForSelf ? (
-        <KoochAlert title="مهمان اصلی" variant="info">
-          اطلاعات تکراری از شما خواسته نمی‌شود؛ رزرو برای {user.fullName} ثبت خواهد شد.
-        </KoochAlert>
-      ) : (
-        <section aria-labelledby="primary-guest-title">
-          <h3 className="text-base font-black text-foreground" id="primary-guest-title">اطلاعات مهمان اصلی</h3>
-          <p className="mt-2 text-sm leading-7 text-muted-foreground">
-            برای مهمان حساب کاربری یا تأیید OTP ساخته نمی‌شود. نام و دست‌کم یکی از راه‌های تماس کافی است.
-          </p>
-          <div className="mt-4 grid gap-4 sm:grid-cols-2">
-            <KoochField error={errors.firstName} label="نام" required>
-              <KoochInput
-                autoComplete="given-name"
-                maxLength={100}
-                onChange={(event) => updateGuest("firstName", event.target.value)}
-                value={draft.primaryGuest.firstName}
-              />
-            </KoochField>
-            <KoochField error={errors.lastName} label="نام خانوادگی" required>
-              <KoochInput
-                autoComplete="family-name"
-                maxLength={100}
-                onChange={(event) => updateGuest("lastName", event.target.value)}
-                value={draft.primaryGuest.lastName}
-              />
-            </KoochField>
-            <KoochField error={errors.mobile ?? errors.contact} helperText="شماره موبایل یا ایمیل؛ وارد کردن یکی کافی است." label="شماره موبایل">
-              <KoochInput
-                autoComplete="tel"
-                dir="ltr"
-                inputMode="tel"
-                maxLength={30}
-                onChange={(event) => updateGuest("mobile", event.target.value)}
-                placeholder="مثلاً 09123456789"
-                value={draft.primaryGuest.mobile}
-              />
-            </KoochField>
-            <KoochField error={errors.email} label="ایمیل">
-              <KoochInput
-                autoComplete="email"
-                dir="ltr"
-                maxLength={320}
-                onChange={(event) => updateGuest("email", event.target.value)}
-                type="email"
-                value={draft.primaryGuest.email}
-              />
-            </KoochField>
-          </div>
-        </section>
-      )}
+      <div
+        aria-hidden={draft.bookingForSelf}
+        className={`grid min-w-0 transition-[grid-template-rows,opacity,margin] duration-300 ease-out motion-reduce:transition-opacity motion-reduce:duration-100 ${
+          draft.bookingForSelf
+            ? "grid-rows-[0fr] opacity-0"
+            : "mt-4 grid-rows-[1fr] opacity-100"
+        }`}
+        data-testid="checkout-primary-guest-panel"
+      >
+        <div className="min-h-0 overflow-hidden">
+          {!draft.bookingForSelf ? (
+            guestConfirmed && confirmedGuest ? (
+              <section
+                aria-labelledby="confirmed-primary-guest-title"
+                className="flex min-w-0 flex-col gap-3 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between"
+                data-testid="confirmed-primary-guest"
+              >
+                <div aria-live="polite" className="min-w-0">
+                  <h3
+                    className="text-sm font-black text-foreground"
+                    id="confirmed-primary-guest-title"
+                  >
+                    مهمان اصلی
+                  </h3>
+                  <p className="mt-1 break-words text-sm font-bold text-foreground">
+                    {confirmedGuest.firstName} {confirmedGuest.lastName}
+                    {confirmedGuestContact ? ` · ${confirmedGuestContact}` : ""}
+                  </p>
+                </div>
+                <KoochButton
+                  className="self-start sm:self-auto"
+                  onClick={onEditGuest}
+                  size="sm"
+                  variant="ghost"
+                >
+                  ویرایش
+                </KoochButton>
+              </section>
+            ) : (
+              <section
+                aria-labelledby="primary-guest-title"
+                className="rounded-lg border border-border bg-background p-4"
+              >
+                <h3
+                  className="text-sm font-black text-foreground"
+                  id="primary-guest-title"
+                >
+                  اطلاعات مهمان اصلی
+                </h3>
+                <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+                  <KoochField error={errors.firstName} label="نام" required>
+                    <KoochInput
+                      autoComplete="given-name"
+                      maxLength={100}
+                      onChange={(event) => updateGuest("firstName", event.target.value)}
+                      value={draft.primaryGuest.firstName}
+                    />
+                  </KoochField>
+                  <KoochField error={errors.lastName} label="نام خانوادگی" required>
+                    <KoochInput
+                      autoComplete="family-name"
+                      maxLength={100}
+                      onChange={(event) => updateGuest("lastName", event.target.value)}
+                      value={draft.primaryGuest.lastName}
+                    />
+                  </KoochField>
+                  <KoochField
+                    error={errors.mobile ?? errors.contact}
+                    helperText="شماره موبایل یا ایمیل؛ وارد کردن یکی کافی است."
+                    label="شماره موبایل"
+                  >
+                    <KoochInput
+                      autoComplete="tel"
+                      dir="ltr"
+                      inputMode="tel"
+                      maxLength={30}
+                      onChange={(event) => updateGuest("mobile", event.target.value)}
+                      placeholder="مثلاً 09123456789"
+                      value={draft.primaryGuest.mobile}
+                    />
+                  </KoochField>
+                  <KoochField error={errors.email} label="ایمیل">
+                    <KoochInput
+                      autoComplete="email"
+                      dir="ltr"
+                      maxLength={320}
+                      onChange={(event) => updateGuest("email", event.target.value)}
+                      type="email"
+                      value={draft.primaryGuest.email}
+                    />
+                  </KoochField>
+                </div>
+                <KoochButton
+                  className="mt-3 w-full sm:w-auto"
+                  onClick={onConfirmGuest}
+                  size="sm"
+                >
+                  تأیید اطلاعات مهمان
+                </KoochButton>
+              </section>
+            )
+          ) : null}
+        </div>
+      </div>
 
-      <section className="grid gap-5 sm:grid-cols-2" aria-label="جزئیات تکمیلی اقامت">
-        <KoochField helperText="این زمان تقریبی است و محدودیت ساعت پذیرش را تغییر نمی‌دهد." label="زمان تقریبی ورود">
+      <section
+        className="mt-5 grid min-w-0 gap-4 border-t border-border pt-5 sm:grid-cols-2"
+        aria-label="جزئیات تکمیلی اقامت"
+      >
+        <KoochField label="زمان تقریبی ورود">
           <KoochSelect
             onChange={(event) => onChange({ ...draft, expectedArrivalTime: event.target.value })}
             value={draft.expectedArrivalTime}
@@ -247,13 +314,15 @@ export function CheckoutStayDetails({
         <KoochField
           className="sm:col-span-2"
           error={errors.specialRequest}
-          helperText={`درخواست شما برای اقامتگاه ارسال می‌شود و تضمین انجام آن وجود ندارد. ${toPersianDigits(String(draft.specialRequest.length))} از ۲۰۰۰ نویسه`}
+          helperText={`ثبت درخواست به معنی تضمین انجام آن نیست. ${toPersianDigits(String(draft.specialRequest.length))} از ۲۰۰۰ نویسه`}
           label="درخواست ویژه"
         >
           <KoochTextarea
+            className="min-h-20"
             maxLength={2000}
             onChange={(event) => onChange({ ...draft, specialRequest: event.target.value })}
             placeholder="در صورت نیاز، درخواست خود را بنویسید."
+            rows={3}
             value={draft.specialRequest}
           />
         </KoochField>
@@ -322,17 +391,31 @@ function StayAndGuestSummary({ items, review = false }: { items: BookingCartItem
     ? `${first.children.toLocaleString("fa-IR")} کودک (${first.childAges.map((age) => `${age.toLocaleString("fa-IR")} سال`).join("، ")})`
     : "بدون کودک";
 
+  if (!review) {
+    return (
+      <section
+        aria-labelledby="stay-summary-title"
+        className="mt-5 border-t border-border pt-4"
+      >
+        <h3 className="text-xs font-bold text-muted-foreground" id="stay-summary-title">
+          مهمانان
+        </h3>
+        <p className="mt-1 text-sm font-bold text-foreground">
+          {first.adults.toLocaleString("fa-IR")} بزرگسال، {childrenDescription}
+        </p>
+      </section>
+    );
+  }
+
   return (
-    <section className={review ? "rounded-lg border border-border bg-background p-4" : ""} aria-labelledby={review ? "review-stay-title" : "stay-summary-title"}>
-      <h3 className="text-base font-black text-foreground" id={review ? "review-stay-title" : "stay-summary-title"}>{review ? "اقامت" : "خلاصه اقامت و مهمانان"}</h3>
+    <section className="rounded-lg border border-border bg-background p-4" aria-labelledby="review-stay-title">
+      <h3 className="text-base font-black text-foreground" id="review-stay-title">اقامت</h3>
       <dl className="mt-4 grid gap-4 sm:grid-cols-2">
         <ReviewValue label="اقامتگاه" value={first.propertyName} />
         <ReviewValue label="تاریخ اقامت" value={formatBookingDateRange(first.checkIn, first.checkOut)} />
         <ReviewValue label="مدت اقامت" value={`${countBookingNights(items).toLocaleString("fa-IR")} شب`} />
-        {!review ? <ReviewValue label="مهمانان" value={`${first.adults.toLocaleString("fa-IR")} بزرگسال، ${childrenDescription}`} /> : null}
-        {!review ? <ReviewValue label="مبلغ کل" value={formatCurrency(items.reduce((sum, item) => sum + item.displayAmount, 0))} /> : null}
       </dl>
-      {review ? <h4 className="mt-5 border-t border-border pt-5 text-sm font-black text-foreground">اتاق‌ها</h4> : null}
+      <h4 className="mt-5 border-t border-border pt-5 text-sm font-black text-foreground">اتاق‌ها</h4>
       <ul className="mt-4 grid gap-2" aria-label="اتاق‌های انتخاب‌شده">
         {lines.map((line) => {
           const lineMode = bookingModePresentation(line.item.bookingMode);
@@ -352,31 +435,47 @@ function StayAndGuestSummary({ items, review = false }: { items: BookingCartItem
           );
         })}
       </ul>
-      {review ? (
-        <>
-          <div className="mt-5 border-t border-border pt-5">
-            <h4 className="text-sm font-black text-foreground">مهمانان</h4>
-            <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-              <ReviewValue label="بزرگسال" value={first.adults.toLocaleString("fa-IR")} />
-              <ReviewValue label="کودک و سن" value={childrenDescription} />
-            </dl>
-          </div>
-          <dl className="mt-5 border-t border-border pt-5">
-            <ReviewValue label="مبلغ کل" value={formatCurrency(items.reduce((sum, item) => sum + item.displayAmount, 0))} />
-          </dl>
-        </>
-      ) : null}
+      <div className="mt-5 border-t border-border pt-5">
+        <h4 className="text-sm font-black text-foreground">مهمانان</h4>
+        <dl className="mt-4 grid gap-4 sm:grid-cols-2">
+          <ReviewValue label="بزرگسال" value={first.adults.toLocaleString("fa-IR")} />
+          <ReviewValue label="کودک و سن" value={childrenDescription} />
+        </dl>
+      </div>
+      <dl className="mt-5 border-t border-border pt-5">
+        <ReviewValue label="مبلغ کل" value={formatCurrency(items.reduce((sum, item) => sum + item.displayAmount, 0))} />
+      </dl>
     </section>
   );
 }
 
-function BookingRecipientOption({ checked, description, label, onChange }: { checked: boolean; description: string; label: string; onChange: () => void }) {
+function BookingRecipientOption({
+  checked,
+  label,
+  onChange,
+}: {
+  checked: boolean;
+  label: string;
+  onChange: () => void;
+}) {
   return (
-    <label className={`flex min-h-20 cursor-pointer items-start gap-3 rounded-lg border p-4 transition focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background ${checked ? "border-primary bg-primary/5" : "border-border bg-background hover:bg-muted"}`}>
-      <input checked={checked} className="mt-1 h-4 w-4 accent-primary" name="booking-recipient" onChange={onChange} type="radio" />
-      <span className="min-w-0">
-        <span className="block font-black text-foreground">{label}</span>
-        <span className="mt-1 block text-xs leading-6 text-muted-foreground">{description}</span>
+    <label className="relative min-w-0 cursor-pointer">
+      <input
+        checked={checked}
+        className="peer sr-only"
+        name="booking-recipient"
+        onChange={onChange}
+        type="radio"
+      />
+      <span
+        className={`flex min-h-10 min-w-0 items-center justify-center rounded-md px-2 py-2 text-center text-xs font-bold transition peer-focus-visible:outline-none peer-focus-visible:ring-2 peer-focus-visible:ring-ring peer-focus-visible:ring-offset-2 peer-focus-visible:ring-offset-muted [@media(pointer:coarse)]:min-h-11 sm:text-sm ${
+          checked
+            ? "bg-card text-foreground shadow-sm"
+            : "text-muted-foreground hover:text-foreground"
+        }`}
+      >
+        <span className="truncate">{label}</span>
+        {checked ? <span className="sr-only">، انتخاب‌شده</span> : null}
       </span>
     </label>
   );

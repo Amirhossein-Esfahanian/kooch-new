@@ -62,6 +62,7 @@ function BookingCheckoutContent() {
   );
   const [stayDetailsHydrated, setStayDetailsHydrated] = useState(false);
   const [showStayDetailsErrors, setShowStayDetailsErrors] = useState(false);
+  const [guestDetailsConfirmed, setGuestDetailsConfirmed] = useState(false);
   const requestedReview = searchParams.get("step") === "review";
   const identityComplete = hasCompleteCheckoutIdentity(auth);
   const stayDetailsErrors = useMemo(
@@ -109,6 +110,23 @@ function BookingCheckoutContent() {
     }
     router.push("/booking/checkout?step=review");
   }, [identityComplete, router, stayDetailsComplete]);
+
+  const confirmGuestDetails = useCallback(() => {
+    const errors = validateCheckoutStayDetailsDraft(stayDetailsDraft);
+    const hasGuestError = Boolean(
+      errors.firstName ||
+        errors.lastName ||
+        errors.mobile ||
+        errors.email ||
+        errors.contact,
+    );
+    if (hasGuestError) {
+      setShowStayDetailsErrors(true);
+      return;
+    }
+
+    setGuestDetailsConfirmed(true);
+  }, [stayDetailsDraft]);
 
   const finalizeCheckout = useCallback(async () => {
     if (cart.items.length === 0 || submissionLockRef.current) return;
@@ -198,24 +216,27 @@ function BookingCheckoutContent() {
     bookingMode === "OnRequest" ? "ارسال درخواست رزرو" : "ادامه به پرداخت";
 
   return (
-    <div className="bg-background px-4 py-8 text-foreground sm:px-6 sm:py-12" dir="rtl">
+    <div
+      className="min-w-0 overflow-x-clip bg-background px-4 py-5 text-foreground sm:px-6 sm:py-7"
+      data-testid="booking-checkout-page"
+      dir="rtl"
+    >
       <div className="mx-auto max-w-6xl">
         <header className="mx-auto max-w-3xl">
-          <p className="text-sm font-bold text-primary">
-            {currentStep === "information" ? "مرحله ۲ از ۳" : "مرحله ۳ از ۳"}
-          </p>
-          <h1 className="mt-2 text-2xl font-black sm:text-3xl">
+          <h1 className="text-xl font-black">
             تکمیل رزرو
           </h1>
-          <div className="mt-6 rounded-lg border border-border bg-card p-4 sm:p-5">
+          <div className="mt-3">
             <BookingCheckoutStepper currentStep={currentStep} />
           </div>
         </header>
 
-        <div className="mt-8 grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
+        <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           <section
             aria-labelledby="checkout-step-title"
-            className="rounded-lg border border-border bg-card p-5 sm:p-6"
+            className={`min-w-0 rounded-lg border border-border bg-card ${
+              currentStep === "information" ? "p-4 sm:p-5" : "p-5 sm:p-6"
+            }`}
           >
             {currentStep === "information" ? (
               <>
@@ -227,9 +248,11 @@ function BookingCheckoutContent() {
                   <CheckoutStayDetails
                     draft={stayDetailsDraft}
                     errors={showStayDetailsErrors ? stayDetailsErrors : {}}
+                    guestConfirmed={guestDetailsConfirmed}
                     items={cart.items}
                     onChange={updateStayDetails}
-                    user={auth.user}
+                    onConfirmGuest={confirmGuestDetails}
+                    onEditGuest={() => setGuestDetailsConfirmed(false)}
                   />
                 ) : null}
               </>
@@ -270,7 +293,9 @@ function BookingCheckoutContent() {
             ) : null}
 
             <div
-              className="mt-8 flex flex-col gap-3 border-t border-border pt-5 sm:flex-row sm:justify-between"
+              className={`flex flex-col gap-3 border-t border-border sm:flex-row sm:justify-between ${
+                currentStep === "information" ? "mt-6 pt-4" : "mt-8 pt-5"
+              }`}
               data-testid="checkout-mobile-actions"
             >
               <KoochButton
