@@ -133,6 +133,12 @@ public sealed class CurrentUserSessionContractTests
         Assert.Equal("client", response.LastName);
         Assert.Equal("normal-client@example.test", response.Email);
         Assert.Equal("09120000005", response.PhoneNumber);
+        Assert.NotNull(response.LinkedGuest);
+        Assert.Equal("Traveler", response.LinkedGuest.FirstName);
+        Assert.Equal("Profile", response.LinkedGuest.LastName);
+        Assert.Equal("09125550005", response.LinkedGuest.Mobile);
+        Assert.Equal("traveler@example.test", response.LinkedGuest.Email);
+        Assert.Equal("1234567890", response.LinkedGuest.NationalCode);
         Assert.True(response.IsActive);
         Assert.Equal([WorkspaceNames.Account], response.Workspaces);
         Assert.Empty(response.PropertyMemberships);
@@ -164,6 +170,7 @@ public sealed class CurrentUserSessionContractTests
             [FirstPropertyId, SecondPropertyId],
             response.PropertyMemberships.Select(item => item.PropertyId).Order().ToArray());
         Assert.Equal(FirstPropertyId, response.DefaultPropertyId);
+        Assert.Null(response.LinkedGuest);
     }
 
     [Fact]
@@ -192,6 +199,23 @@ public sealed class CurrentUserSessionContractTests
         var response = Assert.IsType<CurrentUserResponse>(ok.Value);
         Assert.Equal(UserRole.Client, response.PlatformRole);
         Assert.Equal([WorkspaceNames.Account], response.Workspaces);
+    }
+
+    [Fact]
+    public async Task Me_WithoutAuthenticatedUserCannotReadLinkedGuest()
+    {
+        await using var dbContext = await CreateContextAsync();
+        var controller = new AuthController(CreateService(dbContext))
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext()
+            }
+        };
+
+        var result = await controller.Me(CancellationToken.None);
+
+        Assert.IsType<UnauthorizedResult>(result.Result);
     }
 
     [Fact]
@@ -316,6 +340,18 @@ public sealed class CurrentUserSessionContractTests
             CreateUser(6, UserRole.Client, false, "inactive", "client"),
             CreateUser(7, UserRole.Client, true, "multi", "member"),
             CreateUser(8, UserRole.Client, true, "second", "owner"));
+        dbContext.Guests.Add(new Guest
+        {
+            Id = 50,
+            UserId = 5,
+            FirstName = "Traveler",
+            LastName = "Profile",
+            Mobile = "09125550005",
+            NormalizedMobile = "09125550005",
+            Email = "traveler@example.test",
+            NormalizedEmail = "traveler@example.test",
+            NationalCode = "1234567890"
+        });
 
         dbContext.Destinations.Add(new Destination
         {

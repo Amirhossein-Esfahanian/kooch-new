@@ -9,6 +9,7 @@ public class CurrentUserResponse
     public string FirstName { get; set; } = string.Empty;
     public string LastName { get; set; } = string.Empty;
     public int? GuestId { get; set; }
+    public CurrentUserLinkedGuestResponse? LinkedGuest { get; set; }
     public string FullName { get; set; } = string.Empty;
     public string Email { get; set; } = string.Empty;
     public string? PhoneNumber { get; set; }
@@ -19,6 +20,15 @@ public class CurrentUserResponse
     public IReadOnlyList<CurrentUserPropertyMembershipResponse> PropertyMemberships { get; set; } = [];
     public string? DefaultWorkspace { get; set; }
     public int? DefaultPropertyId { get; set; }
+}
+
+public sealed class CurrentUserLinkedGuestResponse
+{
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string? Mobile { get; set; }
+    public string? Email { get; set; }
+    public string? NationalCode { get; set; }
 }
 
 public class CurrentUserPropertyMembershipResponse

@@ -57,6 +57,13 @@ type SessionResponse = {
   fullName: string;
   email: string;
   phoneNumber: string | null;
+  linkedGuest?: {
+    firstName: string;
+    lastName: string;
+    mobile: string | null;
+    email: string | null;
+    nationalCode: string | null;
+  } | null;
   platformRole: PlatformRole;
   platformPermissions: string[];
   isActive: boolean;
@@ -147,6 +154,11 @@ function SessionReady() {
   return <span data-testid="session-state">{loading ? "loading" : "ready"}</span>;
 }
 
+function LinkedGuestProbe() {
+  const { user } = useAuthSession();
+  return <span data-testid="linked-guest-name">{user?.linkedGuest?.firstName ?? "none"}</span>;
+}
+
 function renderWithSession(
   response: SessionResponse,
   children: ReactNode,
@@ -183,6 +195,22 @@ beforeEach(() => {
 });
 
 describe("platform workspace authorization", () => {
+  it("maps the authenticated linked guest from the current-user contract", async () => {
+    renderWithSession(
+      session({
+        linkedGuest: {
+          firstName: "Traveler",
+          lastName: "Profile",
+          mobile: "09125550005",
+          email: "traveler@example.test",
+          nationalCode: "1234567890",
+        },
+      }),
+      <LinkedGuestProbe />,
+    );
+
+    expect((await screen.findByTestId("linked-guest-name")).textContent).toBe("Traveler");
+  });
   it("allows a SuperAdmin with the admin workspace", async () => {
     renderWithSession(
       session({

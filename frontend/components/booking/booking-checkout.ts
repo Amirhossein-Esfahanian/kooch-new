@@ -126,22 +126,10 @@ export function createBookingSessionFromCart(
   if (!bookingCartItemsShareContext(items)) {
     throw new Error("همه اتاق‌های سبد باید تاریخ اقامت و ترکیب مهمان یکسان داشته باشند.");
   }
-  const primaryGuest = stayDetails.bookingForSelf
-    ? typeof stayDetails.primaryGuest?.nationalCode === "string"
-      ? {
-          firstName: null,
-          lastName: null,
-          mobile: null,
-          email: null,
-          nationalCode: stayDetails.primaryGuest.nationalCode,
-        }
-      : null
-    : stayDetails.primaryGuest;
-
   return create({
     idempotencyKey,
     bookingForSelf: stayDetails.bookingForSelf,
-    primaryGuest,
+    primaryGuest: stayDetails.primaryGuest,
     expectedArrivalTime: stayDetails.expectedArrivalTime,
     specialRequest: stayDetails.specialRequest,
     items: items.map((item) => ({

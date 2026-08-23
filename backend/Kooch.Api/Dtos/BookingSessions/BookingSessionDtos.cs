@@ -30,15 +30,14 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
     {
         if (BookingForSelf)
         {
-            if (PrimaryGuest is not null &&
-                (GuestNormalization.NormalizeText(PrimaryGuest.FirstName) is not null ||
-                 GuestNormalization.NormalizeText(PrimaryGuest.LastName) is not null ||
-                 GuestNormalization.NormalizeMobile(PrimaryGuest.Mobile) is not null ||
-                 GuestNormalization.NormalizeEmail(PrimaryGuest.Email) is not null))
+            if (PrimaryGuest is not null)
             {
-                yield return new ValidationResult(
-                    "برای رزرو شخصی فقط کد ملی اختیاری مهمان قابل ارسال است.",
-                    [nameof(PrimaryGuest)]);
+                foreach (var result in GuestCreateRequest.ValidateContactFields(
+                             PrimaryGuest.Email,
+                             PrimaryGuest.Mobile))
+                {
+                    yield return result;
+                }
             }
 
             yield break;

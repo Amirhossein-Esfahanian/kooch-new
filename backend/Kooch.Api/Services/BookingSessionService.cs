@@ -56,11 +56,6 @@ public sealed class BookingSessionService(
             .Select(user => new { GuestId = user.Guest == null ? null : (int?)user.Guest.Id })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Client not found.");
-        if (accountContext.BookingForSelf && !identity.GuestId.HasValue)
-        {
-            throw new InvalidOperationException("The authenticated user has no linked guest.");
-        }
-
         var roomTypeProperties = await dbContext.RoomTypes.AsNoTracking()
             .Where(roomType => roomTypeIds.Contains(roomType.Id) && roomType.IsActive)
             .Select(roomType => new { roomType.Id, roomType.PropertyId })
@@ -158,6 +153,7 @@ public sealed class BookingSessionService(
         ValidateAccountBookingMode(preparedItems, creationKind);
         var currency = AssertSameCurrency(preparedItems);
         var primaryGuest = await ResolvePrimaryGuestAsync(
+            request.ClientId,
             request.GuestId,
             accountContext,
             cancellationToken);
@@ -392,16 +388,13 @@ public sealed class BookingSessionService(
         NormalizedPrimaryGuest? primaryGuest = null;
         if (request.BookingForSelf)
         {
-            var nationalCode = GuestNormalization.NormalizeNationalCode(
-                request.PrimaryGuest?.NationalCode);
-            if (nationalCode is not null)
+            if (request.PrimaryGuest is { } input)
             {
-                primaryGuest = new NormalizedPrimaryGuest(
-                    null,
-                    null,
-                    null,
-                    null,
-                    nationalCode);
+                var normalized = NormalizePrimaryGuest(input);
+                if (normalized.HasAnyValue)
+                {
+                    primaryGuest = normalized.Guest;
+                }
             }
         }
         else
@@ -424,6 +417,7 @@ public sealed class BookingSessionService(
     }
 
     private async Task<PrimaryGuestAssignment> ResolvePrimaryGuestAsync(
+        int clientId,
         int? currentGuestId,
         AccountBookingContext? accountContext,
         CancellationToken cancellationToken)
@@ -435,15 +429,22 @@ public sealed class BookingSessionService(
 
         if (accountContext.BookingForSelf)
         {
-            if (accountContext.PrimaryGuest?.NationalCode is { } nationalCode)
+            var linkedGuest = currentGuestId.HasValue
+                ? dbContext.Database.IsSqlServer()
+                    ? await dbContext.Guests
+                        .FromSqlInterpolated(
+                            $"SELECT * FROM Guests WITH (UPDLOCK, HOLDLOCK) WHERE Id = {currentGuestId.Value} AND UserId = {clientId}")
+                        .SingleAsync(cancellationToken)
+                    : await dbContext.Guests.SingleAsync(
+                        guest => guest.Id == currentGuestId.Value && guest.UserId == clientId,
+                        cancellationToken)
+                : await GetOrCreateLinkedGuestAsync(clientId, cancellationToken);
+            if (accountContext.PrimaryGuest is { } selfInput)
             {
-                var linkedGuest = await dbContext.Guests.SingleAsync(
-                    guest => guest.Id == currentGuestId,
-                    cancellationToken);
-                linkedGuest.NationalCode = nationalCode;
+                await ApplySelfGuestUpdatesAsync(selfInput, linkedGuest, clientId, cancellationToken);
             }
 
-            return new PrimaryGuestAssignment(currentGuestId, null);
+            return new PrimaryGuestAssignment(linkedGuest.Id, linkedGuest.Id == 0 ? linkedGuest : null);
         }
 
         var input = accountContext.PrimaryGuest
@@ -514,6 +515,144 @@ public sealed class BookingSessionService(
         dbContext.Guests.Add(newGuest);
         return new PrimaryGuestAssignment(null, newGuest);
     }
+
+    private static (NormalizedPrimaryGuest Guest, bool HasAnyValue) NormalizePrimaryGuest(
+        AccountBookingSessionPrimaryGuestRequest input)
+    {
+        var guest = new NormalizedPrimaryGuest(
+            GuestNormalization.NormalizeText(input.FirstName),
+            GuestNormalization.NormalizeText(input.LastName),
+            GuestNormalization.NormalizeMobile(input.Mobile),
+            GuestNormalization.NormalizeEmail(input.Email),
+            GuestNormalization.NormalizeNationalCode(input.NationalCode));
+        return (guest, guest.FirstName is not null ||
+                       guest.LastName is not null ||
+                       guest.Mobile is not null ||
+                       guest.Email is not null ||
+                       guest.NationalCode is not null);
+    }
+
+    private async Task<Guest> GetOrCreateLinkedGuestAsync(
+        int clientId,
+        CancellationToken cancellationToken)
+    {
+        var user = dbContext.Database.IsSqlServer()
+            ? await dbContext.Users
+                .FromSqlInterpolated(
+                    $"SELECT * FROM Users WITH (UPDLOCK, HOLDLOCK) WHERE Id = {clientId}")
+                .SingleAsync(cancellationToken)
+            : await dbContext.Users.SingleAsync(user => user.Id == clientId, cancellationToken);
+        var linkedGuest = await dbContext.Guests
+            .SingleOrDefaultAsync(guest => guest.UserId == clientId, cancellationToken);
+        if (linkedGuest is not null)
+        {
+            return linkedGuest;
+        }
+
+        var mobile = UserIdentityNormalization.NormalizePhoneNumber(user.PhoneNumber);
+        var email = IsInternalUserEmail(user.Email)
+            ? null
+            : UserIdentityNormalization.NormalizeEmail(user.Email);
+        var candidates = await dbContext.Guests
+            .Where(guest =>
+                (mobile != null && guest.NormalizedMobile == mobile) ||
+                (email != null && guest.NormalizedEmail == email))
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        if (candidates.Count > 1 || candidates.Any(guest => guest.UserId.HasValue))
+        {
+            throw new ArgumentException("اطلاعات تماس حساب با پرونده مهمان دیگری تداخل دارد.");
+        }
+
+        if (candidates.Count == 1)
+        {
+            var candidate = candidates[0];
+            candidate.UserId = clientId;
+            candidate.FirstName = string.IsNullOrWhiteSpace(candidate.FirstName)
+                ? user.FirstName
+                : candidate.FirstName;
+            candidate.LastName = string.IsNullOrWhiteSpace(candidate.LastName)
+                ? user.LastName
+                : candidate.LastName;
+            candidate.Mobile ??= mobile;
+            candidate.NormalizedMobile ??= mobile;
+            candidate.Email ??= email;
+            candidate.NormalizedEmail ??= email;
+            candidate.Nationality ??= "ایران";
+            return candidate;
+        }
+
+        var newGuest = new Guest
+        {
+            UserId = clientId,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            Mobile = mobile,
+            NormalizedMobile = mobile,
+            Email = email,
+            NormalizedEmail = email,
+            Nationality = "ایران"
+        };
+        dbContext.Guests.Add(newGuest);
+        return newGuest;
+    }
+
+    private async Task ApplySelfGuestUpdatesAsync(
+        NormalizedPrimaryGuest input,
+        Guest guest,
+        int clientId,
+        CancellationToken cancellationToken)
+    {
+        if (input.Mobile is not null &&
+            !string.Equals(input.Mobile, guest.NormalizedMobile, StringComparison.Ordinal))
+        {
+            var variants = UserIdentityNormalization.BuildPhoneNumberVariants(input.Mobile);
+            var conflicts = await dbContext.Guests.AnyAsync(
+                                other => other.Id != guest.Id && other.NormalizedMobile == input.Mobile,
+                                cancellationToken) ||
+                            await dbContext.Users.IgnoreQueryFilters().AnyAsync(
+                                other => other.Id != clientId &&
+                                         other.PhoneNumber != null &&
+                                         variants.Contains(other.PhoneNumber),
+                                cancellationToken);
+            if (conflicts)
+            {
+                throw new ArgumentException("این شماره موبایل قبلاً برای حساب یا مهمان دیگری ثبت شده است.");
+            }
+        }
+
+        if (input.Email is not null &&
+            !string.Equals(input.Email, guest.NormalizedEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            var conflicts = await dbContext.Guests.AnyAsync(
+                                other => other.Id != guest.Id && other.NormalizedEmail == input.Email,
+                                cancellationToken) ||
+                            await dbContext.Users.IgnoreQueryFilters().AnyAsync(
+                                other => other.Id != clientId && other.Email == input.Email,
+                                cancellationToken);
+            if (conflicts)
+            {
+                throw new ArgumentException("این ایمیل قبلاً برای حساب یا مهمان دیگری ثبت شده است.");
+            }
+        }
+
+        if (input.FirstName is not null) guest.FirstName = input.FirstName;
+        if (input.LastName is not null) guest.LastName = input.LastName;
+        if (input.Mobile is not null)
+        {
+            guest.Mobile = input.Mobile;
+            guest.NormalizedMobile = input.Mobile;
+        }
+        if (input.Email is not null)
+        {
+            guest.Email = input.Email;
+            guest.NormalizedEmail = input.Email;
+        }
+        if (input.NationalCode is not null) guest.NationalCode = input.NationalCode;
+    }
+
+    private static bool IsInternalUserEmail(string? email) =>
+        email?.EndsWith("@mobile.kooch.local", StringComparison.OrdinalIgnoreCase) == true;
 
     private static void EnsureContactsDoNotConflict(
         NormalizedPrimaryGuest input,

@@ -71,7 +71,16 @@ export interface AuthSessionUser {
   fullName: string;
   email: string;
   phoneNumber: string | null;
+  linkedGuest?: AuthLinkedGuest | null;
   isActive: boolean;
+}
+
+export interface AuthLinkedGuest {
+  firstName: string;
+  lastName: string;
+  mobile: string | null;
+  email: string | null;
+  nationalCode: string | null;
 }
 
 export interface AuthSession {
@@ -92,7 +101,8 @@ export type WorkspaceRoutingSession = Pick<
   | "defaultPropertyId"
 >;
 
-interface CurrentUserResponse extends Omit<AuthSessionUser, "isActive"> {
+interface CurrentUserResponse extends Omit<AuthSessionUser, "isActive" | "linkedGuest"> {
+  linkedGuest?: AuthLinkedGuest | null;
   platformRole: PlatformRole;
   platformPermissions?: string[];
   isActive: boolean;
@@ -134,6 +144,7 @@ function toSession(response: CurrentUserResponse): AuthSession {
       fullName: response.fullName,
       email: response.email,
       phoneNumber: response.phoneNumber,
+      linkedGuest: response.linkedGuest ?? null,
       isActive: response.isActive,
     },
     platformRole: response.platformRole,

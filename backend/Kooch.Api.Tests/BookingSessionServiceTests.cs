@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Dtos.Reservations;
@@ -8,6 +9,7 @@ using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Kooch.Api.Tests;
@@ -398,6 +400,184 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(1, linkedGuest.UserId);
         Assert.Equal("0012345678", linkedGuest.NationalCode);
         Assert.Equal(1, await verification.Users.CountAsync());
+    }
+
+    [Theory]
+    [InlineData("FirstName", "  Updated  ", "Updated")]
+    [InlineData("LastName", "  Traveler  ", "Traveler")]
+    [InlineData("Mobile", "+98 912 345 6789", "09123456789")]
+    [InlineData("Email", "  GUEST@EXAMPLE.TEST ", "guest@example.test")]
+    [InlineData("NationalCode", "  ۱۲۳۴۵۶۷۸۹۰  ", "1234567890")]
+    public async Task AccountBookingForSelf_UpdatesOnlyTheSuppliedLinkedGuestField(
+        string field,
+        string value,
+        string expected)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest();
+        typeof(AccountBookingSessionPrimaryGuestRequest).GetProperty(field)!.SetValue(
+            request.PrimaryGuest,
+            value);
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Equal(1, result.GuestId);
+        await using var verification = harness.CreateContext();
+        var guest = await verification.Guests.SingleAsync();
+        var persisted = field switch
+        {
+            "FirstName" => guest.FirstName,
+            "LastName" => guest.LastName,
+            "Mobile" => guest.Mobile,
+            "Email" => guest.Email,
+            _ => guest.NationalCode
+        };
+        Assert.Equal(expected, persisted);
+        var user = await verification.Users.SingleAsync();
+        Assert.Equal("Booking", user.FirstName);
+        Assert.Equal("Client", user.LastName);
+        Assert.Null(user.PhoneNumber);
+        Assert.Null(user.Email);
+    }
+
+    [Fact]
+    public async Task AccountBookingForSelf_UpdatesAllGuestFieldsWithoutChangingUserOrGuestAssignment()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(
+            CreateAccountItem(10, 100),
+            CreateAccountItem(20, 200));
+        request.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+        {
+            FirstName = "  Niloofar ",
+            LastName = " Traveler ",
+            Mobile = "+98 912 345 6789",
+            Email = " Niloofar@Example.Test ",
+            NationalCode = " ۱۲۳۴۵۶۷۸۹۰ "
+        };
+
+        var result = await scope.Service.CreateForAccountAsync(1, request);
+
+        await using var verification = harness.CreateContext();
+        var guest = await verification.Guests.SingleAsync();
+        Assert.Equal(1, guest.Id);
+        Assert.Equal(1, guest.UserId);
+        Assert.Equal("Niloofar", guest.FirstName);
+        Assert.Equal("Traveler", guest.LastName);
+        Assert.Equal("09123456789", guest.NormalizedMobile);
+        Assert.Equal("niloofar@example.test", guest.NormalizedEmail);
+        Assert.Equal("1234567890", guest.NationalCode);
+        Assert.Single(await verification.Guests.ToListAsync());
+        Assert.All(await verification.Reservations.ToListAsync(), reservation =>
+            Assert.Equal(guest.Id, reservation.GuestId));
+        var user = await verification.Users.SingleAsync();
+        Assert.Equal("Booking", user.FirstName);
+        Assert.Equal("Client", user.LastName);
+        Assert.Null(user.PhoneNumber);
+        Assert.Null(user.Email);
+        var currentUser = await new AuthService(
+                verification,
+                Options.Create(new JwtOptions()),
+                new PropertyAccessService(verification),
+                null!,
+                null!)
+            .GetCurrentUserAsync(1);
+        Assert.NotNull(currentUser?.LinkedGuest);
+        Assert.Equal("Niloofar", currentUser.LinkedGuest.FirstName);
+        Assert.Equal("1234567890", currentUser.LinkedGuest.NationalCode);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task AccountBookingForSelf_RejectsConflictingNormalizedContact(bool mobileConflict)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Guests.Add(new Guest
+            {
+                Id = 2,
+                FirstName = "Other",
+                LastName = "Guest",
+                Mobile = mobileConflict ? "09123456789" : null,
+                NormalizedMobile = mobileConflict ? "09123456789" : null,
+                Email = mobileConflict ? null : "other@example.test",
+                NormalizedEmail = mobileConflict ? null : "other@example.test"
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+        {
+            Mobile = mobileConflict ? "+98 912 345 6789" : null,
+            Email = mobileConflict ? null : " OTHER@EXAMPLE.TEST "
+        };
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            scope.Service.CreateForAccountAsync(1, request));
+
+        await using var verification = harness.CreateContext();
+        Assert.Empty(await verification.BookingSessions.ToListAsync());
+        Assert.Equal(2, await verification.Guests.CountAsync());
+    }
+
+    [Fact]
+    public async Task AccountBookingForSelf_WithoutLinkedGuestCreatesExactlyOneFromAuthenticatedUser()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Guests.Remove(await setup.Guests.SingleAsync());
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+
+        var result = await scope.Service.CreateForAccountAsync(
+            1,
+            CreateAccountRequest(CreateAccountItem(10, 100)));
+
+        await using var verification = harness.CreateContext();
+        var guest = await verification.Guests.SingleAsync();
+        Assert.Equal(1, guest.UserId);
+        Assert.Equal("Booking", guest.FirstName);
+        Assert.Equal("Client", guest.LastName);
+        Assert.Equal(guest.Id, result.GuestId);
+        Assert.Equal(guest.Id, (await verification.BookingSessions.SingleAsync()).GuestId);
+        Assert.Equal(guest.Id, (await verification.Reservations.SingleAsync()).GuestId);
+    }
+
+    [Fact]
+    public async Task AccountBookingForSelf_GuestFieldsParticipateInIdempotency()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var original = CreateAccountRequest(CreateAccountItem(10, 100));
+        original.IdempotencyKey = "self-guest-fields";
+        original.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+        {
+            FirstName = "  Niloofar ",
+            Mobile = "+98 912 345 6789"
+        };
+        var replay = CreateAccountRequest(CreateAccountItem(10, 100));
+        replay.IdempotencyKey = "self-guest-fields";
+        replay.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest
+        {
+            FirstName = "Niloofar",
+            Mobile = "09123456789"
+        };
+
+        var first = await scope.Service.CreateForAccountAsync(1, original);
+        var second = await scope.Service.CreateForAccountAsync(1, replay);
+        Assert.Equal(first.BookingSessionId, second.BookingSessionId);
+
+        replay.PrimaryGuest.LastName = "Changed";
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            scope.Service.CreateForAccountAsync(1, replay));
     }
 
     [Fact]

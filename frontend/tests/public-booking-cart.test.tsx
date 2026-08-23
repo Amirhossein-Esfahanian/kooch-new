@@ -460,6 +460,32 @@ describe("public booking cart", () => {
     }));
   });
 
+  it("forwards editable linked-guest fields for a self booking without account identifiers", async () => {
+    const create = vi.fn().mockResolvedValue({ sessionCode: "BS-SELF-GUEST" });
+    const primaryGuest = {
+      firstName: "مریم",
+      lastName: "کریمی",
+      mobile: "09121234567",
+      email: "guest@example.test",
+      nationalCode: "1234567890",
+    };
+
+    await createBookingSessionFromCart([item()], "self-guest-key", {
+      bookingForSelf: true,
+      primaryGuest,
+      expectedArrivalTime: null,
+      specialRequest: null,
+    }, create);
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      bookingForSelf: true,
+      primaryGuest,
+    }));
+    const [payload] = create.mock.calls[0];
+    expect(payload).not.toHaveProperty("userId");
+    expect(payload).not.toHaveProperty("guestId");
+  });
+
   it("uses repeated childAges query parameters", async () => {
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roomTypes: [] }) }) as typeof fetch;

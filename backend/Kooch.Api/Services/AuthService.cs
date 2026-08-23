@@ -375,7 +375,17 @@ public class AuthService(
                 user.PhoneNumber,
                 user.Role,
                 user.IsActive,
-                GuestId = user.Guest == null ? null : (int?)user.Guest.Id
+                GuestId = user.Guest == null ? null : (int?)user.Guest.Id,
+                LinkedGuest = user.Guest == null
+                    ? null
+                    : new CurrentUserLinkedGuestResponse
+                    {
+                        FirstName = user.Guest.FirstName,
+                        LastName = user.Guest.LastName,
+                        Mobile = user.Guest.Mobile,
+                        Email = user.Guest.Email,
+                        NationalCode = user.Guest.NationalCode
+                    }
             })
             .SingleOrDefaultAsync(cancellationToken);
         if (user is null)
@@ -452,6 +462,7 @@ public class AuthService(
             FirstName = user.FirstName,
             LastName = user.LastName,
             GuestId = user.GuestId,
+            LinkedGuest = user.LinkedGuest,
             FullName = (user.FirstName + " " + user.LastName).Trim(),
             Email = GetDisplayEmail(user.Email),
             PhoneNumber = user.PhoneNumber,
