@@ -645,7 +645,9 @@ public sealed class PaymentCallbackServiceTests
         var provider = new InternalTestPaymentProvider(PaymentCallbackHarness.SigningSecret);
 
         Assert.Equal(PaymentCallbackRateLimitPolicy.Name, provider.CallbackRateLimitPolicyName);
-        Assert.Equal(InternalTestPaymentProvider.ProviderName, provider.Name);
+        Assert.Equal(InternalTestPaymentProvider.ProviderName, provider.ProviderKey);
+        Assert.Equal("درگاه آزمایشی", provider.DisplayLabel);
+        Assert.True(provider.IsSelectableForAccountCheckout);
     }
 
     private static async Task ExcludeChildAsync(

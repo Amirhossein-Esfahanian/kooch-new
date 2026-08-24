@@ -8,7 +8,11 @@ import { formatBookingDeadline } from "@/components/booking/booking-display";
 const navigation = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
 }));
-const bookingApi = vi.hoisted(() => ({ fetch: vi.fn(), initiate: vi.fn() }));
+const bookingApi = vi.hoisted(() => ({
+  fetch: vi.fn(),
+  fetchProviders: vi.fn(),
+  initiate: vi.fn(),
+}));
 
 vi.mock("next/navigation", () => ({
   useParams: () => ({ sessionCode: "BS-1405-001" }),
@@ -30,6 +34,7 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   return {
     ...actual,
     fetchAccountBookingSession: bookingApi.fetch,
+    fetchAccountPaymentProviders: bookingApi.fetchProviders,
     initiateAccountBookingSessionPayment: bookingApi.initiate,
   };
 });
@@ -133,6 +138,9 @@ describe("account booking session detail", () => {
     sessionStorage.clear();
     vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "true");
     bookingApi.fetch.mockResolvedValue(response());
+    bookingApi.fetchProviders.mockResolvedValue([
+      { value: "internal-test", label: "درگاه آزمایشی" },
+    ]);
     bookingApi.initiate.mockResolvedValue({
       paymentId: 10,
       status: "Pending",
@@ -207,10 +215,101 @@ describe("account booking session detail", () => {
     buttons[0].click();
 
     await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
+    expect(bookingApi.initiate).toHaveBeenCalledWith(
+      "BS-1405-001",
+      expect.any(String),
+      "internal-test",
+    );
     expect(navigation.router.push).toHaveBeenCalledWith(
       "/booking/sessions/BS-1405-001/mock-payment",
     );
     expect(screen.getByTestId("session-payment-mobile-action")).toBeTruthy();
+  });
+
+  it("loads and renders only providers returned by the account catalog", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockResolvedValue([
+      { value: "saman", label: "درگاه سامان" },
+      { value: "mellat", label: "درگاه ملت" },
+    ]);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByRole("radio", { name: "درگاه سامان" })).toBeTruthy();
+    expect(screen.getByRole("radio", { name: "درگاه ملت" })).toBeTruthy();
+    expect(screen.queryByText("درگاه آزمایشی")).toBeNull();
+    expect(bookingApi.fetchProviders).toHaveBeenCalledOnce();
+  });
+
+  it("passes the selected catalog provider to payment initiation", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockResolvedValue([
+      { value: "saman", label: "درگاه سامان" },
+      { value: "mellat", label: "درگاه ملت" },
+    ]);
+    render(<AccountBookingSessionPage />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: "درگاه ملت" }));
+    fireEvent.click((await screen.findAllByRole("button", { name: "پرداخت" }))[0]);
+
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
+    expect(bookingApi.initiate.mock.calls[0][2]).toBe("mellat");
+  });
+
+  it("automatically selects a single backend provider", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    render(<AccountBookingSessionPage />);
+
+    const provider = await screen.findByRole("radio", { name: /درگاه آزمایشی/ });
+    expect((provider as HTMLInputElement).checked).toBe(true);
+  });
+
+  it("shows a compact error and prevents payment when the catalog fails", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockRejectedValue(new Error("offline"));
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText(/روش‌های پرداخت دریافت نشدند/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "پرداخت" })).toBeNull();
+  });
+
+  it("uses the same selected provider from the mobile payment action", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockResolvedValue([
+      { value: "saman", label: "درگاه سامان" },
+      { value: "mellat", label: "درگاه ملت" },
+    ]);
+    render(<AccountBookingSessionPage />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: "درگاه سامان" }));
+    const mobileAction = await screen.findByTestId("session-payment-mobile-action");
+    fireEvent.click(within(mobileAction).getByRole("button", { name: "پرداخت" }));
+
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
+    expect(bookingApi.initiate.mock.calls[0][2]).toBe("saman");
+  });
+
+  it("keeps the provider coupled to a network retry of the same attempt", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockResolvedValue([
+      { value: "saman", label: "درگاه سامان" },
+      { value: "mellat", label: "درگاه ملت" },
+    ]);
+    bookingApi.initiate.mockRejectedValue(new Error("network"));
+    render(<AccountBookingSessionPage />);
+
+    fireEvent.click(await screen.findByRole("radio", { name: "درگاه سامان" }));
+    const paymentButton = (await screen.findAllByRole("button", { name: "پرداخت" }))[0];
+    fireEvent.click(paymentButton);
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText("network")).toBeTruthy();
+    fireEvent.click((await screen.findAllByRole("button", { name: "پرداخت" }))[0]);
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledTimes(2));
+
+    expect(bookingApi.initiate.mock.calls[1][1]).toBe(
+      bookingApi.initiate.mock.calls[0][1],
+    );
+    expect(bookingApi.initiate.mock.calls[1][2]).toBe("saman");
   });
 
   it("shows the approved OnRequest continuation with the persisted payment deadline", async () => {
@@ -224,7 +323,7 @@ describe("account booking session detail", () => {
     expect(screen.getByText("مهلت پرداخت")).toBeTruthy();
     expect(screen.getByText(formatBookingDeadline(deadline))).toBeTruthy();
     expect(screen.getByRole("timer")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "پرداخت" })).toHaveLength(2);
+    expect(await screen.findAllByRole("button", { name: "پرداخت" })).toHaveLength(2);
   });
 
   it("refreshes PendingApproval into the authoritative payment-ready state", async () => {
@@ -243,7 +342,7 @@ describe("account booking session detail", () => {
 
     expect(await screen.findByText("در انتظار تأیید اقامتگاه")).toBeTruthy();
     expect(await screen.findByText("اقامتگاه درخواست شما را تأیید کرد")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "پرداخت" })).toHaveLength(2);
+    expect(await screen.findAllByRole("button", { name: "پرداخت" })).toHaveLength(2);
     intervalSpy.mockRestore();
   });
 
@@ -305,15 +404,21 @@ describe("account booking session detail", () => {
       "kooch_booking_session_payment_BS-1405-001",
       "failed-attempt-key",
     );
+    bookingApi.fetchProviders.mockResolvedValue([
+      { value: "saman", label: "درگاه سامان" },
+      { value: "mellat", label: "درگاه ملت" },
+    ]);
     bookingApi.fetch.mockResolvedValue(ready);
     render(<AccountBookingSessionPage />);
 
     expect(await screen.findByText("تلاش قبلی پرداخت ناموفق بود")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("radio", { name: "درگاه ملت" }));
     fireEvent.click((await screen.findAllByRole("button", { name: "تلاش مجدد برای پرداخت" }))[0]);
 
     await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
     const newAttemptKey = bookingApi.initiate.mock.calls[0][1];
     expect(newAttemptKey).not.toBe("failed-attempt-key");
+    expect(bookingApi.initiate.mock.calls[0][2]).toBe("mellat");
     expect(sessionStorage.getItem(
       "kooch_booking_session_failed_payment_BS-1405-001",
     )).toBe("77");
@@ -350,13 +455,13 @@ describe("account booking session detail", () => {
     expect(screen.queryByRole("button", { name: "تلاش مجدد برای پرداخت" })).toBeNull();
   });
 
-  it("does not expose a broken payment route when mock checkout is disabled", async () => {
-    vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "false");
+  it("does not expose a payment action when the provider catalog is empty", async () => {
+    bookingApi.fetchProviders.mockResolvedValue([]);
     bookingApi.fetch.mockResolvedValue(readyResponse());
 
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText(/درگاه پرداخت در حال حاضر در دسترس نیست/)).toBeTruthy();
+    expect(await screen.findByText(/روش پرداخت فعالی در دسترس نیست/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "پرداخت" })).toBeNull();
   });
 
@@ -373,7 +478,11 @@ describe("account booking session detail", () => {
     expect(screen.getByText("مبلغ اولیه سفارش")).toBeTruthy();
     expect(screen.getAllByText("مبلغ قابل پرداخت")).not.toHaveLength(0);
     expect(screen.getByText("۱ رزرو")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toHaveLength(2);
+    expect(
+      await screen.findAllByRole("button", {
+        name: "ادامه با رزروهای تأییدشده",
+      }),
+    ).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /^پرداخت R-/ })).toBeNull();
   });
 
@@ -385,8 +494,9 @@ describe("account booking session detail", () => {
     buttons[0].click();
 
     await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
-    expect(bookingApi.initiate.mock.calls[0]).toHaveLength(2);
+    expect(bookingApi.initiate.mock.calls[0]).toHaveLength(3);
     expect(bookingApi.initiate.mock.calls[0][0]).toBe("BS-1405-001");
+    expect(bookingApi.initiate.mock.calls[0][2]).toBe("internal-test");
   });
 
   it("offers one session-level continuation scope for two approved children", async () => {
@@ -409,7 +519,11 @@ describe("account booking session detail", () => {
 
     expect(await screen.findByText("۲ رزرو")).toBeTruthy();
     expect(within(screen.getByTestId("payable-reservations")).getAllByText(/R-00[13]/)).toHaveLength(2);
-    expect(screen.getAllByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toHaveLength(2);
+    expect(
+      await screen.findAllByRole("button", {
+        name: "ادامه با رزروهای تأییدشده",
+      }),
+    ).toHaveLength(2);
     expect(screen.queryByRole("button", { name: /R-001|R-003/ })).toBeNull();
   });
 
@@ -451,12 +565,12 @@ describe("account booking session detail", () => {
     expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
   });
 
-  it("keeps mixed continuation safe when mock payment UI is disabled", async () => {
-    vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "false");
+  it("keeps mixed continuation safe when no provider is selectable", async () => {
+    bookingApi.fetchProviders.mockResolvedValue([]);
     bookingApi.fetch.mockResolvedValue(mixedResponse());
     render(<AccountBookingSessionPage />);
 
-    expect(await screen.findByText(/درگاه پرداخت در حال حاضر در دسترس نیست/)).toBeTruthy();
+    expect(await screen.findByText(/روش پرداخت فعالی در دسترس نیست/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "ادامه با رزروهای تأییدشده" })).toBeNull();
   });
 

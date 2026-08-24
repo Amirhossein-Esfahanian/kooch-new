@@ -67,8 +67,17 @@ public sealed class AccountBookingSessionsController(
             cancellationToken));
     }
 
+    [HttpGet("payment-providers")]
+    [ProducesResponseType<IReadOnlyList<AccountPaymentProviderOptionResponse>>(
+        StatusCodes.Status200OK)]
+    public ActionResult<IReadOnlyList<AccountPaymentProviderOptionResponse>> GetPaymentProviders()
+    {
+        return Ok(paymentService.GetSelectableProviders());
+    }
+
     [HttpPost("{sessionCode}/payments")]
     [ProducesResponseType<AccountBookingSessionPaymentInitiationResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
     [ProducesResponseType(StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AccountBookingSessionPaymentInitiationResponse>> InitiatePayment(
@@ -80,6 +89,7 @@ public sealed class AccountBookingSessionsController(
         return Ok(await paymentService.InitiateAsync(
             currentUser.UserId,
             sessionCode,
+            request.ProviderKey,
             request.IdempotencyKey,
             cancellationToken));
     }

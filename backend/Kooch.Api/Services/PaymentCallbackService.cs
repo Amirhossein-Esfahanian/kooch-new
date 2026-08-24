@@ -27,7 +27,7 @@ public sealed class PaymentCallbackService(
         try
         {
             var receiptResult = await PersistReceiptAsync(
-                provider.Name,
+                provider.ProviderKey,
                 validated,
                 cancellationToken);
             if (receiptResult.IsDuplicate || !validated.IsSuccessful)
@@ -222,7 +222,7 @@ public sealed class PaymentCallbackService(
         }
 
         return providers.SingleOrDefault(provider =>
-                   string.Equals(provider.Name, normalized, StringComparison.OrdinalIgnoreCase))
+                   string.Equals(provider.ProviderKey, normalized, StringComparison.OrdinalIgnoreCase))
                ?? throw new KeyNotFoundException("Payment provider is not registered.");
     }
 

@@ -2,7 +2,9 @@ namespace Kooch.Api.Services;
 
 public interface IPaymentProvider
 {
-    string Name { get; }
+    string ProviderKey { get; }
+    string DisplayLabel { get; }
+    bool IsSelectableForAccountCheckout { get; }
     string CallbackRateLimitPolicyName { get; }
 
     Task<ValidatedPaymentProviderCallback> ValidateCallbackAsync(

@@ -10,7 +10,9 @@ internal sealed class InternalTestPaymentProvider(string signingSecret) : IPayme
     internal const string ProviderName = "internal-test";
     internal const string SignatureHeaderName = "X-Kooch-Test-Signature";
 
-    public string Name => ProviderName;
+    public string ProviderKey => ProviderName;
+    public string DisplayLabel => "درگاه آزمایشی";
+    public bool IsSelectableForAccountCheckout => true;
     public string CallbackRateLimitPolicyName => PaymentCallbackRateLimitPolicy.Name;
 
     public Task<ValidatedPaymentProviderCallback> ValidateCallbackAsync(

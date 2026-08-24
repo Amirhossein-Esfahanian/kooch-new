@@ -198,6 +198,11 @@ export interface AccountBookingSessionPaymentInitiation {
   isReplay: boolean;
 }
 
+export interface AccountPaymentProviderOption {
+  value: string;
+  label: string;
+}
+
 export interface MockPaymentSimulationResult {
   paymentId: number;
   state: "applied" | "failed" | "pending_reconciliation" | "received";
@@ -247,13 +252,23 @@ export function fetchAccountBookingSessions(page = 1, pageSize = 10) {
   );
 }
 
+export function fetchAccountPaymentProviders() {
+  return apiRequest<AccountPaymentProviderOption[]>(
+    "/account/booking-sessions/payment-providers",
+  );
+}
+
 export function initiateAccountBookingSessionPayment(
   sessionCode: string,
   idempotencyKey: string,
+  providerKey: string,
 ) {
   return apiRequest<AccountBookingSessionPaymentInitiation>(
     `/account/booking-sessions/${encodeURIComponent(sessionCode)}/payments`,
-    { method: "POST", body: JSON.stringify({ idempotencyKey }) },
+    {
+      method: "POST",
+      body: JSON.stringify({ providerKey, idempotencyKey }),
+    },
   );
 }
 

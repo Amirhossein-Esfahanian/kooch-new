@@ -4,7 +4,14 @@ namespace Kooch.Api.Dtos.Payments;
 
 public sealed class AccountBookingSessionPaymentRequest
 {
+    public string ProviderKey { get; set; } = string.Empty;
     public string IdempotencyKey { get; set; } = string.Empty;
+}
+
+public sealed class AccountPaymentProviderOptionResponse
+{
+    public string Value { get; set; } = string.Empty;
+    public string Label { get; set; } = string.Empty;
 }
 
 public sealed class AccountBookingSessionPaymentInitiationResponse

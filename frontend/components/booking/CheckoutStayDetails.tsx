@@ -8,7 +8,8 @@ import {
 } from "@/components/KoochFormControls";
 import type { BookingCheckoutStayDetails } from "@/components/booking/booking-checkout";
 
-export const checkoutStayDetailsStorageKey = "kooch_booking_checkout_stay_details_v1";
+export const checkoutStayDetailsStorageKey =
+  "kooch_booking_checkout_stay_details_v1";
 const checkoutStayDetailsVersion = 2;
 
 export interface CheckoutGuestDraft {
@@ -29,7 +30,16 @@ export interface CheckoutStayDetailsDraft {
 }
 
 export type CheckoutStayDetailsErrors = Partial<
-  Record<"firstName" | "lastName" | "mobile" | "email" | "contact" | "nationalCode" | "specialRequest", string>
+  Record<
+    | "firstName"
+    | "lastName"
+    | "mobile"
+    | "email"
+    | "contact"
+    | "nationalCode"
+    | "specialRequest",
+    string
+  >
 >;
 
 export const emptyCheckoutGuestDraft: CheckoutGuestDraft = {
@@ -47,12 +57,21 @@ export const emptyCheckoutStayDetailsDraft: CheckoutStayDetailsDraft = {
   specialRequest: "",
 };
 
-const arrivalOptions = Array.from({ length: 48 }, (_, index) => {
-  const hour = Math.floor(index / 2);
-  const minute = index % 2 === 0 ? "00" : "30";
-  const value = `${String(hour).padStart(2, "0")}:${minute}:00`;
-  return { value, label: `${toPersianDigits(String(hour).padStart(2, "0"))}:${toPersianDigits(minute)}` };
-});
+const arrivalOptions = [
+  ...Array.from({ length: 10 }, (_, index) => {
+    const hour = index + 14;
+    const value = `${String(hour).padStart(2, "0")}:00:00`;
+
+    return {
+      value,
+      label: `${toPersianDigits(String(hour).padStart(2, "0"))}:۰۰`,
+    };
+  }),
+  {
+    value: "23:59:00",
+    label: "۲۳:۵۹",
+  },
+];
 
 export function restoreCheckoutStayDetailsDraft(
   value: string | null,
@@ -79,7 +98,9 @@ export function restoreCheckoutStayDetailsDraft(
       !isSafeText(parsed.specialRequest, 2000) ||
       typeof parsed.expectedArrivalTime !== "string" ||
       (parsed.expectedArrivalTime !== "" &&
-        !arrivalOptions.some((option) => option.value === parsed.expectedArrivalTime))
+        !arrivalOptions.some(
+          (option) => option.value === parsed.expectedArrivalTime,
+        ))
     ) {
       return emptyCheckoutStayDetailsDraft;
     }
@@ -90,7 +111,8 @@ export function restoreCheckoutStayDetailsDraft(
         lastName: parsed.primaryGuest!.lastName as string,
         mobile: parsed.primaryGuest!.mobile as string,
         email: parsed.primaryGuest!.email as string,
-        nationalCode: (parsed.primaryGuest?.nationalCode as string | undefined) ?? "",
+        nationalCode:
+          (parsed.primaryGuest?.nationalCode as string | undefined) ?? "",
       },
       selfGuest: restoreGuestDraft(parsed.selfGuest),
       otherGuest: restoreGuestDraft(parsed.otherGuest),
@@ -102,7 +124,9 @@ export function restoreCheckoutStayDetailsDraft(
   }
 }
 
-export function serializeCheckoutStayDetailsDraft(draft: CheckoutStayDetailsDraft) {
+export function serializeCheckoutStayDetailsDraft(
+  draft: CheckoutStayDetailsDraft,
+) {
   return JSON.stringify({ version: checkoutStayDetailsVersion, ...draft });
 }
 
@@ -164,7 +188,10 @@ export function CheckoutStayDetails({
   errors: CheckoutStayDetailsErrors;
   onChange: (draft: CheckoutStayDetailsDraft) => void;
 }) {
-  const updateGuest = (field: keyof CheckoutStayDetailsDraft["primaryGuest"], value: string) =>
+  const updateGuest = (
+    field: keyof CheckoutStayDetailsDraft["primaryGuest"],
+    value: string,
+  ) =>
     onChange({
       ...draft,
       primaryGuest: { ...draft.primaryGuest, [field]: value },
@@ -197,7 +224,10 @@ export function CheckoutStayDetails({
       <section aria-labelledby="primary-guest-title">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h2 className="text-lg font-black text-foreground" id="primary-guest-title">
+            <h2
+              className="text-lg font-black text-foreground"
+              id="primary-guest-title"
+            >
               اطلاعات مهمان
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
@@ -216,7 +246,10 @@ export function CheckoutStayDetails({
           </label>
         </div>
 
-        <div className="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2" data-testid="checkout-primary-guest-panel">
+        <div
+          className="mt-4 grid min-w-0 items-start gap-4 sm:grid-cols-2"
+          data-testid="checkout-primary-guest-panel"
+        >
           <KoochField error={errors.firstName} label="نام" required>
             <KoochInput
               autoComplete="given-name"
@@ -235,7 +268,11 @@ export function CheckoutStayDetails({
           </KoochField>
           <KoochField
             error={errors.mobile ?? errors.contact}
-            helperText={draft.bookingForSelf ? undefined : "شماره موبایل یا ایمیل؛ وارد کردن یکی کافی است."}
+            helperText={
+              draft.bookingForSelf
+                ? undefined
+                : "شماره موبایل یا ایمیل؛ وارد کردن یکی کافی است."
+            }
             label="شماره موبایل"
             required={draft.bookingForSelf}
           >
@@ -259,20 +296,34 @@ export function CheckoutStayDetails({
               value={draft.primaryGuest.email}
             />
           </KoochField>
-          <KoochField className="sm:max-w-sm" error={errors.nationalCode} label="کد ملی (اختیاری)">
+          <KoochField
+            className="sm:max-w-sm"
+            error={errors.nationalCode}
+            label="کد ملی (اختیاری)"
+          >
             <KoochInput
               autoComplete="off"
               dir="ltr"
               maxLength={20}
-              onChange={(event) => updateGuest("nationalCode", event.target.value)}
+              onChange={(event) =>
+                updateGuest("nationalCode", event.target.value)
+              }
               value={draft.primaryGuest.nationalCode}
             />
           </KoochField>
         </div>
       </section>
 
-      <section className="mt-6 border-t border-border pt-5" aria-labelledby="special-request-title">
-        <h3 className="text-base font-black text-foreground" id="special-request-title">درخواست ویژه</h3>
+      <section
+        className="mt-6 border-t border-border pt-5"
+        aria-labelledby="special-request-title"
+      >
+        <h3
+          className="text-base font-black text-foreground"
+          id="special-request-title"
+        >
+          درخواست ویژه
+        </h3>
         <KoochField
           className="mt-3"
           error={errors.specialRequest}
@@ -282,7 +333,9 @@ export function CheckoutStayDetails({
             aria-label="درخواست ویژه"
             className="min-h-20"
             maxLength={2000}
-            onChange={(event) => onChange({ ...draft, specialRequest: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...draft, specialRequest: event.target.value })
+            }
             placeholder="در صورت نیاز، درخواست خود را بنویسید."
             rows={3}
             value={draft.specialRequest}
@@ -290,16 +343,31 @@ export function CheckoutStayDetails({
         </KoochField>
       </section>
 
-      <section className="mt-6 border-t border-border pt-5" aria-labelledby="arrival-time-title">
-        <h3 className="text-base font-black text-foreground" id="arrival-time-title">زمان تقریبی ورود</h3>
+      <section
+        className="mt-6 border-t border-border pt-5"
+        aria-labelledby="arrival-time-title"
+      >
+        <h3
+          className="text-base font-black text-foreground"
+          id="arrival-time-title"
+        >
+          زمان تقریبی ورود
+        </h3>
         <KoochField className="mt-3 max-w-sm">
           <KoochSelect
             aria-label="زمان تقریبی ورود"
-            onChange={(event) => onChange({ ...draft, expectedArrivalTime: event.target.value })}
+            onChange={(event) =>
+              onChange({ ...draft, expectedArrivalTime: event.target.value })
+            }
             value={draft.expectedArrivalTime}
           >
             <option value="">هنوز مشخص نیست</option>
-            {arrivalOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+            {arrivalOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+            <option value="later midnight">بعد از نیمه شب</option>
           </KoochSelect>
         </KoochField>
       </section>
@@ -313,44 +381,73 @@ export function CheckoutStayDetailsReview({
   draft: CheckoutStayDetailsDraft;
 }) {
   const guest = toBookingCheckoutStayDetails(draft).primaryGuest;
-  const arrival = draft.expectedArrivalTime
-    ? toPersianDigits(draft.expectedArrivalTime.slice(0, 5))
-    : "مشخص نشده";
 
   return (
-    <div className="mt-6 grid gap-5">
-      <ReviewSurface title="اطلاعات مهمان">
+    <div className="mt-5 divide-y divide-border border-y border-border">
+      <ReviewSection title="اطلاعات مهمان">
         {guest ? (
           <ReviewGrid>
-            <ReviewValue label="نام و نام خانوادگی" value={`${guest.firstName} ${guest.lastName}`} />
-            {guest.mobile ? <ReviewValue dir="ltr" label="شماره موبایل" value={toPersianDigits(guest.mobile)} /> : null}
-            {guest.email ? <ReviewValue className="sm:col-span-2" dir="ltr" label="ایمیل" value={guest.email} /> : null}
+            <ReviewValue
+              label="نام و نام خانوادگی"
+              value={`${guest.firstName} ${guest.lastName}`}
+            />
+            {guest.mobile ? (
+              <ReviewValue
+                dir="ltr"
+                label="شماره موبایل"
+                value={toPersianDigits(guest.mobile)}
+              />
+            ) : null}
           </ReviewGrid>
         ) : null}
-      </ReviewSurface>
+      </ReviewSection>
 
-      <div className="grid gap-5 sm:grid-cols-2">
-        <ReviewSurface title="زمان ورود"><p className="text-sm font-bold text-foreground">{arrival}</p></ReviewSurface>
-        {draft.specialRequest.trim() ? (
-          <ReviewSurface title="درخواست ویژه">
-            <p className="break-words text-sm leading-7 text-foreground">{draft.specialRequest.trim()}</p>
-          </ReviewSurface>
-        ) : null}
-      </div>
+      {draft.specialRequest.trim() ? (
+        <ReviewSection title="درخواست ویژه">
+          <p className="break-words text-sm leading-7 text-foreground">
+            {draft.specialRequest.trim()}
+          </p>
+        </ReviewSection>
+      ) : null}
     </div>
   );
 }
 
-function ReviewSurface({ children, title }: { children: React.ReactNode; title: string }) {
-  return <section className="rounded-lg border border-border bg-background p-4"><h3 className="text-base font-black text-foreground">{title}</h3><div className="mt-4">{children}</div></section>;
+function ReviewSection({
+  children,
+  title,
+}: {
+  children: React.ReactNode;
+  title: string;
+}) {
+  return (
+    <section className="py-4">
+      <h2 className="text-sm font-bold text-muted-foreground">{title}</h2>
+      <div className="mt-3">{children}</div>
+    </section>
+  );
 }
 
 function ReviewGrid({ children }: { children: React.ReactNode }) {
   return <dl className="grid gap-4 sm:grid-cols-2">{children}</dl>;
 }
 
-function ReviewValue({ className = "", dir, label, value }: { className?: string; dir?: "ltr" | "rtl"; label: string; value: string }) {
-  return <div className={`min-w-0 ${className}`}><dt className="text-xs font-bold text-muted-foreground">{label}</dt><dd className="mt-1 break-words text-sm font-black text-foreground" dir={dir}>{value}</dd></div>;
+function ReviewValue({ dir, label, value }: {
+  dir?: "ltr" | "rtl";
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="min-w-0">
+      <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
+      <dd
+        className="mt-1 break-words text-sm font-black text-foreground"
+        dir={dir}
+      >
+        {value}
+      </dd>
+    </div>
+  );
 }
 
 function isSafeText(value: unknown, maxLength: number): value is string {
@@ -366,7 +463,8 @@ function restoreGuestDraft(value: unknown): CheckoutGuestDraft | undefined {
     !isSafeText(guest.mobile, 30) ||
     !isSafeText(guest.email, 320) ||
     !isSafeText(guest.nationalCode, 20)
-  ) return undefined;
+  )
+    return undefined;
   return {
     firstName: guest.firstName,
     lastName: guest.lastName,
@@ -380,7 +478,8 @@ function normalizeMobile(value: string): string | null {
   let normalized = toLatinDigits(value).replace(/[^+\d]/g, "");
   if (normalized.startsWith("0098")) normalized = `0${normalized.slice(4)}`;
   else if (normalized.startsWith("+98")) normalized = `0${normalized.slice(3)}`;
-  else if (normalized.startsWith("98") && normalized.length === 12) normalized = `0${normalized.slice(2)}`;
+  else if (normalized.startsWith("98") && normalized.length === 12)
+    normalized = `0${normalized.slice(2)}`;
   return normalized || null;
 }
 

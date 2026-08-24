@@ -1,12 +1,17 @@
 using System.Text.Json;
+using System.Reflection;
 using System.Threading.RateLimiting;
 using Kooch.Api.Authentication;
+using Kooch.Api.Controllers;
 using Kooch.Api.Data;
+using Kooch.Api.Dtos.Payments;
 using Kooch.Api.Entities;
 using Kooch.Api.Endpoints;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -18,14 +23,171 @@ namespace Kooch.Api.Tests;
 public sealed class MockBookingSessionPaymentTests
 {
     [Fact]
+    public void AccountProviderDiscovery_IsAuthenticatedGetAndInitiationUsesProviderKeyContract()
+    {
+        Assert.NotNull(typeof(AccountBookingSessionsController)
+            .GetCustomAttribute<AuthorizeAttribute>());
+        var discovery = typeof(AccountBookingSessionsController)
+            .GetMethod(nameof(AccountBookingSessionsController.GetPaymentProviders))
+            ?? throw new InvalidOperationException("Provider discovery endpoint was not found.");
+        var route = Assert.Single(discovery.GetCustomAttributes<HttpGetAttribute>());
+
+        Assert.Equal("payment-providers", route.Template);
+        Assert.NotNull(typeof(AccountBookingSessionPaymentRequest)
+            .GetProperty(nameof(AccountBookingSessionPaymentRequest.ProviderKey)));
+        var requestJson = JsonSerializer.Serialize(
+            new AccountBookingSessionPaymentRequest
+            {
+                ProviderKey = InternalTestPaymentProvider.ProviderName,
+                IdempotencyKey = "payment-key"
+            },
+            new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Contains("\"providerKey\":\"internal-test\"", requestJson, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task ProviderCatalog_ExposesOnlySelectableSafeProviderMetadata()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var service = CreateAccountService(
+            harness.Context,
+            new InternalTestPaymentProvider(Harness.SigningSecret),
+            new TestPaymentProvider("hidden-provider", "Hidden provider", false));
+
+        var option = Assert.Single(service.GetSelectableProviders());
+        var serialized = JsonSerializer.Serialize(service.GetSelectableProviders());
+
+        Assert.Equal(InternalTestPaymentProvider.ProviderName, option.Value);
+        Assert.Equal("درگاه آزمایشی", option.Label);
+        Assert.DoesNotContain("hidden-provider", serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(Harness.SigningSecret, serialized, StringComparison.Ordinal);
+        Assert.DoesNotContain(nameof(IPaymentProvider.CallbackRateLimitPolicyName), serialized);
+        Assert.DoesNotContain(nameof(IPaymentProvider.IsSelectableForAccountCheckout), serialized);
+    }
+
+    [Fact]
+    public async Task ProviderResolution_RejectsMissingUnknownWrongCaseAndUnavailableWithoutFallback()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var service = CreateAccountService(
+            harness.Context,
+            new InternalTestPaymentProvider(Harness.SigningSecret),
+            new TestPaymentProvider("disabled-provider", "Disabled provider", false));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.InitiateAsync(
+            1, Harness.SessionCode, "", "missing-provider-key"));
+        var unknown = await Assert.ThrowsAsync<ArgumentException>(() => service.InitiateAsync(
+            1, Harness.SessionCode, "unknown-provider", "unknown-provider-key"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.InitiateAsync(
+            1, Harness.SessionCode, "INTERNAL-TEST", "wrong-case-key"));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.InitiateAsync(
+            1, Harness.SessionCode, "disabled-provider", "disabled-provider-key"));
+
+        Assert.DoesNotContain("unknown-provider", unknown.Message, StringComparison.Ordinal);
+        Assert.Empty(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ProviderRegistration_RejectsAmbiguousCaseVariants()
+    {
+        await using var harness = await Harness.CreateAsync();
+
+        var exception = Assert.Throws<InvalidOperationException>(() => CreateAccountService(
+            harness.Context,
+            new TestPaymentProvider("provider-a", "Provider A", true),
+            new TestPaymentProvider("PROVIDER-A", "Provider A duplicate", true)));
+
+        Assert.Contains("duplicate keys", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task MultipleProviders_ResolveRequestedStableKeyDeterministically()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var service = CreateAccountService(
+            harness.Context,
+            new InternalTestPaymentProvider(Harness.SigningSecret),
+            new TestPaymentProvider("alternate-provider", "Alternate provider", true));
+
+        var result = await service.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            "alternate-provider",
+            "alternate-provider-key");
+
+        Assert.Equal(PaymentStatus.Pending, result.Status);
+        Assert.Equal(string.Empty, result.CheckoutDestination);
+        Assert.Equal(
+            "alternate-provider",
+            (await harness.Context.Payments.SingleAsync()).Provider);
+    }
+
+    [Fact]
+    public async Task SameIdempotencyKeyWithDifferentProvider_Conflicts()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var service = CreateAccountService(
+            harness.Context,
+            new InternalTestPaymentProvider(Harness.SigningSecret),
+            new TestPaymentProvider("alternate-provider", "Alternate provider", true));
+        await service.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
+            "shared-provider-key");
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.InitiateAsync(
+                1,
+                Harness.SessionCode,
+                "alternate-provider",
+                "shared-provider-key"));
+
+        Assert.Contains("different payment payload", exception.Message, StringComparison.Ordinal);
+        Assert.Single(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AccountInitiation_PreservesExpiredDeadlineRejection()
+    {
+        await using var harness = await Harness.CreateAsync();
+        foreach (var reservation in await harness.Context.Reservations.ToListAsync())
+        {
+            reservation.PaymentExpiresAtUtc = DateTime.UtcNow.AddMinutes(-1);
+        }
+        await harness.Context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            harness.AccountService.InitiateAsync(
+                1,
+                Harness.SessionCode,
+                InternalTestPaymentProvider.ProviderName,
+                "expired-deadline-key"));
+
+        Assert.Empty(await harness.Context.Payments.ToListAsync());
+    }
+
+    [Fact]
     public async Task AccountInitiation_RequiresOwnershipAndIsIdempotent()
     {
         await using var harness = await Harness.CreateAsync();
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
-            harness.AccountService.InitiateAsync(2, Harness.SessionCode, "pay-key"));
-        var first = await harness.AccountService.InitiateAsync(1, Harness.SessionCode, "pay-key");
-        var replay = await harness.AccountService.InitiateAsync(1, Harness.SessionCode, "pay-key");
+            harness.AccountService.InitiateAsync(
+                2,
+                Harness.SessionCode,
+                InternalTestPaymentProvider.ProviderName,
+                "pay-key"));
+        var first = await harness.AccountService.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
+            "pay-key");
+        var replay = await harness.AccountService.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
+            "pay-key");
 
         Assert.Equal(first.PaymentId, replay.PaymentId);
         Assert.True(replay.IsReplay);
@@ -41,7 +203,11 @@ public sealed class MockBookingSessionPaymentTests
         await using var harness = await Harness.CreateAsync(ReservationStatus.PendingApproval);
 
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
-            harness.AccountService.InitiateAsync(1, Harness.SessionCode, "pay-key"));
+            harness.AccountService.InitiateAsync(
+                1,
+                Harness.SessionCode,
+                InternalTestPaymentProvider.ProviderName,
+                "pay-key"));
 
         Assert.Contains("pending approvals", exception.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Empty(await harness.Context.Payments.ToListAsync());
@@ -60,6 +226,7 @@ public sealed class MockBookingSessionPaymentTests
         var result = await harness.AccountService.InitiateAsync(
             1,
             Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
             "mixed-account-key");
 
         Assert.Equal(100, result.Amount);
@@ -74,7 +241,11 @@ public sealed class MockBookingSessionPaymentTests
     public async Task MockSuccess_ConfirmsEveryChildAndDuplicateIsIdempotent()
     {
         await using var harness = await Harness.CreateAsync();
-        await harness.AccountService.InitiateAsync(1, Harness.SessionCode, "pay-key");
+        await harness.AccountService.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
+            "pay-key");
 
         var first = await harness.MockService.SimulateAsync(1, Harness.SessionCode, true);
         var duplicate = await harness.MockService.SimulateAsync(1, Harness.SessionCode, true);
@@ -98,7 +269,11 @@ public sealed class MockBookingSessionPaymentTests
             .LastAsync();
         rejected.Status = ReservationStatus.Rejected;
         await harness.Context.SaveChangesAsync();
-        await harness.AccountService.InitiateAsync(1, Harness.SessionCode, "mixed-pay-key");
+        await harness.AccountService.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
+            "mixed-pay-key");
 
         var result = await harness.MockService.SimulateAsync(1, Harness.SessionCode, true);
 
@@ -122,7 +297,11 @@ public sealed class MockBookingSessionPaymentTests
     public async Task MockFailure_DoesNotChangeAnyChildReservation()
     {
         await using var harness = await Harness.CreateAsync();
-        await harness.AccountService.InitiateAsync(1, Harness.SessionCode, "pay-key");
+        await harness.AccountService.InitiateAsync(
+            1,
+            Harness.SessionCode,
+            InternalTestPaymentProvider.ProviderName,
+            "pay-key");
 
         var result = await harness.MockService.SimulateAsync(1, Harness.SessionCode, false);
 
@@ -200,6 +379,30 @@ public sealed class MockBookingSessionPaymentTests
                 "test"));
         context.Request.RouteValues["sessionCode"] = sessionCode;
         return context;
+    }
+
+    private static AccountBookingSessionPaymentService CreateAccountService(
+        KoochDbContext context,
+        params IPaymentProvider[] providers) =>
+        new(
+            context,
+            new PaymentService(context, new EffectiveAvailabilityService(context)),
+            providers);
+
+    private sealed class TestPaymentProvider(
+        string providerKey,
+        string displayLabel,
+        bool isSelectable) : IPaymentProvider
+    {
+        public string ProviderKey => providerKey;
+        public string DisplayLabel => displayLabel;
+        public bool IsSelectableForAccountCheckout => isSelectable;
+        public string CallbackRateLimitPolicyName => "test-payment-callback";
+
+        public Task<ValidatedPaymentProviderCallback> ValidateCallbackAsync(
+            PaymentProviderCallbackContext context,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
     }
 
     private sealed class Harness : IAsyncDisposable

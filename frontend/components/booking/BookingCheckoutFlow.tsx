@@ -223,7 +223,9 @@ function BookingCheckoutContent() {
   const propertyReturnHref = buildPropertyReturnHref(cart.items);
   const bookingMode = cart.items[0].bookingMode;
   const finalActionLabel =
-    bookingMode === "OnRequest" ? "ارسال درخواست رزرو" : "ادامه به پرداخت";
+    bookingMode === "OnRequest"
+      ? "ارسال درخواست رزرو"
+      : "ثبت رزرو و ادامه به پرداخت";
 
   return (
     <div
@@ -243,15 +245,15 @@ function BookingCheckoutContent() {
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">
-        <h1 className="text-xl font-black">تکمیل رزرو</h1>
+        <h1 className="text-xl font-black" id="checkout-page-title">
+          {currentStep === "review" ? "مرور و نهایی‌سازی" : "تکمیل رزرو"}
+        </h1>
 
         <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           <section
             aria-label={currentStep === "information" ? "اطلاعات رزرو" : undefined}
-            aria-labelledby={currentStep === "review" ? "checkout-step-title" : undefined}
-            className={`min-w-0 rounded-lg border border-border bg-card ${
-              currentStep === "information" ? "p-4 sm:p-5" : "p-5 sm:p-6"
-            }`}
+            aria-labelledby={currentStep === "review" ? "checkout-page-title" : undefined}
+            className="min-w-0 rounded-lg border border-border bg-card p-4 sm:p-5"
           >
             {currentStep === "information" ? (
               <>
@@ -300,7 +302,11 @@ function BookingCheckoutContent() {
           </aside>
 
           <div
-            className="flex flex-col gap-3 rounded-lg border border-border bg-card p-4 sm:flex-row sm:justify-between lg:col-start-1"
+            className={`flex flex-col gap-3 sm:flex-row sm:justify-between lg:col-start-1 ${
+              currentStep === "review"
+                ? "border-t border-border pt-4"
+                : "rounded-lg border border-border bg-card p-4"
+            }`}
             data-testid="checkout-mobile-actions"
           >
             <KoochButton
@@ -347,25 +353,41 @@ function ReviewStep({
 
   return (
     <div>
-      <h2 className="text-xl font-black text-foreground" id="checkout-step-title">
-        مرور و نهایی‌سازی
-      </h2>
-      <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
+      <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
         پیش از ادامه، اطلاعات اقامت، مهمانان و مبلغ سفارش را بررسی کنید.
       </p>
       <CheckoutStayDetailsReview draft={draft} />
-      <KoochAlert className="mt-6" title={`${mode.icon} ${mode.label}`} variant="info">
-        {isOnRequest ? (
-          <div className="grid gap-2">
-            <p>درخواست رزرو برای اقامتگاه ارسال می‌شود.</p>
-            <p>تا پیش از تأیید اقامتگاه، پرداختی انجام نمی‌شود.</p>
-            <p>مهلت پاسخ اقامتگاه طبق سازوکار فعلی سیستم اعمال می‌شود.</p>
-            <p>پس از تأیید، می‌توانید از صفحه سفارش وارد مرحله پرداخت شوید.</p>
+      <div className="mt-5 divide-y divide-border border-y border-border">
+        <section className="py-4" aria-labelledby="checkout-booking-mode-title">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h2
+              className="text-sm font-bold text-muted-foreground"
+              id="checkout-booking-mode-title"
+            >
+              نوع رزرو
+            </h2>
+            <p className="text-sm font-black text-foreground">
+              {mode.icon} {mode.label}
+            </p>
           </div>
-        ) : (
-          <p>پس از ثبت رزرو، برای تکمیل رزرو وارد مرحله پرداخت می‌شوید.</p>
-        )}
-      </KoochAlert>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            {isOnRequest
+              ? "درخواست رزرو پس از تأیید اقامتگاه آماده پرداخت می‌شود."
+              : "پس از ثبت رزرو، برای تکمیل آن وارد مرحله پرداخت می‌شوید."}
+          </p>
+        </section>
+        <section className="py-4" aria-labelledby="checkout-payment-window-title">
+          <h2
+            className="text-sm font-bold text-muted-foreground"
+            id="checkout-payment-window-title"
+          >
+            مهلت پرداخت
+          </h2>
+          <p className="mt-1 text-sm font-bold leading-6 text-foreground">
+            مهلت پرداخت پس از ثبت رزرو آغاز می‌شود.
+          </p>
+        </section>
+      </div>
     </div>
   );
 }

@@ -46,7 +46,7 @@ internal sealed class MockPaymentCheckoutService(
             succeeded,
             DateTime.UtcNow);
         var result = await callbackService.ReceiveAsync(
-            provider.Name,
+            provider.ProviderKey,
             callback,
             cancellationToken);
         var applied = result.ApplicationState == PaymentCallbackApplicationState.Applied;

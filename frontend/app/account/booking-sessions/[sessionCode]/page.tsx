@@ -17,11 +17,19 @@ import {
   formatBookingDate,
   formatBookingDeadline,
 } from "@/components/booking/booking-display";
-import { fetchAccountBookingSession, initiateAccountBookingSessionPayment, type AccountBookingSession } from "@/lib/booking-sessions";
+import {
+  fetchAccountBookingSession,
+  fetchAccountPaymentProviders,
+  initiateAccountBookingSessionPayment,
+  type AccountBookingSession,
+  type AccountPaymentProviderOption,
+} from "@/lib/booking-sessions";
 import { statusLabels, statusVariant } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { getPaymentIdempotencyKeyForCurrentAttempt } from "@/lib/payment-idempotency";
-import { isMockPaymentUiEnabled } from "@/lib/account-orders";
+import {
+  bindPaymentProviderForCurrentAttempt,
+  getBoundPaymentProviderForCurrentAttempt,
+} from "@/lib/payment-idempotency";
 import { getBookingSessionPaymentEligibility } from "@/lib/booking-payment-eligibility";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
@@ -34,6 +42,13 @@ export default function AccountBookingSessionPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [initiatingPayment, setInitiatingPayment] = useState(false);
+  const [paymentProviders, setPaymentProviders] = useState<
+    AccountPaymentProviderOption[]
+  >([]);
+  const [providersLoading, setProvidersLoading] = useState(true);
+  const [providersError, setProvidersError] = useState("");
+  const [selectedProviderKey, setSelectedProviderKey] = useState("");
+  const [boundProviderKey, setBoundProviderKey] = useState<string | null>(null);
   const paymentEligibility = session
     ? getBookingSessionPaymentEligibility(session)
     : null;
@@ -77,7 +92,13 @@ export default function AccountBookingSessionPage() {
     : isContinuationAvailable
       ? "ادامه با رزروهای تأییدشده"
       : "پرداخت";
-  const mockPaymentEnabled = isMockPaymentUiEnabled();
+  const selectedProviderAvailable = paymentProviders.some(
+    (provider) => provider.value === selectedProviderKey,
+  );
+  const boundProviderUnavailable = Boolean(
+    boundProviderKey &&
+      !paymentProviders.some((provider) => provider.value === boundProviderKey),
+  );
   const hasExpiredPaymentWindow = Boolean(
     session &&
       !canInitiatePayment &&
@@ -89,18 +110,47 @@ export default function AccountBookingSessionPage() {
             (reservation) => reservation.status === "ApprovedAwaitingPayment",
           ))),
   );
+  const canRenderPaymentAction = Boolean(
+    !providersLoading &&
+      !providersError &&
+      paymentProviders.length > 0 &&
+      !boundProviderUnavailable,
+  );
+  const paymentProviderSelector = canInitiatePayment ? (
+    <PaymentProviderSelector
+      boundProviderUnavailable={boundProviderUnavailable}
+      disabled={initiatingPayment || Boolean(boundProviderKey)}
+      error={providersError}
+      loading={providersLoading}
+      onChange={setSelectedProviderKey}
+      providers={paymentProviders}
+      selectedProviderKey={selectedProviderKey}
+    />
+  ) : null;
 
   async function beginPayment() {
-    if (!session || initiatingPayment) return;
+    if (
+      !session ||
+      initiatingPayment ||
+      !canInitiatePayment ||
+      !selectedProviderAvailable
+    ) {
+      return;
+    }
     setInitiatingPayment(true);
     setError("");
     try {
-      const result = await initiateAccountBookingSessionPayment(
-        session.sessionCode,
-      getPaymentIdempotencyKeyForCurrentAttempt(
+      const attempt = bindPaymentProviderForCurrentAttempt(
         session.sessionCode,
         session.payment?.status === "Failed" ? session.payment.paymentId : null,
-      ),
+        selectedProviderKey,
+      );
+      setBoundProviderKey(attempt.providerKey);
+      setSelectedProviderKey(attempt.providerKey);
+      const result = await initiateAccountBookingSessionPayment(
+        session.sessionCode,
+        attempt.idempotencyKey,
+        attempt.providerKey,
       );
       if (!result.checkoutDestination.startsWith("/")) {
         throw new Error("مسیر پرداخت در دسترس نیست.");
@@ -127,6 +177,63 @@ export default function AccountBookingSessionPage() {
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [auth.authenticated, auth.loading, router, sessionCode]);
+
+  useEffect(() => {
+    if (auth.loading || !auth.authenticated) return;
+    if (!canInitiatePayment) return;
+
+    let active = true;
+    setProvidersLoading(true);
+    setProvidersError("");
+    fetchAccountPaymentProviders()
+      .then((providers) => {
+        if (!active) return;
+        setPaymentProviders(providers);
+        setSelectedProviderKey((current) =>
+          providers.some((provider) => provider.value === current)
+            ? current
+            : providers.length === 1
+              ? providers[0].value
+              : "",
+        );
+      })
+      .catch(() => {
+        if (!active) return;
+        setPaymentProviders([]);
+        setProvidersError(
+          "روش‌های پرداخت دریافت نشدند. کمی بعد دوباره تلاش کنید.",
+        );
+      })
+      .finally(() => {
+        if (active) setProvidersLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [auth.authenticated, auth.loading, canInitiatePayment]);
+
+  useEffect(() => {
+    if (!session || providersLoading || !canInitiatePayment) return;
+
+    const boundProvider = getBoundPaymentProviderForCurrentAttempt(
+      session.sessionCode,
+      session.payment?.status === "Failed" ? session.payment.paymentId : null,
+    );
+    setBoundProviderKey(boundProvider);
+    setSelectedProviderKey((current) => {
+      if (
+        boundProvider &&
+        paymentProviders.some((provider) => provider.value === boundProvider)
+      ) {
+        return boundProvider;
+      }
+      if (paymentProviders.some((provider) => provider.value === current)) {
+        return current;
+      }
+      return paymentProviders.length === 1 ? paymentProviders[0].value : "";
+    });
+  }, [canInitiatePayment, paymentProviders, providersLoading, session]);
 
   useEffect(() => {
     if (
@@ -293,12 +400,15 @@ export default function AccountBookingSessionPage() {
             <div className="grid gap-1">
               <span>برخی رزروها تأیید و برخی رد شده‌اند. می‌توانید همه رزروهای تأییدشده را با یک پرداخت ادامه دهید.</span>
               <span className="text-sm">امکان انتخاب یا پرداخت جداگانه رزروها وجود ندارد.</span>
-              {!mockPaymentEnabled && canInitiateContinuation && (
-                <span className="text-sm">درگاه پرداخت در حال حاضر در دسترس نیست. وضعیت سفارش شما محفوظ می‌ماند.</span>
-              )}
+              {paymentProviderSelector}
             </div>
-            {mockPaymentEnabled && canInitiateContinuation && (
-              <KoochButton className="hidden sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>
+            {canRenderPaymentAction && canInitiateContinuation && (
+              <KoochButton
+                className="hidden sm:inline-flex"
+                disabled={!selectedProviderAvailable}
+                loading={initiatingPayment}
+                onClick={beginPayment}
+              >
                 {paymentActionLabel}
               </KoochButton>
             )}
@@ -357,11 +467,18 @@ export default function AccountBookingSessionPage() {
                   remainingSeconds={remainingPaymentSeconds}
                 />
               )}
-              {!mockPaymentEnabled && (
-                <span className="text-sm">درگاه پرداخت در حال حاضر در دسترس نیست. وضعیت سفارش شما محفوظ می‌ماند.</span>
-              )}
+              {paymentProviderSelector}
             </div>
-            {mockPaymentEnabled && <KoochButton className="hidden shrink-0 sm:inline-flex" loading={initiatingPayment} onClick={beginPayment}>{paymentActionLabel}</KoochButton>}
+            {canRenderPaymentAction && (
+              <KoochButton
+                className="hidden shrink-0 sm:inline-flex"
+                disabled={!selectedProviderAvailable}
+                loading={initiatingPayment}
+                onClick={beginPayment}
+              >
+                {paymentActionLabel}
+              </KoochButton>
+            )}
           </div>
         </KoochAlert>
       )}
@@ -505,7 +622,7 @@ export default function AccountBookingSessionPage() {
         )}
       </section>
 
-      {canInitiatePayment && mockPaymentEnabled && (
+      {canInitiatePayment && canRenderPaymentAction && (
         <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-background/95 p-3 shadow-lg backdrop-blur sm:hidden" data-testid="session-payment-mobile-action" dir="rtl">
           <div className="mx-auto flex max-w-5xl items-center justify-between gap-3">
             <div className="min-w-0">
@@ -515,11 +632,105 @@ export default function AccountBookingSessionPage() {
                 <p className="text-xs font-bold text-primary">{formatBookingCountdown(remainingPaymentSeconds, "مهلت پایان یافته است.")}</p>
               )}
             </div>
-            <KoochButton loading={initiatingPayment} onClick={beginPayment}>{paymentActionLabel}</KoochButton>
+            <KoochButton
+              disabled={!selectedProviderAvailable}
+              loading={initiatingPayment}
+              onClick={beginPayment}
+            >
+              {paymentActionLabel}
+            </KoochButton>
           </div>
         </div>
       )}
     </main>
+  );
+}
+
+function PaymentProviderSelector({
+  boundProviderUnavailable,
+  disabled,
+  error,
+  loading,
+  onChange,
+  providers,
+  selectedProviderKey,
+}: {
+  boundProviderUnavailable: boolean;
+  disabled: boolean;
+  error: string;
+  loading: boolean;
+  onChange: (providerKey: string) => void;
+  providers: AccountPaymentProviderOption[];
+  selectedProviderKey: string;
+}) {
+  if (loading) {
+    return (
+      <p aria-live="polite" className="text-sm text-muted-foreground">
+        در حال دریافت روش‌های پرداخت...
+      </p>
+    );
+  }
+
+  if (error) {
+    return (
+      <p className="text-sm font-medium text-destructive" role="alert">
+        {error}
+      </p>
+    );
+  }
+
+  if (boundProviderUnavailable) {
+    return (
+      <p className="text-sm font-medium text-destructive" role="alert">
+        روش پرداخت این تلاش دیگر در دسترس نیست. وضعیت سفارش محفوظ مانده است.
+      </p>
+    );
+  }
+
+  if (providers.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        در حال حاضر روش پرداخت فعالی در دسترس نیست. وضعیت سفارش محفوظ می‌ماند.
+      </p>
+    );
+  }
+
+  return (
+    <fieldset className="grid min-w-0 gap-2" disabled={disabled}>
+      <legend className="text-sm font-bold text-foreground">
+        پرداخت از طریق
+      </legend>
+      <div className="grid min-w-0 gap-2 sm:grid-cols-2">
+        {providers.map((provider) => {
+          const selected = provider.value === selectedProviderKey;
+          return (
+            <label
+              className={`flex min-h-11 min-w-0 items-center gap-3 rounded-lg border px-3 py-2 text-sm transition focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 ${
+                selected
+                  ? "border-primary bg-primary/10 font-bold text-foreground"
+                  : "border-border bg-background text-foreground hover:bg-muted"
+              } ${disabled ? "cursor-default opacity-75" : "cursor-pointer"}`}
+              key={provider.value}
+            >
+              <input
+                checked={selected}
+                className="h-4 w-4 shrink-0 accent-[var(--theme-primary)]"
+                name="booking-session-payment-provider"
+                onChange={() => onChange(provider.value)}
+                type="radio"
+                value={provider.value}
+              />
+              <span className="min-w-0 flex-1 break-words">{provider.label}</span>
+              {selected && (
+                <span className="shrink-0 text-xs text-primary">
+                  انتخاب‌شده
+                </span>
+              )}
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }
 
