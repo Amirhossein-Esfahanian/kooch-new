@@ -86,7 +86,9 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
       throw new Error("اطلاعات حساب کاربری دریافت نشد.");
     }
 
-    router.push(safeInternalReturnTo(returnTo) ?? resolveSessionDestination(session));
+    router.push(
+      safeInternalReturnTo(returnTo) ?? resolveSessionDestination(session),
+    );
   }
 
   function changeMode(nextMode: AuthMode) {
@@ -266,7 +268,7 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
         <div className="w-full max-w-[500px]">
           <div className="mb-7 text-right">
             <p className="text-sm font-bold text-primary">کوچ</p>
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground sm:text-4xl">
+            <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
               {mode === "login"
                 ? "ورود به حساب کاربری"
                 : registrationOtpVisible
@@ -584,11 +586,11 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
         <div className="absolute inset-0 bg-primary/80" />
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20" />
         <div className="relative z-10 flex h-full min-h-screen flex-col justify-between p-12 text-white xl:p-16">
-          <div className="text-4xl font-black tracking-tight xl:text-5xl">
+          <div className="text-4xl font-bold tracking-tight xl:text-5xl">
             کوچ
           </div>
           <div className="max-w-2xl">
-            <h2 className="text-3xl font-black leading-relaxed xl:text-4xl">
+            <h2 className="text-3xl font-bold leading-relaxed xl:text-4xl">
               ورود به دنیای اقامت، سفر و مدیریت یکپارچه
             </h2>
             <p className="mt-5 text-base leading-8 text-white/75">

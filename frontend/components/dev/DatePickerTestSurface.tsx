@@ -48,11 +48,15 @@ function PickerExample({
       <dl className="grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
         <div className="flex min-w-0 gap-2">
           <dt className="shrink-0 font-semibold text-foreground">Start ISO:</dt>
-          <dd className="break-all" dir="ltr">{value.startDate ?? "—"}</dd>
+          <dd className="break-all" dir="ltr">
+            {value.startDate ?? "—"}
+          </dd>
         </div>
         <div className="flex min-w-0 gap-2">
           <dt className="shrink-0 font-semibold text-foreground">End ISO:</dt>
-          <dd className="break-all" dir="ltr">{value.endDate ?? "—"}</dd>
+          <dd className="break-all" dir="ltr">
+            {value.endDate ?? "—"}
+          </dd>
         </div>
       </dl>
     </section>
@@ -67,7 +71,7 @@ export function DatePickerTestSurface() {
     >
       <div className="mx-auto w-full max-w-5xl" dir="rtl">
         <header className="mb-8 max-w-3xl">
-          <h1 className="text-2xl font-black sm:text-3xl">تست تقویم بازه‌ای</h1>
+          <h1 className="text-2xl font-bold sm:text-3xl">تست تقویم بازه‌ای</h1>
           <p className="mt-3 text-sm leading-7 text-muted-foreground">
             برای بررسی commit خودکار، یک بازه کامل انتخاب کنید. انتخاب ناقص با
             خروج از تقویم یا فشردن Escape کنار گذاشته می‌شود.

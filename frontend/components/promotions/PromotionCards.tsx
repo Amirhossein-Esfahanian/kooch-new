@@ -51,7 +51,9 @@ export function PromotionCards({
   const activePromotions = useMemo(() => {
     const items = (promotions ?? [])
       .filter((promotion) => promotion.isActive === true)
-      .sort((first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0));
+      .sort(
+        (first, second) => (first.sortOrder ?? 0) - (second.sortOrder ?? 0),
+      );
 
     return typeof maxItems === "number" ? items.slice(0, maxItems) : items;
   }, [maxItems, promotions]);
@@ -59,8 +61,18 @@ export function PromotionCards({
   if (!activePromotions.length) return null;
 
   return (
-    <section className={className} dir="rtl" aria-label="پیشنهادها و پروموشن‌ها">
-      {title && <h2 className={`${compact ? "text-base" : "text-2xl"} font-black text-slate-950`}>{title}</h2>}
+    <section
+      className={className}
+      dir="rtl"
+      aria-label="پیشنهادها و پروموشن‌ها"
+    >
+      {title && (
+        <h2
+          className={`${compact ? "text-base" : "text-2xl"} font-bold text-slate-950`}
+        >
+          {title}
+        </h2>
+      )}
       <div className={`${title ? "mt-4" : ""} grid gap-3`}>
         {activePromotions.map((promotion) => {
           const meta = typeMeta[promotion.type ?? ""] ?? typeMeta.Informational;
@@ -69,8 +81,12 @@ export function PromotionCards({
             ? { backgroundColor: customColor, color: "#fff" }
             : undefined;
           const requirements = [
-            promotion.minimumStayNights ? `حداقل ${promotion.minimumStayNights} شب` : "",
-            promotion.minimumGuests ? `حداقل ${promotion.minimumGuests} مهمان` : "",
+            promotion.minimumStayNights
+              ? `حداقل ${promotion.minimumStayNights} شب`
+              : "",
+            promotion.minimumGuests
+              ? `حداقل ${promotion.minimumGuests} مهمان`
+              : "",
           ].filter(Boolean);
           const description =
             promotion.shortDescription ||
@@ -96,17 +112,21 @@ export function PromotionCards({
                 </span>
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <h3 className={`${compact ? "text-sm" : "text-base sm:text-lg"} font-black text-slate-950`}>
+                    <h3
+                      className={`${compact ? "text-sm" : "text-base sm:text-lg"} font-bold text-slate-950`}
+                    >
                       {promotion.title}
                     </h3>
                     <span
-                      className="rounded-full bg-[var(--theme-primary-soft)] px-2.5 py-1 text-[11px] font-black text-[var(--theme-primary-text)]"
+                      className="rounded-full bg-[var(--theme-primary-soft)] px-2.5 py-1 text-[11px] font-bold text-[var(--theme-primary-text)]"
                       style={badgeStyle}
                     >
                       {promotion.badge || meta.badge}
                     </span>
                   </div>
-                  <p className={`${compact ? "mt-1 line-clamp-2 text-xs" : "mt-2 text-sm"} leading-6 text-slate-600`}>
+                  <p
+                    className={`${compact ? "mt-1 line-clamp-2 text-xs" : "mt-2 text-sm"} leading-6 text-slate-600`}
+                  >
                     {description}
                   </p>
                   {requirements.length > 0 && (

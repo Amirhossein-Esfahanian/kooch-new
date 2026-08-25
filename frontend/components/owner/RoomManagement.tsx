@@ -73,13 +73,7 @@ const emptyRoomType: RoomTypeDraft = {
   isActive: false,
 };
 
-const steps = [
-  "اطلاعات کلی",
-  "ظرفیت",
-  "امکانات",
-  "تخت‌ها",
-  "تصاویر",
-] as const;
+const steps = ["اطلاعات کلی", "ظرفیت", "امکانات", "تخت‌ها", "تصاویر"] as const;
 
 function nullableNumber(value: string) {
   return value === "" ? null : Number(value);
@@ -365,7 +359,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return (
       <div className="grid gap-5">
         <div>
-          <h3 className="font-black">اطلاعات کلی</h3>
+          <h3 className="font-bold">اطلاعات کلی</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             نام قابل نمایش، نوع استاندارد و ظرفیت فروش را مشخص کنید.
           </p>
@@ -459,7 +453,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return (
       <div className="grid gap-5">
         <div>
-          <h3 className="font-black">ویژگی‌های نوع اتاق</h3>
+          <h3 className="font-bold">ویژگی‌های نوع اتاق</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             ویژگی‌های فیزیکی و شرایط پذیرش نفر اضافه را وارد کنید.
           </p>
@@ -566,7 +560,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return (
       <div className="grid gap-5">
         <div>
-          <h3 className="font-black">امکانات</h3>
+          <h3 className="font-bold">امکانات</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             امکانات این نوع اتاق را انتخاب کنید.
           </p>
@@ -603,7 +597,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       <div className="grid gap-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h3 className="font-black">تخت‌ها و چیدمان</h3>
+            <h3 className="font-bold">تخت‌ها و چیدمان</h3>
             <p className="mt-1 text-sm text-muted-foreground">
               نوع و تعداد تخت‌های این نوع اتاق را مشخص کنید.
             </p>
@@ -689,7 +683,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     return (
       <div className="grid gap-4">
         <div>
-          <h3 className="font-black">تصاویر نوع اتاق</h3>
+          <h3 className="font-bold">تصاویر نوع اتاق</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             این تصاویر در صفحه عمومی همین نوع اتاق نمایش داده می‌شوند.
           </p>
@@ -717,7 +711,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       <KoochCard variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="min-w-0">
-            <h2 className="text-xl font-black text-foreground">
+            <h2 className="text-xl font-bold text-foreground">
               مدیریت نوع‌های اتاق
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -734,7 +728,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       )}
 
       <KoochCard variant="elevated">
-        <h2 className="text-xl font-black text-foreground">
+        <h2 className="text-xl font-bold text-foreground">
           نوع‌های اتاق ثبت‌شده
         </h2>
         {loading ? (
@@ -780,7 +774,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                           </div>
                         )}
                       </KoochTableCell>
-                      <KoochTableCell className="font-black">
+                      <KoochTableCell className="font-bold">
                         <span className="break-words">{roomType.name}</span>
                       </KoochTableCell>
                       <KoochTableCell>

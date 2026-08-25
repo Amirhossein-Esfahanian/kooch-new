@@ -104,7 +104,10 @@ export default function OwnerPropertyDashboardPage() {
         />
 
         {error && (
-          <KoochCard className="border-destructive/30 bg-destructive/10 text-destructive" padding="sm">
+          <KoochCard
+            className="border-destructive/30 bg-destructive/10 text-destructive"
+            padding="sm"
+          >
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
         )}
@@ -133,7 +136,7 @@ export default function OwnerPropertyDashboardPage() {
                 <p className="text-sm font-bold text-muted-foreground">
                   {card.title}
                 </p>
-                <p className="mt-3 text-2xl font-black text-foreground">
+                <p className="mt-3 text-2xl font-bold text-foreground">
                   {card.value}
                 </p>
               </KoochCard>
@@ -142,7 +145,7 @@ export default function OwnerPropertyDashboardPage() {
         </div>
 
         <KoochCard className="mt-5" variant="elevated">
-          <h2 className="text-xl font-black text-foreground">کارهای سریع</h2>
+          <h2 className="text-xl font-bold text-foreground">کارهای سریع</h2>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
               className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}

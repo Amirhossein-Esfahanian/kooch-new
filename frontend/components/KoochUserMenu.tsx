@@ -46,8 +46,7 @@ export function KoochUserMenu({
   const menuRef = useRef<HTMLDivElement>(null);
   const menuOpen = open ?? internalOpen;
   const currentWorkspace = routeWorkspace(pathname);
-  const userName =
-    session.user?.fullName || session.user?.email || "کاربر کوچ";
+  const userName = session.user?.fullName || session.user?.email || "کاربر کوچ";
   const visibleWorkspaces = workspaceOptions.filter((workspace) =>
     session.workspaces.includes(workspace.key),
   );
@@ -60,9 +59,8 @@ export function KoochUserMenu({
   useEffect(() => {
     if (!menuOpen) return;
 
-    const firstItem = menuRef.current?.querySelector<HTMLButtonElement>(
-      '[role="menuitem"]',
-    );
+    const firstItem =
+      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
     firstItem?.focus();
   }, [menuOpen]);
 
@@ -89,7 +87,9 @@ export function KoochUserMenu({
         '[role="menuitem"]',
       ) ?? [],
     );
-    const currentIndex = items.indexOf(document.activeElement as HTMLButtonElement);
+    const currentIndex = items.indexOf(
+      document.activeElement as HTMLButtonElement,
+    );
     let nextIndex: number | null = null;
 
     if (event.key === "ArrowDown") {
@@ -145,7 +145,7 @@ export function KoochUserMenu({
           ref={triggerRef}
           type="button"
         >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-black text-white">
+          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-bold text-white">
             {userName.charAt(0)}
           </span>
           <span className="hidden min-w-0 truncate lg:inline">{userName}</span>

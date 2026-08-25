@@ -60,9 +60,27 @@ const steps = [
   "بازبینی",
 ];
 
-const defaultNearbyPlaces = ["Railway Station", "Bus Terminal", "Airport", "City Center", "Hospital"];
-const propertyViewOptions: PropertyViewType[] = ["CourtyardView", "GardenView", "CityView", "MountainView", "DesertView"];
-const propertyStatusOptions: PropertyStatus[] = ["Draft", "PendingReview", "Approved", "Rejected", "Suspended"];
+const defaultNearbyPlaces = [
+  "Railway Station",
+  "Bus Terminal",
+  "Airport",
+  "City Center",
+  "Hospital",
+];
+const propertyViewOptions: PropertyViewType[] = [
+  "CourtyardView",
+  "GardenView",
+  "CityView",
+  "MountainView",
+  "DesertView",
+];
+const propertyStatusOptions: PropertyStatus[] = [
+  "Draft",
+  "PendingReview",
+  "Approved",
+  "Rejected",
+  "Suspended",
+];
 
 const propertyViewLabels: Record<PropertyViewType, string> = {
   CourtyardView: "نمای حیاط",
@@ -158,7 +176,9 @@ const initialData: WizardData = {
   additionalNotes: "",
   commonAreas: [{ name: "", description: "" }],
   views: [],
-  nearbyPlaces: [{ title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }],
+  nearbyPlaces: [
+    { title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false },
+  ],
   checkInTime: "14:00",
   checkOutTime: "12:00",
   breakfastOption: "NoBreakfast",
@@ -205,10 +225,18 @@ function cleanNearbyPlaces(values: NearbyPlaceDraft[]) {
 
 function nearbyCategory(title: string): NearbyPlaceCategory {
   const normalized = title.toLocaleLowerCase();
-  if (normalized.includes("station") || normalized.includes("terminal") || normalized.includes("airport")) return "Transport";
-  if (normalized.includes("bazaar") || normalized.includes("market")) return "Market";
-  if (normalized.includes("square") || normalized.includes("center")) return "Landmark";
-  if (normalized.includes("garden") || normalized.includes("house")) return "Attraction";
+  if (
+    normalized.includes("station") ||
+    normalized.includes("terminal") ||
+    normalized.includes("airport")
+  )
+    return "Transport";
+  if (normalized.includes("bazaar") || normalized.includes("market"))
+    return "Market";
+  if (normalized.includes("square") || normalized.includes("center"))
+    return "Landmark";
+  if (normalized.includes("garden") || normalized.includes("house"))
+    return "Attraction";
   return "Other";
 }
 
@@ -216,10 +244,19 @@ function boolLabel(value: boolean, label: string) {
   return value ? label : "";
 }
 
-export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: PropertyWizardProps) {
+export function PropertyWizard({
+  mode,
+  propertyId,
+  isAdmin = false,
+  onDone,
+}: PropertyWizardProps) {
   const router = useRouter();
   const currencyLabel = useSiteCurrencyLabel();
-  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const {
+    authenticated,
+    loading: sessionLoading,
+    workspaces,
+  } = useAuthSession();
   const canLoadWorkspace =
     !sessionLoading &&
     authenticated &&
@@ -227,13 +264,19 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(initialData);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
-  const [adminStatus, setAdminStatus] = useState<PropertyStatus>("PendingReview");
-  const [amenityCategories, setAmenityCategories] = useState<AmenityCategoryResponse[]>([]);
+  const [adminStatus, setAdminStatus] =
+    useState<PropertyStatus>("PendingReview");
+  const [amenityCategories, setAmenityCategories] = useState<
+    AmenityCategoryResponse[]
+  >([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [allImages, setAllImages] = useState<PropertyImageResponse[]>([]);
-  const [completion, setCompletion] = useState<PropertyCompletionResponse | null>(null);
-  const [descriptionIds, setDescriptionIds] = useState<Partial<Record<string, number>>>({});
+  const [completion, setCompletion] =
+    useState<PropertyCompletionResponse | null>(null);
+  const [descriptionIds, setDescriptionIds] = useState<
+    Partial<Record<string, number>>
+  >({});
   const [loading, setLoading] = useState(false);
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [booting, setBooting] = useState(mode === "edit");
@@ -265,87 +308,210 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     if (!canLoadWorkspace || mode !== "edit" || !propertyId) return;
     setBooting(true);
     Promise.all([
-      apiRequest<PropertyResponse>(isAdmin ? `/admin/properties/${propertyId}` : `/owner/properties/${propertyId}`),
-      apiRequest<PropertyCompletionResponse>(isAdmin ? `/admin/properties/${propertyId}/completion` : `/owner/properties/${propertyId}/completion`),
-      apiRequest<PropertyDescriptionSectionResponse[]>(`/owner/properties/${propertyId}/descriptions`),
-      apiRequest<PropertyImageResponse[]>(`/owner/properties/${propertyId}/images`),
-      apiRequest<PropertyAmenityResponse[]>(`/owner/properties/${propertyId}/amenities`),
-      apiRequest<PropertyCommonAreaResponse[]>(`/owner/properties/${propertyId}/common-areas`),
-      apiRequest<NearbyPlaceResponse[]>(`/owner/properties/${propertyId}/nearby-places`),
-      apiRequest<PropertyViewResponse[]>(`/owner/properties/${propertyId}/views`),
-      apiRequest<RoomTypeResponse[]>(`/owner/properties/${propertyId}/room-types`).catch(() => []),
+      apiRequest<PropertyResponse>(
+        isAdmin
+          ? `/admin/properties/${propertyId}`
+          : `/owner/properties/${propertyId}`,
+      ),
+      apiRequest<PropertyCompletionResponse>(
+        isAdmin
+          ? `/admin/properties/${propertyId}/completion`
+          : `/owner/properties/${propertyId}/completion`,
+      ),
+      apiRequest<PropertyDescriptionSectionResponse[]>(
+        `/owner/properties/${propertyId}/descriptions`,
+      ),
+      apiRequest<PropertyImageResponse[]>(
+        `/owner/properties/${propertyId}/images`,
+      ),
+      apiRequest<PropertyAmenityResponse[]>(
+        `/owner/properties/${propertyId}/amenities`,
+      ),
+      apiRequest<PropertyCommonAreaResponse[]>(
+        `/owner/properties/${propertyId}/common-areas`,
+      ),
+      apiRequest<NearbyPlaceResponse[]>(
+        `/owner/properties/${propertyId}/nearby-places`,
+      ),
+      apiRequest<PropertyViewResponse[]>(
+        `/owner/properties/${propertyId}/views`,
+      ),
+      apiRequest<RoomTypeResponse[]>(
+        `/owner/properties/${propertyId}/room-types`,
+      ).catch(() => []),
     ])
-      .then(([propertyResult, completionResult, descriptions, images, propertyAmenities, commonAreas, nearbyPlaces, views, roomTypeItems]) => {
-        setProperty(propertyResult);
-        setAllImages(images);
-        setRoomTypes(roomTypeItems);
-        setCompletion(completionResult);
-        setAdminStatus(propertyResult.status as PropertyStatus);
-        setDescriptionIds(Object.fromEntries(descriptions.map((section) => [section.sectionType, section.id])));
-        const intro = descriptions.find((section) => section.sectionType === "PropertyIntroduction");
-        const notes = descriptions.find((section) => section.sectionType === "ImportantNotes");
-        setData({
-          name: propertyResult.name,
-          englishName: propertyResult.englishName ?? "",
-          type: propertyResult.type,
-          city: propertyResult.city,
-          address: propertyResult.address,
-          latitude: propertyResult.latitude == null ? "" : String(propertyResult.latitude),
-          longitude: propertyResult.longitude == null ? "" : String(propertyResult.longitude),
-          totalArea: propertyResult.totalAreaM2 == null ? "" : String(propertyResult.totalAreaM2),
-          landArea: propertyResult.landAreaM2 == null ? "" : String(propertyResult.landAreaM2),
-          floors: propertyResult.floorsCount == null ? "1" : String(propertyResult.floorsCount),
-          hasElevator: propertyResult.hasElevator,
-          isWheelchairAccessible: Boolean(propertyResult.isWheelchairAccessible),
-          hasGroundFloorRoom: Boolean(propertyResult.hasGroundFloorRoom),
-          hasAccessibleBathroom: Boolean(propertyResult.hasAccessibleBathroom),
-          inventoryMode: propertyResult.inventoryMode,
-          selectedAmenityIds: propertyAmenities.map((amenity) => amenity.amenityId),
-          propertyDescription: intro?.content ?? propertyResult.description ?? "",
-          additionalNotes: notes?.content ?? "",
-          commonAreas: commonAreas.length ? commonAreas.map((area) => ({ id: area.id, name: area.name, description: area.description ?? "" })) : [{ name: "", description: "" }],
-          views: views.map((view) => view.viewType),
-          nearbyPlaces: nearbyPlaces.filter((place) => place.isActive).length
-            ? nearbyPlaces.filter((place) => place.isActive).map((place) => ({ id: place.id, title: place.title, drivingMinutes: place.drivingMinutes == null ? "" : String(place.drivingMinutes), walkingMinutes: place.walkingMinutes == null ? "" : String(place.walkingMinutes), isDefault: place.isDefault }))
-            : [{ title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }],
-          checkInTime: propertyResult.checkInTime ?? "14:00",
-          checkOutTime: propertyResult.checkOutTime ?? "12:00",
-          breakfastOption: propertyResult.breakfastOption ?? "NoBreakfast",
-          breakfastPrice: propertyResult.breakfastPrice == null ? "" : String(propertyResult.breakfastPrice),
-          freeChildAgeLimit: propertyResult.freeChildAgeLimit == null ? "" : String(propertyResult.freeChildAgeLimit),
-          maxFreeChildren: propertyResult.maxFreeChildren == null ? "" : String(propertyResult.maxFreeChildren),
-          childPrice: propertyResult.childPrice == null ? "" : String(propertyResult.childPrice),
-          extraGuestPrice: propertyResult.extraGuestPrice == null ? "" : String(propertyResult.extraGuestPrice),
-          seoTitle: propertyResult.seoTitle ?? "",
-          seoDescription: propertyResult.seoDescription ?? "",
-        });
-      })
+      .then(
+        ([
+          propertyResult,
+          completionResult,
+          descriptions,
+          images,
+          propertyAmenities,
+          commonAreas,
+          nearbyPlaces,
+          views,
+          roomTypeItems,
+        ]) => {
+          setProperty(propertyResult);
+          setAllImages(images);
+          setRoomTypes(roomTypeItems);
+          setCompletion(completionResult);
+          setAdminStatus(propertyResult.status as PropertyStatus);
+          setDescriptionIds(
+            Object.fromEntries(
+              descriptions.map((section) => [section.sectionType, section.id]),
+            ),
+          );
+          const intro = descriptions.find(
+            (section) => section.sectionType === "PropertyIntroduction",
+          );
+          const notes = descriptions.find(
+            (section) => section.sectionType === "ImportantNotes",
+          );
+          setData({
+            name: propertyResult.name,
+            englishName: propertyResult.englishName ?? "",
+            type: propertyResult.type,
+            city: propertyResult.city,
+            address: propertyResult.address,
+            latitude:
+              propertyResult.latitude == null
+                ? ""
+                : String(propertyResult.latitude),
+            longitude:
+              propertyResult.longitude == null
+                ? ""
+                : String(propertyResult.longitude),
+            totalArea:
+              propertyResult.totalAreaM2 == null
+                ? ""
+                : String(propertyResult.totalAreaM2),
+            landArea:
+              propertyResult.landAreaM2 == null
+                ? ""
+                : String(propertyResult.landAreaM2),
+            floors:
+              propertyResult.floorsCount == null
+                ? "1"
+                : String(propertyResult.floorsCount),
+            hasElevator: propertyResult.hasElevator,
+            isWheelchairAccessible: Boolean(
+              propertyResult.isWheelchairAccessible,
+            ),
+            hasGroundFloorRoom: Boolean(propertyResult.hasGroundFloorRoom),
+            hasAccessibleBathroom: Boolean(
+              propertyResult.hasAccessibleBathroom,
+            ),
+            inventoryMode: propertyResult.inventoryMode,
+            selectedAmenityIds: propertyAmenities.map(
+              (amenity) => amenity.amenityId,
+            ),
+            propertyDescription:
+              intro?.content ?? propertyResult.description ?? "",
+            additionalNotes: notes?.content ?? "",
+            commonAreas: commonAreas.length
+              ? commonAreas.map((area) => ({
+                  id: area.id,
+                  name: area.name,
+                  description: area.description ?? "",
+                }))
+              : [{ name: "", description: "" }],
+            views: views.map((view) => view.viewType),
+            nearbyPlaces: nearbyPlaces.filter((place) => place.isActive).length
+              ? nearbyPlaces
+                  .filter((place) => place.isActive)
+                  .map((place) => ({
+                    id: place.id,
+                    title: place.title,
+                    drivingMinutes:
+                      place.drivingMinutes == null
+                        ? ""
+                        : String(place.drivingMinutes),
+                    walkingMinutes:
+                      place.walkingMinutes == null
+                        ? ""
+                        : String(place.walkingMinutes),
+                    isDefault: place.isDefault,
+                  }))
+              : [
+                  {
+                    title: "",
+                    drivingMinutes: "",
+                    walkingMinutes: "",
+                    isDefault: false,
+                  },
+                ],
+            checkInTime: propertyResult.checkInTime ?? "14:00",
+            checkOutTime: propertyResult.checkOutTime ?? "12:00",
+            breakfastOption: propertyResult.breakfastOption ?? "NoBreakfast",
+            breakfastPrice:
+              propertyResult.breakfastPrice == null
+                ? ""
+                : String(propertyResult.breakfastPrice),
+            freeChildAgeLimit:
+              propertyResult.freeChildAgeLimit == null
+                ? ""
+                : String(propertyResult.freeChildAgeLimit),
+            maxFreeChildren:
+              propertyResult.maxFreeChildren == null
+                ? ""
+                : String(propertyResult.maxFreeChildren),
+            childPrice:
+              propertyResult.childPrice == null
+                ? ""
+                : String(propertyResult.childPrice),
+            extraGuestPrice:
+              propertyResult.extraGuestPrice == null
+                ? ""
+                : String(propertyResult.extraGuestPrice),
+            seoTitle: propertyResult.seoTitle ?? "",
+            seoDescription: propertyResult.seoDescription ?? "",
+          });
+        },
+      )
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setBooting(false));
   }, [canLoadWorkspace, isAdmin, mode, propertyId]);
 
-  const propertyAmenityOptions = amenities.filter((item) => item.scope !== "RoomType");
-  const completed = useMemo(() => [
-    Boolean(data.name.trim() && data.englishName.trim()),
-    Boolean(data.city.trim() && data.address.trim()),
-    Number(data.floors) > 0,
-    data.selectedAmenityIds.length > 0 || data.views.length > 0,
-    allImages.some((image) => !image.roomTypeId && !image.roomId),
-    Boolean(data.propertyDescription.trim() || cleanCommonAreas(data.commonAreas).length),
-    cleanNearbyPlaces(data.nearbyPlaces).length > 0,
-    Boolean(data.checkInTime && data.checkOutTime),
-    Boolean(data.freeChildAgeLimit || data.maxFreeChildren || data.childPrice || data.extraGuestPrice),
-    Boolean(data.seoTitle || data.seoDescription),
-    Boolean(property),
-  ], [allImages, data, property]);
+  const propertyAmenityOptions = amenities.filter(
+    (item) => item.scope !== "RoomType",
+  );
+  const completed = useMemo(
+    () => [
+      Boolean(data.name.trim() && data.englishName.trim()),
+      Boolean(data.city.trim() && data.address.trim()),
+      Number(data.floors) > 0,
+      data.selectedAmenityIds.length > 0 || data.views.length > 0,
+      allImages.some((image) => !image.roomTypeId && !image.roomId),
+      Boolean(
+        data.propertyDescription.trim() ||
+        cleanCommonAreas(data.commonAreas).length,
+      ),
+      cleanNearbyPlaces(data.nearbyPlaces).length > 0,
+      Boolean(data.checkInTime && data.checkOutTime),
+      Boolean(
+        data.freeChildAgeLimit ||
+        data.maxFreeChildren ||
+        data.childPrice ||
+        data.extraGuestPrice,
+      ),
+      Boolean(data.seoTitle || data.seoDescription),
+      Boolean(property),
+    ],
+    [allImages, data, property],
+  );
 
   const completionSections = useMemo<CompletionSection[]>(() => {
-    const hasImages = allImages.some((image) => !image.roomTypeId && !image.roomId);
+    const hasImages = allImages.some(
+      (image) => !image.roomTypeId && !image.roomId,
+    );
     const hasDescription = Boolean(data.propertyDescription.trim());
     const hasCommonAreas = cleanCommonAreas(data.commonAreas).length > 0;
     const hasNearbyPlaces = cleanNearbyPlaces(data.nearbyPlaces).length > 0;
-    const required = (items: Array<[boolean, string]>) => items.filter(([done]) => !done).map(([, label]) => label);
-    const recommended = (items: Array<[boolean, string]>) => items.filter(([done]) => !done).map(([, label]) => label);
+    const required = (items: Array<[boolean, string]>) =>
+      items.filter(([done]) => !done).map(([, label]) => label);
+    const recommended = (items: Array<[boolean, string]>) =>
+      items.filter(([done]) => !done).map(([, label]) => label);
 
     return [
       {
@@ -388,7 +554,12 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         label: "امکانات و چشم‌انداز",
         targetStepIndex: 3,
         isComplete: data.selectedAmenityIds.length > 0 || data.views.length > 0,
-        missingItems: required([[data.selectedAmenityIds.length > 0 || data.views.length > 0, "حداقل یک امکان یا چشم‌انداز"]]),
+        missingItems: required([
+          [
+            data.selectedAmenityIds.length > 0 || data.views.length > 0,
+            "حداقل یک امکان یا چشم‌انداز",
+          ],
+        ]),
         recommendedMissingItems: [],
       },
       {
@@ -404,8 +575,12 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         label: "توضیحات و فضاها",
         targetStepIndex: 5,
         isComplete: hasDescription || hasCommonAreas,
-        missingItems: required([[hasDescription || hasCommonAreas, "توضیح اقامتگاه یا فضای مشترک"]]),
-        recommendedMissingItems: recommended([[hasCommonAreas, "فضاهای مشترک"]]),
+        missingItems: required([
+          [hasDescription || hasCommonAreas, "توضیح اقامتگاه یا فضای مشترک"],
+        ]),
+        recommendedMissingItems: recommended([
+          [hasCommonAreas, "فضاهای مشترک"],
+        ]),
       },
       {
         key: "nearby",
@@ -425,16 +600,26 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
           [Boolean(data.checkOutTime), "ساعت خروج"],
         ]),
         recommendedMissingItems: recommended([
-          [data.breakfastOption !== "Paid" || Boolean(data.breakfastPrice), "قیمت صبحانه"],
+          [
+            data.breakfastOption !== "Paid" || Boolean(data.breakfastPrice),
+            "قیمت صبحانه",
+          ],
         ]),
       },
       {
         key: "financial",
         label: "کودک و نفر اضافه",
         targetStepIndex: 8,
-        isComplete: data.freeChildAgeLimit !== "" && data.maxFreeChildren !== "" && Number(data.childPrice) > 0 && Number(data.extraGuestPrice) > 0,
+        isComplete:
+          data.freeChildAgeLimit !== "" &&
+          data.maxFreeChildren !== "" &&
+          Number(data.childPrice) > 0 &&
+          Number(data.extraGuestPrice) > 0,
         missingItems: required([
-          [data.freeChildAgeLimit !== "" && data.maxFreeChildren !== "", "قانون کودک رایگان"],
+          [
+            data.freeChildAgeLimit !== "" && data.maxFreeChildren !== "",
+            "قانون کودک رایگان",
+          ],
           [Number(data.childPrice) > 0, "نرخ کودک"],
           [Number(data.extraGuestPrice) > 0, "نرخ نفر اضافه"],
         ]),
@@ -462,14 +647,25 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     ];
   }, [allImages, data, property]);
 
-  const requiredIncompleteSections = completionSections.filter((section) => !section.isComplete);
-  const recommendedIncompleteSections = completionSections.filter((section) => section.isComplete && section.recommendedMissingItems.length > 0);
-  const localCompletionPercentage = Math.round((completionSections.filter((section) => section.isComplete).length / completionSections.length) * 100);
+  const requiredIncompleteSections = completionSections.filter(
+    (section) => !section.isComplete,
+  );
+  const recommendedIncompleteSections = completionSections.filter(
+    (section) =>
+      section.isComplete && section.recommendedMissingItems.length > 0,
+  );
+  const localCompletionPercentage = Math.round(
+    (completionSections.filter((section) => section.isComplete).length /
+      completionSections.length) *
+      100,
+  );
 
   function jumpToStep(index: number) {
     setError("");
     setStep(index);
-    window.requestAnimationFrame(() => window.scrollTo({ top: 0, behavior: "smooth" }));
+    window.requestAnimationFrame(() =>
+      window.scrollTo({ top: 0, behavior: "smooth" }),
+    );
   }
 
   function completionStepTarget(actionTarget: string) {
@@ -506,11 +702,17 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       checkInTime: data.checkInTime || null,
       checkOutTime: data.checkOutTime || null,
       breakfastOption: data.breakfastOption,
-      breakfastPrice: data.breakfastOption === "Paid" && data.breakfastPrice !== "" ? Number(data.breakfastPrice) : null,
-      freeChildAgeLimit: data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
-      maxFreeChildren: data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
+      breakfastPrice:
+        data.breakfastOption === "Paid" && data.breakfastPrice !== ""
+          ? Number(data.breakfastPrice)
+          : null,
+      freeChildAgeLimit:
+        data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
+      maxFreeChildren:
+        data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
       childPrice: data.childPrice === "" ? null : Number(data.childPrice),
-      extraGuestPrice: data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
+      extraGuestPrice:
+        data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       landAreaM2: data.landArea === "" ? null : Number(data.landArea),
       floorsCount: data.floors === "" ? null : Number(data.floors),
@@ -526,14 +728,22 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   async function saveProperty(description?: string) {
     const body = JSON.stringify(propertyPayload(description));
     if (property) {
-      const updated = await apiRequest<PropertyResponse>(isAdmin ? `/admin/properties/${property.id}` : `/owner/properties/${property.id}`, {
-        method: "PUT",
-        body,
-      });
+      const updated = await apiRequest<PropertyResponse>(
+        isAdmin
+          ? `/admin/properties/${property.id}`
+          : `/owner/properties/${property.id}`,
+        {
+          method: "PUT",
+          body,
+        },
+      );
       setProperty(updated);
       return updated;
     }
-    const created = await apiRequest<PropertyResponse>("/owner/properties", { method: "POST", body });
+    const created = await apiRequest<PropertyResponse>("/owner/properties", {
+      method: "POST",
+      body,
+    });
     setProperty(created);
     return created;
   }
@@ -541,19 +751,25 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   async function updatePropertySection(section: string, payload: object) {
     if (!property) throw new Error("ابتدا اقامتگاه را ایجاد کنید.");
     const base = isAdmin ? "/admin/properties" : "/owner/properties";
-    const updated = await apiRequest<PropertyResponse>(`${base}/${property.id}/sections/${section}`, {
-      method: "PUT",
-      body: JSON.stringify(payload),
-    });
+    const updated = await apiRequest<PropertyResponse>(
+      `${base}/${property.id}/sections/${section}`,
+      {
+        method: "PUT",
+        body: JSON.stringify(payload),
+      },
+    );
     setProperty(updated);
     return updated;
   }
 
   async function saveAmenities(propertyId: number) {
-    await apiRequest<PropertyAmenityResponse[]>(`/owner/properties/${propertyId}/amenities`, {
-      method: "PUT",
-      body: JSON.stringify({ amenityIds: data.selectedAmenityIds }),
-    });
+    await apiRequest<PropertyAmenityResponse[]>(
+      `/owner/properties/${propertyId}/amenities`,
+      {
+        method: "PUT",
+        body: JSON.stringify({ amenityIds: data.selectedAmenityIds }),
+      },
+    );
     await apiRequest(`/owner/properties/${propertyId}/views`, {
       method: "PUT",
       body: JSON.stringify({ views: data.views }),
@@ -562,16 +778,31 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
   async function saveDescriptions(propertyId: number) {
     const sections = [
-      { sectionType: "PropertyIntroduction", title: "معرفی اقامتگاه", content: data.propertyDescription.trim(), sortOrder: 1 },
-      { sectionType: "ImportantNotes", title: "نکات مهم", content: data.additionalNotes.trim(), sortOrder: 2 },
+      {
+        sectionType: "PropertyIntroduction",
+        title: "معرفی اقامتگاه",
+        content: data.propertyDescription.trim(),
+        sortOrder: 1,
+      },
+      {
+        sectionType: "ImportantNotes",
+        title: "نکات مهم",
+        content: data.additionalNotes.trim(),
+        sortOrder: 2,
+      },
     ].filter((section) => section.content);
     const ids = { ...descriptionIds };
     for (const section of sections) {
       const id = ids[section.sectionType];
-      const saved = await apiRequest<PropertyDescriptionSectionResponse>(id ? `/owner/property-descriptions/${id}` : `/owner/properties/${propertyId}/descriptions`, {
-        method: id ? "PUT" : "POST",
-        body: JSON.stringify(section),
-      });
+      const saved = await apiRequest<PropertyDescriptionSectionResponse>(
+        id
+          ? `/owner/property-descriptions/${id}`
+          : `/owner/properties/${propertyId}/descriptions`,
+        {
+          method: id ? "PUT" : "POST",
+          body: JSON.stringify(section),
+        },
+      );
       ids[section.sectionType] = saved.id;
     }
     setDescriptionIds(ids);
@@ -585,84 +816,164 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         sortOrder: index + 1,
       })),
     );
-    update("commonAreas", commonAreas.length
-      ? commonAreas.map((area) => ({ id: area.id, name: area.name, description: area.description ?? "" }))
-      : [{ name: "", description: "" }]);
-    await updatePropertySection("description", { description: data.propertyDescription.trim() });
+    update(
+      "commonAreas",
+      commonAreas.length
+        ? commonAreas.map((area) => ({
+            id: area.id,
+            name: area.name,
+            description: area.description ?? "",
+          }))
+        : [{ name: "", description: "" }],
+    );
+    await updatePropertySection("description", {
+      description: data.propertyDescription.trim(),
+    });
   }
 
   async function saveNearbyPlaces(propertyId: number) {
-    const existing = await apiRequest<NearbyPlaceResponse[]>(`/owner/properties/${propertyId}/nearby-places`);
+    const existing = await apiRequest<NearbyPlaceResponse[]>(
+      `/owner/properties/${propertyId}/nearby-places`,
+    );
     const desired = cleanNearbyPlaces(data.nearbyPlaces);
-    const desiredTitles = new Set(desired.map((place) => place.title.toLocaleLowerCase()));
+    const desiredTitles = new Set(
+      desired.map((place) => place.title.toLocaleLowerCase()),
+    );
     for (const place of desired) {
-      const found = place.id ? existing.find((item) => item.id === place.id) : existing.find((item) => item.title.toLocaleLowerCase() === place.title.toLocaleLowerCase());
-      await apiRequest<NearbyPlaceResponse>(found ? `/owner/nearby-places/${found.id}` : `/owner/properties/${propertyId}/nearby-places`, {
-        method: found ? "PUT" : "POST",
-        body: JSON.stringify({
-          title: place.title.trim(),
-          category: nearbyCategory(place.title),
-          distanceInMeters: null,
-          walkingMinutes: place.walkingMinutes === "" ? null : Number(place.walkingMinutes),
-          drivingMinutes: place.drivingMinutes === "" ? null : Number(place.drivingMinutes),
-          description: null,
-          latitude: null,
-          longitude: null,
-          isDefault: place.isDefault,
-          isCustom: !place.isDefault,
-          isActive: true,
-        }),
-      });
+      const found = place.id
+        ? existing.find((item) => item.id === place.id)
+        : existing.find(
+            (item) =>
+              item.title.toLocaleLowerCase() ===
+              place.title.toLocaleLowerCase(),
+          );
+      await apiRequest<NearbyPlaceResponse>(
+        found
+          ? `/owner/nearby-places/${found.id}`
+          : `/owner/properties/${propertyId}/nearby-places`,
+        {
+          method: found ? "PUT" : "POST",
+          body: JSON.stringify({
+            title: place.title.trim(),
+            category: nearbyCategory(place.title),
+            distanceInMeters: null,
+            walkingMinutes:
+              place.walkingMinutes === "" ? null : Number(place.walkingMinutes),
+            drivingMinutes:
+              place.drivingMinutes === "" ? null : Number(place.drivingMinutes),
+            description: null,
+            latitude: null,
+            longitude: null,
+            isDefault: place.isDefault,
+            isCustom: !place.isDefault,
+            isActive: true,
+          }),
+        },
+      );
     }
-    for (const place of existing.filter((item) => item.isActive && !desiredTitles.has(item.title.toLocaleLowerCase()))) {
-      await apiRequest<NearbyPlaceResponse>(`/owner/nearby-places/${place.id}`, { method: "PUT", body: JSON.stringify({ ...place, isActive: false }) });
+    for (const place of existing.filter(
+      (item) =>
+        item.isActive && !desiredTitles.has(item.title.toLocaleLowerCase()),
+    )) {
+      await apiRequest<NearbyPlaceResponse>(
+        `/owner/nearby-places/${place.id}`,
+        { method: "PUT", body: JSON.stringify({ ...place, isActive: false }) },
+      );
     }
   }
 
   function validateStep(index = step) {
-    if (mode === "create" && index === 0 && (!data.name.trim() || !data.englishName.trim())) return "نام فارسی و انگلیسی را وارد کنید.";
-    if (index === 2 && data.floors !== "" && Number(data.floors) < 1) return "تعداد طبقات باید حداقل ۱ باشد.";
-    if (index === 7 && data.breakfastOption === "Paid" && data.breakfastPrice === "") return "قیمت صبحانه را وارد کنید.";
+    if (
+      mode === "create" &&
+      index === 0 &&
+      (!data.name.trim() || !data.englishName.trim())
+    )
+      return "نام فارسی و انگلیسی را وارد کنید.";
+    if (index === 2 && data.floors !== "" && Number(data.floors) < 1)
+      return "تعداد طبقات باید حداقل ۱ باشد.";
+    if (
+      index === 7 &&
+      data.breakfastOption === "Paid" &&
+      data.breakfastPrice === ""
+    )
+      return "قیمت صبحانه را وارد کنید.";
     return "";
   }
 
   async function saveCurrentStep() {
     if (!property) {
       const created = await saveProperty(data.propertyDescription.trim());
-      setCompletion(await apiRequest<PropertyCompletionResponse>(`/owner/properties/${created.id}/completion`).catch(() => completion as PropertyCompletionResponse));
+      setCompletion(
+        await apiRequest<PropertyCompletionResponse>(
+          `/owner/properties/${created.id}/completion`,
+        ).catch(() => completion as PropertyCompletionResponse),
+      );
       return created;
     }
 
     let saved = property;
-    if (step === 0) saved = await updatePropertySection("basic", {
-      name: data.name.trim(), englishName: data.englishName.trim() || null, type: data.type, inventoryMode: data.inventoryMode,
-    });
-    if (step === 1) saved = await updatePropertySection("location", {
-      destinationId: resolveDestinationId(data.city), address: data.address.trim(), city: data.city.trim(), country: "Iran",
-      latitude: data.latitude === "" ? null : Number(data.latitude), longitude: data.longitude === "" ? null : Number(data.longitude),
-    });
-    if (step === 2) saved = await updatePropertySection("building", {
-      totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea), landAreaM2: data.landArea === "" ? null : Number(data.landArea),
-      floorsCount: data.floors === "" ? null : Number(data.floors), hasElevator: data.hasElevator,
-      isWheelchairAccessible: data.isWheelchairAccessible, hasGroundFloorRoom: data.hasGroundFloorRoom, hasAccessibleBathroom: data.hasAccessibleBathroom,
-    });
+    if (step === 0)
+      saved = await updatePropertySection("basic", {
+        name: data.name.trim(),
+        englishName: data.englishName.trim() || null,
+        type: data.type,
+        inventoryMode: data.inventoryMode,
+      });
+    if (step === 1)
+      saved = await updatePropertySection("location", {
+        destinationId: resolveDestinationId(data.city),
+        address: data.address.trim(),
+        city: data.city.trim(),
+        country: "Iran",
+        latitude: data.latitude === "" ? null : Number(data.latitude),
+        longitude: data.longitude === "" ? null : Number(data.longitude),
+      });
+    if (step === 2)
+      saved = await updatePropertySection("building", {
+        totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
+        landAreaM2: data.landArea === "" ? null : Number(data.landArea),
+        floorsCount: data.floors === "" ? null : Number(data.floors),
+        hasElevator: data.hasElevator,
+        isWheelchairAccessible: data.isWheelchairAccessible,
+        hasGroundFloorRoom: data.hasGroundFloorRoom,
+        hasAccessibleBathroom: data.hasAccessibleBathroom,
+      });
     if (step === 3) await saveAmenities(saved.id);
     if (step === 5) await saveDescriptions(saved.id);
     if (step === 6) await saveNearbyPlaces(saved.id);
-    if (step === 7) saved = await updatePropertySection("rules", {
-      checkInTime: data.checkInTime || null, checkOutTime: data.checkOutTime || null, breakfastOption: data.breakfastOption,
-      breakfastPrice: data.breakfastOption === "Paid" && data.breakfastPrice !== "" ? Number(data.breakfastPrice) : null,
-    });
-    if (step === 8) saved = await updatePropertySection("financial", {
-      freeChildAgeLimit: data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
-      maxFreeChildren: data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
-      childPrice: data.childPrice === "" ? null : Number(data.childPrice), extraGuestPrice: data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
-    });
-    if (step === 9) saved = await updatePropertySection("seo", {
-      seoTitle: data.seoTitle.trim() || null, seoDescription: data.seoDescription.trim() || null,
-    });
-    const completionPath = isAdmin ? `/admin/properties/${saved.id}/completion` : `/owner/properties/${saved.id}/completion`;
-    setCompletion(await apiRequest<PropertyCompletionResponse>(completionPath).catch(() => completion as PropertyCompletionResponse));
+    if (step === 7)
+      saved = await updatePropertySection("rules", {
+        checkInTime: data.checkInTime || null,
+        checkOutTime: data.checkOutTime || null,
+        breakfastOption: data.breakfastOption,
+        breakfastPrice:
+          data.breakfastOption === "Paid" && data.breakfastPrice !== ""
+            ? Number(data.breakfastPrice)
+            : null,
+      });
+    if (step === 8)
+      saved = await updatePropertySection("financial", {
+        freeChildAgeLimit:
+          data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
+        maxFreeChildren:
+          data.maxFreeChildren === "" ? null : Number(data.maxFreeChildren),
+        childPrice: data.childPrice === "" ? null : Number(data.childPrice),
+        extraGuestPrice:
+          data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
+      });
+    if (step === 9)
+      saved = await updatePropertySection("seo", {
+        seoTitle: data.seoTitle.trim() || null,
+        seoDescription: data.seoDescription.trim() || null,
+      });
+    const completionPath = isAdmin
+      ? `/admin/properties/${saved.id}/completion`
+      : `/owner/properties/${saved.id}/completion`;
+    setCompletion(
+      await apiRequest<PropertyCompletionResponse>(completionPath).catch(
+        () => completion as PropertyCompletionResponse,
+      ),
+    );
     return saved;
   }
 
@@ -680,7 +991,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       toast.success("این بخش ذخیره شد.");
       setStep((current) => Math.min(current + 1, steps.length - 1));
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "این مرحله ذخیره نشد.";
+      const message =
+        caught instanceof Error ? caught.message : "این مرحله ذخیره نشد.";
       setError(message);
       toast.error(message);
     } finally {
@@ -698,7 +1010,8 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       toast.success("اطلاعات این بخش ذخیره شد.");
       onDone?.(saved);
     } catch (caught) {
-      const message = caught instanceof Error ? caught.message : "ذخیره نهایی انجام نشد.";
+      const message =
+        caught instanceof Error ? caught.message : "ذخیره نهایی انجام نشد.";
       setError(message);
       toast.error(message);
     } finally {
@@ -711,18 +1024,23 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
     setSavingSection("status");
     setError("");
     try {
-      const updated = await apiRequest<PropertyResponse>(`/admin/properties/${property.id}/status`, {
-        method: "PUT",
-        body: JSON.stringify({ status: adminStatus }),
-      });
+      const updated = await apiRequest<PropertyResponse>(
+        `/admin/properties/${property.id}/status`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ status: adminStatus }),
+        },
+      );
       setProperty(updated);
       toast.success("وضعیت اقامتگاه به‌روزرسانی شد.");
     } catch (caught) {
-      const body = caught instanceof ApiRequestError
-        ? caught.body as { completion?: PropertyCompletionResponse } | null
-        : null;
+      const body =
+        caught instanceof ApiRequestError
+          ? (caught.body as { completion?: PropertyCompletionResponse } | null)
+          : null;
       if (body?.completion) setCompletion(body.completion);
-      const message = caught instanceof Error ? caught.message : "تغییر وضعیت انجام نشد.";
+      const message =
+        caught instanceof Error ? caught.message : "تغییر وضعیت انجام نشد.";
       setError(message);
       toast.error(message);
     } finally {
@@ -743,29 +1061,54 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
   }
 
   return (
-    <form className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]" dir="rtl" onSubmit={finish}>
+    <form
+      className="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]"
+      dir="rtl"
+      onSubmit={finish}
+    >
       <aside className="h-fit rounded-xl border border-border bg-card p-3 text-card-foreground shadow-sm lg:sticky lg:top-5">
         <div className="mb-3 px-2">
-          <p className="text-xs font-bold text-muted-foreground">{mode === "create" ? "ثبت اقامتگاه" : "ویرایش اقامتگاه"}</p>
-          <p className="mt-1 text-sm font-black text-foreground">مرحله {step + 1} از {steps.length}</p>
+          <p className="text-xs font-bold text-muted-foreground">
+            {mode === "create" ? "ثبت اقامتگاه" : "ویرایش اقامتگاه"}
+          </p>
+          <p className="mt-1 text-sm font-bold text-foreground">
+            مرحله {step + 1} از {steps.length}
+          </p>
         </div>
         <nav className="grid gap-1">
           {steps.map((label, index) => {
-            const section = completionSections.find((item) => item.targetStepIndex === index);
+            const section = completionSections.find(
+              (item) => item.targetStepIndex === index,
+            );
             const isComplete = Boolean(section?.isComplete);
             const hasRequiredMissing = Boolean(section && !section.isComplete);
-            const hasRecommendedMissing = Boolean(section?.isComplete && section.recommendedMissingItems.length);
+            const hasRecommendedMissing = Boolean(
+              section?.isComplete && section.recommendedMissingItems.length,
+            );
             return (
               <button
                 className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-right text-sm font-bold transition ${step === index ? "bg-primary text-primary-foreground" : isComplete ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)] hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
                 key={label}
                 onClick={() => jumpToStep(index)}
-                title={section ? [...section.missingItems, ...section.recommendedMissingItems].join("، ") : undefined}
+                title={
+                  section
+                    ? [
+                        ...section.missingItems,
+                        ...section.recommendedMissingItems,
+                      ].join("، ")
+                    : undefined
+                }
                 type="button"
               >
                 <span>{label}</span>
-                <span className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-primary-foreground/20 text-primary-foreground" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : hasRecommendedMissing ? "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]" : "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"}`}>
-                  {isComplete ? (hasRecommendedMissing ? "پیشنهاد" : "✓") : "ناقص"}
+                <span
+                  className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-primary-foreground/20 text-primary-foreground" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : hasRecommendedMissing ? "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]" : "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"}`}
+                >
+                  {isComplete
+                    ? hasRecommendedMissing
+                      ? "پیشنهاد"
+                      : "✓"
+                    : "ناقص"}
                 </span>
               </button>
             );
@@ -773,10 +1116,20 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
         </nav>
         {property && (
           <div className="mt-4 grid gap-2 border-t border-border pt-4">
-            <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>
+            <Link
+              className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+              href={
+                isAdmin
+                  ? `/admin/properties/${property.id}/rooms`
+                  : `/owner/properties/${property.id}/rooms`
+              }
+            >
               مدیریت اتاق‌ها
             </Link>
-            <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href="/owner/properties">
+            <Link
+              className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+              href="/owner/properties"
+            >
               بازگشت به لیست اقامتگاه‌ها
             </Link>
           </div>
@@ -787,49 +1140,169 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
       </aside>
 
       <main className="min-w-0">
-        {error && <p className="mb-4 rounded-xl bg-[var(--theme-danger-soft)] p-3 text-sm font-semibold text-[var(--theme-danger)]">{error}</p>}
+        {error && (
+          <p className="mb-4 rounded-xl bg-[var(--theme-danger-soft)] p-3 text-sm font-semibold text-[var(--theme-danger)]">
+            {error}
+          </p>
+        )}
 
         {step === 0 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">اطلاعات پایه</h2>
+            <h2 className="text-2xl font-bold">اطلاعات پایه</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-bold">نام فارسی<input className={inputClass} onChange={(event) => update("name", event.target.value)} value={data.name} /></label>
-              <label className="grid gap-1 text-sm font-bold">نام انگلیسی<input className={inputClass} dir="ltr" onChange={(event) => update("englishName", event.target.value)} value={data.englishName} /></label>
-              <label className="grid gap-1 text-sm font-bold">نوع اقامتگاه<select className={inputClass} onChange={(event) => update("type", event.target.value as PropertyType)} value={data.type}>{propertyTypes.map((type) => <option key={type} value={type}>{propertyTypeLabels[type]}</option>)}</select></label>
-              <label className="grid gap-1 text-sm font-bold">مدل موجودی<select className={inputClass} onChange={(event) => update("inventoryMode", event.target.value as InventoryMode)} value={data.inventoryMode}><option value="NamedRooms">اتاق نام‌دار</option><option value="TypeBasedInventory">موجودی تعدادی</option></select></label>
+              <label className="grid gap-1 text-sm font-bold">
+                نام فارسی
+                <input
+                  className={inputClass}
+                  onChange={(event) => update("name", event.target.value)}
+                  value={data.name}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                نام انگلیسی
+                <input
+                  className={inputClass}
+                  dir="ltr"
+                  onChange={(event) =>
+                    update("englishName", event.target.value)
+                  }
+                  value={data.englishName}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                نوع اقامتگاه
+                <select
+                  className={inputClass}
+                  onChange={(event) =>
+                    update("type", event.target.value as PropertyType)
+                  }
+                  value={data.type}
+                >
+                  {propertyTypes.map((type) => (
+                    <option key={type} value={type}>
+                      {propertyTypeLabels[type]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                مدل موجودی
+                <select
+                  className={inputClass}
+                  onChange={(event) =>
+                    update("inventoryMode", event.target.value as InventoryMode)
+                  }
+                  value={data.inventoryMode}
+                >
+                  <option value="NamedRooms">اتاق نام‌دار</option>
+                  <option value="TypeBasedInventory">موجودی تعدادی</option>
+                </select>
+              </label>
             </div>
           </section>
         )}
 
         {step === 1 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">موقعیت و نشانی</h2>
+            <h2 className="text-2xl font-bold">موقعیت و نشانی</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-bold">شهر<input className={inputClass} onChange={(event) => update("city", event.target.value)} value={data.city} /></label>
-              <label className="grid gap-1 text-sm font-bold md:col-span-2">نشانی<input className={inputClass} onChange={(event) => update("address", event.target.value)} value={data.address} /></label>
-              <label className="grid gap-1 text-sm font-bold">عرض جغرافیایی<input className={inputClass} dir="ltr" onChange={(event) => update("latitude", event.target.value)} type="number" value={data.latitude} /></label>
-              <label className="grid gap-1 text-sm font-bold">طول جغرافیایی<input className={inputClass} dir="ltr" onChange={(event) => update("longitude", event.target.value)} type="number" value={data.longitude} /></label>
+              <label className="grid gap-1 text-sm font-bold">
+                شهر
+                <input
+                  className={inputClass}
+                  onChange={(event) => update("city", event.target.value)}
+                  value={data.city}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold md:col-span-2">
+                نشانی
+                <input
+                  className={inputClass}
+                  onChange={(event) => update("address", event.target.value)}
+                  value={data.address}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                عرض جغرافیایی
+                <input
+                  className={inputClass}
+                  dir="ltr"
+                  onChange={(event) => update("latitude", event.target.value)}
+                  type="number"
+                  value={data.latitude}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                طول جغرافیایی
+                <input
+                  className={inputClass}
+                  dir="ltr"
+                  onChange={(event) => update("longitude", event.target.value)}
+                  type="number"
+                  value={data.longitude}
+                />
+              </label>
             </div>
           </section>
         )}
 
         {step === 2 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">ساختمان و دسترسی</h2>
+            <h2 className="text-2xl font-bold">ساختمان و دسترسی</h2>
             <div className="grid gap-4 md:grid-cols-3">
-              <label className="grid gap-1 text-sm font-bold">زیربنا<input className={inputClass} min="0" onChange={(event) => update("totalArea", event.target.value)} type="number" value={data.totalArea} /></label>
-              <label className="grid gap-1 text-sm font-bold">مساحت زمین<input className={inputClass} min="0" onChange={(event) => update("landArea", event.target.value)} type="number" value={data.landArea} /></label>
-              <label className="grid gap-1 text-sm font-bold">تعداد طبقات<input className={inputClass} min="1" onChange={(event) => update("floors", event.target.value)} type="number" value={data.floors} /></label>
+              <label className="grid gap-1 text-sm font-bold">
+                زیربنا
+                <input
+                  className={inputClass}
+                  min="0"
+                  onChange={(event) => update("totalArea", event.target.value)}
+                  type="number"
+                  value={data.totalArea}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                مساحت زمین
+                <input
+                  className={inputClass}
+                  min="0"
+                  onChange={(event) => update("landArea", event.target.value)}
+                  type="number"
+                  value={data.landArea}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                تعداد طبقات
+                <input
+                  className={inputClass}
+                  min="1"
+                  onChange={(event) => update("floors", event.target.value)}
+                  type="number"
+                  value={data.floors}
+                />
+              </label>
             </div>
             <div className="grid gap-3 md:grid-cols-2">
               {[
                 ["hasElevator", "آسانسور دارد؟"],
                 ["isWheelchairAccessible", "مناسب ویلچر هست؟"],
                 ["hasGroundFloorRoom", "اتاق همکف دارد؟"],
-                ["hasAccessibleBathroom", "سرویس بهداشتی مناسب افراد کم‌توان دارد؟"],
+                [
+                  "hasAccessibleBathroom",
+                  "سرویس بهداشتی مناسب افراد کم‌توان دارد؟",
+                ],
               ].map(([key, label]) => (
                 <label className={choiceClass} key={key}>
-                  <input checked={Boolean(data[key as keyof WizardData])} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update(key as keyof WizardData, event.target.checked as never)} type="checkbox" />
+                  <input
+                    checked={Boolean(data[key as keyof WizardData])}
+                    className="h-4 w-4 accent-[var(--theme-primary)]"
+                    onChange={(event) =>
+                      update(
+                        key as keyof WizardData,
+                        event.target.checked as never,
+                      )
+                    }
+                    type="checkbox"
+                  />
                   {label}
                 </label>
               ))}
@@ -839,17 +1312,35 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 3 && (
           <section className={`${cardClass} grid gap-5`}>
-            <h2 className="text-2xl font-black">امکانات و چشم‌انداز</h2>
+            <h2 className="text-2xl font-bold">امکانات و چشم‌انداز</h2>
             {amenityCategories.map((category) => {
-              const categoryAmenities = propertyAmenityOptions.filter((item) => item.amenityCategoryId === category.id);
+              const categoryAmenities = propertyAmenityOptions.filter(
+                (item) => item.amenityCategoryId === category.id,
+              );
               if (!categoryAmenities.length) return null;
               return (
                 <fieldset className="grid gap-2" key={category.id}>
-                  <legend className="mb-2 text-lg font-black">{category.name}</legend>
+                  <legend className="mb-2 text-lg font-bold">
+                    {category.name}
+                  </legend>
                   <div className="grid gap-2 md:grid-cols-3">
                     {categoryAmenities.map((amenity) => (
                       <label className={choiceClass} key={amenity.id}>
-                        <input checked={data.selectedAmenityIds.includes(amenity.id)} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update("selectedAmenityIds", event.target.checked ? [...data.selectedAmenityIds, amenity.id] : data.selectedAmenityIds.filter((id) => id !== amenity.id))} type="checkbox" />
+                        <input
+                          checked={data.selectedAmenityIds.includes(amenity.id)}
+                          className="h-4 w-4 accent-[var(--theme-primary)]"
+                          onChange={(event) =>
+                            update(
+                              "selectedAmenityIds",
+                              event.target.checked
+                                ? [...data.selectedAmenityIds, amenity.id]
+                                : data.selectedAmenityIds.filter(
+                                    (id) => id !== amenity.id,
+                                  ),
+                            )
+                          }
+                          type="checkbox"
+                        />
                         {amenity.name}
                       </label>
                     ))}
@@ -858,11 +1349,23 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               );
             })}
             <fieldset>
-              <legend className="mb-2 text-lg font-black">چشم‌انداز</legend>
+              <legend className="mb-2 text-lg font-bold">چشم‌انداز</legend>
               <div className="grid gap-2 md:grid-cols-3">
                 {propertyViewOptions.map((view) => (
                   <label className={choiceClass} key={view}>
-                    <input checked={data.views.includes(view)} className="h-4 w-4 accent-[var(--theme-primary)]" onChange={(event) => update("views", event.target.checked ? [...data.views, view] : data.views.filter((item) => item !== view))} type="checkbox" />
+                    <input
+                      checked={data.views.includes(view)}
+                      className="h-4 w-4 accent-[var(--theme-primary)]"
+                      onChange={(event) =>
+                        update(
+                          "views",
+                          event.target.checked
+                            ? [...data.views, view]
+                            : data.views.filter((item) => item !== view),
+                        )
+                      }
+                      type="checkbox"
+                    />
                     {propertyViewLabels[view]}
                   </label>
                 ))}
@@ -873,9 +1376,9 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 4 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">تصاویر اقامتگاه</h2>
+            <h2 className="text-2xl font-bold">تصاویر اقامتگاه</h2>
             <div className="grid gap-3">
-              <h3 className="font-black">گالری تصاویر</h3>
+              <h3 className="font-bold">گالری تصاویر</h3>
               <PropertyImageManager
                 allowFreeCrop={isAdmin}
                 images={allImages}
@@ -889,82 +1392,330 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 5 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">توضیحات و فضاها</h2>
-            <label className="grid gap-1 text-sm font-bold">توضیحات اقامتگاه<textarea className={inputClass} onChange={(event) => update("propertyDescription", event.target.value)} rows={5} value={data.propertyDescription} /></label>
+            <h2 className="text-2xl font-bold">توضیحات و فضاها</h2>
+            <label className="grid gap-1 text-sm font-bold">
+              توضیحات اقامتگاه
+              <textarea
+                className={inputClass}
+                onChange={(event) =>
+                  update("propertyDescription", event.target.value)
+                }
+                rows={5}
+                value={data.propertyDescription}
+              />
+            </label>
             <div className="grid gap-3 rounded-xl border border-border bg-muted p-4">
               <strong>فضاهای مشترک</strong>
               {data.commonAreas.map((area, index) => (
-                <div className="grid gap-2 md:grid-cols-[1fr_1.5fr_auto]" key={index}>
-                  <input className={inputClass} onChange={(event) => {
-                    const next = [...data.commonAreas];
-                    next[index] = { ...next[index], name: event.target.value };
-                    update("commonAreas", next);
-                  }} placeholder="حیاط مرکزی" value={area.name} />
-                  <input className={inputClass} onChange={(event) => {
-                    const next = [...data.commonAreas];
-                    next[index] = { ...next[index], description: event.target.value };
-                    update("commonAreas", next);
-                  }} placeholder="توضیح اختیاری" value={area.description} />
-                  <KoochButton onClick={() => update("commonAreas", data.commonAreas.filter((_, candidate) => candidate !== index))} size="sm" type="button" variant="destructive">حذف</KoochButton>
+                <div
+                  className="grid gap-2 md:grid-cols-[1fr_1.5fr_auto]"
+                  key={index}
+                >
+                  <input
+                    className={inputClass}
+                    onChange={(event) => {
+                      const next = [...data.commonAreas];
+                      next[index] = {
+                        ...next[index],
+                        name: event.target.value,
+                      };
+                      update("commonAreas", next);
+                    }}
+                    placeholder="حیاط مرکزی"
+                    value={area.name}
+                  />
+                  <input
+                    className={inputClass}
+                    onChange={(event) => {
+                      const next = [...data.commonAreas];
+                      next[index] = {
+                        ...next[index],
+                        description: event.target.value,
+                      };
+                      update("commonAreas", next);
+                    }}
+                    placeholder="توضیح اختیاری"
+                    value={area.description}
+                  />
+                  <KoochButton
+                    onClick={() =>
+                      update(
+                        "commonAreas",
+                        data.commonAreas.filter(
+                          (_, candidate) => candidate !== index,
+                        ),
+                      )
+                    }
+                    size="sm"
+                    type="button"
+                    variant="destructive"
+                  >
+                    حذف
+                  </KoochButton>
                 </div>
               ))}
-              <KoochButton className="justify-self-start" onClick={() => update("commonAreas", [...data.commonAreas, { name: "", description: "" }])} type="button" variant="outline">افزودن فضای مشترک</KoochButton>
+              <KoochButton
+                className="justify-self-start"
+                onClick={() =>
+                  update("commonAreas", [
+                    ...data.commonAreas,
+                    { name: "", description: "" },
+                  ])
+                }
+                type="button"
+                variant="outline"
+              >
+                افزودن فضای مشترک
+              </KoochButton>
             </div>
-            <label className="grid gap-1 text-sm font-bold">نکات تکمیلی<textarea className={inputClass} onChange={(event) => update("additionalNotes", event.target.value)} rows={4} value={data.additionalNotes} /></label>
+            <label className="grid gap-1 text-sm font-bold">
+              نکات تکمیلی
+              <textarea
+                className={inputClass}
+                onChange={(event) =>
+                  update("additionalNotes", event.target.value)
+                }
+                rows={4}
+                value={data.additionalNotes}
+              />
+            </label>
           </section>
         )}
 
         {step === 6 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">مکان‌های نزدیک</h2>
-            <div className="grid gap-2 md:grid-cols-3">{defaultNearbyPlaces.map((place) => <button className="rounded-xl border border-border bg-background p-3 text-right text-sm font-bold text-foreground transition hover:bg-muted" key={place} onClick={() => update("nearbyPlaces", data.nearbyPlaces.some((item) => item.title === place) ? data.nearbyPlaces.filter((item) => item.title !== place) : [...data.nearbyPlaces, { title: place, drivingMinutes: "", walkingMinutes: "", isDefault: true }])} type="button">{data.nearbyPlaces.some((item) => item.title === place) ? "انتخاب شده: " : ""}{place}</button>)}</div>
+            <h2 className="text-2xl font-bold">مکان‌های نزدیک</h2>
+            <div className="grid gap-2 md:grid-cols-3">
+              {defaultNearbyPlaces.map((place) => (
+                <button
+                  className="rounded-xl border border-border bg-background p-3 text-right text-sm font-bold text-foreground transition hover:bg-muted"
+                  key={place}
+                  onClick={() =>
+                    update(
+                      "nearbyPlaces",
+                      data.nearbyPlaces.some((item) => item.title === place)
+                        ? data.nearbyPlaces.filter(
+                            (item) => item.title !== place,
+                          )
+                        : [
+                            ...data.nearbyPlaces,
+                            {
+                              title: place,
+                              drivingMinutes: "",
+                              walkingMinutes: "",
+                              isDefault: true,
+                            },
+                          ],
+                    )
+                  }
+                  type="button"
+                >
+                  {data.nearbyPlaces.some((item) => item.title === place)
+                    ? "انتخاب شده: "
+                    : ""}
+                  {place}
+                </button>
+              ))}
+            </div>
             {data.nearbyPlaces.map((place, index) => (
-              <div className="grid gap-2 rounded-xl border border-border bg-background p-3 md:grid-cols-[1fr_140px_140px_auto]" key={index}>
-                <input className={inputClass} disabled={place.isDefault} onChange={(event) => {
-                  const next = [...data.nearbyPlaces];
-                  next[index] = { ...next[index], title: event.target.value };
-                  update("nearbyPlaces", next);
-                }} placeholder="مکان دلخواه" value={place.title} />
-                <input className={inputClass} min="0" onChange={(event) => {
-                  const next = [...data.nearbyPlaces];
-                  next[index] = { ...next[index], drivingMinutes: event.target.value };
-                  update("nearbyPlaces", next);
-                }} placeholder="با خودرو" type="number" value={place.drivingMinutes} />
-                <input className={inputClass} min="0" onChange={(event) => {
-                  const next = [...data.nearbyPlaces];
-                  next[index] = { ...next[index], walkingMinutes: event.target.value };
-                  update("nearbyPlaces", next);
-                }} placeholder="پیاده" type="number" value={place.walkingMinutes} />
-                <KoochButton onClick={() => update("nearbyPlaces", data.nearbyPlaces.filter((_, candidate) => candidate !== index))} size="sm" type="button" variant="destructive">حذف</KoochButton>
+              <div
+                className="grid gap-2 rounded-xl border border-border bg-background p-3 md:grid-cols-[1fr_140px_140px_auto]"
+                key={index}
+              >
+                <input
+                  className={inputClass}
+                  disabled={place.isDefault}
+                  onChange={(event) => {
+                    const next = [...data.nearbyPlaces];
+                    next[index] = { ...next[index], title: event.target.value };
+                    update("nearbyPlaces", next);
+                  }}
+                  placeholder="مکان دلخواه"
+                  value={place.title}
+                />
+                <input
+                  className={inputClass}
+                  min="0"
+                  onChange={(event) => {
+                    const next = [...data.nearbyPlaces];
+                    next[index] = {
+                      ...next[index],
+                      drivingMinutes: event.target.value,
+                    };
+                    update("nearbyPlaces", next);
+                  }}
+                  placeholder="با خودرو"
+                  type="number"
+                  value={place.drivingMinutes}
+                />
+                <input
+                  className={inputClass}
+                  min="0"
+                  onChange={(event) => {
+                    const next = [...data.nearbyPlaces];
+                    next[index] = {
+                      ...next[index],
+                      walkingMinutes: event.target.value,
+                    };
+                    update("nearbyPlaces", next);
+                  }}
+                  placeholder="پیاده"
+                  type="number"
+                  value={place.walkingMinutes}
+                />
+                <KoochButton
+                  onClick={() =>
+                    update(
+                      "nearbyPlaces",
+                      data.nearbyPlaces.filter(
+                        (_, candidate) => candidate !== index,
+                      ),
+                    )
+                  }
+                  size="sm"
+                  type="button"
+                  variant="destructive"
+                >
+                  حذف
+                </KoochButton>
               </div>
             ))}
-            <KoochButton className="justify-self-start" onClick={() => update("nearbyPlaces", [...data.nearbyPlaces, { title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false }])} type="button" variant="outline">افزودن مکان</KoochButton>
+            <KoochButton
+              className="justify-self-start"
+              onClick={() =>
+                update("nearbyPlaces", [
+                  ...data.nearbyPlaces,
+                  {
+                    title: "",
+                    drivingMinutes: "",
+                    walkingMinutes: "",
+                    isDefault: false,
+                  },
+                ])
+              }
+              type="button"
+              variant="outline"
+            >
+              افزودن مکان
+            </KoochButton>
           </section>
         )}
 
         {step === 7 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">قوانین و زمان‌ها</h2>
+            <h2 className="text-2xl font-bold">قوانین و زمان‌ها</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-bold">ساعت ورود<input className={inputClass} onChange={(event) => update("checkInTime", event.target.value)} type="time" value={data.checkInTime} /></label>
-              <label className="grid gap-1 text-sm font-bold">ساعت خروج<input className={inputClass} onChange={(event) => update("checkOutTime", event.target.value)} type="time" value={data.checkOutTime} /></label>
-              <label className="grid gap-1 text-sm font-bold">صبحانه<select className={inputClass} onChange={(event) => update("breakfastOption", event.target.value as BreakfastOption)} value={data.breakfastOption}><option value="NoBreakfast">بدون صبحانه</option><option value="Included">صبحانه رایگان</option><option value="Paid">صبحانه با هزینه</option></select></label>
-              {data.breakfastOption === "Paid" && <label className="grid gap-1 text-sm font-bold">هزینه صبحانه ({currencyLabel})<input className={inputClass} inputMode="numeric" onChange={(event) => update("breakfastPrice", rawLocalizedAmount(event.target.value))} type="text" value={formatLocalizedAmount(data.breakfastPrice)} /></label>}
+              <label className="grid gap-1 text-sm font-bold">
+                ساعت ورود
+                <input
+                  className={inputClass}
+                  onChange={(event) =>
+                    update("checkInTime", event.target.value)
+                  }
+                  type="time"
+                  value={data.checkInTime}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                ساعت خروج
+                <input
+                  className={inputClass}
+                  onChange={(event) =>
+                    update("checkOutTime", event.target.value)
+                  }
+                  type="time"
+                  value={data.checkOutTime}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                صبحانه
+                <select
+                  className={inputClass}
+                  onChange={(event) =>
+                    update(
+                      "breakfastOption",
+                      event.target.value as BreakfastOption,
+                    )
+                  }
+                  value={data.breakfastOption}
+                >
+                  <option value="NoBreakfast">بدون صبحانه</option>
+                  <option value="Included">صبحانه رایگان</option>
+                  <option value="Paid">صبحانه با هزینه</option>
+                </select>
+              </label>
+              {data.breakfastOption === "Paid" && (
+                <label className="grid gap-1 text-sm font-bold">
+                  هزینه صبحانه ({currencyLabel})
+                  <input
+                    className={inputClass}
+                    inputMode="numeric"
+                    onChange={(event) =>
+                      update(
+                        "breakfastPrice",
+                        rawLocalizedAmount(event.target.value),
+                      )
+                    }
+                    type="text"
+                    value={formatLocalizedAmount(data.breakfastPrice)}
+                  />
+                </label>
+              )}
             </div>
           </section>
         )}
 
         {step === 8 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">قوانین کودک و نفر اضافه</h2>
+            <h2 className="text-2xl font-bold">قوانین کودک و نفر اضافه</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-bold">سن کودک رایگان تا<input className={inputClass} max="17" min="0" onChange={(event) => update("freeChildAgeLimit", event.target.value)} type="number" value={data.freeChildAgeLimit} /></label>
-              <label className="grid gap-1 text-sm font-bold">حداکثر تعداد کودک رایگان<input className={inputClass} min="0" onChange={(event) => update("maxFreeChildren", event.target.value)} type="number" value={data.maxFreeChildren} /></label>
+              <label className="grid gap-1 text-sm font-bold">
+                سن کودک رایگان تا
+                <input
+                  className={inputClass}
+                  max="17"
+                  min="0"
+                  onChange={(event) =>
+                    update("freeChildAgeLimit", event.target.value)
+                  }
+                  type="number"
+                  value={data.freeChildAgeLimit}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold">
+                حداکثر تعداد کودک رایگان
+                <input
+                  className={inputClass}
+                  min="0"
+                  onChange={(event) =>
+                    update("maxFreeChildren", event.target.value)
+                  }
+                  type="number"
+                  value={data.maxFreeChildren}
+                />
+              </label>
               <KoochField label={`نرخ کودک (${currencyLabel})`}>
-                <KoochInput inputMode="numeric" onChange={(event) => update("childPrice", rawLocalizedAmount(event.target.value))} type="text" value={formatLocalizedAmount(data.childPrice)} />
+                <KoochInput
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    update("childPrice", rawLocalizedAmount(event.target.value))
+                  }
+                  type="text"
+                  value={formatLocalizedAmount(data.childPrice)}
+                />
               </KoochField>
               <KoochField label={`نرخ نفر اضافه (${currencyLabel})`}>
-                <KoochInput inputMode="numeric" onChange={(event) => update("extraGuestPrice", rawLocalizedAmount(event.target.value))} type="text" value={formatLocalizedAmount(data.extraGuestPrice)} />
+                <KoochInput
+                  inputMode="numeric"
+                  onChange={(event) =>
+                    update(
+                      "extraGuestPrice",
+                      rawLocalizedAmount(event.target.value),
+                    )
+                  }
+                  type="text"
+                  value={formatLocalizedAmount(data.extraGuestPrice)}
+                />
               </KoochField>
             </div>
           </section>
@@ -972,10 +1723,27 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
 
         {step === 9 && (
           <section className={`${cardClass} grid gap-4`}>
-            <h2 className="text-2xl font-black">تنظیمات سئو</h2>
+            <h2 className="text-2xl font-bold">تنظیمات سئو</h2>
             <div className="grid gap-4 md:grid-cols-2">
-              <label className="grid gap-1 text-sm font-bold md:col-span-2">عنوان سئو<input className={inputClass} onChange={(event) => update("seoTitle", event.target.value)} value={data.seoTitle} /></label>
-              <label className="grid gap-1 text-sm font-bold md:col-span-2">توضیح سئو<textarea className={inputClass} onChange={(event) => update("seoDescription", event.target.value)} rows={3} value={data.seoDescription} /></label>
+              <label className="grid gap-1 text-sm font-bold md:col-span-2">
+                عنوان سئو
+                <input
+                  className={inputClass}
+                  onChange={(event) => update("seoTitle", event.target.value)}
+                  value={data.seoTitle}
+                />
+              </label>
+              <label className="grid gap-1 text-sm font-bold md:col-span-2">
+                توضیح سئو
+                <textarea
+                  className={inputClass}
+                  onChange={(event) =>
+                    update("seoDescription", event.target.value)
+                  }
+                  rows={3}
+                  value={data.seoDescription}
+                />
+              </label>
             </div>
           </section>
         )}
@@ -990,14 +1758,31 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               />
             )}
             {isAdmin && property && (
-              <div className={`${cardClass} grid gap-3 md:grid-cols-[1fr_auto] md:items-end`}>
+              <div
+                className={`${cardClass} grid gap-3 md:grid-cols-[1fr_auto] md:items-end`}
+              >
                 <label className="grid gap-1 text-sm font-bold">
                   وضعیت اقامتگاه
-                  <select className={inputClass} onChange={(event) => setAdminStatus(event.target.value as PropertyStatus)} value={adminStatus}>
-                    {propertyStatusOptions.map((status) => <option key={status} value={status}>{statusLabels[status]}</option>)}
+                  <select
+                    className={inputClass}
+                    onChange={(event) =>
+                      setAdminStatus(event.target.value as PropertyStatus)
+                    }
+                    value={adminStatus}
+                  >
+                    {propertyStatusOptions.map((status) => (
+                      <option key={status} value={status}>
+                        {statusLabels[status]}
+                      </option>
+                    ))}
                   </select>
                 </label>
-                <KoochButton disabled={savingSection === "status"} loading={savingSection === "status"} onClick={saveAdminStatus} type="button">
+                <KoochButton
+                  disabled={savingSection === "status"}
+                  loading={savingSection === "status"}
+                  onClick={saveAdminStatus}
+                  type="button"
+                >
                   ذخیره وضعیت
                 </KoochButton>
                 {adminStatus === "Approved" && !completion?.canActivate && (
@@ -1028,12 +1813,17 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               />
             )}
             <div className={cardClass}>
-              <h2 className="text-2xl font-black">بازبینی</h2>
-              <p className="mt-1 text-sm text-muted-foreground">میزان تکمیل اطلاعات: {localCompletionPercentage}٪</p>
+              <h2 className="text-2xl font-bold">بازبینی</h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                میزان تکمیل اطلاعات: {localCompletionPercentage}٪
+              </p>
               <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
-                <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${localCompletionPercentage}%` }} />
+                <div
+                  className="h-full rounded-full bg-primary transition-all"
+                  style={{ width: `${localCompletionPercentage}%` }}
+                />
               </div>
-              <p className="mt-3 inline-flex rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-sm font-black text-[var(--theme-primary-text)]">
+              <p className="mt-3 inline-flex rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-sm font-bold text-[var(--theme-primary-text)]">
                 {localCompletionPercentage}٪ تکمیل شده
               </p>
               {isAdmin && requiredIncompleteSections.length > 0 && (
@@ -1043,26 +1833,43 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               )}
             </div>
             <div className={cardClass}>
-              <h3 className="text-xl font-black">موارد ناقص</h3>
-              {requiredIncompleteSections.length === 0 && recommendedIncompleteSections.length === 0 ? (
+              <h3 className="text-xl font-bold">موارد ناقص</h3>
+              {requiredIncompleteSections.length === 0 &&
+              recommendedIncompleteSections.length === 0 ? (
                 <p className="mt-3 rounded-xl bg-[var(--theme-success-soft)] p-3 text-sm font-bold text-[var(--theme-success)]">
                   اطلاعات اقامتگاه کامل است.
                 </p>
               ) : (
                 <div className="mt-4 grid gap-3">
-                  {[...requiredIncompleteSections, ...recommendedIncompleteSections].map((section) => {
+                  {[
+                    ...requiredIncompleteSections,
+                    ...recommendedIncompleteSections,
+                  ].map((section) => {
                     const requiredMissing = section.missingItems.length > 0;
-                    const items = requiredMissing ? section.missingItems : section.recommendedMissingItems;
+                    const items = requiredMissing
+                      ? section.missingItems
+                      : section.recommendedMissingItems;
                     return (
-                      <article className={`rounded-xl border p-4 ${requiredMissing ? "border-destructive bg-destructive/10" : "border-[var(--theme-warning)] bg-[var(--theme-warning-soft)]"}`} key={section.key}>
+                      <article
+                        className={`rounded-xl border p-4 ${requiredMissing ? "border-destructive bg-destructive/10" : "border-[var(--theme-warning)] bg-[var(--theme-warning-soft)]"}`}
+                        key={section.key}
+                      >
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <h4 className="font-black text-foreground">{section.label}</h4>
+                            <h4 className="font-bold text-foreground">
+                              {section.label}
+                            </h4>
                             <ul className="mt-2 grid gap-1 text-sm text-muted-foreground">
-                              {items.map((item) => <li key={item}>• {item}</li>)}
+                              {items.map((item) => (
+                                <li key={item}>• {item}</li>
+                              ))}
                             </ul>
                           </div>
-                          <KoochButton onClick={() => jumpToStep(section.targetStepIndex)} size="sm" type="button">
+                          <KoochButton
+                            onClick={() => jumpToStep(section.targetStepIndex)}
+                            size="sm"
+                            type="button"
+                          >
                             تکمیل این بخش
                           </KoochButton>
                         </div>
@@ -1073,41 +1880,124 @@ export function PropertyWizard({ mode, propertyId, isAdmin = false, onDone }: Pr
               )}
             </div>
             <div className="grid gap-4 md:grid-cols-2">
-              <ReviewCard title="اطلاعات پایه" lines={[data.name, propertyTypeLabels[data.type], data.city]} />
-              <ReviewCard title="دسترسی" lines={[boolLabel(data.hasElevator, "آسانسور"), boolLabel(data.isWheelchairAccessible, "مناسب ویلچر"), boolLabel(data.hasGroundFloorRoom, "اتاق همکف"), boolLabel(data.hasAccessibleBathroom, "سرویس مناسب افراد کم‌توان")]} />
-              <ReviewCard title="فضاهای مشترک" lines={cleanCommonAreas(data.commonAreas).map((area) => area.name)} />
-              <ReviewCard title="مکان‌های نزدیک" lines={cleanNearbyPlaces(data.nearbyPlaces).map((place) => place.title)} />
+              <ReviewCard
+                title="اطلاعات پایه"
+                lines={[data.name, propertyTypeLabels[data.type], data.city]}
+              />
+              <ReviewCard
+                title="دسترسی"
+                lines={[
+                  boolLabel(data.hasElevator, "آسانسور"),
+                  boolLabel(data.isWheelchairAccessible, "مناسب ویلچر"),
+                  boolLabel(data.hasGroundFloorRoom, "اتاق همکف"),
+                  boolLabel(
+                    data.hasAccessibleBathroom,
+                    "سرویس مناسب افراد کم‌توان",
+                  ),
+                ]}
+              />
+              <ReviewCard
+                title="فضاهای مشترک"
+                lines={cleanCommonAreas(data.commonAreas).map(
+                  (area) => area.name,
+                )}
+              />
+              <ReviewCard
+                title="مکان‌های نزدیک"
+                lines={cleanNearbyPlaces(data.nearbyPlaces).map(
+                  (place) => place.title,
+                )}
+              />
             </div>
             {property && (
               <div className={`${cardClass} grid gap-3 md:grid-cols-3`}>
-                <Link className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`} href={isAdmin ? `/admin/properties/${property.id}/rooms` : `/owner/properties/${property.id}/rooms`}>مدیریت اتاق‌ها</Link>
-                {property.slug && <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href={`/properties/${property.slug}`}>مشاهده صفحه عمومی</Link>}
-                <Link className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`} href={isAdmin ? "/admin/properties" : "/owner/properties"}>بازگشت به لیست اقامتگاه‌ها</Link>
+                <Link
+                  className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
+                  href={
+                    isAdmin
+                      ? `/admin/properties/${property.id}/rooms`
+                      : `/owner/properties/${property.id}/rooms`
+                  }
+                >
+                  مدیریت اتاق‌ها
+                </Link>
+                {property.slug && (
+                  <Link
+                    className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+                    href={`/properties/${property.slug}`}
+                  >
+                    مشاهده صفحه عمومی
+                  </Link>
+                )}
+                <Link
+                  className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+                  href={isAdmin ? "/admin/properties" : "/owner/properties"}
+                >
+                  بازگشت به لیست اقامتگاه‌ها
+                </Link>
               </div>
             )}
           </section>
         )}
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-          <KoochButton disabled={step === 0 || loading} onClick={() => { setError(""); setStep((current) => Math.max(0, current - 1)); }} type="button" variant="outline">قبلی</KoochButton>
-          <div className="flex gap-2">
-            <KoochButton disabled={loading || savingSection !== null} loading={savingSection === String(step)} onClick={async () => {
-              setLoading(true);
-              setSavingSection(String(step));
+          <KoochButton
+            disabled={step === 0 || loading}
+            onClick={() => {
               setError("");
-              try {
-                await saveCurrentStep();
-                toast.success("این بخش ذخیره شد.");
-              } catch (caught) {
-                const message = caught instanceof Error ? caught.message : "ذخیره انجام نشد.";
-                setError(message);
-                toast.error(message);
-              } finally {
-                setLoading(false);
-                setSavingSection(null);
-              }
-            }} type="button" variant="outline">ذخیره</KoochButton>
-            {step < steps.length - 1 ? <KoochButton disabled={loading || savingSection !== null} loading={savingSection === String(step)} onClick={nextStep} type="button">ذخیره و ادامه</KoochButton> : <KoochButton disabled={loading || savingSection !== null} loading={loading} type="submit">پایان</KoochButton>}
+              setStep((current) => Math.max(0, current - 1));
+            }}
+            type="button"
+            variant="outline"
+          >
+            قبلی
+          </KoochButton>
+          <div className="flex gap-2">
+            <KoochButton
+              disabled={loading || savingSection !== null}
+              loading={savingSection === String(step)}
+              onClick={async () => {
+                setLoading(true);
+                setSavingSection(String(step));
+                setError("");
+                try {
+                  await saveCurrentStep();
+                  toast.success("این بخش ذخیره شد.");
+                } catch (caught) {
+                  const message =
+                    caught instanceof Error
+                      ? caught.message
+                      : "ذخیره انجام نشد.";
+                  setError(message);
+                  toast.error(message);
+                } finally {
+                  setLoading(false);
+                  setSavingSection(null);
+                }
+              }}
+              type="button"
+              variant="outline"
+            >
+              ذخیره
+            </KoochButton>
+            {step < steps.length - 1 ? (
+              <KoochButton
+                disabled={loading || savingSection !== null}
+                loading={savingSection === String(step)}
+                onClick={nextStep}
+                type="button"
+              >
+                ذخیره و ادامه
+              </KoochButton>
+            ) : (
+              <KoochButton
+                disabled={loading || savingSection !== null}
+                loading={loading}
+                type="submit"
+              >
+                پایان
+              </KoochButton>
+            )}
           </div>
         </div>
       </main>
@@ -1119,8 +2009,16 @@ function ReviewCard({ title, lines }: { title: string; lines: string[] }) {
   const visibleLines = lines.filter(Boolean);
   return (
     <KoochCard variant="elevated">
-      <h3 className="mb-2 text-lg font-black">{title}</h3>
-      {visibleLines.length ? <ul className="grid gap-1 text-sm text-muted-foreground">{visibleLines.map((line, index) => <li key={`${line}-${index}`}>{line}</li>)}</ul> : <p className="text-sm text-muted-foreground">موردی ثبت نشده است.</p>}
+      <h3 className="mb-2 text-lg font-bold">{title}</h3>
+      {visibleLines.length ? (
+        <ul className="grid gap-1 text-sm text-muted-foreground">
+          {visibleLines.map((line, index) => (
+            <li key={`${line}-${index}`}>{line}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="text-sm text-muted-foreground">موردی ثبت نشده است.</p>
+      )}
     </KoochCard>
   );
 }

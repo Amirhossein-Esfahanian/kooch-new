@@ -344,7 +344,7 @@ $newFormBody = @'
             <KoochCard padding="sm" variant="muted">
               <div className="grid gap-4">
                 <div>
-                  <h3 className="text-sm font-black text-foreground">
+                  <h3 className="text-sm font-bold text-foreground">
                     افزودن با شماره موبایل
                   </h3>
                   <p className="mt-1 text-xs leading-6 text-muted-foreground">
@@ -378,7 +378,7 @@ $newFormBody = @'
             <KoochCard padding="sm" variant="muted">
               <div className="grid gap-4">
                 <div>
-                  <h3 className="text-sm font-black text-foreground">
+                  <h3 className="text-sm font-bold text-foreground">
                     اطلاعات کاربر
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -411,10 +411,10 @@ $newFormBody = @'
 
           {!editingUser && createStep === "membership" && (
             <KoochCard padding="sm" variant="muted">
-              <p className="text-xs font-black text-muted-foreground">
+              <p className="text-xs font-bold text-muted-foreground">
                 کاربر انتخاب‌شده
               </p>
-              <p className="mt-1 text-sm font-black text-foreground">
+              <p className="mt-1 text-sm font-bold text-foreground">
                 {candidateRequiresCreation
                   ? `${form.firstName} ${form.lastName}`.trim()
                   : candidateMaskedName || "کاربر موجود"}
@@ -430,7 +430,7 @@ $newFormBody = @'
               <KoochCard padding="sm">
                 <div className="grid gap-4">
                   <div>
-                    <h3 className="text-sm font-black text-foreground">
+                    <h3 className="text-sm font-bold text-foreground">
                       نقش و سطح دسترسی
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
@@ -476,7 +476,7 @@ $newFormBody = @'
 
                   <div className="grid gap-2">
                     <div>
-                      <h3 className="text-sm font-black text-foreground">
+                      <h3 className="text-sm font-bold text-foreground">
                         سطح دسترسی
                       </h3>
                       <p className="mt-1 text-xs text-muted-foreground">

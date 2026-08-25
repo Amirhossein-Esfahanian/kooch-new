@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, type ReactNode, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  type ReactNode,
+  useRef,
+  useState,
+} from "react";
 import { KoochBadge } from "@/components/KoochBadge";
 import {
   resolveSessionDestination,
@@ -48,7 +54,7 @@ function DetailSection({
 }) {
   return (
     <KoochCard className="grid gap-3" padding="sm" variant="elevated">
-      <h2 className="text-sm font-black text-foreground">{title}</h2>
+      <h2 className="text-sm font-bold text-foreground">{title}</h2>
       <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</dl>
     </KoochCard>
   );
@@ -63,7 +69,9 @@ export default function AccountReservationDetailsPage() {
   const reservationNumber = decodeURIComponent(
     useParams<{ reservationNumber: string }>().reservationNumber,
   );
-  const [reservation, setReservation] = useState<AccountReservation | null>(null);
+  const [reservation, setReservation] = useState<AccountReservation | null>(
+    null,
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const expiryRefreshStartedRef = useRef(false);
@@ -86,9 +94,7 @@ export default function AccountReservationDetailsPage() {
       setReservation(response);
     } catch (caught) {
       setError(
-        caught instanceof Error
-          ? caught.message
-          : "خطا در دریافت جزئیات رزرو.",
+        caught instanceof Error ? caught.message : "خطا در دریافت جزئیات رزرو.",
       );
     } finally {
       setLoading(false);
@@ -109,7 +115,14 @@ export default function AccountReservationDetailsPage() {
     }
 
     void loadReservation();
-  }, [authenticated, loadReservation, router, session, sessionLoading, workspaces]);
+  }, [
+    authenticated,
+    loadReservation,
+    router,
+    session,
+    sessionLoading,
+    workspaces,
+  ]);
 
   useEffect(() => {
     expiryRefreshStartedRef.current = false;
@@ -131,7 +144,10 @@ export default function AccountReservationDetailsPage() {
   const eligible = reservation ? isPaymentEligible(reservation) : false;
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8" dir="rtl">
+    <main
+      className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8"
+      dir="rtl"
+    >
       <div className="mx-auto grid max-w-6xl gap-5">
         <KoochPageHeader
           actions={
@@ -164,7 +180,11 @@ export default function AccountReservationDetailsPage() {
           </KoochCard>
         ) : reservation ? (
           <>
-            <KoochCard className="grid gap-4 md:grid-cols-[1fr_auto]" padding="md" variant="elevated">
+            <KoochCard
+              className="grid gap-4 md:grid-cols-[1fr_auto]"
+              padding="md"
+              variant="elevated"
+            >
               <div className="grid gap-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <KoochBadge variant={statusVariant(reservation.status)}>
@@ -184,7 +204,7 @@ export default function AccountReservationDetailsPage() {
                     </KoochBadge>
                   )}
                 </div>
-                <p className="text-lg font-black text-foreground">
+                <p className="text-lg font-bold text-foreground">
                   {reservation.propertyName}
                 </p>
                 <p className="text-sm font-semibold text-muted-foreground">
@@ -259,7 +279,10 @@ export default function AccountReservationDetailsPage() {
                 label="بزرگسال"
                 value={formatNumber(reservation.adults)}
               />
-              <DetailItem label="کودک" value={formatNumber(reservation.children)} />
+              <DetailItem
+                label="کودک"
+                value={formatNumber(reservation.children)}
+              />
             </DetailSection>
 
             <DetailSection title="مالی">
@@ -313,15 +336,11 @@ export default function AccountReservationDetailsPage() {
               <DetailItem
                 label="عملیات پرداخت"
                 value={
-                  eligible ? (
-                    paymentToken ? (
-                      "درگاه پرداخت هنوز فعال نشده است."
-                    ) : (
-                      "برای پرداخت از لینک ارسال‌شده استفاده کنید."
-                    )
-                  ) : (
-                    "برای این رزرو پرداختی لازم نیست."
-                  )
+                  eligible
+                    ? paymentToken
+                      ? "درگاه پرداخت هنوز فعال نشده است."
+                      : "برای پرداخت از لینک ارسال‌شده استفاده کنید."
+                    : "برای این رزرو پرداختی لازم نیست."
                 }
               />
             </DetailSection>

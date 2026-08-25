@@ -282,7 +282,7 @@ function PropertiesContent() {
         </Link>
         <div className="mt-5 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-black tracking-tight">
+            <h1 className="text-3xl font-bold tracking-tight">
               نتایج جستجو در کاشان
             </h1>
             {q ? (
@@ -387,7 +387,7 @@ function PropertiesContent() {
 
         <div className="mt-7 grid gap-7">
           <aside className="hidden">
-            <h2 className="text-lg font-black">فیلتر نتایج</h2>
+            <h2 className="text-lg font-bold">فیلتر نتایج</h2>
             <fieldset className="mt-5 border-t border-slate-100 pt-5">
               <legend className="font-bold">محدوده قیمت</legend>
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -482,7 +482,7 @@ function PropertiesContent() {
                             {property.guestFitStatus}
                           </span>
                         </div>
-                        <h2 className="mt-3 text-2xl font-black">
+                        <h2 className="mt-3 text-2xl font-bold">
                           {property.name}
                         </h2>
                         <p className="mt-1 text-sm font-semibold text-blue-700">
@@ -514,7 +514,7 @@ function PropertiesContent() {
                       </div>
                       <div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right">
                         <p className="text-xs text-slate-400">قیمت از</p>
-                        <p className="mt-1 text-lg font-black text-blue-700">
+                        <p className="mt-1 text-lg font-bold text-blue-700">
                           {formatPrice(property.startingPrice)}
                         </p>
                         <Link

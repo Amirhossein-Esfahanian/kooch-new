@@ -412,7 +412,11 @@ export function AdminLayout({
     return <DashboardAuthorizationLoading />;
   }
 
-  return <DashboardShell menuItems={visibleAdminMenuItems}>{children}</DashboardShell>;
+  return (
+    <DashboardShell menuItems={visibleAdminMenuItems}>
+      {children}
+    </DashboardShell>
+  );
 }
 
 export function OwnerLayout({
@@ -423,12 +427,7 @@ export function OwnerLayout({
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
   const session = useAuthSession();
-  const {
-    authenticated,
-    loading,
-    refreshSession,
-    workspaces,
-  } = session;
+  const { authenticated, loading, refreshSession, workspaces } = session;
   const {
     activeMemberships,
     effectivePermissions,
@@ -693,12 +692,12 @@ function DashboardSidebar({
       <div className="flex h-full flex-col px-2 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-black text-white shadow-lg shadow-blue-600/20">
+            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-bold text-white shadow-lg shadow-blue-600/20">
               کوچ
             </div>
             {!collapsed && (
               <div className="min-w-0 [&>p:last-child]:hidden">
-                <p className="text-sm font-black">Kooch</p>
+                <p className="text-sm font-bold">Kooch</p>
                 <p className={`truncate ${mutedText(darkMode)}`}>
                   {workspaceLabel}
                 </p>
@@ -761,7 +760,7 @@ function DashboardSidebar({
 
             return (
               <Link
-                className={`group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-black transition ${
+                className={`group flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-sm font-bold transition ${
                   active
                     ? "bg-[var(--theme-primary)] text-white shadow-lg shadow-blue-600/20"
                     : darkMode
@@ -794,7 +793,7 @@ function DashboardSidebar({
         >
           {!collapsed ? (
             <>
-              <p className="text-sm font-black">نمونه قابل بازاستفاده</p>
+              <p className="text-sm font-bold">نمونه قابل بازاستفاده</p>
               <p className={`mt-2 text-xs leading-6 ${mutedText(darkMode)}`}>
                 این شِل بعداً می‌تواند پایه AdminLayout و OwnerLayout شود.
               </p>
@@ -831,71 +830,71 @@ function DashboardHeader({
     <header
       className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
     >
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-            onClick={onSidebarToggle}
-            type="button"
-            aria-label="نمایش منو"
-          >
-            ☰
-          </button>
-          <div
-            className={`hidden text-xs font-bold sm:block ${mutedText(darkMode)}`}
-          >
-            خانه / داشبوردها / نمونه پنل کوچ
-          </div>
-          <div
-            className={`mr-auto flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          >
-            <span className={mutedText(darkMode)}>⌕</span>
-            <input
-              className="w-full border-0 bg-transparent p-0 text-sm outline-none"
-              placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
-              type="search"
-            />
-          </div>
-          <HeaderIcon
-            active={activeDrawer === "messages"}
-            darkMode={darkMode}
-            label="پیام‌ها"
-            onClick={() => onDrawerToggle("messages")}
-          >
-            <MenuIcon icon={menuIcons.messages} />
-          </HeaderIcon>
-          <HeaderIcon
-            active={activeDrawer === "notifications"}
-            darkMode={darkMode}
-            label="اعلان‌ها"
-            onClick={() => onDrawerToggle("notifications")}
-          >
-            <MenuIcon icon={menuIcons.notification} />
-
-            {/* come back here */}
-          </HeaderIcon>
-          <button
-            className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-            onClick={onThemeToggle}
-            type="button"
-            aria-label="تغییر حالت روشن و تیره"
-          >
-            {darkMode ? (
-              <MenuIcon icon={menuIcons.light} />
-            ) : (
-              <MenuIcon icon={menuIcons.dark} />
-            )}
-          </button>
-          <KoochUserMenu
-            darkMode={darkMode}
-            onOpenChange={(nextOpen) => {
-              if (nextOpen) onProfileMenuToggle();
-              else onProfileMenuClose();
-            }}
-            open={profileMenuOpen}
-            variant="dashboard"
+      <div className="flex flex-wrap items-center gap-3">
+        <button
+          className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+          onClick={onSidebarToggle}
+          type="button"
+          aria-label="نمایش منو"
+        >
+          ☰
+        </button>
+        <div
+          className={`hidden text-xs font-bold sm:block ${mutedText(darkMode)}`}
+        >
+          خانه / داشبوردها / نمونه پنل کوچ
+        </div>
+        <div
+          className={`mr-auto flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+        >
+          <span className={mutedText(darkMode)}>⌕</span>
+          <input
+            className="w-full border-0 bg-transparent p-0 text-sm outline-none"
+            placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
+            type="search"
           />
         </div>
-      </header>
+        <HeaderIcon
+          active={activeDrawer === "messages"}
+          darkMode={darkMode}
+          label="پیام‌ها"
+          onClick={() => onDrawerToggle("messages")}
+        >
+          <MenuIcon icon={menuIcons.messages} />
+        </HeaderIcon>
+        <HeaderIcon
+          active={activeDrawer === "notifications"}
+          darkMode={darkMode}
+          label="اعلان‌ها"
+          onClick={() => onDrawerToggle("notifications")}
+        >
+          <MenuIcon icon={menuIcons.notification} />
+
+          {/* come back here */}
+        </HeaderIcon>
+        <button
+          className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
+          onClick={onThemeToggle}
+          type="button"
+          aria-label="تغییر حالت روشن و تیره"
+        >
+          {darkMode ? (
+            <MenuIcon icon={menuIcons.light} />
+          ) : (
+            <MenuIcon icon={menuIcons.dark} />
+          )}
+        </button>
+        <KoochUserMenu
+          darkMode={darkMode}
+          onOpenChange={(nextOpen) => {
+            if (nextOpen) onProfileMenuToggle();
+            else onProfileMenuClose();
+          }}
+          open={profileMenuOpen}
+          variant="dashboard"
+        />
+      </div>
+    </header>
   );
 }
 
@@ -904,10 +903,10 @@ function HeroHeader() {
     <KoochPageHeader
       actions={
         <>
-          <span className="rounded-full bg-[var(--theme-primary-soft)] px-4 py-2 text-sm font-black text-[var(--theme-primary-text)]">
+          <span className="rounded-full bg-[var(--theme-primary-soft)] px-4 py-2 text-sm font-bold text-[var(--theme-primary-text)]">
             امروز: ۶ تیر ۱۴۰۵
           </span>
-          <span className="rounded-full bg-muted px-4 py-2 text-sm font-black text-muted-foreground">
+          <span className="rounded-full bg-muted px-4 py-2 text-sm font-bold text-muted-foreground">
             Mock Data
           </span>
         </>
@@ -949,7 +948,7 @@ function DashboardStatCard({
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-sm font-bold text-muted-foreground">{title}</p>
-          <p className="mt-3 text-3xl font-black text-foreground">{value}</p>
+          <p className="mt-3 text-3xl font-bold text-foreground">{value}</p>
         </div>
         <span
           className={`grid h-12 w-12 place-items-center rounded-xl text-lg ${toneClass}`}
@@ -977,7 +976,7 @@ function DashboardSectionCard({
     <KoochCard variant="elevated">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-black text-foreground">{title}</h2>
+          <h2 className="text-xl font-bold text-foreground">{title}</h2>
           {subtitle && (
             <p className="mt-1 text-sm text-muted-foreground">{subtitle}</p>
           )}
@@ -1032,7 +1031,7 @@ function PropertyStatus({ darkMode }: { darkMode: boolean }) {
         </div>
       ))}
       <div className="rounded-lg border border-dashed border-border bg-muted p-5 text-center">
-        <p className="text-3xl font-black text-[var(--theme-primary-text)]">
+        <p className="text-3xl font-bold text-[var(--theme-primary-text)]">
           ۱۴۲
         </p>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -1055,16 +1054,16 @@ function RecentReservations() {
             variant="muted"
           >
             <div>
-              <p className="font-black text-foreground">{reservation.guest}</p>
+              <p className="font-bold text-foreground">{reservation.guest}</p>
               <p className="mt-1 text-xs text-muted-foreground">
                 {reservation.date}
               </p>
             </div>
             <p className="font-bold text-foreground">{reservation.property}</p>
-            <p className="font-black text-[var(--theme-primary-text)]">
+            <p className="font-bold text-[var(--theme-primary-text)]">
               {reservation.amount}
             </p>
-            <span className="w-fit rounded-full bg-card px-3 py-1 text-xs font-black text-card-foreground">
+            <span className="w-fit rounded-full bg-card px-3 py-1 text-xs font-bold text-card-foreground">
               {reservation.status}
             </span>
           </KoochCard>
@@ -1079,7 +1078,7 @@ function ActivityList() {
     <div className="grid gap-3">
       {activities.map((activity, index) => (
         <div className="flex gap-3" key={activity}>
-          <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--theme-primary-soft)] text-xs font-black text-[var(--theme-primary-text)]">
+          <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--theme-primary-soft)] text-xs font-bold text-[var(--theme-primary-text)]">
             {index + 1}
           </span>
           <p className="rounded-xl border border-border bg-muted p-3 text-sm leading-6 text-foreground">
@@ -1097,7 +1096,7 @@ function MessageRail() {
       {messages.map((message) => (
         <KoochCard key={message.name} padding="sm" variant="muted">
           <div className="flex items-center justify-between gap-3">
-            <p className="font-black text-foreground">{message.name}</p>
+            <p className="font-bold text-foreground">{message.name}</p>
             {message.unread && (
               <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />
             )}
@@ -1150,7 +1149,7 @@ function DashboardSideDrawer({
               <p className="text-xs font-bold text-[var(--theme-primary-text)]">
                 پنل سریع
               </p>
-              <h2 className="mt-1 text-xl font-black">{title}</h2>
+              <h2 className="mt-1 text-xl font-bold">{title}</h2>
             </div>
             <button
               className={`grid h-9 w-9 place-items-center rounded-lg border text-sm transition hover:border-[var(--theme-primary)] ${
@@ -1173,7 +1172,7 @@ function DashboardSideDrawer({
               <p className={`text-xs font-bold ${mutedText(darkMode)}`}>
                 امروز
               </p>
-              <p className="mt-1 text-2xl font-black">۶ تیر ۱۴۰۵</p>
+              <p className="mt-1 text-2xl font-bold">۶ تیر ۱۴۰۵</p>
               <p className={`mt-2 text-sm ${mutedText(darkMode)}`}>
                 ۳ رویداد و ۲ یادداشت برای بررسی
               </p>
@@ -1186,7 +1185,7 @@ function DashboardSideDrawer({
                     className={`rounded-xl border p-3 ${darkMode ? "border-white/10 bg-[#0b0f17]" : "border-slate-200 bg-white"}`}
                     key={event.time}
                   >
-                    <p className="text-xs font-black text-[var(--theme-primary-text)]">
+                    <p className="text-xs font-bold text-[var(--theme-primary-text)]">
                       {event.time}
                     </p>
                     <p className="mt-1 text-sm font-bold leading-6">
@@ -1222,7 +1221,7 @@ function DashboardSideDrawer({
                         key={message.name}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-black">{message.name}</p>
+                          <p className="text-sm font-bold">{message.name}</p>
                           {message.unread && (
                             <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />
                           )}
@@ -1240,7 +1239,7 @@ function DashboardSideDrawer({
                         key={notification.title}
                       >
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-black">
+                          <p className="text-sm font-bold">
                             {notification.title}
                           </p>
                           {notification.unread && (
@@ -1298,7 +1297,7 @@ function DrawerSection({
 }) {
   return (
     <section>
-      <h3 className="mb-3 text-sm font-black">{title}</h3>
+      <h3 className="mb-3 text-sm font-bold">{title}</h3>
       <div className={darkMode ? "text-slate-100" : "text-slate-800"}>
         {children}
       </div>
@@ -1348,6 +1347,3 @@ function surfaceClass(darkMode: boolean) {
 function mutedText(darkMode: boolean) {
   return darkMode ? "text-slate-400" : "text-slate-500";
 }
-
-
-

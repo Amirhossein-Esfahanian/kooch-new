@@ -14,12 +14,12 @@ export default function ManagementLoginPage() {
             <p className="mb-2 text-sm font-medium text-primary">
               پنل مدیریت کوچ
             </p>
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
               ورود مالک و مدیر سامانه
             </h1>
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
-              پس از ورود، فضای کاری مجاز شما بر اساس عضویت‌ها و دسترسی‌های ثبت‌شده
-              تعیین می‌شود.
+              پس از ورود، فضای کاری مجاز شما بر اساس عضویت‌ها و دسترسی‌های
+              ثبت‌شده تعیین می‌شود.
             </p>
           </div>
 
@@ -44,12 +44,12 @@ export default function ManagementLoginPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-black/20" />
 
         <div className="relative z-10 flex h-full min-h-screen flex-col justify-between p-12 text-white xl:p-16">
-          <div className="text-4xl font-black tracking-tight xl:text-5xl">
+          <div className="text-4xl font-bold tracking-tight xl:text-5xl">
             کوچ
           </div>
 
           <div className="max-w-2xl">
-            <h2 className="text-3xl font-black leading-relaxed xl:text-4xl">
+            <h2 className="text-3xl font-bold leading-relaxed xl:text-4xl">
               مدیریت اقامتگاه، رزرو، قیمت و ظرفیت در یک فضای یکپارچه
             </h2>
             <p className="mt-5 text-base leading-8 text-white/75">

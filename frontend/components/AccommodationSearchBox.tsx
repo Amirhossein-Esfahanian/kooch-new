@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { GuestSelector, GuestSelectorValue } from "@/components/GuestSelector";
-import { KoochDatePicker } from "@/components/KoochDatePicker";
+import { KoochCompactDateRangePicker } from "@/components/KoochCompactDateRangePicker";
+import { KoochSvgIcon } from "@/components/KoochSvgIcon";
 
 export type AccommodationSearchValues = {
   q: string;
@@ -180,11 +181,9 @@ export function AccommodationSearchBox({
     return () => controller.abort();
   }, [enableSuggestions, suggestions.length, values.city, values.q]);
 
-  const fieldClass =
-    "h-[60px] w-full rounded-lg border border-[var(--theme-border)]  px-4 text-sm font-bold text-[var(--theme-foreground)] outline-none transition placeholder:text-[var(--theme-muted-foreground)] focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]";
-
-  const dateControlClass =
-    "flex h-[68px] w-full items-center rounded-lg border border-[var(--theme-border)] bg-[#fff] px-4 text-right text-sm transition";
+  const fieldClass = `${
+    variant === "hero" ? "h-16" : "h-[60px]"
+  } w-full rounded-lg border border-[var(--theme-border)] px-4 text-sm font-bold text-[var(--theme-foreground)] outline-none transition placeholder:text-[var(--theme-muted-foreground)] focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]`;
 
   const labelClass =
     "grid gap-2 text-sm font-bold text-[var(--theme-foreground)] ";
@@ -296,25 +295,16 @@ export function AccommodationSearchBox({
   );
 
   const datePicker = (
-    <KoochDatePicker
+    <KoochCompactDateRangePicker
       calendarType="jalali"
-      controlClassName={dateControlClass}
       disablePastDates
-      // labelsAbove
-      mode="range"
+      fieldSize="standard"
       onChange={(nextValue) =>
         update({
           checkIn: nextValue.startDate,
           checkOut: nextValue.endDate,
         })
       }
-      labels={{
-        start: "",
-        end: "",
-      }}
-      placeholderEnd="تاریخ خروج"
-      placeholderStart="تاریخ ورود"
-      showFieldLabels={false}
       value={{
         startDate: values.checkIn,
         endDate: values.checkOut,
@@ -325,11 +315,8 @@ export function AccommodationSearchBox({
   const guestSelector = (
     <GuestSelector
       label=""
-      controlClassName={
-        variant === "hero"
-          ? "h-[68px] w-full rounded-lg border border-[var(--theme-border)] bg-[#fff] px-4 text-sm font-bold text-[var(--theme-foreground)]"
-          : fieldClass
-      }
+      controlClassName={fieldClass}
+      icon={<KoochSvgIcon src="/svgs/users-3.svg" size="lg" />}
       onChange={(nextGuests: GuestSelectorValue) => update(nextGuests)}
       value={{
         rooms: values.rooms,
@@ -344,7 +331,7 @@ export function AccommodationSearchBox({
     <button
       className={
         variant === "hero"
-          ? "h-12 w-full rounded-full bg-[var(--theme-primary)] px-8 text-base font-black text-white shadow-lg shadow-blue-600/20 transition hover:bg-[var(--theme-primary-hover)] sm:absolute sm:bottom-[-24px] sm:left-1/2 sm:w-[58%] sm:-translate-x-1/2"
+          ? "h-16 w-full rounded-full bg-[var(--theme-primary)] px-8 text-base font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-[var(--theme-primary-hover)] sm:absolute sm:-bottom-8 sm:left-1/2 sm:w-[58%] sm:-translate-x-1/2"
           : "h-[60px] w-full rounded-lg bg-[var(--theme-primary)] px-6 text-sm font-bold text-white transition hover:bg-[var(--theme-primary-hover)]"
       }
       type="submit"
@@ -358,7 +345,7 @@ export function AccommodationSearchBox({
       {(showTitle || title || subtitle) && (
         <div className="mb-5 text-right">
           {title && (
-            <h2 className="text-xl font-black text-[var(--theme-foreground)] sm:text-2xl">
+            <h2 className="text-xl font-bold text-[var(--theme-foreground)] sm:text-2xl">
               {title}
             </h2>
           )}

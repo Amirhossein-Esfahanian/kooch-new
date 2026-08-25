@@ -27,15 +27,26 @@ const actionLabels: Record<AuditAction, string> = {
 };
 
 function actionVariant(action: AuditAction) {
-  if (action === "RoomDeleted" || action === "BookingCancelled" || action === "BookingExpired") {
+  if (
+    action === "RoomDeleted" ||
+    action === "BookingCancelled" ||
+    action === "BookingExpired"
+  ) {
     return "destructive" as const;
   }
 
-  if (action === "BookingConfirmed" || action === "BookingApproved" || action === "RoomCreated") {
+  if (
+    action === "BookingConfirmed" ||
+    action === "BookingApproved" ||
+    action === "RoomCreated"
+  ) {
     return "success" as const;
   }
 
-  if (action === "InventoryChanged" || action === "PropertyOwnershipTransferred") {
+  if (
+    action === "InventoryChanged" ||
+    action === "PropertyOwnershipTransferred"
+  ) {
     return "warning" as const;
   }
 
@@ -60,9 +71,7 @@ export function AuditLogTable({ propertyId }: { propertyId: number }) {
   useEffect(() => {
     setLoading(true);
     setError("");
-    apiRequest<AuditLogResponse[]>(
-      `/owner/properties/${propertyId}/audit-logs`,
-    )
+    apiRequest<AuditLogResponse[]>(`/owner/properties/${propertyId}/audit-logs`)
       .then(setLogs)
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
@@ -71,7 +80,7 @@ export function AuditLogTable({ propertyId }: { propertyId: number }) {
   return (
     <KoochCard className="grid gap-4" padding="none" variant="elevated">
       <div className="border-b border-border p-5">
-        <h2 className="text-xl font-black text-foreground">Audit Log</h2>
+        <h2 className="text-xl font-bold text-foreground">Audit Log</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           رویدادهای مهم این اقامتگاه به صورت فقط خواندنی نمایش داده می‌شود.
         </p>
@@ -117,7 +126,7 @@ export function AuditLogTable({ propertyId }: { propertyId: number }) {
                   <KoochTableCell>{log.property ?? "-"}</KoochTableCell>
                   <KoochTableCell>
                     <div className="grid gap-1">
-                      <span className="font-black text-foreground">
+                      <span className="font-bold text-foreground">
                         {log.entityName ?? log.entity}
                       </span>
                       <span className="text-xs text-muted-foreground">

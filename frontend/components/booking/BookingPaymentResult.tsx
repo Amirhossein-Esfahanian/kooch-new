@@ -9,9 +9,16 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { fetchAccountBookingSession, type AccountBookingSession } from "@/lib/booking-sessions";
+import {
+  fetchAccountBookingSession,
+  type AccountBookingSession,
+} from "@/lib/booking-sessions";
 import { getBookingSessionPaymentEligibility } from "@/lib/booking-payment-eligibility";
-import { formatDate, statusLabels, statusVariant } from "@/lib/account-reservations";
+import {
+  formatDate,
+  statusLabels,
+  statusVariant,
+} from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 
 export function BookingPaymentResult({
@@ -54,21 +61,40 @@ export function BookingPaymentResult({
       }
     };
     void load();
-    return () => { active = false; if (timer) window.clearTimeout(timer); };
+    return () => {
+      active = false;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [auth.authenticated, auth.loading, mode, router, sessionCode]);
 
-  if (auth.loading || loading) return <StateAlert>در حال بررسی نتیجه پرداخت...</StateAlert>;
-  if (!session) return <StateAlert error>{error || "سفارش رزرو پیدا نشد."}</StateAlert>;
+  if (auth.loading || loading)
+    return <StateAlert>در حال بررسی نتیجه پرداخت...</StateAlert>;
+  if (!session)
+    return <StateAlert error>{error || "سفارش رزرو پیدا نشد."}</StateAlert>;
 
   const successful = session.payment?.status === "Successful";
   const mixedOutcome = session.summary.hasRejectedReservations;
   const paymentEligibility = getBookingSessionPaymentEligibility(session);
-  const canRetry = mode === "failure" && !successful && paymentEligibility.canPay;
+  const canRetry =
+    mode === "failure" && !successful && paymentEligibility.canPay;
   return (
     <main className="mx-auto grid max-w-4xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
-      <KoochPageHeader eyebrow="نتیجه پرداخت" title={mode === "success" ? "نتیجه سفارش رزرو" : "پرداخت ناموفق"} description={<span>کد سفارش: <b dir="ltr">{session.sessionCode}</b></span>} />
+      <KoochPageHeader
+        eyebrow="نتیجه پرداخت"
+        title={mode === "success" ? "نتیجه سفارش رزرو" : "پرداخت ناموفق"}
+        description={
+          <span>
+            کد سفارش: <b dir="ltr">{session.sessionCode}</b>
+          </span>
+        }
+      />
       {mode === "success" ? (
-        <KoochAlert variant={successful ? "success" : "info"} title={successful ? "پرداخت با موفقیت ثبت شد" : "در حال نهایی‌سازی پرداخت"}>
+        <KoochAlert
+          variant={successful ? "success" : "info"}
+          title={
+            successful ? "پرداخت با موفقیت ثبت شد" : "در حال نهایی‌سازی پرداخت"
+          }
+        >
           {successful
             ? mixedOutcome
               ? "پرداخت رزروهای تأییدشده با موفقیت ثبت شد. رزروهای ردشده در سابقه سفارش باقی می‌مانند."
@@ -85,45 +111,117 @@ export function BookingPaymentResult({
         <Summary label="اقامتگاه" value={session.property.name} />
         {mixedOutcome ? (
           <>
-            <Summary label="مبلغ اولیه سفارش" value={formatCurrency(session.summary.originalTotalAmount, { currencyLabel })} />
-            <Summary label={successful ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"} value={formatCurrency(session.payment?.amount ?? session.summary.payableAmount, { currencyLabel })} />
+            <Summary
+              label="مبلغ اولیه سفارش"
+              value={formatCurrency(session.summary.originalTotalAmount, {
+                currencyLabel,
+              })}
+            />
+            <Summary
+              label={successful ? "مبلغ پرداخت‌شده" : "مبلغ قابل پرداخت"}
+              value={formatCurrency(
+                session.payment?.amount ?? session.summary.payableAmount,
+                { currencyLabel },
+              )}
+            />
           </>
         ) : (
-          <Summary label="مبلغ کل" value={formatCurrency(session.totalAmount, { currencyLabel })} />
+          <Summary
+            label="مبلغ کل"
+            value={formatCurrency(session.totalAmount, { currencyLabel })}
+          />
         )}
-        <Summary label="وضعیت پرداخت" value={session.payment?.status ?? "ثبت نشده"} />
-        <Summary label="تعداد رزرو" value={session.reservations.length.toLocaleString("fa-IR")} />
+        <Summary
+          label="وضعیت پرداخت"
+          value={session.payment?.status ?? "ثبت نشده"}
+        />
+        <Summary
+          label="تعداد رزرو"
+          value={session.reservations.length.toLocaleString("fa-IR")}
+        />
       </KoochCard>
       <section aria-labelledby="payment-reservations" className="grid gap-3">
-        <h2 className="text-xl font-black" id="payment-reservations">رزروهای سفارش</h2>
+        <h2 className="text-xl font-bold" id="payment-reservations">
+          رزروهای سفارش
+        </h2>
         {session.reservations.map((reservation) => (
-          <KoochCard className="flex flex-wrap items-center justify-between gap-4" key={reservation.reservationNumber}>
+          <KoochCard
+            className="flex flex-wrap items-center justify-between gap-4"
+            key={reservation.reservationNumber}
+          >
             <div className="min-w-0">
-              <p className="font-black" dir="ltr">{reservation.reservationNumber}</p>
-              <p className="mt-1 text-sm text-muted-foreground">{reservation.roomTypeName}{reservation.roomName ? `، ${reservation.roomName}` : ""}</p>
-              <p className="mt-1 text-xs text-muted-foreground">{formatDate(reservation.checkInDate)} تا {formatDate(reservation.checkOutDate)}</p>
+              <p className="font-bold" dir="ltr">
+                {reservation.reservationNumber}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {reservation.roomTypeName}
+                {reservation.roomName ? `، ${reservation.roomName}` : ""}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatDate(reservation.checkInDate)} تا{" "}
+                {formatDate(reservation.checkOutDate)}
+              </p>
             </div>
-            <KoochBadge variant={statusVariant(reservation.status)}>{statusLabels[reservation.status] ?? reservation.status}</KoochBadge>
+            <KoochBadge variant={statusVariant(reservation.status)}>
+              {statusLabels[reservation.status] ?? reservation.status}
+            </KoochBadge>
           </KoochCard>
         ))}
       </section>
       <div className="flex flex-wrap gap-3">
         {canRetry && (
-          <KoochButton onClick={() => router.push(`/account/booking-sessions/${encodeURIComponent(sessionCode)}`)}>
+          <KoochButton
+            onClick={() =>
+              router.push(
+                `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+              )
+            }
+          >
             تلاش مجدد برای پرداخت
           </KoochButton>
         )}
-        <KoochButton onClick={() => router.push(`/account/booking-sessions/${encodeURIComponent(sessionCode)}`)} variant="outline">جزئیات سفارش</KoochButton>
-        <Link className="inline-flex min-h-11 items-center rounded-md px-4 text-sm font-bold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/account/reservations">رزروهای من</Link>
+        <KoochButton
+          onClick={() =>
+            router.push(
+              `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+            )
+          }
+          variant="outline"
+        >
+          جزئیات سفارش
+        </KoochButton>
+        <Link
+          className="inline-flex min-h-11 items-center rounded-md px-4 text-sm font-bold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          href="/account/reservations"
+        >
+          رزروهای من
+        </Link>
       </div>
     </main>
   );
 }
 
 function Summary({ label, value }: { label: string; value: string }) {
-  return <div><p className="text-xs font-bold text-muted-foreground">{label}</p><p className="mt-1 font-black text-foreground">{value}</p></div>;
+  return (
+    <div>
+      <p className="text-xs font-bold text-muted-foreground">{label}</p>
+      <p className="mt-1 font-bold text-foreground">{value}</p>
+    </div>
+  );
 }
 
-function StateAlert({ children, error = false }: { children: string; error?: boolean }) {
-  return <main className="mx-auto max-w-3xl px-4 py-10" dir="rtl"><KoochAlert variant={error ? "destructive" : "info"}>{children}</KoochAlert></main>;
+function StateAlert({
+  children,
+  error = false,
+}: {
+  children: string;
+  error?: boolean;
+}) {
+  return (
+    <main className="mx-auto max-w-3xl px-4 py-10" dir="rtl">
+      <KoochAlert variant={error ? "destructive" : "info"}>
+        {children}
+      </KoochAlert>
+    </main>
+  );
 }

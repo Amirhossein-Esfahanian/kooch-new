@@ -83,14 +83,19 @@ function inputType(type: SiteSettingType) {
 }
 
 export default function AdminSiteSettingsPage() {
-  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const {
+    authenticated,
+    loading: sessionLoading,
+    workspaces,
+  } = useAuthSession();
   const [settings, setSettings] = useState<SiteSettingResponse[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   useEffect(() => {
-    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
+    if (sessionLoading || !authenticated || !workspaces.includes("admin"))
+      return;
 
     apiRequest<SiteSettingResponse[]>("/admin/site-settings")
       .then((items) => {
@@ -334,10 +339,10 @@ export default function AdminSiteSettingsPage() {
           )
             ? 10080
             : commissionSettingKeys.includes(
-            setting.key as (typeof commissionSettingKeys)[number],
-          )
-            ? 100
-            : undefined
+                  setting.key as (typeof commissionSettingKeys)[number],
+                )
+              ? 100
+              : undefined
         }
         min={
           setting.type === "Number"
@@ -367,9 +372,13 @@ export default function AdminSiteSettingsPage() {
     ) ? (
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">{numberInput}</div>
-        <span className="shrink-0 text-sm font-bold text-muted-foreground">دقیقه</span>
+        <span className="shrink-0 text-sm font-bold text-muted-foreground">
+          دقیقه
+        </span>
       </div>
-    ) : numberInput;
+    ) : (
+      numberInput
+    );
   }
 
   return (
@@ -389,7 +398,7 @@ export default function AdminSiteSettingsPage() {
         )}
         {Object.entries(groupedSettings).map(([group, items]) => (
           <KoochCard key={group} variant="elevated">
-            <h2 className="text-xl font-black text-foreground">
+            <h2 className="text-xl font-bold text-foreground">
               {groupLabels[group] ?? group}
             </h2>
             <div className="mt-5 grid gap-5">
@@ -401,7 +410,7 @@ export default function AdminSiteSettingsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
                       <label
-                        className="font-black text-foreground"
+                        className="font-bold text-foreground"
                         htmlFor={setting.key}
                       >
                         {settingDisplayLabels[setting.key] ??

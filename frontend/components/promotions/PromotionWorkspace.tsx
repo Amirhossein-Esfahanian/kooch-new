@@ -485,16 +485,16 @@ export function PromotionWorkspace({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-black text-foreground">
+                  <h3 className="text-lg font-bold text-foreground">
                     {promotion.title}
                   </h3>
-                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-black text-muted-foreground">
+                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
                     {promotion.source === "Admin"
                       ? "Admin Promotion"
                       : "Owner Promotion"}
                   </span>
                   {admin && promotion.source === "Admin" && (
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-black text-muted-foreground">
+                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
                       {promotion.isPublished ? "منتشر شده" : "پیش‌نویس"}
                     </span>
                   )}
@@ -841,7 +841,7 @@ export function PromotionWorkspace({
             </label>
           </div>
           <fieldset className="mt-5">
-            <legend className="mb-2 text-sm font-black">روزهای هفته</legend>
+            <legend className="mb-2 text-sm font-bold">روزهای هفته</legend>
             <div className="flex flex-wrap gap-2">
               {weekdays.map((day) => (
                 <label
@@ -870,9 +870,7 @@ export function PromotionWorkspace({
           </fieldset>
           {!admin && (
             <fieldset className="mt-5">
-              <legend className="mb-2 text-sm font-black">
-                اتاق‌های منتخب
-              </legend>
+              <legend className="mb-2 text-sm font-bold">اتاق‌های منتخب</legend>
               <div className="grid max-h-44 gap-2 overflow-y-auto rounded-xl border border-border bg-background p-3 sm:grid-cols-2">
                 {rooms.map((room) => (
                   <label

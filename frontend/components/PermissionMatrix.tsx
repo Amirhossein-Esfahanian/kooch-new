@@ -38,7 +38,7 @@ export function PermissionMatrix({
     <KoochCard className="overflow-hidden" padding="none" variant="muted">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[720px] border-collapse text-right text-sm">
-          <thead className="bg-muted text-xs font-black text-muted-foreground">
+          <thead className="bg-muted text-xs font-bold text-muted-foreground">
             <tr>
               <th className="border-b border-border px-4 py-3">بخش</th>
               {actions.map((action) => (
@@ -54,7 +54,7 @@ export function PermissionMatrix({
           <tbody className="divide-y divide-border">
             {groups.map((group) => (
               <tr className="hover:bg-muted/70" key={group.key}>
-                <th className="px-4 py-3 text-right font-black text-foreground">
+                <th className="px-4 py-3 text-right font-bold text-foreground">
                   {group.label}
                 </th>
                 {actions.map((action) => {

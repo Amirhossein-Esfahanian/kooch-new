@@ -88,7 +88,7 @@ export function PropertyCompletionCard({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-black text-foreground">{title}</h3>
+          <h3 className="text-base font-bold text-foreground">{title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">
             {safeCompletion.completionPercentage}% تکمیل شده
           </p>
@@ -111,7 +111,7 @@ export function PropertyCompletionCard({
 
       {safeCompletion.warnings.length > 0 && !compact && (
         <div className="rounded-xl border border-yellow-500/25 bg-yellow-500/10 p-3 text-sm font-semibold text-foreground">
-          <p className="font-black">هشدارها</p>
+          <p className="font-bold">هشدارها</p>
           <ul className="mt-2 grid gap-1 text-muted-foreground">
             {safeCompletion.warnings.map((warning) => (
               <li key={warning}>{warning}</li>
@@ -132,7 +132,7 @@ export function PropertyCompletionCard({
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-black text-foreground">
+                      <p className="font-bold text-foreground">
                         {section.label}
                       </p>
                       <KoochBadge
@@ -160,15 +160,17 @@ export function PropertyCompletionCard({
                       </KoochButton>
                     </Link>
                   )}
-                  {section.status !== "Complete" && !actionHref && onSectionAction && (
-                    <KoochButton
-                      onClick={() => onSectionAction(section)}
-                      size="sm"
-                      variant="outline"
-                    >
-                      تکمیل
-                    </KoochButton>
-                  )}
+                  {section.status !== "Complete" &&
+                    !actionHref &&
+                    onSectionAction && (
+                      <KoochButton
+                        onClick={() => onSectionAction(section)}
+                        size="sm"
+                        variant="outline"
+                      >
+                        تکمیل
+                      </KoochButton>
+                    )}
                 </div>
               </article>
             );

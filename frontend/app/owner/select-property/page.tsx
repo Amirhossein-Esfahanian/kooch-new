@@ -8,11 +8,7 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
-import {
-  apiRequest,
-  ApiRequestError,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { apiRequest, ApiRequestError, PropertyResponse } from "@/lib/owner-api";
 
 export default function SelectOwnerPropertyPage() {
   const router = useRouter();
@@ -129,8 +125,8 @@ export default function SelectOwnerPropertyPage() {
   return (
     <main className="mx-auto max-w-5xl px-5 py-10 sm:px-8" dir="rtl">
       <div className="mb-8">
-        <p className="text-sm font-black text-blue-700">انتخاب اقامتگاه</p>
-        <h1 className="mt-2 text-3xl font-black text-slate-950">
+        <p className="text-sm font-bold text-blue-700">انتخاب اقامتگاه</p>
+        <h1 className="mt-2 text-3xl font-bold text-slate-950">
           کدام اقامتگاه را مدیریت می‌کنید؟
         </h1>
       </div>
@@ -145,10 +141,7 @@ export default function SelectOwnerPropertyPage() {
           <p className="text-slate-500">
             هنوز اقامتگاهی برای شما ثبت نشده است.
           </p>
-          <Link
-            className="hidden"
-            href="/owner/properties/new"
-          >
+          <Link className="hidden" href="/owner/properties/new">
             افزودن اقامتگاه جدید
           </Link>
         </section>
@@ -161,7 +154,7 @@ export default function SelectOwnerPropertyPage() {
             onClick={() => selectProperty(property)}
             type="button"
           >
-            <span className="text-xl font-black text-slate-950">
+            <span className="text-xl font-bold text-slate-950">
               {property.name}
             </span>
             <span className="mt-2 block text-sm text-slate-500">

@@ -29,7 +29,11 @@ const ownerDashboardCards = [
 ];
 
 export default function OwnerPropertiesPage() {
-  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const {
+    authenticated,
+    loading: sessionLoading,
+    workspaces,
+  } = useAuthSession();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [completions, setCompletions] = useState<
     Record<number, PropertyCompletionResponse>
@@ -38,7 +42,8 @@ export default function OwnerPropertiesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (sessionLoading || !authenticated || !workspaces.includes("owner")) return;
+    if (sessionLoading || !authenticated || !workspaces.includes("owner"))
+      return;
     apiRequest<PropertyResponse[]>("/owner/properties")
       .then(async (propertyItems) => {
         setProperties(propertyItems);
@@ -65,7 +70,7 @@ export default function OwnerPropertiesPage() {
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {ownerDashboardCards.map((card) => (
           <Link
-            className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-black text-slate-800 shadow-sm hover:border-blue-300 hover:text-blue-700"
+            className="rounded-lg border border-slate-200 bg-white p-4 text-sm font-bold text-slate-800 shadow-sm hover:border-blue-300 hover:text-blue-700"
             href={card.href}
             key={card.title}
           >

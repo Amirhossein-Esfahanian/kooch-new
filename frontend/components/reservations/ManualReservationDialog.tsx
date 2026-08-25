@@ -621,14 +621,17 @@ export function ManualReservationDialog({
   const createStatusOptions: ReservationTableStatus[] = hasOnRequest
     ? ["PendingApproval"]
     : ["Pending", "Confirmed"];
-  const editStatusOptions = isEditMode && reservation
-    ? [
-        reservation.status,
-        ...(reservation.allowedStatusTransitions ?? []).filter(
-          (status) => status !== "Cancelled",
-        ),
-      ].filter((status, index, statuses) => statuses.indexOf(status) === index)
-    : [];
+  const editStatusOptions =
+    isEditMode && reservation
+      ? [
+          reservation.status,
+          ...(reservation.allowedStatusTransitions ?? []).filter(
+            (status) => status !== "Cancelled",
+          ),
+        ].filter(
+          (status, index, statuses) => statuses.indexOf(status) === index,
+        )
+      : [];
   const statusSelectionOptions = isEditMode
     ? editStatusOptions
     : createStatusOptions;
@@ -935,13 +938,7 @@ export function ManualReservationDialog({
         .then((property) => setProperties([property]))
         .catch(() => setProperties([]));
     }
-  }, [
-    context,
-    dialogOpen,
-    fixedPropertyId,
-    isEditMode,
-    reservationIdentity,
-  ]);
+  }, [context, dialogOpen, fixedPropertyId, isEditMode, reservationIdentity]);
 
   useEffect(() => {
     if (!dialogOpen || isEditMode) return;
@@ -1137,11 +1134,7 @@ export function ManualReservationDialog({
     const requestId = pricePreviewRequestId.current + 1;
     pricePreviewRequestId.current = requestId;
 
-    if (
-      !dialogOpen ||
-      context !== "admin" ||
-      isLockedEdit
-    ) {
+    if (!dialogOpen || context !== "admin" || isLockedEdit) {
       setPricePreview(null);
       setPricePreviewLoading(false);
       setPricePreviewError("");
@@ -1154,10 +1147,10 @@ export function ManualReservationDialog({
     ).some((age) => age.trim() === "");
     const hasCompletePricingInputs = Boolean(
       selectedPropertyId &&
-        draft.roomTypeId &&
-        hasValidDateRange &&
-        selectedRoomCount > 0 &&
-        !hasIncompleteChildAges,
+      draft.roomTypeId &&
+      hasValidDateRange &&
+      selectedRoomCount > 0 &&
+      !hasIncompleteChildAges,
     );
 
     if (!hasCompletePricingInputs) {
@@ -1174,20 +1167,13 @@ export function ManualReservationDialog({
       return;
     }
 
-    if (
-      loadingRooms ||
-      rulesLoading ||
-      !effectiveRules
-    ) {
+    if (loadingRooms || rulesLoading || !effectiveRules) {
       setPricePreviewLoading(true);
       setPricePreviewError("");
       return;
     }
 
-    if (
-      !selectedPropertyId ||
-      !draft.roomTypeId
-    ) {
+    if (!selectedPropertyId || !draft.roomTypeId) {
       setPricePreviewLoading(false);
       return;
     }
@@ -1372,25 +1358,27 @@ export function ManualReservationDialog({
 
       await apiRequest(endpoint, {
         method: isEditMode ? "PUT" : "POST",
-        body: JSON.stringify(buildReservationMutationPayload({
-          status: selectedStatus,
-          propertyId: selectedPropertyId,
-          roomTypeId: Number(draft.roomTypeId),
-          roomId: Number(draft.roomIds[0]),
-          guestId: Number(draft.guestId),
-          checkInDate: draft.checkInDate,
-          checkOutDate: draft.checkOutDate,
-          adults: toPositiveInt(draft.adults, 1),
-          children: toNonNegativeInt(draft.children),
-          childAges: childAgesPayload(
-            draft.childAges,
-            toNonNegativeInt(draft.children),
-          ),
-          roomCount: draft.roomIds.length,
-          roomIds: draft.roomIds.map((id) => Number(id)),
-          guestType: draft.guestType,
-          notes: draft.notes.trim() || null,
-        })),
+        body: JSON.stringify(
+          buildReservationMutationPayload({
+            status: selectedStatus,
+            propertyId: selectedPropertyId,
+            roomTypeId: Number(draft.roomTypeId),
+            roomId: Number(draft.roomIds[0]),
+            guestId: Number(draft.guestId),
+            checkInDate: draft.checkInDate,
+            checkOutDate: draft.checkOutDate,
+            adults: toPositiveInt(draft.adults, 1),
+            children: toNonNegativeInt(draft.children),
+            childAges: childAgesPayload(
+              draft.childAges,
+              toNonNegativeInt(draft.children),
+            ),
+            roomCount: draft.roomIds.length,
+            roomIds: draft.roomIds.map((id) => Number(id)),
+            guestType: draft.guestType,
+            notes: draft.notes.trim() || null,
+          }),
+        ),
       });
 
       toast.success(isEditMode ? "رزرو به‌روز شد." : "رزرو اضافه شد.");
@@ -1516,9 +1504,7 @@ export function ManualReservationDialog({
 
           {isLockedEdit ? (
             <KoochAlert
-              title={
-                isTerminalReadOnly ? "رزرو نهایی‌شده" : "رزرو پرداخت‌شده"
-              }
+              title={isTerminalReadOnly ? "رزرو نهایی‌شده" : "رزرو پرداخت‌شده"}
               variant={isTerminalReadOnly ? "destructive" : "warning"}
             >
               {isTerminalReadOnly
@@ -1545,7 +1531,7 @@ export function ManualReservationDialog({
                 ) : childRuleSummary ? (
                   <div className="rounded-lg border border-border bg-muted p-4 text-sm text-foreground md:col-span-2">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="font-black">قانون اعمال‌شده کودک</p>
+                      <p className="font-bold">قانون اعمال‌شده کودک</p>
                       <span className="rounded-md border border-border bg-background px-2 py-1 text-xs font-bold text-muted-foreground">
                         {childRuleSummary.source}
                       </span>
@@ -1883,7 +1869,7 @@ export function ManualReservationDialog({
               )}
 
               <KoochCard className="grid gap-3" padding="sm" variant="elevated">
-                <h3 className="text-sm font-black text-foreground">
+                <h3 className="text-sm font-bold text-foreground">
                   خلاصه قیمت
                 </h3>
                 {pricePreviewLoading ? (
@@ -1928,7 +1914,7 @@ export function ManualReservationDialog({
                         currencyLabel,
                       })}
                     </span>
-                    <span className="font-black">
+                    <span className="font-bold">
                       مبلغ کل:{" "}
                       {formatCurrency(pricePreview.finalAmount, {
                         currencyLabel,
@@ -1969,13 +1955,13 @@ export function ManualReservationDialog({
         <div className="grid gap-4 text-right" dir="rtl">
           {isEditMode && editChangeSummary.length > 0 && (
             <section className="grid gap-2 border-b border-border pb-4">
-              <h3 className="text-sm font-black text-foreground">تغییرات</h3>
+              <h3 className="text-sm font-bold text-foreground">تغییرات</h3>
               {editChangeSummary.map((change) => (
                 <div
                   className="grid gap-1 rounded-md bg-muted px-3 py-2 text-xs"
                   key={change.label}
                 >
-                  <span className="font-black text-foreground">
+                  <span className="font-bold text-foreground">
                     {change.label}
                   </span>
                   <span className="text-muted-foreground">
@@ -2024,7 +2010,7 @@ export function ManualReservationDialog({
             </div>
             <div className="flex items-center justify-between gap-4 border-t border-border pt-3">
               <span className="text-muted-foreground">مبلغ کل</span>
-              <span className="font-black text-foreground">
+              <span className="font-bold text-foreground">
                 {formatCurrency(confirmationTotal, { currencyLabel })}
               </span>
             </div>

@@ -26,7 +26,9 @@ const workspaceLabels: Record<AuthWorkspace, string> = {
   account: "حساب کاربری",
 };
 
-export function shouldShowDevelopmentNavigation(environment: string | undefined) {
+export function shouldShowDevelopmentNavigation(
+  environment: string | undefined,
+) {
   return environment === "development";
 }
 
@@ -106,7 +108,7 @@ export function Header() {
         <div className="flex items-center gap-3">
           <Link
             aria-label="خانه کوچ"
-            className="text-2xl font-black tracking-tight text-[var(--theme-primary-text)]"
+            className="text-2xl font-bold tracking-tight text-[var(--theme-primary-text)]"
             href="/"
           >
             {logoUrl ? (

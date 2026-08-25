@@ -40,7 +40,7 @@ export function KoochTableHeader({
   return (
     <thead
       className={joinClasses(
-        "border-b border-border bg-muted text-xs font-black text-muted-foreground",
+        "border-b border-border bg-muted text-xs font-bold text-muted-foreground",
         className,
       )}
       {...props}

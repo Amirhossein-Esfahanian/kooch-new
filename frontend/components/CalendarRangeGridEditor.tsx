@@ -816,10 +816,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     for (const row of rowsToCheck) {
       const min = minValueResolver?.(row) ?? 0;
       const max = maxValueResolver?.(row) ?? Number.MAX_SAFE_INTEGER;
-      if (
-        effectiveValue < min ||
-        effectiveValue > max
-      )
+      if (effectiveValue < min || effectiveValue > max)
         return mode === "inventory"
           ? "ظرفیت وارد شده برای برخی اتاق‌ها معتبر نیست"
           : `${valueLabel} برای برخی ردیف‌ها معتبر نیست.`;
@@ -995,7 +992,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                           قیمت انتخاب‌شده
                         </p>
 
-                        <p className="mt-1 text-sm font-black text-foreground">
+                        <p className="mt-1 text-sm font-bold text-foreground">
                           {mixedPricingFields.basePrice
                             ? "مقادیر انتخاب‌شده متفاوت هستند"
                             : Number.isFinite(basePrice)
@@ -1058,7 +1055,8 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
                         }
                         max={
                           activeRow
-                            ? (maxValueResolver?.(activeRow as Row) ?? undefined)
+                            ? (maxValueResolver?.(activeRow as Row) ??
+                              undefined)
                             : undefined
                         }
                         inputMode={

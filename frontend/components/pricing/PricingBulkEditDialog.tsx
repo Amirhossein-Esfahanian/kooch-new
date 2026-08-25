@@ -546,7 +546,7 @@ export function PricingBulkEditDialog({
       >
         <div className="flex items-start justify-between gap-3 border-b border-border bg-card px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <h2 className="text-lg font-black text-foreground">{title}</h2>
+            <h2 className="text-lg font-bold text-foreground">{title}</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               {description}
             </p>
@@ -650,7 +650,7 @@ export function PricingBulkEditDialog({
             <div className="mt-5 rounded-xl border border-border bg-muted/40 p-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <h3 className="text-sm font-black text-foreground">
+                  <h3 className="text-sm font-bold text-foreground">
                     قیمت اتاق‌ها
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">

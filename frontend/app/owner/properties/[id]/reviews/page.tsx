@@ -7,10 +7,7 @@ import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import {
-  apiRequest,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { apiRequest, PropertyResponse } from "@/lib/owner-api";
 
 export default function OwnerReviewsPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
@@ -53,13 +50,16 @@ export default function OwnerReviewsPage() {
         />
 
         {error && (
-          <KoochCard className="border-destructive/30 bg-destructive/10 text-destructive" padding="sm">
+          <KoochCard
+            className="border-destructive/30 bg-destructive/10 text-destructive"
+            padding="sm"
+          >
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
         )}
 
         <KoochCard variant="elevated">
-          <h2 className="text-xl font-black text-foreground">نظرات</h2>
+          <h2 className="text-xl font-bold text-foreground">نظرات</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             نمایش و پاسخ به نظرات در مرحله بعد تکمیل می‌شود.
           </p>

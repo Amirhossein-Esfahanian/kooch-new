@@ -52,7 +52,7 @@ function CounterRow({
   return (
     <div className="flex items-center justify-between gap-4 py-3">
       <div>
-        <p className="font-black text-slate-950">{title}</p>
+        <p className="font-bold text-slate-950">{title}</p>
 
         {subtitle && (
           <p className="mt-1 text-xs font-bold text-slate-500">{subtitle}</p>
@@ -61,7 +61,7 @@ function CounterRow({
 
       <div className="flex items-center gap-3" dir="ltr">
         <button
-          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
+          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-bold text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
           disabled={!canDecrease}
           onClick={() => onChange(value - 1)}
           type="button"
@@ -69,12 +69,12 @@ function CounterRow({
           -
         </button>
 
-        <span className="w-7 text-center text-xl font-black text-slate-950">
+        <span className="w-7 text-center text-xl font-bold text-slate-950">
           {formatFaNumber(value)}
         </span>
 
         <button
-          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-black text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
+          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-bold text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
           disabled={!canIncrease}
           onClick={() => onChange(value + 1)}
           type="button"

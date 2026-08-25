@@ -7,7 +7,11 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
-import { KoochField, KoochInput, KoochSelect } from "@/components/KoochFormControls";
+import {
+  KoochField,
+  KoochInput,
+  KoochSelect,
+} from "@/components/KoochFormControls";
 import { PermissionMatrix } from "@/components/PermissionMatrix";
 import {
   CreateUserFields,
@@ -312,8 +316,9 @@ export function PropertyUsersManagement({
     if (!permissionMetadata) return;
     setEditingUser(null);
     const defaultRole =
-      (availableRoleOptions[0]?.value as PropertyUserForm["role"] | undefined) ??
-      "Custom";
+      (availableRoleOptions[0]?.value as
+        | PropertyUserForm["role"]
+        | undefined) ?? "Custom";
     setIdentityErrors({});
     setCreateStep("lookup");
     setCandidateRequiresCreation(false);
@@ -452,7 +457,8 @@ export function PropertyUsersManagement({
         return;
       }
 
-      const fullName = `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
+      const fullName =
+        `${form.firstName.trim()} ${form.lastName.trim()}`.trim();
       const body = editingUser
         ? {
             fullName,
@@ -473,9 +479,7 @@ export function PropertyUsersManagement({
         : {
             fullName: candidateRequiresCreation ? fullName : null,
             mobile: form.mobile,
-            email: candidateRequiresCreation
-              ? form.email.trim() || null
-              : null,
+            email: candidateRequiresCreation ? form.email.trim() || null : null,
             username: null,
             role: form.role,
             status: form.status,
@@ -483,9 +487,7 @@ export function PropertyUsersManagement({
             permissions: restrictPermissions(form.permissions),
           };
       const saved = await apiRequest<PropertyUserResponse>(
-        editingUser
-          ? `${apiBase}/${editingUser.userId}`
-          : apiBase,
+        editingUser ? `${apiBase}/${editingUser.userId}` : apiBase,
         {
           method: editingUser ? "PUT" : "POST",
           body: JSON.stringify(body),
@@ -509,10 +511,7 @@ export function PropertyUsersManagement({
         editingUser ? "کاربر اقامتگاه ذخیره شد" : "عضویت کاربر ثبت شد",
       );
     } catch (caught) {
-      const message = getCreateUserApiError(
-        caught,
-        "ذخیره کاربر انجام نشد.",
-      );
+      const message = getCreateUserApiError(caught, "ذخیره کاربر انجام نشد.");
       setError(message);
       toast.error(message);
     } finally {
@@ -525,7 +524,9 @@ export function PropertyUsersManagement({
     keepDialogOpenOnError = false,
   ) {
     if (!canManageRole(user.role)) {
-      hierarchyError("شما نمی‌توانید وضعیت کاربری با نقش بالاتر را تغییر دهید.");
+      hierarchyError(
+        "شما نمی‌توانید وضعیت کاربری با نقش بالاتر را تغییر دهید.",
+      );
       return;
     }
     try {
@@ -553,7 +554,9 @@ export function PropertyUsersManagement({
       );
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "تغییر وضعیت کاربر انجام نشد.";
+        caught instanceof Error
+          ? caught.message
+          : "تغییر وضعیت کاربر انجام نشد.";
       setError(message);
       toast.error(message);
       if (keepDialogOpenOnError) {
@@ -564,7 +567,9 @@ export function PropertyUsersManagement({
 
   async function resendInvitation(user: PropertyUserResponse) {
     if (!canManageRole(user.role)) {
-      hierarchyError("شما نمی‌توانید دعوت کاربری با نقش بالاتر را دوباره ارسال کنید.");
+      hierarchyError(
+        "شما نمی‌توانید دعوت کاربری با نقش بالاتر را دوباره ارسال کنید.",
+      );
       return;
     }
     try {
@@ -575,16 +580,15 @@ export function PropertyUsersManagement({
       setUsers((current) =>
         current.map((item) => (item.userId === saved.userId ? saved : item)),
       );
-      if (
-        saved.temporarySetupLink &&
-        process.env.NODE_ENV !== "production"
-      ) {
+      if (saved.temporarySetupLink && process.env.NODE_ENV !== "production") {
         setSetupLink(saved.temporarySetupLink);
       }
       toast.success("دعوت‌نامه دوباره ارسال شد.");
     } catch (caught) {
       const message =
-        caught instanceof Error ? caught.message : "ارسال دوباره دعوت‌نامه انجام نشد.";
+        caught instanceof Error
+          ? caught.message
+          : "ارسال دوباره دعوت‌نامه انجام نشد.";
       setError(message);
       toast.error(message);
       throw caught;
@@ -594,9 +598,7 @@ export function PropertyUsersManagement({
     <KoochCard className="grid gap-4" padding="none" variant="elevated">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
-          <h2 className="text-xl font-black text-foreground">
-            مدیریت کاربران
-          </h2>
+          <h2 className="text-xl font-bold text-foreground">مدیریت کاربران</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             برای هر اقامتگاه یک مالک اصلی و چند کاربر عملیاتی تعریف کنید.
           </p>
@@ -618,15 +620,20 @@ export function PropertyUsersManagement({
         <div className="mx-5 rounded-lg border border-primary/30 bg-primary/10 p-3">
           <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
             <div>
-              <p className="text-sm font-black text-foreground">
+              <p className="text-sm font-bold text-foreground">
                 لینک تنظیم رمز عبور آماده است.
               </p>
-              <p className="mt-1 break-all text-xs text-muted-foreground" dir="ltr">
+              <p
+                className="mt-1 break-all text-xs text-muted-foreground"
+                dir="ltr"
+              >
                 {setupLink}
               </p>
             </div>
             <KoochButton
-              onClick={() => window.open(setupLink, "_blank", "noopener,noreferrer")}
+              onClick={() =>
+                window.open(setupLink, "_blank", "noopener,noreferrer")
+              }
               size="sm"
               type="button"
               variant="outline"
@@ -667,15 +674,19 @@ export function PropertyUsersManagement({
             ) : (
               users.map((user) => (
                 <KoochTableRow key={`${user.role}-${user.userId}`}>
-                  <KoochTableCell className="font-black">
+                  <KoochTableCell className="font-bold">
                     {user.fullName || "-"}
                   </KoochTableCell>
-                  <KoochTableCell dir="ltr">{user.mobile ?? "-"}</KoochTableCell>
+                  <KoochTableCell dir="ltr">
+                    {user.mobile ?? "-"}
+                  </KoochTableCell>
                   <KoochTableCell dir="ltr">{user.email}</KoochTableCell>
                   <KoochTableCell dir="ltr">{user.username}</KoochTableCell>
                   <KoochTableCell>
                     <KoochBadge
-                      variant={user.role === "PropertyOwner" ? "default" : "muted"}
+                      variant={
+                        user.role === "PropertyOwner" ? "default" : "muted"
+                      }
                     >
                       {roleLabels[user.role]}
                     </KoochBadge>
@@ -690,16 +701,18 @@ export function PropertyUsersManagement({
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="flex flex-wrap gap-2">
-                      {user.role !== "PropertyOwner" && canManageRole(user.role) && hasUserPermission("edit") && (
-                        <KoochButton
-                          onClick={() => openEdit(user)}
-                          size="sm"
-                          type="button"
-                          variant="outline"
-                        >
-                          ویرایش
-                        </KoochButton>
-                      )}
+                      {user.role !== "PropertyOwner" &&
+                        canManageRole(user.role) &&
+                        hasUserPermission("edit") && (
+                          <KoochButton
+                            onClick={() => openEdit(user)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            ویرایش
+                          </KoochButton>
+                        )}
                       <KoochButton
                         onClick={() => setActivityUser(user)}
                         size="sm"
@@ -708,66 +721,75 @@ export function PropertyUsersManagement({
                       >
                         فعالیت
                       </KoochButton>
-                      {user.passwordSetupRequired && canManageRole(user.role) && hasUserPermission("edit") && (
-                        <KoochConfirmDialog
-                          cancelText="انصراف"
-                          confirmText="ارسال دوباره"
-                          description="یک لینک جدید تنظیم رمز برای این کاربر ساخته می‌شود و لینک‌های فعال قبلی نامعتبر می‌شوند."
-                          onConfirm={() => resendInvitation(user)}
-                          title="ارسال دوباره دعوت‌نامه"
-                          trigger={
-                            <KoochButton
-                              size="sm"
-                              type="button"
-                              variant="outline"
-                            >
-                              ارسال دعوت
-                            </KoochButton>
-                          }
-                          variant="info"
-                        />
-                      )}
+                      {user.passwordSetupRequired &&
+                        canManageRole(user.role) &&
+                        hasUserPermission("edit") && (
+                          <KoochConfirmDialog
+                            cancelText="انصراف"
+                            confirmText="ارسال دوباره"
+                            description="یک لینک جدید تنظیم رمز برای این کاربر ساخته می‌شود و لینک‌های فعال قبلی نامعتبر می‌شوند."
+                            onConfirm={() => resendInvitation(user)}
+                            title="ارسال دوباره دعوت‌نامه"
+                            trigger={
+                              <KoochButton
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                ارسال دعوت
+                              </KoochButton>
+                            }
+                            variant="info"
+                          />
+                        )}
                       {user.canRemove && canManageRole(user.role) && (
                         <>
-                          {user.status !== "Active" && hasUserPermission("edit") && (
-                            <KoochButton
-                              onClick={() => changeUserStatus(user, "Active")}
-                              size="sm"
-                              type="button"
-                              variant="primary"
-                            >
-                              فعال‌سازی
-                            </KoochButton>
-                          )}
-                          {user.status === "Active" && hasUserPermission("edit") && (
-                            <KoochButton
-                              onClick={() => changeUserStatus(user, "Suspended")}
-                              size="sm"
-                              type="button"
-                              variant="outline"
-                            >
-                              تعلیق
-                            </KoochButton>
-                          )}
-                          {user.status !== "Inactive" && hasUserPermission("delete") && (
-                            <KoochConfirmDialog
-                              cancelText="انصراف"
-                              confirmText="غیرفعال‌سازی"
-                              description="این کاربر غیرفعال می‌شود اما اطلاعات او حذف نخواهد شد. آیا مطمئن هستید؟"
-                              onConfirm={() => changeUserStatus(user, "Inactive", true)}
-                              title="غیرفعال‌سازی کاربر"
-                              trigger={
-                                <KoochButton
-                                  size="sm"
-                                  type="button"
-                                  variant="destructive"
-                                >
-                                  غیرفعال‌سازی
-                                </KoochButton>
-                              }
-                              variant="destructive"
-                            />
-                          )}
+                          {user.status !== "Active" &&
+                            hasUserPermission("edit") && (
+                              <KoochButton
+                                onClick={() => changeUserStatus(user, "Active")}
+                                size="sm"
+                                type="button"
+                                variant="primary"
+                              >
+                                فعال‌سازی
+                              </KoochButton>
+                            )}
+                          {user.status === "Active" &&
+                            hasUserPermission("edit") && (
+                              <KoochButton
+                                onClick={() =>
+                                  changeUserStatus(user, "Suspended")
+                                }
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                تعلیق
+                              </KoochButton>
+                            )}
+                          {user.status !== "Inactive" &&
+                            hasUserPermission("delete") && (
+                              <KoochConfirmDialog
+                                cancelText="انصراف"
+                                confirmText="غیرفعال‌سازی"
+                                description="این کاربر غیرفعال می‌شود اما اطلاعات او حذف نخواهد شد. آیا مطمئن هستید؟"
+                                onConfirm={() =>
+                                  changeUserStatus(user, "Inactive", true)
+                                }
+                                title="غیرفعال‌سازی کاربر"
+                                trigger={
+                                  <KoochButton
+                                    size="sm"
+                                    type="button"
+                                    variant="destructive"
+                                  >
+                                    غیرفعال‌سازی
+                                  </KoochButton>
+                                }
+                                variant="destructive"
+                              />
+                            )}
                         </>
                       )}
                     </div>
@@ -789,7 +811,11 @@ export function PropertyUsersManagement({
             >
               لغو
             </KoochButton>
-            <KoochButton form="property-user-form" loading={saving} type="submit">
+            <KoochButton
+              form="property-user-form"
+              loading={saving}
+              type="submit"
+            >
               {!editingUser && createStep !== "membership" ? "ادامه" : "ذخیره"}
             </KoochButton>
           </>
@@ -798,16 +824,12 @@ export function PropertyUsersManagement({
         open={dialogOpen}
         title={editingUser ? "ویرایش کاربر" : "افزودن کاربر"}
       >
-        <form
-          className="grid gap-4"
-          id="property-user-form"
-          onSubmit={submit}
-        >
+        <form className="grid gap-4" id="property-user-form" onSubmit={submit}>
           <KoochCard className="border-primary/20 bg-primary/10" padding="sm">
-            <p className="text-xs font-black text-muted-foreground">
+            <p className="text-xs font-bold text-muted-foreground">
               اقامتگاه فعلی
             </p>
-            <p className="mt-1 text-sm font-black text-foreground">
+            <p className="mt-1 text-sm font-bold text-foreground">
               {propertyName || "این اقامتگاه"}
             </p>
             <p className="mt-1 text-xs leading-6 text-muted-foreground">
@@ -818,7 +840,7 @@ export function PropertyUsersManagement({
             <KoochCard padding="sm" variant="muted">
               <div className="grid gap-4">
                 <div>
-                  <h3 className="text-sm font-black text-foreground">
+                  <h3 className="text-sm font-bold text-foreground">
                     افزودن با شماره موبایل
                   </h3>
                   <p className="mt-1 text-xs leading-6 text-muted-foreground">
@@ -847,12 +869,11 @@ export function PropertyUsersManagement({
               </div>
             </KoochCard>
           )}
-
           {(editingUser || createStep === "identity") && (
             <KoochCard padding="sm" variant="muted">
               <div className="grid gap-4">
                 <div>
-                  <h3 className="text-sm font-black text-foreground">
+                  <h3 className="text-sm font-bold text-foreground">
                     اطلاعات کاربر
                   </h3>
                   <p className="mt-1 text-xs text-muted-foreground">
@@ -882,13 +903,12 @@ export function PropertyUsersManagement({
               </div>
             </KoochCard>
           )}
-
           {!editingUser && createStep === "membership" && (
             <KoochCard padding="sm" variant="muted">
-              <p className="text-xs font-black text-muted-foreground">
+              <p className="text-xs font-bold text-muted-foreground">
                 کاربر انتخاب‌شده
               </p>
-              <p className="mt-1 text-sm font-black text-foreground">
+              <p className="mt-1 text-sm font-bold text-foreground">
                 {candidateRequiresCreation
                   ? `${form.firstName} ${form.lastName}`.trim()
                   : candidateMaskedName || "کاربر موجود"}
@@ -898,17 +918,17 @@ export function PropertyUsersManagement({
               </p>
             </KoochCard>
           )}
-
           {(editingUser || createStep === "membership") && (
             <>
               <KoochCard padding="sm">
                 <div className="grid gap-4">
                   <div>
-                    <h3 className="text-sm font-black text-foreground">
+                    <h3 className="text-sm font-bold text-foreground">
                       نقش و سطح دسترسی
                     </h3>
                     <p className="mt-1 text-xs text-muted-foreground">
-                      انتخاب نقش، matrix پیش‌فرض را اعمال می‌کند و سپس می‌توانید مجوزها را ویرایش کنید.
+                      انتخاب نقش، matrix پیش‌فرض را اعمال می‌کند و سپس می‌توانید
+                      مجوزها را ویرایش کنید.
                     </p>
                   </div>
                   <KoochField label="نقش اقامتگاه" required>
@@ -950,11 +970,12 @@ export function PropertyUsersManagement({
 
                   <div className="grid gap-2">
                     <div>
-                      <h3 className="text-sm font-black text-foreground">
+                      <h3 className="text-sm font-bold text-foreground">
                         سطح دسترسی
                       </h3>
                       <p className="mt-1 text-xs text-muted-foreground">
-                        فقط دسترسی‌های همین اقامتگاه و در محدوده دسترسی‌های فعلی شما قابل واگذاری هستند.
+                        فقط دسترسی‌های همین اقامتگاه و در محدوده دسترسی‌های فعلی
+                        شما قابل واگذاری هستند.
                       </p>
                     </div>
                     <PermissionMatrix
@@ -1019,7 +1040,8 @@ export function PropertyUsersManagement({
                 </KoochSelect>
               </KoochField>
             </>
-          )}        </form>
+          )}{" "}
+        </form>
       </KoochDialog>
 
       <KoochDialog
@@ -1042,7 +1064,7 @@ export function PropertyUsersManagement({
         {activityUser && (
           <div className="grid gap-4">
             <div className="rounded-lg border border-border bg-muted p-4">
-              <p className="text-lg font-black text-foreground">
+              <p className="text-lg font-bold text-foreground">
                 {activityUser.fullName || "-"}
               </p>
               <p className="mt-1 text-sm text-muted-foreground" dir="ltr">
@@ -1088,12 +1110,10 @@ function ReadOnlyActivityItem({
 }) {
   return (
     <div className="rounded-lg border border-border bg-card p-4">
-      <p className="text-xs font-black uppercase tracking-wide text-muted-foreground">
+      <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
         {label}
       </p>
       <p className="mt-2 text-sm font-bold text-foreground">{value}</p>
     </div>
   );
 }
-
-

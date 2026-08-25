@@ -14,7 +14,8 @@ import {
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 export function Footer() {
-  const [settings, setSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
+  const [settings, setSettings] =
+    useState<SiteSettingsMap>(defaultSiteSettings);
 
   useEffect(() => {
     fetchPublicSiteSettings()
@@ -26,10 +27,16 @@ export function Footer() {
   const logoUrl = settingValue(settings, "site.logoUrl");
 
   return (
-    <footer id="footer" className="border-t border-slate-200 bg-white text-slate-700">
+    <footer
+      id="footer"
+      className="border-t border-slate-200 bg-white text-slate-700"
+    >
       <div className="mx-auto grid max-w-7xl gap-8 px-5 py-10 sm:px-8 md:grid-cols-[1fr_auto] md:items-start">
         <div>
-          <Link href="/" className="text-2xl font-black tracking-tight text-[var(--theme-primary-text)]">
+          <Link
+            href="/"
+            className="text-2xl font-bold tracking-tight text-[var(--theme-primary-text)]"
+          >
             {logoUrl ? (
               <Image
                 alt={siteName}

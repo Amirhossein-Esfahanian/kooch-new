@@ -51,7 +51,9 @@ function joinClasses(...classes: Array<string | false | null | undefined>) {
 }
 
 function mergeAriaIds(...values: Array<string | undefined>) {
-  const ids = values.flatMap((value) => value?.split(/\s+/).filter(Boolean) ?? []);
+  const ids = values.flatMap(
+    (value) => value?.split(/\s+/).filter(Boolean) ?? [],
+  );
   return [...new Set(ids)].join(" ") || undefined;
 }
 
@@ -283,11 +285,7 @@ export function KoochField({
         </KoochLabel>
       )}
       {enhancedChildren}
-      <KoochFieldMessage
-        error={error}
-        helperText={helperText}
-        id={messageId}
-      />
+      <KoochFieldMessage error={error} helperText={helperText} id={messageId} />
     </div>
   );
 }
@@ -496,34 +494,35 @@ export type KoochSearchableSelectOption = {
   disabled?: boolean;
 };
 
-export type KoochMultiSelectProps = FieldStateProps & AccessibleControlProps & {
-  options: KoochMultiSelectOption[];
-  value: KoochMultiSelectValue[];
-  onChange: (value: KoochMultiSelectValue[]) => void;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  emptyText?: string;
-  selectAllText?: string;
-  clearText?: string;
-  disabled?: boolean;
-  className?: string;
-  dropdownClassName?: string;
-};
+export type KoochMultiSelectProps = FieldStateProps &
+  AccessibleControlProps & {
+    options: KoochMultiSelectOption[];
+    value: KoochMultiSelectValue[];
+    onChange: (value: KoochMultiSelectValue[]) => void;
+    placeholder?: string;
+    searchPlaceholder?: string;
+    emptyText?: string;
+    selectAllText?: string;
+    clearText?: string;
+    disabled?: boolean;
+    className?: string;
+    dropdownClassName?: string;
+  };
 
 export type KoochSearchableSelectProps = FieldStateProps &
   AccessibleControlProps & {
-  options: KoochSearchableSelectOption[];
-  value: KoochSelectValue | "";
-  onChange: (value: string) => void;
-  placeholder?: string;
-  searchPlaceholder?: string;
-  emptyText?: string;
-  clearText?: string;
-  disabled?: boolean;
-  className?: string;
-  dropdownClassName?: string;
-  onSearchChange?: (query: string) => void;
-};
+    options: KoochSearchableSelectOption[];
+    value: KoochSelectValue | "";
+    onChange: (value: string) => void;
+    placeholder?: string;
+    searchPlaceholder?: string;
+    emptyText?: string;
+    clearText?: string;
+    disabled?: boolean;
+    className?: string;
+    dropdownClassName?: string;
+    onSearchChange?: (query: string) => void;
+  };
 
 function optionKey(value: KoochMultiSelectValue) {
   return String(value);
@@ -591,7 +590,9 @@ export function KoochSearchableSelect({
     );
   }, [options, query]);
 
-  const selectableOptions = filteredOptions.filter((option) => !option.disabled);
+  const selectableOptions = filteredOptions.filter(
+    (option) => !option.disabled,
+  );
   const activeOption = selectableOptions[activeIndex];
 
   useEffect(() => {
@@ -649,7 +650,11 @@ export function KoochSearchableSelect({
       return;
     }
 
-    if (!open && selectedOption && ["Backspace", "Delete"].includes(event.key)) {
+    if (
+      !open &&
+      selectedOption &&
+      ["Backspace", "Delete"].includes(event.key)
+    ) {
       event.preventDefault();
       clearValue();
       return;
@@ -773,7 +778,7 @@ export function KoochSearchableSelect({
                   return (
                     <Fragment key={optionKey(option.value)}>
                       {showGroup && (
-                        <p className="px-2.5 pb-1 pt-2 text-xs font-black text-muted-foreground first:pt-1">
+                        <p className="px-2.5 pb-1 pt-2 text-xs font-bold text-muted-foreground first:pt-1">
                           {option.group}
                         </p>
                       )}
@@ -802,7 +807,7 @@ export function KoochSearchableSelect({
                           )}
                         </span>
                         {selected && (
-                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-primary bg-primary text-xs font-black text-primary-foreground">
+                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md border border-primary bg-primary text-xs font-bold text-primary-foreground">
                             ✓
                           </span>
                         )}
@@ -816,11 +821,7 @@ export function KoochSearchableSelect({
         )}
       </div>
 
-      <KoochFieldMessage
-        error={error}
-        helperText={helperText}
-        id={messageId}
-      />
+      <KoochFieldMessage error={error} helperText={helperText} id={messageId} />
     </div>
   );
 }
@@ -1036,7 +1037,7 @@ export function KoochMultiSelect({
                       <span
                         aria-hidden="true"
                         className={joinClasses(
-                          "grid h-5 w-5 shrink-0 place-items-center rounded-md border text-xs font-black transition",
+                          "grid h-5 w-5 shrink-0 place-items-center rounded-md border text-xs font-bold transition",
                           checked
                             ? "border-primary bg-primary text-primary-foreground"
                             : "border-border bg-background text-transparent",
@@ -1053,11 +1054,7 @@ export function KoochMultiSelect({
         )}
       </div>
 
-      <KoochFieldMessage
-        error={error}
-        helperText={helperText}
-        id={messageId}
-      />
+      <KoochFieldMessage error={error} helperText={helperText} id={messageId} />
     </div>
   );
 }

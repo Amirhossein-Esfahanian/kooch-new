@@ -140,7 +140,7 @@ export default function HomePage() {
             }}
           />
           <div className="relative z-10 mx-auto flex  max-w-7xl flex-col items-center justify-center px-5 pt-6 text-center text-white sm:px-8">
-            <h1 className="mt-3 text-3xl font-black leading-tight sm:text-5xl">
+            <h1 className="mt-3 text-3xl font-bold leading-tight sm:text-5xl">
               {settingValue(settings, "home.heroTitle")}
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-blue-50 sm:text-lg">
@@ -166,7 +166,7 @@ export default function HomePage() {
               <p className="text-sm font-bold text-[var(--theme-primary-text)]">
                 پیشنهاد کوچ
               </p>
-              <h2 className="mt-2 text-3xl font-black tracking-tight">
+              <h2 className="mt-2 text-3xl font-bold tracking-tight">
                 {settingValue(settings, "home.popularSectionTitle")}
               </h2>
               <p className="mt-2 text-sm leading-6 text-slate-500">
@@ -222,7 +222,7 @@ export default function HomePage() {
                     <span className="rounded-full bg-[var(--theme-primary-soft)] px-2.5 py-1 text-xs font-bold text-[var(--theme-primary-text)]">
                       {badge(property.propertyType)}
                     </span>
-                    <h3 className="mt-3 text-xl font-black">{property.name}</h3>
+                    <h3 className="mt-3 text-xl font-bold">{property.name}</h3>
                     <p className="mt-1 text-sm font-semibold text-slate-500">
                       {property.city}
                     </p>
@@ -238,7 +238,7 @@ export default function HomePage() {
                     <div className="mt-5 flex items-end justify-between gap-3">
                       <div>
                         <p className="text-xs text-slate-400">قیمت از</p>
-                        <p className="font-black text-[var(--theme-primary-text)]">
+                        <p className="font-bold text-[var(--theme-primary-text)]">
                           {formatPrice(property.startingPrice)}
                         </p>
                       </div>

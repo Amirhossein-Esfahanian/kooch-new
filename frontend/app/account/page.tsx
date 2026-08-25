@@ -55,9 +55,12 @@ export default function AccountPage() {
         <div className="grid gap-4 md:grid-cols-2">
           <KoochCard className="flex h-full flex-col items-start gap-4">
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-black text-foreground">سفارش‌های من</h2>
+              <h2 className="text-lg font-bold text-foreground">
+                سفارش‌های من
+              </h2>
               <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                سفارش‌های چنداتاقه، وضعیت کلی پرداخت و همه شماره‌های رزرو مرتبط را پیگیری کنید.
+                سفارش‌های چنداتاقه، وضعیت کلی پرداخت و همه شماره‌های رزرو مرتبط
+                را پیگیری کنید.
               </p>
             </div>
             <Link
@@ -70,9 +73,10 @@ export default function AccountPage() {
 
           <KoochCard className="flex h-full flex-col items-start gap-4">
             <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-black text-foreground">رزروهای من</h2>
+              <h2 className="text-lg font-bold text-foreground">رزروهای من</h2>
               <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                رزروهای مستقل و قدیمی که به سفارش گروهی متصل نیستند همچنان در این بخش قابل مشاهده‌اند.
+                رزروهای مستقل و قدیمی که به سفارش گروهی متصل نیستند همچنان در
+                این بخش قابل مشاهده‌اند.
               </p>
             </div>
             <Link

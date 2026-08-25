@@ -146,7 +146,7 @@ export function KoochAlert({
         {title && (
           <div
             className={joinClasses(
-              "text-sm font-black leading-6 [&_a]:underline [&_a]:underline-offset-4",
+              "text-sm font-bold leading-6 [&_a]:underline [&_a]:underline-offset-4",
               tone.titleClassName,
             )}
             data-slot="alert-title"

@@ -271,7 +271,7 @@ export function SharedSingleDatePicker({
             >
               ›
             </button>
-            <h3 className="text-center text-base font-black text-slate-950">
+            <h3 className="text-center text-base font-bold text-slate-950">
               {monthTitle(visibleMonth, activeCalendar)}
             </h3>
             <button
@@ -371,7 +371,7 @@ export function SharedSingleDatePicker({
                   {cancelText}
                 </button>
                 <button
-                  className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-black text-white hover:bg-[var(--theme-primary-hover)]"
+                  className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-bold text-white hover:bg-[var(--theme-primary-hover)]"
                   onClick={() => {
                     onChange(tempDate);
                     setOpen(false);

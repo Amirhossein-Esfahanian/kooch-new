@@ -1,7 +1,14 @@
 ﻿"use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
@@ -46,7 +53,6 @@ import {
   PropertyType,
   PropertyUserRole,
   resolveDestinationId,
-
 } from "@/lib/owner-api";
 
 const statuses: PropertyStatus[] = [
@@ -183,10 +189,16 @@ function getTransferOwnershipError(caught: unknown) {
   if (message.includes("حذف‌شده") || normalized.includes("deleted")) {
     return "کاربر حذف‌شده نمی‌تواند مالک اقامتگاه شود.";
   }
-  if (message.includes("هم‌اکنون مالک") || normalized.includes("already the property owner")) {
+  if (
+    message.includes("هم‌اکنون مالک") ||
+    normalized.includes("already the property owner")
+  ) {
     return "کاربر انتخاب‌شده هم‌اکنون مالک این اقامتگاه است.";
   }
-  if (message.includes("عضویت مالک فعال") || normalized.includes("active owner membership")) {
+  if (
+    message.includes("عضویت مالک فعال") ||
+    normalized.includes("active owner membership")
+  ) {
     return "این اقامتگاه دارای عضویت مالک فعال دیگری است.";
   }
   if (
@@ -357,7 +369,11 @@ function OwnerCandidateSearch({
 
 export default function AdminPropertiesPage() {
   const router = useRouter();
-  const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
+  const {
+    authenticated,
+    loading: sessionLoading,
+    workspaces,
+  } = useAuthSession();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<number | null>(null);
@@ -369,8 +385,10 @@ export default function AdminPropertiesPage() {
   const [createForm, setCreateForm] =
     useState<CreatePropertyForm>(emptyCreateForm);
   const [creating, setCreating] = useState(false);
-  const [transferProperty, setTransferProperty] = useState<PropertyResponse | null>(null);
-  const [transferForm, setTransferForm] = useState<TransferOwnershipForm>(emptyTransferForm);
+  const [transferProperty, setTransferProperty] =
+    useState<PropertyResponse | null>(null);
+  const [transferForm, setTransferForm] =
+    useState<TransferOwnershipForm>(emptyTransferForm);
   const [transferring, setTransferring] = useState(false);
   const [error, setError] = useState("");
   const [createIdentityErrors, setCreateIdentityErrors] =
@@ -424,7 +442,8 @@ export default function AdminPropertiesPage() {
   }, []);
 
   useEffect(() => {
-    if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
+    if (sessionLoading || !authenticated || !workspaces.includes("admin"))
+      return;
 
     load()
       .catch((caught: Error) => setError(caught.message))
@@ -481,16 +500,19 @@ export default function AdminPropertiesPage() {
       return { ownerId: Number(createForm.ownerId), setupLink: null };
     }
 
-    const createdOwner = await apiRequest<AdminPropertyOwnerAccountResponse>("/admin/properties/owner-candidates", {
-      method: "POST",
-      body: JSON.stringify({
-        firstName: createForm.ownerFirstName.trim(),
-        lastName: createForm.ownerLastName.trim(),
-        email: createForm.ownerEmail.trim() || null,
-        phoneNumber: createForm.ownerPhoneNumber.trim(),
-        password: createForm.ownerPassword.trim() || null,
-      }),
-    });
+    const createdOwner = await apiRequest<AdminPropertyOwnerAccountResponse>(
+      "/admin/properties/owner-candidates",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          firstName: createForm.ownerFirstName.trim(),
+          lastName: createForm.ownerLastName.trim(),
+          email: createForm.ownerEmail.trim() || null,
+          phoneNumber: createForm.ownerPhoneNumber.trim(),
+          password: createForm.ownerPassword.trim() || null,
+        }),
+      },
+    );
 
     const ownerSetupLink = createdOwner.temporarySetupLink ?? null;
 
@@ -512,7 +534,10 @@ export default function AdminPropertiesPage() {
   async function transferOwnership() {
     if (!transferProperty || transferSubmissionRef.current) return;
 
-    if (transferForm.ownerMode === "existing-owner" && !transferForm.newOwnerId) {
+    if (
+      transferForm.ownerMode === "existing-owner" &&
+      !transferForm.newOwnerId
+    ) {
       const message = "مالک جدید را انتخاب کنید.";
       toast.error(message);
       throw new Error(message);
@@ -700,7 +725,7 @@ export default function AdminPropertiesPage() {
           <KoochCard className="border-primary/30 bg-primary/10" padding="sm">
             <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
               <div>
-                <p className="text-sm font-black text-foreground">
+                <p className="text-sm font-bold text-foreground">
                   لینک تنظیم رمز عبور مالک آماده است.
                 </p>
                 <p
@@ -840,7 +865,7 @@ export default function AdminPropertiesPage() {
                       </KoochTableCell>
 
                       <KoochTableCell>
-                        <p className="font-black text-foreground">
+                        <p className="font-bold text-foreground">
                           {property.name}
                         </p>
                         {property.englishName && (
@@ -949,7 +974,6 @@ export default function AdminPropertiesPage() {
           </>
         )}
 
-
         <KoochConfirmDialog
           cancelText="انصراف"
           confirmText="تأیید انتقال مالکیت"
@@ -961,7 +985,10 @@ export default function AdminPropertiesPage() {
                   {transferProperty.ownerName || transferProperty.ownerId}» به «
                   {transferForm.ownerMode === "existing-owner"
                     ? selectedTransferOwner?.fullName || "انتخاب نشده"
-                    : [transferForm.newOwnerFirstName, transferForm.newOwnerLastName]
+                    : [
+                        transferForm.newOwnerFirstName,
+                        transferForm.newOwnerLastName,
+                      ]
                         .filter(Boolean)
                         .join(" ") || "کاربر جدید"}
                   » منتقل می‌شود.
@@ -993,18 +1020,31 @@ export default function AdminPropertiesPage() {
           <div className="grid gap-4">
             <div className="flex flex-wrap gap-2">
               <KoochButton
-                onClick={() => setTransferForm({ ...transferForm, ownerMode: "existing-owner" })}
+                onClick={() =>
+                  setTransferForm({
+                    ...transferForm,
+                    ownerMode: "existing-owner",
+                  })
+                }
                 size="sm"
                 type="button"
-                variant={transferForm.ownerMode === "existing-owner" ? "primary" : "outline"}
+                variant={
+                  transferForm.ownerMode === "existing-owner"
+                    ? "primary"
+                    : "outline"
+                }
               >
                 انتخاب کاربر موجود
               </KoochButton>
               <KoochButton
-                onClick={() => setTransferForm({ ...transferForm, ownerMode: "new-owner" })}
+                onClick={() =>
+                  setTransferForm({ ...transferForm, ownerMode: "new-owner" })
+                }
                 size="sm"
                 type="button"
-                variant={transferForm.ownerMode === "new-owner" ? "primary" : "outline"}
+                variant={
+                  transferForm.ownerMode === "new-owner" ? "primary" : "outline"
+                }
               >
                 ساخت کاربر جدید
               </KoochButton>
@@ -1045,12 +1085,19 @@ export default function AdminPropertiesPage() {
                     email: transferForm.newOwnerEmail,
                   }}
                 />
-                <KoochField className="md:col-span-2" label="رمز عبور اولیه" required>
+                <KoochField
+                  className="md:col-span-2"
+                  label="رمز عبور اولیه"
+                  required
+                >
                   <KoochInput
                     dir="ltr"
                     minLength={8}
                     onChange={(event) =>
-                      setTransferForm({ ...transferForm, newOwnerPassword: event.target.value })
+                      setTransferForm({
+                        ...transferForm,
+                        newOwnerPassword: event.target.value,
+                      })
                     }
                     type="password"
                     value={transferForm.newOwnerPassword}
@@ -1064,12 +1111,15 @@ export default function AdminPropertiesPage() {
                 onChange={(event) =>
                   setTransferForm({
                     ...transferForm,
-                    previousOwnerAction: event.target.value as PreviousOwnerAction,
+                    previousOwnerAction: event.target
+                      .value as PreviousOwnerAction,
                   })
                 }
                 value={transferForm.previousOwnerAction}
               >
-                <option value="DeactivateMembership">حذف دسترسی مالک قبلی</option>
+                <option value="DeactivateMembership">
+                  حذف دسترسی مالک قبلی
+                </option>
                 <option value="Demote">تغییر نقش مالک قبلی</option>
               </KoochSelect>
             </KoochField>
@@ -1080,7 +1130,10 @@ export default function AdminPropertiesPage() {
                   onChange={(event) =>
                     setTransferForm({
                       ...transferForm,
-                      previousOwnerRole: event.target.value as Exclude<PropertyUserRole, "PropertyOwner">,
+                      previousOwnerRole: event.target.value as Exclude<
+                        PropertyUserRole,
+                        "PropertyOwner"
+                      >,
                     })
                   }
                   value={transferForm.previousOwnerRole}
@@ -1212,7 +1265,6 @@ export default function AdminPropertiesPage() {
                         value={createForm.ownerPassword}
                       />
                     </KoochField>
-
                   </div>
                 )}
               </div>

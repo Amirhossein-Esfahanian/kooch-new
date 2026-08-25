@@ -309,7 +309,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
       {!panelOpen && selectedItems.length > 0 && (
         <div className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex max-w-md justify-center px-3">
           <div className="flex w-full items-center justify-between gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur">
-            <span className="min-w-0 truncate text-sm font-black text-foreground">
+            <span className="min-w-0 truncate text-sm font-bold text-foreground">
               {toPersianNumber(selectedItems.length)} خانه /{" "}
               {toPersianNumber(selectedDayCount)} روز انتخاب شده
             </span>
@@ -332,7 +332,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
             <thead>
               <tr>
                 <th
-                  className={`${dayColumnSize} border border-border bg-muted px-2 py-2 text-center font-black`}
+                  className={`${dayColumnSize} border border-border bg-muted px-2 py-2 text-center font-bold`}
                 >
                   روز
                 </th>
@@ -401,7 +401,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                             className={`h-full w-full p-2 text-center transition ${selected ? "bg-primary/15 ring-1 ring-inset ring-primary" : disabled ? "bg-muted text-muted-foreground" : "bg-card hover:bg-muted/70"}`}
                           >
                             <div
-                              className={`font-black ${disabled ? "text-muted-foreground" : "text-foreground"}`}
+                              className={`font-bold ${disabled ? "text-muted-foreground" : "text-foreground"}`}
                             >
                               {formatPrice(basePrice)}
                             </div>
@@ -435,7 +435,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-lg font-black text-foreground">
+                <h3 className="text-lg font-bold text-foreground">
                   ویرایش انتخاب‌شده‌ها
                 </h3>
                 <p className="mt-1 text-sm text-muted-foreground">
@@ -494,7 +494,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                       <p className="text-xs font-semibold text-muted-foreground">
                         قیمت فعلی پیش‌فرض
                       </p>
-                      <p className="text-sm font-black text-foreground">
+                      <p className="text-sm font-bold text-foreground">
                         {currentPrefillValue !== null
                           ? `${formatPrice(currentPrefillValue)} ${pricingCurrencyLabel ?? "تومان"}`
                           : hasMixedValues

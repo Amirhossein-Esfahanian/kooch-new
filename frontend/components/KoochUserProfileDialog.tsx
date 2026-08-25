@@ -82,7 +82,11 @@ function initials(name: string) {
 }
 
 function validatePassword(password: string) {
-  if (password.length < 8 || !/[a-z]/.test(password) || !/[0-9]/.test(password)) {
+  if (
+    password.length < 8 ||
+    !/[a-z]/.test(password) ||
+    !/[0-9]/.test(password)
+  ) {
     return "رمز عبور باید حداقل ۸ کاراکتر و شامل حرف کوچک انگلیسی و عدد باشد.";
   }
 
@@ -183,7 +187,7 @@ export function KoochUserProfileDialog({
                   src={avatarPreview}
                 />
               ) : (
-                <span className="grid h-full w-full place-items-center bg-primary text-2xl font-black text-primary-foreground">
+                <span className="grid h-full w-full place-items-center bg-primary text-2xl font-bold text-primary-foreground">
                   {initials(form.name)}
                 </span>
               )}
@@ -231,7 +235,10 @@ export function KoochUserProfileDialog({
           <KoochField label="Language">
             <KoochSelect
               onChange={(event) =>
-                update("language", event.target.value as ProfileForm["language"])
+                update(
+                  "language",
+                  event.target.value as ProfileForm["language"],
+                )
               }
               value={form.language}
             >
@@ -282,7 +289,7 @@ export function KoochUserProfileDialog({
 
         <section className="grid gap-3 rounded-lg border border-border bg-card p-4">
           <div>
-            <h3 className="text-sm font-black text-foreground">
+            <h3 className="text-sm font-bold text-foreground">
               Notification preferences
             </h3>
             <p className="mt-1 text-xs text-muted-foreground">

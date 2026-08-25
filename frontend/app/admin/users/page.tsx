@@ -467,7 +467,7 @@ export default function AdminUsersPage() {
           <KoochCard className="border-primary/30 bg-primary/10" padding="sm">
             <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
               <div>
-                <p className="text-sm font-black text-foreground">
+                <p className="text-sm font-bold text-foreground">
                   لینک تنظیم رمز عبور آماده است.
                 </p>
                 <p
@@ -598,7 +598,7 @@ export default function AdminUsersPage() {
                     </KoochTableCell>
 
                     <KoochTableCell>
-                      <p className="font-black text-foreground">
+                      <p className="font-bold text-foreground">
                         {user.fullName || user.email}
                       </p>
                       <p
@@ -774,7 +774,7 @@ export default function AdminUsersPage() {
                 <div className="grid gap-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-sm font-black text-foreground">
+                      <p className="text-sm font-bold text-foreground">
                         مجوزها
                       </p>
                       <p className="mt-1 text-xs leading-6 text-muted-foreground">
@@ -795,7 +795,10 @@ export default function AdminUsersPage() {
                       <KoochButton
                         disabled={form.permissions.length === 0}
                         onClick={() =>
-                          setCategoryPermissions(assignablePermissionKeys, false)
+                          setCategoryPermissions(
+                            assignablePermissionKeys,
+                            false,
+                          )
                         }
                         size="sm"
                         type="button"
@@ -829,7 +832,7 @@ export default function AdminUsersPage() {
                                 event.target.checked,
                               )
                             }
-                            wrapperClassName="border-b border-border pb-2 font-black"
+                            wrapperClassName="border-b border-border pb-2 font-bold"
                           />
                           <div className="grid gap-2">
                             {category.permissions.map((permission) => (
@@ -858,7 +861,7 @@ export default function AdminUsersPage() {
 
             {form.role === "SuperAdmin" && (
               <KoochCard padding="sm" variant="muted">
-                <p className="text-sm font-black text-foreground">مجوزها</p>
+                <p className="text-sm font-bold text-foreground">مجوزها</p>
                 <p className="mt-1 text-xs leading-6 text-muted-foreground">
                   مدیر ارشد به‌صورت پیش‌فرض به همه بخش‌ها دسترسی دارد.
                 </p>

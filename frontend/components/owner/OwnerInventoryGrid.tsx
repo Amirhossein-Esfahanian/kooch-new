@@ -329,7 +329,7 @@ export function OwnerInventoryGrid({
       >
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-xl font-black text-foreground">
+            <h2 className="text-xl font-bold text-foreground">
               تقویم ظرفیت اتاق‌ها
             </h2>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -380,7 +380,7 @@ export function OwnerInventoryGrid({
             padding="lg"
           >
             <div>
-              <h3 className="text-lg font-black text-foreground">
+              <h3 className="text-lg font-bold text-foreground">
                 ابتدا باید برای این اقامتگاه اتاق تعریف کنید.
               </h3>
               <p className="mt-2 text-sm font-semibold text-muted-foreground">
@@ -461,26 +461,26 @@ export function OwnerInventoryGrid({
               <dt className="font-bold text-muted-foreground">
                 تعداد روزهای اثرگرفته
               </dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {toPersianNumber(bulkConfirmDetails.affectedDays)} روز در{" "}
                 {toPersianNumber(bulkConfirmDetails.rangeCount)} بازه
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">اتاق‌ها</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {bulkConfirmDetails.roomNames}
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">وضعیت</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {bulkConfirmDetails.status}
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">ظرفیت</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {bulkConfirmDetails.capacity}
               </dd>
             </div>

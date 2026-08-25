@@ -387,9 +387,7 @@ export function AmenityManagement({
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="font-black text-foreground">
-                  دسته‌بندی امکانات
-                </h3>
+                <h3 className="font-bold text-foreground">دسته‌بندی امکانات</h3>
                 <p className="mt-1 text-sm text-muted-foreground">
                   دسته‌بندی‌ها را مدیریت کنید و ترتیب/وضعیت نمایش آنها را تنظیم
                   کنید.
@@ -430,13 +428,13 @@ export function AmenityManagement({
                               {category.icon ? (
                                 <KoochSvgIcon size="xl" src={category.icon} />
                               ) : (
-                                <span className="text-[10px] font-black text-muted-foreground">
+                                <span className="text-[10px] font-bold text-muted-foreground">
                                   SVG
                                 </span>
                               )}
                             </div>
                             <div className="min-w-0">
-                              <h3 className="truncate text-sm font-black text-foreground">
+                              <h3 className="truncate text-sm font-bold text-foreground">
                                 {index + 1}. {category.name}
                               </h3>
                               <p className="mt-1 break-all text-xs text-muted-foreground">
@@ -449,7 +447,7 @@ export function AmenityManagement({
                           </div>
 
                           <span
-                            className={`shrink-0 rounded-lg px-3 py-1 text-xs font-black ${
+                            className={`shrink-0 rounded-lg px-3 py-1 text-xs font-bold ${
                               category.isActive
                                 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                                 : "bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300"
@@ -502,7 +500,7 @@ export function AmenityManagement({
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <h3 className="font-black text-foreground">لیست امکانات</h3>
+                  <h3 className="font-bold text-foreground">لیست امکانات</h3>
                   <p className="mt-1 text-sm text-muted-foreground">
                     یک دسته‌بندی را انتخاب کنید تا امکانات همان دسته نمایش داده
                     شود.
@@ -529,7 +527,7 @@ export function AmenityManagement({
                       {category.icon ? (
                         <KoochSvgIcon size="md" src={category.icon} />
                       ) : (
-                        <span className="ml-2 text-[10px] font-black text-muted-foreground">
+                        <span className="ml-2 text-[10px] font-bold text-muted-foreground">
                           SVG
                         </span>
                       )}
@@ -564,9 +562,7 @@ export function AmenityManagement({
                     >
                       <div className="flex min-w-0 items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <h3 className="truncate font-black">
-                            {amenity.name}
-                          </h3>
+                          <h3 className="truncate font-bold">{amenity.name}</h3>
                           <p className="mt-1 break-all text-xs font-bold uppercase tracking-wide text-muted-foreground">
                             {amenity.scope} · {amenity.slug}
                           </p>
@@ -588,7 +584,7 @@ export function AmenityManagement({
                           ))}
                       </div>
                       <div className="h-px mt-6  w-full bg-border"></div>
-                      <div className="mt-4 flex flex-wrap gap-3 text-sm font-black">
+                      <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
                         <KoochButton
                           onClick={() => openEditModal(amenity)}
                           size="sm"

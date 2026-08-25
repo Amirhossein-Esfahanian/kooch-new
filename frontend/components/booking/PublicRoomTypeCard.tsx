@@ -6,10 +6,7 @@ import { bookingModePresentation } from "@/components/booking/booking-display";
 import type { PublicBookingRoomTypeOption } from "@/lib/booking-sessions";
 import { formatCurrency } from "@/lib/currency";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
-import {
-  formatPrice,
-  type PublicRoomType,
-} from "@/lib/public-properties";
+import { formatPrice, type PublicRoomType } from "@/lib/public-properties";
 
 export type RoomTypeUnavailableReason =
   | "GuestCapacityExceeded"
@@ -72,7 +69,7 @@ export function PublicRoomTypeCard({
           width={660}
         />
         <div className="p-5">
-          <h3 className="text-xl font-black">{roomType.name}</h3>
+          <h3 className="text-xl font-bold">{roomType.name}</h3>
           {roomType.englishName && (
             <p className="mt-1 text-xs text-slate-400" dir="ltr">
               {roomType.englishName}
@@ -111,7 +108,11 @@ export function PublicRoomTypeCard({
         </div>
         <div className="flex flex-col justify-between gap-5 border-t p-5 md:border-r md:border-t-0">
           <RoomTypeBookingDetails booking={booking} roomType={roomType} />
-          <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
+          <KoochButton
+            className="w-full"
+            onClick={onShowDetails}
+            variant="outline"
+          >
             مشاهده جزئیات
           </KoochButton>
         </div>
@@ -135,7 +136,7 @@ function RoomTypeBookingDetails({
             ? "کمترین قیمت روزانه آینده"
             : "قیمت اقامت"}
         </p>
-        <p className="mt-1 text-lg font-black text-blue-700">
+        <p className="mt-1 text-lg font-bold text-blue-700">
           {formatPrice(roomType.displayPrice)}
         </p>
         <p className="mt-3 text-xs text-slate-500">
@@ -153,7 +154,7 @@ function RoomTypeBookingDetails({
   if (!booking.option) {
     return (
       <div>
-        <p className="text-sm font-black text-slate-800">
+        <p className="text-sm font-bold text-slate-800">
           در این بازه قابل رزرو نیست
         </p>
         <p className="mt-2 text-xs leading-6 text-slate-600">
@@ -182,7 +183,7 @@ function RoomTypeBookingDetails({
   return (
     <div>
       <p className="text-xs text-slate-500">مبلغ کل اقامت</p>
-      <p className="mt-1 text-lg font-black text-blue-700">
+      <p className="mt-1 text-lg font-bold text-blue-700">
         {formatCurrency(option.finalAmount)}
       </p>
       <p className="mt-2 text-xs font-bold text-slate-700">
@@ -192,14 +193,22 @@ function RoomTypeBookingDetails({
         {option.availableCount.toLocaleString("fa-IR")} واحد برای این بازه
       </p>
       {isOverCapacity && (
-        <p className="mt-2 text-xs font-bold leading-6 text-destructive" role="status">
-          موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")} واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
+        <p
+          className="mt-2 text-xs font-bold leading-6 text-destructive"
+          role="status"
+        >
+          موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")}{" "}
+          واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
         </p>
       )}
       <div className="mt-4 flex min-h-11 items-center justify-start md:justify-end">
         {booking.selectedQuantity === 0 ? (
           <KoochButton
-            aria-label={booking.availableToAdd === 0 ? `تکمیل ظرفیت ${option.name}` : `انتخاب ${option.name}`}
+            aria-label={
+              booking.availableToAdd === 0
+                ? `تکمیل ظرفیت ${option.name}`
+                : `انتخاب ${option.name}`
+            }
             className="w-full"
             disabled={booking.availableToAdd === 0}
             onClick={booking.onAdd}
@@ -218,11 +227,26 @@ function RoomTypeBookingDetails({
             <span aria-hidden="true">✓</span> انتخاب شد؛ حذف
           </KoochButton>
         ) : (
-          <div aria-label={`تعداد انتخاب‌شده ${option.name}`} className="flex items-center gap-2" role="group">
-            <KoochButton aria-label={`کاهش تعداد ${option.name}`} onClick={booking.onRemove} size="icon" variant="outline">
-              <span aria-hidden="true" className="text-lg">−</span>
+          <div
+            aria-label={`تعداد انتخاب‌شده ${option.name}`}
+            className="flex items-center gap-2"
+            role="group"
+          >
+            <KoochButton
+              aria-label={`کاهش تعداد ${option.name}`}
+              onClick={booking.onRemove}
+              size="icon"
+              variant="outline"
+            >
+              <span aria-hidden="true" className="text-lg">
+                −
+              </span>
             </KoochButton>
-            <output aria-atomic="true" aria-live="polite" className="min-w-8 text-center text-base font-black text-slate-900">
+            <output
+              aria-atomic="true"
+              aria-live="polite"
+              className="min-w-8 text-center text-base font-bold text-slate-900"
+            >
               {booking.selectedQuantity.toLocaleString("fa-IR")}
             </output>
             <KoochButton
@@ -232,7 +256,9 @@ function RoomTypeBookingDetails({
               size="icon"
               variant="outline"
             >
-              <span aria-hidden="true" className="text-lg">+</span>
+              <span aria-hidden="true" className="text-lg">
+                +
+              </span>
             </KoochButton>
           </div>
         )}

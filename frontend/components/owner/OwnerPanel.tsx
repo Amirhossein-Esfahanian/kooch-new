@@ -5,10 +5,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
-import {
-  apiRequest,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { apiRequest, PropertyResponse } from "@/lib/owner-api";
 
 export function OwnerPanel({
   propertyId,
@@ -37,17 +34,25 @@ export function OwnerPanel({
         <header className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#171d27]">
           <div>
             <p className="text-xs font-bold text-slate-400">اقامتگاه فعال</p>
-            <h1 className="mt-1 text-2xl font-black text-slate-950 dark:text-slate-100">{title}</h1>
+            <h1 className="mt-1 text-2xl font-bold text-slate-950 dark:text-slate-100">
+              {title}
+            </h1>
             <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
               {propertyName ?? "در حال بارگذاری..."}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className="ds-button-secondary text-sm" href="/owner/select-property">
+            <Link
+              className="ds-button-secondary text-sm"
+              href="/owner/select-property"
+            >
               تغییر اقامتگاه
             </Link>
             {property?.slug && (
-              <Link className="ds-button-primary text-sm" href={`/properties/${property.slug}`}>
+              <Link
+                className="ds-button-primary text-sm"
+                href={`/properties/${property.slug}`}
+              >
                 مشاهده صفحه عمومی
               </Link>
             )}

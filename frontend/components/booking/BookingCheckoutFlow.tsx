@@ -58,9 +58,8 @@ function BookingCheckoutContent() {
     tone: "error" | "info";
     text: string;
   } | null>(null);
-  const [stayDetailsDraft, setStayDetailsDraft] = useState<CheckoutStayDetailsDraft>(
-    emptyCheckoutStayDetailsDraft,
-  );
+  const [stayDetailsDraft, setStayDetailsDraft] =
+    useState<CheckoutStayDetailsDraft>(emptyCheckoutStayDetailsDraft);
   const [stayDetailsHydrated, setStayDetailsHydrated] = useState(false);
   const [showStayDetailsErrors, setShowStayDetailsErrors] = useState(false);
   const requestedReview = searchParams.get("step") === "review";
@@ -71,7 +70,10 @@ function BookingCheckoutContent() {
   );
   const stayDetailsComplete = Object.keys(stayDetailsErrors).length === 0;
   const currentStep: BookingCheckoutStep =
-    requestedReview && identityComplete && stayDetailsHydrated && stayDetailsComplete
+    requestedReview &&
+    identityComplete &&
+    stayDetailsHydrated &&
+    stayDetailsComplete
       ? "review"
       : "information";
   const identityInterruptionMessage =
@@ -94,7 +96,8 @@ function BookingCheckoutContent() {
       !identityComplete ||
       !auth.user ||
       linkedGuestInitializedRef.current
-    ) return;
+    )
+      return;
 
     linkedGuestInitializedRef.current = true;
     const linkedGuest = buildSelfGuestDraft(auth.user);
@@ -123,11 +126,14 @@ function BookingCheckoutContent() {
     );
   }, [stayDetailsDraft, stayDetailsHydrated]);
 
-  const updateStayDetails = useCallback((next: CheckoutStayDetailsDraft) => {
-    setStayDetailsDraft(next);
-    setShowStayDetailsErrors(false);
-    cart.renewIdempotencyKey();
-  }, [cart]);
+  const updateStayDetails = useCallback(
+    (next: CheckoutStayDetailsDraft) => {
+      setStayDetailsDraft(next);
+      setShowStayDetailsErrors(false);
+      cart.renewIdempotencyKey();
+    },
+    [cart],
+  );
 
   const continueToReview = useCallback(() => {
     if (!identityComplete) return;
@@ -180,9 +186,7 @@ function BookingCheckoutContent() {
       setFinalizationMessage({
         tone: "error",
         text:
-          error instanceof Error
-            ? error.message
-            : "ساخت سفارش رزرو انجام نشد.",
+          error instanceof Error ? error.message : "ساخت سفارش رزرو انجام نشد.",
       });
     } finally {
       submissionLockRef.current = false;
@@ -207,13 +211,21 @@ function BookingCheckoutContent() {
   if (cart.items.length === 0) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
-        <h1 className="text-2xl font-black text-foreground sm:text-3xl">
+        <h1 className="text-2xl font-bold text-foreground sm:text-3xl">
           تکمیل رزرو
         </h1>
-        <KoochAlert className="mt-6" title="انتخاب رزروی پیدا نشد" variant="info">
-          سبد رزرو خالی یا منقضی شده است. برای انتخاب اقامت و اتاق به فهرست اقامتگاه‌ها برگردید.
+        <KoochAlert
+          className="mt-6"
+          title="انتخاب رزروی پیدا نشد"
+          variant="info"
+        >
+          سبد رزرو خالی یا منقضی شده است. برای انتخاب اقامت و اتاق به فهرست
+          اقامتگاه‌ها برگردید.
         </KoochAlert>
-        <KoochButton className="mt-5" onClick={() => router.push("/properties")}>
+        <KoochButton
+          className="mt-5"
+          onClick={() => router.push("/properties")}
+        >
           بازگشت به اقامتگاه‌ها
         </KoochButton>
       </div>
@@ -245,14 +257,18 @@ function BookingCheckoutContent() {
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">
-        <h1 className="text-xl font-black" id="checkout-page-title">
+        <h1 className="text-xl font-bold" id="checkout-page-title">
           {currentStep === "review" ? "مرور و نهایی‌سازی" : "تکمیل رزرو"}
         </h1>
 
         <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           <section
-            aria-label={currentStep === "information" ? "اطلاعات رزرو" : undefined}
-            aria-labelledby={currentStep === "review" ? "checkout-page-title" : undefined}
+            aria-label={
+              currentStep === "information" ? "اطلاعات رزرو" : undefined
+            }
+            aria-labelledby={
+              currentStep === "review" ? "checkout-page-title" : undefined
+            }
             className="min-w-0 rounded-lg border border-border bg-card p-4 sm:p-5"
           >
             {currentStep === "information" ? (
@@ -270,10 +286,7 @@ function BookingCheckoutContent() {
                 ) : null}
               </>
             ) : (
-              <ReviewStep
-                draft={stayDetailsDraft}
-                items={cart.items}
-              />
+              <ReviewStep draft={stayDetailsDraft} items={cart.items} />
             )}
 
             {currentStep === "review" && finalizationMessage ? (
@@ -291,7 +304,6 @@ function BookingCheckoutContent() {
                 {finalizationMessage.text}
               </KoochAlert>
             ) : null}
-
           </section>
 
           <aside
@@ -319,10 +331,15 @@ function BookingCheckoutContent() {
               }
               variant="outline"
             >
-              {currentStep === "information" ? "بازگشت به انتخاب اقامت" : "بازگشت به اطلاعات"}
+              {currentStep === "information"
+                ? "بازگشت به انتخاب اقامت"
+                : "بازگشت به اطلاعات"}
             </KoochButton>
             {currentStep === "information" ? (
-              <KoochButton disabled={!identityComplete} onClick={continueToReview}>
+              <KoochButton
+                disabled={!identityComplete}
+                onClick={continueToReview}
+              >
                 ادامه به نهایی‌سازی
               </KoochButton>
             ) : (
@@ -366,7 +383,7 @@ function ReviewStep({
             >
               نوع رزرو
             </h2>
-            <p className="text-sm font-black text-foreground">
+            <p className="text-sm font-bold text-foreground">
               {mode.icon} {mode.label}
             </p>
           </div>
@@ -376,7 +393,10 @@ function ReviewStep({
               : "پس از ثبت رزرو، برای تکمیل آن وارد مرحله پرداخت می‌شوید."}
           </p>
         </section>
-        <section className="py-4" aria-labelledby="checkout-payment-window-title">
+        <section
+          className="py-4"
+          aria-labelledby="checkout-payment-window-title"
+        >
           <h2
             className="text-sm font-bold text-muted-foreground"
             id="checkout-payment-window-title"

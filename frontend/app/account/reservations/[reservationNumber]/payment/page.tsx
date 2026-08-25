@@ -159,7 +159,10 @@ export default function ReservationPaymentPage() {
   }
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8" dir="rtl">
+    <main
+      className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8"
+      dir="rtl"
+    >
       <div className="mx-auto grid max-w-4xl gap-5">
         <KoochPageHeader
           actions={
@@ -206,9 +209,9 @@ export default function ReservationPaymentPage() {
                   <KoochBadge variant={isExpired ? "destructive" : "success"}>
                     {isExpired ? "لینک نامعتبر یا منقضی" : "آماده پرداخت"}
                   </KoochBadge>
-                  <p className="text-lg font-black text-foreground">
+                  <p className="text-lg font-bold text-foreground">
                     {isExpired
-                      ? preparation.invalidReason ?? "لینک پرداخت معتبر نیست."
+                      ? (preparation.invalidReason ?? "لینک پرداخت معتبر نیست.")
                       : "رزرو برای پرداخت آماده است."}
                   </p>
                   <p className="text-sm leading-7 text-muted-foreground">
@@ -217,9 +220,7 @@ export default function ReservationPaymentPage() {
                 </div>
 
                 {preparation.isValid && (
-                  <KoochBadge
-                    variant={isExpired ? "destructive" : "warning"}
-                  >
+                  <KoochBadge variant={isExpired ? "destructive" : "warning"}>
                     {isExpired
                       ? "مهلت تمام شد"
                       : `زمان باقی‌مانده: ${formatDuration(remainingSeconds)}`}
@@ -233,14 +234,20 @@ export default function ReservationPaymentPage() {
                 <p className="text-xs font-bold text-muted-foreground">
                   شماره رزرو
                 </p>
-                <p className="text-xl font-black text-foreground">
+                <p className="text-xl font-bold text-foreground">
                   {preparation.reservationNumber}
                 </p>
               </div>
 
               <div className="grid gap-3 md:grid-cols-2">
-                <SummaryItem label="اقامتگاه" value={preparation.propertyName || "-"} />
-                <SummaryItem label="اتاق" value={preparation.roomTypeName || "-"} />
+                <SummaryItem
+                  label="اقامتگاه"
+                  value={preparation.propertyName || "-"}
+                />
+                <SummaryItem
+                  label="اتاق"
+                  value={preparation.roomTypeName || "-"}
+                />
                 <SummaryItem
                   label="ورود"
                   value={formatDate(preparation.checkInDate)}
@@ -296,13 +303,7 @@ export default function ReservationPaymentPage() {
   );
 }
 
-function SummaryItem({
-  label,
-  value,
-}: {
-  label: string;
-  value: ReactNode;
-}) {
+function SummaryItem({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div className="grid gap-1 rounded-md border border-border bg-background px-3 py-2">
       <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>

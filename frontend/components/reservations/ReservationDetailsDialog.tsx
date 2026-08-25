@@ -256,7 +256,7 @@ function DetailSection({
   return (
     <KoochCard className="grid gap-3" padding="sm" variant="elevated">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-black text-foreground">{title}</h3>
+        <h3 className="text-sm font-bold text-foreground">{title}</h3>
         {action}
       </div>
       <dl className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{children}</dl>
@@ -270,7 +270,7 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
 
   return (
     <KoochCard className="grid gap-3" padding="sm" variant="elevated">
-      <h3 className="text-sm font-black text-foreground">خط زمانی</h3>
+      <h3 className="text-sm font-bold text-foreground">خط زمانی</h3>
       {events.length === 0 ? (
         <p className="text-sm font-semibold text-muted-foreground">
           رویدادی برای این رزرو ثبت نشده است.
@@ -292,7 +292,7 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
               >
                 <span className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary" />
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="text-sm font-black text-foreground">
+                  <span className="text-sm font-bold text-foreground">
                     {timelineLabels[event.type]}
                   </span>
                   <time className="text-xs font-semibold text-muted-foreground">
@@ -544,11 +544,7 @@ function ReservationCancellationAlert({
             </KoochSelect>
           </KoochField>
 
-          <KoochField
-            error={explanationError}
-            label="توضیحات لغو"
-            required
-          >
+          <KoochField error={explanationError} label="توضیحات لغو" required>
             <KoochTextarea
               error={explanationError}
               maxLength={2000}

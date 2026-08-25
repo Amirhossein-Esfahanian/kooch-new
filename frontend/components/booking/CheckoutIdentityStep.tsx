@@ -30,9 +30,9 @@ export function hasCompleteCheckoutIdentity(
 ) {
   return Boolean(
     auth.authenticated &&
-      auth.user?.phoneNumber?.trim() &&
-      auth.user.firstName.trim() &&
-      auth.user.lastName.trim(),
+    auth.user?.phoneNumber?.trim() &&
+    auth.user.firstName.trim() &&
+    auth.user.lastName.trim(),
   );
 }
 
@@ -101,7 +101,10 @@ export function CheckoutIdentityStep({
       const session = await auth.refreshSession();
       if (
         !session ||
-        !hasCompleteCheckoutIdentity({ authenticated: true, user: session.user })
+        !hasCompleteCheckoutIdentity({
+          authenticated: true,
+          user: session.user,
+        })
       ) {
         throw new Error("PROFILE_REFRESH_INCOMPLETE");
       }
@@ -117,7 +120,11 @@ export function CheckoutIdentityStep({
 
   if (auth.loading) {
     return (
-      <div aria-live="polite" className="py-8 text-sm font-bold text-muted-foreground" role="status">
+      <div
+        aria-live="polite"
+        className="py-8 text-sm font-bold text-muted-foreground"
+        role="status"
+      >
         در حال بررسی حساب کاربری شما...
       </div>
     );
@@ -129,14 +136,21 @@ export function CheckoutIdentityStep({
 
     return (
       <div>
-        <h2 className="text-lg font-black text-foreground" id="checkout-step-title">
+        <h2
+          className="text-lg font-bold text-foreground"
+          id="checkout-step-title"
+        >
           تکمیل اطلاعات حساب
         </h2>
         <p className="mt-2 text-sm leading-7 text-muted-foreground">
           برای ادامه رزرو، نام و نام خانوادگی خود را تکمیل کنید.
         </p>
         {profileError ? (
-          <KoochAlert className="mt-4" title="ذخیره اطلاعات انجام نشد" variant="destructive">
+          <KoochAlert
+            className="mt-4"
+            title="ذخیره اطلاعات انجام نشد"
+            variant="destructive"
+          >
             {profileError}
           </KoochAlert>
         ) : null}
@@ -161,7 +175,11 @@ export function CheckoutIdentityStep({
               />
             </KoochField>
           </div>
-          <KoochButton className="sm:w-fit sm:min-w-44" loading={profileSaving} type="submit">
+          <KoochButton
+            className="sm:w-fit sm:min-w-44"
+            loading={profileSaving}
+            type="submit"
+          >
             ذخیره و ادامه
           </KoochButton>
         </form>
@@ -176,10 +194,7 @@ export function CheckoutIdentityStep({
       setError("شماره موبایل را وارد کنید.");
       return;
     }
-    if (
-      stage === "registration" &&
-      (!firstName.trim() || !lastName.trim())
-    ) {
+    if (stage === "registration" && (!firstName.trim() || !lastName.trim())) {
       setError("نام و نام خانوادگی را کامل وارد کنید.");
       return;
     }
@@ -187,16 +202,19 @@ export function CheckoutIdentityStep({
     setSending(true);
     setError("");
     try {
-      const response = await apiRequest<RequestOtpResponse>("/auth/request-otp", {
-        method: "POST",
-        body: JSON.stringify({
-          mobile,
-          allowRegistration: true,
-          firstName: stage === "registration" ? firstName : null,
-          lastName: stage === "registration" ? lastName : null,
-          email: stage === "registration" ? email || null : null,
-        }),
-      });
+      const response = await apiRequest<RequestOtpResponse>(
+        "/auth/request-otp",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            mobile,
+            allowRegistration: true,
+            firstName: stage === "registration" ? firstName : null,
+            lastName: stage === "registration" ? lastName : null,
+            email: stage === "registration" ? email || null : null,
+          }),
+        },
+      );
 
       if (response.requiresRegistration) {
         setStage("registration");
@@ -262,7 +280,10 @@ export function CheckoutIdentityStep({
 
   return (
     <div>
-      <h2 className="text-xl font-black text-foreground" id="checkout-step-title">
+      <h2
+        className="text-xl font-bold text-foreground"
+        id="checkout-step-title"
+      >
         اطلاعات رزروکننده
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
@@ -270,13 +291,21 @@ export function CheckoutIdentityStep({
       </p>
 
       {interruptionMessage ? (
-        <KoochAlert className="mt-6" title="تأیید هویت لازم است" variant="warning">
+        <KoochAlert
+          className="mt-6"
+          title="تأیید هویت لازم است"
+          variant="warning"
+        >
           {interruptionMessage}
         </KoochAlert>
       ) : null}
 
       {error && stage !== "otp" ? (
-        <KoochAlert className="mt-6" title="ادامه فرایند ممکن نشد" variant="destructive">
+        <KoochAlert
+          className="mt-6"
+          title="ادامه فرایند ممکن نشد"
+          variant="destructive"
+        >
           {error}
         </KoochAlert>
       ) : null}
@@ -284,7 +313,8 @@ export function CheckoutIdentityStep({
       {stage === "otp" ? (
         <form className="mt-6 grid gap-4" onSubmit={verifyOtp}>
           <KoochAlert title="کد تأیید ارسال شد" variant="info">
-            کد ارسال‌شده به <span dir="ltr">{formatPersianDigits(mobile)}</span> را وارد کنید.
+            کد ارسال‌شده به <span dir="ltr">{formatPersianDigits(mobile)}</span>{" "}
+            را وارد کنید.
           </KoochAlert>
           {devOtpCode && process.env.NODE_ENV !== "production" ? (
             <KoochAlert variant="default">
@@ -315,7 +345,11 @@ export function CheckoutIdentityStep({
             />
           </KoochField>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-            <KoochButton className="sm:min-w-40" loading={verifying} type="submit">
+            <KoochButton
+              className="sm:min-w-40"
+              loading={verifying}
+              type="submit"
+            >
               تأیید و ادامه
             </KoochButton>
             <KoochButton onClick={changeMobile} type="button" variant="ghost">
@@ -359,7 +393,8 @@ export function CheckoutIdentityStep({
           {stage === "registration" ? (
             <>
               <KoochAlert title="تکمیل اطلاعات حساب" variant="info">
-                برای این شماره حساب فعالی پیدا نشد. اطلاعات زیر را وارد کنید تا حساب واحد Kooch ساخته و کد تأیید ارسال شود.
+                برای این شماره حساب فعالی پیدا نشد. اطلاعات زیر را وارد کنید تا
+                حساب واحد Kooch ساخته و کد تأیید ارسال شود.
               </KoochAlert>
               <div className="grid gap-4 sm:grid-cols-2">
                 <KoochField label="نام" required>
@@ -394,8 +429,14 @@ export function CheckoutIdentityStep({
             </>
           ) : null}
 
-          <KoochButton className="sm:w-fit sm:min-w-48" loading={sending} type="submit">
-            {stage === "registration" ? "ساخت حساب و ارسال کد" : "ارسال کد تأیید"}
+          <KoochButton
+            className="sm:w-fit sm:min-w-48"
+            loading={sending}
+            type="submit"
+          >
+            {stage === "registration"
+              ? "ساخت حساب و ارسال کد"
+              : "ارسال کد تأیید"}
           </KoochButton>
           <KoochButton
             className="sm:w-fit"

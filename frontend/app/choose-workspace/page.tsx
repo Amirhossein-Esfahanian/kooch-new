@@ -77,7 +77,7 @@ export default function ChooseWorkspacePage() {
         <p className="text-sm font-bold text-[var(--theme-primary-text)]">
           انتخاب محیط کاربری
         </p>
-        <h1 className="mt-2 text-3xl font-black tracking-tight text-foreground">
+        <h1 className="mt-2 text-3xl font-bold tracking-tight text-foreground">
           می‌خواهید وارد کدام محیط شوید؟
         </h1>
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
@@ -95,7 +95,7 @@ export default function ChooseWorkspacePage() {
             onClick={() => choose(option)}
             type="button"
           >
-            <span className="text-xl font-black text-foreground">
+            <span className="text-xl font-bold text-foreground">
               {option.title}
             </span>
             <span className="mt-3 block text-sm leading-7 text-muted-foreground">

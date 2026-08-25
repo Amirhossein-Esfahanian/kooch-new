@@ -11,7 +11,7 @@ export default function OwnerSettingsPage() {
     <OwnerPanel propertyId={propertyId} title="تنظیمات">
       <div className="grid gap-5">
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-[var(--shadow-subtle)]">
-          <h2 className="text-xl font-black">تنظیمات اقامتگاه</h2>
+          <h2 className="text-xl font-bold">تنظیمات اقامتگاه</h2>
           <p className="mt-2 text-slate-500">
             برای ویرایش کامل اطلاعات، از فرم کامل اقامتگاه استفاده کنید.
           </p>

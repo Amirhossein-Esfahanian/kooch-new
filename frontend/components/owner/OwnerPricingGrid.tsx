@@ -817,7 +817,7 @@ export function OwnerPricingGrid({
     >
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <div className="min-w-0">
-          <h2 className="text-xl font-black text-foreground">
+          <h2 className="text-xl font-bold text-foreground">
             مدیریت قیمت روزانه
           </h2>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -897,7 +897,7 @@ export function OwnerPricingGrid({
         <div className="inline-flex rounded-xl border border-border bg-card p-1 shadow-sm">
           {pricingGuestTabs.map((tab) => (
             <button
-              className={`rounded-lg px-5 py-2 text-sm font-black transition ${
+              className={`rounded-lg px-5 py-2 text-sm font-bold transition ${
                 activeGuestType === tab.value
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-muted-foreground hover:bg-muted hover:text-foreground"
@@ -957,7 +957,7 @@ export function OwnerPricingGrid({
           padding="lg"
         >
           <div>
-            <h3 className="text-lg font-black text-foreground">
+            <h3 className="text-lg font-bold text-foreground">
               ابتدا باید برای این اقامتگاه اتاق تعریف کنید.
             </h3>
             <p className="mt-2 text-sm font-semibold text-muted-foreground">
@@ -1032,7 +1032,7 @@ export function OwnerPricingGrid({
                 })}
                 renderCell={(_row, _date, day, state) => (
                   <div
-                    className={`grid h-full place-items-center px-1 text-[11px] font-black ${
+                    className={`grid h-full place-items-center px-1 text-[11px] font-bold ${
                       state.disabled
                         ? "bg-muted text-muted-foreground"
                         : state.selected
@@ -1125,7 +1125,7 @@ export function OwnerPricingGrid({
                       currencyLabel={currencyLabel}
                     />
                   </KoochTableCell>
-                  <KoochTableCell className="font-black text-primary">
+                  <KoochTableCell className="font-bold text-primary">
                     <PriceHistoryValues
                       basePrice={item.newBasePrice}
                       currencyLabel={currencyLabel}
@@ -1181,13 +1181,13 @@ export function OwnerPricingGrid({
           <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-right text-sm">
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">اتاق‌ها</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {copyReviewDetails.roomNames}
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">بازه تاریخ</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {copyReviewDetails.dateRangeLabel}
               </dd>
             </div>
@@ -1195,7 +1195,7 @@ export function OwnerPricingGrid({
               <dt className="font-bold text-muted-foreground">
                 تعداد روزهای اثرگرفته
               </dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {formatPrice(copyReviewDetails.affectedDays)} روز در{" "}
                 {formatPrice(copyReviewDetails.rangeCount)} بازه
               </dd>
@@ -1224,25 +1224,25 @@ export function OwnerPricingGrid({
           <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-right text-sm">
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">اتاق‌ها</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {bulkReviewDetails.roomNames}
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">بازه تاریخ</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {bulkReviewDetails.dateRangeLabel}
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">نوع مهمان</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {pricingGuestTypeLabels[activeGuestType]}
               </dd>
             </div>
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">مبلغ</dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {bulkReviewDetails.priceLabel}
               </dd>
             </div>
@@ -1250,7 +1250,7 @@ export function OwnerPricingGrid({
               <dt className="font-bold text-muted-foreground">
                 تعداد روزهای اثرگرفته
               </dt>
-              <dd className="font-black text-foreground">
+              <dd className="font-bold text-foreground">
                 {formatPrice(bulkReviewDetails.affectedDays)} روز در{" "}
                 {formatPrice(bulkReviewDetails.rangeCount)} بازه
               </dd>

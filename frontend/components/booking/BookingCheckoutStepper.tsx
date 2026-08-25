@@ -15,7 +15,9 @@ export function BookingCheckoutStepper({
 }: {
   currentStep: BookingCheckoutStep;
 }) {
-  const currentIndex = checkoutSteps.findIndex((step) => step.id === currentStep);
+  const currentIndex = checkoutSteps.findIndex(
+    (step) => step.id === currentStep,
+  );
 
   return (
     <nav
@@ -40,12 +42,12 @@ export function BookingCheckoutStepper({
                 data-testid={`checkout-step-group-${step.id}`}
               >
                 <span
-                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-black ${
-                  isCurrent
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : isCompleted
-                      ? "border-primary bg-card text-primary"
-                      : "border-border bg-background text-muted-foreground"
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${
+                    isCurrent
+                      ? "border-primary bg-primary text-primary-foreground"
+                      : isCompleted
+                        ? "border-primary bg-card text-primary"
+                        : "border-border bg-background text-muted-foreground"
                   }`}
                 >
                   {step.number}
@@ -68,7 +70,11 @@ export function BookingCheckoutStepper({
                 />
               ) : null}
               <span className="sr-only">
-                {isCurrent ? "مرحله فعلی" : isCompleted ? "تکمیل‌شده" : "انجام‌نشده"}
+                {isCurrent
+                  ? "مرحله فعلی"
+                  : isCompleted
+                    ? "تکمیل‌شده"
+                    : "انجام‌نشده"}
               </span>
             </li>
           );

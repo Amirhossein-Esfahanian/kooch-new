@@ -32,7 +32,7 @@ export function ThemeSelector({ compact = false }: { compact?: boolean }) {
     <div className={compact ? "flex flex-wrap gap-2" : "grid gap-3"}>
       {!compact && (
         <div>
-          <h3 className="text-lg font-black text-slate-950">رنگ محیط کاربری</h3>
+          <h3 className="text-lg font-bold text-slate-950">رنگ محیط کاربری</h3>
           <p className="mt-1 text-sm text-slate-500">
             رنگ اصلی پنل و بخش‌های عمومی را انتخاب کنید.
           </p>
@@ -67,4 +67,3 @@ export function ThemeSelector({ compact = false }: { compact?: boolean }) {
     </div>
   );
 }
-

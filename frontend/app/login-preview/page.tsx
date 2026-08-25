@@ -135,7 +135,7 @@ export default function LoginMockPage() {
             <p className="mb-2 text-sm font-medium text-muted-foreground">
               ورود به فضای مدیریت
             </p>
-            <h1 className="text-3xl font-black tracking-tight sm:text-4xl">
+            <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">
               خوش آمدید
             </h1>
             <p className="mt-3 text-sm text-muted-foreground">
@@ -287,13 +287,13 @@ export default function LoginMockPage() {
 
         <div className="relative z-10 flex h-full min-h-screen flex-col justify-between p-12 text-white xl:p-16">
           <div>
-            <div className="text-4xl font-black tracking-tight xl:text-5xl">
+            <div className="text-4xl font-bold tracking-tight xl:text-5xl">
               فلای‌تودی
             </div>
           </div>
 
           <div className="max-w-2xl">
-            <h2 className="text-3xl font-black leading-relaxed xl:text-4xl">
+            <h2 className="text-3xl font-bold leading-relaxed xl:text-4xl">
               هتل و اقامتگاه خود را با یک{" "}
               <span className="text-amber-400">پنل</span> مدیریت کنید.
             </h2>

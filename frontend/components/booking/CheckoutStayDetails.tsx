@@ -225,7 +225,7 @@ export function CheckoutStayDetails({
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <h2
-              className="text-lg font-black text-foreground"
+              className="text-lg font-bold text-foreground"
               id="primary-guest-title"
             >
               اطلاعات مهمان
@@ -319,7 +319,7 @@ export function CheckoutStayDetails({
         aria-labelledby="special-request-title"
       >
         <h3
-          className="text-base font-black text-foreground"
+          className="text-base font-bold text-foreground"
           id="special-request-title"
         >
           درخواست ویژه
@@ -348,7 +348,7 @@ export function CheckoutStayDetails({
         aria-labelledby="arrival-time-title"
       >
         <h3
-          className="text-base font-black text-foreground"
+          className="text-base font-bold text-foreground"
           id="arrival-time-title"
         >
           زمان تقریبی ورود
@@ -432,7 +432,11 @@ function ReviewGrid({ children }: { children: React.ReactNode }) {
   return <dl className="grid gap-4 sm:grid-cols-2">{children}</dl>;
 }
 
-function ReviewValue({ dir, label, value }: {
+function ReviewValue({
+  dir,
+  label,
+  value,
+}: {
   dir?: "ltr" | "rtl";
   label: string;
   value: string;
@@ -441,7 +445,7 @@ function ReviewValue({ dir, label, value }: {
     <div className="min-w-0">
       <dt className="text-xs font-bold text-muted-foreground">{label}</dt>
       <dd
-        className="mt-1 break-words text-sm font-black text-foreground"
+        className="mt-1 break-words text-sm font-bold text-foreground"
         dir={dir}
       >
         {value}
