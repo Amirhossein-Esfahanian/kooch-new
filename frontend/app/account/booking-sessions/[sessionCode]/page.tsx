@@ -370,7 +370,11 @@ export default function AccountBookingSessionPage() {
         actions={<KoochButton onClick={() => router.push("/account/orders")} variant="outline">سفارش‌های من</KoochButton>}
         description={`${session.property.name} · ${session.reservations.length.toLocaleString("fa-IR")} رزرو مستقل`}
         eyebrow={session.displayCodeLabel || "کد سفارش"}
-        title={<span dir="ltr">{session.sessionCode}</span>}
+        title={
+          <span className="block max-w-full [overflow-wrap:anywhere]" dir="ltr">
+            {session.sessionCode}
+          </span>
+        }
       />
 
       {error && <KoochAlert variant="destructive">{error}</KoochAlert>}

@@ -151,6 +151,11 @@ describe("account booking session detail", () => {
   it("shows the session code and each independent reservation", async () => {
     render(<AccountBookingSessionPage />);
     expect((await screen.findAllByText("BS-1405-001")).length).toBeGreaterThan(0);
+    const sessionCode = screen.getByRole("heading", {
+      level: 1,
+      name: "BS-1405-001",
+    }).firstElementChild;
+    expect(sessionCode?.className).toContain("[overflow-wrap:anywhere]");
     const section = screen.getByRole("heading", { name: "رزروهای این سفارش" }).closest("section");
     expect(section).toBeTruthy();
     expect(within(section!).getByText("R-001")).toBeTruthy();
