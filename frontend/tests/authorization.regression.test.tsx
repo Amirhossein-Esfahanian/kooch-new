@@ -48,6 +48,7 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout, OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { OwnerPropertyProvider } from "@/components/owner/OwnerPropertyProvider";
+import { saveRememberedWorkspace } from "@/lib/auth-session";
 
 type SessionResponse = {
   userId: number;
@@ -385,12 +386,15 @@ describe("property workspace authorization", () => {
       defaultPropertyId: 11,
     });
 
-    localStorage.setItem("kooch_workspace", "owner");
     localStorage.setItem("kooch_owner_property_id", "22");
-    expect(resolveSessionDestination(owner)).toBe("/owner/properties/22");
+    expect(resolveSessionDestination(owner, "owner")).toBe(
+      "/owner/properties/22",
+    );
 
     localStorage.setItem("kooch_owner_property_id", "999");
-    expect(resolveSessionDestination(owner)).toBe("/owner/properties/11");
+    expect(resolveSessionDestination(owner, "owner")).toBe(
+      "/owner/properties/11",
+    );
     expect(localStorage.getItem("kooch_owner_property_id")).toBeNull();
   });
 
@@ -512,16 +516,20 @@ describe("legacy storage regression", () => {
       workspaces: ["admin", "account"],
       defaultWorkspace: "admin",
     });
+    const routingSession = {
+      ...multiWorkspaceSession,
+      user: { userId: multiWorkspaceSession.userId },
+    };
 
-    expect(resolveSessionDestination(multiWorkspaceSession)).toBe(
+    expect(resolveSessionDestination(routingSession)).toBe(
       "/choose-workspace",
     );
 
-    localStorage.setItem("kooch_workspace", "account");
-    expect(resolveSessionDestination(multiWorkspaceSession)).toBe("/account");
+    saveRememberedWorkspace(multiWorkspaceSession.userId, "account");
+    expect(resolveSessionDestination(routingSession)).toBe("/account");
 
-    localStorage.setItem("kooch_workspace", "owner");
-    expect(resolveSessionDestination(multiWorkspaceSession)).toBe(
+    saveRememberedWorkspace(multiWorkspaceSession.userId, "owner");
+    expect(resolveSessionDestination(routingSession)).toBe(
       "/choose-workspace",
     );
     expect(localStorage.getItem("kooch_workspace")).toBeNull();

@@ -28,7 +28,6 @@ vi.mock("sonner", () => sonner);
 import {
   AuthSessionProvider,
   useAuthSession,
-  type AuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import {
   apiRequest,
@@ -37,20 +36,23 @@ import {
   ownerPropertyKey,
   setToken,
 } from "@/lib/owner-api";
-import { resetSessionRevocationStateForTests } from "@/lib/auth-session";
+import {
+  resetSessionRevocationStateForTests,
+  saveRememberedWorkspace,
+  workspaceKey,
+} from "@/lib/auth-session";
 
-function authSessionResponse(): AuthSession {
+function authSessionResponse() {
   return {
-    user: {
-      userId: 7,
-      firstName: "Session",
-      lastName: "User",
-      guestId: null,
-      fullName: "Session User",
-      email: "session@example.com",
-      phoneNumber: null,
-      isActive: true,
-    },
+    userId: 7,
+    firstName: "Session",
+    lastName: "User",
+    guestId: null,
+    linkedGuest: null,
+    fullName: "Session User",
+    email: "session@example.com",
+    phoneNumber: null,
+    isActive: true,
     platformRole: "Client",
     platformPermissions: [],
     workspaces: ["account"],
@@ -124,13 +126,13 @@ describe("canonical session revocation handling", () => {
     localStorage.clear();
     resetSessionRevocationStateForTests();
     setToken("access-token");
-    localStorage.setItem("kooch_workspace", "owner");
+    saveRememberedWorkspace(7, "account");
     localStorage.setItem(ownerPropertyKey, "42");
     fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
   });
 
-  it("clears provider state, token, workspace selection, redirects, and shows one message for a body-coded revoked API response", async () => {
+  it("clears provider state and session data while preserving the remembered preference", async () => {
     await renderLoadedProvider(fetchMock);
     fetchMock.mockResolvedValueOnce(
       jsonResponse(
@@ -146,7 +148,10 @@ describe("canonical session revocation handling", () => {
     await waitFor(() => {
       expect(screen.getByTestId("authenticated").textContent).toBe("no");
       expect(getToken()).toBeNull();
-      expect(localStorage.getItem("kooch_workspace")).toBeNull();
+      expect(JSON.parse(localStorage.getItem(workspaceKey) ?? "null")).toEqual({
+        userId: 7,
+        workspace: "account",
+      });
       expect(localStorage.getItem(ownerPropertyKey)).toBeNull();
       expect(navigation.router.replace).toHaveBeenCalledTimes(1);
       expect(navigation.router.replace).toHaveBeenCalledWith("/login");

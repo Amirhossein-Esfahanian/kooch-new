@@ -8,6 +8,11 @@ export const ownerPropertyKey = "kooch_owner_property_id";
 export const workspaceValues = ["account", "owner", "admin"] as const;
 export type StoredWorkspace = (typeof workspaceValues)[number];
 
+interface RememberedWorkspacePreference {
+  userId: number;
+  workspace: StoredWorkspace;
+}
+
 export interface SessionRevokedEvent {
   code: typeof sessionRevokedCode;
   message: string;
@@ -28,26 +33,73 @@ export function isStoredWorkspace(value: unknown): value is StoredWorkspace {
   return workspaceValues.includes(value as StoredWorkspace);
 }
 
-export function getStoredWorkspace(
-  authorizedWorkspaces: readonly StoredWorkspace[],
-) {
+function readRememberedWorkspacePreference() {
   if (!canUseBrowserStorage()) return null;
 
-  const storedWorkspace = localStorage.getItem(workspaceKey);
+  const storedValue = localStorage.getItem(workspaceKey);
+  if (!storedValue) return null;
+
+  try {
+    const parsed = JSON.parse(
+      storedValue,
+    ) as Partial<RememberedWorkspacePreference>;
+    if (
+      !Number.isInteger(parsed.userId) ||
+      Number(parsed.userId) <= 0 ||
+      !isStoredWorkspace(parsed.workspace)
+    ) {
+      localStorage.removeItem(workspaceKey);
+      return null;
+    }
+
+    return parsed as RememberedWorkspacePreference;
+  } catch {
+    // Legacy values were raw workspace strings and were not scoped to a user.
+    localStorage.removeItem(workspaceKey);
+    return null;
+  }
+}
+
+export function getRememberedWorkspace(
+  userId: number,
+  authorizedWorkspaces: readonly StoredWorkspace[],
+) {
+  const preference = readRememberedWorkspacePreference();
+  if (!preference) return null;
+
   if (
-    !isStoredWorkspace(storedWorkspace) ||
-    !authorizedWorkspaces.includes(storedWorkspace)
+    preference.userId !== userId ||
+    !authorizedWorkspaces.includes(preference.workspace)
   ) {
     localStorage.removeItem(workspaceKey);
     return null;
   }
 
-  return storedWorkspace;
+  return preference.workspace;
 }
 
-export function setStoredWorkspace(workspace: StoredWorkspace) {
-  if (!canUseBrowserStorage() || !isStoredWorkspace(workspace)) return;
-  localStorage.setItem(workspaceKey, workspace);
+export function saveRememberedWorkspace(
+  userId: number,
+  workspace: StoredWorkspace,
+) {
+  if (
+    !canUseBrowserStorage() ||
+    !Number.isInteger(userId) ||
+    userId <= 0 ||
+    !isStoredWorkspace(workspace)
+  ) {
+    return;
+  }
+
+  const preference: RememberedWorkspacePreference = { userId, workspace };
+  localStorage.setItem(workspaceKey, JSON.stringify(preference));
+}
+
+export function clearRememberedWorkspace(userId: number) {
+  const preference = readRememberedWorkspacePreference();
+  if (preference?.userId === userId) {
+    localStorage.removeItem(workspaceKey);
+  }
 }
 
 export function getStoredOwnerPropertyId(
@@ -99,7 +151,6 @@ export function clearToken() {
 
   localStorage.removeItem(tokenKey);
   localStorage.removeItem(userNameKey);
-  localStorage.removeItem(workspaceKey);
   localStorage.removeItem(ownerPropertyKey);
   localStorage.removeItem(userRoleKey);
 }

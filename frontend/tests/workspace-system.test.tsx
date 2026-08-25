@@ -37,6 +37,7 @@ import AccountPage from "@/app/account/page";
 import ChooseWorkspacePage from "@/app/choose-workspace/page";
 import {
   AuthSessionProvider,
+  resolveSessionDestination,
   type AuthPropertyMembership,
   type AuthWorkspace,
   type PlatformRole,
@@ -44,11 +45,15 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { KoochUserMenu } from "@/components/KoochUserMenu";
 import {
+  clearRememberedWorkspace,
+  getRememberedWorkspace,
   getToken,
   ownerPropertyKey,
+  saveRememberedWorkspace,
   setToken,
   workspaceKey,
 } from "@/lib/auth-session";
+import { safeInternalReturnTo } from "@/lib/safe-return-to";
 
 type SessionResponse = {
   userId: number;
@@ -129,8 +134,10 @@ beforeEach(() => {
 });
 
 describe("Workspace routing and menu", () => {
-  it("shows only authorized Workspaces and switches without replacing the token", async () => {
+  it("shows only authorized Workspaces and switches without changing the remembered preference", async () => {
     setToken("stable-token");
+    saveRememberedWorkspace(7, "admin");
+    const rememberedPreference = localStorage.getItem(workspaceKey);
     localStorage.setItem(ownerPropertyKey, "22");
     renderWithSession(
       session({
@@ -155,7 +162,7 @@ describe("Workspace routing and menu", () => {
       screen.getByRole("menuitem", { name: "پنل اقامتگاه‌ها" }),
     );
 
-    expect(localStorage.getItem(workspaceKey)).toBe("owner");
+    expect(localStorage.getItem(workspaceKey)).toBe(rememberedPreference);
     expect(navigation.router.push).toHaveBeenCalledWith(
       "/owner/properties/22",
     );
@@ -177,9 +184,10 @@ describe("Workspace routing and menu", () => {
     ).toBeNull();
   });
 
-  it("logout clears the token and both persisted selections", async () => {
+  it("logout clears session data but preserves the remembered workspace", async () => {
     setToken("stable-token");
-    localStorage.setItem(workspaceKey, "account");
+    saveRememberedWorkspace(7, "account");
+    const rememberedPreference = localStorage.getItem(workspaceKey);
     localStorage.setItem(ownerPropertyKey, "11");
     renderWithSession(session(), <KoochUserMenu />);
     await waitForSession();
@@ -188,7 +196,7 @@ describe("Workspace routing and menu", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: "خروج" }));
 
     expect(getToken()).toBeNull();
-    expect(localStorage.getItem(workspaceKey)).toBeNull();
+    expect(localStorage.getItem(workspaceKey)).toBe(rememberedPreference);
     expect(localStorage.getItem(ownerPropertyKey)).toBeNull();
     expect(navigation.router.push).toHaveBeenCalledWith("/login");
   });
@@ -214,18 +222,19 @@ describe("Workspace routes", () => {
     ).toBe("/account/orders");
   });
 
-  it("redirects a single Workspace directly and persists it", async () => {
+  it("redirects a single Workspace directly without creating a preference", async () => {
     renderWithSession(session(), <ChooseWorkspacePage />);
     await waitForSession();
 
     await waitFor(() => {
       expect(navigation.router.replace).toHaveBeenCalledWith("/account");
     });
-    expect(localStorage.getItem(workspaceKey)).toBe("account");
+    expect(localStorage.getItem(workspaceKey)).toBeNull();
   });
 
-  it("shows authorized choices for multiple Workspaces and persists selection", async () => {
+  it("shows authorized choices for multiple Workspaces without implicitly remembering selection", async () => {
     navigation.pathname = "/choose-workspace";
+    saveRememberedWorkspace(7, "account");
     renderWithSession(
       session({
         platformRole: "SuperAdmin",
@@ -236,13 +245,103 @@ describe("Workspace routes", () => {
     );
     await waitForSession();
 
+    expect(await screen.findByRole("dialog")).toBeTruthy();
     expect(screen.getByRole("button", { name: /محیط مهمان/ })).toBeTruthy();
     expect(screen.getByRole("button", { name: /پنل مدیریت/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: /پنل اقامتگاه‌ها/ })).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: /پنل مدیریت/ }));
-    expect(localStorage.getItem(workspaceKey)).toBe("admin");
+    expect(localStorage.getItem(workspaceKey)).toBeNull();
     expect(navigation.router.push).toHaveBeenCalledWith("/admin");
+  });
+
+  it("keeps the mandatory chooser open for Escape and backdrop clicks", async () => {
+    navigation.pathname = "/choose-workspace";
+    renderWithSession(
+      session({
+        platformRole: "SuperAdmin",
+        workspaces: ["admin", "account"],
+      }),
+      <ChooseWorkspacePage />,
+    );
+    await waitForSession();
+
+    const dialog = await screen.findByRole("dialog");
+    expect(screen.queryByRole("button", { name: "بستن" })).toBeNull();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByRole("dialog")).toBe(dialog);
+
+    const backdrop = screen.getByRole("button", { name: "بستن دیالوگ" });
+    expect((backdrop as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(backdrop);
+    expect(screen.getByRole("dialog")).toBe(dialog);
+    expect(navigation.router.push).not.toHaveBeenCalled();
+  });
+
+  it("saves the selected Workspace only when remember choice is checked", async () => {
+    navigation.pathname = "/choose-workspace";
+    renderWithSession(
+      session({
+        platformRole: "SuperAdmin",
+        workspaces: ["admin", "account"],
+      }),
+      <ChooseWorkspacePage />,
+    );
+    await waitForSession();
+
+    fireEvent.click(
+      await screen.findByRole("checkbox", {
+        name: "انتخاب من را به خاطر بسپار",
+      }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /پنل مدیریت/ }));
+
+    expect(getRememberedWorkspace(7, ["admin", "account"])).toBe("admin");
+    expect(navigation.router.push).toHaveBeenCalledWith("/admin");
+  });
+
+  it.each([
+    ["محیط مهمان", "/account"],
+    ["پنل مدیریت", "/admin"],
+    ["پنل اقامتگاه‌ها", "/owner/properties/22"],
+  ])("navigates %s through the existing destination resolver", async (label, destination) => {
+    navigation.pathname = "/choose-workspace";
+    localStorage.setItem(ownerPropertyKey, "22");
+    renderWithSession(
+      session({
+        platformRole: "SuperAdmin",
+        workspaces: ["admin", "owner", "account"],
+        propertyMemberships: [membership(11), membership(22)],
+      }),
+      <ChooseWorkspacePage />,
+    );
+    await waitForSession();
+
+    fireEvent.click(await screen.findByRole("button", { name: new RegExp(label) }));
+
+    expect(navigation.router.push).toHaveBeenCalledWith(destination);
+  });
+
+  it("supports keyboard-originated activation through native option buttons", async () => {
+    navigation.pathname = "/choose-workspace";
+    renderWithSession(
+      session({
+        platformRole: "SuperAdmin",
+        workspaces: ["admin", "account"],
+      }),
+      <ChooseWorkspacePage />,
+    );
+    await waitForSession();
+
+    const accountOption = await screen.findByRole("button", {
+      name: /محیط مهمان/,
+    });
+    accountOption.focus();
+    expect(document.activeElement).toBe(accountOption);
+
+    fireEvent.click(accountOption, { detail: 0 });
+    expect(navigation.router.push).toHaveBeenCalledWith("/account");
   });
 
   it("redirects unauthenticated chooser access to login", async () => {
@@ -256,5 +355,82 @@ describe("Workspace routes", () => {
     await waitFor(() => {
       expect(navigation.router.replace).toHaveBeenCalledWith("/login");
     });
+  });
+});
+
+describe("remembered Workspace preference", () => {
+  it("stores and returns a valid preference scoped to the current user", () => {
+    saveRememberedWorkspace(7, "owner");
+
+    expect(getRememberedWorkspace(7, ["owner", "account"])).toBe("owner");
+    expect(JSON.parse(localStorage.getItem(workspaceKey) ?? "null")).toEqual({
+      userId: 7,
+      workspace: "owner",
+    });
+  });
+
+  it("does not allow another user to inherit the preference", () => {
+    saveRememberedWorkspace(7, "admin");
+
+    expect(getRememberedWorkspace(8, ["admin", "account"])).toBeNull();
+    expect(localStorage.getItem(workspaceKey)).toBeNull();
+  });
+
+  it("removes a preference when its Workspace is no longer authorized", () => {
+    saveRememberedWorkspace(7, "owner");
+
+    expect(getRememberedWorkspace(7, ["account"])).toBeNull();
+    expect(localStorage.getItem(workspaceKey)).toBeNull();
+  });
+
+  it("removes legacy unscoped raw Workspace values", () => {
+    localStorage.setItem(workspaceKey, "account");
+
+    expect(getRememberedWorkspace(7, ["account"])).toBeNull();
+    expect(localStorage.getItem(workspaceKey)).toBeNull();
+  });
+
+  it("clears only the current user's remembered preference", () => {
+    saveRememberedWorkspace(7, "account");
+
+    clearRememberedWorkspace(8);
+    expect(getRememberedWorkspace(7, ["account"])).toBe("account");
+
+    clearRememberedWorkspace(7);
+    expect(localStorage.getItem(workspaceKey)).toBeNull();
+  });
+
+  it("does not overwrite a remembered preference during route navigation", async () => {
+    saveRememberedWorkspace(7, "owner");
+    const rememberedPreference = localStorage.getItem(workspaceKey);
+    navigation.pathname = "/account";
+
+    renderWithSession(
+      session({
+        workspaces: ["owner", "account"],
+        propertyMemberships: [membership(11)],
+      }),
+      <AccountPage />,
+    );
+    await waitForSession();
+
+    expect(localStorage.getItem(workspaceKey)).toBe(rememberedPreference);
+  });
+
+  it("keeps a valid internal returnTo ahead of the remembered preference", () => {
+    saveRememberedWorkspace(7, "admin");
+    const currentSession = session({
+      platformRole: "SuperAdmin",
+      workspaces: ["admin", "account"],
+    });
+    const routingSession = {
+      ...currentSession,
+      user: { userId: currentSession.userId },
+    };
+
+    expect(
+      safeInternalReturnTo("/account/orders") ??
+        resolveSessionDestination(routingSession),
+    ).toBe("/account/orders");
   });
 });

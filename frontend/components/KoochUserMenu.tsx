@@ -8,7 +8,6 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
-import { setStoredWorkspace } from "@/lib/auth-session";
 
 const workspaceOptions: ReadonlyArray<{
   key: AuthWorkspace;
@@ -65,7 +64,6 @@ export function KoochUserMenu({
   }, [menuOpen]);
 
   function chooseWorkspace(workspace: AuthWorkspace) {
-    setStoredWorkspace(workspace);
     setMenuOpen(false);
     router.push(resolveSessionDestination(session, workspace));
   }

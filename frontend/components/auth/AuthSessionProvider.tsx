@@ -10,7 +10,7 @@ import {
   useRef,
   useState,
 } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
   apiRequest,
@@ -20,9 +20,8 @@ import {
 } from "@/lib/owner-api";
 import {
   getStoredOwnerPropertyId,
-  getStoredWorkspace,
+  getRememberedWorkspace,
   onSessionRevoked,
-  setStoredWorkspace,
   type StoredWorkspace,
 } from "@/lib/auth-session";
 
@@ -99,7 +98,9 @@ export type WorkspaceRoutingSession = Pick<
   | "propertyMemberships"
   | "defaultWorkspace"
   | "defaultPropertyId"
->;
+> & {
+  user?: Pick<AuthSessionUser, "userId"> | null;
+};
 
 interface CurrentUserResponse extends Omit<AuthSessionUser, "isActive" | "linkedGuest"> {
   linkedGuest?: AuthLinkedGuest | null;
@@ -168,7 +169,9 @@ export function resolveSessionDestination(
     requestedAuthorizedWorkspace ??
     (session.workspaces.length === 1
       ? session.workspaces[0]
-      : getStoredWorkspace(session.workspaces));
+      : session.user
+        ? getRememberedWorkspace(session.user.userId, session.workspaces)
+        : null);
 
   if (!workspace) {
     return session.workspaces.length > 1 ? "/choose-workspace" : "/login";
@@ -196,7 +199,6 @@ export function resolveSessionDestination(
 }
 
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
   const router = useRouter();
   const requestIdRef = useRef(0);
   const [session, setSession] = useState<AuthSession | null>(null);
@@ -220,7 +222,10 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       try {
         const response = await apiRequest<CurrentUserResponse>("/auth/me");
         const nextSession = toSession(response);
-        getStoredWorkspace(nextSession.workspaces);
+        getRememberedWorkspace(
+          nextSession.user.userId,
+          nextSession.workspaces,
+        );
         getStoredOwnerPropertyId(
           nextSession.propertyMemberships
             .filter(
@@ -279,22 +284,6 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
 
     void refreshSession().catch(() => undefined);
   }, [refreshSession]);
-
-  useEffect(() => {
-    if (!session) return;
-
-    const routeWorkspace: AuthWorkspace | null = pathname.startsWith("/admin")
-      ? "admin"
-      : pathname.startsWith("/owner")
-        ? "owner"
-        : pathname.startsWith("/account")
-          ? "account"
-          : null;
-
-    if (routeWorkspace && session.workspaces.includes(routeWorkspace)) {
-      setStoredWorkspace(routeWorkspace);
-    }
-  }, [pathname, session]);
 
   const value = useMemo<AuthSessionContextValue>(
     () => ({

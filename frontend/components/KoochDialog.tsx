@@ -47,6 +47,7 @@ function unlockBodyScroll() {
 }
 
 export type KoochDialogProps = {
+  backdropClassName?: string;
   bodyClassName?: string;
   className?: string;
   children: ReactNode;
@@ -60,11 +61,13 @@ export type KoochDialogProps = {
   initialFocusRef?: React.RefObject<HTMLElement | null>;
   onOpenChange: (open: boolean) => void;
   open: boolean;
+  showCloseButton?: boolean;
   size?: KoochDialogSize;
   title?: ReactNode;
 };
 
 export function KoochDialog({
+  backdropClassName = "",
   bodyClassName = "",
   className = "",
   children,
@@ -78,6 +81,7 @@ export function KoochDialog({
   initialFocusRef,
   onOpenChange,
   open,
+  showCloseButton = true,
   size = "lg",
   title,
 }: KoochDialogProps) {
@@ -224,6 +228,7 @@ export function KoochDialog({
         className={joinClasses(
           "fixed inset-0 z-0 bg-black/50",
           "transition-opacity duration-200 ease-out motion-reduce:duration-100",
+          backdropClassName,
           isVisible ? "opacity-100" : "opacity-0",
         )}
         disabled={closeDisabled}
@@ -260,7 +265,11 @@ export function KoochDialog({
           className="sticky top-0 z-10 grid gap-1.5 border-b border-border bg-card px-6 py-5 text-right"
           data-slot="dialog-header"
         >
-          <div className="max-w-[calc(100%-2.5rem)]">
+          <div
+            className={
+              showCloseButton ? "max-w-[calc(100%-2.5rem)]" : "max-w-full"
+            }
+          >
             {title && (
               <h2
                 className="text-lg font-semibold leading-none tracking-tight text-card-foreground"
@@ -282,18 +291,20 @@ export function KoochDialog({
             )}
           </div>
 
-          <button
-            aria-label="بستن"
-            className={joinClasses(
-              "touch-target-44 absolute top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-40",
-              closeButtonClassName || "right-4",
-            )}
-            disabled={closeDisabled}
-            onClick={() => onOpenChange(false)}
-            type="button"
-          >
-            x
-          </button>
+          {showCloseButton && (
+            <button
+              aria-label="بستن"
+              className={joinClasses(
+                "touch-target-44 absolute top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-40",
+                closeButtonClassName || "right-4",
+              )}
+              disabled={closeDisabled}
+              onClick={() => onOpenChange(false)}
+              type="button"
+            >
+              x
+            </button>
+          )}
         </header>
 
         <div
