@@ -15,7 +15,7 @@ public class UpdatePropertyBasicSectionRequest
     public InventoryMode InventoryMode { get; set; }
 }
 
-public class UpdatePropertyLocationSectionRequest
+public class UpdatePropertyLocationSectionRequest : PropertyCoordinatesRequest
 {
     [Range(1, int.MaxValue)]
     public int DestinationId { get; set; }
@@ -28,12 +28,6 @@ public class UpdatePropertyLocationSectionRequest
 
     [MaxLength(100)]
     public string Country { get; set; } = string.Empty;
-
-    [Range(-90, 90)]
-    public decimal? Latitude { get; set; }
-
-    [Range(-180, 180)]
-    public decimal? Longitude { get; set; }
 }
 
 public class UpdatePropertyBuildingSectionRequest

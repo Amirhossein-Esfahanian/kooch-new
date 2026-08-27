@@ -3,7 +3,7 @@ using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Properties;
 
-public class CreatePropertyRequest
+public class CreatePropertyRequest : PropertyCoordinatesRequest
 {
     public int? OwnerId { get; set; }
 
@@ -36,12 +36,6 @@ public class CreatePropertyRequest
 
     [Required, MaxLength(100)]
     public string Country { get; set; } = string.Empty;
-
-    [Range(-90, 90)]
-    public decimal? Latitude { get; set; }
-
-    [Range(-180, 180)]
-    public decimal? Longitude { get; set; }
 
     public PropertyType Type { get; set; }
     public InventoryMode InventoryMode { get; set; }

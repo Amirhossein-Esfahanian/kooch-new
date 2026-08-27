@@ -1,9 +1,10 @@
 using System.ComponentModel.DataAnnotations;
+using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Admin;
 
-public class AdminUpdatePropertyRequest
+public class AdminUpdatePropertyRequest : PropertyCoordinatesRequest
 {
     [Range(1, int.MaxValue)]
     public int OwnerId { get; set; }
@@ -43,8 +44,6 @@ public class AdminUpdatePropertyRequest
     public BreakfastOption BreakfastOption { get; set; }
     [Range(0, double.MaxValue)]
     public decimal? BreakfastPrice { get; set; }
-    public decimal? Latitude { get; set; }
-    public decimal? Longitude { get; set; }
     public int? TotalAreaM2 { get; set; }
     public int? LandAreaM2 { get; set; }
     public int? FloorsCount { get; set; }

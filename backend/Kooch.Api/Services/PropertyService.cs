@@ -35,6 +35,8 @@ public class PropertyService(
             throw new UnauthorizedAccessException("Property creation is admin-only.");
         }
 
+        PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
+
         if (!request.OwnerId.HasValue)
         {
             throw new ArgumentException("The selected owner is required.");
@@ -134,6 +136,8 @@ public class PropertyService(
             throw new UnauthorizedAccessException("You cannot manage this property.");
         }
 
+        PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
+
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         var englishName = request.EnglishName is null
             ? property.EnglishName
@@ -205,6 +209,7 @@ public class PropertyService(
         CancellationToken cancellationToken = default)
     {
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         property.DestinationId = request.DestinationId;
         property.Address = request.Address.Trim();
@@ -316,6 +321,7 @@ public class PropertyService(
         CancellationToken cancellationToken = default)
     {
         await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
+        PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
 
         var property = await GetEntityAsync(propertyId, cancellationToken);
         if (request.OwnerId != property.OwnerId)
