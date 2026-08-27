@@ -153,7 +153,14 @@ describe("Admin property transfer ownership", () => {
       within(dialog).queryByRole("option", { name: "اتاق‌های نام‌دار" }),
     ).toBeNull();
 
+    const userSearch = within(dialog).getByLabelText("جست‌وجوی کاربر");
     const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
+    const ownerFields = userSearch.parentElement?.parentElement;
+    expect(ownerFields).toBe(ownerSelect.parentElement?.parentElement);
+    expect(ownerFields?.className).toContain("md:grid-cols-2");
+    expect((within(dialog).getByLabelText(/شهر/) as HTMLInputElement).value).toBe(
+      "کاشان",
+    );
     await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
     fireEvent.change(ownerSelect, { target: { value: "7" } });
     fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
@@ -177,6 +184,7 @@ describe("Admin property transfer ownership", () => {
       expect(payload).toMatchObject({
         name: "اقامتگاه جدید",
         address: "کاشان، خیابان نمونه",
+        city: "کاشان",
         ownerId: 7,
         status: "Draft",
       });

@@ -156,7 +156,7 @@ const emptyCreateForm: CreatePropertyForm = {
   name: "",
   englishName: "",
   type: "TraditionalHouse",
-  city: "Kashan",
+  city: "کاشان",
   address: "",
   description: "",
 };
@@ -218,11 +218,13 @@ function getTransferOwnershipError(caught: unknown) {
 }
 
 function OwnerCandidateSearch({
+  className = "",
   excludeUserId,
   label,
   onSelect,
   selected,
 }: {
+  className?: string;
   excludeUserId?: number;
   label: string;
   onSelect: (candidate: AdminPropertyOwnerCandidateResponse | null) => void;
@@ -277,7 +279,7 @@ function OwnerCandidateSearch({
       : null;
 
   return (
-    <div className="grid gap-3">
+    <div className={`grid gap-3 ${className}`}>
       <KoochField label="جست‌وجوی کاربر">
         <KoochInput
           autoComplete="off"
@@ -1215,6 +1217,7 @@ export default function AdminPropertiesPage() {
 
                 {createForm.ownerMode === "existing-owner" ? (
                   <OwnerCandidateSearch
+                    className="md:grid-cols-2"
                     label="مالک اقامتگاه"
                     onSelect={(candidate) => {
                       setSelectedCreateOwner(candidate);

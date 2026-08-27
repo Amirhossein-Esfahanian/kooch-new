@@ -48,7 +48,7 @@ const property = {
   seoTitle: null,
   seoDescription: null,
   address: "نشانی",
-  city: "کاشان",
+  city: "شیراز",
   country: "Iran",
   latitude: null,
   longitude: null,
@@ -129,6 +129,16 @@ describe("PropertyWizard media and common areas", () => {
     expect(screen.queryByLabelText("مدل موجودی")).toBeNull();
     expect(screen.queryByRole("option", { name: "اتاق نام‌دار" })).toBeNull();
     expect(screen.getByLabelText("نوع اقامتگاه")).toBeTruthy();
+  });
+
+  it("preserves the stored city when editing an existing accommodation", async () => {
+    window.history.replaceState({}, "", "?step=1");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    const city = await screen.findByLabelText("شهر");
+    await waitFor(() =>
+      expect((city as HTMLInputElement).value).toBe("شیراز"),
+    );
   });
 
   it("keeps only the established uploader in the media step", async () => {
