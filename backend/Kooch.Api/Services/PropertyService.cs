@@ -19,6 +19,8 @@ public class PropertyService(
     IPropertyCompletionService propertyCompletionService,
     IChildPricingRuleResolver childPricingRuleResolver) : IPropertyService
 {
+    private const InventoryMode CanonicalPublicInventoryMode = InventoryMode.TypeBasedInventory;
+
     public async Task<PropertyResponse> CreatePropertyAsync(
         int userId,
         UserRole role,
@@ -62,7 +64,7 @@ public class PropertyService(
             Latitude = request.Latitude,
             Longitude = request.Longitude,
             Type = request.Type,
-            InventoryMode = request.InventoryMode,
+            InventoryMode = CanonicalPublicInventoryMode,
             CheckInTime = request.CheckInTime,
             CheckOutTime = request.CheckOutTime,
             BreakfastOption = request.BreakfastOption,

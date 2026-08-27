@@ -525,3 +525,29 @@ If no files were changed, state that explicitly.
 Preserve project integrity over implementation speed.
 
 When speed conflicts with confirmed product rules, architecture, shared-component consistency, or data safety, preserve the project rules and explain the constraint.
+
+# Repository Guard
+
+Canonical Kooch repository on this machine:
+
+E:\React\kooch
+
+Before any task that may modify files:
+
+1. Verify:
+   - current working directory
+   - `git rev-parse --show-toplevel`
+
+2. The Git repository root must resolve to:
+   E:\React\kooch
+
+3. Never work in:
+   G:\React\kooch
+
+4. If the repository root is different:
+   STOP before modifying files and report the mismatch.
+
+5. Do not create junctions, repository copies, or path aliases as a workaround.
+
+6. Do not use shell-based file editing as a workaround when the normal
+   patch/write mechanism cannot access the canonical repository.

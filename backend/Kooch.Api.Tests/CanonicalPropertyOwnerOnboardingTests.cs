@@ -34,6 +34,7 @@ public sealed class CanonicalPropertyOwnerOnboardingTests
         var permissions = JsonSerializer.Deserialize<PermissionMatrixDto>(membership.PermissionMatrixJson);
 
         Assert.Equal(OwnerUserId, created.OwnerId);
+        Assert.Equal(InventoryMode.TypeBasedInventory, created.InventoryMode);
         Assert.Equal(UserRole.Client, owner.Role);
         Assert.Equal(PropertyUserRole.PropertyOwner, membership.PropertyRole);
         Assert.Equal(PropertyUserStatus.Active, membership.Status);

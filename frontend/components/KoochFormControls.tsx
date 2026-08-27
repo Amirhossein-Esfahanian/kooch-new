@@ -67,7 +67,7 @@ function resolveAriaInvalid(
 }
 
 const controlClass =
-  "flex w-full rounded-md border border-border bg-background text-foreground shadow-sm transition placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive";
+  "kooch-form-control flex w-full transition disabled:opacity-50";
 
 export type KoochInputProps = InputHTMLAttributes<HTMLInputElement> &
   InvalidStateProps & {
@@ -698,9 +698,10 @@ export function KoochSearchableSelect({
           aria-expanded={open}
           aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
           className={joinClasses(
-            "flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-right text-sm text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive",
+            "kooch-form-control flex min-h-10 w-full items-center justify-between gap-2 px-3 py-2 text-right text-sm transition disabled:opacity-50",
             className,
           )}
+          data-control-active={open ? "true" : undefined}
           disabled={disabled}
           id={controlId}
           onClick={() => setOpen((current) => !current)}
@@ -929,9 +930,10 @@ export function KoochMultiSelect({
           aria-expanded={open}
           aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
           className={joinClasses(
-            "flex min-h-10 w-full items-center justify-between gap-2 rounded-md border border-border bg-background px-3 py-2 text-right text-sm text-foreground shadow-sm transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 aria-[invalid=true]:border-destructive aria-[invalid=true]:focus-visible:ring-destructive",
+            "kooch-form-control flex min-h-10 w-full items-center justify-between gap-2 px-3 py-2 text-right text-sm transition disabled:opacity-50",
             className,
           )}
+          data-control-active={open ? "true" : undefined}
           disabled={disabled}
           id={controlId}
           onClick={() => setOpen((current) => !current)}

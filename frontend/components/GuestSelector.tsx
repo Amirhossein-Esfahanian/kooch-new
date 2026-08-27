@@ -92,7 +92,7 @@ export function GuestSelector({
   label = "مسافران",
   icon,
   className = "",
-  controlClassName = "h-[60px] w-full rounded-xl border border-slate-300 bg-white px-4 text-sm font-bold text-slate-900 outline-none transition focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]",
+  controlClassName = "h-[60px] w-full px-4 text-sm font-bold transition",
   maxChildren = 6,
 }: GuestSelectorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -146,7 +146,8 @@ export function GuestSelector({
 
       <button
         aria-expanded={open}
-        className={`${controlClassName} flex items-center justify-between gap-3 text-right`}
+        className={`kooch-form-control ${controlClassName} flex items-center justify-between gap-3 text-right`}
+        data-control-active={open ? "true" : undefined}
         onClick={() => setOpen((current) => !current)}
         type="button"
       >
@@ -216,7 +217,7 @@ export function GuestSelector({
                   >
                     سن کودک {formatFaNumber(index + 1)}
                     <select
-                      className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm font-bold outline-none focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]"
+                      className="kooch-form-control h-11 px-3 text-sm font-bold"
                       onChange={(event) => {
                         const childAges = [...value.childAges];
                         childAges[index] = Number(event.target.value);

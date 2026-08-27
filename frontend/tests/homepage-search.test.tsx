@@ -80,6 +80,17 @@ describe("homepage accommodation search", () => {
     const dateFields = document.querySelectorAll("[data-combined-date-field]");
     expect(dateFields).toHaveLength(1);
     expect((dateFields[0] as HTMLElement).dataset.fieldSize).toBe("standard");
+    expect(dateFields[0].classList.contains("kooch-form-control")).toBe(true);
+    expect(
+      document
+        .querySelector("input[aria-label]")
+        ?.classList.contains("kooch-form-control"),
+    ).toBe(true);
+    expect(
+      document
+        .querySelector('button[aria-expanded="false"]')
+        ?.classList.contains("kooch-form-control"),
+    ).toBe(true);
     expect(document.querySelector('[style*="/svgs/users-3.svg"]')).not.toBeNull();
     expect(screen.getByRole("button", { name: "جستجوی اقامتگاه" }).className)
       .toContain("h-16");

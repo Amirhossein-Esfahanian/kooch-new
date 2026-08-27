@@ -187,9 +187,9 @@ export function SharedSingleDatePicker({
   );
   const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const buttonClass =
-    controlClassName ??
-    "grid rounded-xl border bg-white px-4 py-3 text-right transition";
+  const buttonClass = `kooch-form-control ${
+    controlClassName ?? "grid px-4 py-3 text-right transition"
+  }`;
   const { holidayByDate } = useHolidayCalendarMonths({
     visibleMonth,
     calendarType: activeCalendar,
@@ -213,7 +213,8 @@ export function SharedSingleDatePicker({
     <div className="relative grid gap-2" ref={wrapperRef} dir="rtl">
       <span className="text-sm font-bold text-slate-700">{label}</span>
       <button
-        className={`${buttonClass} ${open ? "border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary-border)]" : "border-slate-300 hover:border-[var(--theme-primary-border)]"}`}
+        className={buttonClass}
+        data-control-active={open ? "true" : undefined}
         onClick={() => {
           setTempDate(value);
           setVisibleMonth(

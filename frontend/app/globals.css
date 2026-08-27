@@ -80,11 +80,15 @@
   --theme-success-soft: #f0fdf4;
   --theme-text: var(--foreground);
   --theme-muted-text: var(--muted-foreground);
+  --control-surface: var(--card);
+  --control-disabled-surface: var(--muted);
+  --control-border: var(--border);
+  --control-border-hover: #cbd5e1;
   --page: var(--background);
   --surface: var(--card);
   --text: var(--foreground);
   --card-radius: 16px;
-  --input-radius: 12px;
+  --input-radius: 8px;
   --button-radius: 12px;
   --modal-radius: 20px;
   /* Hydration fallback; Header publishes its rendered height at runtime. */
@@ -182,6 +186,10 @@
   --theme-success-soft: rgb(74 222 128 / 0.14);
   --theme-text: var(--foreground);
   --theme-muted-text: var(--muted-foreground);
+  --control-surface: var(--card);
+  --control-disabled-surface: var(--muted);
+  --control-border: var(--border);
+  --control-border-hover: rgb(255 255 255 / 0.22);
   --page: var(--background);
   --surface: var(--card);
   --text: var(--foreground);
@@ -301,9 +309,62 @@ a {
 }
 
 .ds-input {
-  border: 1px solid var(--border);
+  border: 1px solid var(--control-border);
   border-radius: var(--input-radius);
-  background: var(--surface);
+  background: var(--control-surface);
+}
+
+.kooch-form-control {
+  border: 1px solid var(--control-border);
+  border-radius: var(--input-radius);
+  background: var(--control-surface);
+  color: var(--foreground);
+  box-shadow: none;
+  outline: none;
+  transition-duration: 150ms;
+  transition-property: background-color, border-color, box-shadow;
+  transition-timing-function: ease-out;
+}
+
+.kooch-form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.kooch-form-control:hover:not(:disabled):not([readonly]) {
+  border-color: var(--control-border-hover);
+}
+
+.kooch-form-control:focus,
+.kooch-form-control:focus-visible,
+.kooch-form-control[data-control-active="true"] {
+  border-color: var(--theme-primary);
+  box-shadow: inset 0 0 0 1px var(--theme-primary);
+  outline: none;
+}
+
+.kooch-form-control[aria-invalid="true"] {
+  border-color: var(--destructive);
+}
+
+.kooch-form-control[aria-invalid="true"]:focus,
+.kooch-form-control[aria-invalid="true"]:focus-visible,
+.kooch-form-control[aria-invalid="true"][data-control-active="true"] {
+  border-color: var(--destructive);
+  box-shadow: inset 0 0 0 1px var(--destructive);
+}
+
+.kooch-form-control:disabled,
+.kooch-form-control[aria-disabled="true"],
+.kooch-form-control[readonly] {
+  border-color: var(--control-border);
+  background: var(--control-disabled-surface);
+  color: var(--muted-foreground);
+  box-shadow: none;
+}
+
+.kooch-form-control:disabled,
+.kooch-form-control[aria-disabled="true"] {
+  cursor: not-allowed;
 }
 
 .ds-button-primary,
@@ -453,6 +514,10 @@ a {
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
+  }
+
+  .kooch-form-control {
+    transition-duration: 0ms;
   }
 
   .animate-spin,

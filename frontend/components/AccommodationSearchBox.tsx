@@ -183,7 +183,7 @@ export function AccommodationSearchBox({
 
   const fieldClass = `${
     variant === "hero" ? "h-16" : "h-[60px]"
-  } w-full rounded-lg border border-[var(--theme-border)] px-4 text-sm font-bold text-[var(--theme-foreground)] outline-none transition placeholder:text-[var(--theme-muted-foreground)] focus:border-[var(--theme-primary)] focus:ring-2 focus:ring-[var(--theme-primary-border)]`;
+  } kooch-form-control w-full px-4 text-sm font-bold transition`;
 
   const labelClass =
     "grid gap-2 text-sm font-bold text-[var(--theme-foreground)] ";

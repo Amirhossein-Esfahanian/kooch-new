@@ -244,7 +244,7 @@ function fallbackDateFields({
           minDate={formatLocalIsoDate(new Date())}
           labelsAbove={true}
           showFieldLabels
-          controlClassName="grid h-9 rounded-lg border border-border bg-background px-3 py-1.5 text-right text-sm transition hover:bg-muted focus-visible:ring-2 focus-visible:ring-ring"
+          controlClassName="grid h-9 px-3 py-1.5 text-right text-sm transition"
         />
       </div>
 

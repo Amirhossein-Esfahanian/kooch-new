@@ -121,6 +121,16 @@ describe("PropertyWizard media and common areas", () => {
     ]);
   });
 
+  it("does not expose the legacy inventory model while creating an accommodation", async () => {
+    window.history.replaceState({}, "", "?step=0");
+    render(<PropertyWizard mode="create" />);
+
+    await screen.findByRole("heading", { name: "اطلاعات پایه" });
+    expect(screen.queryByLabelText("مدل موجودی")).toBeNull();
+    expect(screen.queryByRole("option", { name: "اتاق نام‌دار" })).toBeNull();
+    expect(screen.getByLabelText("نوع اقامتگاه")).toBeTruthy();
+  });
+
   it("keeps only the established uploader in the media step", async () => {
     window.history.replaceState({}, "", "?step=4");
     render(<PropertyWizard mode="edit" propertyId={17} />);

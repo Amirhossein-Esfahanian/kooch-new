@@ -295,9 +295,9 @@ export function SharedDateRangePicker({
   const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const combinedTriggerRef = useRef<HTMLButtonElement>(null);
-  const dateButtonBase =
-    controlClassName ??
-    "grid rounded-lg border border-border bg-background px-4 py-3 text-right text-foreground transition hover:bg-muted";
+  const dateButtonBase = `kooch-form-control ${
+    controlClassName ?? "grid px-4 py-3 text-right transition"
+  }`;
   const isOpen = activeField !== null;
   const { holidayByDate } = useHolidayCalendarMonths({
     visibleMonth,
@@ -406,7 +406,8 @@ export function SharedDateRangePicker({
         aria-expanded={isOpen}
         aria-haspopup="dialog"
         aria-label={`${text.start}: ${start?.date ?? placeholderStart}، ${text.end}: ${end?.date ?? placeholderEnd}`}
-        className={`grid w-full min-w-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-stretch rounded-lg border bg-background text-right text-foreground transition hover:border-[var(--theme-primary-border)] hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${compact ? "min-h-12 px-3 py-1.5" : "min-h-16 px-4 py-2.5"} ${isOpen ? "border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary-border)]" : "border-border"}`}
+        className={`kooch-form-control grid w-full min-w-0 grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] items-stretch text-right transition ${compact ? "min-h-12 px-3 py-1.5" : "min-h-16 px-4 py-2.5"}`}
+        data-control-active={isOpen ? "true" : undefined}
         data-combined-date-field="true"
         data-field-size={fieldSize}
         onClick={() => open("startDate")}
@@ -501,7 +502,8 @@ export function SharedDateRangePicker({
           </span>
         )}
         <button
-          className={`${dateButtonBase} ${active ? "border-[var(--theme-primary)] ring-2 ring-[var(--theme-primary-border)]" : "border-border hover:border-[var(--theme-primary-border)]"}`}
+          className={dateButtonBase}
+          data-control-active={active ? "true" : undefined}
           onClick={() => open(field)}
           type="button"
         >

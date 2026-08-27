@@ -46,7 +46,6 @@ import {
   AdminPropertyOwnerAccountResponse,
   AdminPropertyOwnerCandidatePageResponse,
   AdminPropertyOwnerCandidateResponse,
-  InventoryMode,
   PropertyResponse,
   PropertyStatus,
   propertyTypes,
@@ -103,7 +102,6 @@ type CreatePropertyForm = {
   city: string;
   address: string;
   description: string;
-  inventoryMode: InventoryMode;
 };
 
 const previousOwnerRoleOptions: Exclude<PropertyUserRole, "PropertyOwner">[] = [
@@ -161,7 +159,6 @@ const emptyCreateForm: CreatePropertyForm = {
   city: "Kashan",
   address: "",
   description: "",
-  inventoryMode: "NamedRooms",
 };
 
 function normalizeSearchText(value: unknown) {
@@ -667,7 +664,6 @@ export default function AdminPropertiesPage() {
           city: createForm.city.trim(),
           country: "Iran",
           type: createForm.type,
-          inventoryMode: createForm.inventoryMode,
           checkInTime: "14:00",
           checkOutTime: "12:00",
           breakfastOption: "NoBreakfast",
@@ -1309,23 +1305,6 @@ export default function AdminPropertiesPage() {
                       {propertyTypeLabels[type]}
                     </option>
                   ))}
-                </KoochSelect>
-              </KoochField>
-
-              <KoochField label="مدل موجودی">
-                <KoochSelect
-                  onChange={(event) =>
-                    setCreateForm({
-                      ...createForm,
-                      inventoryMode: event.target.value as InventoryMode,
-                    })
-                  }
-                  value={createForm.inventoryMode}
-                >
-                  <option value="NamedRooms">اتاق‌های نام‌دار</option>
-                  <option value="TypeBasedInventory">
-                    موجودی بر اساس نوع اتاق
-                  </option>
                 </KoochSelect>
               </KoochField>
 

@@ -170,7 +170,7 @@ const initialData: WizardData = {
   isWheelchairAccessible: false,
   hasGroundFloorRoom: false,
   hasAccessibleBathroom: false,
-  inventoryMode: "NamedRooms",
+  inventoryMode: "TypeBasedInventory",
   selectedAmenityIds: [],
   propertyDescription: "",
   additionalNotes: "",
@@ -192,7 +192,7 @@ const initialData: WizardData = {
 };
 
 const inputClass =
-  "w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm text-foreground shadow-sm outline-none transition placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
+  "kooch-form-control w-full px-3 py-2.5 text-sm transition disabled:opacity-50";
 const cardClass =
   "rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm";
 const choiceClass =
@@ -1183,19 +1183,6 @@ export function PropertyWizard({
                       {propertyTypeLabels[type]}
                     </option>
                   ))}
-                </select>
-              </label>
-              <label className="grid gap-1 text-sm font-bold">
-                مدل موجودی
-                <select
-                  className={inputClass}
-                  onChange={(event) =>
-                    update("inventoryMode", event.target.value as InventoryMode)
-                  }
-                  value={data.inventoryMode}
-                >
-                  <option value="NamedRooms">اتاق نام‌دار</option>
-                  <option value="TypeBasedInventory">موجودی تعدادی</option>
                 </select>
               </label>
             </div>

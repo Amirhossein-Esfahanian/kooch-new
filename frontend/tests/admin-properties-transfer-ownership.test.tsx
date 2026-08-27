@@ -125,6 +125,64 @@ beforeEach(() => {
 });
 
 describe("Admin property transfer ownership", () => {
+  it("creates a property without exposing or sending the legacy inventory model", async () => {
+    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/admin/properties" && !options) return Promise.resolve([]);
+      if (path.startsWith("/admin/properties/owner-candidates?")) {
+        return Promise.resolve(candidatePage);
+      }
+      if (path === "/admin/properties" && options?.method === "POST") {
+        return Promise.resolve({
+          ...property,
+          inventoryMode: "TypeBasedInventory",
+        });
+      }
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+
+    render(<AdminPropertiesPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "افزودن اقامتگاه" }),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "افزودن اقامتگاه",
+    });
+    expect(within(dialog).queryByLabelText("مدل موجودی")).toBeNull();
+    expect(
+      within(dialog).queryByRole("option", { name: "اتاق‌های نام‌دار" }),
+    ).toBeNull();
+
+    const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
+    await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(ownerSelect, { target: { value: "7" } });
+    fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
+      target: { value: "اقامتگاه جدید" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/آدرس/), {
+      target: { value: "کاشان، خیابان نمونه" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ایجاد پیش‌نویس" }),
+    );
+
+    await waitFor(() => {
+      const createCall = ownerApi.apiRequest.mock.calls.find(
+        ([path, options]) =>
+          path === "/admin/properties" && options?.method === "POST",
+      );
+      expect(createCall).toBeTruthy();
+      const payload = JSON.parse(String(createCall?.[1]?.body));
+      expect(payload).not.toHaveProperty("inventoryMode");
+      expect(payload).toMatchObject({
+        name: "اقامتگاه جدید",
+        address: "کاشان، خیابان نمونه",
+        ownerId: 7,
+        status: "Draft",
+      });
+    });
+  });
+
   it("uses bounded search, confirms the demotion outcome, prevents duplicates, and refreshes", async () => {
     let resolveTransfer!: (value: PropertyResponse) => void;
     const transferResponse = new Promise<PropertyResponse>((resolve) => {
