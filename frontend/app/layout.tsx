@@ -5,6 +5,7 @@ import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 import { OwnerPropertyProvider } from "@/components/owner/OwnerPropertyProvider";
 import { Toaster } from "sonner";
 import { iranYekan } from "./fonts";
+import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 
 export const metadata: Metadata = {
