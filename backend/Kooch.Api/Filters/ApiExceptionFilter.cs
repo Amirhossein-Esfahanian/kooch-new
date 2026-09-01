@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using Kooch.Api.Exceptions;
+using Kooch.Api.Services.MediaStorage;
+using Kooch.Api.Services.Svg;
 
 namespace Kooch.Api.Filters;
 
@@ -8,6 +10,26 @@ public class ApiExceptionFilter : IExceptionFilter
 {
     public void OnException(ExceptionContext context)
     {
+        if (context.Exception is SvgSanitizationException svgException)
+        {
+            context.Result = new BadRequestObjectResult(new
+            {
+                message = SvgSanitizationMessages.For(svgException.Failure)
+            });
+            context.ExceptionHandled = true;
+            return;
+        }
+
+        if (context.Exception is MediaStagingException)
+        {
+            context.Result = new BadRequestObjectResult(new
+            {
+                message = "توکن بارگذاری SVG معتبر نیست یا منقضی شده است."
+            });
+            context.ExceptionHandled = true;
+            return;
+        }
+
         if (context.Exception is PropertyActivationException activationException)
         {
             context.Result = new ObjectResult(new

@@ -28,6 +28,8 @@ interface AmenityFormValues {
   name: string;
   slug: string;
   icon: string;
+  iconUploadToken: string | null;
+  removeIcon: boolean;
   scope: AmenityScope;
   sortOrder: number;
   isActive: boolean;
@@ -37,6 +39,8 @@ interface AmenityCategoryFormValues {
   name: string;
   slug: string;
   icon: string;
+  iconUploadToken: string | null;
+  removeIcon: boolean;
   sortOrder: number;
   isActive: boolean;
 }
@@ -48,6 +52,8 @@ const emptyForm: AmenityFormValues = {
   name: "",
   slug: "",
   icon: "",
+  iconUploadToken: null,
+  removeIcon: false,
   scope: "Property",
   sortOrder: 0,
   isActive: true,
@@ -57,6 +63,8 @@ const emptyCategoryForm: AmenityCategoryFormValues = {
   name: "",
   slug: "",
   icon: "",
+  iconUploadToken: null,
+  removeIcon: false,
   sortOrder: 0,
   isActive: true,
 };
@@ -93,6 +101,8 @@ export function AmenityManagement({
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [amenityIconStaging, setAmenityIconStaging] = useState(false);
+  const [categoryIconStaging, setCategoryIconStaging] = useState(false);
   const isAdminMode = mode === "admin";
 
   const activeCategory = useMemo(
@@ -111,12 +121,6 @@ export function AmenityManagement({
         : [],
     [activeCategory, amenities],
   );
-
-  const iconSlug = form.slug.trim() || createSlug(form.name) || "amenity-icon";
-  const categoryIconSlug =
-    categoryForm.slug.trim() ||
-    createSlug(categoryForm.name) ||
-    "amenity-category-icon";
 
   async function load() {
     const [categoryResults, amenityResults] = await Promise.all([
@@ -171,6 +175,8 @@ export function AmenityManagement({
       name: amenity.name,
       slug: amenity.slug,
       icon: amenity.icon ?? "",
+      iconUploadToken: null,
+      removeIcon: false,
       scope: amenity.scope,
       sortOrder: amenity.sortOrder,
       isActive: true,
@@ -197,6 +203,8 @@ export function AmenityManagement({
       name: category.name,
       slug: category.slug,
       icon: category.icon ?? "",
+      iconUploadToken: null,
+      removeIcon: false,
       sortOrder: category.sortOrder,
       isActive: category.isActive,
     });
@@ -212,6 +220,7 @@ export function AmenityManagement({
 
   async function saveCategory(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (categoryIconStaging) return;
     setSaving(true);
 
     try {
@@ -219,7 +228,8 @@ export function AmenityManagement({
         name: categoryForm.name.trim(),
         slug: categoryForm.slug.trim() || createSlug(categoryForm.name),
         sortOrder: categoryForm.sortOrder,
-        icon: categoryForm.icon.trim() || null,
+        iconUploadToken: categoryForm.iconUploadToken,
+        removeIcon: categoryForm.removeIcon,
         isActive: categoryForm.isActive,
       };
 
@@ -239,6 +249,17 @@ export function AmenityManagement({
       );
       closeCategoryModal();
     } catch (caught) {
+      if (
+        categoryForm.iconUploadToken &&
+        caught instanceof Error &&
+        caught.message.includes("توکن")
+      ) {
+        setCategoryForm((current) => ({
+          ...current,
+          iconUploadToken: null,
+          removeIcon: false,
+        }));
+      }
       toast.error(
         caught instanceof Error ? caught.message : "دسته‌بندی ذخیره نشد",
       );
@@ -249,6 +270,7 @@ export function AmenityManagement({
 
   async function saveAmenity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (amenityIconStaging) return;
     setSaving(true);
 
     try {
@@ -268,7 +290,8 @@ export function AmenityManagement({
         name: form.name.trim(),
         slug: form.slug.trim() || createSlug(form.name),
         description: null,
-        icon: form.icon.trim() || null,
+        iconUploadToken: form.iconUploadToken,
+        removeIcon: form.removeIcon,
         scope: form.scope,
         sortOrder: form.sortOrder,
       };
@@ -285,6 +308,17 @@ export function AmenityManagement({
       toast.success(editingAmenity ? "امکان ویرایش شد" : "امکان جدید اضافه شد");
       closeModal();
     } catch (caught) {
+      if (
+        form.iconUploadToken &&
+        caught instanceof Error &&
+        caught.message.includes("توکن")
+      ) {
+        setForm((current) => ({
+          ...current,
+          iconUploadToken: null,
+          removeIcon: false,
+        }));
+      }
       toast.error(caught instanceof Error ? caught.message : "امکان ذخیره نشد");
     } finally {
       setSaving(false);
@@ -588,6 +622,7 @@ export function AmenityManagement({
                         <KoochButton
                           onClick={() => openEditModal(amenity)}
                           size="sm"
+                          title="ویرایش"
                           variant="outline"
                         >
                           <KoochIcon name="editl"></KoochIcon>
@@ -595,6 +630,7 @@ export function AmenityManagement({
                         <KoochButton
                           onClick={() => setDeleteTarget(amenity)}
                           size="sm"
+                          title="حذف"
                           variant="destructive"
                         >
                           <KoochIcon name="deletel"></KoochIcon>
@@ -622,7 +658,7 @@ export function AmenityManagement({
                 لغو
               </KoochButton>
               <KoochButton
-                disabled={saving}
+                disabled={saving || categoryIconStaging}
                 form="category-form"
                 type="submit"
                 variant="primary"
@@ -700,27 +736,39 @@ export function AmenityManagement({
               </KoochField>
               <KoochField
                 className="sm:col-span-2"
-                helperText="فقط فایل SVG پذیرفته می‌شود و مسیر نسبی آن در دیتابیس ذخیره خواهد شد."
+                helperText="فایل SVG پس از بررسی امن، همراه با ذخیره دسته‌بندی نهایی می‌شود."
                 label="آیکن SVG"
               >
                 <KoochSvgUploader
                   disabled={saving}
-                  fileNameHint={categoryIconSlug}
-                  helperText="پیش‌نمایش پس از بارگذاری نمایش داده می‌شود."
-                  onChange={(path) =>
-                    setCategoryForm((current) => ({
-                      ...current,
-                      icon: path,
-                    }))
-                  }
+                  helperText="حداکثر حجم ۲۵۶ کیلوبایت است؛ پیش‌نمایش موقت تا زمان ذخیره نمایش داده می‌شود."
+                  key={`category-icon-${categoryModalOpen}-${editingCategory?.id ?? "new"}`}
                   onRemove={() =>
                     setCategoryForm((current) => ({
                       ...current,
-                      icon: "",
+                      iconUploadToken: null,
+                      removeIcon: Boolean(current.icon),
                     }))
                   }
-                  uploadPath="/amenity-categories/svg"
-                  value={categoryForm.icon}
+                  onRestore={() =>
+                    setCategoryForm((current) => ({
+                      ...current,
+                      iconUploadToken: null,
+                      removeIcon: false,
+                    }))
+                  }
+                  onStaged={(uploadToken) =>
+                    setCategoryForm((current) => ({
+                      ...current,
+                      iconUploadToken: uploadToken,
+                      removeIcon: false,
+                    }))
+                  }
+                  onUploadingChange={setCategoryIconStaging}
+                  pendingUploadToken={categoryForm.iconUploadToken}
+                  persistedValue={categoryForm.icon}
+                  removePending={categoryForm.removeIcon}
+                  stagePath="/amenity-categories/svg/stage"
                 />
               </KoochField>
             </div>
@@ -740,7 +788,7 @@ export function AmenityManagement({
               لغو
             </KoochButton>
             <KoochButton
-              disabled={saving}
+              disabled={saving || amenityIconStaging}
               form="amenity-form"
               type="submit"
               variant="primary"
@@ -828,27 +876,39 @@ export function AmenityManagement({
             </KoochField>
             <KoochField
               className="sm:col-span-2"
-              helperText="فقط فایل SVG پذیرفته می‌شود و مسیر نسبی آن ذخیره خواهد شد."
+              helperText="فایل SVG پس از بررسی امن، همراه با ذخیره امکان نهایی می‌شود."
               label="آیکن SVG"
             >
               <KoochSvgUploader
                 disabled={saving}
-                fileNameHint={iconSlug}
-                helperText="پیش‌نمایش پس از بارگذاری نمایش داده می‌شود."
-                onChange={(path) =>
-                  setForm((current) => ({
-                    ...current,
-                    icon: path,
-                  }))
-                }
+                helperText="حداکثر حجم ۲۵۶ کیلوبایت است؛ پیش‌نمایش موقت تا زمان ذخیره نمایش داده می‌شود."
+                key={`amenity-icon-${modalOpen}-${editingAmenity?.id ?? "new"}`}
                 onRemove={() =>
                   setForm((current) => ({
                     ...current,
-                    icon: "",
+                    iconUploadToken: null,
+                    removeIcon: Boolean(current.icon),
                   }))
                 }
-                uploadPath="/amenities/svg"
-                value={form.icon}
+                onRestore={() =>
+                  setForm((current) => ({
+                    ...current,
+                    iconUploadToken: null,
+                    removeIcon: false,
+                  }))
+                }
+                onStaged={(uploadToken) =>
+                  setForm((current) => ({
+                    ...current,
+                    iconUploadToken: uploadToken,
+                    removeIcon: false,
+                  }))
+                }
+                onUploadingChange={setAmenityIconStaging}
+                pendingUploadToken={form.iconUploadToken}
+                persistedValue={form.icon}
+                removePending={form.removeIcon}
+                stagePath="/amenities/svg/stage"
               />
             </KoochField>
             <KoochField label="ترتیب نمایش">

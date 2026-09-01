@@ -263,7 +263,6 @@ public static class SeedData
 
             category.Name = item.Name;
             category.SortOrder = item.SortOrder;
-            category.Icon = item.Icon;
             category.IsActive = true;
             category.IsDeleted = false;
             category.DeletedAtUtc = null;

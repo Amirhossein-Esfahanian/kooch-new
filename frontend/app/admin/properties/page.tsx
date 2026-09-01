@@ -25,6 +25,10 @@ import {
 import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
+  PropertyLocationPicker,
+  type PropertyCoordinates,
+} from "@/components/property/PropertyLocationPicker";
+import {
   CreateUserFields,
   getCreateUserApiError,
   hasCreateUserIdentityErrors,
@@ -383,6 +387,8 @@ export default function AdminPropertiesPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [createForm, setCreateForm] =
     useState<CreatePropertyForm>(emptyCreateForm);
+  const [createCoordinates, setCreateCoordinates] =
+    useState<PropertyCoordinates | null>(null);
   const [creating, setCreating] = useState(false);
   const [transferProperty, setTransferProperty] =
     useState<PropertyResponse | null>(null);
@@ -485,6 +491,7 @@ export default function AdminPropertiesPage() {
       ownerId: "",
     });
     setSelectedCreateOwner(null);
+    setCreateCoordinates(null);
     setError("");
     setCreateIdentityErrors({});
     setCreateOpen(true);
@@ -665,6 +672,8 @@ export default function AdminPropertiesPage() {
           address: createForm.address.trim(),
           city: createForm.city.trim(),
           country: "Iran",
+          latitude: createCoordinates?.latitude ?? null,
+          longitude: createCoordinates?.longitude ?? null,
           type: createForm.type,
           checkInTime: "14:00",
           checkOutTime: "12:00",
@@ -677,6 +686,7 @@ export default function AdminPropertiesPage() {
       toast.success("اقامتگاه پیش‌نویس ایجاد شد.");
       setCreateOpen(false);
       setCreateForm(emptyCreateForm);
+      setCreateCoordinates(null);
       await load();
 
       if (!owner.setupLink || process.env.NODE_ENV === "production") {
@@ -1333,6 +1343,13 @@ export default function AdminPropertiesPage() {
                   value={createForm.address}
                 />
               </KoochField>
+
+              <div className="min-w-0 md:col-span-2">
+                <PropertyLocationPicker
+                  onChange={setCreateCoordinates}
+                  value={createCoordinates}
+                />
+              </div>
 
               <KoochField className="md:col-span-2" label="توضیح کوتاه">
                 <KoochTextarea

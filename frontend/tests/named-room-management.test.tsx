@@ -6,7 +6,11 @@ import {
   within,
 } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { RoomTypeResponse } from "@/lib/owner-api";
+import type {
+  AmenityCategoryResponse,
+  AmenityResponse,
+  RoomTypeResponse,
+} from "@/lib/owner-api";
 
 const ownerApi = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
@@ -72,11 +76,20 @@ const zanbagh: RoomTypeResponse = {
   amenities: [],
 };
 
-function arrangeApi(initialRoomTypes: RoomTypeResponse[] = []) {
+function arrangeApi(
+  initialRoomTypes: RoomTypeResponse[] = [],
+  amenityFixtures: {
+    categories?: AmenityCategoryResponse[];
+    amenities?: AmenityResponse[];
+  } = {},
+) {
   let roomTypes = [...initialRoomTypes];
   ownerApi.apiRequest.mockImplementation(
     async (path: string, init?: RequestInit) => {
-      if (path === "/bed-types" || path === "/amenities") return [];
+      if (path === "/bed-types") return [];
+      if (path === "/amenity-categories")
+        return amenityFixtures.categories ?? [];
+      if (path === "/amenities") return amenityFixtures.amenities ?? [];
       if (path === "/catalogs/room-kinds") return roomKinds;
       if (path === "/owner/properties/3/images") return [];
       if (
@@ -252,6 +265,61 @@ describe("unified owner sellable room type management", () => {
       await within(dialog).findByText("مدیریت تصاویر نوع اتاق"),
     ).toBeTruthy();
     expect(await screen.findByText("دابل دلوکس")).toBeTruthy();
+  });
+
+  it("toggles the shared amenity card and preserves the room amenity ID payload", async () => {
+    const category: AmenityCategoryResponse = {
+      id: 2,
+      name: "خدمات پایه",
+      slug: "base-services",
+      sortOrder: 1,
+      icon: "/svgs/amenity-categories/base-services.svg",
+      isActive: true,
+    };
+    const amenity: AmenityResponse = {
+      id: 7,
+      amenityCategoryId: category.id,
+      categoryName: category.name,
+      categorySlug: category.slug,
+      categorySortOrder: category.sortOrder,
+      name: "اینترنت بی‌سیم",
+      slug: "wifi",
+      description: null,
+      icon: "/svgs/amenities/wifi.svg",
+      scope: "Both",
+      sortOrder: 1,
+    };
+    arrangeApi([], { categories: [category], amenities: [amenity] });
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog, "2");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+
+    const card = within(dialog).getByRole("button", { name: amenity.name });
+    expect(card.getAttribute("aria-pressed")).toBe("false");
+    expect(within(card).queryByRole("checkbox")).toBeNull();
+    fireEvent.click(card);
+    expect(card.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "ذخیره و ادامه به تصاویر",
+      }),
+    );
+
+    await waitFor(() => {
+      const call = ownerApi.apiRequest.mock.calls.find(
+        ([path, init]) =>
+          path === "/owner/properties/3/room-types" && init?.method === "POST",
+      );
+      expect(JSON.parse(String(call?.[1]?.body)).amenityIds).toEqual([
+        amenity.id,
+      ]);
+    });
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith("/amenity-categories");
   });
 
   it("updates a legacy RoomType from one to multiple sellable units without legacy validation", async () => {

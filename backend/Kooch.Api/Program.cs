@@ -8,7 +8,10 @@ using Kooch.Api.Filters;
 using Kooch.Api.Endpoints;
 using Kooch.Api.Integrations.PnlDev;
 using Kooch.Api.Services;
+using Kooch.Api.Services.Amenities;
 using Kooch.Api.Services.Holidays;
+using Kooch.Api.Services.MediaStorage;
+using Kooch.Api.Services.Svg;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.RateLimiting;
@@ -31,6 +34,12 @@ builder.Services.Configure<PnlDevOptions>(
     builder.Configuration.GetSection(PnlDevOptions.SectionName));
 builder.Services.Configure<HolidayCalendarSynchronizationOptions>(
     builder.Configuration.GetSection(HolidayCalendarSynchronizationOptions.SectionName));
+builder.Services.Configure<MediaStorageOptions>(
+    builder.Configuration.GetSection(MediaStorageOptions.SectionName));
+builder.Services.AddSingleton<IMediaStorage, FileSystemMediaStorage>();
+builder.Services.AddSingleton<ISvgSanitizer, SvgSanitizer>();
+builder.Services.AddScoped<IAmenityCategoryIconMigration, AmenityCategoryIconMigration>();
+builder.Services.AddScoped<IAmenityIconMigration, AmenityIconMigration>();
 builder.Services.AddHttpClient<IHolidayProvider, PnlDevHolidayProvider>();
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddScoped<IHolidayCalendarSynchronizationService, HolidayCalendarSynchronizationService>();
@@ -242,6 +251,8 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 var app = builder.Build();
+var mediaStorage = app.Services.GetRequiredService<IMediaStorage>();
+mediaStorage.Initialize();
 
 if (args.Contains("--audit-authorization-data", StringComparer.OrdinalIgnoreCase))
 {
@@ -264,6 +275,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseMediaStorageStaticFiles(mediaStorage);
 app.UseStaticFiles();
 app.UseAuthentication();
 app.UseRateLimiter();
@@ -276,6 +288,54 @@ await using (var scope = app.Services.CreateAsyncScope())
     var dbContext = scope.ServiceProvider.GetRequiredService<KoochDbContext>();
     await dbContext.Database.MigrateAsync();
     await SeedData.InitializeAsync(dbContext);
+
+    var categoryIconMigration = scope.ServiceProvider
+        .GetRequiredService<IAmenityCategoryIconMigration>();
+    var categoryIconMigrationResult = await categoryIconMigration.MigrateAsync();
+    app.Logger.LogInformation(
+        "Amenity category icon startup migration completed with {MigratedCount} migrated, {SkippedCount} skipped, and {FailedCount} failures.",
+        categoryIconMigrationResult.MigratedCount,
+        categoryIconMigrationResult.SkippedCount,
+        categoryIconMigrationResult.FailedCount);
+
+    foreach (var failure in categoryIconMigrationResult.Failures)
+    {
+        app.Logger.LogError(
+            "Amenity category icon startup migration failure for {CategorySlug} at {FailureStage}: {FailureMessage}",
+            failure.CategorySlug,
+            failure.Stage,
+            failure.Message);
+    }
+
+    if (categoryIconMigrationResult.FailedCount > 0)
+    {
+        throw new InvalidOperationException(
+            $"Amenity category icon startup migration failed with {categoryIconMigrationResult.FailedCount} unresolved failure(s).");
+    }
+
+    var amenityIconMigration = scope.ServiceProvider
+        .GetRequiredService<IAmenityIconMigration>();
+    var amenityIconMigrationResult = await amenityIconMigration.MigrateAsync();
+    app.Logger.LogInformation(
+        "Amenity icon startup migration completed with {MigratedCount} migrated, {SkippedCount} skipped, and {FailedCount} failures.",
+        amenityIconMigrationResult.MigratedCount,
+        amenityIconMigrationResult.SkippedCount,
+        amenityIconMigrationResult.FailedCount);
+
+    foreach (var failure in amenityIconMigrationResult.Failures)
+    {
+        app.Logger.LogError(
+            "Amenity icon startup migration failure for {AmenitySlug} at {FailureStage}: {FailureMessage}",
+            failure.AmenitySlug,
+            failure.Stage,
+            failure.Message);
+    }
+
+    if (amenityIconMigrationResult.FailedCount > 0)
+    {
+        throw new InvalidOperationException(
+            $"Amenity icon startup migration failed with {amenityIconMigrationResult.FailedCount} unresolved failure(s).");
+    }
 }
 
 app.Run();

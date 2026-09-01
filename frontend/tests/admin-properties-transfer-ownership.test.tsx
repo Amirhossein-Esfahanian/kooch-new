@@ -46,6 +46,30 @@ vi.mock("sonner", () => ({
   toast: notifications,
 }));
 
+vi.mock("@/components/property/PropertyLocationPicker", () => ({
+  PropertyLocationPicker: ({
+    onChange,
+    value,
+  }: {
+    onChange: (
+      value: { latitude: number; longitude: number } | null,
+    ) => void;
+    value: { latitude: number; longitude: number } | null;
+  }) => (
+    <div data-coordinates={value ? JSON.stringify(value) : "null"} data-testid="property-location-picker">
+      <button
+        onClick={() => onChange({ latitude: 35.123456, longitude: 50.654321 })}
+        type="button"
+      >
+        انتخاب موقعیت آزمایشی
+      </button>
+      <button onClick={() => onChange(null)} type="button">
+        پاک کردن موقعیت
+      </button>
+    </div>
+  ),
+}));
+
 import AdminPropertiesPage from "@/app/admin/properties/page";
 
 const property: PropertyResponse = {
@@ -185,9 +209,113 @@ describe("Admin property transfer ownership", () => {
         name: "اقامتگاه جدید",
         address: "کاشان، خیابان نمونه",
         city: "کاشان",
+        latitude: null,
+        longitude: null,
         ownerId: 7,
         status: "Draft",
       });
+    });
+  });
+
+  it("maps a selected location to create payload without changing city or address", async () => {
+    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/admin/properties" && !options) return Promise.resolve([]);
+      if (path.startsWith("/admin/properties/owner-candidates?")) {
+        return Promise.resolve(candidatePage);
+      }
+      if (path === "/admin/properties" && options?.method === "POST") {
+        return Promise.resolve(property);
+      }
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+
+    render(<AdminPropertiesPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "افزودن اقامتگاه" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "افزودن اقامتگاه",
+    });
+    const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
+    await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(ownerSelect, { target: { value: "7" } });
+    fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
+      target: { value: "اقامتگاه نقشه‌دار" },
+    });
+    const city = within(dialog).getByLabelText(/شهر/);
+    const address = within(dialog).getByLabelText(/آدرس/);
+    fireEvent.change(address, { target: { value: "نشانی مستقل" } });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "انتخاب موقعیت آزمایشی" }),
+    );
+
+    expect((city as HTMLInputElement).value).toBe("کاشان");
+    expect((address as HTMLInputElement).value).toBe("نشانی مستقل");
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ایجاد پیش‌نویس" }),
+    );
+
+    await waitFor(() => {
+      const createCall = ownerApi.apiRequest.mock.calls.find(
+        ([path, options]) =>
+          path === "/admin/properties" && options?.method === "POST",
+      );
+      const payload = JSON.parse(String(createCall?.[1]?.body));
+      expect(payload).toMatchObject({
+        address: "نشانی مستقل",
+        city: "کاشان",
+        latitude: 35.123456,
+        longitude: 50.654321,
+      });
+    });
+  });
+
+  it("sends a cleared create location as a null coordinate pair", async () => {
+    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/admin/properties" && !options) return Promise.resolve([]);
+      if (path.startsWith("/admin/properties/owner-candidates?")) {
+        return Promise.resolve(candidatePage);
+      }
+      if (path === "/admin/properties" && options?.method === "POST") {
+        return Promise.resolve(property);
+      }
+      throw new Error(`Unexpected API request: ${path}`);
+    });
+
+    render(<AdminPropertiesPage />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "افزودن اقامتگاه" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "افزودن اقامتگاه",
+    });
+    const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
+    await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
+    fireEvent.change(ownerSelect, { target: { value: "7" } });
+    fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
+      target: { value: "اقامتگاه بدون نقطه" },
+    });
+    fireEvent.change(within(dialog).getByLabelText(/آدرس/), {
+      target: { value: "نشانی" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "انتخاب موقعیت آزمایشی" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "پاک کردن موقعیت" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ایجاد پیش‌نویس" }),
+    );
+
+    await waitFor(() => {
+      const createCall = ownerApi.apiRequest.mock.calls.find(
+        ([path, options]) =>
+          path === "/admin/properties" && options?.method === "POST",
+      );
+      const payload = JSON.parse(String(createCall?.[1]?.body));
+      expect(payload.latitude).toBeNull();
+      expect(payload.longitude).toBeNull();
     });
   });
 

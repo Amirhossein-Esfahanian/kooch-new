@@ -35,6 +35,11 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
+import { AmenitySelectionCard } from "@/components/amenities/AmenitySelectionCard";
+import {
+  PropertyLocationPicker,
+  type PropertyCoordinates,
+} from "@/components/property/PropertyLocationPicker";
 import {
   getPropertyFinancialWarnings,
   PricingSettingsWarning,
@@ -263,6 +268,8 @@ export function PropertyWizard({
     workspaces.includes(isAdmin ? "admin" : "owner");
   const [step, setStep] = useState(0);
   const [data, setData] = useState<WizardData>(initialData);
+  const [editCoordinates, setEditCoordinates] =
+    useState<PropertyCoordinates | null>(null);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [adminStatus, setAdminStatus] =
     useState<PropertyStatus>("PendingReview");
@@ -353,6 +360,14 @@ export function PropertyWizard({
           roomTypeItems,
         ]) => {
           setProperty(propertyResult);
+          setEditCoordinates(
+            propertyResult.latitude != null && propertyResult.longitude != null
+              ? {
+                  latitude: propertyResult.latitude,
+                  longitude: propertyResult.longitude,
+                }
+              : null,
+          );
           setAllImages(images);
           setRoomTypes(roomTypeItems);
           setCompletion(completionResult);
@@ -925,8 +940,8 @@ export function PropertyWizard({
         address: data.address.trim(),
         city: data.city.trim(),
         country: "Iran",
-        latitude: data.latitude === "" ? null : Number(data.latitude),
-        longitude: data.longitude === "" ? null : Number(data.longitude),
+        latitude: editCoordinates?.latitude ?? null,
+        longitude: editCoordinates?.longitude ?? null,
       });
     if (step === 2)
       saved = await updatePropertySection("building", {
@@ -1209,26 +1224,41 @@ export function PropertyWizard({
                   value={data.address}
                 />
               </label>
-              <label className="grid gap-1 text-sm font-bold">
-                عرض جغرافیایی
-                <input
-                  className={inputClass}
-                  dir="ltr"
-                  onChange={(event) => update("latitude", event.target.value)}
-                  type="number"
-                  value={data.latitude}
-                />
-              </label>
-              <label className="grid gap-1 text-sm font-bold">
-                طول جغرافیایی
-                <input
-                  className={inputClass}
-                  dir="ltr"
-                  onChange={(event) => update("longitude", event.target.value)}
-                  type="number"
-                  value={data.longitude}
-                />
-              </label>
+              {mode === "edit" ? (
+                <div className="min-w-0 md:col-span-2">
+                  <PropertyLocationPicker
+                    onChange={setEditCoordinates}
+                    value={editCoordinates}
+                  />
+                </div>
+              ) : (
+                <>
+                  <label className="grid gap-1 text-sm font-bold">
+                    عرض جغرافیایی
+                    <input
+                      className={inputClass}
+                      dir="ltr"
+                      onChange={(event) =>
+                        update("latitude", event.target.value)
+                      }
+                      type="number"
+                      value={data.latitude}
+                    />
+                  </label>
+                  <label className="grid gap-1 text-sm font-bold">
+                    طول جغرافیایی
+                    <input
+                      className={inputClass}
+                      dir="ltr"
+                      onChange={(event) =>
+                        update("longitude", event.target.value)
+                      }
+                      type="number"
+                      value={data.longitude}
+                    />
+                  </label>
+                </>
+              )}
             </div>
           </section>
         )}
@@ -1310,26 +1340,29 @@ export function PropertyWizard({
                   <legend className="mb-2 text-lg font-bold">
                     {category.name}
                   </legend>
-                  <div className="grid gap-2 md:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 min-[1800px]:grid-cols-6">
                     {categoryAmenities.map((amenity) => (
-                      <label className={choiceClass} key={amenity.id}>
-                        <input
-                          checked={data.selectedAmenityIds.includes(amenity.id)}
-                          className="h-4 w-4 accent-[var(--theme-primary)]"
-                          onChange={(event) =>
-                            update(
-                              "selectedAmenityIds",
-                              event.target.checked
-                                ? [...data.selectedAmenityIds, amenity.id]
-                                : data.selectedAmenityIds.filter(
-                                    (id) => id !== amenity.id,
-                                  ),
-                            )
-                          }
-                          type="checkbox"
-                        />
-                        {amenity.name}
-                      </label>
+                      <AmenitySelectionCard
+                        amenity={amenity}
+                        category={category}
+                        key={amenity.id}
+                        onToggle={(selected) =>
+                          update(
+                            "selectedAmenityIds",
+                            selected
+                              ? [
+                                  ...new Set([
+                                    ...data.selectedAmenityIds,
+                                    amenity.id,
+                                  ]),
+                                ]
+                              : data.selectedAmenityIds.filter(
+                                  (id) => id !== amenity.id,
+                                ),
+                          )
+                        }
+                        selected={data.selectedAmenityIds.includes(amenity.id)}
+                      />
                     ))}
                   </div>
                 </fieldset>

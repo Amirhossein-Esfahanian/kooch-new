@@ -12,6 +12,7 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
+import { PropertyLocationMap } from "@/components/property/PropertyLocationMap";
 import {
   fetchPublicApi,
   formatPrice,
@@ -472,19 +473,11 @@ export default function PublicPropertyPage() {
                     )}
                   </section>
 
-                  <section>
-                    <h2 className="text-2xl font-bold">موقعیت</h2>
-                    <div className="mt-4 grid min-h-64 place-items-center rounded-2xl border border-dashed border-blue-300 bg-blue-50 text-center">
-                      <div>
-                        <strong className="text-blue-800">
-                          نقشه به‌زودی اضافه می‌شود
-                        </strong>
-                        <p className="mt-2 text-sm text-blue-700">
-                          {property.city}
-                        </p>
-                      </div>
-                    </div>
-                  </section>
+                  <PropertyLocationMap
+                    latitude={property.latitude}
+                    longitude={property.longitude}
+                    propertyName={property.name}
+                  />
                 </div>
               </div>
             </div>

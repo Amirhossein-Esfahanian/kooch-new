@@ -25,5 +25,8 @@
   <ItemGroup>
     <None Update="HolidayCalendar\Fixtures\pnldev-1405.json"
           CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Kooch.Api\wwwroot\svgs\**\*.svg"
+          Link="SvgCompatibilityFixtures\%(RecursiveDir)%(Filename)%(Extension)"
+          CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

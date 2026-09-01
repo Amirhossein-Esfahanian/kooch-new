@@ -1,10 +1,11 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { PropertyLocationPicker } from "@/components/property/PropertyLocationPicker";
 
-type MapEvent = "click" | "error" | "load";
+type MapEvent = "click" | "error" | "load" | "mousedown";
 
 const mapInstances: MockMap[] = [];
 const markerInstances: MockMarker[] = [];
@@ -95,6 +96,26 @@ async function renderPicker(
   );
   await waitFor(() => expect(mapInstances).toHaveLength(1));
   return { ...result, onChange };
+}
+
+function ControlledPicker({
+  initialValue = null,
+  onChange,
+}: {
+  initialValue?: { latitude: number; longitude: number } | null;
+  onChange: (value: { latitude: number; longitude: number } | null) => void;
+}) {
+  const [value, setValue] = useState(initialValue);
+
+  return (
+    <PropertyLocationPicker
+      onChange={(nextValue) => {
+        onChange(nextValue);
+        setValue(nextValue);
+      }}
+      value={value}
+    />
+  );
 }
 
 describe("PropertyLocationPicker", () => {
@@ -237,6 +258,105 @@ describe("PropertyLocationPicker", () => {
     });
   });
 
+  it("does not move the camera when a map click is echoed by its controlled parent", async () => {
+    const onChange = vi.fn();
+    render(<ControlledPicker onChange={onChange} />);
+    await waitFor(() => expect(mapInstances).toHaveLength(1));
+
+    act(() => {
+      mapInstances[0].trigger("click", {
+        lngLat: { lat: 33.1111114, lng: 51.2222226 },
+      });
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      latitude: 33.111111,
+      longitude: 51.222223,
+    });
+    expect(mapInstances[0].jumpTo).not.toHaveBeenCalled();
+  });
+
+  it("keeps dragend authoritative when the marker gesture also produces a map click", async () => {
+    const onChange = vi.fn();
+    render(
+      <ControlledPicker
+        initialValue={{ latitude: 33.985, longitude: 51.41 }}
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() => expect(markerInstances).toHaveLength(1));
+
+    act(() => {
+      markerInstances[0].trigger("dragstart");
+      markerInstances[0].position = { lat: 34.3333336, lng: 52.4444444 };
+      markerInstances[0].trigger("dragend");
+      mapInstances[0].trigger("click", {
+        lngLat: { lat: 35.5555555, lng: 53.6666666 },
+      });
+    });
+
+    expect(onChange).toHaveBeenCalledOnce();
+    expect(onChange).toHaveBeenLastCalledWith({
+      latitude: 34.333334,
+      longitude: 52.444444,
+    });
+    expect(markerInstances[0].position).toEqual({
+      lat: 34.333334,
+      lng: 52.444444,
+    });
+    expect(mapInstances[0].jumpTo).not.toHaveBeenCalled();
+  });
+
+  it("allows a fresh map click after a marker drag without a trailing click", async () => {
+    const onChange = vi.fn();
+    render(
+      <ControlledPicker
+        initialValue={{ latitude: 33.985, longitude: 51.41 }}
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() => expect(markerInstances).toHaveLength(1));
+
+    act(() => {
+      markerInstances[0].trigger("dragstart");
+      markerInstances[0].position = { lat: 34, lng: 52 };
+      markerInstances[0].trigger("dragend");
+      mapInstances[0].trigger("mousedown");
+      mapInstances[0].trigger("click", {
+        lngLat: { lat: 35, lng: 53 },
+      });
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith({ latitude: 35, longitude: 53 });
+  });
+
+  it("does not move the camera for clear or valid manual coordinate echoes", async () => {
+    const onChange = vi.fn();
+    render(
+      <ControlledPicker
+        initialValue={{ latitude: 33.985, longitude: 51.41 }}
+        onChange={onChange}
+      />,
+    );
+    await waitFor(() => expect(markerInstances).toHaveLength(1));
+
+    fireEvent.click(screen.getByRole("button", { name: "پاک کردن موقعیت" }));
+    expect(mapInstances[0].jumpTo).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("عرض جغرافیایی"), {
+      target: { value: "34.1234567" },
+    });
+    fireEvent.change(screen.getByLabelText("طول جغرافیایی"), {
+      target: { value: "52.7654321" },
+    });
+
+    expect(onChange).toHaveBeenLastCalledWith({
+      latitude: 34.123457,
+      longitude: 52.765432,
+    });
+    expect(mapInstances[0].jumpTo).not.toHaveBeenCalled();
+  });
+
   it("synchronizes external controlled updates and cleans up MapLibre", async () => {
     const onChange = vi.fn();
     const result = render(
@@ -257,7 +377,6 @@ describe("PropertyLocationPicker", () => {
     });
     expect(mapInstances[0].jumpTo).toHaveBeenCalledWith({
       center: [50.654321, 35.123456],
-      zoom: 14,
     });
     expect(onChange).not.toHaveBeenCalled();
 

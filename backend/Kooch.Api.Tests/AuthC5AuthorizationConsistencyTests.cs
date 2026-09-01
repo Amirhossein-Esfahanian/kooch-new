@@ -10,6 +10,7 @@ using Kooch.Api.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
 namespace Kooch.Api.Tests;
@@ -94,11 +95,11 @@ public sealed class AuthC5AuthorizationConsistencyTests
         AssertAdminOnlyMutation<AmenitiesController>(nameof(AmenitiesController.Create));
         AssertAdminOnlyMutation<AmenitiesController>(nameof(AmenitiesController.Update));
         AssertAdminOnlyMutation<AmenitiesController>(nameof(AmenitiesController.Delete));
-        AssertAdminOnlyMutation<AmenitiesController>(nameof(AmenitiesController.UploadSvg));
+        AssertAdminOnlyMutation<AmenitiesController>(nameof(AmenitiesController.StageSvg));
         AssertAdminOnlyMutation<AmenityCategoriesController>(nameof(AmenityCategoriesController.Create));
         AssertAdminOnlyMutation<AmenityCategoriesController>(nameof(AmenityCategoriesController.Update));
         AssertAdminOnlyMutation<AmenityCategoriesController>(nameof(AmenityCategoriesController.Delete));
-        AssertAdminOnlyMutation<AmenityCategoriesController>(nameof(AmenityCategoriesController.UploadSvg));
+        AssertAdminOnlyMutation<AmenityCategoriesController>(nameof(AmenityCategoriesController.StageSvg));
     }
 
     private static KoochDbContext CreateContext()
@@ -115,7 +116,12 @@ public sealed class AuthC5AuthorizationConsistencyTests
         UserRole role)
     {
         var permissionService = new PermissionService(dbContext, new PropertyAccessService(dbContext));
-        return new AmenitiesController(dbContext, null!, permissionService)
+        return new AmenitiesController(
+            dbContext,
+            permissionService,
+            null!,
+            null!,
+            NullLogger<AmenitiesController>.Instance)
         {
             ControllerContext = CreateControllerContext(userId, role)
         };

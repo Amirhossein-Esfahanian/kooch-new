@@ -32,6 +32,24 @@ type FieldErrors = {
   pair?: string;
 };
 
+type PendingUserValue = {
+  active: boolean;
+  value: PropertyCoordinates | null;
+};
+
+function coordinatesEqual(
+  first: PropertyCoordinates | null,
+  second: PropertyCoordinates | null,
+) {
+  return (
+    first === second ||
+    (first !== null &&
+      second !== null &&
+      first.latitude === second.latitude &&
+      first.longitude === second.longitude)
+  );
+}
+
 function coordinateText(value: number): string {
   return value.toFixed(6);
 }
@@ -56,6 +74,11 @@ export function PropertyLocationPicker({
   const onChangeRef = useRef(onChange);
   const disabledRef = useRef(disabled);
   const currentValueRef = useRef(value);
+  const pendingUserValueRef = useRef<PendingUserValue>({
+    active: false,
+    value: null,
+  });
+  const suppressMarkerGestureClickRef = useRef(false);
   const [latitudeText, setLatitudeText] = useState(
     value ? coordinateText(value.latitude) : "",
   );
@@ -68,6 +91,11 @@ export function PropertyLocationPicker({
   onChangeRef.current = onChange;
   disabledRef.current = disabled;
   currentValueRef.current = value;
+
+  const emitUserValue = (nextValue: PropertyCoordinates | null) => {
+    pendingUserValueRef.current = { active: true, value: nextValue };
+    onChangeRef.current(nextValue);
+  };
 
   const syncMarker = (coordinates: PropertyCoordinates | null) => {
     const map = mapRef.current;
@@ -95,6 +123,9 @@ export function PropertyLocationPicker({
         .setLngLat(position)
         .addTo(map);
 
+      marker.on("dragstart", () => {
+        suppressMarkerGestureClickRef.current = true;
+      });
       marker.on("dragend", () => {
         if (disabledRef.current) {
           return;
@@ -104,7 +135,7 @@ export function PropertyLocationPicker({
         setLatitudeText(coordinateText(nextCoordinates.latitude));
         setLongitudeText(coordinateText(nextCoordinates.longitude));
         setErrors({});
-        onChangeRef.current(nextCoordinates);
+        emitUserValue(nextCoordinates);
       });
       markerRef.current = marker;
       return;
@@ -123,7 +154,7 @@ export function PropertyLocationPicker({
     setLongitudeText(coordinateText(normalizedCoordinates.longitude));
     setErrors({});
     syncMarker(normalizedCoordinates);
-    onChangeRef.current(normalizedCoordinates);
+    emitUserValue(normalizedCoordinates);
   };
 
   useEffect(() => {
@@ -133,6 +164,7 @@ export function PropertyLocationPicker({
     let handleError: (() => void) | null = null;
     let handleClick: ((event: { lngLat: { lat: number; lng: number } }) => void) | null =
       null;
+    let handleMouseDown: (() => void) | null = null;
 
     async function initializeMap() {
       if (!mapContainerRef.current || mapRef.current) {
@@ -162,13 +194,22 @@ export function PropertyLocationPicker({
             currentStatus === "loading" ? "unavailable" : "warning",
           );
         handleClick = (event) => {
+          if (suppressMarkerGestureClickRef.current) {
+            suppressMarkerGestureClickRef.current = false;
+            return;
+          }
+
           if (!disabledRef.current) {
             selectCoordinates(fromMapPosition(event.lngLat));
           }
         };
+        handleMouseDown = () => {
+          suppressMarkerGestureClickRef.current = false;
+        };
 
         map.on("load", handleLoad);
         map.on("error", handleError);
+        map.on("mousedown", handleMouseDown);
         map.on("click", handleClick);
 
         if (initialCoordinates) {
@@ -195,6 +236,7 @@ export function PropertyLocationPicker({
       if (map) {
         if (handleLoad) map.off("load", handleLoad);
         if (handleError) map.off("error", handleError);
+        if (handleMouseDown) map.off("mousedown", handleMouseDown);
         if (handleClick) map.off("click", handleClick);
         map.remove();
       }
@@ -204,12 +246,17 @@ export function PropertyLocationPicker({
   }, []);
 
   useEffect(() => {
+    const pendingUserValue = pendingUserValueRef.current;
+    const isControlledUserEcho =
+      pendingUserValue.active && coordinatesEqual(pendingUserValue.value, value);
+    pendingUserValueRef.current.active = false;
+
     setLatitudeText(value ? coordinateText(value.latitude) : "");
     setLongitudeText(value ? coordinateText(value.longitude) : "");
     setErrors({});
     syncMarker(value);
-    if (value && mapRef.current) {
-      mapRef.current.jumpTo({ center: toMapPosition(value), zoom: 14 });
+    if (value && mapRef.current && !isControlledUserEcho) {
+      mapRef.current.jumpTo({ center: toMapPosition(value) });
     }
   }, [value?.latitude, value?.longitude]);
 
@@ -262,7 +309,7 @@ export function PropertyLocationPicker({
         longitude: normalizeCoordinate(longitude),
       };
       syncMarker(nextCoordinates);
-      onChangeRef.current(nextCoordinates);
+      emitUserValue(nextCoordinates);
     }
   };
 
@@ -271,7 +318,7 @@ export function PropertyLocationPicker({
     setLongitudeText("");
     setErrors({});
     syncMarker(null);
-    onChangeRef.current(null);
+    emitUserValue(null);
   };
 
   const latitudeDescribedBy = [

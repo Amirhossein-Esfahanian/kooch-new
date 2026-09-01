@@ -18,6 +18,9 @@ backend/**/uploads/
 backend/**/obj/
 backend/**/appsettings.Development.json
 
+# Runtime media storage
+storage/uploads/
+
 # Editors and OS
 .idea/
 .vscode/

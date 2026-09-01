@@ -17,8 +17,10 @@ public class AmenityRequest
     [MaxLength(1000)]
     public string? Description { get; set; }
 
-    [MaxLength(100)]
-    public string? Icon { get; set; }
+    [MaxLength(64)]
+    public string? IconUploadToken { get; set; }
+
+    public bool RemoveIcon { get; set; }
 
     public AmenityScope Scope { get; set; }
 

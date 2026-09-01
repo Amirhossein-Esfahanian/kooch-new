@@ -22,7 +22,9 @@ import {
   KoochTableRow,
 } from "@/components/KoochTable";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
+import { AmenitySelectionCard } from "@/components/amenities/AmenitySelectionCard";
 import {
+  AmenityCategoryResponse,
   AmenityResponse,
   apiRequest,
   BedTypeResponse,
@@ -111,6 +113,9 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
+  const [amenityCategories, setAmenityCategories] = useState<
+    AmenityCategoryResponse[]
+  >([]);
   const [roomKinds, setRoomKinds] = useState<RoomKindCatalogResponse[]>([]);
   const [draft, setDraft] = useState<RoomTypeDraft>(emptyRoomType);
   const [activeStep, setActiveStep] = useState(0);
@@ -123,6 +128,10 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     () => amenities.filter((item) => item.scope !== "Property"),
     [amenities],
   );
+  const amenityCategoriesById = useMemo(
+    () => new Map(amenityCategories.map((category) => [category.id, category])),
+    [amenityCategories],
+  );
 
   useEffect(() => {
     setLoading(true);
@@ -130,11 +139,13 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       loadRoomTypes(),
       loadImages(),
       apiRequest<BedTypeResponse[]>("/bed-types"),
+      apiRequest<AmenityCategoryResponse[]>("/amenity-categories"),
       apiRequest<AmenityResponse[]>("/amenities"),
       apiRequest<RoomKindCatalogResponse[]>("/catalogs/room-kinds"),
     ])
-      .then(([, , beds, amenityItems, kinds]) => {
+      .then(([, , beds, categories, amenityItems, kinds]) => {
         setBedTypes(beds);
+        setAmenityCategories(categories);
         setAmenities(amenityItems);
         setRoomKinds(kinds);
       })
@@ -570,21 +581,15 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             امکانی برای انتخاب تعریف نشده است.
           </p>
         ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
             {roomAmenities.map((amenity) => (
-              <label
-                className="flex min-h-11 items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"
+              <AmenitySelectionCard
+                amenity={amenity}
+                category={amenityCategoriesById.get(amenity.amenityCategoryId)}
                 key={amenity.id}
-              >
-                <input
-                  checked={draft.amenityIds.includes(amenity.id)}
-                  onChange={(event) =>
-                    toggleAmenity(amenity.id, event.target.checked)
-                  }
-                  type="checkbox"
-                />
-                {amenity.name}
-              </label>
+                onToggle={(selected) => toggleAmenity(amenity.id, selected)}
+                selected={draft.amenityIds.includes(amenity.id)}
+              />
             ))}
           </div>
         )}

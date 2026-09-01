@@ -101,6 +101,27 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/booking-sessions")>();
   return { ...actual, fetchBookingOptions: api.fetchOptions };
 });
+vi.mock("@/components/property/PropertyLocationMap", () => ({
+  PropertyLocationMap: ({
+    latitude,
+    longitude,
+    propertyName,
+  }: {
+    latitude: number | null;
+    longitude: number | null;
+    propertyName?: string;
+  }) =>
+    latitude != null && longitude != null ? (
+      <div
+        data-latitude={latitude}
+        data-longitude={longitude}
+        data-property-name={propertyName}
+        data-testid="public-property-location-map"
+      >
+        موقعیت اقامتگاه
+      </div>
+    ) : null,
+}));
 
 import PublicPropertyPage from "@/app/properties/[slug]/page";
 import { formatBookingDateRange } from "@/components/booking/booking-display";
@@ -272,6 +293,33 @@ describe("public property booking integration", () => {
     });
     api.fetchProperty.mockResolvedValue(property);
     api.fetchOptions.mockResolvedValue(availableOptions);
+  });
+
+  it("renders the saved public location without exposing raw coordinates", async () => {
+    api.fetchProperty.mockResolvedValueOnce({
+      ...property,
+      latitude: 33.986407,
+      longitude: 51.447647,
+    });
+
+    render(<PublicPropertyPage />);
+
+    const map = await screen.findByTestId("public-property-location-map");
+    expect(map.getAttribute("data-latitude")).toBe("33.986407");
+    expect(map.getAttribute("data-longitude")).toBe("51.447647");
+    expect(map.getAttribute("data-property-name")).toBe(property.name);
+    expect(screen.getByText(`${property.address}، ${property.city}`)).toBeTruthy();
+    expect(screen.queryByText("33.986407")).toBeNull();
+    expect(screen.queryByText("51.447647")).toBeNull();
+  });
+
+  it("omits the public map when coordinates are absent while keeping address and city", async () => {
+    render(<PublicPropertyPage />);
+
+    await screen.findByRole("heading", { name: property.name });
+    expect(screen.queryByTestId("public-property-location-map")).toBeNull();
+    expect(screen.getByText(`${property.address}، ${property.city}`)).toBeTruthy();
+    expect(screen.queryByText("نقشه به‌زودی اضافه می‌شود")).toBeNull();
   });
 
   it("renders the real booking panel and removes the obsolete placeholder", async () => {

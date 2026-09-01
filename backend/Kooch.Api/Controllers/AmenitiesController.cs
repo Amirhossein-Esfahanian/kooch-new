@@ -3,9 +3,13 @@ using Kooch.Api.Dtos.Amenities;
 using Kooch.Api.Authentication;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
+using Kooch.Api.Services.Amenities;
+using Kooch.Api.Services.MediaStorage;
+using Kooch.Api.Services.Svg;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace Kooch.Api.Controllers;
 
@@ -13,8 +17,10 @@ namespace Kooch.Api.Controllers;
 [Route("api/amenities")]
 public class AmenitiesController(
     KoochDbContext dbContext,
-    IWebHostEnvironment environment,
-    IPermissionService permissionService) : AuthenticatedControllerBase
+    IPermissionService permissionService,
+    ISvgSanitizer svgSanitizer,
+    IMediaStorage mediaStorage,
+    ILogger<AmenitiesController> logger) : AuthenticatedControllerBase
 {
     private const long MaxSvgFileSizeBytes = 256 * 1024;
 
@@ -56,20 +62,65 @@ public class AmenitiesController(
         CancellationToken cancellationToken)
     {
         await EnsureCanManageAmenitiesAsync(cancellationToken);
+        var uploadToken = Clean(request.IconUploadToken);
+        _ = IconWriteRequestValidator.ValidateCreate(
+            uploadToken,
+            request.RemoveIcon);
         await EnsureCategoryAsync(request.AmenityCategoryId, cancellationToken);
         var slug = await CreateUniqueSlugAsync(request.Slug, request.Name, null, cancellationToken);
+        if (uploadToken is null)
+        {
+            var legacyAmenity = new Amenity
+            {
+                AmenityCategoryId = request.AmenityCategoryId,
+                Name = request.Name.Trim(),
+                Slug = slug,
+                Description = Clean(request.Description),
+                Icon = null,
+                Scope = request.Scope,
+                SortOrder = request.SortOrder
+            };
+            dbContext.Amenities.Add(legacyAmenity);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return StatusCode(
+                StatusCodes.Status201Created,
+                await LoadAsync(legacyAmenity.Id, cancellationToken));
+        }
+
         var amenity = new Amenity
         {
             AmenityCategoryId = request.AmenityCategoryId,
             Name = request.Name.Trim(),
             Slug = slug,
             Description = Clean(request.Description),
-            Icon = Clean(request.Icon),
+            Icon = null,
             Scope = request.Scope,
             SortOrder = request.SortOrder
         };
-        dbContext.Amenities.Add(amenity);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        StoredMediaAsset? finalizedAsset = null;
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        try
+        {
+            dbContext.Amenities.Add(amenity);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            finalizedAsset = await mediaStorage.FinalizeStagedSvgAsync(
+                MediaAssetNamespace.Amenities,
+                uploadToken!,
+                amenity.Id,
+                cancellationToken);
+            amenity.Icon = finalizedAsset.PublicPath;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            await RollbackAndCompensateAsync(transaction, finalizedAsset, amenity.Id);
+            throw;
+        }
+
         return StatusCode(StatusCodes.Status201Created, await LoadAsync(amenity.Id, cancellationToken));
     }
 
@@ -86,16 +137,64 @@ public class AmenitiesController(
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
             ?? throw new KeyNotFoundException("Amenity not found.");
 
-        await EnsureCategoryAsync(request.AmenityCategoryId, cancellationToken);
-        amenity.AmenityCategoryId = request.AmenityCategoryId;
-        amenity.Name = request.Name.Trim();
-        amenity.Slug = await CreateUniqueSlugAsync(request.Slug, request.Name, id, cancellationToken);
-        amenity.Description = Clean(request.Description);
-        amenity.Icon = Clean(request.Icon);
-        amenity.Scope = request.Scope;
-        amenity.SortOrder = request.SortOrder;
+        var uploadToken = Clean(request.IconUploadToken);
+        var iconAction = IconWriteRequestValidator.ValidateUpdate(
+            uploadToken,
+            request.RemoveIcon);
+        if (iconAction == IconWriteAction.Preserve)
+        {
+            await EnsureCategoryAsync(request.AmenityCategoryId, cancellationToken);
+            amenity.AmenityCategoryId = request.AmenityCategoryId;
+            amenity.Name = request.Name.Trim();
+            amenity.Slug = await CreateUniqueSlugAsync(request.Slug, request.Name, id, cancellationToken);
+            amenity.Description = Clean(request.Description);
+            amenity.Scope = request.Scope;
+            amenity.SortOrder = request.SortOrder;
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.SaveChangesAsync(cancellationToken);
+            return Ok(await LoadAsync(amenity.Id, cancellationToken));
+        }
+
+        await EnsureCategoryAsync(request.AmenityCategoryId, cancellationToken);
+        var previousIcon = amenity.Icon;
+        StoredMediaAsset? finalizedAsset = null;
+        await using var transaction = await BeginTransactionAsync(cancellationToken);
+        try
+        {
+            amenity.AmenityCategoryId = request.AmenityCategoryId;
+            amenity.Name = request.Name.Trim();
+            amenity.Slug = await CreateUniqueSlugAsync(request.Slug, request.Name, id, cancellationToken);
+            amenity.Description = Clean(request.Description);
+            amenity.Scope = request.Scope;
+            amenity.SortOrder = request.SortOrder;
+            if (iconAction == IconWriteAction.Replace)
+            {
+                finalizedAsset = await mediaStorage.FinalizeStagedSvgAsync(
+                    MediaAssetNamespace.Amenities,
+                    uploadToken!,
+                    amenity.Id,
+                    cancellationToken);
+                amenity.Icon = finalizedAsset.PublicPath;
+            }
+            else
+            {
+                amenity.Icon = null;
+            }
+
+            await dbContext.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+            {
+                await transaction.CommitAsync(cancellationToken);
+            }
+        }
+        catch
+        {
+            amenity.Icon = previousIcon;
+            await RollbackAndCompensateAsync(transaction, finalizedAsset, amenity.Id);
+            throw;
+        }
+
+        await CleanupPreviousAssetAsync(amenity.Id, previousIcon, amenity.Icon);
         return Ok(await LoadAsync(amenity.Id, cancellationToken));
     }
 
@@ -114,34 +213,49 @@ public class AmenitiesController(
         return NoContent();
     }
 
-    [HttpPost("svg")]
+    [HttpPost("svg/stage")]
     [AdminAuthorize]
     [Consumes("multipart/form-data")]
-    [ProducesResponseType<AmenitySvgUploadResponse>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<AmenitySvgUploadResponse>> UploadSvg(
+    [ProducesResponseType<AmenitySvgStageResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    public async Task<ActionResult<AmenitySvgStageResponse>> StageSvg(
         [FromForm] IFormFile file,
-        [FromForm] string slug,
         CancellationToken cancellationToken)
     {
         await EnsureCanManageAmenitiesAsync(cancellationToken);
-        var safeSlug = EnglishSlugGenerator.Create(Clean(slug) ?? "amenity-icon", "amenity-icon");
-        await ValidateSvgUploadAsync(file, cancellationToken);
-
-        var uploadRoot = Path.Combine(
-            environment.WebRootPath ?? Path.Combine(environment.ContentRootPath, "wwwroot"),
-            "svgs",
-            "amenities");
-        Directory.CreateDirectory(uploadRoot);
-
-        var fileName = $"{safeSlug}.svg";
-        var absolutePath = Path.Combine(uploadRoot, fileName);
-
-        await using (var stream = System.IO.File.Create(absolutePath))
+        try
         {
-            await file.CopyToAsync(stream, cancellationToken);
-        }
+            if (file.Length <= 0)
+            {
+                throw new SvgSanitizationException(SvgSanitizationFailure.EmptyInput, "SVG file is empty.");
+            }
 
-        return Ok(new AmenitySvgUploadResponse($"/svgs/amenities/{fileName}"));
+            if (file.Length > MaxSvgFileSizeBytes)
+            {
+                throw new SvgSanitizationException(SvgSanitizationFailure.TooLarge, "SVG file is too large.");
+            }
+
+            await using var input = file.OpenReadStream();
+            var sanitizedSvg = await svgSanitizer.SanitizeAsync(input, cancellationToken);
+            var staged = await mediaStorage.StageSanitizedSvgAsync(
+                MediaAssetNamespace.Amenities,
+                sanitizedSvg,
+                cancellationToken);
+            return Ok(new AmenitySvgStageResponse(
+                staged.UploadToken,
+                staged.AssetNamespace,
+                staged.ExpiresAtUtc));
+        }
+        catch (SvgSanitizationException exception)
+        {
+            logger.LogWarning("Amenity SVG staging rejected with failure {Failure}.", exception.Failure);
+            throw;
+        }
+        catch
+        {
+            logger.LogError("Amenity SVG staging failed.");
+            throw;
+        }
     }
 
     private async Task EnsureCanManageAmenitiesAsync(CancellationToken cancellationToken)
@@ -198,36 +312,71 @@ public class AmenitiesController(
 
     private static string? Clean(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 
-    private static async Task ValidateSvgUploadAsync(IFormFile file, CancellationToken cancellationToken)
+    private async Task<IDbContextTransaction?> BeginTransactionAsync(CancellationToken cancellationToken) =>
+        dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+    private async Task RollbackAndCompensateAsync(
+        IDbContextTransaction? transaction,
+        StoredMediaAsset? finalizedAsset,
+        int entityId)
     {
-        if (file.Length <= 0)
+        if (transaction is not null)
         {
-            throw new ArgumentException("Uploaded SVG file is empty.");
+            try
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+            }
+            catch (Exception exception)
+            {
+                logger.LogError(exception, "Amenity database rollback failed.");
+            }
         }
 
-        if (file.Length > MaxSvgFileSizeBytes)
+        if (finalizedAsset is null)
         {
-            throw new ArgumentException("SVG file must be 256KB or smaller.");
+            return;
         }
 
-        var extension = Path.GetExtension(file.FileName);
-        if (!extension.Equals(".svg", StringComparison.OrdinalIgnoreCase))
+        try
         {
-            throw new ArgumentException("Only SVG files are allowed.");
+            if (!await mediaStorage.DeleteOwnedAssetAsync(
+                    MediaAssetNamespace.Amenities,
+                    entityId,
+                    finalizedAsset.PublicPath,
+                    CancellationToken.None))
+            {
+                logger.LogError("Amenity final-asset compensation could not find the owned asset.");
+            }
         }
-
-        await using var stream = file.OpenReadStream();
-        using var reader = new StreamReader(stream);
-        var content = await reader.ReadToEndAsync(cancellationToken);
-        var normalized = content.TrimStart('\uFEFF', ' ', '\t', '\r', '\n').ToLowerInvariant();
-        if (!normalized.Contains("<svg", StringComparison.Ordinal) ||
-            normalized.Contains("<script", StringComparison.Ordinal) ||
-            normalized.Contains("javascript:", StringComparison.Ordinal) ||
-            normalized.Contains("onload=", StringComparison.Ordinal) ||
-            normalized.Contains("onerror=", StringComparison.Ordinal))
+        catch (Exception exception)
         {
-            throw new ArgumentException("The uploaded file is not a safe SVG.");
+            logger.LogError(exception, "Amenity final-asset compensation failed.");
         }
     }
+
+    private async Task CleanupPreviousAssetAsync(int entityId, string? previousIcon, string? currentIcon)
+    {
+        if (string.IsNullOrWhiteSpace(previousIcon) ||
+            string.Equals(previousIcon, currentIcon, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        try
+        {
+            await mediaStorage.DeleteOwnedAssetAsync(
+                MediaAssetNamespace.Amenities,
+                entityId,
+                previousIcon,
+                CancellationToken.None);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(exception, "Old amenity asset cleanup failed after commit.");
+        }
+    }
+
 }
 
