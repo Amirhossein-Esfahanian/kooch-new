@@ -11,7 +11,8 @@ const category: AmenityCategoryResponse = {
   name: "خدمات پایه",
   slug: "base-services",
   sortOrder: 1,
-  icon: "/svgs/amenity-categories/base-services.svg",
+  icon:
+    "/uploads/amenity-categories/2/4e64b45c3c4648fab0e130b58d4891fc.svg",
   isActive: true,
 };
 
@@ -50,7 +51,45 @@ describe("AmenitySelectionCard", () => {
     expect(onToggle).toHaveBeenCalledWith(true);
   });
 
-  it("renders the category icon decoratively behind the amenity-specific icon", () => {
+  it("renders the canonical category icon as a subtle neutral decorative layer", () => {
+    const { container } = render(
+      <AmenitySelectionCard
+        amenity={amenity}
+        category={category}
+        onToggle={vi.fn()}
+        selected={false}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: amenity.name });
+    expect(card.getAttribute("aria-pressed")).toBe("false");
+
+    const categoryLayer = container.querySelector(
+      '[data-amenity-category-icon="decorative"]',
+    );
+    expect(categoryLayer?.getAttribute("aria-hidden")).toBe("true");
+    expect(categoryLayer?.className).toContain("pointer-events-none");
+    expect(categoryLayer?.className).toContain("z-0");
+    expect(categoryLayer?.className).not.toContain("-z-10");
+    expect(categoryLayer?.className).toContain("text-muted-foreground");
+    expect(categoryLayer?.className).toContain("opacity-[0.06]");
+    expect(categoryLayer?.innerHTML).toContain(category.icon);
+    expect(
+      categoryLayer?.querySelector<HTMLElement>("[style*='mask']")?.className,
+    ).toContain("!h-24 !w-24");
+
+    const iconMasks = Array.from(
+      container.querySelectorAll<HTMLElement>("[style*='mask']"),
+    );
+    expect(iconMasks.some((icon) => icon.style.mask.includes(category.icon!))).toBe(
+      true,
+    );
+    expect(iconMasks.some((icon) => icon.style.mask.includes(amenity.icon!))).toBe(
+      true,
+    );
+  });
+
+  it("uses the same semantic primary tone as the selected card while staying faint", () => {
     const { container } = render(
       <AmenitySelectionCard
         amenity={amenity}
@@ -63,19 +102,29 @@ describe("AmenitySelectionCard", () => {
     const card = screen.getByRole("button", { name: amenity.name });
     expect(card.getAttribute("aria-pressed")).toBe("true");
     expect(card.className).toContain("border-primary");
+    expect(card.className).toContain("text-primary");
 
     const categoryLayer = container.querySelector(
       '[data-amenity-category-icon="decorative"]',
     );
-    expect(categoryLayer?.getAttribute("aria-hidden")).toBe("true");
+    expect(categoryLayer?.className).toContain("text-primary");
+    expect(categoryLayer?.className).toContain("opacity-[0.1]");
     expect(categoryLayer?.className).toContain("pointer-events-none");
-    expect(categoryLayer?.innerHTML).toContain(category.icon);
+  });
 
-    const iconMasks = Array.from(
-      container.querySelectorAll<HTMLElement>("[style*='mask']"),
+  it("omits the watermark when the category has no icon", () => {
+    const { container } = render(
+      <AmenitySelectionCard
+        amenity={amenity}
+        category={{ ...category, icon: null }}
+        onToggle={vi.fn()}
+        selected={false}
+      />,
     );
-    expect(iconMasks.some((icon) => icon.style.mask.includes(amenity.icon!))).toBe(
-      true,
-    );
+
+    expect(
+      container.querySelector('[data-amenity-category-icon="decorative"]'),
+    ).toBeNull();
+    expect(container.querySelector('input[type="checkbox"]')).toBeNull();
   });
 });

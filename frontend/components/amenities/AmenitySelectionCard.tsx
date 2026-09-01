@@ -49,12 +49,14 @@ export function AmenitySelectionCard({
       {category?.icon && isSvgPath(category.icon) ? (
         <span
           aria-hidden="true"
-          className={`pointer-events-none absolute -bottom-5 -left-3 -z-10 opacity-[0.07] ${
-            selected ? "text-primary" : "text-foreground"
+          className={`pointer-events-none absolute -bottom-5 -left-3 z-0 ${
+            selected
+              ? "text-primary opacity-[0.1]"
+              : "text-muted-foreground opacity-[0.06]"
           }`}
           data-amenity-category-icon="decorative"
         >
-          <KoochSvgIcon className="h-24 w-24" src={category.icon} />
+          <KoochSvgIcon className="!h-24 !w-24" src={category.icon} />
         </span>
       ) : null}
 
