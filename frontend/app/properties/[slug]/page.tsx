@@ -350,6 +350,27 @@ export default function PublicPropertyPage() {
                     </section>
                   )}
 
+                  {property.settings.length > 0 && (
+                    <section aria-labelledby="property-settings-title">
+                      <h2
+                        className="text-2xl font-bold text-foreground"
+                        id="property-settings-title"
+                      >
+                        بافت و موقعیت محیطی
+                      </h2>
+                      <ul className="mt-4 flex flex-wrap gap-2">
+                        {property.settings.map((setting) => (
+                          <li
+                            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-card-foreground"
+                            key={setting.id}
+                          >
+                            {setting.name}
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
+                  )}
+
                   {property.views.length > 0 && (
                     <section>
                       <h2 className="text-2xl font-bold">چشم‌اندازها</h2>

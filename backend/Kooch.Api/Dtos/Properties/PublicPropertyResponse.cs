@@ -43,6 +43,7 @@ public class PublicPropertyResponse
     public IReadOnlyList<PublicImageResponse> Images { get; set; } = [];
     public IReadOnlyList<PublicDescriptionSectionResponse> DescriptionSections { get; set; } = [];
     public IReadOnlyList<PublicCommonAreaResponse> CommonAreas { get; set; } = [];
+    public IReadOnlyList<PublicPropertySettingResponse> Settings { get; set; } = [];
     public IReadOnlyList<PublicAmenityResponse> Amenities { get; set; } = [];
     public IReadOnlyList<PublicNearbyPlaceResponse> NearbyPlaces { get; set; } = [];
     public IReadOnlyList<PropertyViewType> Views { get; set; } = [];
@@ -146,6 +147,13 @@ public class PublicCommonAreaResponse
     public string Name { get; set; } = string.Empty;
     public string? Description { get; set; }
     public int SortOrder { get; set; }
+}
+
+public class PublicPropertySettingResponse
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Slug { get; set; } = string.Empty;
 }
 
 public class PublicNearbyPlaceResponse

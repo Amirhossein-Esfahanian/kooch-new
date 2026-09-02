@@ -120,6 +120,7 @@ export interface PublicProperty {
     description: string | null;
     sortOrder: number;
   }[];
+  settings: { id: number; name: string; slug: string }[];
   amenities: { id: number; name: string; category: string }[];
   nearbyPlaces: {
     id: number;

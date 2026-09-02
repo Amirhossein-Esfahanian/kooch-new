@@ -1247,6 +1247,20 @@ public class PropertyService(
                     SortOrder = area.SortOrder
                 })
                 .ToList(),
+            Settings = property.PropertySettingAssignments
+                .Where(assignment =>
+                    !assignment.IsDeleted &&
+                    assignment.PropertySetting.IsActive &&
+                    !assignment.PropertySetting.IsDeleted)
+                .OrderBy(assignment => assignment.PropertySetting.SortOrder)
+                .ThenBy(assignment => assignment.PropertySetting.Name)
+                .Select(assignment => new PublicPropertySettingResponse
+                {
+                    Id = assignment.PropertySettingId,
+                    Name = assignment.PropertySetting.Name,
+                    Slug = assignment.PropertySetting.Slug
+                })
+                .ToList(),
             Amenities = property.PropertyAmenities
                 .OrderBy(join => join.Amenity.AmenityCategory.SortOrder)
                 .ThenBy(join => join.Amenity.SortOrder)

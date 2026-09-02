@@ -169,6 +169,7 @@ const property = {
   images: [],
   descriptionSections: [],
   commonAreas: [],
+  settings: [],
   amenities: [],
   nearbyPlaces: [],
   views: [],
@@ -311,6 +312,56 @@ describe("public property booking integration", () => {
     expect(screen.getByText(`${property.address}، ${property.city}`)).toBeTruthy();
     expect(screen.queryByText("33.986407")).toBeNull();
     expect(screen.queryByText("51.447647")).toBeNull();
+  });
+
+  it("renders PropertySettings as a separate text-only section", async () => {
+    api.fetchProperty.mockResolvedValueOnce({
+      ...property,
+      settings: [
+        { id: 3, name: "بافت تاریخی", slug: "historic-district" },
+        { id: 8, name: "حاشیه شهر", slug: "city-outskirts" },
+      ],
+      commonAreas: [
+        { id: 1, name: "حیاط مرکزی", description: null, sortOrder: 1 },
+      ],
+      views: ["CourtyardView"],
+      amenities: [{ id: 1, name: "اینترنت", category: "خدمات پایه" }],
+      nearbyPlaces: [
+        {
+          id: 1,
+          title: "بازار",
+          category: "Market",
+          distanceInMeters: 400,
+          walkingMinutes: 5,
+          drivingMinutes: 2,
+          description: null,
+        },
+      ],
+    });
+
+    render(<PublicPropertyPage />);
+
+    const title = await screen.findByRole("heading", {
+      name: "بافت و موقعیت محیطی",
+    });
+    const section = title.closest("section");
+    expect(section).not.toBeNull();
+    expect(within(section!).getByText("بافت تاریخی")).toBeTruthy();
+    expect(within(section!).getByText("حاشیه شهر")).toBeTruthy();
+    expect(within(section!).queryByRole("img")).toBeNull();
+    expect(screen.getByRole("heading", { name: "فضاهای مشترک" }).closest("section")).not.toBe(section);
+    expect(screen.getByRole("heading", { name: "چشم‌اندازها" }).closest("section")).not.toBe(section);
+    expect(screen.getByRole("heading", { name: "امکانات" }).closest("section")).not.toBe(section);
+    expect(screen.getByRole("heading", { name: "مکان‌های نزدیک" }).closest("section")).not.toBe(section);
+  });
+
+  it("hides the PropertySetting section when the public contract is empty", async () => {
+    render(<PublicPropertyPage />);
+
+    await screen.findByRole("heading", { name: property.name });
+    expect(
+      screen.queryByRole("heading", { name: "بافت و موقعیت محیطی" }),
+    ).toBeNull();
   });
 
   it("omits the public map when coordinates are absent while keeping address and city", async () => {
