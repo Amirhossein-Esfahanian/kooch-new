@@ -71,6 +71,27 @@ const emptyCategoryForm: AmenityCategoryFormValues = {
 
 const scopes: AmenityScope[] = ["Property", "RoomType", "Both"];
 
+const scopeBadgePresentation: Record<
+  AmenityScope,
+  { label: string; className: string }
+> = {
+  Property: {
+    label: "اقامتگاه",
+    className:
+      "bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]",
+  },
+  RoomType: {
+    label: "اتاق",
+    className:
+      "bg-[var(--theme-success-soft)] text-[color-mix(in_srgb,var(--theme-success)_70%,var(--foreground))]",
+  },
+  Both: {
+    label: "هر دو",
+    className:
+      "bg-[color-mix(in_srgb,var(--theme-accent)_14%,var(--card))] text-[color-mix(in_srgb,var(--theme-accent)_65%,var(--foreground))]",
+  },
+};
+
 function isSvgPath(value: string | null | undefined) {
   return Boolean(value?.toLocaleLowerCase().endsWith(".svg"));
 }
@@ -372,7 +393,7 @@ export function AmenityManagement({
 
   return (
     <>
-      <KoochCard variant="elevated">
+      <KoochCard className="min-w-0" variant="elevated">
         {/* <KoochPageHeader
           actions={
             activeTab === "categories" && isAdminMode ? (
@@ -589,16 +610,43 @@ export function AmenityManagement({
                 <div className="grid bg-muted p-4 rounded-lg border gap-3 sm:grid-cols-2 xl:grid-cols-3">
                   {visibleAmenities.map((amenity) => (
                     <KoochCard
-                      className="min-w-0 transition hover:border-blue-300"
+                      className="relative isolate min-w-0 overflow-hidden p-3 pr-11 transition hover:border-blue-300"
                       key={amenity.id}
-                      padding="sm"
+                      padding="none"
                       variant="default"
                     >
-                      <div className="flex min-w-0 items-start justify-between gap-3">
+                      <span
+                        aria-label={`دامنه استفاده: ${scopeBadgePresentation[amenity.scope].label}`}
+                        className={`absolute inset-y-0 right-0 z-20 flex w-8 items-center justify-center border-l border-current/10 text-xs font-bold ${scopeBadgePresentation[amenity.scope].className}`}
+                        data-amenity-scope-badge="vertical"
+                        data-scope={amenity.scope}
+                      >
+                        <span className="-rotate-90 whitespace-nowrap">
+                          {scopeBadgePresentation[amenity.scope].label}
+                        </span>
+                      </span>
+
+                      {activeCategory.icon && isSvgPath(activeCategory.icon) ? (
+                        <span
+                          aria-hidden="true"
+                          className="pointer-events-none absolute -bottom-6 -left-4 z-0 text-muted-foreground opacity-[0.07]"
+                          data-amenity-category-icon="decorative"
+                        >
+                          <KoochSvgIcon
+                            className="!h-28 !w-28"
+                            src={activeCategory.icon}
+                          />
+                        </span>
+                      ) : null}
+
+                      <div
+                        className="relative z-10 flex min-w-0 items-start justify-between gap-3"
+                        data-amenity-card-foreground="true"
+                      >
                         <div className="min-w-0">
                           <h3 className="truncate font-bold">{amenity.name}</h3>
                           <p className="mt-1 break-all text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                            {amenity.scope} · {amenity.slug}
+                            {amenity.slug}
                           </p>
                         </div>
 
@@ -617,8 +665,8 @@ export function AmenityManagement({
                             </span>
                           ))}
                       </div>
-                      <div className="h-px mt-6  w-full bg-border"></div>
-                      <div className="mt-4 flex flex-wrap gap-3 text-sm font-bold">
+                      <div className="relative z-10 mt-6 h-px w-full bg-border"></div>
+                      <div className="relative z-10 mt-4 flex flex-wrap gap-3 text-sm font-bold">
                         <KoochButton
                           onClick={() => openEditModal(amenity)}
                           size="sm"

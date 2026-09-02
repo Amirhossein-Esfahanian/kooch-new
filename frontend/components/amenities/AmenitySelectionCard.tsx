@@ -37,10 +37,10 @@ export function AmenitySelectionCard({
   return (
     <button
       aria-pressed={selected}
-      className={`relative isolate flex h-24 w-full min-w-0 flex-col items-start justify-between overflow-hidden rounded-xl border-2 p-3 text-right transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${
+      className={`relative isolate flex h-24 w-full min-w-0 flex-col items-start justify-between overflow-hidden rounded-xl border-2 p-3 text-right transition-[border-color,box-shadow] duration-150 ease-out focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background focus-visible:shadow-[0_0_0_3px_var(--theme-primary-soft),0_0_14px_-7px_var(--theme-primary)] disabled:cursor-not-allowed disabled:opacity-50 motion-reduce:transition-none ${
         selected
-          ? "border-primary  text-primary"
-          : "border border-foreground/35 text-foreground hover:border-primary/60"
+          ? "border-primary text-primary [@media(hover:hover)_and_(pointer:fine)]:enabled:hover:shadow-[0_0_0_4px_var(--theme-primary-soft),0_0_16px_-7px_var(--theme-primary)]"
+          : "border border-foreground/35 text-foreground [@media(hover:hover)_and_(pointer:fine)]:enabled:hover:border-[color-mix(in_srgb,var(--theme-primary)_50%,transparent)] [@media(hover:hover)_and_(pointer:fine)]:enabled:hover:shadow-[0_0_0_2px_var(--theme-primary-soft),0_0_10px_-8px_var(--theme-primary)]"
       }`}
       disabled={disabled}
       onClick={() => onToggle(!selected)}

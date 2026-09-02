@@ -317,6 +317,66 @@ public sealed class RoomKindRoomTypeTests
         Assert.Empty(context.RoomTypes);
     }
 
+    [Theory]
+    [InlineData(AmenityScope.Property, false)]
+    [InlineData(AmenityScope.RoomType, true)]
+    [InlineData(AmenityScope.Both, true)]
+    public async Task CreateRoomType_EnforcesAmenityScope(
+        AmenityScope scope,
+        bool expectedAllowed)
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var amenity = await SeedAmenityAsync(context, scope);
+        var service = new RoomTypeService(
+            context,
+            new PropertyAccessService(context),
+            new NoOpAuditLogService());
+        var request = ValidCreateRequest(RoomKind.Double);
+        request.AmenityIds = [amenity.Id];
+
+        if (!expectedAllowed)
+        {
+            var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+                service.CreateRoomTypeAsync(1, UserRole.SuperAdmin, 10, request));
+
+            Assert.Equal("One or more amenities are invalid for a room type.", exception.Message);
+            Assert.Empty(await context.RoomTypeAmenities.ToListAsync());
+            return;
+        }
+
+        var created = await service.CreateRoomTypeAsync(
+            1, UserRole.SuperAdmin, 10, request);
+
+        Assert.Contains(created.Amenities, item => item.AmenityId == amenity.Id);
+    }
+
+    [Fact]
+    public async Task UpdateRoomType_RejectsPropertyOnlyAmenityAndPreservesExistingAssignments()
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var roomAmenity = await SeedAmenityAsync(context, AmenityScope.RoomType);
+        var propertyAmenity = await SeedAmenityAsync(context, AmenityScope.Property);
+        var service = new RoomTypeService(
+            context,
+            new PropertyAccessService(context),
+            new NoOpAuditLogService());
+        var create = ValidCreateRequest(RoomKind.Double);
+        create.AmenityIds = [roomAmenity.Id];
+        var created = await service.CreateRoomTypeAsync(
+            1, UserRole.SuperAdmin, 10, create);
+        var update = ValidUpdateRequest(RoomKind.Double);
+        update.AmenityIds = [propertyAmenity.Id];
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateRoomTypeAsync(
+                1, UserRole.SuperAdmin, created.Id, update));
+
+        var persisted = Assert.Single(await context.RoomTypeAmenities.ToListAsync());
+        Assert.Equal(roomAmenity.Id, persisted.AmenityId);
+    }
+
     private static void AssertInvalidRoomKind(object request)
     {
         var results = new List<ValidationResult>();
@@ -367,6 +427,28 @@ public sealed class RoomKindRoomTypeTests
             .UseInMemoryDatabase($"room-kind-room-type-{Guid.NewGuid():N}")
             .Options;
         return new KoochDbContext(options);
+    }
+
+    private static async Task<Amenity> SeedAmenityAsync(
+        KoochDbContext context,
+        AmenityScope scope)
+    {
+        var category = new AmenityCategory
+        {
+            Name = "Scope category",
+            Slug = $"scope-category-{Guid.NewGuid():N}",
+            IsActive = true
+        };
+        var amenity = new Amenity
+        {
+            AmenityCategory = category,
+            Name = $"{scope} amenity",
+            Slug = $"scope-amenity-{Guid.NewGuid():N}",
+            Scope = scope
+        };
+        context.Amenities.Add(amenity);
+        await context.SaveChangesAsync();
+        return amenity;
     }
 
     private static KoochDbContext CreateSqlServerContext()

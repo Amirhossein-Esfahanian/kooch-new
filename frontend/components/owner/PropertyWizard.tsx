@@ -21,6 +21,8 @@ import {
   PropertyImageResponse,
   propertyTypes,
   PropertyResponse,
+  PropertySettingAssignmentResponse,
+  PropertySettingResponse,
   PropertyStatus,
   PropertyType,
   PropertyViewResponse,
@@ -277,6 +279,15 @@ export function PropertyWizard({
     AmenityCategoryResponse[]
   >([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
+  const [propertySettingCatalog, setPropertySettingCatalog] = useState<
+    PropertySettingResponse[]
+  >([]);
+  const [assignedPropertySettings, setAssignedPropertySettings] = useState<
+    PropertySettingAssignmentResponse[]
+  >([]);
+  const [selectedPropertySettingIds, setSelectedPropertySettingIds] = useState<
+    number[]
+  >([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [allImages, setAllImages] = useState<PropertyImageResponse[]>([]);
   const [completion, setCompletion] =
@@ -303,10 +314,12 @@ export function PropertyWizard({
     Promise.all([
       apiRequest<AmenityCategoryResponse[]>("/amenity-categories"),
       apiRequest<AmenityResponse[]>("/amenities"),
+      apiRequest<PropertySettingResponse[]>("/property-settings"),
     ])
-      .then(([categories, items]) => {
+      .then(([categories, items, settings]) => {
         setAmenityCategories(categories);
         setAmenities(items);
+        setPropertySettingCatalog(settings.filter((setting) => setting.isActive));
       })
       .catch((caught: Error) => setError(caught.message));
   }, [canLoadWorkspace]);
@@ -343,6 +356,9 @@ export function PropertyWizard({
       apiRequest<PropertyViewResponse[]>(
         `/owner/properties/${propertyId}/views`,
       ),
+      apiRequest<PropertySettingAssignmentResponse[]>(
+        `/owner/properties/${propertyId}/settings`,
+      ),
       apiRequest<RoomTypeResponse[]>(
         `/owner/properties/${propertyId}/room-types`,
       ).catch(() => []),
@@ -357,6 +373,7 @@ export function PropertyWizard({
           commonAreas,
           nearbyPlaces,
           views,
+          propertySettings,
           roomTypeItems,
         ]) => {
           setProperty(propertyResult);
@@ -372,6 +389,10 @@ export function PropertyWizard({
           setRoomTypes(roomTypeItems);
           setCompletion(completionResult);
           setAdminStatus(propertyResult.status as PropertyStatus);
+          setAssignedPropertySettings(propertySettings);
+          setSelectedPropertySettingIds(
+            propertySettings.map((setting) => setting.id),
+          );
           setDescriptionIds(
             Object.fromEntries(
               descriptions.map((section) => [section.sectionType, section.id]),
@@ -491,6 +512,20 @@ export function PropertyWizard({
   const propertyAmenityOptions = amenities.filter(
     (item) => item.scope !== "RoomType",
   );
+  const propertyAmenityCards = amenityCategories.flatMap((category) =>
+    propertyAmenityOptions
+      .filter((amenity) => amenity.amenityCategoryId === category.id)
+      .map((amenity) => ({ amenity, category })),
+  );
+  const activePropertySettingIds = new Set(
+    propertySettingCatalog.map((setting) => setting.id),
+  );
+  const propertySettingOptions = [
+    ...propertySettingCatalog,
+    ...assignedPropertySettings.filter(
+      (setting) => !activePropertySettingIds.has(setting.id),
+    ),
+  ];
   const completed = useMemo(
     () => [
       Boolean(data.name.trim() && data.englishName.trim()),
@@ -791,6 +826,20 @@ export function PropertyWizard({
     });
   }
 
+  async function savePropertySettings(propertyId: number) {
+    const saved = await apiRequest<PropertySettingAssignmentResponse[]>(
+      `/owner/properties/${propertyId}/settings`,
+      {
+        method: "PUT",
+        body: JSON.stringify({
+          propertySettingIds: selectedPropertySettingIds,
+        }),
+      },
+    );
+    setAssignedPropertySettings(saved);
+    setSelectedPropertySettingIds(saved.map((setting) => setting.id));
+  }
+
   async function saveDescriptions(propertyId: number) {
     const sections = [
       {
@@ -918,6 +967,7 @@ export function PropertyWizard({
   async function saveCurrentStep() {
     if (!property) {
       const created = await saveProperty(data.propertyDescription.trim());
+      if (step === 1) await savePropertySettings(created.id);
       setCompletion(
         await apiRequest<PropertyCompletionResponse>(
           `/owner/properties/${created.id}/completion`,
@@ -934,7 +984,7 @@ export function PropertyWizard({
         type: data.type,
         inventoryMode: data.inventoryMode,
       });
-    if (step === 1)
+    if (step === 1) {
       saved = await updatePropertySection("location", {
         destinationId: resolveDestinationId(data.city),
         address: data.address.trim(),
@@ -943,6 +993,8 @@ export function PropertyWizard({
         latitude: editCoordinates?.latitude ?? null,
         longitude: editCoordinates?.longitude ?? null,
       });
+      await savePropertySettings(saved.id);
+    }
     if (step === 2)
       saved = await updatePropertySection("building", {
         totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
@@ -1260,6 +1312,73 @@ export function PropertyWizard({
                 </>
               )}
             </div>
+            <section
+              aria-labelledby="property-settings-title"
+              className="grid gap-3 border-t border-border pt-5"
+            >
+              <div className="grid gap-1">
+                <h3
+                  className="text-lg font-bold text-foreground"
+                  id="property-settings-title"
+                >
+                  بافت و موقعیت محیطی
+                </h3>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  ویژگی‌های محیط و محدوده‌ای که اقامتگاه در آن قرار دارد را
+                  انتخاب کنید.
+                </p>
+              </div>
+              <div
+                className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4"
+                data-property-setting-selection-grid="true"
+              >
+                {propertySettingOptions.map((setting) => {
+                  const selected = selectedPropertySettingIds.includes(
+                    setting.id,
+                  );
+                  return (
+                    <button
+                      aria-label={`${setting.name}${
+                        setting.isActive ? "" : "، دیگر فعال نیست"
+                      }`}
+                      aria-pressed={selected}
+                      className={`grid min-h-12 min-w-0 content-center rounded-xl border-2 px-3 py-2.5 text-right text-sm font-bold transition-[border-color,background-color,color,box-shadow] duration-150 ease-out focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background motion-reduce:transition-none ${
+                        selected
+                          ? "border-primary bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]"
+                          : "border-border bg-background text-foreground [@media(hover:hover)_and_(pointer:fine)]:hover:border-[var(--theme-primary-border)] [@media(hover:hover)_and_(pointer:fine)]:hover:bg-muted"
+                      }`}
+                      key={setting.id}
+                      onClick={() =>
+                        setSelectedPropertySettingIds((current) =>
+                          selected
+                            ? current.filter((id) => id !== setting.id)
+                            : [...current, setting.id],
+                        )
+                      }
+                      type="button"
+                    >
+                      <span className="grid min-w-0 gap-0.5 leading-6">
+                        <span>{setting.name}</span>
+                        <span
+                          className={`text-[11px] font-semibold leading-4 ${
+                            selected
+                              ? "text-[var(--theme-primary-text)]"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {selected ? "انتخاب‌شده" : "انتخاب"}
+                        </span>
+                        {!setting.isActive ? (
+                          <span className="w-fit rounded-md bg-[var(--theme-warning-soft)] px-1.5 text-[10px] font-bold leading-4 text-[var(--theme-warning)]">
+                            دیگر فعال نیست
+                          </span>
+                        ) : null}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </section>
           </section>
         )}
 
@@ -1330,44 +1449,34 @@ export function PropertyWizard({
         {step === 3 && (
           <section className={`${cardClass} grid gap-5`}>
             <h2 className="text-2xl font-bold">امکانات و چشم‌انداز</h2>
-            {amenityCategories.map((category) => {
-              const categoryAmenities = propertyAmenityOptions.filter(
-                (item) => item.amenityCategoryId === category.id,
-              );
-              if (!categoryAmenities.length) return null;
-              return (
-                <fieldset className="grid gap-2" key={category.id}>
-                  <legend className="mb-2 text-lg font-bold">
-                    {category.name}
-                  </legend>
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 min-[1800px]:grid-cols-6">
-                    {categoryAmenities.map((amenity) => (
-                      <AmenitySelectionCard
-                        amenity={amenity}
-                        category={category}
-                        key={amenity.id}
-                        onToggle={(selected) =>
-                          update(
-                            "selectedAmenityIds",
-                            selected
-                              ? [
-                                  ...new Set([
-                                    ...data.selectedAmenityIds,
-                                    amenity.id,
-                                  ]),
-                                ]
-                              : data.selectedAmenityIds.filter(
-                                  (id) => id !== amenity.id,
-                                ),
-                          )
-                        }
-                        selected={data.selectedAmenityIds.includes(amenity.id)}
-                      />
-                    ))}
-                  </div>
-                </fieldset>
-              );
-            })}
+            <div
+              className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 min-[1800px]:grid-cols-6"
+              data-amenity-selection-grid="true"
+            >
+              {propertyAmenityCards.map(({ amenity, category }) => (
+                <AmenitySelectionCard
+                  amenity={amenity}
+                  category={category}
+                  key={amenity.id}
+                  onToggle={(selected) =>
+                    update(
+                      "selectedAmenityIds",
+                      selected
+                        ? [
+                            ...new Set([
+                              ...data.selectedAmenityIds,
+                              amenity.id,
+                            ]),
+                          ]
+                        : data.selectedAmenityIds.filter(
+                            (id) => id !== amenity.id,
+                          ),
+                    )
+                  }
+                  selected={data.selectedAmenityIds.includes(amenity.id)}
+                />
+              ))}
+            </div>
             <fieldset>
               <legend className="mb-2 text-lg font-bold">چشم‌انداز</legend>
               <div className="grid gap-2 md:grid-cols-3">

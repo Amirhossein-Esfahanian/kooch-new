@@ -240,6 +240,162 @@ public sealed class AmenitySvgPipelineTests
     }
 
     [Fact]
+    public async Task UpdateScope_ToPropertyRejectsExistingRoomTypeAssignmentWithoutMutation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var category = await database.SeedCategoryAsync();
+        var amenity = await database.SeedAmenityAsync(category.Id, AmenityScope.Both);
+        var (_, roomType) = await database.SeedAssignmentTargetsAsync();
+        database.Context.RoomTypeAmenities.Add(new RoomTypeAmenity
+        {
+            RoomTypeId = roomType.Id,
+            AmenityId = amenity.Id
+        });
+        await database.Context.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            database.CreateAmenityController().Update(
+                amenity.Id,
+                CreateAmenityUpdate(amenity, AmenityScope.Property),
+                CancellationToken.None));
+
+        Assert.Equal(
+            "این امکان هنوز به نوع اتاق متصل است و نمی‌توان دامنه آن را فقط به اقامتگاه تغییر داد.",
+            exception.Message);
+        AssertApiBadRequest(exception);
+        Assert.Equal(
+            AmenityScope.Both,
+            (await database.Context.Amenities.FindAsync(amenity.Id))!.Scope);
+        Assert.True(await database.Context.RoomTypeAmenities.AnyAsync(
+            join => join.RoomTypeId == roomType.Id && join.AmenityId == amenity.Id));
+    }
+
+    [Fact]
+    public async Task UpdateScope_ToRoomTypeRejectsExistingPropertyAssignmentWithoutMutation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var category = await database.SeedCategoryAsync();
+        var amenity = await database.SeedAmenityAsync(category.Id, AmenityScope.Both);
+        var (property, _) = await database.SeedAssignmentTargetsAsync();
+        database.Context.PropertyAmenities.Add(new PropertyAmenity
+        {
+            PropertyId = property.Id,
+            AmenityId = amenity.Id
+        });
+        await database.Context.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            database.CreateAmenityController().Update(
+                amenity.Id,
+                CreateAmenityUpdate(amenity, AmenityScope.RoomType),
+                CancellationToken.None));
+
+        Assert.Equal(
+            "این امکان هنوز به اقامتگاه متصل است و نمی‌توان دامنه آن را فقط به نوع اتاق تغییر داد.",
+            exception.Message);
+        AssertApiBadRequest(exception);
+        Assert.Equal(
+            AmenityScope.Both,
+            (await database.Context.Amenities.FindAsync(amenity.Id))!.Scope);
+        Assert.True(await database.Context.PropertyAmenities.AnyAsync(
+            join => join.PropertyId == property.Id && join.AmenityId == amenity.Id));
+    }
+
+    [Theory]
+    [InlineData(AmenityScope.Property)]
+    [InlineData(AmenityScope.RoomType)]
+    public async Task UpdateScope_BothWithoutConflictingAssignmentsCanNarrow(AmenityScope targetScope)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var category = await database.SeedCategoryAsync();
+        var amenity = await database.SeedAmenityAsync(category.Id, AmenityScope.Both);
+
+        var updated = GetUpdatedAmenity(await database.CreateAmenityController().Update(
+            amenity.Id,
+            CreateAmenityUpdate(amenity, targetScope),
+            CancellationToken.None));
+
+        Assert.Equal(targetScope, updated.Scope);
+        Assert.Equal(targetScope, (await database.Context.Amenities.FindAsync(amenity.Id))!.Scope);
+    }
+
+    [Theory]
+    [InlineData(AmenityScope.Property)]
+    [InlineData(AmenityScope.RoomType)]
+    public async Task UpdateScope_AssignedSingleScopeCanBroadenToBoth(AmenityScope currentScope)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var category = await database.SeedCategoryAsync();
+        var amenity = await database.SeedAmenityAsync(category.Id, currentScope);
+        var (property, roomType) = await database.SeedAssignmentTargetsAsync();
+        if (currentScope == AmenityScope.Property)
+        {
+            database.Context.PropertyAmenities.Add(new PropertyAmenity
+            {
+                PropertyId = property.Id,
+                AmenityId = amenity.Id
+            });
+        }
+        else
+        {
+            database.Context.RoomTypeAmenities.Add(new RoomTypeAmenity
+            {
+                RoomTypeId = roomType.Id,
+                AmenityId = amenity.Id
+            });
+        }
+        await database.Context.SaveChangesAsync();
+
+        var updated = GetUpdatedAmenity(await database.CreateAmenityController().Update(
+            amenity.Id,
+            CreateAmenityUpdate(amenity, AmenityScope.Both),
+            CancellationToken.None));
+
+        Assert.Equal(AmenityScope.Both, updated.Scope);
+    }
+
+    [Fact]
+    public async Task UpdateScope_UndefinedValueIsRejectedAsBadRequestWithoutMutation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var category = await database.SeedCategoryAsync();
+        var amenity = await database.SeedAmenityAsync(category.Id, AmenityScope.Both);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            database.CreateAmenityController().Update(
+                amenity.Id,
+                CreateAmenityUpdate(amenity, (AmenityScope)999),
+                CancellationToken.None));
+
+        Assert.Equal("دامنه استفاده امکان معتبر نیست.", exception.Message);
+        AssertApiBadRequest(exception);
+        Assert.Equal(
+            AmenityScope.Both,
+            (await database.Context.Amenities.FindAsync(amenity.Id))!.Scope);
+    }
+
+    [Fact]
+    public async Task CreateScope_UndefinedValueIsRejectedAsBadRequest()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var category = await database.SeedCategoryAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            database.CreateAmenityController().Create(
+                new AmenityRequest
+                {
+                    AmenityCategoryId = category.Id,
+                    Name = "Invalid scope",
+                    Slug = "invalid-scope",
+                    Scope = (AmenityScope)999
+                },
+                CancellationToken.None));
+
+        AssertApiBadRequest(exception);
+        Assert.Empty(await database.Context.Amenities.ToListAsync());
+    }
+
+    [Fact]
     public async Task CreateDatabaseFailureAfterFinalization_RollsBackAndDeletesNewFinalAsset()
     {
         await using var database = await TestDatabase.CreateAsync();
@@ -787,6 +943,28 @@ public sealed class AmenitySvgPipelineTests
         RemoveIcon = removeIcon
     };
 
+    private static AmenityRequest CreateAmenityUpdate(
+        Amenity amenity,
+        AmenityScope scope) => new()
+    {
+        AmenityCategoryId = amenity.AmenityCategoryId,
+        Name = amenity.Name,
+        Slug = amenity.Slug,
+        Description = amenity.Description,
+        Scope = scope,
+        SortOrder = amenity.SortOrder
+    };
+
+    private static void AssertApiBadRequest(ArgumentException exception)
+    {
+        var context = CreateExceptionContext(exception);
+        new ApiExceptionFilter().OnException(context);
+
+        var result = Assert.IsType<ObjectResult>(context.Result);
+        Assert.Equal(StatusCodes.Status400BadRequest, result.StatusCode);
+        Assert.Equal(exception.Message, ReadMessage(result.Value));
+    }
+
     private static FormFile CreateFormFile(string content)
     {
         var stream = new MemoryStream(Encoding.UTF8.GetBytes(content));
@@ -909,18 +1087,62 @@ public sealed class AmenitySvgPipelineTests
             return category;
         }
 
-        public async Task<Amenity> SeedAmenityAsync(int categoryId)
+        public async Task<Amenity> SeedAmenityAsync(
+            int categoryId,
+            AmenityScope scope = AmenityScope.Property)
         {
             var amenity = new Amenity
             {
                 AmenityCategoryId = categoryId,
                 Name = "Amenity",
                 Slug = $"amenity-{Guid.NewGuid():N}",
-                Scope = AmenityScope.Property
+                Scope = scope
             };
             Context.Amenities.Add(amenity);
             await Context.SaveChangesAsync();
             return amenity;
+        }
+
+        public async Task<(Property Property, RoomType RoomType)> SeedAssignmentTargetsAsync()
+        {
+            var owner = new User
+            {
+                FirstName = "Test",
+                LastName = "Owner",
+                PasswordHash = "hash",
+                Role = UserRole.SuperAdmin,
+                IsActive = true
+            };
+            var destination = new Destination
+            {
+                Name = "Test destination",
+                Slug = $"destination-{Guid.NewGuid():N}",
+                Country = "IR"
+            };
+            var property = new Property
+            {
+                Owner = owner,
+                Destination = destination,
+                Name = "Test property",
+                Slug = $"property-{Guid.NewGuid():N}",
+                Description = "Test property",
+                Address = "Test address",
+                City = "Test city",
+                Country = "IR"
+            };
+            var roomType = new RoomType
+            {
+                Property = property,
+                Name = "Test room type",
+                Slug = $"room-type-{Guid.NewGuid():N}",
+                Description = "Test room type",
+                MaxAdults = 2,
+                TotalInventory = 1,
+                InventoryMode = InventoryMode.TypeBasedInventory
+            };
+            Context.RoomTypes.Add(roomType);
+            await Context.SaveChangesAsync();
+            return (property, roomType);
         }
 
         public async Task<StoredMediaAsset> StoreFinalAsync(

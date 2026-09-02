@@ -48,6 +48,7 @@ public class Property : BaseEntity
     public ICollection<NearbyPlace> NearbyPlaces { get; set; } = [];
     public ICollection<PropertyCommonArea> CommonAreas { get; set; } = [];
     public ICollection<PropertyView> Views { get; set; } = [];
+    public ICollection<PropertySettingAssignment> PropertySettingAssignments { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
     public ICollection<BookingSession> BookingSessions { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];

@@ -39,6 +39,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<DefaultNearbyPlace> DefaultNearbyPlaces => Set<DefaultNearbyPlace>();
     public DbSet<PropertyCommonArea> PropertyCommonAreas => Set<PropertyCommonArea>();
     public DbSet<PropertyView> PropertyViews => Set<PropertyView>();
+    public DbSet<PropertySetting> PropertySettings => Set<PropertySetting>();
+    public DbSet<PropertySettingAssignment> PropertySettingAssignments => Set<PropertySettingAssignment>();
     public DbSet<PropertyDescriptionSection> PropertyDescriptionSections => Set<PropertyDescriptionSection>();
     public DbSet<CancellationPolicy> CancellationPolicies => Set<CancellationPolicy>();
     public DbSet<StayRule> StayRules => Set<StayRule>();
@@ -74,6 +76,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureProperties(modelBuilder);
         ConfigurePropertyCommonAreas(modelBuilder);
         ConfigurePropertyViews(modelBuilder);
+        ConfigurePropertySettings(modelBuilder);
         ConfigurePropertyDescriptionSections(modelBuilder);
         ConfigureDestinationsAndSeo(modelBuilder);
         ConfigureRoomTypes(modelBuilder);
@@ -683,6 +686,32 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(state => state.LeaseOwner).HasMaxLength(200);
             entity.Property(state => state.RowVersion).IsRowVersion();
             entity.HasIndex(state => state.ProviderName).IsUnique();
+        });
+    }
+
+    private static void ConfigurePropertySettings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PropertySetting>(entity =>
+        {
+            entity.Property(setting => setting.Name).HasMaxLength(150).IsRequired();
+            entity.Property(setting => setting.Slug).HasMaxLength(170).IsRequired();
+            entity.Property(setting => setting.IsActive).HasDefaultValue(true);
+            entity.HasIndex(setting => setting.Slug).IsUnique();
+        });
+
+        modelBuilder.Entity<PropertySettingAssignment>(entity =>
+        {
+            entity.HasIndex(assignment => new { assignment.PropertyId, assignment.PropertySettingId })
+                .IsUnique();
+            entity.HasIndex(assignment => new { assignment.PropertySettingId, assignment.PropertyId });
+            entity.HasOne(assignment => assignment.Property)
+                .WithMany(property => property.PropertySettingAssignments)
+                .HasForeignKey(assignment => assignment.PropertyId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(assignment => assignment.PropertySetting)
+                .WithMany(setting => setting.PropertyAssignments)
+                .HasForeignKey(assignment => assignment.PropertySettingId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

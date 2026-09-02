@@ -139,6 +139,29 @@ const wifiAmenity = {
   sortOrder: 1,
 };
 
+const bathroomCategory = {
+  id: 3,
+  name: "Bathroom",
+  slug: "bathroom",
+  sortOrder: 2,
+  icon: "/uploads/amenity-categories/3/bathroom.svg",
+  isActive: true,
+};
+
+const showerAmenity = {
+  id: 8,
+  amenityCategoryId: bathroomCategory.id,
+  categoryName: bathroomCategory.name,
+  categorySlug: bathroomCategory.slug,
+  categorySortOrder: bathroomCategory.sortOrder,
+  name: "Shower",
+  slug: "shower",
+  description: null,
+  icon: "/uploads/amenities/8/shower.svg",
+  scope: "Both" as const,
+  sortOrder: 1,
+};
+
 let loadedAmenityCategories = [amenityCategory];
 let loadedAmenities = [wifiAmenity];
 let loadedPropertyAmenities = [
@@ -150,17 +173,57 @@ let loadedPropertyAmenities = [
   },
 ];
 
+const propertySettingCatalog = [
+  { id: 1, name: "بافت تاریخی", slug: "historic-district", sortOrder: 10, isActive: true },
+  { id: 2, name: "محدوده بازار", slug: "bazaar-area", sortOrder: 20, isActive: true },
+  { id: 3, name: "بافت روستایی", slug: "rural-setting", sortOrder: 30, isActive: true },
+  { id: 4, name: "بافت کویری", slug: "desert-setting", sortOrder: 40, isActive: true },
+  { id: 5, name: "مرکز شهر", slug: "city-center", sortOrder: 50, isActive: true },
+  { id: 6, name: "منطقه کوهستانی", slug: "mountainous-area", sortOrder: 60, isActive: true },
+  { id: 7, name: "بافت مسکونی", slug: "residential-area", sortOrder: 70, isActive: true },
+  { id: 8, name: "حاشیه شهر", slug: "city-outskirts", sortOrder: 80, isActive: true },
+];
+const inactiveAssignedPropertySetting = {
+  id: 9,
+  name: "بافت قدیمی غیرفعال",
+  slug: "inactive-historic",
+  isActive: false,
+};
+const inactiveUnassignedPropertySetting = {
+  id: 10,
+  name: "گزینه غیرفعال انتخاب‌نشده",
+  slug: "inactive-unassigned",
+  sortOrder: 90,
+  isActive: false,
+};
+
+let loadedPropertySettings = propertySettingCatalog;
+let loadedAssignedPropertySettings: Array<{
+  id: number;
+  name: string;
+  slug: string;
+  isActive: boolean;
+}> = [];
+let propertySettingsPutError: Error | null = null;
+
 describe("PropertyWizard media and common areas", () => {
   beforeEach(() => {
     loadedProperty = property;
     loadedAmenityCategories = [];
     loadedAmenities = [];
     loadedPropertyAmenities = [];
+    loadedPropertySettings = propertySettingCatalog;
+    loadedAssignedPropertySettings = [];
+    propertySettingsPutError = null;
     api.request.mockReset();
     api.replaceCommonAreas.mockReset();
     api.request.mockImplementation((path: string, init?: RequestInit) => {
       if (path === "/amenity-categories") return Promise.resolve(loadedAmenityCategories);
       if (path === "/amenities") return Promise.resolve(loadedAmenities);
+      if (path === "/property-settings") return Promise.resolve(loadedPropertySettings);
+      if (path === "/owner/properties" && init?.method === "POST") {
+        return Promise.resolve(loadedProperty);
+      }
       if (path === "/owner/properties/17") return Promise.resolve(loadedProperty);
       if (path === "/admin/properties/17") return Promise.resolve(loadedProperty);
       if (path === "/owner/properties/17/completion") return Promise.resolve(completion);
@@ -175,6 +238,22 @@ describe("PropertyWizard media and common areas", () => {
       if (path === "/owner/properties/17/common-areas") return Promise.resolve(existingCommonAreas);
       if (path === "/owner/properties/17/nearby-places") return Promise.resolve([]);
       if (path === "/owner/properties/17/views") return Promise.resolve([]);
+      if (path === "/owner/properties/17/settings") {
+        if (init?.method !== "PUT") {
+          return Promise.resolve(loadedAssignedPropertySettings);
+        }
+        if (propertySettingsPutError) return Promise.reject(propertySettingsPutError);
+        const ids = (JSON.parse(String(init.body)).propertySettingIds ?? []) as number[];
+        const candidates = [
+          ...loadedPropertySettings,
+          ...loadedAssignedPropertySettings,
+        ];
+        loadedAssignedPropertySettings = ids
+          .map((id) => candidates.find((setting) => setting.id === id))
+          .filter((setting): setting is NonNullable<typeof setting> => Boolean(setting))
+          .map(({ id, name, slug, isActive }) => ({ id, name, slug, isActive }));
+        return Promise.resolve(loadedAssignedPropertySettings);
+      }
       if (path === "/owner/properties/17/room-types") return Promise.resolve([]);
       if (path === "/owner/properties/17/sections/description") return Promise.resolve(property);
       if (path === "/owner/properties/17/sections/location" && init?.method === "PUT") {
@@ -226,6 +305,253 @@ describe("PropertyWizard media and common areas", () => {
       );
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({ amenityIds: [] });
     });
+    expect(
+      api.request.mock.calls.some(
+        ([path, init]) =>
+          path === "/owner/properties/17/views" && init?.method === "PUT",
+      ),
+    ).toBe(true);
+    expect(
+      api.request.mock.calls.some(
+        ([path, init]) =>
+          path === "/owner/properties/17/settings" && init?.method === "PUT",
+      ),
+    ).toBe(false);
+  });
+
+  it("loads the active PropertySetting catalog in backend order and starts create mode unselected", async () => {
+    loadedPropertySettings = [
+      ...propertySettingCatalog,
+      inactiveUnassignedPropertySetting,
+    ];
+    window.history.replaceState({}, "", "?step=1");
+    const { container } = render(<PropertyWizard mode="create" />);
+
+    expect(
+      await screen.findByRole("heading", { name: "بافت و موقعیت محیطی" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "ویژگی‌های محیط و محدوده‌ای که اقامتگاه در آن قرار دارد را انتخاب کنید.",
+      ),
+    ).toBeTruthy();
+    const grid = container.querySelector(
+      '[data-property-setting-selection-grid="true"]',
+    );
+    expect(grid?.className).toContain("grid-cols-2");
+    expect(grid?.className).toContain("sm:grid-cols-3");
+    expect(grid?.className).toContain("lg:grid-cols-4");
+    const cards = propertySettingCatalog.map((setting) =>
+      screen.getByRole("button", { name: setting.name }),
+    );
+    expect(Array.from(grid?.children ?? [])).toEqual(cards);
+    expect(cards.every((card) => card.getAttribute("aria-pressed") === "false")).toBe(true);
+    expect(screen.queryByText(inactiveUnassignedPropertySetting.name)).toBeNull();
+
+    fireEvent.click(cards[0]);
+    fireEvent.click(cards[2]);
+    expect(cards[0].getAttribute("aria-pressed")).toBe("true");
+    expect(cards[2].getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("saves create and edit selections as exact full-replacement ID payloads", async () => {
+    window.history.replaceState({}, "", "?step=0");
+    const { unmount } = render(<PropertyWizard mode="create" />);
+
+    fireEvent.change(await screen.findByLabelText("نام فارسی"), {
+      target: { value: "اقامتگاه آزمایشی" },
+    });
+    fireEvent.change(screen.getByLabelText("نام انگلیسی"), {
+      target: { value: "Test Stay" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره و ادامه" }));
+    await screen.findByRole("heading", { name: "بافت و موقعیت محیطی" });
+    fireEvent.click(screen.getByRole("button", { name: propertySettingCatalog[1].name }));
+    fireEvent.click(screen.getByRole("button", { name: propertySettingCatalog[3].name }));
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(
+        ([path, init]) =>
+          path === "/owner/properties/17/settings" && init?.method === "PUT",
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        propertySettingIds: [2, 4],
+      });
+    });
+
+    unmount();
+    api.request.mockClear();
+    loadedAssignedPropertySettings = [
+      propertySettingCatalog[0],
+      propertySettingCatalog[2],
+    ];
+    window.history.replaceState({}, "", "?step=1");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    const first = await screen.findByRole("button", {
+      name: propertySettingCatalog[0].name,
+    });
+    const third = screen.getByRole("button", {
+      name: propertySettingCatalog[2].name,
+    });
+    await waitFor(() => expect(first.getAttribute("aria-pressed")).toBe("true"));
+    expect(third.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(first);
+    fireEvent.click(screen.getByRole("button", { name: propertySettingCatalog[4].name }));
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(
+        ([path, init]) =>
+          path === "/owner/properties/17/settings" && init?.method === "PUT",
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        propertySettingIds: [3, 5],
+      });
+    });
+  });
+
+  it("keeps an assigned inactive setting visible and removable without offering inactive unassigned settings", async () => {
+    loadedPropertySettings = [
+      ...propertySettingCatalog,
+      inactiveUnassignedPropertySetting,
+    ];
+    loadedAssignedPropertySettings = [inactiveAssignedPropertySetting];
+    window.history.replaceState({}, "", "?step=1");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    const inactiveCard = await screen.findByRole("button", {
+      name: new RegExp(inactiveAssignedPropertySetting.name),
+    });
+    expect(inactiveCard.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("دیگر فعال نیست")).toBeTruthy();
+    expect(screen.queryByText(inactiveUnassignedPropertySetting.name)).toBeNull();
+    fireEvent.click(inactiveCard);
+    expect(inactiveCard.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(inactiveCard);
+    expect(inactiveCard.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(inactiveCard);
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(
+        ([path, init]) =>
+          path === "/owner/properties/17/settings" && init?.method === "PUT",
+      );
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({
+        propertySettingIds: [],
+      });
+      expect(screen.queryByText(inactiveAssignedPropertySetting.name)).toBeNull();
+    });
+  });
+
+  it("preserves selection and reports an assignment save failure", async () => {
+    propertySettingsPutError = new Error("ذخیره بافت و موقعیت انجام نشد.");
+    window.history.replaceState({}, "", "?step=1");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    const card = await screen.findByRole("button", {
+      name: propertySettingCatalog[0].name,
+    });
+    fireEvent.click(card);
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+
+    expect(await screen.findByText("ذخیره بافت و موقعیت انجام نشد.")).toBeTruthy();
+    expect(card.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("does not let PropertySetting selection affect completion or PropertyView persistence", async () => {
+    window.history.replaceState({}, "", "?step=1");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: propertySettingCatalog[0].name }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
+    expect(await screen.findByText("64٪ تکمیل شده")).toBeTruthy();
+    expect(
+      api.request.mock.calls.some(
+        ([path, init]) =>
+          path === "/owner/properties/17/views" && init?.method === "PUT",
+      ),
+    ).toBe(false);
+  });
+
+  it("renders ordered categories as one continuous amenity grid", async () => {
+    loadedAmenityCategories = [
+      amenityCategory,
+      { ...bathroomCategory, id: 99, name: "Empty Category" },
+      bathroomCategory,
+    ];
+    loadedAmenities = [wifiAmenity, showerAmenity];
+    loadedPropertyAmenities = [];
+    window.history.replaceState({}, "", "?step=3");
+    const { container } = render(
+      <PropertyWizard mode="edit" propertyId={17} />,
+    );
+
+    const wifiCard = await screen.findByRole("button", {
+      name: wifiAmenity.name,
+    });
+    const showerCard = screen.getByRole("button", {
+      name: showerAmenity.name,
+    });
+    const grids = container.querySelectorAll("[data-amenity-selection-grid]");
+    expect(grids).toHaveLength(1);
+    expect(grids[0]?.className).toContain("grid-cols-2");
+    expect(Array.from(grids[0]?.children ?? [])).toEqual([
+      wifiCard,
+      showerCard,
+    ]);
+    expect(screen.queryByText(amenityCategory.name)).toBeNull();
+    expect(screen.queryByText(bathroomCategory.name)).toBeNull();
+    expect(screen.queryByText("Empty Category")).toBeNull();
+    expect(screen.getAllByRole("button", { name: wifiAmenity.name })).toHaveLength(
+      1,
+    );
+    expect(
+      wifiCard.querySelector('[data-amenity-category-icon="decorative"]')
+        ?.innerHTML,
+    ).toContain(amenityCategory.icon);
+    expect(
+      showerCard.querySelector('[data-amenity-category-icon="decorative"]')
+        ?.innerHTML,
+    ).toContain(bathroomCategory.icon);
+
+    fireEvent.click(wifiCard);
+    fireEvent.click(showerCard);
+    expect(wifiCard.getAttribute("aria-pressed")).toBe("true");
+    expect(showerCard.getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(wifiCard);
+    expect(wifiCard.getAttribute("aria-pressed")).toBe("false");
+    expect(showerCard.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("uses the same continuous amenity grid in create mode", async () => {
+    loadedAmenityCategories = [amenityCategory, bathroomCategory];
+    loadedAmenities = [wifiAmenity, showerAmenity];
+    window.history.replaceState({}, "", "?step=3");
+    const { container } = render(<PropertyWizard mode="create" />);
+
+    const grid = await waitFor(() => {
+      const element = container.querySelector("[data-amenity-selection-grid]");
+      expect(element).toBeTruthy();
+      return element;
+    });
+    expect(grid?.children).toHaveLength(2);
+    expect(screen.queryByText(amenityCategory.name)).toBeNull();
+    expect(screen.queryByText(bathroomCategory.name)).toBeNull();
+    expect(
+      screen.getByRole("button", { name: wifiAmenity.name }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("false");
+    expect(
+      screen.getByRole("button", { name: showerAmenity.name }).getAttribute(
+        "aria-pressed",
+      ),
+    ).toBe("false");
   });
 
   it("does not expose the legacy inventory model while creating an accommodation", async () => {

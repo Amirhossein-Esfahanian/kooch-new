@@ -23,6 +23,7 @@ public static class SeedData
         await SeedDefaultNearbyPlacesAsync(dbContext);
         await SeedTravelPurposesAsync(dbContext);
         await SeedAmenityCategoriesAsync(dbContext);
+        await SeedPropertySettingsAsync(dbContext);
         await dbContext.SaveChangesAsync();
         await SeedAmenitiesAsync(dbContext);
         await SeedBedTypesAsync(dbContext);
@@ -270,6 +271,27 @@ public static class SeedData
         }
     }
 
+    private static async Task SeedPropertySettingsAsync(KoochDbContext dbContext)
+    {
+        var items = new[]
+        {
+            new PropertySetting { Name = "بافت تاریخی", Slug = "historic-district", SortOrder = 10, IsActive = true },
+            new PropertySetting { Name = "محدوده بازار", Slug = "bazaar-area", SortOrder = 20, IsActive = true },
+            new PropertySetting { Name = "بافت روستایی", Slug = "rural-setting", SortOrder = 30, IsActive = true },
+            new PropertySetting { Name = "بافت کویری", Slug = "desert-setting", SortOrder = 40, IsActive = true },
+            new PropertySetting { Name = "مرکز شهر", Slug = "city-center", SortOrder = 50, IsActive = true },
+            new PropertySetting { Name = "منطقه کوهستانی", Slug = "mountainous-area", SortOrder = 60, IsActive = true },
+            new PropertySetting { Name = "بافت مسکونی", Slug = "residential-area", SortOrder = 70, IsActive = true },
+            new PropertySetting { Name = "حاشیه شهر", Slug = "city-outskirts", SortOrder = 80, IsActive = true }
+        };
+
+        var existingSlugs = await dbContext.PropertySettings.IgnoreQueryFilters()
+            .Select(setting => setting.Slug)
+            .ToHashSetAsync();
+
+        dbContext.PropertySettings.AddRange(items.Where(item => !existingSlugs.Contains(item.Slug)));
+    }
+
     private static async Task SeedAmenitiesAsync(KoochDbContext dbContext)
     {
         var categories = await dbContext.AmenityCategories
@@ -327,7 +349,6 @@ public static class SeedData
             amenity.AmenityCategoryId = categories[item.CategorySlug];
             amenity.Name = item.Name;
             amenity.Description = item.Description ?? amenity.Description;
-            amenity.Scope = item.Scope;
             amenity.SortOrder = item.SortOrder;
             amenity.IsDeleted = false;
             amenity.DeletedAtUtc = null;

@@ -444,6 +444,21 @@ export interface PropertyAmenityResponse {
   categoryName: string;
 }
 
+export interface PropertySettingResponse {
+  id: number;
+  name: string;
+  slug: string;
+  sortOrder: number;
+  isActive: boolean;
+}
+
+export interface PropertySettingAssignmentResponse {
+  id: number;
+  name: string;
+  slug: string;
+  isActive: boolean;
+}
+
 export type NearbyPlaceCategory =
   | "Attraction"
   | "Transport"

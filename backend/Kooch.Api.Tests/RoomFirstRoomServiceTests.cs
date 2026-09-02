@@ -140,6 +140,36 @@ public sealed class RoomFirstRoomServiceTests
         Assert.Null(typeof(OwnerRoomResponse).GetProperty("RoomTypeName"));
     }
 
+    [Theory]
+    [InlineData(AmenityScope.Property, false)]
+    [InlineData(AmenityScope.RoomType, true)]
+    [InlineData(AmenityScope.Both, true)]
+    public async Task CreatePropertyRoom_EnforcesRoomAmenityScope(
+        AmenityScope scope,
+        bool expectedAllowed)
+    {
+        await using var fixture = await RoomFirstFixture.CreateAsync();
+        var amenity = await fixture.SeedAmenityAsync(scope);
+        var request = Request("Scope room", RoomKind.Double);
+        request.AmenityIds = [amenity.Id];
+
+        if (!expectedAllowed)
+        {
+            var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+                fixture.Service.CreatePropertyRoomAsync(
+                    1, UserRole.SuperAdmin, 10, request));
+
+            Assert.Equal("One or more amenities are invalid for a room.", exception.Message);
+            Assert.Empty(await fixture.Context.RoomTypeAmenities.ToListAsync());
+            return;
+        }
+
+        var result = await fixture.Service.CreatePropertyRoomAsync(
+            1, UserRole.SuperAdmin, 10, request);
+
+        Assert.Contains(result.Amenities, item => item.AmenityId == amenity.Id);
+    }
+
     private static CreatePropertyRoomRequest Request(string name, RoomKind roomKind) =>
         new()
         {
@@ -211,6 +241,26 @@ public sealed class RoomFirstRoomServiceTests
             });
             await context.SaveChangesAsync();
             return new RoomFirstFixture(connection, context, interceptor);
+        }
+
+        public async Task<Amenity> SeedAmenityAsync(AmenityScope scope)
+        {
+            var category = new AmenityCategory
+            {
+                Name = "Scope category",
+                Slug = $"scope-category-{Guid.NewGuid():N}",
+                IsActive = true
+            };
+            var amenity = new Amenity
+            {
+                AmenityCategory = category,
+                Name = $"{scope} amenity",
+                Slug = $"scope-amenity-{Guid.NewGuid():N}",
+                Scope = scope
+            };
+            Context.Amenities.Add(amenity);
+            await Context.SaveChangesAsync();
+            return amenity;
         }
 
         public async ValueTask DisposeAsync()

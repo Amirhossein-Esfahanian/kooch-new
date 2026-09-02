@@ -62,6 +62,7 @@ public class AmenitiesController(
         CancellationToken cancellationToken)
     {
         await EnsureCanManageAmenitiesAsync(cancellationToken);
+        EnsureValidScope(request.Scope);
         var uploadToken = Clean(request.IconUploadToken);
         _ = IconWriteRequestValidator.ValidateCreate(
             uploadToken,
@@ -137,6 +138,11 @@ public class AmenitiesController(
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
             ?? throw new KeyNotFoundException("Amenity not found.");
 
+        EnsureValidScope(request.Scope);
+        await EnsureScopeTransitionCompatibleAsync(
+            amenity,
+            request.Scope,
+            cancellationToken);
         var uploadToken = Clean(request.IconUploadToken);
         var iconAction = IconWriteRequestValidator.ValidateUpdate(
             uploadToken,
@@ -272,6 +278,41 @@ public class AmenitiesController(
                 .AnyAsync(category => category.Id == categoryId && category.IsActive, cancellationToken))
         {
             throw new ArgumentException("Amenity category not found.");
+        }
+    }
+
+    private async Task EnsureScopeTransitionCompatibleAsync(
+        Amenity amenity,
+        AmenityScope targetScope,
+        CancellationToken cancellationToken)
+    {
+        if (amenity.Scope == targetScope || targetScope == AmenityScope.Both)
+        {
+            return;
+        }
+
+        if (targetScope == AmenityScope.Property &&
+            await dbContext.RoomTypeAmenities.AsNoTracking()
+                .AnyAsync(join => join.AmenityId == amenity.Id, cancellationToken))
+        {
+            throw new ArgumentException(
+                "این امکان هنوز به نوع اتاق متصل است و نمی‌توان دامنه آن را فقط به اقامتگاه تغییر داد.");
+        }
+
+        if (targetScope == AmenityScope.RoomType &&
+            await dbContext.PropertyAmenities.AsNoTracking()
+                .AnyAsync(join => join.AmenityId == amenity.Id, cancellationToken))
+        {
+            throw new ArgumentException(
+                "این امکان هنوز به اقامتگاه متصل است و نمی‌توان دامنه آن را فقط به نوع اتاق تغییر داد.");
+        }
+    }
+
+    private static void EnsureValidScope(AmenityScope scope)
+    {
+        if (!Enum.IsDefined(scope))
+        {
+            throw new ArgumentException("دامنه استفاده امکان معتبر نیست.");
         }
     }
 

@@ -1,5 +1,9 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type {
+  AmenityCategoryResponse,
+  AmenityResponse,
+} from "@/lib/owner-api";
 
 const ownerApi = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
@@ -14,7 +18,7 @@ vi.mock("sonner", () => ({ toast: notifications }));
 
 import { AmenityManagement } from "@/components/amenities/AmenityManagement";
 
-const baseCategory = {
+const baseCategory: AmenityCategoryResponse = {
   id: 1,
   name: "خدمات پایه",
   slug: "base-services",
@@ -23,7 +27,7 @@ const baseCategory = {
   isActive: true,
 };
 
-const baseAmenity = {
+const baseAmenity: AmenityResponse = {
   id: 10,
   amenityCategoryId: 1,
   categoryName: "خدمات پایه",
@@ -55,8 +59,8 @@ function selectSvg(dialog: HTMLElement, name = "new-icon.svg") {
 }
 
 describe("AmenityManagement staged SVG integration", () => {
-  let categories: typeof baseCategory[];
-  let amenities: typeof baseAmenity[];
+  let categories: AmenityCategoryResponse[];
+  let amenities: AmenityResponse[];
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -156,6 +160,81 @@ describe("AmenityManagement staged SVG integration", () => {
         expect(JSON.parse(init.body as string)).not.toHaveProperty("icon");
       }
     }
+  });
+
+  it("renders localized vertical scope badges with canonical category watermarks", async () => {
+    amenities = [
+      { ...baseAmenity, id: 10, name: "امکان اقامتگاه", scope: "Property" },
+      { ...baseAmenity, id: 11, name: "امکان اتاق", scope: "RoomType" },
+      { ...baseAmenity, id: 12, name: "امکان مشترک", scope: "Both" },
+    ];
+
+    const { container } = render(<AmenityManagement />);
+    await screen.findByText("امکان اقامتگاه");
+
+    const expectedLabels = {
+      Property: "اقامتگاه",
+      RoomType: "اتاق",
+      Both: "هر دو",
+    } as const;
+
+    for (const [scope, label] of Object.entries(expectedLabels)) {
+      const badge = container.querySelector(
+        `[data-amenity-scope-badge="vertical"][data-scope="${scope}"]`,
+      );
+      expect(badge).not.toBeNull();
+      expect(badge?.textContent).toContain(label);
+      expect(badge?.classList.contains("absolute")).toBe(true);
+      expect(badge?.classList.contains("right-0")).toBe(true);
+      expect(badge?.firstElementChild?.classList.contains("-rotate-90")).toBe(
+        true,
+      );
+    }
+
+    const watermarks = container.querySelectorAll(
+      '[data-amenity-category-icon="decorative"]',
+    );
+    expect(watermarks).toHaveLength(3);
+    for (const watermark of watermarks) {
+      expect(watermark.getAttribute("aria-hidden")).toBe("true");
+      expect(watermark.classList.contains("pointer-events-none")).toBe(true);
+      expect(watermark.classList.contains("z-0")).toBe(true);
+      expect(watermark.classList.contains("opacity-[0.07]")).toBe(true);
+      expect(watermark.className).not.toContain("-z-");
+      expect(
+        (watermark.firstElementChild as HTMLElement | null)?.style.mask,
+      ).toBe(`url("${baseCategory.icon}") center / contain no-repeat`);
+    }
+
+    expect(
+      container.querySelectorAll('[data-amenity-card-foreground="true"]'),
+    ).toHaveLength(3);
+    expect(screen.getAllByTitle("ویرایش")).toHaveLength(3);
+    expect(screen.getAllByTitle("حذف")).toHaveLength(3);
+    expect(
+      container.querySelector(`img[src="${baseAmenity.icon}"]`),
+    ).not.toBeNull();
+  });
+
+  it("keeps card foreground and actions intact when the category has no icon", async () => {
+    categories = [{ ...baseCategory, icon: null }];
+
+    const { container } = render(<AmenityManagement />);
+    await screen.findByText("وای‌فای");
+
+    expect(
+      container.querySelector('[data-amenity-category-icon="decorative"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-amenity-card-foreground="true"]'),
+    ).not.toBeNull();
+    const foreground = container.querySelector(
+      '[data-amenity-card-foreground="true"]',
+    );
+    expect(foreground?.classList.contains("relative")).toBe(true);
+    expect(foreground?.classList.contains("z-10")).toBe(true);
+    expect(screen.getByTitle("ویرایش")).not.toBeNull();
+    expect(screen.getByTitle("حذف")).not.toBeNull();
   });
 
   it("creates a category without granting persisted icon authority", async () => {

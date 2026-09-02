@@ -51,6 +51,55 @@ describe("AmenitySelectionCard", () => {
     expect(onToggle).toHaveBeenCalledWith(true);
   });
 
+  it("uses restrained fine-pointer hover and equivalent keyboard focus styling", () => {
+    const { rerender } = render(
+      <AmenitySelectionCard
+        amenity={amenity}
+        category={category}
+        onToggle={vi.fn()}
+        selected={false}
+      />,
+    );
+
+    const card = screen.getByRole("button", { name: amenity.name });
+    expect(card.className).toContain("transition-[border-color,box-shadow]");
+    expect(card.className).toContain("duration-150");
+    expect(card.className).toContain("ease-out");
+    expect(card.className).toContain(
+      "[@media(hover:hover)_and_(pointer:fine)]:enabled:hover:border-[color-mix(in_srgb,var(--theme-primary)_50%,transparent)]",
+    );
+    expect(card.className).toContain(
+      "[@media(hover:hover)_and_(pointer:fine)]:enabled:hover:shadow-[0_0_0_2px_var(--theme-primary-soft),0_0_10px_-8px_var(--theme-primary)]",
+    );
+    expect(card.className).not.toContain(
+      "[@media(hover:hover)_and_(pointer:fine)]:enabled:hover:border-primary",
+    );
+    expect(card.className).toContain("focus-visible:border-primary");
+    expect(card.className).toContain("focus-visible:ring-2");
+    expect(card.className).toContain("focus-visible:shadow-");
+    expect(card.className).toContain("motion-reduce:transition-none");
+    expect(card.className).not.toMatch(/(?:scale|translate|transform)/);
+
+    rerender(
+      <AmenitySelectionCard
+        amenity={amenity}
+        category={category}
+        onToggle={vi.fn()}
+        selected
+      />,
+    );
+
+    expect(card.getAttribute("aria-pressed")).toBe("true");
+    expect(card.className).toContain("border-primary");
+    expect(card.className).toContain("text-primary");
+    expect(card.className).toContain(
+      "[@media(hover:hover)_and_(pointer:fine)]:enabled:hover:shadow-",
+    );
+    expect(card.className).not.toContain(
+      "[@media(hover:hover)_and_(pointer:fine)]:enabled:hover:border-primary/",
+    );
+  });
+
   it("renders the canonical category icon as a subtle neutral decorative layer", () => {
     const { container } = render(
       <AmenitySelectionCard
