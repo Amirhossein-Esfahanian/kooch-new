@@ -237,7 +237,6 @@ describe("PropertyWizard media and common areas", () => {
       if (path === "/owner/properties/17/amenities") return Promise.resolve(loadedPropertyAmenities);
       if (path === "/owner/properties/17/common-areas") return Promise.resolve(existingCommonAreas);
       if (path === "/owner/properties/17/nearby-places") return Promise.resolve([]);
-      if (path === "/owner/properties/17/views") return Promise.resolve([]);
       if (path === "/owner/properties/17/settings") {
         if (init?.method !== "PUT") {
           return Promise.resolve(loadedAssignedPropertySettings);
@@ -293,6 +292,13 @@ describe("PropertyWizard media and common areas", () => {
     const card = await screen.findByRole("button", { name: wifiAmenity.name });
     await waitFor(() => expect(card.getAttribute("aria-pressed")).toBe("true"));
     expect(screen.queryByRole("checkbox", { name: wifiAmenity.name })).toBeNull();
+    expect(screen.getByRole("heading", { name: "امکانات" })).toBeTruthy();
+    expect(screen.queryByText("چشم‌انداز")).toBeNull();
+    expect(
+      api.request.mock.calls.some(([path]) =>
+        String(path).endsWith("/views"),
+      ),
+    ).toBe(false);
 
     fireEvent.click(card);
     expect(card.getAttribute("aria-pressed")).toBe("false");
@@ -306,11 +312,10 @@ describe("PropertyWizard media and common areas", () => {
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({ amenityIds: [] });
     });
     expect(
-      api.request.mock.calls.some(
-        ([path, init]) =>
-          path === "/owner/properties/17/views" && init?.method === "PUT",
+      api.request.mock.calls.some(([path]) =>
+        String(path).endsWith("/views"),
       ),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       api.request.mock.calls.some(
         ([path, init]) =>
@@ -461,7 +466,9 @@ describe("PropertyWizard media and common areas", () => {
     expect(card.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("does not let PropertySetting selection affect completion or PropertyView persistence", async () => {
+  it("keeps PropertySetting out of completion while Amenities alone complete their step", async () => {
+    loadedAmenityCategories = [amenityCategory];
+    loadedAmenities = [wifiAmenity];
     window.history.replaceState({}, "", "?step=1");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
@@ -470,10 +477,16 @@ describe("PropertyWizard media and common areas", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
     expect(await screen.findByText("64٪ تکمیل شده")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: /^امکانات/ }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: wifiAmenity.name }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
+    expect(await screen.findByText("73٪ تکمیل شده")).toBeTruthy();
     expect(
-      api.request.mock.calls.some(
-        ([path, init]) =>
-          path === "/owner/properties/17/views" && init?.method === "PUT",
+      api.request.mock.calls.some(([path]) =>
+        String(path).endsWith("/views"),
       ),
     ).toBe(false);
   });

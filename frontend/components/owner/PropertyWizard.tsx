@@ -25,8 +25,6 @@ import {
   PropertySettingResponse,
   PropertyStatus,
   PropertyType,
-  PropertyViewResponse,
-  PropertyViewType,
   replacePropertyCommonAreas,
   resolveDestinationId,
   RoomTypeResponse,
@@ -74,13 +72,6 @@ const defaultNearbyPlaces = [
   "City Center",
   "Hospital",
 ];
-const propertyViewOptions: PropertyViewType[] = [
-  "CourtyardView",
-  "GardenView",
-  "CityView",
-  "MountainView",
-  "DesertView",
-];
 const propertyStatusOptions: PropertyStatus[] = [
   "Draft",
   "PendingReview",
@@ -88,14 +79,6 @@ const propertyStatusOptions: PropertyStatus[] = [
   "Rejected",
   "Suspended",
 ];
-
-const propertyViewLabels: Record<PropertyViewType, string> = {
-  CourtyardView: "نمای حیاط",
-  GardenView: "نمای باغ",
-  CityView: "نمای شهر",
-  MountainView: "نمای کوه",
-  DesertView: "نمای کویر",
-};
 
 const propertyTypeLabels: Record<PropertyType, string> = {
   TraditionalHouse: "خانه سنتی",
@@ -148,7 +131,6 @@ interface WizardData {
   propertyDescription: string;
   additionalNotes: string;
   commonAreas: CommonAreaDraft[];
-  views: PropertyViewType[];
   nearbyPlaces: NearbyPlaceDraft[];
   checkInTime: string;
   checkOutTime: string;
@@ -182,7 +164,6 @@ const initialData: WizardData = {
   propertyDescription: "",
   additionalNotes: "",
   commonAreas: [{ name: "", description: "" }],
-  views: [],
   nearbyPlaces: [
     { title: "", drivingMinutes: "", walkingMinutes: "", isDefault: false },
   ],
@@ -353,9 +334,6 @@ export function PropertyWizard({
       apiRequest<NearbyPlaceResponse[]>(
         `/owner/properties/${propertyId}/nearby-places`,
       ),
-      apiRequest<PropertyViewResponse[]>(
-        `/owner/properties/${propertyId}/views`,
-      ),
       apiRequest<PropertySettingAssignmentResponse[]>(
         `/owner/properties/${propertyId}/settings`,
       ),
@@ -372,7 +350,6 @@ export function PropertyWizard({
           propertyAmenities,
           commonAreas,
           nearbyPlaces,
-          views,
           propertySettings,
           roomTypeItems,
         ]) => {
@@ -452,7 +429,6 @@ export function PropertyWizard({
                   description: area.description ?? "",
                 }))
               : [{ name: "", description: "" }],
-            views: views.map((view) => view.viewType),
             nearbyPlaces: nearbyPlaces.filter((place) => place.isActive).length
               ? nearbyPlaces
                   .filter((place) => place.isActive)
@@ -531,7 +507,7 @@ export function PropertyWizard({
       Boolean(data.name.trim() && data.englishName.trim()),
       Boolean(data.city.trim() && data.address.trim()),
       Number(data.floors) > 0,
-      data.selectedAmenityIds.length > 0 || data.views.length > 0,
+      data.selectedAmenityIds.length > 0,
       allImages.some((image) => !image.roomTypeId && !image.roomId),
       Boolean(
         data.propertyDescription.trim() ||
@@ -601,14 +577,11 @@ export function PropertyWizard({
       },
       {
         key: "amenities",
-        label: "امکانات و چشم‌انداز",
+        label: "امکانات",
         targetStepIndex: 3,
-        isComplete: data.selectedAmenityIds.length > 0 || data.views.length > 0,
+        isComplete: data.selectedAmenityIds.length > 0,
         missingItems: required([
-          [
-            data.selectedAmenityIds.length > 0 || data.views.length > 0,
-            "حداقل یک امکان یا چشم‌انداز",
-          ],
+          [data.selectedAmenityIds.length > 0, "حداقل یک امکان"],
         ]),
         recommendedMissingItems: [],
       },
@@ -820,10 +793,6 @@ export function PropertyWizard({
         body: JSON.stringify({ amenityIds: data.selectedAmenityIds }),
       },
     );
-    await apiRequest(`/owner/properties/${propertyId}/views`, {
-      method: "PUT",
-      body: JSON.stringify({ views: data.views }),
-    });
   }
 
   async function savePropertySettings(propertyId: number) {
@@ -1448,7 +1417,7 @@ export function PropertyWizard({
 
         {step === 3 && (
           <section className={`${cardClass} grid gap-5`}>
-            <h2 className="text-2xl font-bold">امکانات و چشم‌انداز</h2>
+            <h2 className="text-2xl font-bold">امکانات</h2>
             <div
               className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 min-[1800px]:grid-cols-6"
               data-amenity-selection-grid="true"
@@ -1477,29 +1446,6 @@ export function PropertyWizard({
                 />
               ))}
             </div>
-            <fieldset>
-              <legend className="mb-2 text-lg font-bold">چشم‌انداز</legend>
-              <div className="grid gap-2 md:grid-cols-3">
-                {propertyViewOptions.map((view) => (
-                  <label className={choiceClass} key={view}>
-                    <input
-                      checked={data.views.includes(view)}
-                      className="h-4 w-4 accent-[var(--theme-primary)]"
-                      onChange={(event) =>
-                        update(
-                          "views",
-                          event.target.checked
-                            ? [...data.views, view]
-                            : data.views.filter((item) => item !== view),
-                        )
-                      }
-                      type="checkbox"
-                    />
-                    {propertyViewLabels[view]}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
           </section>
         )}
 

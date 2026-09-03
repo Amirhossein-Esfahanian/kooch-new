@@ -465,12 +465,6 @@ export type NearbyPlaceCategory =
   | "Landmark"
   | "Market"
   | "Other";
-export type PropertyViewType =
-  | "CourtyardView"
-  | "GardenView"
-  | "CityView"
-  | "MountainView"
-  | "DesertView";
 
 export interface NearbyPlaceResponse {
   id: number;
@@ -514,10 +508,6 @@ export interface PropertyCommonAreaInput {
   name: string;
   description: string | null;
   sortOrder: number;
-}
-
-export interface PropertyViewResponse {
-  viewType: PropertyViewType;
 }
 
 export type AvailabilityStatus = "Available" | "Unavailable" | "OnRequest";
