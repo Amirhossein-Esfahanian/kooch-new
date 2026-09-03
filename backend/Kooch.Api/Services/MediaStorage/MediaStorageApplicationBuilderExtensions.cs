@@ -8,6 +8,7 @@ namespace Kooch.Api.Services.MediaStorage;
 public static class MediaStorageApplicationBuilderExtensions
 {
     private const string ImmutableCacheControl = "public,max-age=31536000,immutable";
+    private const string PropertyImagePublicPath = "/uploads/properties";
 
     public static IApplicationBuilder UseMediaStorageStaticFiles(
         this IApplicationBuilder app,
@@ -49,10 +50,12 @@ public static class MediaStorageApplicationBuilderExtensions
             });
         }
 
-        // Keep /uploads authoritative to the configured provider; never fall through to wwwroot.
+        // Keep provider-owned /uploads paths authoritative. Property images still live in
+        // wwwroot/uploads/properties and must reach the standard static-file middleware.
         app.Use(async (context, next) =>
         {
-            if (context.Request.Path.StartsWithSegments(mediaStorage.PublicBasePath))
+            if (context.Request.Path.StartsWithSegments(mediaStorage.PublicBasePath) &&
+                !context.Request.Path.StartsWithSegments(PropertyImagePublicPath))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;

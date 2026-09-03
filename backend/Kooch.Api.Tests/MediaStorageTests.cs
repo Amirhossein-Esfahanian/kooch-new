@@ -9,6 +9,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Options;
+using SixLabors.ImageSharp;
+using SixLabors.ImageSharp.PixelFormats;
 using Xunit;
 
 namespace Kooch.Api.Tests;
@@ -296,7 +298,7 @@ public sealed class MediaStorageTests
     }
 
     [Fact]
-    public async Task UploadStaticSource_ServesSvgAndPreservesLegacyStaticFiles()
+    public async Task UploadStaticSource_ServesSvgPropertyImagesAndLegacyStaticFiles()
     {
         using var temp = new TemporaryDirectory();
         var environment = CreateEnvironment(temp.Path);
@@ -307,6 +309,14 @@ public sealed class MediaStorageTests
         var legacyDirectory = Path.Combine(environment.WebRootPath, "svgs", "amenities");
         Directory.CreateDirectory(legacyDirectory);
         await File.WriteAllTextAsync(Path.Combine(legacyDirectory, "legacy.svg"), SvgContent);
+        var propertyImageDirectory = Path.Combine(environment.WebRootPath, "uploads", "properties", "17");
+        Directory.CreateDirectory(propertyImageDirectory);
+        var propertyImagePath = Path.Combine(propertyImageDirectory, "property.webp");
+        using (var propertyImage = new Image<Rgba32>(2, 2))
+        {
+            await propertyImage.SaveAsWebpAsync(propertyImagePath);
+        }
+        var propertyImageBytes = await File.ReadAllBytesAsync(propertyImagePath);
         await File.WriteAllTextAsync(Path.Combine(storage.RootPath, "not-public.html"), "<p>blocked</p>");
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -339,6 +349,11 @@ public sealed class MediaStorageTests
         var legacyResponse = await client.GetAsync("/svgs/amenities/legacy.svg");
         Assert.Equal(HttpStatusCode.OK, legacyResponse.StatusCode);
         Assert.Equal("image/svg+xml", legacyResponse.Content.Headers.ContentType?.MediaType);
+
+        var propertyImageResponse = await client.GetAsync("/uploads/properties/17/property.webp");
+        Assert.Equal(HttpStatusCode.OK, propertyImageResponse.StatusCode);
+        Assert.Equal("image/webp", propertyImageResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(propertyImageBytes, await propertyImageResponse.Content.ReadAsByteArrayAsync());
 
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/uploads/amenities/17/")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/uploads/not-public.html")).StatusCode);
