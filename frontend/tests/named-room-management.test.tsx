@@ -14,6 +14,7 @@ import type {
 
 const ownerApi = vi.hoisted(() => ({ apiRequest: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
+let roomTypeSaveError: Error | null = null;
 
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
@@ -96,6 +97,7 @@ function arrangeApi(
         path === "/owner/properties/3/room-types" &&
         init?.method === "POST"
       ) {
+        if (roomTypeSaveError) throw roomTypeSaveError;
         const payload = JSON.parse(String(init.body)) as Record<
           string,
           unknown
@@ -113,6 +115,7 @@ function arrangeApi(
         return created;
       }
       if (path.startsWith("/owner/room-types/") && init?.method === "PUT") {
+        if (roomTypeSaveError) throw roomTypeSaveError;
         const payload = JSON.parse(String(init.body)) as Record<
           string,
           unknown
@@ -123,8 +126,41 @@ function arrangeApi(
         const updated: RoomTypeResponse = {
           ...existing,
           name: String(payload.name),
+          englishName:
+            payload.englishName == null ? null : String(payload.englishName),
+          description: String(payload.description),
+          notes: payload.notes == null ? null : String(payload.notes),
+          floorNumber:
+            payload.floorNumber == null ? null : Number(payload.floorNumber),
+          stairCount:
+            payload.stairCount == null ? null : Number(payload.stairCount),
+          hasWindow:
+            payload.hasWindow == null ? null : Boolean(payload.hasWindow),
+          hasPrivateBathroom:
+            payload.hasPrivateBathroom == null
+              ? null
+              : Boolean(payload.hasPrivateBathroom),
+          maxAdults: Number(payload.maxAdults),
+          maxChildren: Number(payload.maxChildren),
+          allowExtraGuest: Boolean(payload.allowExtraGuest),
+          maxExtraGuests: Number(payload.maxExtraGuests),
           totalInventory: Number(payload.totalInventory),
           isActive: Boolean(payload.isActive),
+          amenities: ((payload.amenityIds as number[]) ?? []).flatMap((id) => {
+            const amenity = amenityFixtures.amenities?.find(
+              (item) => item.id === id,
+            );
+            return amenity
+              ? [
+                  {
+                    amenityId: amenity.id,
+                    name: amenity.name,
+                    amenityCategoryId: amenity.amenityCategoryId,
+                    categoryName: amenity.categoryName,
+                  },
+                ]
+              : [];
+          }),
         };
         roomTypes = roomTypes.map((roomType) =>
           roomType.id === updated.id ? updated : roomType,
@@ -160,16 +196,39 @@ async function fillRequiredFields(dialog: HTMLElement, inventory = "2") {
 }
 
 async function saveFromWizard(dialog: HTMLElement) {
-  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-  fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-  fireEvent.click(
-    within(dialog).getByRole("button", { name: "ذخیره و ادامه به تصاویر" }),
-  );
+  expect(
+    within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+  ).toBeTruthy();
+  await continueTo(dialog, "ویژگی‌های نوع اتاق");
+  expect(
+    within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+  ).toBeTruthy();
+  await continueTo(dialog, "امکانات");
+  expect(
+    within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+  ).toBeTruthy();
+  await continueTo(dialog, "تخت‌ها و چیدمان");
+  expect(
+    within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+  ).toBeTruthy();
+  await continueTo(dialog, "تصاویر نوع اتاق");
+  expect(
+    within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+  ).toBeTruthy();
+}
+
+async function continueTo(dialog: HTMLElement, heading: string) {
+  fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
+  await waitFor(() => {
+    expect(within(dialog).getByRole("heading", { name: heading })).toBeTruthy();
+  });
 }
 
 describe("unified owner sellable room type management", () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    roomTypeSaveError = null;
+    vi.clearAllMocks();
+  });
 
   it("shows sellable RoomTypes and keeps physical-room and InventoryMode concepts out of the main UI", async () => {
     arrangeApi([zanbagh]);
@@ -218,13 +277,13 @@ describe("unified owner sellable room type management", () => {
     render(<RoomManagement propertyId={3} />);
     const dialog = await openCreateDialog();
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
     expect(notifications.error).toHaveBeenCalledWith(
       "نام نوع اتاق الزامی است.",
     );
 
     await fillRequiredFields(dialog, "-1");
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
     expect(notifications.error).toHaveBeenCalledWith(
       "تعداد واحد قابل فروش نمی‌تواند منفی باشد.",
     );
@@ -262,6 +321,18 @@ describe("unified owner sellable room type management", () => {
     expect(payload).not.toHaveProperty("propertyId");
     expect(payload).not.toHaveProperty("basePrice");
     expect(
+      ownerApi.apiRequest.mock.calls.filter(
+        ([path, init]) =>
+          path === "/owner/properties/3/room-types" && init?.method === "POST",
+      ),
+    ).toHaveLength(1);
+    expect(
+      ownerApi.apiRequest.mock.calls.filter(
+        ([path, init]) =>
+          path === "/owner/room-types/10" && init?.method === "PUT",
+      ),
+    ).toHaveLength(3);
+    expect(
       await within(dialog).findByText("مدیریت تصاویر نوع اتاق"),
     ).toBeTruthy();
     expect(await screen.findByText("دابل دلوکس")).toBeTruthy();
@@ -294,8 +365,8 @@ describe("unified owner sellable room type management", () => {
     const dialog = await openCreateDialog();
     await fillRequiredFields(dialog, "2");
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
+    await continueTo(dialog, "ویژگی‌های نوع اتاق");
+    await continueTo(dialog, "امکانات");
 
     const card = within(dialog).getByRole("button", { name: amenity.name });
     expect(card.getAttribute("aria-pressed")).toBe("false");
@@ -303,17 +374,13 @@ describe("unified owner sellable room type management", () => {
     fireEvent.click(card);
     expect(card.getAttribute("aria-pressed")).toBe("true");
 
-    fireEvent.click(within(dialog).getByRole("button", { name: "بعدی" }));
-    fireEvent.click(
-      within(dialog).getByRole("button", {
-        name: "ذخیره و ادامه به تصاویر",
-      }),
-    );
+    await continueTo(dialog, "تخت‌ها و چیدمان");
+    await continueTo(dialog, "تصاویر نوع اتاق");
 
     await waitFor(() => {
-      const call = ownerApi.apiRequest.mock.calls.find(
+      const call = [...ownerApi.apiRequest.mock.calls].reverse().find(
         ([path, init]) =>
-          path === "/owner/properties/3/room-types" && init?.method === "POST",
+          path === "/owner/room-types/10" && init?.method === "PUT",
       );
       expect(JSON.parse(String(call?.[1]?.body)).amenityIds).toEqual([
         amenity.id,
@@ -358,5 +425,95 @@ describe("unified owner sellable room type management", () => {
     expect(notifications.error).not.toHaveBeenCalledWith(
       "تعداد واحد قابل فروش نمی‌تواند منفی باشد.",
     );
+    expect(
+      ownerApi.apiRequest.mock.calls.some(
+        ([path, init]) =>
+          path === "/owner/properties/3/room-types" && init?.method === "POST",
+      ),
+    ).toBe(false);
+  });
+
+  it("saves before advancing and remains on the current step when saving fails", async () => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog);
+    roomTypeSaveError = new Error("ذخیره آزمایشی انجام نشد.");
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
+
+    expect(await within(dialog).findByText("ذخیره آزمایشی انجام نشد.")).toBeTruthy();
+    expect(
+      within(dialog).getByRole("heading", { name: "اطلاعات کلی" }),
+    ).toBeTruthy();
+    expect(
+      within(dialog).queryByRole("heading", { name: "ویژگی‌های نوع اتاق" }),
+    ).toBeNull();
+
+    roomTypeSaveError = null;
+    await continueTo(dialog, "ویژگی‌های نوع اتاق");
+    expect(
+      ownerApi.apiRequest.mock.calls.filter(
+        ([path, init]) =>
+          path === "/owner/properties/3/room-types" && init?.method === "POST",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("saves and exits from Create, but stays open when Save & Exit fails", async () => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog);
+    roomTypeSaveError = new Error("خروج بدون ذخیره مجاز نیست.");
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+    );
+    expect(await within(dialog).findByText("خروج بدون ذخیره مجاز نیست.")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    roomTypeSaveError = null;
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      ownerApi.apiRequest.mock.calls.filter(
+        ([path, init]) =>
+          path === "/owner/properties/3/room-types" && init?.method === "POST",
+      ),
+    ).toHaveLength(2);
+  });
+
+  it("saves the current draft before moving to the previous step", async () => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog);
+    await continueTo(dialog, "ویژگی‌های نوع اتاق");
+    fireEvent.change(within(dialog).getByLabelText("طبقه"), {
+      target: { value: "2" },
+    });
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "مرحله قبل" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        within(dialog).getByRole("heading", { name: "اطلاعات کلی" }),
+      ).toBeTruthy();
+    });
+    const updateCall = ownerApi.apiRequest.mock.calls.find(
+      ([path, init]) => path === "/owner/room-types/10" && init?.method === "PUT",
+    );
+    expect(JSON.parse(String(updateCall?.[1]?.body)).floorNumber).toBe(2);
+    expect(
+      ownerApi.apiRequest.mock.calls.filter(
+        ([path, init]) =>
+          path === "/owner/properties/3/room-types" && init?.method === "POST",
+      ),
+    ).toHaveLength(1);
   });
 });

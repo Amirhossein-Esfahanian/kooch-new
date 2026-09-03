@@ -237,7 +237,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     for (let step = 0; step < 4; step += 1) {
       const validationError = validateStep(step);
       if (validationError) {
-        setActiveStep(step);
         toast.error(validationError);
         return null;
       }
@@ -282,11 +281,6 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       );
       setDraft(roomTypeToDraft(roomType));
       await Promise.all([loadRoomTypes(), loadImages()]);
-      toast.success(
-        draft.id
-          ? "نوع اتاق به‌روزرسانی شد."
-          : "نوع اتاق ثبت شد؛ اکنون می‌توانید تصاویر آن را اضافه کنید.",
-      );
       return roomType;
     } catch (caught) {
       const raw = caught instanceof Error ? caught.message : "";
@@ -307,16 +301,35 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
       toast.error(validationError);
       return;
     }
-    if (activeStep === 3) {
-      const roomType = await saveRoomType();
-      if (!roomType) return;
-    }
+    const roomType = await saveRoomType();
+    if (!roomType) return;
+    toast.success("این مرحله ذخیره شد.");
     setActiveStep((current) => Math.min(current + 1, steps.length - 1));
   }
 
-  function finish() {
+  async function saveAndExit() {
+    const validationError = validateStep(activeStep);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+    const roomType = await saveRoomType();
+    if (!roomType) return;
     toast.success("نوع اتاق با موفقیت ذخیره شد.");
     closeDialog();
+  }
+
+  async function goPrevious(targetStep = activeStep - 1) {
+    if (activeStep === 0 || targetStep >= activeStep) return;
+    const validationError = validateStep(activeStep);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+    const roomType = await saveRoomType();
+    if (!roomType) return;
+    toast.success("تغییرات ذخیره شد.");
+    setActiveStep(Math.max(0, targetStep));
   }
 
   async function toggleRoomTypeStatus(roomType: RoomTypeResponse) {
@@ -852,10 +865,10 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <KoochButton
               disabled={saving || activeStep === 0}
-              onClick={() => setActiveStep((current) => current - 1)}
-              variant="outline"
+              onClick={() => void goPrevious()}
+              variant="ghost"
             >
-              قبلی
+              مرحله قبل
             </KoochButton>
             <div className="flex flex-nowrap items-center gap-2">
               <KoochButton
@@ -865,12 +878,17 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
               >
                 لغو
               </KoochButton>
-              {activeStep < steps.length - 1 ? (
-                <KoochButton loading={saving} onClick={goNext}>
-                  {activeStep === 3 ? "ذخیره و ادامه به تصاویر" : "بعدی"}
+              <KoochButton
+                disabled={saving}
+                onClick={() => void saveAndExit()}
+                variant="outline"
+              >
+                ذخیره و خروج
+              </KoochButton>
+              {activeStep < steps.length - 1 && (
+                <KoochButton loading={saving} onClick={() => void goNext()}>
+                  ادامه
                 </KoochButton>
-              ) : (
-                <KoochButton onClick={finish}>پایان</KoochButton>
               )}
             </div>
           </div>
@@ -890,7 +908,7 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                 saving || index > activeStep || (index === 4 && !draft.id)
               }
               key={step}
-              onClick={() => setActiveStep(index)}
+              onClick={() => void goPrevious(index)}
               size="sm"
               variant={index === activeStep ? "primary" : "outline"}
             >
