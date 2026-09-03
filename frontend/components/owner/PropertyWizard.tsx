@@ -502,31 +502,6 @@ export function PropertyWizard({
       (setting) => !activePropertySettingIds.has(setting.id),
     ),
   ];
-  const completed = useMemo(
-    () => [
-      Boolean(data.name.trim() && data.englishName.trim()),
-      Boolean(data.city.trim() && data.address.trim()),
-      Number(data.floors) > 0,
-      data.selectedAmenityIds.length > 0,
-      allImages.some((image) => !image.roomTypeId && !image.roomId),
-      Boolean(
-        data.propertyDescription.trim() ||
-        cleanCommonAreas(data.commonAreas).length,
-      ),
-      cleanNearbyPlaces(data.nearbyPlaces).length > 0,
-      Boolean(data.checkInTime && data.checkOutTime),
-      Boolean(
-        data.freeChildAgeLimit ||
-        data.maxFreeChildren ||
-        data.childPrice ||
-        data.extraGuestPrice,
-      ),
-      Boolean(data.seoTitle || data.seoDescription),
-      Boolean(property),
-    ],
-    [allImages, data, property],
-  );
-
   const completionSections = useMemo<CompletionSection[]>(() => {
     const hasImages = allImages.some(
       (image) => !image.roomTypeId && !image.roomId,
@@ -669,19 +644,6 @@ export function PropertyWizard({
       },
     ];
   }, [allImages, data, property]);
-
-  const requiredIncompleteSections = completionSections.filter(
-    (section) => !section.isComplete,
-  );
-  const recommendedIncompleteSections = completionSections.filter(
-    (section) =>
-      section.isComplete && section.recommendedMissingItems.length > 0,
-  );
-  const localCompletionPercentage = Math.round(
-    (completionSections.filter((section) => section.isComplete).length /
-      completionSections.length) *
-      100,
-  );
 
   function jumpToStep(index: number) {
     setError("");
@@ -1869,6 +1831,7 @@ export function PropertyWizard({
             )}
             {completion && property && (
               <PropertyCompletionCard
+                compact
                 completion={completion}
                 getActionHref={(section) => {
                   const target = section.actionTarget || section.key;
@@ -1887,73 +1850,6 @@ export function PropertyWizard({
                 }}
               />
             )}
-            <div className={cardClass}>
-              <h2 className="text-2xl font-bold">بازبینی</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                میزان تکمیل اطلاعات: {localCompletionPercentage}٪
-              </p>
-              <div className="mt-4 h-3 overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full rounded-full bg-primary transition-all"
-                  style={{ width: `${localCompletionPercentage}%` }}
-                />
-              </div>
-              <p className="mt-3 inline-flex rounded-full bg-[var(--theme-primary-soft)] px-3 py-1 text-sm font-bold text-[var(--theme-primary-text)]">
-                {localCompletionPercentage}٪ تکمیل شده
-              </p>
-              {isAdmin && requiredIncompleteSections.length > 0 && (
-                <p className="mt-3 rounded-xl bg-[var(--theme-warning-soft)] p-3 text-sm font-bold text-[var(--theme-warning)]">
-                  این اقامتگاه هنوز بخش‌های ناقص دارد.
-                </p>
-              )}
-            </div>
-            <div className={cardClass}>
-              <h3 className="text-xl font-bold">موارد ناقص</h3>
-              {requiredIncompleteSections.length === 0 &&
-              recommendedIncompleteSections.length === 0 ? (
-                <p className="mt-3 rounded-xl bg-[var(--theme-success-soft)] p-3 text-sm font-bold text-[var(--theme-success)]">
-                  اطلاعات اقامتگاه کامل است.
-                </p>
-              ) : (
-                <div className="mt-4 grid gap-3">
-                  {[
-                    ...requiredIncompleteSections,
-                    ...recommendedIncompleteSections,
-                  ].map((section) => {
-                    const requiredMissing = section.missingItems.length > 0;
-                    const items = requiredMissing
-                      ? section.missingItems
-                      : section.recommendedMissingItems;
-                    return (
-                      <article
-                        className={`rounded-xl border p-4 ${requiredMissing ? "border-destructive bg-destructive/10" : "border-[var(--theme-warning)] bg-[var(--theme-warning-soft)]"}`}
-                        key={section.key}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div>
-                            <h4 className="font-bold text-foreground">
-                              {section.label}
-                            </h4>
-                            <ul className="mt-2 grid gap-1 text-sm text-muted-foreground">
-                              {items.map((item) => (
-                                <li key={item}>• {item}</li>
-                              ))}
-                            </ul>
-                          </div>
-                          <KoochButton
-                            onClick={() => jumpToStep(section.targetStepIndex)}
-                            size="sm"
-                            type="button"
-                          >
-                            تکمیل این بخش
-                          </KoochButton>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
             <div className="grid gap-4 md:grid-cols-2">
               <ReviewCard
                 title="اطلاعات پایه"

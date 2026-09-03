@@ -1,6 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PropertyResponse } from "@/lib/owner-api";
+import type {
+  PropertyCompletionResponse,
+  PropertyResponse,
+} from "@/lib/owner-api";
 
 const api = vi.hoisted(() => ({
   request: vi.fn(),
@@ -104,12 +107,41 @@ const completion = {
   propertyId: 17,
   completionPercentage: 50,
   healthStatus: "NeedsAttention",
-  sections: [],
+  sections: [
+    {
+      key: "rooms",
+      label: "اتاق‌های فعال",
+      status: "NotStarted",
+      missingItems: ["حداقل یک اتاق فعال"],
+      actionTarget: "rooms",
+    },
+    {
+      key: "pricing",
+      label: "قیمت‌گذاری اقامتگاه",
+      status: "Incomplete",
+      missingItems: ["حداقل یک قیمت ثبت‌شده"],
+      actionTarget: "pricing",
+    },
+    {
+      key: "availability",
+      label: "موجودی رزرو",
+      status: "NotStarted",
+      missingItems: ["حداقل یک روز موجود"],
+      actionTarget: "availability",
+    },
+    {
+      key: "financial",
+      label: "وضعیت مالی آزمایشی",
+      status: "Incomplete",
+      missingItems: ["قیمت کودک"],
+      actionTarget: "financial",
+    },
+  ],
   warnings: [],
   completedSections: [],
-  missingSections: [],
+  missingSections: ["rooms", "pricing", "availability", "financial"],
   canActivate: false,
-};
+} satisfies PropertyCompletionResponse;
 
 const existingCommonAreas = [
   { id: 1, propertyId: 17, name: "حیاط", description: "کنار حوض", sortOrder: 1 },
@@ -466,7 +498,7 @@ describe("PropertyWizard media and common areas", () => {
     expect(card.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("keeps PropertySetting out of completion while Amenities alone complete their step", async () => {
+  it("keeps PropertySetting out of completion while Amenities alone complete their sidebar step", async () => {
     loadedAmenityCategories = [amenityCategory];
     loadedAmenities = [wifiAmenity];
     window.history.replaceState({}, "", "?step=1");
@@ -476,19 +508,41 @@ describe("PropertyWizard media and common areas", () => {
       await screen.findByRole("button", { name: propertySettingCatalog[0].name }),
     );
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
-    expect(await screen.findByText("64٪ تکمیل شده")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /^امکانات/ }).textContent,
+    ).toContain("ناقص");
 
     fireEvent.click(screen.getByRole("button", { name: /^امکانات/ }));
     fireEvent.click(
       await screen.findByRole("button", { name: wifiAmenity.name }),
     );
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
-    expect(await screen.findByText("73٪ تکمیل شده")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: /^امکانات/ }).textContent,
+    ).toContain("✓");
     expect(
       api.request.mock.calls.some(([path]) =>
         String(path).endsWith("/views"),
       ),
     ).toBe(false);
+  });
+
+  it("renders one compact authoritative completion summary on Review", async () => {
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    expect(await screen.findByText("50% تکمیل شده")).toBeTruthy();
+    expect(screen.getByText("اتاق‌های فعال")).toBeTruthy();
+    expect(screen.getByText("قیمت‌گذاری اقامتگاه")).toBeTruthy();
+    expect(screen.getByText("موجودی رزرو")).toBeTruthy();
+    expect(screen.queryByText("وضعیت مالی آزمایشی")).toBeNull();
+    expect(screen.getByText("1 بخش ناقص دیگر")).toBeTruthy();
+    expect(screen.queryByText(/میزان تکمیل اطلاعات/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "موارد ناقص" })).toBeNull();
+
+    expect(screen.getByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "دسترسی" })).toBeTruthy();
+    expect(screen.getByRole("link", { name: "مشاهده صفحه عمومی" })).toBeTruthy();
   });
 
   it("renders ordered categories as one continuous amenity grid", async () => {
