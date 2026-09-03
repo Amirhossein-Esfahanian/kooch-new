@@ -73,6 +73,69 @@ public sealed class PublicPropertyVisibilityTests
             property.Settings.Select(setting => (setting.Id, setting.Name, setting.Slug)));
     }
 
+    [Fact]
+    public async Task PublicLists_PropertySettingFilterUsesDistinctSlugOrSemantics()
+    {
+        await using var context = CreateContext();
+        context.Properties.AddRange(
+            Property(1, "Historic", "historic", "کاشان"),
+            Property(2, "Bazaar", "bazaar", "کاشان"),
+            Property(3, "Inactive only", "inactive-only", "کاشان"),
+            Property(4, "Deleted assignment", "deleted-assignment", "کاشان"),
+            Property(5, "Deleted setting", "deleted-setting", "کاشان"));
+        context.PropertySettings.AddRange(
+            Setting(1, "بافت تاریخی", "historic-district", 10),
+            Setting(2, "محدوده بازار", "bazaar-area", 20),
+            Setting(3, "غیرفعال", "inactive", 30, isActive: false),
+            Setting(4, "حذف‌شده", "deleted", 40, isDeleted: true));
+        context.PropertySettingAssignments.AddRange(
+            AssignmentForProperty(1, 1, 1),
+            AssignmentForProperty(2, 2, 2),
+            AssignmentForProperty(3, 3, 3),
+            AssignmentForProperty(4, 4, 1, isDeleted: true),
+            AssignmentForProperty(5, 5, 4));
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        var properties = await service.GetPublicPropertiesAsync(
+            settingSlugs: " historic-district,BAZAAR-area,historic-district,unknown ");
+
+        Assert.Equal([1, 2], properties.Select(property => property.Id).Order());
+    }
+
+    [Fact]
+    public async Task PublicLists_UnknownPropertySettingSlugReturnsNoMatches()
+    {
+        await using var context = CreateContext();
+        context.Properties.Add(Property(1, "Property", "property", "کاشان"));
+        context.PropertySettings.Add(Setting(1, "بافت تاریخی", "historic-district", 10));
+        context.PropertySettingAssignments.Add(AssignmentForProperty(1, 1, 1));
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        var properties = await service.GetPublicPropertiesAsync(
+            settingSlugs: "unknown-setting");
+
+        Assert.Empty(properties);
+    }
+
+    [Fact]
+    public async Task PublicLists_EmptyPropertySettingFilterDoesNotRestrictResults()
+    {
+        await using var context = CreateContext();
+        context.Properties.AddRange(
+            Property(1, "With setting", "with-setting", "کاشان"),
+            Property(2, "Without setting", "without-setting", "کاشان"));
+        context.PropertySettings.Add(Setting(1, "بافت تاریخی", "historic-district", 10));
+        context.PropertySettingAssignments.Add(AssignmentForProperty(1, 1, 1));
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        var properties = await service.GetPublicPropertiesAsync(settingSlugs: " , ");
+
+        Assert.Equal([1, 2], properties.Select(property => property.Id).Order());
+    }
+
     private static KoochDbContext CreateContext()
     {
         var options = new DbContextOptionsBuilder<KoochDbContext>()
@@ -130,6 +193,19 @@ public sealed class PublicPropertyVisibilityTests
         {
             Id = id,
             PropertyId = 1,
+            PropertySettingId = settingId,
+            IsDeleted = isDeleted
+        };
+
+    private static PropertySettingAssignment AssignmentForProperty(
+        int id,
+        int propertyId,
+        int settingId,
+        bool isDeleted = false) =>
+        new()
+        {
+            Id = id,
+            PropertyId = propertyId,
             PropertySettingId = settingId,
             IsDeleted = isDeleted
         };

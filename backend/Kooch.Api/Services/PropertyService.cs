@@ -560,12 +560,19 @@ public class PropertyService(
         int? adults = null,
         int? children = null,
         string? childAges = null,
+        string? settingSlugs = null,
         CancellationToken cancellationToken = default)
     {
         var minAdults = Math.Max(0, adults ?? 0);
         var requestedChildren = Math.Max(0, children ?? 0);
         var parsedChildAges = ParseChildAges(childAges, requestedChildren);
         var hasGuestFilter = minAdults > 0 || requestedChildren > 0 || rooms.HasValue;
+        var requestedSettingSlugs = (settingSlugs ?? string.Empty)
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(EnglishSlugGenerator.NormalizeLookup)
+            .Where(slug => slug.Length > 0)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
 
         var query = dbContext.Properties.AsNoTracking()
             .Where(property => property.Status == PropertyStatus.Approved);
@@ -585,6 +592,15 @@ public class PropertyService(
                 property.Slug.Contains(normalizedQuery) ||
                 property.Description.Contains(normalizedQuery) ||
                 property.City.Contains(normalizedQuery));
+        }
+
+        if (requestedSettingSlugs.Length > 0)
+        {
+            query = query.Where(property => property.PropertySettingAssignments.Any(assignment =>
+                !assignment.IsDeleted &&
+                assignment.PropertySetting.IsActive &&
+                !assignment.PropertySetting.IsDeleted &&
+                requestedSettingSlugs.Contains(assignment.PropertySetting.Slug)));
         }
 
         if (hasGuestFilter)

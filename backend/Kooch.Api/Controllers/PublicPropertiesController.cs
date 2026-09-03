@@ -23,8 +23,19 @@ public class PublicPropertiesController(
         [FromQuery] int? adults,
         [FromQuery] int? children,
         [FromQuery] string? childAges,
+        [FromQuery] string? settingSlugs,
         CancellationToken cancellationToken) =>
-        Ok(await propertyService.GetPublicPropertiesAsync(q, city, checkIn, checkOut, rooms, adults, children, childAges, cancellationToken));
+        Ok(await propertyService.GetPublicPropertiesAsync(
+            q,
+            city,
+            checkIn,
+            checkOut,
+            rooms,
+            adults,
+            children,
+            childAges,
+            settingSlugs,
+            cancellationToken));
 
     [HttpGet("suggestions")]
     [ProducesResponseType<IReadOnlyList<PublicPropertySuggestionResponse>>(StatusCodes.Status200OK)]

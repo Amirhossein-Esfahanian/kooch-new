@@ -5,11 +5,13 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
+import { KoochCheckbox } from "@/components/KoochFormControls";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import {
   fetchPublicApi,
   formatPrice,
   PublicProperty,
+  PublicPropertySettingOption,
 } from "@/lib/public-properties";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
@@ -149,6 +151,10 @@ function PropertiesContent() {
   const [loading, setLoading] = useState(true);
   const [usingSamples, setUsingSamples] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [settingOptions, setSettingOptions] = useState<
+    PublicPropertySettingOption[]
+  >([]);
+  const [settingOptionsError, setSettingOptionsError] = useState(false);
   const q = searchParams.get("q") ?? "";
   const city = searchParams.get("city") ?? "";
   const checkIn = searchParams.get("checkIn") ?? "";
@@ -161,12 +167,40 @@ function PropertiesContent() {
   const minPrice = searchParams.get("minPrice") ?? "";
   const maxPrice = searchParams.get("maxPrice") ?? "";
   const propertyTypes = searchParams.getAll("propertyType");
+  const settingSlugs = [
+    ...new Set(
+      (searchParams.get("settingSlugs") ?? "")
+        .split(",")
+        .map((slug) => slug.trim())
+        .filter(Boolean),
+    ),
+  ];
   const bookingMode = searchParams.get("bookingMode") ?? "";
   const availability = searchParams.get("availability") ?? "";
   const childAges = (searchParams.get("childAges") ?? "")
     .split(",")
     .filter(Boolean)
     .map((age) => Number(age));
+
+  useEffect(() => {
+    let active = true;
+
+    fetchPublicApi<PublicPropertySettingOption[]>("/property-settings")
+      .then((items) => {
+        if (!active) return;
+        setSettingOptions(items);
+        setSettingOptionsError(false);
+      })
+      .catch(() => {
+        if (!active) return;
+        setSettingOptions([]);
+        setSettingOptionsError(true);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     const query = new URLSearchParams();
@@ -178,6 +212,9 @@ function PropertiesContent() {
     query.set("adults", Math.max(1, adults).toString());
     query.set("children", Math.max(0, children).toString());
     if (childAges.length) query.set("childAges", childAges.join(","));
+    if (settingSlugs.length) {
+      query.set("settingSlugs", settingSlugs.join(","));
+    }
 
     setLoading(true);
     fetchPublicApi<PublicProperty[]>(`/properties?${query.toString()}`)
@@ -199,6 +236,7 @@ function PropertiesContent() {
     city,
     q,
     rooms,
+    settingSlugs.join(","),
   ]);
 
   const detailQueryText = searchParams.toString();
@@ -249,6 +287,29 @@ function PropertiesContent() {
       ? values.filter((item) => item !== value)
       : [...values, value];
     nextValues.forEach((item) => next.append(key, item));
+    const text = next.toString();
+    router.replace(text ? `/properties?${text}` : "/properties", {
+      scroll: false,
+    });
+  }
+
+  function toggleSettingSlug(slug: string) {
+    const next = new URLSearchParams(searchParams.toString());
+    const currentValues = [
+      ...new Set(
+        (next.get("settingSlugs") ?? "")
+          .split(",")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      ),
+    ];
+    const nextValues = currentValues.includes(slug)
+      ? currentValues.filter((value) => value !== slug)
+      : [...currentValues, slug];
+
+    if (nextValues.length) next.set("settingSlugs", nextValues.join(","));
+    else next.delete("settingSlugs");
+
     const text = next.toString();
     router.replace(text ? `/properties?${text}` : "/properties", {
       scroll: false,
@@ -383,6 +444,33 @@ function PropertiesContent() {
               </label>
             ))}
           </div>
+
+          <fieldset className="mt-5 border-t border-border pt-4">
+            <legend className="text-sm font-bold text-foreground">
+              بافت و موقعیت محیطی
+            </legend>
+            {settingOptionsError ? (
+              <p className="mt-3 text-sm text-muted-foreground" role="status">
+                دریافت گزینه‌های بافت و موقعیت انجام نشد.
+              </p>
+            ) : settingOptions.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {settingOptions.map((setting) => (
+                  <KoochCheckbox
+                    checked={settingSlugs.includes(setting.slug)}
+                    checkedContainerBackground
+                    checkedContainerBorder
+                    containerBackground
+                    containerBorder
+                    containerClassName="min-h-11 items-center px-3 py-2"
+                    key={setting.id}
+                    label={setting.name}
+                    onChange={() => toggleSettingSlug(setting.slug)}
+                  />
+                ))}
+              </div>
+            ) : null}
+          </fieldset>
         </section>
 
         <div className="mt-7 grid gap-7">

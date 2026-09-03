@@ -71,6 +71,12 @@ export interface PublicPromotion {
   isActive: boolean;
 }
 
+export interface PublicPropertySettingOption {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 export interface PublicProperty {
   id: number;
   name: string;
