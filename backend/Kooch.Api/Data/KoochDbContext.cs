@@ -499,6 +499,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(bedType => bedType.Name).HasMaxLength(150).IsRequired();
             entity.Property(bedType => bedType.Slug).HasMaxLength(170).IsRequired();
+            entity.Property(bedType => bedType.Icon).HasMaxLength(100);
             entity.HasIndex(bedType => bedType.Slug).IsUnique();
         });
 

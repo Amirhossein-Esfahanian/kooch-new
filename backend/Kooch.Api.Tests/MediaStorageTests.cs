@@ -43,8 +43,10 @@ public sealed class MediaStorageTests
         Assert.True(Directory.Exists(storage.RootPath));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "amenity-categories")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "amenities")));
+        Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "bed-types")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "amenity-categories")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "amenities")));
+        Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "bed-types")));
         Assert.Empty(Directory.GetFiles(storage.RootPath, ".kooch-write-probe-*"));
     }
 
@@ -208,9 +210,11 @@ public sealed class MediaStorageTests
 
         var category = await StoreSvgAsync(storage, MediaAssetNamespace.AmenityCategories, 11);
         var amenity = await StoreSvgAsync(storage, MediaAssetNamespace.Amenities, 17);
+        var bedType = await StoreSvgAsync(storage, MediaAssetNamespace.BedTypes, 23);
 
         Assert.Matches($"^/uploads/amenity-categories/11/[0-9a-f]{{32}}\\.svg$", category.PublicPath);
         Assert.Matches($"^/uploads/amenities/17/[0-9a-f]{{32}}\\.svg$", amenity.PublicPath);
+        Assert.Matches($"^/uploads/bed-types/23/[0-9a-f]{{32}}\\.svg$", bedType.PublicPath);
         Assert.Equal(SvgContent, await File.ReadAllTextAsync(GetPhysicalPath(storage, category)));
         Assert.Equal(SvgContent, await File.ReadAllTextAsync(GetPhysicalPath(storage, amenity)));
     }

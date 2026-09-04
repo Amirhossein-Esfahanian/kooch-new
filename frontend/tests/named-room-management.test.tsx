@@ -47,16 +47,17 @@ const roomKinds = [
 ];
 
 const bedTypes: BedTypeResponse[] = [
-  { id: 1, name: "Single Bed", slug: "single-bed" },
-  { id: 2, name: "Double Bed", slug: "double-bed" },
-  { id: 3, name: "Queen Bed", slug: "queen-bed" },
-  { id: 4, name: "King Bed", slug: "king-bed" },
-  { id: 5, name: "Twin Beds", slug: "twin-beds" },
-  { id: 6, name: "Sofa Bed", slug: "sofa-bed" },
+  { id: 1, name: "Single Bed", slug: "single-bed", icon: null },
+  { id: 2, name: "Double Bed", slug: "double-bed", icon: null },
+  { id: 3, name: "Queen Bed", slug: "queen-bed", icon: null },
+  { id: 4, name: "King Bed", slug: "king-bed", icon: null },
+  { id: 5, name: "Twin Beds", slug: "twin-beds", icon: null },
+  { id: 6, name: "Sofa Bed", slug: "sofa-bed", icon: null },
   {
     id: 7,
     name: "Traditional Floor Bedding",
     slug: "traditional-floor-bedding",
+    icon: null,
   },
 ];
 
@@ -608,6 +609,31 @@ describe("unified owner sellable room type management", () => {
     ).toBeTruthy();
     expect(within(dialog).getByLabelText("تعداد تخت دابل: 1")).toBeTruthy();
     expect(within(dialog).getByLabelText("تعداد تخت کویین: 0")).toBeTruthy();
+  });
+
+  it("uses a BedType SVG icon when present and the generic fallback otherwise", async () => {
+    arrangeApi([], {
+      bedTypes: [
+        {
+          ...bedTypes[0],
+          icon: "/uploads/bed-types/1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.svg",
+        },
+        bedTypes[1],
+      ],
+    });
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog);
+    await continueToBeds(dialog);
+
+    const uploadedRow = dialog.querySelector('[data-bed-type="single-bed"]');
+    const fallbackRow = dialog.querySelector('[data-bed-type="double-bed"]');
+    expect(uploadedRow?.querySelector('[data-bed-icon="uploaded"]')).toBeTruthy();
+    expect(uploadedRow?.innerHTML).toContain(
+      "/uploads/bed-types/1/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.svg",
+    );
+    expect(fallbackRow?.querySelector('[data-bed-icon="uploaded"]')).toBeNull();
+    expect(fallbackRow?.innerHTML).toContain("/svgs/bed-bunk.svg");
   });
 
   it("restores persisted bed quantities and saves one non-zero entry per type", async () => {

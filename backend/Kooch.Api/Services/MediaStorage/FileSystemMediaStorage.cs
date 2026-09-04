@@ -310,6 +310,7 @@ public sealed class FileSystemMediaStorage : IMediaStorage
     {
         MediaAssetNamespace.AmenityCategories => "amenity-categories",
         MediaAssetNamespace.Amenities => "amenities",
+        MediaAssetNamespace.BedTypes => "bed-types",
         _ => throw new ArgumentOutOfRangeException(nameof(assetNamespace), "Unknown media asset namespace.")
     };
 

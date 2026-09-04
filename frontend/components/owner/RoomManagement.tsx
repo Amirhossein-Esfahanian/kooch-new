@@ -13,6 +13,7 @@ import {
   KoochTextarea,
 } from "@/components/KoochFormControls";
 import { KoochIcon } from "@/components/KoochIcon";
+import { KoochSvgIcon } from "@/components/KoochSvgIcon";
 import {
   KoochTable,
   KoochTableBody,
@@ -654,7 +655,19 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
                 >
                   <div className="flex min-w-0 items-center gap-3">
                     <span className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
-                      <KoochIcon className="size-5" name="capacity" />
+                      {bedType.icon ? (
+                        <KoochSvgIcon
+                          className="size-5"
+                          data-bed-icon="uploaded"
+                          size="md"
+                          src={bedType.icon}
+                        />
+                      ) : (
+                        <KoochIcon
+                          className="size-5"
+                          name="capacity"
+                        />
+                      )}
                     </span>
                     <span className="min-w-0 break-words text-sm font-bold text-foreground">
                       {label}

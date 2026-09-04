@@ -381,6 +381,7 @@ export interface BedTypeResponse {
   id: number;
   name: string;
   slug: string;
+  icon: string | null;
 }
 
 export function bedTypeLabel(slug: string, fallback: string) {
