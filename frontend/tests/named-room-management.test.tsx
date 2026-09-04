@@ -9,6 +9,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AmenityCategoryResponse,
   AmenityResponse,
+  BedTypeResponse,
   RoomTypeResponse,
 } from "@/lib/owner-api";
 
@@ -42,6 +43,20 @@ const roomKinds = [
     titleFa: "تویین",
     titleEn: "Twin",
     displayOrder: 30,
+  },
+];
+
+const bedTypes: BedTypeResponse[] = [
+  { id: 1, name: "Single Bed", slug: "single-bed" },
+  { id: 2, name: "Double Bed", slug: "double-bed" },
+  { id: 3, name: "Queen Bed", slug: "queen-bed" },
+  { id: 4, name: "King Bed", slug: "king-bed" },
+  { id: 5, name: "Twin Beds", slug: "twin-beds" },
+  { id: 6, name: "Sofa Bed", slug: "sofa-bed" },
+  {
+    id: 7,
+    name: "Traditional Floor Bedding",
+    slug: "traditional-floor-bedding",
   },
 ];
 
@@ -82,12 +97,13 @@ function arrangeApi(
   amenityFixtures: {
     categories?: AmenityCategoryResponse[];
     amenities?: AmenityResponse[];
+    bedTypes?: BedTypeResponse[];
   } = {},
 ) {
   let roomTypes = [...initialRoomTypes];
   ownerApi.apiRequest.mockImplementation(
     async (path: string, init?: RequestInit) => {
-      if (path === "/bed-types") return [];
+      if (path === "/bed-types") return amenityFixtures.bedTypes ?? [];
       if (path === "/amenity-categories")
         return amenityFixtures.categories ?? [];
       if (path === "/amenities") return amenityFixtures.amenities ?? [];
@@ -146,6 +162,26 @@ function arrangeApi(
           maxExtraGuests: Number(payload.maxExtraGuests),
           totalInventory: Number(payload.totalInventory),
           isActive: Boolean(payload.isActive),
+          bedConfigurations: (
+            (payload.bedConfigurations as {
+              bedTypeId: number;
+              quantity: number;
+            }[]) ?? []
+          ).flatMap((bed) => {
+            const bedType = amenityFixtures.bedTypes?.find(
+              (item) => item.id === bed.bedTypeId,
+            );
+            return bedType
+              ? [
+                  {
+                    bedTypeId: bedType.id,
+                    bedTypeName: bedType.name,
+                    bedTypeSlug: bedType.slug,
+                    quantity: bed.quantity,
+                  },
+                ]
+              : [];
+          }),
           amenities: ((payload.amenityIds as number[]) ?? []).flatMap((id) => {
             const amenity = amenityFixtures.amenities?.find(
               (item) => item.id === id,
@@ -222,6 +258,12 @@ async function continueTo(dialog: HTMLElement, heading: string) {
   await waitFor(() => {
     expect(within(dialog).getByRole("heading", { name: heading })).toBeTruthy();
   });
+}
+
+async function continueToBeds(dialog: HTMLElement) {
+  await continueTo(dialog, "ویژگی‌های نوع اتاق");
+  await continueTo(dialog, "امکانات");
+  await continueTo(dialog, "تخت‌ها و چیدمان");
 }
 
 describe("unified owner sellable room type management", () => {
@@ -515,5 +557,121 @@ describe("unified owner sellable room type management", () => {
           path === "/owner/properties/3/room-types" && init?.method === "POST",
       ),
     ).toHaveLength(1);
+  });
+
+  it("renders every supported bed type and updates quantities independently", async () => {
+    arrangeApi([], { bedTypes });
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog);
+    await continueToBeds(dialog);
+
+    const grid = dialog.querySelector("[data-bed-selector-grid]");
+    expect(grid?.className).toContain("sm:grid-cols-2");
+    for (const label of [
+      "تخت یک‌نفره",
+      "تخت دابل",
+      "تخت کویین",
+      "تخت کینگ",
+      "تخت تویین",
+      "مبل تخت‌خواب‌شو",
+      "رختخواب سنتی",
+    ]) {
+      expect(within(dialog).getByText(label)).toBeTruthy();
+      expect(within(dialog).getByLabelText(`تعداد ${label}: 0`)).toBeTruthy();
+      expect(
+        (within(dialog).getByRole("button", {
+          name: `کاهش تعداد ${label}`,
+        }) as HTMLButtonElement).disabled,
+      ).toBe(true);
+    }
+
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "افزایش تعداد تخت یک‌نفره",
+      }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", {
+        name: "افزایش تعداد تخت یک‌نفره",
+      }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "افزایش تعداد تخت دابل" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "کاهش تعداد تخت یک‌نفره" }),
+    );
+
+    expect(
+      within(dialog).getByLabelText("تعداد تخت یک‌نفره: 1"),
+    ).toBeTruthy();
+    expect(within(dialog).getByLabelText("تعداد تخت دابل: 1")).toBeTruthy();
+    expect(within(dialog).getByLabelText("تعداد تخت کویین: 0")).toBeTruthy();
+  });
+
+  it("restores persisted bed quantities and saves one non-zero entry per type", async () => {
+    const roomWithBeds: RoomTypeResponse = {
+      ...zanbagh,
+      bedConfigurations: [
+        {
+          bedTypeId: 1,
+          bedTypeName: "Single Bed",
+          bedTypeSlug: "single-bed",
+          quantity: 2,
+        },
+        {
+          bedTypeId: 6,
+          bedTypeName: "Sofa Bed",
+          bedTypeSlug: "sofa-bed",
+          quantity: 1,
+        },
+      ],
+    };
+    arrangeApi([roomWithBeds], { bedTypes });
+    render(<RoomManagement propertyId={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
+    const dialog = await screen.findByRole("dialog");
+    await continueToBeds(dialog);
+
+    expect(
+      within(dialog).getByLabelText("تعداد تخت یک‌نفره: 2"),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByLabelText("تعداد مبل تخت‌خواب‌شو: 1"),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "کاهش تعداد تخت یک‌نفره" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "افزایش تعداد تخت کویین" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "افزایش تعداد تخت کویین" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "کاهش تعداد مبل تخت‌خواب‌شو" }),
+    );
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ذخیره و خروج" }),
+    );
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const saveCall = [...ownerApi.apiRequest.mock.calls].reverse().find(
+      ([path, init]) => path === "/owner/room-types/4" && init?.method === "PUT",
+    );
+    const payload = JSON.parse(String(saveCall?.[1]?.body));
+    expect(payload.bedConfigurations).toEqual([
+      { bedTypeId: 1, quantity: 1 },
+      { bedTypeId: 3, quantity: 2 },
+    ]);
+    expect(
+      new Set(
+        payload.bedConfigurations.map(
+          (bed: { bedTypeId: number }) => bed.bedTypeId,
+        ),
+      ).size,
+    ).toBe(payload.bedConfigurations.length);
   });
 });

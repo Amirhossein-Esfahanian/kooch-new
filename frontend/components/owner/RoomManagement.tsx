@@ -12,6 +12,7 @@ import {
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import { KoochIcon } from "@/components/KoochIcon";
 import {
   KoochTable,
   KoochTableBody,
@@ -224,13 +225,24 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
     });
   }
 
-  function updateBed(
-    index: number,
-    patch: Partial<{ bedTypeId: number; quantity: number }>,
-  ) {
-    const next = [...draft.bedConfigurations];
-    next[index] = { ...next[index], ...patch };
-    patchDraft({ bedConfigurations: next });
+  function bedQuantity(bedTypeId: number) {
+    return draft.bedConfigurations
+      .filter((bed) => bed.bedTypeId === bedTypeId)
+      .reduce((total, bed) => total + Math.max(0, bed.quantity), 0);
+  }
+
+  function updateBedQuantity(bedTypeId: number, quantity: number) {
+    const nextQuantity = Math.max(0, quantity);
+    patchDraft({
+      bedConfigurations: [
+        ...draft.bedConfigurations.filter(
+          (bed) => bed.bedTypeId !== bedTypeId,
+        ),
+        ...(nextQuantity > 0
+          ? [{ bedTypeId, quantity: nextQuantity }]
+          : []),
+      ],
+    });
   }
 
   async function saveRoomType() {
@@ -271,9 +283,12 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
             allowExtraGuest: draft.allowExtraGuest,
             maxExtraGuests: draft.allowExtraGuest ? draft.maxExtraGuests : 0,
             totalInventory: draft.totalInventory,
-            bedConfigurations: draft.bedConfigurations.filter(
-              (bed) => bed.bedTypeId > 0 && bed.quantity > 0,
-            ),
+            bedConfigurations: bedTypes.flatMap((bedType) => {
+              const quantity = bedQuantity(bedType.id);
+              return quantity > 0
+                ? [{ bedTypeId: bedType.id, quantity }]
+                : [];
+            }),
             amenityIds: [...new Set(draft.amenityIds)],
             isActive: draft.isActive,
           }),
@@ -613,77 +628,75 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
   function renderBedsStep() {
     return (
       <div className="grid gap-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h3 className="font-bold">تخت‌ها و چیدمان</h3>
-            <p className="mt-1 text-sm text-muted-foreground">
-              نوع و تعداد تخت‌های این نوع اتاق را مشخص کنید.
-            </p>
-          </div>
-          <KoochButton
-            onClick={() =>
-              patchDraft({
-                bedConfigurations: [
-                  ...draft.bedConfigurations,
-                  { bedTypeId: bedTypes[0]?.id ?? 0, quantity: 1 },
-                ],
-              })
-            }
-            size="sm"
-            variant="outline"
-          >
-            افزودن تخت
-          </KoochButton>
+        <div>
+          <h3 className="font-bold">تخت‌ها و چیدمان</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
+            تعداد هر نوع تخت را برای این نوع اتاق مشخص کنید.
+          </p>
         </div>
-        {draft.bedConfigurations.length === 0 ? (
+        {bedTypes.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border p-5 text-center text-sm text-muted-foreground">
-            هنوز تختی اضافه نشده است.
+            نوع تختی برای انتخاب تعریف نشده است.
           </p>
         ) : (
-          <div className="grid gap-3">
-            {draft.bedConfigurations.map((bed, index) => (
-              <div
-                className="grid gap-3 rounded-lg border border-border p-3 sm:grid-cols-[minmax(0,1fr)_120px_auto]"
-                key={`${bed.bedTypeId}-${index}`}
-              >
-                <KoochSelect
-                  aria-label={`نوع تخت ${index + 1}`}
-                  onChange={(event) =>
-                    updateBed(index, { bedTypeId: Number(event.target.value) })
-                  }
-                  value={bed.bedTypeId}
+          <div
+            className="grid min-w-0 gap-3 sm:grid-cols-2"
+            data-bed-selector-grid
+          >
+            {bedTypes.map((bedType) => {
+              const label = bedTypeLabel(bedType.slug, bedType.name);
+              const quantity = bedQuantity(bedType.id);
+              return (
+                <div
+                  className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-border bg-background p-3"
+                  data-bed-type={bedType.slug}
+                  key={bedType.id}
                 >
-                  <option value="0">انتخاب نوع تخت</option>
-                  {bedTypes.map((bedType) => (
-                    <option key={bedType.id} value={bedType.id}>
-                      {bedTypeLabel(bedType.slug, bedType.name)}
-                    </option>
-                  ))}
-                </KoochSelect>
-                <KoochInput
-                  aria-label={`تعداد تخت ${index + 1}`}
-                  min="1"
-                  onChange={(event) =>
-                    updateBed(index, { quantity: Number(event.target.value) })
-                  }
-                  type="number"
-                  value={bed.quantity}
-                />
-                <KoochButton
-                  onClick={() =>
-                    patchDraft({
-                      bedConfigurations: draft.bedConfigurations.filter(
-                        (_, itemIndex) => itemIndex !== index,
-                      ),
-                    })
-                  }
-                  size="sm"
-                  variant="ghost"
-                >
-                  حذف
-                </KoochButton>
-              </div>
-            ))}
+                  <div className="flex min-w-0 items-center gap-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground">
+                      <KoochIcon className="size-5" name="capacity" />
+                    </span>
+                    <span className="min-w-0 break-words text-sm font-bold text-foreground">
+                      {label}
+                    </span>
+                  </div>
+                  <div
+                    className="flex shrink-0 items-center gap-2"
+                    dir="ltr"
+                  >
+                    <KoochButton
+                      aria-label={`کاهش تعداد ${label}`}
+                      className="rounded-full"
+                      disabled={quantity === 0}
+                      onClick={() =>
+                        updateBedQuantity(bedType.id, quantity - 1)
+                      }
+                      size="icon"
+                      variant="outline"
+                    >
+                      <span aria-hidden="true">−</span>
+                    </KoochButton>
+                    <output
+                      aria-label={`تعداد ${label}: ${quantity}`}
+                      className="min-w-7 text-center text-base font-bold tabular-nums text-foreground"
+                    >
+                      {quantity}
+                    </output>
+                    <KoochButton
+                      aria-label={`افزایش تعداد ${label}`}
+                      className="rounded-full"
+                      onClick={() =>
+                        updateBedQuantity(bedType.id, quantity + 1)
+                      }
+                      size="icon"
+                      variant="outline"
+                    >
+                      <span aria-hidden="true">+</span>
+                    </KoochButton>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
