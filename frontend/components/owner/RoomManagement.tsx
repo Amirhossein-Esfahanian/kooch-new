@@ -127,6 +127,7 @@ export function RoomManagement({
   const [roomKinds, setRoomKinds] = useState<RoomKindCatalogResponse[]>([]);
   const [draft, setDraft] = useState<RoomTypeDraft>(emptyRoomType);
   const [activeStep, setActiveStep] = useState(0);
+  const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -186,6 +187,7 @@ export function RoomManagement({
   }
 
   function openCreateDialog() {
+    setDialogMode("create");
     setDraft(emptyRoomType);
     setActiveStep(0);
     setError("");
@@ -193,6 +195,7 @@ export function RoomManagement({
   }
 
   function openEditDialog(roomType: RoomTypeResponse) {
+    setDialogMode("edit");
     setDraft(roomTypeToDraft(roomType));
     setActiveStep(0);
     setError("");
@@ -242,12 +245,8 @@ export function RoomManagement({
     const nextQuantity = Math.max(0, quantity);
     patchDraft({
       bedConfigurations: [
-        ...draft.bedConfigurations.filter(
-          (bed) => bed.bedTypeId !== bedTypeId,
-        ),
-        ...(nextQuantity > 0
-          ? [{ bedTypeId, quantity: nextQuantity }]
-          : []),
+        ...draft.bedConfigurations.filter((bed) => bed.bedTypeId !== bedTypeId),
+        ...(nextQuantity > 0 ? [{ bedTypeId, quantity: nextQuantity }] : []),
       ],
     });
   }
@@ -292,9 +291,7 @@ export function RoomManagement({
             totalInventory: draft.totalInventory,
             bedConfigurations: bedTypes.flatMap((bedType) => {
               const quantity = bedQuantity(bedType.id);
-              return quantity > 0
-                ? [{ bedTypeId: bedType.id, quantity }]
-                : [];
+              return quantity > 0 ? [{ bedTypeId: bedType.id, quantity }] : [];
             }),
             amenityIds: [...new Set(draft.amenityIds)],
             isActive: draft.isActive,
@@ -341,17 +338,31 @@ export function RoomManagement({
     closeDialog();
   }
 
-  async function goPrevious(targetStep = activeStep - 1) {
-    if (activeStep === 0 || targetStep >= activeStep) return;
+  async function goToStep(targetStep: number) {
+    if (
+      targetStep < 0 ||
+      targetStep >= steps.length ||
+      targetStep === activeStep ||
+      saving
+    ) {
+      return;
+    }
+
+    // Create remains sequential. Direct forward jumps are only available when
+    // editing an already-existing room type.
+    if (dialogMode === "create" && targetStep > activeStep) return;
+
     const validationError = validateStep(activeStep);
     if (validationError) {
       toast.error(validationError);
       return;
     }
+
     const roomType = await saveRoomType();
     if (!roomType) return;
+
     toast.success("تغییرات ذخیره شد.");
-    setActiveStep(Math.max(0, targetStep));
+    setActiveStep(targetStep);
   }
 
   async function toggleRoomTypeStatus(roomType: RoomTypeResponse) {
@@ -669,20 +680,14 @@ export function RoomManagement({
                           src={bedType.icon}
                         />
                       ) : (
-                        <KoochIcon
-                          className="size-5"
-                          name="capacity"
-                        />
+                        <KoochIcon className="size-5" name="capacity" />
                       )}
                     </span>
                     <span className="min-w-0 break-words text-sm font-bold text-foreground">
                       {label}
                     </span>
                   </div>
-                  <div
-                    className="flex shrink-0 items-center gap-2"
-                    dir="ltr"
-                  >
+                  <div className="flex shrink-0 items-center gap-2" dir="ltr">
                     <KoochButton
                       aria-label={`کاهش تعداد ${label}`}
                       className="rounded-full"
@@ -766,11 +771,13 @@ export function RoomManagement({
                 مدیریت نوع‌های اتاق
               </h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                هر نوع اتاق قابل فروش را با نام واقعی، طبقه‌بندی استاندارد و تعداد
-                موجودی ثبت کنید.
+                هر نوع اتاق قابل فروش را با نام واقعی، طبقه‌بندی استاندارد و
+                تعداد موجودی ثبت کنید.
               </p>
             </div>
-            <KoochButton onClick={openCreateDialog}>افزودن نوع اتاق</KoochButton>
+            <KoochButton onClick={openCreateDialog}>
+              افزودن نوع اتاق
+            </KoochButton>
           </div>
         </KoochCard>
       )}
@@ -785,7 +792,9 @@ export function RoomManagement({
             نوع‌های اتاق ثبت‌شده
           </h2>
           {compactHeader && (
-            <KoochButton onClick={openCreateDialog}>افزودن نوع اتاق</KoochButton>
+            <KoochButton onClick={openCreateDialog}>
+              افزودن نوع اتاق
+            </KoochButton>
           )}
         </div>
         {loading ? (
@@ -904,7 +913,7 @@ export function RoomManagement({
           <div className="flex w-full flex-wrap items-center justify-between gap-3">
             <KoochButton
               disabled={saving || activeStep === 0}
-              onClick={() => void goPrevious()}
+              onClick={() => void goToStep(activeStep - 1)}
               variant="ghost"
             >
               مرحله قبل
@@ -944,10 +953,12 @@ export function RoomManagement({
             <KoochButton
               className="w-full justify-start whitespace-normal text-right"
               disabled={
-                saving || index > activeStep || (index === 4 && !draft.id)
+                saving ||
+                (dialogMode === "create" && index > activeStep) ||
+                (index === 4 && !draft.id)
               }
               key={step}
-              onClick={() => void goPrevious(index)}
+              onClick={() => void goToStep(index)}
               size="sm"
               variant={index === activeStep ? "primary" : "outline"}
             >
