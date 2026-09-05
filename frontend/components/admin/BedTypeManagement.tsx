@@ -210,70 +210,61 @@ export function BedTypeManagement() {
               هنوز نوع تختی ثبت نشده است.
             </p>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <div className="hidden grid-cols-[64px_minmax(0,1.25fr)_minmax(0,1fr)_190px] gap-3 bg-muted px-4 py-3 text-xs font-bold text-muted-foreground md:grid">
-                <span>آیکن</span>
-                <span>نام</span>
-                <span>نامک</span>
-                <span className="sr-only">عملیات</span>
-              </div>
-              <div className="divide-y divide-border" data-testid="bed-type-list">
-                {orderedBedTypes.map((bedType) => (
-                  <article
-                    className="grid min-w-0 grid-cols-[48px_minmax(0,1fr)] gap-3 bg-card p-4 md:grid-cols-[64px_minmax(0,1.25fr)_minmax(0,1fr)_190px] md:items-center"
-                    data-testid={`bed-type-${bedType.id}`}
-                    key={bedType.id}
-                  >
-                    <span className="grid size-10 place-items-center rounded-lg bg-muted text-muted-foreground">
-                      {bedType.icon ? (
-                        <KoochSvgIcon
-                          data-testid={`bed-type-icon-${bedType.id}`}
-                          size="lg"
-                          src={bedType.icon}
-                        />
-                      ) : (
-                        <KoochIcon className="size-6" name="capacity" />
-                      )}
-                    </span>
-                    <div className="min-w-0 self-center">
-                      <span className="text-xs font-medium text-muted-foreground md:hidden">
-                        نام
-                      </span>
-                      <h3 className="truncate text-sm font-bold text-foreground">
-                        {bedType.name}
-                      </h3>
-                    </div>
-                    <div className="col-span-2 min-w-0 md:col-span-1">
-                      <span className="text-xs font-medium text-muted-foreground md:hidden">
-                        نامک
-                      </span>
-                      <p className="break-all text-sm text-muted-foreground" dir="ltr">
-                        {bedType.slug}
-                      </p>
-                    </div>
-                    <div className="col-span-2 flex flex-wrap gap-2 md:col-span-1 md:justify-end">
-                      <KoochButton
-                        aria-label={`ویرایش ${bedType.name}`}
-                        onClick={() => openEditDialog(bedType)}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <KoochIcon className="size-4" name="edit" />
-                        ویرایش
-                      </KoochButton>
-                      <KoochButton
-                        aria-label={`حذف ${bedType.name}`}
-                        onClick={() => setDeleteTarget(bedType)}
-                        size="sm"
-                        variant="destructive"
-                      >
-                        <KoochIcon className="size-4" name="delete" />
-                        حذف
-                      </KoochButton>
-                    </div>
-                  </article>
-                ))}
-              </div>
+            <div
+              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+              data-testid="bed-type-list"
+            >
+              {orderedBedTypes.map((bedType) => (
+                <article
+                  className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card p-3"
+                  data-testid={`bed-type-${bedType.id}`}
+                  key={bedType.id}
+                >
+                  <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                    {bedType.icon ? (
+                      <KoochSvgIcon
+                        data-testid={`bed-type-icon-${bedType.id}`}
+                        size="lg"
+                        src={bedType.icon}
+                      />
+                    ) : (
+                      <KoochIcon className="size-6" name="capacity" />
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="truncate text-sm font-bold text-foreground">
+                      {bedType.name}
+                    </h3>
+                    <p
+                      className="mt-1 truncate text-xs text-muted-foreground"
+                      dir="ltr"
+                      title={bedType.slug}
+                    >
+                      {bedType.slug}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <KoochButton
+                      aria-label={`ویرایش ${bedType.name}`}
+                      onClick={() => openEditDialog(bedType)}
+                      size="icon"
+                      title={`ویرایش ${bedType.name}`}
+                      variant="ghost"
+                    >
+                      <KoochIcon className="size-4" name="edit" />
+                    </KoochButton>
+                    <KoochButton
+                      aria-label={`حذف ${bedType.name}`}
+                      onClick={() => setDeleteTarget(bedType)}
+                      size="icon"
+                      title={`حذف ${bedType.name}`}
+                      variant="ghost"
+                    >
+                      <KoochIcon className="size-4 text-destructive" name="delete" />
+                    </KoochButton>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </div>
@@ -311,10 +302,13 @@ export function BedTypeManagement() {
           if (!open) closeDialog();
         }}
         open={dialogOpen}
+        bodyClassName="!px-5 !py-4"
+        contentClassName="!h-auto max-h-[calc(100vh-2rem)] !max-w-lg"
+        footerClassName="!px-5 !py-3"
         size="md"
         title={editingBedType ? "ویرایش نوع تخت" : "افزودن نوع تخت"}
       >
-        <form className="grid gap-4" id="bed-type-form" onSubmit={saveBedType}>
+        <form className="grid gap-3" id="bed-type-form" onSubmit={saveBedType}>
           <KoochField label="نام" required>
             <KoochInput
               autoFocus

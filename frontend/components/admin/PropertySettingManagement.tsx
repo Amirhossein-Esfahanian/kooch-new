@@ -200,48 +200,23 @@ export function PropertySettingManagement() {
               هنوز بافت و موقعیتی ثبت نشده است.
             </p>
           ) : (
-            <div className="overflow-hidden rounded-lg border border-border">
-              <div className="hidden grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_100px_100px_190px] gap-3 bg-muted px-4 py-3 text-xs font-bold text-muted-foreground md:grid">
-                <span>نام</span>
-                <span>نامک</span>
-                <span>ترتیب</span>
-                <span>وضعیت</span>
-                <span className="sr-only">عملیات</span>
-              </div>
-              <div className="divide-y divide-border" data-testid="property-setting-list">
-                {orderedSettings.map((setting) => (
-                  <article
-                    className="grid min-w-0 gap-3 bg-card p-4 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_100px_100px_190px] md:items-center"
-                    data-testid={`property-setting-${setting.id}`}
-                    key={setting.id}
-                  >
-                    <div className="min-w-0">
-                      <span className="text-xs font-medium text-muted-foreground md:hidden">
-                        نام
-                      </span>
-                      <h3 className="truncate text-sm font-bold text-foreground">
+            <div
+              className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4"
+              data-testid="property-setting-list"
+            >
+              {orderedSettings.map((setting) => (
+                <article
+                  className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card p-3"
+                  data-testid={`property-setting-${setting.id}`}
+                  key={setting.id}
+                >
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                      <h3 className="min-w-0 truncate text-sm font-bold text-foreground">
                         {setting.name}
                       </h3>
-                    </div>
-                    <div className="min-w-0">
-                      <span className="text-xs font-medium text-muted-foreground md:hidden">
-                        نامک
-                      </span>
-                      <p className="break-all text-sm text-muted-foreground" dir="ltr">
-                        {setting.slug}
-                      </p>
-                    </div>
-                    <div>
-                      <span className="text-xs font-medium text-muted-foreground md:hidden">
-                        ترتیب
-                      </span>
-                      <p className="text-sm font-semibold text-foreground">
-                        {setting.sortOrder}
-                      </p>
-                    </div>
-                    <div>
                       <span
-                        className={`inline-flex rounded-full px-2.5 py-1 text-xs font-bold ${
+                        className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
                           setting.isActive
                             ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"
                             : "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]"
@@ -250,29 +225,36 @@ export function PropertySettingManagement() {
                         {setting.isActive ? "فعال" : "غیرفعال"}
                       </span>
                     </div>
-                    <div className="flex flex-wrap gap-2 md:justify-end">
-                      <KoochButton
-                        aria-label={`ویرایش ${setting.name}`}
-                        onClick={() => openEditDialog(setting)}
-                        size="sm"
-                        variant="outline"
-                      >
-                        <KoochIcon className="h-4 w-4" name="edit" />
-                        ویرایش
-                      </KoochButton>
-                      <KoochButton
-                        aria-label={`حذف ${setting.name}`}
-                        onClick={() => setDeleteTarget(setting)}
-                        size="sm"
-                        variant="destructive"
-                      >
-                        <KoochIcon className="h-4 w-4" name="delete" />
-                        حذف
-                      </KoochButton>
-                    </div>
-                  </article>
-                ))}
-              </div>
+                    <p
+                      className="mt-1 truncate text-xs text-muted-foreground"
+                      dir="ltr"
+                      title={setting.slug}
+                    >
+                      {setting.slug}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 gap-1">
+                    <KoochButton
+                      aria-label={`ویرایش ${setting.name}`}
+                      onClick={() => openEditDialog(setting)}
+                      size="icon"
+                      title={`ویرایش ${setting.name}`}
+                      variant="ghost"
+                    >
+                      <KoochIcon className="size-4" name="edit" />
+                    </KoochButton>
+                    <KoochButton
+                      aria-label={`حذف ${setting.name}`}
+                      onClick={() => setDeleteTarget(setting)}
+                      size="icon"
+                      title={`حذف ${setting.name}`}
+                      variant="ghost"
+                    >
+                      <KoochIcon className="size-4 text-destructive" name="delete" />
+                    </KoochButton>
+                  </div>
+                </article>
+              ))}
             </div>
           )}
         </div>
@@ -309,10 +291,13 @@ export function PropertySettingManagement() {
           if (!open) closeDialog();
         }}
         open={dialogOpen}
+        bodyClassName="!px-5 !py-4"
+        contentClassName="!h-auto max-h-[calc(100vh-2rem)] !max-w-lg"
+        footerClassName="!px-5 !py-3"
         size="md"
         title={editingSetting ? "ویرایش بافت و موقعیت" : "افزودن بافت و موقعیت"}
       >
-        <form className="grid gap-4" id="property-setting-form" onSubmit={saveSetting}>
+        <form className="grid gap-3" id="property-setting-form" onSubmit={saveSetting}>
           <KoochField label="نام" required>
             <KoochInput
               autoFocus

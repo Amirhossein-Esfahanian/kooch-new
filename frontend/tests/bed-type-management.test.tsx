@@ -86,6 +86,10 @@ describe("BedTypeManagement", () => {
     expect(screen.getByTestId("bed-type-2").innerHTML).toContain(
       "/svgs/bed-bunk.svg",
     );
+    expect(list.className).toContain("sm:grid-cols-2");
+    expect(list.className).toContain("xl:grid-cols-3");
+    expect(list.className).toContain("2xl:grid-cols-4");
+    expect(screen.getByTestId("bed-type-1").className).toContain("p-3");
   });
 
   it("keeps load failures distinct from an empty catalog and supports retry", async () => {
@@ -119,6 +123,8 @@ describe("BedTypeManagement", () => {
     await screen.findByText("هنوز نوع تختی ثبت نشده است.");
     fireEvent.click(screen.getByRole("button", { name: "افزودن نوع تخت" }));
     const dialog = await screen.findByRole("dialog");
+    expect(dialog.className).toContain("!max-w-lg");
+    expect(dialog.className).toContain("!h-auto");
     fireEvent.change(within(dialog).getByLabelText(/^نام\s*\*$/), {
       target: { value: "Travel Bed" },
     });

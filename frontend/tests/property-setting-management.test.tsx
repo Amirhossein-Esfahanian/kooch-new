@@ -65,9 +65,10 @@ describe("PropertySettingManagement", () => {
     ]);
     expect(within(screen.getByTestId("property-setting-2")).getByText("غیرفعال")).toBeTruthy();
     expect(screen.getByText("historic-district")).toBeTruthy();
-    expect(screen.getByTestId("property-setting-list").parentElement?.className).toContain(
-      "overflow-hidden",
-    );
+    expect(list.className).toContain("sm:grid-cols-2");
+    expect(list.className).toContain("xl:grid-cols-3");
+    expect(list.className).toContain("2xl:grid-cols-4");
+    expect(screen.getByTestId("property-setting-1").className).toContain("p-3");
   });
 
   it("creates a setting with every writable create field", async () => {
@@ -86,6 +87,8 @@ describe("PropertySettingManagement", () => {
     fireEvent.click(screen.getByRole("button", { name: /افزودن بافت و موقعیت/ }));
 
     const dialog = await screen.findByRole("dialog");
+    expect(dialog.className).toContain("!max-w-lg");
+    expect(dialog.className).toContain("!h-auto");
     fireEvent.change(within(dialog).getByLabelText(/^نام\s*\*$/), {
       target: { value: "نزدیک رودخانه" },
     });
