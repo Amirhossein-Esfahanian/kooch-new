@@ -420,77 +420,69 @@ export function CalendarSelectionEditor({
                   </div>
                 </div>
               ) : (
-                <>
-                  <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
-                    <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                      {valueLabel}
+                <div className="grid gap-3 rounded-xl border border-border/70 bg-muted/50 p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start">
+                  <label className="flex min-w-0 flex-col justify-center gap-2 text-sm font-bold text-foreground sm:self-stretch">
+                    {valueLabel}
 
-                      <input
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        disabled={inventoryStatus === "Unavailable"}
-                        min={minValue}
-                        max={maxValue}
-                        inputMode={
-                          valueInputType === "number" ? "numeric" : undefined
-                        }
-                        onChange={(event) =>
-                          onInventoryValueChange?.(
-                            parseNumberInput(event.target.value),
-                          )
-                        }
-                        type={
-                          valueInputType === "number" ? "text" : valueInputType
-                        }
-                        value={
-                          inventoryStatus === "Unavailable"
-                            ? toPersianNumber(0)
-                            : Number.isFinite(inventoryValue)
-                              ? toPersianNumber(inventoryValue)
-                              : ""
-                        }
-                      />
+                    <input
+                      className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                      disabled={inventoryStatus === "Unavailable"}
+                      min={minValue}
+                      max={maxValue}
+                      inputMode={
+                        valueInputType === "number" ? "numeric" : undefined
+                      }
+                      onChange={(event) =>
+                        onInventoryValueChange?.(
+                          parseNumberInput(event.target.value),
+                        )
+                      }
+                      type={
+                        valueInputType === "number" ? "text" : valueInputType
+                      }
+                      value={
+                        inventoryStatus === "Unavailable"
+                          ? toPersianNumber(0)
+                          : Number.isFinite(inventoryValue)
+                            ? toPersianNumber(inventoryValue)
+                            : ""
+                      }
+                    />
 
-                      {mixedInventoryValue && (
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          ظرفیت روزهای انتخاب‌شده متفاوت است
-                        </span>
-                      )}
-                    </label>
-                  </div>
+                    {mixedInventoryValue && (
+                      <span className="text-xs font-semibold text-muted-foreground">
+                        ظرفیت روزهای انتخاب‌شده متفاوت است
+                      </span>
+                    )}
+                  </label>
 
                   {statusOptions && (
-                    <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
-                      <div className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                        <span>وضعیت</span>
+                    <div className="grid w-fit shrink-0 gap-2 justify-self-start sm:justify-self-end sm:border-r sm:border-border/70 sm:pr-3">
+                      {statusOptions.map((option) => (
+                        <button
+                          className={`min-h-9 min-w-36 rounded border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                            inventoryStatus === option.value
+                              ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                              : "border-border bg-background text-foreground hover:bg-muted"
+                          }`}
+                          key={option.value}
+                          onClick={() =>
+                            onInventoryStatusChange?.(option.value)
+                          }
+                          type="button"
+                        >
+                          {option.label}
+                        </button>
+                      ))}
 
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          {statusOptions.map((option) => (
-                            <button
-                              className={`min-h-6 rounded border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                                inventoryStatus === option.value
-                                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                                  : "border-border bg-background text-foreground hover:bg-muted"
-                              }`}
-                              key={option.value}
-                              onClick={() =>
-                                onInventoryStatusChange?.(option.value)
-                              }
-                              type="button"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        {mixedInventoryStatus && (
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            وضعیت روزهای انتخاب‌شده متفاوت است
-                          </span>
-                        )}
-                      </div>
+                      {mixedInventoryStatus && (
+                        <span className="max-w-36 text-xs font-semibold text-muted-foreground">
+                          وضعیت روزهای انتخاب‌شده متفاوت است
+                        </span>
+                      )}
                     </div>
                   )}
-                </>
+                </div>
               )}
 
               {(error || (mode === "pricing" && message)) && (
