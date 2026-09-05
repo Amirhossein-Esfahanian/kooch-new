@@ -26,7 +26,18 @@ export default function AdminPropertyRoomsPage() {
       showPricingWarnings={false}
       title="مدیریت اتاق‌ها"
     >
-      <RoomManagement compactHeader propertyId={propertyId} />
+      <RoomManagement
+        compactHeader
+        headerAction={
+          <Link
+            className={headerLinkClass}
+            href={`/admin/properties/${propertyId}/pricing`}
+          >
+            قیمت‌گذاری
+          </Link>
+        }
+        propertyId={propertyId}
+      />
     </AdminPropertyPanel>
   );
 }

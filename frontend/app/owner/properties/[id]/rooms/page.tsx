@@ -8,10 +8,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { RoomManagement } from "@/components/owner/RoomManagement";
-import {
-  apiRequest,
-  PropertyResponse,
-} from "@/lib/owner-api";
+import { apiRequest, PropertyResponse } from "@/lib/owner-api";
 
 const headerLinkClass =
   "inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
@@ -57,7 +54,17 @@ export default function OwnerRoomsPage() {
             <p className="text-sm font-semibold">{error}</p>
           </KoochCard>
         )} */}
-        <RoomManagement propertyId={propertyId} />
+        <RoomManagement
+          headerAction={
+            <Link
+              className={headerLinkClass}
+              href={`/owner/properties/${propertyId}/pricing`}
+            >
+              قیمت‌گذاری
+            </Link>
+          }
+          propertyId={propertyId}
+        />
       </main>
     </OwnerLayout>
   );

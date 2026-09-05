@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { KoochAlert } from "@/components/KoochAlert";
@@ -112,9 +113,11 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
 
 export function RoomManagement({
   compactHeader = false,
+  headerAction,
   propertyId,
 }: {
   compactHeader?: boolean;
+  headerAction?: ReactNode;
   propertyId: number;
 }) {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
@@ -775,9 +778,12 @@ export function RoomManagement({
                 تعداد موجودی ثبت کنید.
               </p>
             </div>
-            <KoochButton onClick={openCreateDialog}>
-              افزودن نوع اتاق
-            </KoochButton>
+            <div className="flex flex-wrap items-center gap-2">
+              {headerAction}
+              <KoochButton onClick={openCreateDialog}>
+                افزودن نوع اتاق
+              </KoochButton>
+            </div>
           </div>
         </KoochCard>
       )}
@@ -792,9 +798,12 @@ export function RoomManagement({
             نوع‌های اتاق ثبت‌شده
           </p>
           {compactHeader && (
-            <KoochButton onClick={openCreateDialog}>
-              افزودن نوع اتاق
-            </KoochButton>
+            <div className="flex flex-wrap items-center gap-2">
+              {headerAction}
+              <KoochButton onClick={openCreateDialog}>
+                افزودن نوع اتاق
+              </KoochButton>
+            </div>
           )}
         </div>
         {loading ? (
