@@ -5,7 +5,9 @@ import { AdminLayout, DashboardHomeContent } from "@/components/dashboard/Dashbo
 export default function AdminDashboardPage() {
   return (
     <AdminLayout>
-      {(darkMode) => <DashboardHomeContent darkMode={darkMode} />}
+      {(darkMode) => (
+        <DashboardHomeContent darkMode={darkMode} headerAppearance="plain" />
+      )}
     </AdminLayout>
   );
 }

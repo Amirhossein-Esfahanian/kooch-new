@@ -447,13 +447,14 @@ export default function AdminUsersPage() {
     <AdminLayout requiredPlatformPermission="ManageUsers">
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
+          appearance="plain"
           actions={
             <KoochButton onClick={openCreate} type="button">
               <KoochIcon name="plus" />
               افزودن کاربر
             </KoochButton>
           }
-          eyebrow=""
+          eyebrow="پنل مدیریت"
           title="مدیریت کاربران"
         />
 

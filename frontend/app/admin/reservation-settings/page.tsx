@@ -145,8 +145,9 @@ export default function AdminReservationSettingsPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          appearance="plain"
           description="قوانین پیش‌فرض کودک زمانی استفاده می‌شوند که اقامتگاه قانون اختصاصی ثبت نکرده باشد."
-          eyebrow=""
+          eyebrow="پنل مدیریت"
           title="تنظیمات رزرو"
         />
 

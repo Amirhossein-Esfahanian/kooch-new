@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { AdminPropertyPanel } from "@/components/admin/AdminPropertyPanel";
 import { OwnerPricingGrid } from "@/components/owner/OwnerPricingGrid";
 
 const headerLinkClass =
@@ -13,28 +12,22 @@ export default function AdminPricingPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
 
   return (
-    <AdminLayout>
-      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
-        <KoochPageHeader
-          actions={
-            <>
-              <Link
-                className={headerLinkClass}
-                href={`/admin/properties/${propertyId}`}
-              >
-                بازگشت به ویرایش اقامتگاه
-              </Link>
-              <Link className={headerLinkClass} href="/admin/properties">
-                لیست اقامتگاه‌ها
-              </Link>
-            </>
-          }
-          description="مدیریت قیمت روزانه اتاق‌ها در بستر پنل مدیریت"
-          eyebrow=""
-          title="قیمت‌گذاری اتاق‌ها"
-        />
-        <OwnerPricingGrid context="admin" propertyId={propertyId} />
-      </main>
-    </AdminLayout>
+    <AdminPropertyPanel
+      actions={
+        <Link
+          className={headerLinkClass}
+          href={`/admin/properties/${propertyId}`}
+        >
+          بازگشت به ویرایش اقامتگاه
+        </Link>
+      }
+      description="مدیریت قیمت روزانه اتاق‌ها در بستر پنل مدیریت"
+      propertyId={propertyId}
+      sectionLabel="قیمت‌گذاری"
+      showPricingWarnings={false}
+      title="قیمت‌گذاری اتاق‌ها"
+    >
+      <OwnerPricingGrid context="admin" propertyId={propertyId} />
+    </AdminPropertyPanel>
   );
 }

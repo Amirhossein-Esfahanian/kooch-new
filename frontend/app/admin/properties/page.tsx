@@ -709,6 +709,7 @@ export default function AdminPropertiesPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          appearance="plain"
           actions={
             <KoochButton onClick={openCreateDialog} type="button">
               <KoochIcon name="plus" />
@@ -716,7 +717,7 @@ export default function AdminPropertiesPage() {
             </KoochButton>
           }
           description="اقامتگاه‌ها، وضعیت بررسی، ظرفیت و قیمت‌گذاری را از همین صفحه مدیریت کنید."
-          eyebrow=""
+          eyebrow="پنل مدیریت"
           title="مدیریت اقامتگاه‌ها"
         />
 

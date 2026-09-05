@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { AdminPropertyPanel } from "@/components/admin/AdminPropertyPanel";
 import { PropertyUsersManagement } from "@/components/property-users/PropertyUsersManagement";
 
 const headerLinkClass =
@@ -13,28 +12,22 @@ export default function AdminPropertyUsersPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
 
   return (
-    <AdminLayout>
-      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
-        <KoochPageHeader
-          actions={
-            <>
-              <Link
-                className={headerLinkClass}
-                href={`/admin/properties/${propertyId}`}
-              >
-                بازگشت به ویرایش اقامتگاه
-              </Link>
-              <Link className={headerLinkClass} href="/admin/properties">
-                لیست اقامتگاه‌ها
-              </Link>
-            </>
-          }
-          description="تعریف و مدیریت کاربران عملیاتی همین اقامتگاه"
-          eyebrow=""
-          title="مدیریت کاربران"
-        />
-        <PropertyUsersManagement context="admin" propertyId={propertyId} />
-      </main>
-    </AdminLayout>
+    <AdminPropertyPanel
+      actions={
+        <Link
+          className={headerLinkClass}
+          href={`/admin/properties/${propertyId}`}
+        >
+          بازگشت به ویرایش اقامتگاه
+        </Link>
+      }
+      description="تعریف و مدیریت کاربران عملیاتی همین اقامتگاه"
+      propertyId={propertyId}
+      sectionLabel="کاربران"
+      showPricingWarnings={false}
+      title="مدیریت کاربران"
+    >
+      <PropertyUsersManagement context="admin" propertyId={propertyId} />
+    </AdminPropertyPanel>
   );
 }

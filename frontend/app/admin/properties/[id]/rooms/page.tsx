@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { AdminPropertyPanel } from "@/components/admin/AdminPropertyPanel";
 import { RoomManagement } from "@/components/owner/RoomManagement";
 
 const headerLinkClass =
@@ -12,28 +11,22 @@ const headerLinkClass =
 export default function AdminPropertyRoomsPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
   return (
-    <AdminLayout>
-      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
-        <KoochPageHeader
-          actions={
-            <>
-              <Link
-                className={headerLinkClass}
-                href={`/admin/properties/${propertyId}`}
-              >
-                بازگشت به ویرایش اقامتگاه
-              </Link>
-              <Link className={headerLinkClass} href="/admin/properties">
-                لیست اقامتگاه‌ها
-              </Link>
-            </>
-          }
-          description="ایجاد، ویرایش، فعال‌سازی و مدیریت تصاویر اتاق‌ها"
-          eyebrow=""
-          title="مدیریت اتاق‌ها"
-        />
-        <RoomManagement propertyId={propertyId} />
-      </main>
-    </AdminLayout>
+    <AdminPropertyPanel
+      actions={
+        <Link
+          className={headerLinkClass}
+          href={`/admin/properties/${propertyId}`}
+        >
+          بازگشت به ویرایش اقامتگاه
+        </Link>
+      }
+      description="ایجاد، ویرایش، فعال‌سازی و مدیریت تصاویر اتاق‌ها"
+      propertyId={propertyId}
+      sectionLabel="اتاق‌ها"
+      showPricingWarnings={false}
+      title="مدیریت اتاق‌ها"
+    >
+      <RoomManagement compactHeader propertyId={propertyId} />
+    </AdminPropertyPanel>
   );
 }

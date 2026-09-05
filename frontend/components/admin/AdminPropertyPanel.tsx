@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ReactNode, useEffect, useState } from "react";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   getPropertyFinancialWarnings,
   PricingSettingsWarning,
@@ -11,13 +12,19 @@ import {
 import { apiRequest, PropertyResponse } from "@/lib/owner-api";
 
 export function AdminPropertyPanel({
+  actions,
   children,
+  description,
   propertyId,
+  sectionLabel,
   showPricingWarnings = true,
   title,
 }: {
+  actions?: ReactNode;
   children: ReactNode;
+  description?: ReactNode;
   propertyId: number;
+  sectionLabel?: string;
   showPricingWarnings?: boolean;
   title: string;
 }) {
@@ -36,33 +43,55 @@ export function AdminPropertyPanel({
   return (
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
-        <header className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white p-5 shadow-sm dark:border-white/10 dark:bg-[#171d27]">
-          <div>
-            <p className="text-xs font-bold text-slate-400">پنل مدیریت</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-950 dark:text-slate-100">
-              {title}
-            </h1>
-            <p className="mt-1 text-sm font-semibold text-slate-500 dark:text-slate-400">
-              {property?.name ?? "در حال بارگذاری..."}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Link
-              className="ds-button-secondary text-sm"
-              href="/admin/properties"
-            >
-              بازگشت به لیست
-            </Link>
-            {property?.slug && (
-              <Link
-                className="ds-button-primary text-sm"
-                href={`/properties/${property.slug}`}
-              >
-                مشاهده صفحه عمومی
-              </Link>
-            )}
-          </div>
-        </header>
+        <KoochPageHeader
+          actions={actions}
+          appearance="plain"
+          breadcrumb={
+            <>
+              <li>
+                <Link
+                  className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  href="/admin"
+                >
+                  پنل مدیریت
+                </Link>
+              </li>
+              <li aria-hidden="true">/</li>
+              <li>
+                <Link
+                  className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  href="/admin/properties"
+                >
+                  اقامتگاه‌ها
+                </Link>
+              </li>
+              <li aria-hidden="true">/</li>
+              {sectionLabel && property ? (
+                <li>
+                  <Link
+                    className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    href={`/admin/properties/${propertyId}`}
+                  >
+                    {property.name}
+                  </Link>
+                </li>
+              ) : (
+                <li aria-current={sectionLabel ? undefined : "page"}>
+                  {property?.name ?? "در حال بارگذاری..."}
+                </li>
+              )}
+              {sectionLabel && (
+                <>
+                  <li aria-hidden="true">/</li>
+                  <li aria-current="page">{sectionLabel}</li>
+                </>
+              )}
+            </>
+          }
+          description={description}
+          eyebrow=""
+          title={title}
+        />
         {error && (
           <p className="rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700">
             {error}

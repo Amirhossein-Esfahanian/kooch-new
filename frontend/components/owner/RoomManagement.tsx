@@ -110,7 +110,13 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
   };
 }
 
-export function RoomManagement({ propertyId }: { propertyId: number }) {
+export function RoomManagement({
+  compactHeader = false,
+  propertyId,
+}: {
+  compactHeader?: boolean;
+  propertyId: number;
+}) {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
@@ -752,20 +758,26 @@ export function RoomManagement({ propertyId }: { propertyId: number }) {
 
   return (
     <div className="grid w-full min-w-0 gap-5">
-      <KoochCard variant="elevated">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-xl font-bold text-foreground">
-              مدیریت نوع‌های اتاق
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              هر نوع اتاق قابل فروش را با نام واقعی، طبقه‌بندی استاندارد و تعداد
-              موجودی ثبت کنید.
-            </p>
-          </div>
+      {compactHeader ? (
+        <div className="flex justify-end">
           <KoochButton onClick={openCreateDialog}>افزودن نوع اتاق</KoochButton>
         </div>
-      </KoochCard>
+      ) : (
+        <KoochCard variant="elevated">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2 className="text-xl font-bold text-foreground">
+                مدیریت نوع‌های اتاق
+              </h2>
+              <p className="mt-1 text-sm text-muted-foreground">
+                هر نوع اتاق قابل فروش را با نام واقعی، طبقه‌بندی استاندارد و تعداد
+                موجودی ثبت کنید.
+              </p>
+            </div>
+            <KoochButton onClick={openCreateDialog}>افزودن نوع اتاق</KoochButton>
+          </div>
+        </KoochCard>
+      )}
 
       {error && !dialogOpen && (
         <KoochAlert variant="destructive">{error}</KoochAlert>

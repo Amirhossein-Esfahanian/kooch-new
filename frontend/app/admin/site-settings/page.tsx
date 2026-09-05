@@ -385,8 +385,9 @@ export default function AdminSiteSettingsPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          appearance="plain"
           description="تنظیمات عمومی، برند، تصاویر و مقادیر مرکزی سایت را مدیریت کنید."
-          eyebrow=""
+          eyebrow="پنل مدیریت"
           title="تنظیمات سایت"
         />
         {loading && (

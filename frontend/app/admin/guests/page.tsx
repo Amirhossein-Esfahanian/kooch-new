@@ -9,6 +9,7 @@ export default function AdminGuestsPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          appearance="plain"
           description="مدیریت مهمان‌ها برای استفاده داخلی در رزروها"
           eyebrow="مدیریت داخلی"
           title="مدیریت مهمان‌ها"

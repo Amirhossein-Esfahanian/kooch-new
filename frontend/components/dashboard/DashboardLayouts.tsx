@@ -413,7 +413,7 @@ export function AdminLayout({
   }
 
   return (
-    <DashboardShell menuItems={visibleAdminMenuItems}>
+    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems}>
       {children}
     </DashboardShell>
   );
@@ -504,11 +504,17 @@ export function OwnerLayout({
   );
 }
 
-export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
+export function DashboardHomeContent({
+  darkMode,
+  headerAppearance = "card",
+}: {
+  darkMode: boolean;
+  headerAppearance?: "card" | "plain";
+}) {
   return (
     <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_300px] lg:p-6">
       <div className="grid min-w-0 gap-5">
-        <HeroHeader />
+        <HeroHeader appearance={headerAppearance} />
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {stats.map((stat) => (
             <DashboardStatCard key={stat.title} {...stat} />
@@ -559,6 +565,7 @@ export function DashboardHomeContent({ darkMode }: { darkMode: boolean }) {
 function DashboardShell({
   children,
   currentWorkspaceId,
+  integratedHeader = false,
   menuItems,
   onWorkspaceChange,
   workspaceLabel = "پنل مدیریت",
@@ -566,6 +573,7 @@ function DashboardShell({
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
   currentWorkspaceId?: string;
+  integratedHeader?: boolean;
   menuItems: DashboardMenuItem[];
   onWorkspaceChange?: (workspaceId: string) => void;
   workspaceLabel?: string;
@@ -598,7 +606,11 @@ function DashboardShell({
   return (
     <div
       className={`fixed inset-0 z-50 overflow-hidden  ${darkMode ? "dark" : ""} ${
-        darkMode ? "bg-[#0b0f17] text-slate-100" : "bg-slate-100 text-slate-950"
+        integratedHeader
+          ? "bg-background text-foreground"
+          : darkMode
+            ? "bg-[#0b0f17] text-slate-100"
+            : "bg-slate-100 text-slate-950"
       }`}
       dir="rtl"
     >
@@ -627,6 +639,7 @@ function DashboardShell({
           <DashboardHeader
             activeDrawer={drawerType}
             darkMode={darkMode}
+            integrated={integratedHeader}
             profileMenuOpen={profileMenuOpen}
             onDrawerToggle={(type) => {
               setProfileMenuOpen(false);
@@ -810,6 +823,7 @@ function DashboardSidebar({
 function DashboardHeader({
   activeDrawer,
   darkMode,
+  integrated,
   onDrawerToggle,
   onProfileMenuClose,
   onProfileMenuToggle,
@@ -819,6 +833,7 @@ function DashboardHeader({
 }: {
   activeDrawer: "messages" | "notifications" | null;
   darkMode: boolean;
+  integrated: boolean;
   onDrawerToggle: (type: "messages" | "notifications") => void;
   onProfileMenuClose: () => void;
   onProfileMenuToggle: () => void;
@@ -828,79 +843,107 @@ function DashboardHeader({
 }) {
   return (
     <header
-      className={`border-b px-4 py-3 lg:px-6 ${darkMode ? "border-white/10 bg-[#0f141d]" : "border-slate-200 bg-white"}`}
+      className={`px-4 py-3 lg:px-6 ${
+        integrated
+          ? "bg-background"
+          : darkMode
+            ? "border-b border-white/10 bg-[#0f141d]"
+            : "border-b border-slate-200 bg-white"
+      }`}
     >
-      <div className="flex flex-wrap items-center gap-3">
-        <button
-          className={`grid h-10 w-10 place-items-center rounded-xl border md:hidden ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          onClick={onSidebarToggle}
-          type="button"
-          aria-label="نمایش منو"
-        >
-          ☰
-        </button>
-        <div
-          className={`hidden text-xs font-bold sm:block ${mutedText(darkMode)}`}
-        >
-          خانه / داشبوردها / نمونه پنل کوچ
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {/* Right side: mobile menu + global search */}
+        <div className="flex min-w-0 flex-1 items-center gap-3">
+          <button
+            className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl border md:hidden ${
+              darkMode
+                ? "border-white/10 bg-white/5"
+                : "border-slate-200 bg-slate-50"
+            }`}
+            onClick={onSidebarToggle}
+            type="button"
+            aria-label="نمایش منو"
+          >
+            ☰
+          </button>
+
+          <div
+            className={`flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${
+              darkMode
+                ? "border-white/10 bg-white/5"
+                : "border-slate-200 bg-slate-50"
+            }`}
+          >
+            <span className={mutedText(darkMode)}>⌕</span>
+
+            <input
+              className="w-full border-0 bg-transparent p-0 text-sm font-normal outline-none placeholder:text-muted-foreground"
+              placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
+              type="search"
+            />
+          </div>
         </div>
-        <div
-          className={`mr-auto flex min-w-[220px] flex-1 items-center gap-2 rounded-xl border px-3 py-2 md:max-w-md ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-        >
-          <span className={mutedText(darkMode)}>⌕</span>
-          <input
-            className="w-full border-0 bg-transparent p-0 text-sm outline-none"
-            placeholder="جستجو در اقامتگاه، رزرو، کاربر..."
-            type="search"
+
+        {/* Left side: navbar actions */}
+        <div className="flex shrink-0 items-center gap-2">
+          <HeaderIcon
+            active={activeDrawer === "messages"}
+            darkMode={darkMode}
+            label="پیام‌ها"
+            onClick={() => onDrawerToggle("messages")}
+          >
+            <MenuIcon icon={menuIcons.messages} />
+          </HeaderIcon>
+
+          <HeaderIcon
+            active={activeDrawer === "notifications"}
+            darkMode={darkMode}
+            label="اعلان‌ها"
+            onClick={() => onDrawerToggle("notifications")}
+          >
+            <MenuIcon icon={menuIcons.notification} />
+          </HeaderIcon>
+
+          <button
+            className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${
+              darkMode
+                ? "border-white/10 bg-white/5"
+                : "border-slate-200 bg-slate-50"
+            }`}
+            onClick={onThemeToggle}
+            type="button"
+            aria-label="تغییر حالت روشن و تیره"
+          >
+            {darkMode ? (
+              <MenuIcon icon={menuIcons.light} />
+            ) : (
+              <MenuIcon icon={menuIcons.dark} />
+            )}
+          </button>
+
+          <KoochUserMenu
+            darkMode={darkMode}
+            onOpenChange={(nextOpen) => {
+              if (nextOpen) onProfileMenuToggle();
+              else onProfileMenuClose();
+            }}
+            open={profileMenuOpen}
+            variant="dashboard"
           />
         </div>
-        <HeaderIcon
-          active={activeDrawer === "messages"}
-          darkMode={darkMode}
-          label="پیام‌ها"
-          onClick={() => onDrawerToggle("messages")}
-        >
-          <MenuIcon icon={menuIcons.messages} />
-        </HeaderIcon>
-        <HeaderIcon
-          active={activeDrawer === "notifications"}
-          darkMode={darkMode}
-          label="اعلان‌ها"
-          onClick={() => onDrawerToggle("notifications")}
-        >
-          <MenuIcon icon={menuIcons.notification} />
-
-          {/* come back here */}
-        </HeaderIcon>
-        <button
-          className={`grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-          onClick={onThemeToggle}
-          type="button"
-          aria-label="تغییر حالت روشن و تیره"
-        >
-          {darkMode ? (
-            <MenuIcon icon={menuIcons.light} />
-          ) : (
-            <MenuIcon icon={menuIcons.dark} />
-          )}
-        </button>
-        <KoochUserMenu
-          darkMode={darkMode}
-          onOpenChange={(nextOpen) => {
-            if (nextOpen) onProfileMenuToggle();
-            else onProfileMenuClose();
-          }}
-          open={profileMenuOpen}
-          variant="dashboard"
-        />
       </div>
     </header>
   );
 }
 
-function HeroHeader() {
+function HeroHeader({
+  appearance = "card",
+}: {
+  appearance?: "card" | "plain";
+}) {
   return (
     <KoochPageHeader
+      appearance={appearance}
       actions={
         <>
           <span className="rounded-full bg-[var(--theme-primary-soft)] px-4 py-2 text-sm font-bold text-[var(--theme-primary-text)]">

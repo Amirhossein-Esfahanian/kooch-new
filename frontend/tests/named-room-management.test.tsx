@@ -286,6 +286,22 @@ describe("unified owner sellable room type management", () => {
     expect(screen.getByRole("button", { name: "ویرایش" })).toBeTruthy();
   });
 
+  it("uses the compact Admin header treatment without the redundant intro card", async () => {
+    arrangeApi([zanbagh]);
+    render(<RoomManagement compactHeader propertyId={3} />);
+
+    expect(await screen.findByText("زنبق")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "افزودن نوع اتاق" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "نوع‌های اتاق ثبت‌شده" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "مدیریت نوع‌های اتاق" }),
+    ).toBeNull();
+  });
+
   it("loads RoomKind from the catalog and defaults TotalInventory to zero", async () => {
     arrangeApi();
     render(<RoomManagement propertyId={3} />);

@@ -801,6 +801,21 @@ describe("PropertyWizard media and common areas", () => {
     expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
   });
 
+  it("leaves Admin room navigation to the property page header", async () => {
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+
+    expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "مدیریت اتاق‌ها" }),
+    ).toBeNull();
+    for (const link of screen.getAllByRole("link", {
+      name: "بازگشت به لیست اقامتگاه‌ها",
+    })) {
+      expect(link.getAttribute("href")).toBe("/admin/properties");
+    }
+  });
+
   it("formats financial inputs in Persian while sending separator-free numbers", async () => {
     window.history.replaceState({}, "", "?step=8");
     render(<PropertyWizard mode="edit" propertyId={17} />);

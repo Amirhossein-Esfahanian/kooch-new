@@ -1114,19 +1114,17 @@ export function PropertyWizard({
         </nav>
         {property && (
           <div className="mt-4 grid gap-2 border-t border-border pt-4">
+            {!isAdmin && (
+              <Link
+                className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+                href={`/owner/properties/${property.id}/rooms`}
+              >
+                مدیریت اتاق‌ها
+              </Link>
+            )}
             <Link
               className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-              href={
-                isAdmin
-                  ? `/admin/properties/${property.id}/rooms`
-                  : `/owner/properties/${property.id}/rooms`
-              }
-            >
-              مدیریت اتاق‌ها
-            </Link>
-            <Link
-              className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-              href="/owner/properties"
+              href={isAdmin ? "/admin/properties" : "/owner/properties"}
             >
               بازگشت به لیست اقامتگاه‌ها
             </Link>
@@ -1881,17 +1879,17 @@ export function PropertyWizard({
               />
             </div>
             {property && (
-              <div className={`${cardClass} grid gap-3 md:grid-cols-3`}>
-                <Link
-                  className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
-                  href={
-                    isAdmin
-                      ? `/admin/properties/${property.id}/rooms`
-                      : `/owner/properties/${property.id}/rooms`
-                  }
-                >
-                  مدیریت اتاق‌ها
-                </Link>
+              <div
+                className={`${cardClass} grid gap-3 ${isAdmin ? "md:grid-cols-2" : "md:grid-cols-3"}`}
+              >
+                {!isAdmin && (
+                  <Link
+                    className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
+                    href={`/owner/properties/${property.id}/rooms`}
+                  >
+                    مدیریت اتاق‌ها
+                  </Link>
+                )}
                 {property.slug && (
                   <Link
                     className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}

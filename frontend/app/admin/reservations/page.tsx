@@ -514,6 +514,7 @@ export default function AdminReservationsPage() {
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
+          appearance="plain"
           actions={
             <ManualReservationDialog
               context="admin"
