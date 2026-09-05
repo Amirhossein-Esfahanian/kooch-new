@@ -1238,38 +1238,41 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           )}
         </div>
         {selectedRanges.length > 0 && isMinimized && (
-          <div className="fixed bottom-4 left-1/2 z-[80] flex -translate-x-1/2 items-center ">
-            <button
-              aria-label="بازکردن پنل ویرایش"
-              className="grid h-12   w-32 place-items-center rounded-md bg-primary text-primary-foreground shadow-lg backdrop-blur ring-bold/5 transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              onClick={() => setIsMinimized(false)}
-              title="بازکردن پنل ویرایش"
-              type="button"
-            >
-              <svg
-                aria-hidden="true"
-                className="h-5 w-5"
-                fill="none"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth="2"
-                />
-                <path
-                  d="m13.5 6.5 4 4"
-                  stroke="currentColor"
-                  strokeLinecap="round"
-                  strokeWidth="2"
-                />
-              </svg>
-              <span className="text-xs font-normal text-primary-foreground">
+          <div className="fixed bottom-4 left-1/2 z-[80] -translate-x-1/2">
+            <div className="flex h-12 items-center gap-3 rounded-full border border-white/40 bg-card/80 py-1 pl-1 pr-4 shadow-lg backdrop-blur-xl">
+              <span className="whitespace-nowrap text-sm font-semibold text-foreground">
                 {toPersianNumber(selectedCount)} روز انتخاب شده
               </span>
-            </button>
+
+              <button
+                aria-label="بازکردن پنل ویرایش"
+                className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                onClick={() => setIsMinimized(false)}
+                title="بازکردن پنل ویرایش"
+                type="button"
+              >
+                <svg
+                  aria-hidden="true"
+                  className="h-5 w-5"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                  />
+                  <path
+                    d="m13.5 6.5 4 4"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeWidth="2"
+                  />
+                </svg>
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -307,21 +307,40 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
       </div>
 
       {!panelOpen && selectedItems.length > 0 && (
-        <div className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex max-w-md justify-center px-3">
-          <div className="flex w-full items-center justify-between gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur">
-            <span className="min-w-0 truncate text-sm font-bold text-foreground">
-              {toPersianNumber(selectedItems.length)} خانه /{" "}
+        <div className="fixed bottom-4 left-1/2 z-[80] -translate-x-1/2">
+          <div className="flex h-12 items-center gap-3 rounded-full border border-white/40 bg-card/80 py-1 pl-1 pr-4 shadow-lg backdrop-blur-xl">
+            <span className="whitespace-nowrap text-sm font-semibold text-foreground">
               {toPersianNumber(selectedDayCount)} روز انتخاب شده
             </span>
 
-            <KoochButton
+            <button
+              aria-label="بازکردن پنل ویرایش قیمت"
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
               onClick={() => setPanelOpen(true)}
-              size="sm"
+              title="بازکردن پنل ویرایش قیمت"
               type="button"
-              variant="primary"
             >
-              ویرایش قیمت
-            </KoochButton>
+              <svg
+                aria-hidden="true"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+                <path
+                  d="m13.5 6.5 4 4"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="2"
+                />
+              </svg>
+            </button>
           </div>
         </div>
       )}
