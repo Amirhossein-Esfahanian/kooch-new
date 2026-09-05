@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { AdminPropertyPanel } from "@/components/admin/AdminPropertyPanel";
-import { ReservationFollowUpRecipients } from "@/components/admin/ReservationFollowUpRecipients";
 import { PropertyWizard } from "@/components/owner/PropertyWizard";
 
 const linkButtonClass =
@@ -37,7 +36,6 @@ export default function AdminPropertyEditPage() {
       title="ویرایش اقامتگاه"
     >
       <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
-      <ReservationFollowUpRecipients propertyId={propertyId} />
     </AdminPropertyPanel>
   );
 }
