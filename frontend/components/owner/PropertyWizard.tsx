@@ -29,7 +29,6 @@ import {
   resolveDestinationId,
   RoomTypeResponse,
 } from "@/lib/owner-api";
-import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
@@ -257,7 +256,8 @@ export function PropertyWizard({
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [adminStatus, setAdminStatus] =
     useState<PropertyStatus>("PendingReview");
-  const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false);
+  const [approvalConfirmationOpen, setApprovalConfirmationOpen] =
+    useState(false);
   const statusSavingRef = useRef(false);
   const [amenityCategories, setAmenityCategories] = useState<
     AmenityCategoryResponse[]
@@ -303,7 +303,9 @@ export function PropertyWizard({
       .then(([categories, items, settings]) => {
         setAmenityCategories(categories);
         setAmenities(items);
-        setPropertySettingCatalog(settings.filter((setting) => setting.isActive));
+        setPropertySettingCatalog(
+          settings.filter((setting) => setting.isActive),
+        );
       })
       .catch((caught: Error) => setError(caught.message));
   }, [canLoadWorkspace]);
@@ -1142,9 +1144,6 @@ export function PropertyWizard({
             </Link>
           </div>
         )}
-        <div className="mt-4 border-t border-border px-2 pt-4">
-          <KoochBadge variant="muted">واحد پول: {currencyLabel}</KoochBadge>
-        </div>
       </aside>
 
       <main className="min-w-0">
@@ -1403,12 +1402,7 @@ export function PropertyWizard({
                     update(
                       "selectedAmenityIds",
                       selected
-                        ? [
-                            ...new Set([
-                              ...data.selectedAmenityIds,
-                              amenity.id,
-                            ]),
-                          ]
+                        ? [...new Set([...data.selectedAmenityIds, amenity.id])]
                         : data.selectedAmenityIds.filter(
                             (id) => id !== amenity.id,
                           ),
@@ -1924,33 +1918,35 @@ export function PropertyWizard({
             قبلی
           </KoochButton>
           <div className="flex gap-2">
-            <KoochButton
-              disabled={loading || savingSection !== null}
-              loading={savingSection === String(step)}
-              onClick={async () => {
-                setLoading(true);
-                setSavingSection(String(step));
-                setError("");
-                try {
-                  await saveCurrentStep();
-                  toast.success("این بخش ذخیره شد.");
-                } catch (caught) {
-                  const message =
-                    caught instanceof Error
-                      ? caught.message
-                      : "ذخیره انجام نشد.";
-                  setError(message);
-                  toast.error(message);
-                } finally {
-                  setLoading(false);
-                  setSavingSection(null);
-                }
-              }}
-              type="button"
-              variant="outline"
-            >
-              ذخیره
-            </KoochButton>
+            {step < steps.length - 1 && (
+              <KoochButton
+                disabled={loading || savingSection !== null}
+                loading={savingSection === String(step)}
+                onClick={async () => {
+                  setLoading(true);
+                  setSavingSection(String(step));
+                  setError("");
+                  try {
+                    await saveCurrentStep();
+                    toast.success("این بخش ذخیره شد.");
+                  } catch (caught) {
+                    const message =
+                      caught instanceof Error
+                        ? caught.message
+                        : "ذخیره انجام نشد.";
+                    setError(message);
+                    toast.error(message);
+                  } finally {
+                    setLoading(false);
+                    setSavingSection(null);
+                  }
+                }}
+                type="button"
+                variant="outline"
+              >
+                ذخیره
+              </KoochButton>
+            )}
             {step < steps.length - 1 ? (
               <KoochButton
                 disabled={loading || savingSection !== null}

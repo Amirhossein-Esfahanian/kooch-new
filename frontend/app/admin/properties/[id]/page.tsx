@@ -16,12 +16,20 @@ export default function AdminPropertyEditPage() {
   return (
     <AdminPropertyPanel
       actions={
-        <Link
-          className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
-          href={`/admin/properties/${propertyId}/rooms`}
-        >
-          مدیریت اتاق‌ها
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
+            href={`/admin/properties/${propertyId}/rooms`}
+          >
+            مدیریت اتاق‌ها
+          </Link>
+          <Link
+            className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
+            href={`/admin/properties/${propertyId}/pricing`}
+          >
+            قیمت‌گذاری
+          </Link>
+        </div>
       }
       description="ویرایش اطلاعات اقامتگاه در همان جریان مرحله‌ای مالک."
       propertyId={propertyId}
