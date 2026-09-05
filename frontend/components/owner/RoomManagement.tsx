@@ -788,9 +788,9 @@ export function RoomManagement({
 
       <KoochCard variant="elevated">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="text-xl font-bold text-foreground">
+          <p className=" text-md font-semibold text-foreground">
             نوع‌های اتاق ثبت‌شده
-          </h2>
+          </p>
           {compactHeader && (
             <KoochButton onClick={openCreateDialog}>
               افزودن نوع اتاق

@@ -269,7 +269,6 @@ public class RoomTypeService(
     {
         var completion = CalculateCompletion(
             request.Name,
-            request.Description,
             request.MaxAdults,
             request.MaxChildren,
             request.TotalInventory,
@@ -310,7 +309,6 @@ public class RoomTypeService(
             IsActive = roomType.IsActive,
             Completion = CalculateCompletion(
                 roomType.Name,
-                roomType.Description,
                 roomType.MaxAdults,
                 roomType.MaxChildren,
                 roomType.TotalInventory,
@@ -342,7 +340,6 @@ public class RoomTypeService(
 
     private static RoomCompletionResponse CalculateCompletion(
         string name,
-        string description,
         int maxAdults,
         int maxChildren,
         int totalInventory,
@@ -355,8 +352,7 @@ public class RoomTypeService(
                 "basic",
                 "اطلاعات پایه",
                 [
-                    (!string.IsNullOrWhiteSpace(name), "نام اتاق"),
-                    // (!string.IsNullOrWhiteSpace(description), "توضیح اتاق")
+                    (!string.IsNullOrWhiteSpace(name), "نام اتاق")
                 ],
                 started: !string.IsNullOrWhiteSpace(name)),
             Section(
