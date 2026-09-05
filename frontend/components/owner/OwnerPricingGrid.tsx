@@ -8,7 +8,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   apiRequest,
+  AvailabilityStatus,
   CopyRoomDailyPriceRequest,
+  InventoryDayResponse,
   PricingGuestType,
   PropertyInventoryResponse,
   PropertyPricingResponse,
@@ -23,6 +25,7 @@ import {
   CalendarRangeGridEditor,
 } from "@/components/CalendarRangeGridEditor";
 import RoomPricingMatrixEditor from "@/components/pricing/RoomPricingMatrixEditor";
+import { QuickPriceSelector } from "@/components/pricing/QuickPriceSelector";
 import PricingBulkEditDialog, {
   PricingBulkEditPayload,
   PricingBulkRoom,
@@ -156,6 +159,37 @@ const pricingCalendarWeekdays = [
   "پنجشنبه",
   "جمعه",
 ] as const;
+
+type CompactSelectionMode = "range" | "single";
+
+type CompactCalendarSelection = {
+  mode: CompactSelectionMode;
+  anchorDate: string | null;
+  dates: string[];
+};
+
+const compactInventoryStatusOptions: {
+  value: AvailabilityStatus;
+  label: string;
+}[] = [
+  { value: "Available", label: "موجود" },
+  { value: "OnRequest", label: "نیازمند استعلام" },
+  { value: "Unavailable", label: "ناموجود" },
+];
+
+function datesBetween(startDate: string, endDate: string) {
+  const start = dayjs(startDate);
+  const end = dayjs(endDate);
+  const first = start.isAfter(end, "day") ? end : start;
+  const last = start.isAfter(end, "day") ? start : end;
+  const result: string[] = [];
+  let cursor = first;
+  while (!cursor.isAfter(last, "day")) {
+    result.push(cursor.format("YYYY-MM-DD"));
+    cursor = cursor.add(1, "day");
+  }
+  return result;
+}
 
 const copyPricingDirectionOptions: {
   value: CopyPricingDirection;
@@ -302,6 +336,31 @@ export function OwnerPricingGrid({
   const [message, setMessage] = useState("");
   const [usePricingMatrix, setUsePricingMatrix] = useState(false);
   const [usePricingCalendar, setUsePricingCalendar] = useState(false);
+  const [calendarSelections, setCalendarSelections] = useState<
+    Record<number, CompactCalendarSelection>
+  >({});
+  const [calendarPriceRoomId, setCalendarPriceRoomId] = useState<number | null>(
+    null,
+  );
+  const [calendarPriceValue, setCalendarPriceValue] = useState<number>(
+    Number.NaN,
+  );
+  const [calendarPriceSaving, setCalendarPriceSaving] = useState(false);
+  const [calendarInventoryRoomId, setCalendarInventoryRoomId] = useState<
+    number | null
+  >(null);
+  const [calendarInventoryValue, setCalendarInventoryValue] = useState(1);
+  const [calendarInventoryStatus, setCalendarInventoryStatus] =
+    useState<AvailabilityStatus>("Available");
+  const [calendarInventorySaving, setCalendarInventorySaving] = useState(false);
+  const [calendarEditorError, setCalendarEditorError] = useState("");
+  const [calendarInventoryConfirmOpen, setCalendarInventoryConfirmOpen] =
+    useState(false);
+  const [calendarInventoryConfirmPayload, setCalendarInventoryConfirmPayload] =
+    useState<CalendarRangeApplyPayload | null>(null);
+  const calendarInventoryConfirmResolverRef = useRef<
+    ((confirmed: boolean) => void) | null
+  >(null);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const monthStart = useMemo(
@@ -491,6 +550,304 @@ export function OwnerPricingGrid({
         basePrice: 0,
       }
     );
+  }
+
+  function getCalendarSelection(roomTypeId: number) {
+    return (
+      calendarSelections[roomTypeId] ?? {
+        mode: "range" as CompactSelectionMode,
+        anchorDate: null,
+        dates: [],
+      }
+    );
+  }
+
+  function setCalendarSelectionMode(
+    roomTypeId: number,
+    mode: CompactSelectionMode,
+  ) {
+    setCalendarSelections((current) => ({
+      ...current,
+      [roomTypeId]: {
+        mode,
+        anchorDate: null,
+        dates: [],
+      },
+    }));
+  }
+
+  function toggleCalendarDate(roomTypeId: number, date: string) {
+    if (dayjs(date).isBefore(dayjs().startOf("day"), "day")) return;
+
+    setCalendarSelections((current) => {
+      const selection =
+        current[roomTypeId] ??
+        ({
+          mode: "range",
+          anchorDate: null,
+          dates: [],
+        } satisfies CompactCalendarSelection);
+
+      if (selection.mode === "single") {
+        const exists = selection.dates.includes(date);
+        return {
+          ...current,
+          [roomTypeId]: {
+            ...selection,
+            anchorDate: null,
+            dates: exists
+              ? selection.dates.filter((item) => item !== date)
+              : [...selection.dates, date].sort(),
+          },
+        };
+      }
+
+      if (!selection.anchorDate) {
+        return {
+          ...current,
+          [roomTypeId]: {
+            ...selection,
+            anchorDate: date,
+            dates: [date],
+          },
+        };
+      }
+
+      return {
+        ...current,
+        [roomTypeId]: {
+          ...selection,
+          anchorDate: null,
+          dates: datesBetween(selection.anchorDate, date),
+        },
+      };
+    });
+  }
+
+  function clearCalendarSelection(roomTypeId: number) {
+    setCalendarSelections((current) => ({
+      ...current,
+      [roomTypeId]: {
+        mode: current[roomTypeId]?.mode ?? "range",
+        anchorDate: null,
+        dates: [],
+      },
+    }));
+  }
+
+  function selectionPayload(
+    roomTypeId: number,
+    selection: CompactCalendarSelection,
+  ): CalendarRangeApplyPayload | null {
+    if (selection.dates.length === 0) return null;
+    const dates = [...selection.dates].sort();
+    return {
+      rowId: roomTypeId,
+      startDate: dates[0],
+      endDate: dates[dates.length - 1],
+      value: 0,
+      items: dates.map((date) => ({ rowId: roomTypeId, date })),
+      selectionRangeCount:
+        selection.mode === "single" ? selection.dates.length : 1,
+    };
+  }
+
+  function openCalendarPriceEditor(roomTypeId: number) {
+    const selection = getCalendarSelection(roomTypeId);
+    if (selection.dates.length === 0) return;
+
+    const values = selection.dates.map(
+      (date) => getCellValue(roomTypeId, date).basePrice,
+    );
+    const first = values[0] ?? 0;
+    const mixed = values.some((value) => value !== first);
+
+    setCalendarEditorError("");
+    setCalendarPriceValue(mixed ? Number.NaN : first);
+    setCalendarPriceRoomId(roomTypeId);
+  }
+
+  function openCalendarInventoryEditor(roomTypeId: number) {
+    const selection = getCalendarSelection(roomTypeId);
+    if (selection.dates.length === 0) return;
+
+    const inventoryRoom = inventoryRoomById.get(roomTypeId);
+    const values = selection.dates.map((date) => {
+      const day = inventoryRoom?.days.find((item) => item.date === date);
+      return {
+        availabilityId: day?.availabilityId ?? null,
+        availableCount: day?.availableCount ?? 1,
+        status: day?.status ?? ("Available" as AvailabilityStatus),
+      };
+    });
+
+    const allMissing = values.every((item) => item.availabilityId == null);
+    const firstCount = values[0]?.availableCount ?? 1;
+    const countMixed =
+      !allMissing && values.some((item) => item.availableCount !== firstCount);
+    const firstStatus = values[0]?.status ?? "Available";
+    const statusMixed = values.some((item) => item.status !== firstStatus);
+
+    setCalendarEditorError("");
+    setCalendarInventoryValue(
+      allMissing ? 1 : countMixed ? Number.NaN : firstCount,
+    );
+    setCalendarInventoryStatus(statusMixed ? "Available" : firstStatus);
+    setCalendarInventoryRoomId(roomTypeId);
+  }
+
+  async function saveCalendarPrice() {
+    if (calendarPriceRoomId == null) return;
+    const selection = getCalendarSelection(calendarPriceRoomId);
+    const payload = selectionPayload(calendarPriceRoomId, selection);
+    if (!payload) return;
+
+    if (!Number.isFinite(calendarPriceValue)) {
+      setCalendarEditorError("قیمت را وارد کنید.");
+      return;
+    }
+    if (
+      calendarPriceValue < priceBounds.minimum ||
+      calendarPriceValue > priceBounds.maximum
+    ) {
+      setCalendarEditorError(
+        `قیمت باید بین ${formatPrice(priceBounds.minimum)} و ${formatPrice(
+          priceBounds.maximum,
+        )} باشد.`,
+      );
+      return;
+    }
+
+    const pricePayload: CalendarRangeApplyPayload = {
+      ...payload,
+      value: calendarPriceValue,
+      basePrice: calendarPriceValue,
+    };
+
+    setCalendarPriceSaving(true);
+    setCalendarEditorError("");
+    try {
+      const confirmed = await confirmPriceApply(pricePayload);
+      if (!confirmed) return;
+      await applyPrices(pricePayload);
+      toast.success("قیمت روزهای انتخاب‌شده ذخیره شد.");
+      clearCalendarSelection(calendarPriceRoomId);
+      setCalendarPriceRoomId(null);
+    } catch (caught) {
+      setCalendarEditorError(
+        caught instanceof Error ? caught.message : "ذخیره قیمت انجام نشد.",
+      );
+    } finally {
+      setCalendarPriceSaving(false);
+    }
+  }
+
+  function shouldConfirmCalendarInventory(payload: CalendarRangeApplyPayload) {
+    const affectedDays = new Set(payload.items.map((item) => item.date)).size;
+    return affectedDays > 14 || (payload.selectionRangeCount ?? 1) > 3;
+  }
+
+  function resolveCalendarInventoryConfirmation(confirmed: boolean) {
+    calendarInventoryConfirmResolverRef.current?.(confirmed);
+    calendarInventoryConfirmResolverRef.current = null;
+    setCalendarInventoryConfirmOpen(false);
+    setCalendarInventoryConfirmPayload(null);
+  }
+
+  function confirmCalendarInventory(payload: CalendarRangeApplyPayload) {
+    if (!shouldConfirmCalendarInventory(payload)) return true;
+    return new Promise<boolean>((resolve) => {
+      calendarInventoryConfirmResolverRef.current = resolve;
+      setCalendarInventoryConfirmPayload(payload);
+      setCalendarInventoryConfirmOpen(true);
+    });
+  }
+
+  async function saveCalendarInventory() {
+    if (calendarInventoryRoomId == null) return;
+    const selection = getCalendarSelection(calendarInventoryRoomId);
+    const payload = selectionPayload(calendarInventoryRoomId, selection);
+    if (!payload) return;
+
+    const inventoryRoom = inventoryRoomById.get(calendarInventoryRoomId);
+    const max = inventoryRoom?.totalInventory ?? 0;
+    const effectiveValue =
+      calendarInventoryStatus === "Unavailable" ? 0 : calendarInventoryValue;
+
+    if (!Number.isFinite(effectiveValue)) {
+      setCalendarEditorError("تعداد موجود را وارد کنید.");
+      return;
+    }
+    if (effectiveValue < 0) {
+      setCalendarEditorError("موجودی نمی‌تواند منفی باشد.");
+      return;
+    }
+    if (max === 1 && effectiveValue > 1) {
+      setCalendarEditorError("برای این اتاق موجودی فقط می‌تواند ۰ یا ۱ باشد.");
+      return;
+    }
+    if (effectiveValue > max) {
+      setCalendarEditorError(
+        `موجودی انتخاب‌شده نمی‌تواند بیشتر از ${formatPlainNumber(max)} باشد.`,
+      );
+      return;
+    }
+
+    const inventoryPayload: CalendarRangeApplyPayload = {
+      ...payload,
+      value: effectiveValue,
+      status: calendarInventoryStatus,
+    };
+
+    setCalendarInventorySaving(true);
+    setCalendarEditorError("");
+    try {
+      const confirmed = await confirmCalendarInventory(inventoryPayload);
+      if (!confirmed) return;
+
+      const updated = await apiRequest<InventoryDayResponse[]>(
+        `/owner/properties/${propertyId}/inventory/bulk-cells`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            items: inventoryPayload.items.map((item) => ({
+              roomTypeId: Number(item.rowId),
+              date: item.date,
+            })),
+            availableCount:
+              calendarInventoryStatus === "Unavailable" ? 0 : effectiveValue,
+            status: calendarInventoryStatus,
+          }),
+        },
+      );
+
+      const updateMap = new Map(
+        updated.map((item) => [cellKey(item.roomTypeId, item.date), item]),
+      );
+      setInventory(
+        (current) =>
+          current && {
+            ...current,
+            roomTypes: current.roomTypes.map((roomType) => ({
+              ...roomType,
+              days: roomType.days.map(
+                (day) =>
+                  updateMap.get(cellKey(roomType.roomTypeId, day.date)) ?? day,
+              ),
+            })),
+          },
+      );
+
+      toast.success("موجودی روزهای انتخاب‌شده ذخیره شد.");
+      clearCalendarSelection(calendarInventoryRoomId);
+      setCalendarInventoryRoomId(null);
+    } catch (caught) {
+      setCalendarEditorError(
+        caught instanceof Error ? caught.message : "ذخیره موجودی انجام نشد.",
+      );
+    } finally {
+      setCalendarInventorySaving(false);
+    }
   }
 
   async function applyPrices(payload: CalendarRangeApplyPayload) {
@@ -1112,19 +1469,96 @@ export function OwnerPricingGrid({
                         row.roomTypeId,
                       );
                       const totalInventory = inventoryRoom?.totalInventory ?? 0;
+                      const selection = getCalendarSelection(row.roomTypeId);
+                      const selectedDateSet = new Set(selection.dates);
+                      const selectedCount = selection.dates.length;
 
                       return (
                         <section
                           className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"
                           key={row.roomTypeId}
                         >
-                          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
-                            <h3 className="min-w-0 truncate text-sm font-bold text-foreground">
-                              {row.label}
-                            </h3>
-                            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">
-                              کل: {formatPlainNumber(totalInventory)}
-                            </span>
+                          <div className="grid gap-2 border-b border-border px-3 py-2">
+                            <div className="flex min-w-0 items-center justify-between gap-2">
+                              <h3 className="min-w-0 truncate text-sm font-bold text-foreground">
+                                {row.label}
+                              </h3>
+
+                              <div className="inline-flex shrink-0 rounded-md border border-border bg-muted p-0.5">
+                                {[
+                                  { value: "range" as const, label: "بازه‌ای" },
+                                  { value: "single" as const, label: "تکی" },
+                                ].map((option) => (
+                                  <button
+                                    className={`rounded px-2 py-1 text-[9px] font-bold transition ${
+                                      selection.mode === option.value
+                                        ? "bg-primary text-primary-foreground"
+                                        : "text-muted-foreground hover:text-foreground"
+                                    }`}
+                                    key={option.value}
+                                    onClick={() =>
+                                      setCalendarSelectionMode(
+                                        row.roomTypeId,
+                                        option.value,
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    {option.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[10px] font-semibold text-muted-foreground">
+                                کل: {formatPlainNumber(totalInventory)}
+                                {selectedCount > 0 &&
+                                  ` · ${formatPlainNumber(selectedCount)} روز`}
+                              </span>
+
+                              {selectedCount > 0 && (
+                                <div className="flex flex-wrap items-center gap-1">
+                                  <button
+                                    className="rounded-md border border-primary bg-primary px-2 py-1 text-[9px] font-bold text-primary-foreground transition hover:bg-[var(--primary-hover)]"
+                                    onClick={() =>
+                                      openCalendarPriceEditor(row.roomTypeId)
+                                    }
+                                    type="button"
+                                  >
+                                    تعیین قیمت
+                                  </button>
+                                  <button
+                                    className="rounded-md border border-border bg-background px-2 py-1 text-[9px] font-bold text-foreground transition hover:bg-muted"
+                                    onClick={() =>
+                                      openCalendarInventoryEditor(
+                                        row.roomTypeId,
+                                      )
+                                    }
+                                    type="button"
+                                  >
+                                    ویرایش موجودی
+                                  </button>
+                                  <button
+                                    aria-label="پاک کردن انتخاب"
+                                    className="rounded-md px-1.5 py-1 text-[9px] font-bold text-destructive transition hover:bg-muted"
+                                    onClick={() =>
+                                      clearCalendarSelection(row.roomTypeId)
+                                    }
+                                    type="button"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+
+                            {selection.mode === "range" &&
+                              selection.anchorDate && (
+                                <p className="text-[9px] font-semibold text-primary">
+                                  روز پایان بازه را انتخاب کنید.
+                                </p>
+                              )}
                           </div>
 
                           <div className="grid grid-cols-7 bg-muted">
@@ -1173,6 +1607,7 @@ export function OwnerPricingGrid({
                               const isOnRequest =
                                 status === "OnRequest" && availableCount > 0;
                               const isHoliday = date.day() === 5;
+                              const isSelected = selectedDateSet.has(iso);
 
                               const statusSurface = isPast
                                 ? "bg-muted text-muted-foreground"
@@ -1199,7 +1634,7 @@ export function OwnerPricingGrid({
                               );
 
                               return (
-                                <div
+                                <button
                                   aria-label={`${row.label}، ${formatIsoDate(
                                     iso,
                                   )}، ${bookingLabel}، ${formatPlainNumber(
@@ -1210,8 +1645,22 @@ export function OwnerPricingGrid({
                                     priceDay.basePrice,
                                     currencyLabel,
                                   )}`}
-                                  className={`relative grid min-h-16 content-between gap-1 border-2 border-white p-1 ${statusSurface}`}
+                                  aria-pressed={isSelected}
+                                  className={`relative grid min-h-16 content-between gap-1 border-2 border-white p-1 text-right transition ${
+                                    isPast
+                                      ? "cursor-not-allowed"
+                                      : "cursor-pointer hover:brightness-[0.98]"
+                                  } ${statusSurface} ${
+                                    isSelected
+                                      ? "z-10 ring-2 ring-inset ring-primary"
+                                      : ""
+                                  }`}
+                                  disabled={isPast}
                                   key={`${row.roomTypeId}-${iso}`}
+                                  onClick={() =>
+                                    toggleCalendarDate(row.roomTypeId, iso)
+                                  }
+                                  type="button"
                                 >
                                   <div className="flex items-start justify-between gap-0.5">
                                     <span
@@ -1247,7 +1696,7 @@ export function OwnerPricingGrid({
                                     {formatPlainNumber(availableCount)}/
                                     {formatPlainNumber(totalInventory)}
                                   </div>
-                                </div>
+                                </button>
                               );
                             })}
                           </div>
@@ -1318,6 +1767,239 @@ export function OwnerPricingGrid({
           </div>
         </>
       )}
+
+      <KoochDialog
+        description={
+          calendarPriceRoomId == null
+            ? undefined
+            : `${rows.find((row) => row.roomTypeId === calendarPriceRoomId)?.label ?? "اتاق"} · ${formatPlainNumber(
+                getCalendarSelection(calendarPriceRoomId).dates.length,
+              )} روز انتخاب‌شده`
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <KoochButton
+              disabled={calendarPriceSaving}
+              onClick={() => {
+                setCalendarPriceRoomId(null);
+                setCalendarEditorError("");
+              }}
+              type="button"
+              variant="outline"
+            >
+              انصراف
+            </KoochButton>
+            <KoochButton
+              loading={calendarPriceSaving}
+              onClick={() => void saveCalendarPrice()}
+              type="button"
+              variant="primary"
+            >
+              تعیین قیمت
+            </KoochButton>
+          </div>
+        }
+        onOpenChange={(open) => {
+          if (!open && !calendarPriceSaving) {
+            setCalendarPriceRoomId(null);
+            setCalendarEditorError("");
+          }
+        }}
+        open={calendarPriceRoomId != null}
+        size="md"
+        title="تعیین قیمت روزهای انتخاب‌شده"
+      >
+        <div className="grid gap-4">
+          <QuickPriceSelector
+            onSelect={(price) => setCalendarPriceValue(price)}
+            prices={quickPricePresets}
+          />
+
+          <label className="grid gap-2 text-sm font-bold text-foreground">
+            نرخ اتاق
+            <span className="relative">
+              <input
+                className={`kooch-form-control w-full bg-background py-2 text-foreground ${
+                  currencyLabel ? "pl-16 pr-3" : "px-3"
+                }`}
+                max={priceBounds.maximum}
+                min={priceBounds.minimum}
+                onChange={(event) =>
+                  setCalendarPriceValue(
+                    event.target.value === ""
+                      ? Number.NaN
+                      : Number(event.target.value),
+                  )
+                }
+                type="number"
+                value={
+                  Number.isFinite(calendarPriceValue) ? calendarPriceValue : ""
+                }
+              />
+              {currencyLabel && (
+                <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+                  {currencyLabel}
+                </span>
+              )}
+            </span>
+          </label>
+
+          <p className="text-xs font-semibold text-muted-foreground">
+            حد مجاز: {formatPrice(priceBounds.minimum)} تا{" "}
+            {formatPrice(priceBounds.maximum)} {currencyLabel}
+          </p>
+
+          {calendarEditorError && (
+            <KoochAlert variant="destructive">{calendarEditorError}</KoochAlert>
+          )}
+        </div>
+      </KoochDialog>
+
+      <KoochDialog
+        description={
+          calendarInventoryRoomId == null
+            ? undefined
+            : `${rows.find((row) => row.roomTypeId === calendarInventoryRoomId)?.label ?? "اتاق"} · ${formatPlainNumber(
+                getCalendarSelection(calendarInventoryRoomId).dates.length,
+              )} روز انتخاب‌شده`
+        }
+        footer={
+          <div className="flex flex-wrap justify-end gap-2">
+            <KoochButton
+              disabled={calendarInventorySaving}
+              onClick={() => {
+                setCalendarInventoryRoomId(null);
+                setCalendarEditorError("");
+              }}
+              type="button"
+              variant="outline"
+            >
+              انصراف
+            </KoochButton>
+            <KoochButton
+              loading={calendarInventorySaving}
+              onClick={() => void saveCalendarInventory()}
+              type="button"
+              variant="primary"
+            >
+              ذخیره موجودی
+            </KoochButton>
+          </div>
+        }
+        onOpenChange={(open) => {
+          if (!open && !calendarInventorySaving) {
+            setCalendarInventoryRoomId(null);
+            setCalendarEditorError("");
+          }
+        }}
+        open={calendarInventoryRoomId != null}
+        size="md"
+        title="ویرایش موجودی روزهای انتخاب‌شده"
+      >
+        <div className="grid gap-4">
+          <label className="grid gap-2 text-sm font-bold text-foreground">
+            تعداد موجود
+            <input
+              className="kooch-form-control w-full bg-background px-3 py-2 text-foreground"
+              disabled={calendarInventoryStatus === "Unavailable"}
+              max={
+                calendarInventoryRoomId == null
+                  ? 0
+                  : (inventoryRoomById.get(calendarInventoryRoomId)
+                      ?.totalInventory ?? 0)
+              }
+              min={0}
+              onChange={(event) =>
+                setCalendarInventoryValue(
+                  event.target.value === ""
+                    ? Number.NaN
+                    : Number(event.target.value),
+                )
+              }
+              type="number"
+              value={
+                calendarInventoryStatus === "Unavailable"
+                  ? 0
+                  : Number.isFinite(calendarInventoryValue)
+                    ? calendarInventoryValue
+                    : ""
+              }
+            />
+          </label>
+
+          <div className="grid gap-2">
+            <span className="text-sm font-bold text-foreground">وضعیت</span>
+            <div className="grid grid-cols-3 gap-2">
+              {compactInventoryStatusOptions.map((option) => (
+                <KoochButton
+                  key={option.value}
+                  onClick={() => setCalendarInventoryStatus(option.value)}
+                  size="sm"
+                  type="button"
+                  variant={
+                    calendarInventoryStatus === option.value
+                      ? "primary"
+                      : "outline"
+                  }
+                >
+                  {option.label}
+                </KoochButton>
+              ))}
+            </div>
+          </div>
+
+          {calendarInventoryRoomId != null && (
+            <p className="text-xs font-semibold text-muted-foreground">
+              سقف موجودی این نوع اتاق:{" "}
+              {formatPlainNumber(
+                inventoryRoomById.get(calendarInventoryRoomId)
+                  ?.totalInventory ?? 0,
+              )}
+            </p>
+          )}
+
+          {calendarEditorError && (
+            <KoochAlert variant="destructive">{calendarEditorError}</KoochAlert>
+          )}
+        </div>
+      </KoochDialog>
+
+      <KoochConfirmDialog
+        cancelText="انصراف"
+        confirmText="تایید و ذخیره"
+        description="این تغییر موجودی روی تعداد زیادی روز اعمال می‌شود. آیا مطمئن هستید؟"
+        onConfirm={() => resolveCalendarInventoryConfirmation(true)}
+        onOpenChange={(open) => {
+          if (!open) resolveCalendarInventoryConfirmation(false);
+          else setCalendarInventoryConfirmOpen(true);
+        }}
+        open={calendarInventoryConfirmOpen}
+        title="تغییر گروهی موجودی"
+        variant="warning"
+      >
+        {calendarInventoryConfirmPayload && (
+          <dl className="grid gap-3 rounded-lg border border-border bg-muted p-3 text-right text-sm">
+            <div className="flex items-center justify-between gap-3">
+              <dt className="font-bold text-muted-foreground">تعداد روزها</dt>
+              <dd className="font-bold text-foreground">
+                {formatPlainNumber(
+                  new Set(
+                    calendarInventoryConfirmPayload.items.map(
+                      (item) => item.date,
+                    ),
+                  ).size,
+                )}
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <dt className="font-bold text-muted-foreground">موجودی جدید</dt>
+              <dd className="font-bold text-foreground">
+                {formatPlainNumber(calendarInventoryConfirmPayload.value)}
+              </dd>
+            </div>
+          </dl>
+        )}
+      </KoochConfirmDialog>
 
       <PricingBulkEditDialog
         onOpenChange={setBulkEditOpen}
