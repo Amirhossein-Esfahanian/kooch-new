@@ -4,12 +4,10 @@ import {
   PointerEvent,
   ReactNode,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { createPortal } from "react-dom";
 import { AvailabilityStatus } from "@/lib/owner-api";
 import { toast } from "sonner";
 import { QuickPriceSelector } from "@/components/pricing/QuickPriceSelector";
@@ -176,6 +174,363 @@ function normalizeRange(range: RangeSelection): RangeSelection {
     : { ...range, startIndex: range.endIndex, endIndex: range.startIndex };
 }
 
+export type CalendarSelectionEditorMode = "inventory" | "pricing";
+
+export interface CalendarSelectionEditorProps {
+  mode: CalendarSelectionEditorMode;
+  selectedCount: number;
+  selectedDayCount: number;
+  selectionRangeCount: number;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  saving?: boolean;
+  error?: string;
+  message?: string;
+  onCancel: () => void;
+  onSave: () => Promise<void> | void;
+  onCopyPricing?: () => Promise<void> | void;
+  pricingCurrencyLabel?: string;
+  quickPricePresets?: number[];
+  priceValue?: number;
+  onPriceValueChange?: (value: number) => void;
+  mixedPricingValue?: boolean;
+  valueLabel?: string;
+  valueInputType?: "number" | "text";
+  inventoryValue?: number;
+  onInventoryValueChange?: (value: number) => void;
+  mixedInventoryValue?: boolean;
+  inventoryStatus?: AvailabilityStatus | "";
+  onInventoryStatusChange?: (status: AvailabilityStatus) => void;
+  mixedInventoryStatus?: boolean;
+  statusOptions?: { value: AvailabilityStatus; label: string }[];
+  minValue?: number;
+  maxValue?: number;
+}
+
+export function CalendarSelectionEditor({
+  mode,
+  selectedCount,
+  selectedDayCount,
+  selectionRangeCount,
+  open,
+  onOpenChange,
+  saving = false,
+  error,
+  message,
+  onCancel,
+  onSave,
+  onCopyPricing,
+  pricingCurrencyLabel = "",
+  quickPricePresets = [],
+  priceValue = Number.NaN,
+  onPriceValueChange,
+  mixedPricingValue = false,
+  valueLabel = "ظرفیت",
+  valueInputType = "number",
+  inventoryValue = Number.NaN,
+  onInventoryValueChange,
+  mixedInventoryValue = false,
+  inventoryStatus = "Available",
+  onInventoryStatusChange,
+  mixedInventoryStatus = false,
+  statusOptions,
+  minValue = 0,
+  maxValue,
+}: CalendarSelectionEditorProps) {
+  if (selectedCount <= 0) return null;
+
+  const inventoryPanelTone =
+    mode !== "inventory"
+      ? "bg-card text-card-foreground"
+      : inventoryStatus === "OnRequest"
+        ? "bg-yellow-50 text-amber-950 dark:bg-yellow-100 dark:text-amber-950"
+        : inventoryStatus === "Unavailable"
+          ? "bg-red-50 text-red-950 dark:bg-red-950/20 dark:text-red-50"
+          : "bg-card text-card-foreground";
+
+  function cancelSelection() {
+    onCancel();
+    onOpenChange(false);
+  }
+
+  return (
+    <>
+      {!open && (
+        <div className="fixed bottom-4 left-1/2 z-[80] -translate-x-1/2">
+          <div className="flex h-12 items-center gap-3 rounded-full border border-white/40 bg-card/80 py-1 pl-1 pr-4 shadow-lg backdrop-blur-xl">
+            <span className="whitespace-nowrap text-sm font-semibold text-foreground">
+              {toPersianNumber(selectedDayCount)} روز انتخاب شده
+            </span>
+
+            <button
+              aria-label="بازکردن پنل ویرایش"
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              onClick={() => onOpenChange(true)}
+              title="بازکردن پنل ویرایش"
+              type="button"
+            >
+              <svg
+                aria-hidden="true"
+                className="h-5 w-5"
+                fill="none"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                />
+                <path
+                  d="m13.5 6.5 4 4"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeWidth="2"
+                />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div
+        aria-hidden={!open}
+        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3 transition-all duration-150 ease-out motion-reduce:transition-opacity motion-reduce:duration-100 ${
+          open
+            ? "visible translate-y-0 opacity-100"
+            : "pointer-events-none invisible translate-y-3 opacity-0"
+        }`}
+      >
+        <KoochCard
+          className={`w-full min-w-0 border-border/70 shadow-lg ${inventoryPanelTone}`}
+          variant="elevated"
+        >
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex min-w-0 items-start gap-3">
+              <KoochButton
+                onClick={() => onOpenChange(false)}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                -
+              </KoochButton>
+
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-foreground">
+                  {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
+                </h3>
+
+                <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                  {toPersianNumber(selectedCount)} خانه در{" "}
+                  {toPersianNumber(selectionRangeCount)} بازه انتخاب شده
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div
+            className={`mt-4 grid gap-3 ${
+              mode === "pricing"
+                ? "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start"
+                : ""
+            }`}
+          >
+            <div className="min-w-0 space-y-3">
+              {mode === "pricing" ? (
+                <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-muted-foreground">
+                        قیمت انتخاب‌شده
+                      </p>
+
+                      <p className="mt-1 text-sm font-bold text-foreground">
+                        {mixedPricingValue
+                          ? "مقادیر انتخاب‌شده متفاوت هستند"
+                          : Number.isFinite(priceValue)
+                            ? `${formatPrice(priceValue)} ${
+                                pricingCurrencyLabel || ""
+                              }`
+                            : "قیمت را وارد کنید"}
+                      </p>
+                    </div>
+
+                    <label className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
+                      نرخ اتاق
+                      <span className="relative mt-1 block">
+                        <input
+                          className={`w-full rounded-lg border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                            pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"
+                          }`}
+                          inputMode="numeric"
+                          onChange={(event) =>
+                            onPriceValueChange?.(
+                              parseNumberInput(event.target.value),
+                            )
+                          }
+                          onFocus={(event) => event.currentTarget.select()}
+                          type="text"
+                          value={
+                            Number.isFinite(priceValue)
+                              ? formatPrice(priceValue)
+                              : ""
+                          }
+                        />
+
+                        {pricingCurrencyLabel && (
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
+                            {pricingCurrencyLabel}
+                          </span>
+                        )}
+                      </span>
+                    </label>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                    <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
+                      {valueLabel}
+
+                      <input
+                        className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                        disabled={inventoryStatus === "Unavailable"}
+                        min={minValue}
+                        max={maxValue}
+                        inputMode={
+                          valueInputType === "number" ? "numeric" : undefined
+                        }
+                        onChange={(event) =>
+                          onInventoryValueChange?.(
+                            parseNumberInput(event.target.value),
+                          )
+                        }
+                        type={
+                          valueInputType === "number" ? "text" : valueInputType
+                        }
+                        value={
+                          inventoryStatus === "Unavailable"
+                            ? toPersianNumber(0)
+                            : Number.isFinite(inventoryValue)
+                              ? toPersianNumber(inventoryValue)
+                              : ""
+                        }
+                      />
+
+                      {mixedInventoryValue && (
+                        <span className="text-xs font-semibold text-muted-foreground">
+                          ظرفیت روزهای انتخاب‌شده متفاوت است
+                        </span>
+                      )}
+                    </label>
+                  </div>
+
+                  {statusOptions && (
+                    <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                      <div className="flex flex-col gap-2 text-sm font-bold text-foreground">
+                        <span>وضعیت</span>
+
+                        <div className="grid gap-2 sm:grid-cols-3">
+                          {statusOptions.map((option) => (
+                            <button
+                              className={`min-h-6 rounded border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
+                                inventoryStatus === option.value
+                                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
+                                  : "border-border bg-background text-foreground hover:bg-muted"
+                              }`}
+                              key={option.value}
+                              onClick={() =>
+                                onInventoryStatusChange?.(option.value)
+                              }
+                              type="button"
+                            >
+                              {option.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {mixedInventoryStatus && (
+                          <span className="text-xs font-semibold text-muted-foreground">
+                            وضعیت روزهای انتخاب‌شده متفاوت است
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {(error || (mode === "pricing" && message)) && (
+                <div className="grid gap-2">
+                  {error && (
+                    <p className="rounded-lg border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
+                      {error}
+                    </p>
+                  )}
+
+                  {mode === "pricing" && message && (
+                    <p className="rounded-lg bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
+                      {message}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {mode === "pricing" && (
+              <div className="w-full min-w-0 space-y-3 lg:w-[18rem]">
+                <QuickPriceSelector
+                  onSelect={(price) => onPriceValueChange?.(price)}
+                  prices={quickPricePresets}
+                />
+
+                {mixedPricingValue && (
+                  <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
+                    چند سلول با قیمت‌های متفاوت انتخاب شده‌اند. قیمت جدید برای
+                    همه سلول‌های انتخاب‌شده اعمال می‌شود.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center justify-start gap-2 border-t border-border/70 pt-3">
+            <KoochButton
+              onClick={cancelSelection}
+              type="button"
+              variant="outline"
+            >
+              انصراف
+            </KoochButton>
+
+            {mode === "pricing" && onCopyPricing && (
+              <KoochButton
+                disabled={saving}
+                onClick={() => void onCopyPricing()}
+                type="button"
+                variant="outline"
+              >
+                کپی قیمت‌ها
+              </KoochButton>
+            )}
+
+            <KoochButton
+              disabled={saving}
+              onClick={() => void onSave()}
+              type="button"
+              variant="primary"
+            >
+              {saving ? "در حال ذخیره..." : "ذخیره"}
+            </KoochButton>
+          </div>
+        </KoochCard>
+      </div>
+    </>
+  );
+}
+
 export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   rows,
   days,
@@ -202,7 +557,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   message,
 }: CalendarRangeGridEditorProps<Row, Value>) {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
-  const popupRef = useRef<HTMLDivElement | null>(null);
   const selectionSequence = useRef(0);
   const [selectedRanges, setSelectedRanges] = useState<SelectedRange[]>([]);
   const [activeSelectionId, setActiveSelectionId] = useState<string | null>(
@@ -210,9 +564,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   );
   const [dragTarget, setDragTarget] = useState<DragTarget>(null);
   const [selectionMode, setSelectionMode] = useState<SelectionMode>("range");
-  const [isDesktop, setIsDesktop] = useState(false);
   const [isMinimized, setIsMinimized] = useState(true);
-  const [popupPosition, setPopupPosition] = useState({ top: 8, left: 16 });
   const [value, setValue] = useState<number>(Number.NaN);
   const [status, setStatus] = useState<AvailabilityStatus | "">("Available");
   const [mixedInventoryValue, setMixedInventoryValue] = useState(false);
@@ -244,7 +596,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     const media = window.matchMedia("(min-width: 768px)");
     function syncMode() {
       const desktop = media.matches;
-      setIsDesktop(desktop);
       setSelectionMode(desktop ? "range" : "single");
     }
 
@@ -305,6 +656,10 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     });
   }, [selectedKeys]);
   const selectedCount = selectedItems.length;
+  const selectedDayCount = useMemo(
+    () => new Set(selectedItems.map((item) => item.date)).size,
+    [selectedItems],
+  );
 
   useEffect(() => {
     if (mode !== "pricing" || selectedItems.length === 0) {
@@ -415,65 +770,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
       ) ?? null,
     [activeSelection, rows],
   );
-
-  useLayoutEffect(() => {
-    function updatePosition() {
-      if (!isDesktop || !selectedCount || !wrapperRef.current) return;
-      const wrapper = wrapperRef.current;
-      const selectedCells = Array.from(
-        wrapper.querySelectorAll<HTMLElement>(
-          "[data-calendar-active-selected='true']",
-        ),
-      );
-      if (!selectedCells.length) return;
-
-      const rects = selectedCells.map((cell) => cell.getBoundingClientRect());
-      const rangeRect = rects.reduce(
-        (current, rect) => ({
-          top: Math.min(current.top, rect.top),
-          right: Math.max(current.right, rect.right),
-          bottom: Math.max(current.bottom, rect.bottom),
-          left: Math.min(current.left, rect.left),
-        }),
-        {
-          top: rects[0].top,
-          right: rects[0].right,
-          bottom: rects[0].bottom,
-          left: rects[0].left,
-        },
-      );
-      const popupWidth = popupRef.current?.offsetWidth || 360;
-      const popupHeight = popupRef.current?.offsetHeight || 220;
-      const gap = 10;
-      const hasRoomAbove = rangeRect.top - popupHeight - gap >= 8;
-      const top = hasRoomAbove
-        ? rangeRect.top - popupHeight - gap
-        : Math.min(
-            window.innerHeight - popupHeight - 8,
-            rangeRect.bottom + gap,
-          );
-      const centeredLeft =
-        rangeRect.left +
-        (rangeRect.right - rangeRect.left) / 2 -
-        popupWidth / 2;
-
-      setPopupPosition({
-        top: Math.max(8, top),
-        left: Math.min(
-          Math.max(8, centeredLeft),
-          window.innerWidth - popupWidth - 8,
-        ),
-      });
-    }
-
-    updatePosition();
-    window.addEventListener("scroll", updatePosition, true);
-    window.addEventListener("resize", updatePosition);
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-    };
-  }, [activeRange, days, isDesktop, selectedCount]);
 
   function dayDisabled(dayIndex: number) {
     return Boolean(readonly || disabledDateResolver?.(days[dayIndex].date));
@@ -928,278 +1224,6 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     return `${row?.label ?? range.roomTypeId} | ${dates}`;
   }
 
-  const inventoryPanelTone =
-    mode !== "inventory"
-      ? "bg-card text-card-foreground"
-      : status === "OnRequest"
-        ? "bg-yellow-50 text-amber-950 dark:bg-yellow-100 dark:text-amber-950"
-        : status === "Unavailable"
-          ? "bg-red-50 text-red-950 dark:bg-red-950/20 dark:text-red-50"
-          : "bg-card text-card-foreground";
-
-  const editorPanel =
-    selectedCount > 0 && activeRow ? (
-      <div
-        aria-hidden={isMinimized}
-        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3 transition-all duration-[250ms] ease-out motion-reduce:transition-opacity motion-reduce:duration-100 ${
-          isMinimized
-            ? "pointer-events-none invisible translate-y-4 scale-95 opacity-0"
-            : "visible translate-y-0 scale-100 opacity-100"
-        }`}
-      >
-        <KoochCard
-          className={`w-full min-w-0 border-border/70 shadow-lg ${inventoryPanelTone}`}
-          variant="elevated"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex min-w-0 items-start gap-3">
-              <KoochButton
-                onClick={() => setIsMinimized(true)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                -
-              </KoochButton>
-
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold text-foreground">
-                  {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
-                </h3>
-
-                <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                  {toPersianNumber(selectedCount)} خانه در{" "}
-                  {toPersianNumber(selectedRanges.length)} بازه انتخاب شده
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div
-            className={`mt-4 grid gap-3 ${
-              mode === "pricing"
-                ? "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start"
-                : ""
-            }`}
-          >
-            <div className="min-w-0 space-y-3">
-              {mode === "pricing" ? (
-                <>
-                  <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-muted-foreground">
-                          قیمت انتخاب‌شده
-                        </p>
-
-                        <p className="mt-1 text-sm font-bold text-foreground">
-                          {mixedPricingFields.basePrice
-                            ? "مقادیر انتخاب‌شده متفاوت هستند"
-                            : Number.isFinite(basePrice)
-                              ? `${formatPrice(basePrice)} ${
-                                  pricingCurrencyLabel || ""
-                                }`
-                              : "قیمت را وارد کنید"}
-                        </p>
-                      </div>
-
-                      <label className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
-                        نرخ اتاق
-                        <span className="relative mt-1 block">
-                          <input
-                            className={`w-full rounded-lg border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                              pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"
-                            }`}
-                            inputMode="numeric"
-                            onChange={(event) => {
-                              setBasePrice(
-                                parseNumberInput(event.target.value),
-                              );
-                              setMixedPricingFields((current) => ({
-                                ...current,
-                                basePrice: false,
-                              }));
-                            }}
-                            onFocus={(event) => event.currentTarget.select()}
-                            type="text"
-                            value={
-                              Number.isFinite(basePrice)
-                                ? formatPrice(basePrice)
-                                : ""
-                            }
-                          />
-
-                          {pricingCurrencyLabel && (
-                            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs font-bold text-muted-foreground">
-                              {pricingCurrencyLabel}
-                            </span>
-                          )}
-                        </span>
-                      </label>
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
-                    <label className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                      {valueLabel}
-
-                      <input
-                        className="rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                        disabled={status === "Unavailable"}
-                        min={
-                          activeRow
-                            ? (minValueResolver?.(activeRow as Row) ?? 0)
-                            : 0
-                        }
-                        max={
-                          activeRow
-                            ? (maxValueResolver?.(activeRow as Row) ??
-                              undefined)
-                            : undefined
-                        }
-                        inputMode={
-                          valueInputType === "number" ? "numeric" : undefined
-                        }
-                        onChange={(event) => {
-                          setValue(parseNumberInput(event.target.value));
-                          setMixedInventoryValue(false);
-                        }}
-                        type={
-                          valueInputType === "number" ? "text" : valueInputType
-                        }
-                        value={
-                          status === "Unavailable"
-                            ? toPersianNumber(0)
-                            : Number.isFinite(value)
-                              ? toPersianNumber(value)
-                              : ""
-                        }
-                      />
-
-                      {mixedInventoryValue && (
-                        <span className="text-xs font-semibold text-muted-foreground">
-                          ظرفیت روزهای انتخاب‌شده متفاوت است
-                        </span>
-                      )}
-                    </label>
-                  </div>
-
-                  {statusOptions && (
-                    <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
-                      <div className="flex flex-col gap-2 text-sm font-bold text-foreground">
-                        <span>وضعیت</span>
-
-                        <div className="grid gap-2 sm:grid-cols-3">
-                          {statusOptions.map((option) => (
-                            <button
-                              className={`min-h-6 rounded border px-3 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
-                                status === option.value
-                                  ? "border-primary bg-primary text-primary-foreground shadow-sm"
-                                  : "border-border bg-background text-foreground hover:bg-muted"
-                              }`}
-                              key={option.value}
-                              onClick={() => {
-                                setStatus(option.value);
-                                setMixedInventoryStatus(false);
-                                setMixedInventoryValue(false);
-
-                                if (option.value === "Unavailable") {
-                                  setValue(0);
-                                }
-                              }}
-                              type="button"
-                            >
-                              {option.label}
-                            </button>
-                          ))}
-                        </div>
-
-                        {mixedInventoryStatus && (
-                          <span className="text-xs font-semibold text-muted-foreground">
-                            وضعیت روزهای انتخاب‌شده متفاوت است
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-
-              {(localError || error || (mode !== "inventory" && message)) && (
-                <div className="grid gap-2">
-                  {(localError || error) && (
-                    <p className="rounded-lg border border-destructive bg-card p-3 text-sm font-semibold text-destructive">
-                      {localError || error}
-                    </p>
-                  )}
-
-                  {mode !== "inventory" && message && (
-                    <p className="rounded-lg bg-[var(--theme-primary-soft)] p-3 text-sm font-semibold text-[var(--theme-primary-text)]">
-                      {message}
-                    </p>
-                  )}
-                </div>
-              )}
-            </div>
-
-            {mode === "pricing" && (
-              <div className="w-full min-w-0 space-y-3 lg:w-[18rem]">
-                <QuickPriceSelector
-                  onSelect={(price) => {
-                    setBasePrice(price);
-                    setMixedPricingFields((current) => ({
-                      ...current,
-                      basePrice: false,
-                    }));
-                  }}
-                  prices={quickPricePresets}
-                />
-
-                {mixedPricingFields.basePrice && (
-                  <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
-                    چند سلول با قیمت‌های متفاوت انتخاب شده‌اند. قیمت جدید برای
-                    همه سلول‌های انتخاب‌شده اعمال می‌شود.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-
-          <div className="mt-4 flex flex-wrap items-center justify-start gap-2 border-t border-border/70 pt-3">
-            <KoochButton
-              onClick={clearSelections}
-              type="button"
-              variant="outline"
-            >
-              انصراف
-            </KoochButton>
-
-            {mode === "pricing" && onCopyPricing && (
-              <KoochButton
-                disabled={saving}
-                onClick={copyPricingSelection}
-                type="button"
-                variant="outline"
-              >
-                کپی قیمت‌ها
-              </KoochButton>
-            )}
-
-            <KoochButton
-              disabled={saving}
-              onClick={applySelection}
-              type="button"
-              variant="primary"
-            >
-              {saving ? "در حال ذخیره..." : "ذخیره"}
-            </KoochButton>
-          </div>
-        </KoochCard>
-      </div>
-    ) : null;
-
   return (
     <div className="relative" ref={wrapperRef}>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -1237,49 +1261,60 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
             </button>
           )}
         </div>
-        {selectedRanges.length > 0 && isMinimized && (
-          <div className="fixed bottom-4 left-1/2 z-[80] -translate-x-1/2">
-            <div className="flex h-12 items-center gap-3 rounded-full border border-white/40 bg-card/80 py-1 pl-1 pr-4 shadow-lg backdrop-blur-xl">
-              <span className="whitespace-nowrap text-sm font-semibold text-foreground">
-                {toPersianNumber(selectedCount)} روز انتخاب شده
-              </span>
-
-              <button
-                aria-label="بازکردن پنل ویرایش"
-                className="grid size-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-sm transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                onClick={() => setIsMinimized(false)}
-                title="بازکردن پنل ویرایش"
-                type="button"
-              >
-                <svg
-                  aria-hidden="true"
-                  className="h-5 w-5"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    d="M4 20h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4 16v4Z"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="2"
-                  />
-                  <path
-                    d="m13.5 6.5 4 4"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeWidth="2"
-                  />
-                </svg>
-              </button>
-            </div>
-          </div>
-        )}
+        <CalendarSelectionEditor
+          error={localError || error}
+          inventoryStatus={status}
+          inventoryValue={value}
+          maxValue={
+            activeRow
+              ? (maxValueResolver?.(activeRow as Row) ?? undefined)
+              : undefined
+          }
+          message={mode === "pricing" ? message : undefined}
+          minValue={activeRow ? (minValueResolver?.(activeRow as Row) ?? 0) : 0}
+          mixedInventoryStatus={mixedInventoryStatus}
+          mixedInventoryValue={mixedInventoryValue}
+          mixedPricingValue={mixedPricingFields.basePrice}
+          mode={mode}
+          onCancel={clearSelections}
+          onCopyPricing={
+            mode === "pricing" && onCopyPricing
+              ? copyPricingSelection
+              : undefined
+          }
+          onInventoryStatusChange={(nextStatus) => {
+            setStatus(nextStatus);
+            setMixedInventoryStatus(false);
+            setMixedInventoryValue(false);
+            if (nextStatus === "Unavailable") setValue(0);
+          }}
+          onInventoryValueChange={(nextValue) => {
+            setValue(nextValue);
+            setMixedInventoryValue(false);
+          }}
+          onOpenChange={(open) => setIsMinimized(!open)}
+          onPriceValueChange={(nextValue) => {
+            setBasePrice(nextValue);
+            setMixedPricingFields((current) => ({
+              ...current,
+              basePrice: false,
+            }));
+          }}
+          onSave={applySelection}
+          open={!isMinimized}
+          priceValue={basePrice}
+          pricingCurrencyLabel={pricingCurrencyLabel}
+          quickPricePresets={quickPricePresets}
+          saving={saving}
+          selectedCount={selectedCount}
+          selectedDayCount={selectedDayCount}
+          selectionRangeCount={selectedRanges.length}
+          statusOptions={statusOptions}
+          valueInputType={valueInputType}
+          valueLabel={valueLabel}
+        />
       </div>
-      {editorPanel &&
-        (isDesktop && typeof document !== "undefined"
-          ? createPortal(editorPanel, document.body)
-          : editorPanel)}
+
       <div className="overflow-x-auto rounded-lg border border-border">
         <table className="min-w-max border-collapse bg-card text-sm text-foreground">
           <thead>
