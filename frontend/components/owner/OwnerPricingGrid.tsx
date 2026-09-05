@@ -10,6 +10,7 @@ import {
   apiRequest,
   CopyRoomDailyPriceRequest,
   PricingGuestType,
+  PropertyInventoryResponse,
   PropertyPricingResponse,
   PropertyResponse,
   RoomDailyPriceHistoryResponse,
@@ -76,6 +77,17 @@ function formatPrice(value: number) {
     value,
   );
 }
+
+function formatPlainNumber(value: number | string) {
+  return new Intl.NumberFormat("fa-IR", {
+    maximumFractionDigits: 0,
+    useGrouping: false,
+  }).format(Number(value));
+}
+
+function formatCalendarPrice(value: number) {
+  return formatPrice(Math.round(value / 1000));
+}
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("fa-IR", {
     dateStyle: "short",
@@ -134,6 +146,16 @@ const pricingGuestTypeLabels: Record<PricingGuestType, string> = {
 };
 
 type CopyPricingDirection = "IranianToForeign" | "ForeignToIranian";
+
+const pricingCalendarWeekdays = [
+  "شنبه",
+  "یکشنبه",
+  "دوشنبه",
+  "سه‌شنبه",
+  "چهارشنبه",
+  "پنجشنبه",
+  "جمعه",
+] as const;
 
 const copyPricingDirectionOptions: {
   value: CopyPricingDirection;
@@ -241,12 +263,17 @@ export function OwnerPricingGrid({
     useState<PricingGuestType>(readStoredGuestType);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [pricing, setPricing] = useState<PropertyPricingResponse | null>(null);
+  const [inventory, setInventory] = useState<PropertyInventoryResponse | null>(
+    null,
+  );
   const [priceBounds, setPriceBounds] = useState({
     minimum: 0,
     maximum: 1_000_000_000,
   });
   const [currencyLabel, setCurrencyLabel] = useState("");
   const [loading, setLoading] = useState(false);
+  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [inventoryError, setInventoryError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<RoomDailyPriceHistoryResponse[]>([]);
@@ -274,6 +301,7 @@ export function OwnerPricingGrid({
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [usePricingMatrix, setUsePricingMatrix] = useState(false);
+  const [usePricingCalendar, setUsePricingCalendar] = useState(false);
   const [bulkEditOpen, setBulkEditOpen] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const monthStart = useMemo(
@@ -310,6 +338,17 @@ export function OwnerPricingGrid({
       })) ?? [],
     [pricing],
   );
+  const inventoryRoomById = useMemo(
+    () =>
+      new Map(
+        (inventory?.roomTypes ?? []).map((roomType) => [
+          roomType.roomTypeId,
+          roomType,
+        ]),
+      ),
+    [inventory],
+  );
+  const pricingCalendarStartOffset = (monthStart.day() + 1) % 7;
   const bulkRooms = useMemo<PricingBulkRoom[]>(
     () =>
       rows.map((row) => ({
@@ -356,6 +395,12 @@ export function OwnerPricingGrid({
   useEffect(() => {
     loadMonth().catch((caught: Error) => setError(caught.message));
   }, [activeGuestType, activeMonth, propertyId]);
+  useEffect(() => {
+    if (!usePricingCalendar) return;
+    loadInventoryMonth().catch((caught: Error) =>
+      setInventoryError(caught.message),
+    );
+  }, [activeMonth, propertyId, usePricingCalendar]);
   useEffect(() => {
     apiRequest<PropertyResponse>(
       context === "admin"
@@ -412,6 +457,25 @@ export function OwnerPricingGrid({
       setMessage("");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function loadInventoryMonth() {
+    setInventoryLoading(true);
+    setInventoryError("");
+    try {
+      const from = toIso(monthDays[0]);
+      const to = toIso(monthDays[monthDays.length - 1]);
+      setInventory(
+        await apiRequest<PropertyInventoryResponse>(
+          `/owner/properties/${propertyId}/inventory?from=${from}&to=${to}`,
+        ),
+      );
+    } catch (caught) {
+      setInventory(null);
+      throw caught;
+    } finally {
+      setInventoryLoading(false);
     }
   }
 
@@ -881,12 +945,30 @@ export function OwnerPricingGrid({
 
           <KoochButton
             className="w-full sm:w-auto"
-            onClick={() => setUsePricingMatrix((s) => !s)}
+            onClick={() => {
+              const next = !usePricingMatrix;
+              setUsePricingMatrix(next);
+              if (next) setUsePricingCalendar(false);
+            }}
             size="sm"
             type="button"
             variant={usePricingMatrix ? "primary" : "outline"}
           >
             {usePricingMatrix ? "برگشت به جدول قبلی" : "نمایش جدول آزمایشی"}
+          </KoochButton>
+
+          <KoochButton
+            className="w-full sm:w-auto"
+            onClick={() => {
+              const next = !usePricingCalendar;
+              setUsePricingCalendar(next);
+              if (next) setUsePricingMatrix(false);
+            }}
+            size="sm"
+            type="button"
+            variant={usePricingCalendar ? "primary" : "outline"}
+          >
+            {usePricingCalendar ? "برگشت به جدول قبلی" : "نمایش تقویم آزمایشی"}
           </KoochButton>
         </div>
       </div>
@@ -991,7 +1073,191 @@ export function OwnerPricingGrid({
             </p>
           )}
           <div className="mt-5">
-            {usePricingMatrix ? (
+            {usePricingCalendar ? (
+              <div className="grid gap-4">
+                <div
+                  className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-muted px-3 py-2"
+                  dir="rtl"
+                >
+                  <p className="text-sm font-semibold text-foreground">
+                    تقویم آزمایشی نرخ و موجودی
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 text-xs font-semibold">
+                    <span className="inline-flex items-center gap-1 text-[var(--theme-success)]">
+                      <span aria-hidden="true">⚡</span>
+                      فوری
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[var(--theme-warning)]">
+                      <span aria-hidden="true">⚡</span>
+                      استعلامی
+                    </span>
+                    <span className="text-muted-foreground">
+                      قیمت‌ها با حذف سه صفر
+                    </span>
+                  </div>
+                </div>
+
+                {inventoryLoading ? (
+                  <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
+                    در حال بارگذاری موجودی تقویم...
+                  </p>
+                ) : inventoryError ? (
+                  <KoochAlert variant="destructive">
+                    {inventoryError}
+                  </KoochAlert>
+                ) : (
+                  <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    {rows.map((row) => {
+                      const inventoryRoom = inventoryRoomById.get(
+                        row.roomTypeId,
+                      );
+                      const totalInventory = inventoryRoom?.totalInventory ?? 0;
+
+                      return (
+                        <section
+                          className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"
+                          key={row.roomTypeId}
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+                            <h3 className="min-w-0 truncate text-sm font-bold text-foreground">
+                              {row.label}
+                            </h3>
+                            <span className="shrink-0 text-[10px] font-semibold text-muted-foreground">
+                              کل: {formatPlainNumber(totalInventory)}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-7 bg-muted">
+                            {pricingCalendarWeekdays.map((weekday) => (
+                              <div
+                                className={`border-2 border-white px-0.5 py-1.5 text-center text-[9px] font-semibold ${
+                                  weekday === "جمعه"
+                                    ? "text-destructive"
+                                    : "text-muted-foreground"
+                                }`}
+                                key={weekday}
+                              >
+                                {weekday}
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="grid grid-cols-7 bg-muted">
+                            {Array.from(
+                              { length: pricingCalendarStartOffset },
+                              (_, index) => (
+                                <div
+                                  aria-hidden="true"
+                                  className="min-h-16 border-2 border-white bg-card"
+                                  key={`empty-${row.roomTypeId}-${index}`}
+                                />
+                              ),
+                            )}
+
+                            {monthDays.map((date) => {
+                              const iso = toIso(date);
+                              const priceDay = getCellValue(row.id, iso);
+                              const inventoryDay = inventoryRoom?.days.find(
+                                (day) => day.date === iso,
+                              );
+                              const availableCount =
+                                inventoryDay?.availableCount ?? 0;
+                              const status =
+                                inventoryDay?.status ?? "Unavailable";
+                              const isPast = dayjs(iso).isBefore(
+                                dayjs().startOf("day"),
+                                "day",
+                              );
+                              const isAvailable =
+                                status === "Available" && availableCount > 0;
+                              const isOnRequest =
+                                status === "OnRequest" && availableCount > 0;
+                              const isHoliday = date.day() === 5;
+
+                              const statusSurface = isPast
+                                ? "bg-muted text-muted-foreground"
+                                : isAvailable
+                                  ? "bg-[var(--theme-success-soft)] text-foreground"
+                                  : isOnRequest
+                                    ? "bg-[var(--theme-warning-soft)] text-foreground"
+                                    : "bg-muted text-muted-foreground";
+
+                              const bookingLabel = isAvailable
+                                ? "رزرو فوری"
+                                : isOnRequest
+                                  ? "استعلامی"
+                                  : "ناموجود";
+
+                              const bookingIconClass = isAvailable
+                                ? "text-[var(--theme-success)]"
+                                : isOnRequest
+                                  ? "text-[var(--theme-warning)]"
+                                  : "text-muted-foreground";
+
+                              const jalaliDay = Number(
+                                date.calendar("jalali").format("D"),
+                              );
+
+                              return (
+                                <div
+                                  aria-label={`${row.label}، ${formatIsoDate(
+                                    iso,
+                                  )}، ${bookingLabel}، ${formatPlainNumber(
+                                    availableCount,
+                                  )} از ${formatPlainNumber(
+                                    totalInventory,
+                                  )}، نرخ ${formatPriceWithCurrency(
+                                    priceDay.basePrice,
+                                    currencyLabel,
+                                  )}`}
+                                  className={`relative grid min-h-16 content-between gap-1 border-2 border-white p-1 ${statusSurface}`}
+                                  key={`${row.roomTypeId}-${iso}`}
+                                >
+                                  <div className="flex items-start justify-between gap-0.5">
+                                    <span
+                                      className={`text-[11px] font-bold ${
+                                        isHoliday ? "text-destructive" : ""
+                                      }`}
+                                    >
+                                      {formatPlainNumber(jalaliDay)}
+                                    </span>
+                                    {status !== "Unavailable" &&
+                                      availableCount > 0 && (
+                                        <span
+                                          aria-hidden="true"
+                                          className={`text-[10px] leading-none ${bookingIconClass}`}
+                                          title={bookingLabel}
+                                        >
+                                          ⚡
+                                        </span>
+                                      )}
+                                  </div>
+
+                                  <div className="text-center">
+                                    <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">
+                                      {priceDay.basePrice > 0
+                                        ? formatCalendarPrice(
+                                            priceDay.basePrice,
+                                          )
+                                        : "—"}
+                                    </div>
+                                  </div>
+
+                                  <div className="text-left text-[9px] font-semibold leading-none tabular-nums text-muted-foreground">
+                                    {formatPlainNumber(availableCount)}/
+                                    {formatPlainNumber(totalInventory)}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </section>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            ) : usePricingMatrix ? (
               <RoomPricingMatrixEditor
                 rows={rows}
                 days={gridDays}
