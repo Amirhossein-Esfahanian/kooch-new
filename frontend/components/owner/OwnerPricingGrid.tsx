@@ -728,8 +728,15 @@ export function OwnerPricingGrid({
     setCalendarEditorOpen(open);
   }
 
-  function openCalendarInventoryEditor(roomTypeId: number) {
-    prepareCalendarInventoryEditor(roomTypeId);
+  function changeCompactCalendarEditMode(nextMode: "pricing" | "inventory") {
+    if (calendarActiveRoomId == null || nextMode === calendarEditMode) return;
+
+    if (nextMode === "pricing") {
+      prepareCalendarPriceEditor(calendarActiveRoomId);
+    } else {
+      prepareCalendarInventoryEditor(calendarActiveRoomId);
+    }
+
     setCalendarEditorOpen(true);
   }
 
@@ -1572,29 +1579,16 @@ export function OwnerPricingGrid({
                               )}
 
                               {selectedCount > 0 && (
-                                <div className="flex flex-wrap items-center gap-1">
-                                  <button
-                                    className="rounded-md border border-border bg-background px-2 py-1 text-[9px] font-bold text-foreground transition hover:bg-muted"
-                                    onClick={() =>
-                                      openCalendarInventoryEditor(
-                                        row.roomTypeId,
-                                      )
-                                    }
-                                    type="button"
-                                  >
-                                    ویرایش موجودی
-                                  </button>
-                                  <button
-                                    aria-label="پاک کردن انتخاب"
-                                    className="rounded-md px-1.5 py-1 text-[9px] font-bold text-destructive transition hover:bg-muted"
-                                    onClick={() =>
-                                      clearCalendarSelection(row.roomTypeId)
-                                    }
-                                    type="button"
-                                  >
-                                    ×
-                                  </button>
-                                </div>
+                                <button
+                                  aria-label="پاک کردن انتخاب"
+                                  className="rounded-md px-1.5 py-1 text-[9px] font-bold text-destructive transition hover:bg-muted"
+                                  onClick={() =>
+                                    clearCalendarSelection(row.roomTypeId)
+                                  }
+                                  type="button"
+                                >
+                                  ×
+                                </button>
                               )}
                             </div>
 
@@ -1817,6 +1811,7 @@ export function OwnerPricingGrid({
 
       {usePricingCalendar && calendarActiveRoomId != null && (
         <CalendarSelectionEditor
+          availableModes={["pricing", "inventory"]}
           error={calendarEditorError}
           inventoryStatus={calendarInventoryStatus}
           inventoryValue={calendarInventoryValue}
@@ -1828,6 +1823,7 @@ export function OwnerPricingGrid({
           mixedInventoryValue={calendarInventoryValueMixed}
           mixedPricingValue={calendarPriceMixed}
           mode={calendarEditMode}
+          onModeChange={changeCompactCalendarEditMode}
           onCancel={() => clearCalendarSelection(calendarActiveRoomId)}
           onCopyPricing={
             calendarEditMode === "pricing"

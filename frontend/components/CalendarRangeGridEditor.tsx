@@ -178,6 +178,8 @@ export type CalendarSelectionEditorMode = "inventory" | "pricing";
 
 export interface CalendarSelectionEditorProps {
   mode: CalendarSelectionEditorMode;
+  availableModes?: CalendarSelectionEditorMode[];
+  onModeChange?: (mode: CalendarSelectionEditorMode) => void;
   selectedCount: number;
   selectedDayCount: number;
   selectionRangeCount: number;
@@ -209,6 +211,8 @@ export interface CalendarSelectionEditorProps {
 
 export function CalendarSelectionEditor({
   mode,
+  availableModes = [mode],
+  onModeChange,
   selectedCount,
   selectedDayCount,
   selectionRangeCount,
@@ -318,9 +322,36 @@ export function CalendarSelectionEditor({
               </KoochButton>
 
               <div className="min-w-0">
-                <h3 className="text-lg font-bold text-foreground">
-                  {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
-                </h3>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h3 className="text-lg font-bold text-foreground">
+                    {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
+                  </h3>
+
+                  {availableModes.length > 1 && onModeChange && (
+                    <div
+                      className="inline-flex rounded-lg border border-border bg-muted p-0.5"
+                      role="group"
+                      aria-label="نوع ویرایش"
+                    >
+                      {availableModes.map((editorMode) => (
+                        <button
+                          aria-pressed={mode === editorMode}
+                          className={`rounded-md px-3 py-1 text-xs font-semibold transition ${
+                            mode === editorMode
+                              ? "bg-primary text-primary-foreground shadow-sm"
+                              : "text-muted-foreground hover:text-foreground"
+                          }`}
+                          disabled={saving}
+                          key={editorMode}
+                          onClick={() => onModeChange(editorMode)}
+                          type="button"
+                        >
+                          {editorMode === "pricing" ? "قیمت" : "ظرفیت"}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 <p className="mt-1 text-sm font-semibold text-muted-foreground">
                   {toPersianNumber(selectedCount)} خانه در{" "}
