@@ -356,9 +356,9 @@ public class RoomTypeService(
                 "اطلاعات پایه",
                 [
                     (!string.IsNullOrWhiteSpace(name), "نام اتاق"),
-                    (!string.IsNullOrWhiteSpace(description), "توضیح اتاق")
+                    // (!string.IsNullOrWhiteSpace(description), "توضیح اتاق")
                 ],
-                started: !string.IsNullOrWhiteSpace(name) || !string.IsNullOrWhiteSpace(description)),
+                started: !string.IsNullOrWhiteSpace(name)),
             Section(
                 "capacity",
                 "ظرفیت",

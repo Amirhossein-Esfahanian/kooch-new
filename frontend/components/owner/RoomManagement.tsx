@@ -277,7 +277,7 @@ export function RoomManagement({
           body: JSON.stringify({
             name: draft.name.trim(),
             englishName: draft.englishName.trim() || null,
-            description: draft.description.trim() || draft.name.trim(),
+            description: draft.description.trim(),
             notes: draft.notes.trim() || null,
             floorNumber: nullableNumber(draft.floorNumber),
             stairCount: nullableNumber(draft.stairCount),

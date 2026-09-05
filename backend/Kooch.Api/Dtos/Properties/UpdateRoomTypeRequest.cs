@@ -14,7 +14,7 @@ public class UpdateRoomTypeRequest
     [MaxLength(170)]
     public string? Slug { get; set; }
 
-    [Required, MaxLength(3000)]
+    [MaxLength(3000)]
     public string Description { get; set; } = string.Empty;
 
     [Range(1, int.MaxValue)]
