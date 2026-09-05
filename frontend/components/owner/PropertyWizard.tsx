@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
@@ -32,6 +32,7 @@ import {
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
@@ -256,6 +257,8 @@ export function PropertyWizard({
   const [property, setProperty] = useState<PropertyResponse | null>(null);
   const [adminStatus, setAdminStatus] =
     useState<PropertyStatus>("PendingReview");
+  const [approvalConfirmationOpen, setApprovalConfirmationOpen] = useState(false);
+  const statusSavingRef = useRef(false);
   const [amenityCategories, setAmenityCategories] = useState<
     AmenityCategoryResponse[]
   >([]);
@@ -1017,8 +1020,9 @@ export function PropertyWizard({
     }
   }
 
-  async function saveAdminStatus() {
+  async function saveAdminStatus(status: PropertyStatus) {
     if (!property || !isAdmin) return;
+    statusSavingRef.current = true;
     setSavingSection("status");
     setError("");
     try {
@@ -1026,10 +1030,11 @@ export function PropertyWizard({
         `/admin/properties/${property.id}/status`,
         {
           method: "PUT",
-          body: JSON.stringify({ status: adminStatus }),
+          body: JSON.stringify({ status }),
         },
       );
       setProperty(updated);
+      setAdminStatus(updated.status as PropertyStatus);
       toast.success("وضعیت اقامتگاه به‌روزرسانی شد.");
     } catch (caught) {
       const body =
@@ -1042,8 +1047,23 @@ export function PropertyWizard({
       setError(message);
       toast.error(message);
     } finally {
+      statusSavingRef.current = false;
       setSavingSection(null);
     }
+  }
+
+  function requestAdminStatusChange(status: PropertyStatus) {
+    if (status === adminStatus || savingSection === "status") return;
+    if (status === "Approved") {
+      setApprovalConfirmationOpen(true);
+      return;
+    }
+    void saveAdminStatus(status);
+  }
+
+  function setApprovalConfirmation(nextOpen: boolean) {
+    if (!nextOpen && statusSavingRef.current) return;
+    setApprovalConfirmationOpen(nextOpen);
   }
 
   function syncImages(images: PropertyImageResponse[]) {
@@ -1112,21 +1132,13 @@ export function PropertyWizard({
             );
           })}
         </nav>
-        {property && (
+        {property && !isAdmin && (
           <div className="mt-4 grid gap-2 border-t border-border pt-4">
-            {!isAdmin && (
-              <Link
-                className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-                href={`/owner/properties/${property.id}/rooms`}
-              >
-                مدیریت اتاق‌ها
-              </Link>
-            )}
             <Link
               className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-              href={isAdmin ? "/admin/properties" : "/owner/properties"}
+              href={`/owner/properties/${property.id}/rooms`}
             >
-              بازگشت به لیست اقامتگاه‌ها
+              مدیریت اتاق‌ها
             </Link>
           </div>
         )}
@@ -1793,38 +1805,46 @@ export function PropertyWizard({
               />
             )}
             {isAdmin && property && (
-              <div
-                className={`${cardClass} grid gap-3 md:grid-cols-[1fr_auto] md:items-end`}
-              >
-                <label className="grid gap-1 text-sm font-bold">
-                  وضعیت اقامتگاه
-                  <select
-                    className={inputClass}
-                    onChange={(event) =>
-                      setAdminStatus(event.target.value as PropertyStatus)
-                    }
-                    value={adminStatus}
-                  >
-                    {propertyStatusOptions.map((status) => (
-                      <option key={status} value={status}>
-                        {statusLabels[status]}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <KoochButton
-                  disabled={savingSection === "status"}
-                  loading={savingSection === "status"}
-                  onClick={saveAdminStatus}
-                  type="button"
+              <div className={`${cardClass} grid gap-3`}>
+                <h2 className="text-sm font-bold">وضعیت اقامتگاه</h2>
+                <div
+                  aria-label="وضعیت اقامتگاه"
+                  className="flex flex-wrap gap-2"
+                  role="group"
                 >
-                  ذخیره وضعیت
-                </KoochButton>
+                  {propertyStatusOptions.map((status) => {
+                    const isCurrent = adminStatus === status;
+                    return (
+                      <KoochButton
+                        aria-pressed={isCurrent}
+                        className="rounded-full"
+                        disabled={savingSection === "status"}
+                        key={status}
+                        onClick={() => requestAdminStatusChange(status)}
+                        size="sm"
+                        type="button"
+                        variant={isCurrent ? "primary" : "outline"}
+                      >
+                        {statusLabels[status]}
+                      </KoochButton>
+                    );
+                  })}
+                </div>
                 {adminStatus === "Approved" && !completion?.canActivate && (
-                  <p className="rounded-lg bg-[var(--theme-warning-soft)] p-3 text-sm font-bold text-[var(--theme-warning)] md:col-span-2">
+                  <p className="rounded-lg bg-[var(--theme-warning-soft)] p-3 text-sm font-bold text-[var(--theme-warning)]">
                     برای فعال‌سازی، ابتدا موارد ناقص زیر را تکمیل کنید.
                   </p>
                 )}
+                <KoochConfirmDialog
+                  confirmText="تأیید و تغییر وضعیت"
+                  description="با تأیید این تغییر، اقامتگاه وارد وضعیت تأیید شده می‌شود."
+                  loading={savingSection === "status"}
+                  onConfirm={() => saveAdminStatus("Approved")}
+                  onOpenChange={setApprovalConfirmation}
+                  open={approvalConfirmationOpen}
+                  title="تأیید اقامتگاه؟"
+                  variant="question"
+                />
               </div>
             )}
             {completion && property && (
@@ -1878,31 +1898,13 @@ export function PropertyWizard({
                 )}
               />
             </div>
-            {property && (
-              <div
-                className={`${cardClass} grid gap-3 ${isAdmin ? "md:grid-cols-2" : "md:grid-cols-3"}`}
-              >
-                {!isAdmin && (
-                  <Link
-                    className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
-                    href={`/owner/properties/${property.id}/rooms`}
-                  >
-                    مدیریت اتاق‌ها
-                  </Link>
-                )}
-                {property.slug && (
-                  <Link
-                    className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-                    href={`/properties/${property.slug}`}
-                  >
-                    مشاهده صفحه عمومی
-                  </Link>
-                )}
+            {property && !isAdmin && (
+              <div className={`${cardClass} grid gap-3`}>
                 <Link
-                  className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-                  href={isAdmin ? "/admin/properties" : "/owner/properties"}
+                  className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
+                  href={`/owner/properties/${property.id}/rooms`}
                 >
-                  بازگشت به لیست اقامتگاه‌ها
+                  مدیریت اتاق‌ها
                 </Link>
               </div>
             )}

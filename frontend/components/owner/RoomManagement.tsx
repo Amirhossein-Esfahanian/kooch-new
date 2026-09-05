@@ -758,11 +758,7 @@ export function RoomManagement({
 
   return (
     <div className="grid w-full min-w-0 gap-5">
-      {compactHeader ? (
-        <div className="flex justify-end">
-          <KoochButton onClick={openCreateDialog}>افزودن نوع اتاق</KoochButton>
-        </div>
-      ) : (
+      {!compactHeader && (
         <KoochCard variant="elevated">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
@@ -784,9 +780,14 @@ export function RoomManagement({
       )}
 
       <KoochCard variant="elevated">
-        <h2 className="text-xl font-bold text-foreground">
-          نوع‌های اتاق ثبت‌شده
-        </h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-xl font-bold text-foreground">
+            نوع‌های اتاق ثبت‌شده
+          </h2>
+          {compactHeader && (
+            <KoochButton onClick={openCreateDialog}>افزودن نوع اتاق</KoochButton>
+          )}
+        </div>
         {loading ? (
           <p className="mt-5 rounded-lg bg-muted p-4 text-sm text-muted-foreground">
             در حال بارگذاری نوع‌های اتاق...

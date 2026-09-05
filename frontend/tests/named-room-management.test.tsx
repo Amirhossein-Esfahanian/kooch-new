@@ -300,6 +300,12 @@ describe("unified owner sellable room type management", () => {
     expect(
       screen.queryByRole("heading", { name: "مدیریت نوع‌های اتاق" }),
     ).toBeNull();
+    const registeredRoomTypesCard = screen
+      .getByRole("heading", { name: "نوع‌های اتاق ثبت‌شده" })
+      .closest("section");
+    expect(
+      registeredRoomTypesCard?.querySelector("button")?.textContent,
+    ).toBe("افزودن نوع اتاق");
   });
 
   it("loads RoomKind from the catalog and defaults TotalInventory to zero", async () => {

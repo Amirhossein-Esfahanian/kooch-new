@@ -237,6 +237,8 @@ let loadedAssignedPropertySettings: Array<{
   isActive: boolean;
 }> = [];
 let propertySettingsPutError: Error | null = null;
+let deferStatusUpdate = false;
+let resolveStatusUpdate: (() => void) | null = null;
 
 describe("PropertyWizard media and common areas", () => {
   beforeEach(() => {
@@ -247,6 +249,8 @@ describe("PropertyWizard media and common areas", () => {
     loadedPropertySettings = propertySettingCatalog;
     loadedAssignedPropertySettings = [];
     propertySettingsPutError = null;
+    deferStatusUpdate = false;
+    resolveStatusUpdate = null;
     api.request.mockReset();
     api.replaceCommonAreas.mockReset();
     api.request.mockImplementation((path: string, init?: RequestInit) => {
@@ -294,6 +298,21 @@ describe("PropertyWizard media and common areas", () => {
       if (path === "/admin/properties/17/sections/location" && init?.method === "PUT") {
         const payload = JSON.parse(String(init.body));
         return Promise.resolve({ ...loadedProperty, ...payload });
+      }
+      if (path === "/admin/properties/17/status" && init?.method === "PUT") {
+        const payload = JSON.parse(String(init.body)) as {
+          status: PropertyResponse["status"];
+        };
+        if (deferStatusUpdate) {
+          return new Promise<PropertyResponse>((resolve) => {
+            resolveStatusUpdate = () => {
+              loadedProperty = { ...loadedProperty, status: payload.status };
+              resolve(loadedProperty);
+            };
+          });
+        }
+        loadedProperty = { ...loadedProperty, status: payload.status };
+        return Promise.resolve(loadedProperty);
       }
       if (path === "/owner/properties/17/sections/financial" && init?.method === "PUT") {
         const payload = JSON.parse(String(init.body));
@@ -542,7 +561,12 @@ describe("PropertyWizard media and common areas", () => {
 
     expect(screen.getByText("تنظیمات مالی کامل نشده")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "دسترسی" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "مشاهده صفحه عمومی" })).toBeTruthy();
+    expect(
+      screen.queryByRole("link", { name: "مشاهده صفحه عمومی" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "بازگشت به لیست اقامتگاه‌ها" }),
+    ).toBeNull();
   });
 
   it("renders ordered categories as one continuous amenity grid", async () => {
@@ -801,19 +825,97 @@ describe("PropertyWizard media and common areas", () => {
     expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
   });
 
-  it("leaves Admin room navigation to the property page header", async () => {
+  it("leaves Admin navigation actions to the property page header and breadcrumb", async () => {
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
 
     expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "مدیریت اتاق‌ها" })).toBeNull();
     expect(
-      screen.queryByRole("link", { name: "مدیریت اتاق‌ها" }),
+      screen.queryByRole("link", { name: "بازگشت به لیست اقامتگاه‌ها" }),
     ).toBeNull();
-    for (const link of screen.getAllByRole("link", {
-      name: "بازگشت به لیست اقامتگاه‌ها",
-    })) {
-      expect(link.getAttribute("href")).toBe("/admin/properties");
+    expect(
+      screen.queryByRole("link", { name: "مشاهده صفحه عمومی" }),
+    ).toBeNull();
+  });
+
+  it("updates non-approved Admin statuses immediately and marks the current status", async () => {
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+
+    const draft = await screen.findByRole("button", { name: "پیش‌نویس" });
+    const rejected = screen.getByRole("button", { name: "رد شده" });
+    for (const label of [
+      "پیش‌نویس",
+      "در انتظار بررسی",
+      "تایید شده",
+      "رد شده",
+      "تعلیق شده",
+    ]) {
+      expect(screen.getByRole("button", { name: label })).toBeTruthy();
     }
+    expect(draft.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("button", { name: "ذخیره وضعیت" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "وضعیت اقامتگاه" })).toBeNull();
+
+    fireEvent.click(draft);
+    expect(
+      api.request.mock.calls.filter(
+        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+      ),
+    ).toHaveLength(0);
+
+    fireEvent.click(rejected);
+    await waitFor(() => {
+      const statusCall = api.request.mock.calls.find(
+        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+      );
+      expect(JSON.parse(String(statusCall?.[1]?.body))).toEqual({ status: "Rejected" });
+      expect(rejected.getAttribute("aria-pressed")).toBe("true");
+    });
+  });
+
+  it("requires confirmation before transitioning into Approved", async () => {
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "تایید شده" }));
+    expect(await screen.findByRole("alertdialog")).toBeTruthy();
+    expect(
+      api.request.mock.calls.some(
+        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(
+      api.request.mock.calls.some(
+        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+      ),
+    ).toBe(false);
+
+    deferStatusUpdate = true;
+    fireEvent.click(screen.getByRole("button", { name: "تایید شده" }));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "تأیید و تغییر وضعیت" }),
+    );
+    await waitFor(() => {
+      const statusCall = api.request.mock.calls.find(
+        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+      );
+      expect(JSON.parse(String(statusCall?.[1]?.body))).toEqual({ status: "Approved" });
+    });
+    for (const statusButton of screen.getAllByRole("button", {
+      name: /پیش‌نویس|در انتظار بررسی|تایید شده|رد شده|تعلیق شده/,
+    })) {
+      expect(statusButton.hasAttribute("disabled")).toBe(true);
+    }
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+    expect(screen.getByRole("alertdialog")).toBeTruthy();
+
+    resolveStatusUpdate?.();
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
   it("formats financial inputs in Persian while sending separator-free numbers", async () => {
