@@ -1868,6 +1868,9 @@ export function OwnerPricingGrid({
           selectedDayCount={
             getCalendarSelection(calendarActiveRoomId).dates.length
           }
+          selectedRoomLabels={rows
+            .filter((row) => row.roomTypeId === calendarActiveRoomId)
+            .map((row) => row.label)}
           selectionRangeCount={
             getCalendarSelection(calendarActiveRoomId).mode === "single"
               ? getCalendarSelection(calendarActiveRoomId).dates.length

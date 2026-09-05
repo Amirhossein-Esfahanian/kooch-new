@@ -182,6 +182,7 @@ export interface CalendarSelectionEditorProps {
   onModeChange?: (mode: CalendarSelectionEditorMode) => void;
   selectedCount: number;
   selectedDayCount: number;
+  selectedRoomLabels?: string[];
   selectionRangeCount: number;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -215,6 +216,7 @@ export function CalendarSelectionEditor({
   onModeChange,
   selectedCount,
   selectedDayCount,
+  selectedRoomLabels = [],
   selectionRangeCount,
   open,
   onOpenChange,
@@ -242,6 +244,16 @@ export function CalendarSelectionEditor({
   maxValue,
 }: CalendarSelectionEditorProps) {
   if (selectedCount <= 0) return null;
+
+  const uniqueSelectedRoomLabels = Array.from(
+    new Set(selectedRoomLabels.filter(Boolean)),
+  );
+  const selectionSummary =
+    uniqueSelectedRoomLabels.length === 1
+      ? `${toPersianNumber(selectedDayCount)} روز در اتاق ${uniqueSelectedRoomLabels[0]}`
+      : uniqueSelectedRoomLabels.length > 1
+        ? `${toPersianNumber(selectedDayCount)} روز در ${toPersianNumber(uniqueSelectedRoomLabels.length)} اتاق`
+        : `${toPersianNumber(selectedDayCount)} روز انتخاب شده`;
 
   const inventoryPanelTone =
     mode !== "inventory"
@@ -354,8 +366,7 @@ export function CalendarSelectionEditor({
                 </div>
 
                 <p className="mt-1 text-sm font-semibold text-muted-foreground">
-                  {toPersianNumber(selectedCount)} خانه در{" "}
-                  {toPersianNumber(selectionRangeCount)} بازه انتخاب شده
+                  {selectionSummary}
                 </p>
               </div>
             </div>
@@ -683,6 +694,15 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     () => new Set(selectedItems.map((item) => item.date)).size,
     [selectedItems],
   );
+
+  const selectedRoomLabels = useMemo(() => {
+    const selectedRoomIds = new Set(
+      selectedItems.map((item) => String(item.rowId)),
+    );
+    return rows
+      .filter((row) => selectedRoomIds.has(String(row.id)))
+      .map((row) => row.label);
+  }, [rows, selectedItems]);
 
   useEffect(() => {
     if (mode !== "pricing" || selectedItems.length === 0) {
@@ -1331,6 +1351,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
           saving={saving}
           selectedCount={selectedCount}
           selectedDayCount={selectedDayCount}
+          selectedRoomLabels={selectedRoomLabels}
           selectionRangeCount={selectedRanges.length}
           statusOptions={statusOptions}
           valueInputType={valueInputType}

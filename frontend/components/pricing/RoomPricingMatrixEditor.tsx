@@ -95,6 +95,15 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     return new Set(selectedCells.map((cell) => cell.date)).size;
   }, [selectedCells]);
 
+  const selectedRoomLabels = useMemo(() => {
+    const selectedRoomIds = new Set(
+      selectedCells.map((cell) => String(cell.roomId)),
+    );
+    return rows
+      .filter((row) => selectedRoomIds.has(String(row.id)))
+      .map((row) => row.label);
+  }, [rows, selectedCells]);
+
   const selectedValues = useMemo(() => {
     return selectedCells
       .map((cell) => {
@@ -315,6 +324,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
         saving={saving}
         selectedCount={selectedItems.length}
         selectedDayCount={selectedDayCount}
+        selectedRoomLabels={selectedRoomLabels}
         selectionRangeCount={selectedItems.length}
       />
 
