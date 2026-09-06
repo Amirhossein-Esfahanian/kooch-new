@@ -23,7 +23,9 @@ vi.mock("@/components/auth/AuthSessionProvider", () => ({
 }));
 
 vi.mock("@/components/owner/PropertyImageManager", () => ({
-  PropertyImageManager: () => <div data-testid="property-image-manager">مدیریت تصاویر</div>,
+  PropertyImageManager: () => (
+    <div data-testid="property-image-manager">مدیریت تصاویر</div>
+  ),
 }));
 
 vi.mock("@/components/property/PropertyLocationPicker", () => ({
@@ -31,12 +33,13 @@ vi.mock("@/components/property/PropertyLocationPicker", () => ({
     onChange,
     value,
   }: {
-    onChange: (
-      value: { latitude: number; longitude: number } | null,
-    ) => void;
+    onChange: (value: { latitude: number; longitude: number } | null) => void;
     value: { latitude: number; longitude: number } | null;
   }) => (
-    <div data-coordinates={value ? JSON.stringify(value) : "null"} data-testid="property-location-picker">
+    <div
+      data-coordinates={value ? JSON.stringify(value) : "null"}
+      data-testid="property-location-picker"
+    >
       <button
         onClick={() => onChange({ latitude: 35.123456, longitude: 50.654321 })}
         type="button"
@@ -99,6 +102,7 @@ const property: PropertyResponse = {
   maxFreeChildren: null,
   childPrice: null,
   extraGuestPrice: null,
+  hasSeparateForeignPricing: false,
 };
 
 let loadedProperty = property;
@@ -144,7 +148,13 @@ const completion = {
 } satisfies PropertyCompletionResponse;
 
 const existingCommonAreas = [
-  { id: 1, propertyId: 17, name: "حیاط", description: "کنار حوض", sortOrder: 1 },
+  {
+    id: 1,
+    propertyId: 17,
+    name: "حیاط",
+    description: "کنار حوض",
+    sortOrder: 1,
+  },
   { id: 2, propertyId: 17, name: "بام", description: null, sortOrder: 2 },
 ];
 
@@ -206,14 +216,62 @@ let loadedPropertyAmenities = [
 ];
 
 const propertySettingCatalog = [
-  { id: 1, name: "بافت تاریخی", slug: "historic-district", sortOrder: 10, isActive: true },
-  { id: 2, name: "محدوده بازار", slug: "bazaar-area", sortOrder: 20, isActive: true },
-  { id: 3, name: "بافت روستایی", slug: "rural-setting", sortOrder: 30, isActive: true },
-  { id: 4, name: "بافت کویری", slug: "desert-setting", sortOrder: 40, isActive: true },
-  { id: 5, name: "مرکز شهر", slug: "city-center", sortOrder: 50, isActive: true },
-  { id: 6, name: "منطقه کوهستانی", slug: "mountainous-area", sortOrder: 60, isActive: true },
-  { id: 7, name: "بافت مسکونی", slug: "residential-area", sortOrder: 70, isActive: true },
-  { id: 8, name: "حاشیه شهر", slug: "city-outskirts", sortOrder: 80, isActive: true },
+  {
+    id: 1,
+    name: "بافت تاریخی",
+    slug: "historic-district",
+    sortOrder: 10,
+    isActive: true,
+  },
+  {
+    id: 2,
+    name: "محدوده بازار",
+    slug: "bazaar-area",
+    sortOrder: 20,
+    isActive: true,
+  },
+  {
+    id: 3,
+    name: "بافت روستایی",
+    slug: "rural-setting",
+    sortOrder: 30,
+    isActive: true,
+  },
+  {
+    id: 4,
+    name: "بافت کویری",
+    slug: "desert-setting",
+    sortOrder: 40,
+    isActive: true,
+  },
+  {
+    id: 5,
+    name: "مرکز شهر",
+    slug: "city-center",
+    sortOrder: 50,
+    isActive: true,
+  },
+  {
+    id: 6,
+    name: "منطقه کوهستانی",
+    slug: "mountainous-area",
+    sortOrder: 60,
+    isActive: true,
+  },
+  {
+    id: 7,
+    name: "بافت مسکونی",
+    slug: "residential-area",
+    sortOrder: 70,
+    isActive: true,
+  },
+  {
+    id: 8,
+    name: "حاشیه شهر",
+    slug: "city-outskirts",
+    sortOrder: 80,
+    isActive: true,
+  },
 ];
 const inactiveAssignedPropertySetting = {
   id: 9,
@@ -254,48 +312,81 @@ describe("PropertyWizard media and common areas", () => {
     api.request.mockReset();
     api.replaceCommonAreas.mockReset();
     api.request.mockImplementation((path: string, init?: RequestInit) => {
-      if (path === "/amenity-categories") return Promise.resolve(loadedAmenityCategories);
+      if (path === "/amenity-categories")
+        return Promise.resolve(loadedAmenityCategories);
       if (path === "/amenities") return Promise.resolve(loadedAmenities);
-      if (path === "/property-settings") return Promise.resolve(loadedPropertySettings);
+      if (path === "/property-settings")
+        return Promise.resolve(loadedPropertySettings);
       if (path === "/owner/properties" && init?.method === "POST") {
         return Promise.resolve(loadedProperty);
       }
-      if (path === "/owner/properties/17") return Promise.resolve(loadedProperty);
-      if (path === "/admin/properties/17") return Promise.resolve(loadedProperty);
-      if (path === "/owner/properties/17/completion") return Promise.resolve(completion);
-      if (path === "/admin/properties/17/completion") return Promise.resolve(completion);
+      if (path === "/owner/properties/17")
+        return Promise.resolve(loadedProperty);
+      if (path === "/admin/properties/17")
+        return Promise.resolve(loadedProperty);
+      if (path === "/owner/properties/17/completion")
+        return Promise.resolve(completion);
+      if (path === "/admin/properties/17/completion")
+        return Promise.resolve(completion);
       if (path === "/owner/properties/17/descriptions") {
         return init?.method === "POST"
-          ? Promise.resolve({ id: 10, propertyId: 17, sectionType: "PropertyIntroduction", title: "معرفی اقامتگاه", content: "معرفی اقامتگاه", sortOrder: 1 })
+          ? Promise.resolve({
+              id: 10,
+              propertyId: 17,
+              sectionType: "PropertyIntroduction",
+              title: "معرفی اقامتگاه",
+              content: "معرفی اقامتگاه",
+              sortOrder: 1,
+            })
           : Promise.resolve([]);
       }
       if (path === "/owner/properties/17/images") return Promise.resolve([]);
-      if (path === "/owner/properties/17/amenities") return Promise.resolve(loadedPropertyAmenities);
-      if (path === "/owner/properties/17/common-areas") return Promise.resolve(existingCommonAreas);
-      if (path === "/owner/properties/17/nearby-places") return Promise.resolve([]);
+      if (path === "/owner/properties/17/amenities")
+        return Promise.resolve(loadedPropertyAmenities);
+      if (path === "/owner/properties/17/common-areas")
+        return Promise.resolve(existingCommonAreas);
+      if (path === "/owner/properties/17/nearby-places")
+        return Promise.resolve([]);
       if (path === "/owner/properties/17/settings") {
         if (init?.method !== "PUT") {
           return Promise.resolve(loadedAssignedPropertySettings);
         }
-        if (propertySettingsPutError) return Promise.reject(propertySettingsPutError);
-        const ids = (JSON.parse(String(init.body)).propertySettingIds ?? []) as number[];
+        if (propertySettingsPutError)
+          return Promise.reject(propertySettingsPutError);
+        const ids = (JSON.parse(String(init.body)).propertySettingIds ??
+          []) as number[];
         const candidates = [
           ...loadedPropertySettings,
           ...loadedAssignedPropertySettings,
         ];
         loadedAssignedPropertySettings = ids
           .map((id) => candidates.find((setting) => setting.id === id))
-          .filter((setting): setting is NonNullable<typeof setting> => Boolean(setting))
-          .map(({ id, name, slug, isActive }) => ({ id, name, slug, isActive }));
+          .filter((setting): setting is NonNullable<typeof setting> =>
+            Boolean(setting),
+          )
+          .map(({ id, name, slug, isActive }) => ({
+            id,
+            name,
+            slug,
+            isActive,
+          }));
         return Promise.resolve(loadedAssignedPropertySettings);
       }
-      if (path === "/owner/properties/17/room-types") return Promise.resolve([]);
-      if (path === "/owner/properties/17/sections/description") return Promise.resolve(property);
-      if (path === "/owner/properties/17/sections/location" && init?.method === "PUT") {
+      if (path === "/owner/properties/17/room-types")
+        return Promise.resolve([]);
+      if (path === "/owner/properties/17/sections/description")
+        return Promise.resolve(property);
+      if (
+        path === "/owner/properties/17/sections/location" &&
+        init?.method === "PUT"
+      ) {
         const payload = JSON.parse(String(init.body));
         return Promise.resolve({ ...loadedProperty, ...payload });
       }
-      if (path === "/admin/properties/17/sections/location" && init?.method === "PUT") {
+      if (
+        path === "/admin/properties/17/sections/location" &&
+        init?.method === "PUT"
+      ) {
         const payload = JSON.parse(String(init.body));
         return Promise.resolve({ ...loadedProperty, ...payload });
       }
@@ -314,14 +405,23 @@ describe("PropertyWizard media and common areas", () => {
         loadedProperty = { ...loadedProperty, status: payload.status };
         return Promise.resolve(loadedProperty);
       }
-      if (path === "/owner/properties/17/sections/financial" && init?.method === "PUT") {
+      if (
+        path === "/owner/properties/17/sections/financial" &&
+        init?.method === "PUT"
+      ) {
         const payload = JSON.parse(String(init.body));
         return Promise.resolve({ ...property, ...payload });
       }
       throw new Error(`Unexpected API request: ${path}`);
     });
     api.replaceCommonAreas.mockResolvedValue([
-      { id: 3, propertyId: 17, name: "حیاط مرکزی", description: "کنار حوض", sortOrder: 1 },
+      {
+        id: 3,
+        propertyId: 17,
+        name: "حیاط مرکزی",
+        description: "کنار حوض",
+        sortOrder: 1,
+      },
       { id: 4, propertyId: 17, name: "ایوان", description: null, sortOrder: 2 },
     ]);
   });
@@ -342,13 +442,13 @@ describe("PropertyWizard media and common areas", () => {
 
     const card = await screen.findByRole("button", { name: wifiAmenity.name });
     await waitFor(() => expect(card.getAttribute("aria-pressed")).toBe("true"));
-    expect(screen.queryByRole("checkbox", { name: wifiAmenity.name })).toBeNull();
+    expect(
+      screen.queryByRole("checkbox", { name: wifiAmenity.name }),
+    ).toBeNull();
     expect(screen.getByRole("heading", { name: "امکانات" })).toBeTruthy();
     expect(screen.queryByText("چشم‌انداز")).toBeNull();
     expect(
-      api.request.mock.calls.some(([path]) =>
-        String(path).endsWith("/views"),
-      ),
+      api.request.mock.calls.some(([path]) => String(path).endsWith("/views")),
     ).toBe(false);
 
     fireEvent.click(card);
@@ -363,9 +463,7 @@ describe("PropertyWizard media and common areas", () => {
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({ amenityIds: [] });
     });
     expect(
-      api.request.mock.calls.some(([path]) =>
-        String(path).endsWith("/views"),
-      ),
+      api.request.mock.calls.some(([path]) => String(path).endsWith("/views")),
     ).toBe(false);
     expect(
       api.request.mock.calls.some(
@@ -401,8 +499,12 @@ describe("PropertyWizard media and common areas", () => {
       screen.getByRole("button", { name: setting.name }),
     );
     expect(Array.from(grid?.children ?? [])).toEqual(cards);
-    expect(cards.every((card) => card.getAttribute("aria-pressed") === "false")).toBe(true);
-    expect(screen.queryByText(inactiveUnassignedPropertySetting.name)).toBeNull();
+    expect(
+      cards.every((card) => card.getAttribute("aria-pressed") === "false"),
+    ).toBe(true);
+    expect(
+      screen.queryByText(inactiveUnassignedPropertySetting.name),
+    ).toBeNull();
 
     fireEvent.click(cards[0]);
     fireEvent.click(cards[2]);
@@ -422,8 +524,12 @@ describe("PropertyWizard media and common areas", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "ذخیره و ادامه" }));
     await screen.findByRole("heading", { name: "بافت و موقعیت محیطی" });
-    fireEvent.click(screen.getByRole("button", { name: propertySettingCatalog[1].name }));
-    fireEvent.click(screen.getByRole("button", { name: propertySettingCatalog[3].name }));
+    fireEvent.click(
+      screen.getByRole("button", { name: propertySettingCatalog[1].name }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: propertySettingCatalog[3].name }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
 
     await waitFor(() => {
@@ -451,10 +557,14 @@ describe("PropertyWizard media and common areas", () => {
     const third = screen.getByRole("button", {
       name: propertySettingCatalog[2].name,
     });
-    await waitFor(() => expect(first.getAttribute("aria-pressed")).toBe("true"));
+    await waitFor(() =>
+      expect(first.getAttribute("aria-pressed")).toBe("true"),
+    );
     expect(third.getAttribute("aria-pressed")).toBe("true");
     fireEvent.click(first);
-    fireEvent.click(screen.getByRole("button", { name: propertySettingCatalog[4].name }));
+    fireEvent.click(
+      screen.getByRole("button", { name: propertySettingCatalog[4].name }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
 
     await waitFor(() => {
@@ -482,7 +592,9 @@ describe("PropertyWizard media and common areas", () => {
     });
     expect(inactiveCard.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByText("دیگر فعال نیست")).toBeTruthy();
-    expect(screen.queryByText(inactiveUnassignedPropertySetting.name)).toBeNull();
+    expect(
+      screen.queryByText(inactiveUnassignedPropertySetting.name),
+    ).toBeNull();
     fireEvent.click(inactiveCard);
     expect(inactiveCard.getAttribute("aria-pressed")).toBe("false");
     fireEvent.click(inactiveCard);
@@ -498,7 +610,9 @@ describe("PropertyWizard media and common areas", () => {
       expect(JSON.parse(String(call?.[1]?.body))).toEqual({
         propertySettingIds: [],
       });
-      expect(screen.queryByText(inactiveAssignedPropertySetting.name)).toBeNull();
+      expect(
+        screen.queryByText(inactiveAssignedPropertySetting.name),
+      ).toBeNull();
     });
   });
 
@@ -513,7 +627,9 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(card);
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
 
-    expect(await screen.findByText("ذخیره بافت و موقعیت انجام نشد.")).toBeTruthy();
+    expect(
+      await screen.findByText("ذخیره بافت و موقعیت انجام نشد."),
+    ).toBeTruthy();
     expect(card.getAttribute("aria-pressed")).toBe("true");
   });
 
@@ -524,7 +640,9 @@ describe("PropertyWizard media and common areas", () => {
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
     fireEvent.click(
-      await screen.findByRole("button", { name: propertySettingCatalog[0].name }),
+      await screen.findByRole("button", {
+        name: propertySettingCatalog[0].name,
+      }),
     );
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
     expect(
@@ -540,9 +658,7 @@ describe("PropertyWizard media and common areas", () => {
       screen.getByRole("button", { name: /^امکانات/ }).textContent,
     ).toContain("✓");
     expect(
-      api.request.mock.calls.some(([path]) =>
-        String(path).endsWith("/views"),
-      ),
+      api.request.mock.calls.some(([path]) => String(path).endsWith("/views")),
     ).toBe(false);
   });
 
@@ -598,9 +714,9 @@ describe("PropertyWizard media and common areas", () => {
     expect(screen.queryByText(amenityCategory.name)).toBeNull();
     expect(screen.queryByText(bathroomCategory.name)).toBeNull();
     expect(screen.queryByText("Empty Category")).toBeNull();
-    expect(screen.getAllByRole("button", { name: wifiAmenity.name })).toHaveLength(
-      1,
-    );
+    expect(
+      screen.getAllByRole("button", { name: wifiAmenity.name }),
+    ).toHaveLength(1);
     expect(
       wifiCard.querySelector('[data-amenity-category-icon="decorative"]')
         ?.innerHTML,
@@ -634,14 +750,14 @@ describe("PropertyWizard media and common areas", () => {
     expect(screen.queryByText(amenityCategory.name)).toBeNull();
     expect(screen.queryByText(bathroomCategory.name)).toBeNull();
     expect(
-      screen.getByRole("button", { name: wifiAmenity.name }).getAttribute(
-        "aria-pressed",
-      ),
+      screen
+        .getByRole("button", { name: wifiAmenity.name })
+        .getAttribute("aria-pressed"),
     ).toBe("false");
     expect(
-      screen.getByRole("button", { name: showerAmenity.name }).getAttribute(
-        "aria-pressed",
-      ),
+      screen
+        .getByRole("button", { name: showerAmenity.name })
+        .getAttribute("aria-pressed"),
     ).toBe("false");
   });
 
@@ -660,9 +776,7 @@ describe("PropertyWizard media and common areas", () => {
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
     const city = await screen.findByLabelText("شهر");
-    await waitFor(() =>
-      expect((city as HTMLInputElement).value).toBe("شیراز"),
-    );
+    await waitFor(() => expect((city as HTMLInputElement).value).toBe("شیراز"));
   });
 
   it("prefills a valid coordinate pair without saving on mount", async () => {
@@ -703,7 +817,9 @@ describe("PropertyWizard media and common areas", () => {
 
     const city = await screen.findByLabelText("شهر");
     const address = screen.getByLabelText("نشانی");
-    fireEvent.click(screen.getByRole("button", { name: "انتخاب موقعیت آزمایشی" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "انتخاب موقعیت آزمایشی" }),
+    );
     expect((city as HTMLInputElement).value).toBe("شیراز");
     expect((address as HTMLInputElement).value).toBe("نشانی");
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
@@ -764,7 +880,9 @@ describe("PropertyWizard media and common areas", () => {
         JSON.stringify({ latitude: 33.987654, longitude: 51.412345 }),
       ),
     );
-    fireEvent.click(screen.getByRole("button", { name: "انتخاب موقعیت آزمایشی" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "انتخاب موقعیت آزمایشی" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
 
     await waitFor(() => {
@@ -795,7 +913,9 @@ describe("PropertyWizard media and common areas", () => {
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
     await screen.findByRole("heading", { name: "توضیحات و فضاها" });
-    fireEvent.change(screen.getByDisplayValue("حیاط"), { target: { value: " حیاط مرکزی " } });
+    fireEvent.change(screen.getByDisplayValue("حیاط"), {
+      target: { value: " حیاط مرکزی " },
+    });
     fireEvent.click(screen.getAllByRole("button", { name: "حذف" })[1]);
     fireEvent.click(screen.getByRole("button", { name: "افزودن فضای مشترک" }));
 
@@ -803,10 +923,12 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.change(emptyNameInput, { target: { value: " ایوان " } });
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
 
-    await waitFor(() => expect(api.replaceCommonAreas).toHaveBeenCalledWith(17, [
-      { name: "حیاط مرکزی", description: "کنار حوض", sortOrder: 1 },
-      { name: "ایوان", description: null, sortOrder: 2 },
-    ]));
+    await waitFor(() =>
+      expect(api.replaceCommonAreas).toHaveBeenCalledWith(17, [
+        { name: "حیاط مرکزی", description: "کنار حوض", sortOrder: 1 },
+        { name: "ایوان", description: null, sortOrder: 2 },
+      ]),
+    );
     expect(api.replaceCommonAreas).toHaveBeenCalledOnce();
   });
 
@@ -856,21 +978,27 @@ describe("PropertyWizard media and common areas", () => {
     }
     expect(draft.getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("button", { name: "ذخیره وضعیت" })).toBeNull();
-    expect(screen.queryByRole("combobox", { name: "وضعیت اقامتگاه" })).toBeNull();
+    expect(
+      screen.queryByRole("combobox", { name: "وضعیت اقامتگاه" }),
+    ).toBeNull();
 
     fireEvent.click(draft);
     expect(
       api.request.mock.calls.filter(
-        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+        ([path, init]) =>
+          path === "/admin/properties/17/status" && init?.method === "PUT",
       ),
     ).toHaveLength(0);
 
     fireEvent.click(rejected);
     await waitFor(() => {
       const statusCall = api.request.mock.calls.find(
-        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+        ([path, init]) =>
+          path === "/admin/properties/17/status" && init?.method === "PUT",
       );
-      expect(JSON.parse(String(statusCall?.[1]?.body))).toEqual({ status: "Rejected" });
+      expect(JSON.parse(String(statusCall?.[1]?.body))).toEqual({
+        status: "Rejected",
+      });
       expect(rejected.getAttribute("aria-pressed")).toBe("true");
     });
   });
@@ -883,7 +1011,8 @@ describe("PropertyWizard media and common areas", () => {
     expect(await screen.findByRole("alertdialog")).toBeTruthy();
     expect(
       api.request.mock.calls.some(
-        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+        ([path, init]) =>
+          path === "/admin/properties/17/status" && init?.method === "PUT",
       ),
     ).toBe(false);
 
@@ -891,7 +1020,8 @@ describe("PropertyWizard media and common areas", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
     expect(
       api.request.mock.calls.some(
-        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+        ([path, init]) =>
+          path === "/admin/properties/17/status" && init?.method === "PUT",
       ),
     ).toBe(false);
 
@@ -902,9 +1032,12 @@ describe("PropertyWizard media and common areas", () => {
     );
     await waitFor(() => {
       const statusCall = api.request.mock.calls.find(
-        ([path, init]) => path === "/admin/properties/17/status" && init?.method === "PUT",
+        ([path, init]) =>
+          path === "/admin/properties/17/status" && init?.method === "PUT",
       );
-      expect(JSON.parse(String(statusCall?.[1]?.body))).toEqual({ status: "Approved" });
+      expect(JSON.parse(String(statusCall?.[1]?.body))).toEqual({
+        status: "Approved",
+      });
     });
     for (const statusButton of screen.getAllByRole("button", {
       name: /پیش‌نویس|در انتظار بررسی|تایید شده|رد شده|تعلیق شده/,
@@ -933,7 +1066,9 @@ describe("PropertyWizard media and common areas", () => {
 
     await waitFor(() => {
       const call = api.request.mock.calls.find(
-        ([path, init]) => path === "/owner/properties/17/sections/financial" && init?.method === "PUT",
+        ([path, init]) =>
+          path === "/owner/properties/17/sections/financial" &&
+          init?.method === "PUT",
       );
       const payload = JSON.parse(String(call?.[1]?.body));
       expect(payload).toMatchObject({

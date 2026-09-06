@@ -115,6 +115,8 @@ export interface CalendarRangeGridEditorProps<
   error?: string;
   /** Optional parent success message. */
   message?: string;
+  /** When true, render a denser/smaller top selection-mode control suitable for compact headers. */
+  compactSelectionModeControls?: boolean;
 }
 
 type RangeSelection = {
@@ -177,6 +179,8 @@ function normalizeRange(range: RangeSelection): RangeSelection {
 export type CalendarSelectionEditorMode = "inventory" | "pricing";
 
 export interface CalendarSelectionEditorProps {
+  /** When true, render a denser/smaller selection-mode control suitable for compact headers. */
+  compactSelectionModeControls?: boolean;
   mode: CalendarSelectionEditorMode;
   availableModes?: CalendarSelectionEditorMode[];
   onModeChange?: (mode: CalendarSelectionEditorMode) => void;
@@ -212,6 +216,7 @@ export interface CalendarSelectionEditorProps {
 
 export function CalendarSelectionEditor({
   mode,
+  compactSelectionModeControls = false,
   availableModes = [mode],
   onModeChange,
   selectedCount,
@@ -574,6 +579,7 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
   onCopyPricing,
   confirmApplyRange,
   mode,
+  compactSelectionModeControls = false,
   valueLabel,
   valueInputType = "number",
   minValueResolver,
@@ -1271,17 +1277,27 @@ export function CalendarRangeGridEditor<Row extends CalendarGridRow, Value>({
     <div className="relative" ref={wrapperRef}>
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="hidden items-center gap-3 md:flex">
-            <span className="text-sm font-bold text-[var(--theme-muted-text)]">
+          <div
+            className={`hidden items-center ${compactSelectionModeControls ? "gap-2 md:flex" : "gap-3 md:flex"}`}
+          >
+            <span
+              className={
+                compactSelectionModeControls
+                  ? "text-xs font-semibold text-[var(--theme-muted-text)]"
+                  : "text-sm font-bold text-[var(--theme-muted-text)]"
+              }
+            >
               حالت انتخاب:
             </span>
-            <div className="inline-flex rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] p-1">
+            <div
+              className={`inline-flex rounded-lg border border-[var(--theme-border)] bg-[var(--theme-surface-muted)] ${compactSelectionModeControls ? "p-0.5" : "p-1"}`}
+            >
               {[
                 { value: "range" as const, label: "انتخاب بازه‌ای" },
                 { value: "single" as const, label: "انتخاب تکی" },
               ].map((option) => (
                 <button
-                  className={`rounded-lg px-3 py-1.5 text-sm font-bold transition ${selectionMode === option.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`rounded-lg ${compactSelectionModeControls ? "px-2 py-1 text-xs font-semibold" : "px-3 py-1.5 text-sm font-bold"} transition ${selectionMode === option.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
                   key={option.value}
                   onClick={() => changeSelectionMode(option.value)}
                   type="button"

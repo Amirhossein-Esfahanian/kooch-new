@@ -479,6 +479,12 @@ export function OwnerPricingGrid({
     setCalendarEditorOpen(false);
     setCalendarEditorError("");
   }, [activeMonth]);
+
+  const viewMode = usePricingCalendar
+    ? "calendar"
+    : usePricingMatrix
+      ? "table"
+      : "default";
   useEffect(() => {
     apiRequest<PropertyResponse>(
       context === "admin"
@@ -1301,14 +1307,7 @@ export function OwnerPricingGrid({
       variant="elevated"
     >
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <div className="min-w-0">
-          <h2 className="text-xl font-bold text-foreground">
-            مدیریت قیمت روزانه
-          </h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            روزها و اتاق‌ها را انتخاب کنید و نرخ‌ها را به‌صورت گروهی تغییر دهید.
-          </p>
-        </div>
+        <div className="min-w-0" />
 
         <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap sm:justify-end">
           <KoochButton
@@ -1364,37 +1363,48 @@ export function OwnerPricingGrid({
             </KoochButton>
           </div>
 
-          <KoochButton
-            className="w-full sm:w-auto"
-            onClick={() => {
-              const next = !usePricingMatrix;
-              setUsePricingMatrix(next);
-              if (next) {
-                setUsePricingCalendar(false);
-                setCalendarEditorOpen(false);
-              }
-            }}
-            size="sm"
-            type="button"
-            variant={usePricingMatrix ? "primary" : "outline"}
-          >
-            {usePricingMatrix ? "برگشت به جدول قبلی" : "نمایش جدول آزمایشی"}
-          </KoochButton>
-
-          <KoochButton
-            className="w-full sm:w-auto"
-            onClick={() => {
-              const next = !usePricingCalendar;
-              setUsePricingCalendar(next);
-              setCalendarEditorOpen(false);
-              if (next) setUsePricingMatrix(false);
-            }}
-            size="sm"
-            type="button"
-            variant={usePricingCalendar ? "primary" : "outline"}
-          >
-            {usePricingCalendar ? "برگشت به جدول قبلی" : "نمایش تقویم آزمایشی"}
-          </KoochButton>
+          <div className="flex items-center gap-2">
+            <div className="inline-flex items-center gap-2 flex-wrap" dir="rtl">
+              <div className="inline-flex rounded-lg border border-border bg-muted p-1">
+                <button
+                  className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${viewMode === "default" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                  type="button"
+                  onClick={() => {
+                    if (viewMode === "default") return;
+                    setUsePricingMatrix(false);
+                    setUsePricingCalendar(false);
+                    setCalendarEditorOpen(false);
+                  }}
+                >
+                  نمایش پیش‌فرض
+                </button>
+                <button
+                  className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${viewMode === "table" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                  type="button"
+                  onClick={() => {
+                    if (viewMode === "table") return;
+                    setUsePricingMatrix(true);
+                    setUsePricingCalendar(false);
+                    setCalendarEditorOpen(false);
+                  }}
+                >
+                  نمایش جدول آزمایشی
+                </button>
+                <button
+                  className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${viewMode === "calendar" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
+                  type="button"
+                  onClick={() => {
+                    if (viewMode === "calendar") return;
+                    setUsePricingMatrix(false);
+                    setUsePricingCalendar(true);
+                    setCalendarEditorOpen(false);
+                  }}
+                >
+                  نمایش تقویم آزمایشی
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       {hasSeparateForeignPricing && (
@@ -1781,6 +1791,7 @@ export function OwnerPricingGrid({
               />
             ) : (
               <CalendarRangeGridEditor
+                compactSelectionModeControls={true}
                 days={gridDays}
                 disabledDateResolver={(date) =>
                   dayjs(date).isBefore(dayjs().startOf("day"), "day")

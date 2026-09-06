@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   AdminPropertyOwnerCandidatePageResponse,
@@ -51,12 +57,13 @@ vi.mock("@/components/property/PropertyLocationPicker", () => ({
     onChange,
     value,
   }: {
-    onChange: (
-      value: { latitude: number; longitude: number } | null,
-    ) => void;
+    onChange: (value: { latitude: number; longitude: number } | null) => void;
     value: { latitude: number; longitude: number } | null;
   }) => (
-    <div data-coordinates={value ? JSON.stringify(value) : "null"} data-testid="property-location-picker">
+    <div
+      data-coordinates={value ? JSON.stringify(value) : "null"}
+      data-testid="property-location-picker"
+    >
       <button
         onClick={() => onChange({ latitude: 35.123456, longitude: 50.654321 })}
         type="button"
@@ -110,6 +117,7 @@ const property: PropertyResponse = {
   maxFreeChildren: null,
   childPrice: null,
   extraGuestPrice: null,
+  hasSeparateForeignPricing: false,
 };
 
 const candidatePage: AdminPropertyOwnerCandidatePageResponse = {
@@ -150,19 +158,22 @@ beforeEach(() => {
 
 describe("Admin property transfer ownership", () => {
   it("creates a property without exposing or sending the legacy inventory model", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === "/admin/properties" && !options) return Promise.resolve([]);
-      if (path.startsWith("/admin/properties/owner-candidates?")) {
-        return Promise.resolve(candidatePage);
-      }
-      if (path === "/admin/properties" && options?.method === "POST") {
-        return Promise.resolve({
-          ...property,
-          inventoryMode: "TypeBasedInventory",
-        });
-      }
-      throw new Error(`Unexpected API request: ${path}`);
-    });
+    ownerApi.apiRequest.mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties" && !options)
+          return Promise.resolve([]);
+        if (path.startsWith("/admin/properties/owner-candidates?")) {
+          return Promise.resolve(candidatePage);
+        }
+        if (path === "/admin/properties" && options?.method === "POST") {
+          return Promise.resolve({
+            ...property,
+            inventoryMode: "TypeBasedInventory",
+          });
+        }
+        throw new Error(`Unexpected API request: ${path}`);
+      },
+    );
 
     render(<AdminPropertiesPage />);
     fireEvent.click(
@@ -182,10 +193,12 @@ describe("Admin property transfer ownership", () => {
     const ownerFields = userSearch.parentElement?.parentElement;
     expect(ownerFields).toBe(ownerSelect.parentElement?.parentElement);
     expect(ownerFields?.className).toContain("md:grid-cols-2");
-    expect((within(dialog).getByLabelText(/شهر/) as HTMLInputElement).value).toBe(
-      "کاشان",
+    expect(
+      (within(dialog).getByLabelText(/شهر/) as HTMLInputElement).value,
+    ).toBe("کاشان");
+    await waitFor(() =>
+      expect(ownerSelect.hasAttribute("disabled")).toBe(false),
     );
-    await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
     fireEvent.change(ownerSelect, { target: { value: "7" } });
     fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
       target: { value: "اقامتگاه جدید" },
@@ -218,16 +231,19 @@ describe("Admin property transfer ownership", () => {
   });
 
   it("maps a selected location to create payload without changing city or address", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === "/admin/properties" && !options) return Promise.resolve([]);
-      if (path.startsWith("/admin/properties/owner-candidates?")) {
-        return Promise.resolve(candidatePage);
-      }
-      if (path === "/admin/properties" && options?.method === "POST") {
-        return Promise.resolve(property);
-      }
-      throw new Error(`Unexpected API request: ${path}`);
-    });
+    ownerApi.apiRequest.mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties" && !options)
+          return Promise.resolve([]);
+        if (path.startsWith("/admin/properties/owner-candidates?")) {
+          return Promise.resolve(candidatePage);
+        }
+        if (path === "/admin/properties" && options?.method === "POST") {
+          return Promise.resolve(property);
+        }
+        throw new Error(`Unexpected API request: ${path}`);
+      },
+    );
 
     render(<AdminPropertiesPage />);
     fireEvent.click(
@@ -237,7 +253,9 @@ describe("Admin property transfer ownership", () => {
       name: "افزودن اقامتگاه",
     });
     const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
-    await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
+    await waitFor(() =>
+      expect(ownerSelect.hasAttribute("disabled")).toBe(false),
+    );
     fireEvent.change(ownerSelect, { target: { value: "7" } });
     fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
       target: { value: "اقامتگاه نقشه‌دار" },
@@ -271,16 +289,19 @@ describe("Admin property transfer ownership", () => {
   });
 
   it("sends a cleared create location as a null coordinate pair", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === "/admin/properties" && !options) return Promise.resolve([]);
-      if (path.startsWith("/admin/properties/owner-candidates?")) {
-        return Promise.resolve(candidatePage);
-      }
-      if (path === "/admin/properties" && options?.method === "POST") {
-        return Promise.resolve(property);
-      }
-      throw new Error(`Unexpected API request: ${path}`);
-    });
+    ownerApi.apiRequest.mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties" && !options)
+          return Promise.resolve([]);
+        if (path.startsWith("/admin/properties/owner-candidates?")) {
+          return Promise.resolve(candidatePage);
+        }
+        if (path === "/admin/properties" && options?.method === "POST") {
+          return Promise.resolve(property);
+        }
+        throw new Error(`Unexpected API request: ${path}`);
+      },
+    );
 
     render(<AdminPropertiesPage />);
     fireEvent.click(
@@ -290,7 +311,9 @@ describe("Admin property transfer ownership", () => {
       name: "افزودن اقامتگاه",
     });
     const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
-    await waitFor(() => expect(ownerSelect.hasAttribute("disabled")).toBe(false));
+    await waitFor(() =>
+      expect(ownerSelect.hasAttribute("disabled")).toBe(false),
+    );
     fireEvent.change(ownerSelect, { target: { value: "7" } });
     fireEvent.change(within(dialog).getByLabelText(/نام اقامتگاه/), {
       target: { value: "اقامتگاه بدون نقطه" },
@@ -325,19 +348,23 @@ describe("Admin property transfer ownership", () => {
       resolveTransfer = resolve;
     });
     let propertyReads = 0;
-    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === "/admin/properties" && !options) {
-        propertyReads += 1;
-        return Promise.resolve(propertyReads === 1 ? [property] : [updatedProperty()]);
-      }
-      if (path.startsWith("/admin/properties/owner-candidates?")) {
-        return Promise.resolve(candidatePage);
-      }
-      if (path === "/admin/properties/100/transfer-ownership") {
-        return transferResponse;
-      }
-      return Promise.reject(new Error(`Unexpected API request: ${path}`));
-    });
+    ownerApi.apiRequest.mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties" && !options) {
+          propertyReads += 1;
+          return Promise.resolve(
+            propertyReads === 1 ? [property] : [updatedProperty()],
+          );
+        }
+        if (path.startsWith("/admin/properties/owner-candidates?")) {
+          return Promise.resolve(candidatePage);
+        }
+        if (path === "/admin/properties/100/transfer-ownership") {
+          return transferResponse;
+        }
+        return Promise.reject(new Error(`Unexpected API request: ${path}`));
+      },
+    );
 
     const dialog = await openTransferDialog();
     expect(within(dialog).getByText("انتخاب کاربر موجود")).toBeTruthy();
@@ -378,7 +405,9 @@ describe("Admin property transfer ownership", () => {
         ([path]) => path === "/admin/properties/100/transfer-ownership",
       );
       expect(transfers).toHaveLength(1);
-      const payload = JSON.parse((transfers[0][1] as RequestInit).body as string);
+      const payload = JSON.parse(
+        (transfers[0][1] as RequestInit).body as string,
+      );
       expect(payload).toMatchObject({
         newOwnerId: 7,
         newOwner: null,
@@ -396,19 +425,24 @@ describe("Admin property transfer ownership", () => {
   });
 
   it("reuses CreateUserFields and submits a new user with optional email", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === "/admin/properties" && !options) return Promise.resolve([property]);
-      if (path === "/admin/properties/100/transfer-ownership") {
-        return Promise.resolve(updatedProperty("کاربر جدید"));
-      }
-      if (path.startsWith("/admin/properties/owner-candidates?")) {
-        return Promise.resolve(candidatePage);
-      }
-      return Promise.reject(new Error(`Unexpected API request: ${path}`));
-    });
+    ownerApi.apiRequest.mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties" && !options)
+          return Promise.resolve([property]);
+        if (path === "/admin/properties/100/transfer-ownership") {
+          return Promise.resolve(updatedProperty("کاربر جدید"));
+        }
+        if (path.startsWith("/admin/properties/owner-candidates?")) {
+          return Promise.resolve(candidatePage);
+        }
+        return Promise.reject(new Error(`Unexpected API request: ${path}`));
+      },
+    );
 
     const dialog = await openTransferDialog();
-    fireEvent.click(within(dialog).getByRole("button", { name: "ساخت کاربر جدید" }));
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "ساخت کاربر جدید" }),
+    );
     expect(within(dialog).getByTestId("create-user-fields")).toBeTruthy();
 
     fireEvent.change(document.getElementById("transfer-owner-first-name")!, {
@@ -447,19 +481,24 @@ describe("Admin property transfer ownership", () => {
   });
 
   it("shows a safe Persian message instead of a raw backend exception", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string, options?: RequestInit) => {
-      if (path === "/admin/properties" && !options) return Promise.resolve([property]);
-      if (path.startsWith("/admin/properties/owner-candidates?")) {
-        return Promise.resolve(candidatePage);
-      }
-      if (path === "/admin/properties/100/transfer-ownership") {
-        return Promise.reject(new Error("SQL sensitive internal exception"));
-      }
-      return Promise.reject(new Error(`Unexpected API request: ${path}`));
-    });
+    ownerApi.apiRequest.mockImplementation(
+      (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties" && !options)
+          return Promise.resolve([property]);
+        if (path.startsWith("/admin/properties/owner-candidates?")) {
+          return Promise.resolve(candidatePage);
+        }
+        if (path === "/admin/properties/100/transfer-ownership") {
+          return Promise.reject(new Error("SQL sensitive internal exception"));
+        }
+        return Promise.reject(new Error(`Unexpected API request: ${path}`));
+      },
+    );
 
     const dialog = await openTransferDialog();
-    await waitFor(() => expect(within(dialog).getByText(/مدیر سامانه/)).toBeTruthy());
+    await waitFor(() =>
+      expect(within(dialog).getByText(/مدیر سامانه/)).toBeTruthy(),
+    );
     fireEvent.change(within(dialog).getByLabelText(/مالک جدید/), {
       target: { value: "7" },
     });
