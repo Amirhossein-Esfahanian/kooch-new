@@ -317,6 +317,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(destination => destination.Properties)
                 .HasForeignKey(property => property.DestinationId)
                 .OnDelete(DeleteBehavior.Restrict);
+                entity.Property(property => property.HasSeparateForeignPricing).HasDefaultValue(false);
         });
 
         modelBuilder.Entity<PropertyHighlight>(entity =>

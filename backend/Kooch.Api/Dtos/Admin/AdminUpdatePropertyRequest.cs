@@ -57,4 +57,5 @@ public class AdminUpdatePropertyRequest : PropertyCoordinatesRequest
     public decimal? ChildPrice { get; set; }
     [Range(0, double.MaxValue)]
     public decimal? ExtraGuestPrice { get; set; }
+    public bool? HasSeparateForeignPricing { get; set; }
 }

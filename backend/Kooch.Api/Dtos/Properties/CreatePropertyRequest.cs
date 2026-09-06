@@ -61,4 +61,5 @@ public class CreatePropertyRequest : PropertyCoordinatesRequest
 
     [Range(0, double.MaxValue)]
     public decimal? ExtraGuestPrice { get; set; }
+    public bool HasSeparateForeignPricing { get; set; }
 }

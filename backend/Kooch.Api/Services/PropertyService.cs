@@ -75,6 +75,7 @@ public class PropertyService(
             IsWheelchairAccessible = request.IsWheelchairAccessible,
             HasGroundFloorRoom = request.HasGroundFloorRoom,
             HasAccessibleBathroom = request.HasAccessibleBathroom,
+            HasSeparateForeignPricing = request.HasSeparateForeignPricing,
             FreeChildAgeLimit = request.FreeChildAgeLimit,
             MaxFreeChildren = request.MaxFreeChildren,
             ChildPrice = request.ChildPrice,
@@ -171,6 +172,10 @@ public class PropertyService(
         property.IsWheelchairAccessible = request.IsWheelchairAccessible;
         property.HasGroundFloorRoom = request.HasGroundFloorRoom;
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        if (request.HasSeparateForeignPricing.HasValue)
+        {
+            property.HasSeparateForeignPricing = request.HasSeparateForeignPricing.Value;
+        }
         property.FreeChildAgeLimit = request.FreeChildAgeLimit;
         property.MaxFreeChildren = request.MaxFreeChildren;
         property.ChildPrice = request.ChildPrice;
@@ -268,6 +273,10 @@ public class PropertyService(
         property.MaxFreeChildren = request.MaxFreeChildren;
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
+        if (request.HasSeparateForeignPricing.HasValue)
+        {
+            property.HasSeparateForeignPricing = request.HasSeparateForeignPricing.Value;
+        }
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -365,6 +374,10 @@ public class PropertyService(
         property.IsWheelchairAccessible = request.IsWheelchairAccessible;
         property.HasGroundFloorRoom = request.HasGroundFloorRoom;
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        if (request.HasSeparateForeignPricing.HasValue)
+        {
+            property.HasSeparateForeignPricing = request.HasSeparateForeignPricing.Value;
+        }
         property.FreeChildAgeLimit = request.FreeChildAgeLimit;
         property.MaxFreeChildren = request.MaxFreeChildren;
         property.ChildPrice = request.ChildPrice;
@@ -1102,6 +1115,7 @@ public class PropertyService(
             MaxFreeChildren = property.MaxFreeChildren,
             ChildPrice = property.ChildPrice,
             ExtraGuestPrice = property.ExtraGuestPrice,
+            HasSeparateForeignPricing = property.HasSeparateForeignPricing,
         });
 
     private static IQueryable<PublicPropertyResponse> ProjectPublic(

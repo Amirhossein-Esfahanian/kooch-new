@@ -90,6 +90,7 @@ export interface PropertyResponse {
   maxFreeChildren: number | null;
   childPrice: number | null;
   extraGuestPrice: number | null;
+  hasSeparateForeignPricing: boolean;
 }
 
 export type PropertyStatus =
@@ -686,8 +687,6 @@ export interface PropertyFormValues {
   freeChildAgeLimit?: number | null;
   maxFreeChildren?: number | null;
 }
-
-
 
 export class ApiRequestError extends Error {
   constructor(

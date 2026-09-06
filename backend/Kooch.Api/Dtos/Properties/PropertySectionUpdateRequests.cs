@@ -70,6 +70,7 @@ public class UpdatePropertyFinancialSectionRequest
 
     [Range(0, double.MaxValue)]
     public decimal? ExtraGuestPrice { get; set; }
+    public bool? HasSeparateForeignPricing { get; set; }
 }
 
 public class UpdatePropertyDescriptionSectionRequest

@@ -41,5 +41,6 @@ public class PropertyResponse
     public int? MaxFreeChildren { get; set; }
     public decimal? ChildPrice { get; set; }
     public decimal? ExtraGuestPrice { get; set; }
+    public bool HasSeparateForeignPricing { get; set; }
     
 }

@@ -296,6 +296,11 @@ export function OwnerPricingGrid({
   const [activeGuestType, setActiveGuestType] =
     useState<PricingGuestType>(readStoredGuestType);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
+  const hasSeparateForeignPricing =
+    property?.hasSeparateForeignPricing === true;
+  const pricingGuestType: PricingGuestType = hasSeparateForeignPricing
+    ? activeGuestType
+    : "Iranian";
   const [pricing, setPricing] = useState<PropertyPricingResponse | null>(null);
   const [inventory, setInventory] = useState<PropertyInventoryResponse | null>(
     null,
@@ -459,8 +464,9 @@ export function OwnerPricingGrid({
     hasLoadedPricing && hasRooms && !hasPriceInSelectedRange;
 
   useEffect(() => {
+    if (!property) return;
     loadMonth().catch((caught: Error) => setError(caught.message));
-  }, [activeGuestType, activeMonth, propertyId]);
+  }, [activeMonth, pricingGuestType, property, propertyId]);
   useEffect(() => {
     if (!usePricingCalendar) return;
     loadInventoryMonth().catch((caught: Error) =>
@@ -523,7 +529,7 @@ export function OwnerPricingGrid({
       const to = toIso(monthDays[monthDays.length - 1]);
       setPricing(
         await apiRequest<PropertyPricingResponse>(
-          `/owner/properties/${propertyId}/pricing?from=${from}&to=${to}&guestType=${activeGuestType}`,
+          `/owner/properties/${propertyId}/pricing?from=${from}&to=${to}&guestType=${pricingGuestType}`,
         ),
       );
       setMessage("");
@@ -559,7 +565,7 @@ export function OwnerPricingGrid({
         id: null,
         roomTypeId: Number(rowId),
         date,
-        guestType: activeGuestType,
+        guestType: pricingGuestType,
         basePrice: 0,
       }
     );
@@ -917,7 +923,7 @@ export function OwnerPricingGrid({
             roomTypeId: Number(item.rowId),
             date: item.date,
           })),
-          guestType: activeGuestType,
+          guestType: pricingGuestType,
           basePrice: payload.basePrice ?? 0,
         }),
       },
@@ -929,7 +935,7 @@ export function OwnerPricingGrid({
       (current) =>
         current && {
           ...current,
-          guestType: activeGuestType,
+          guestType: pricingGuestType,
           roomTypes: current.roomTypes.map((roomType) => ({
             ...roomType,
             days: roomType.days.map(
@@ -954,7 +960,7 @@ export function OwnerPricingGrid({
               propertyId,
               roomId: Number(payload.rowId),
               roomName: "",
-              guestType: activeGuestType,
+              guestType: pricingGuestType,
               affectedDateFrom: payload.startDate,
               affectedDateTo: payload.endDate,
               oldBasePrice: 0,
@@ -1018,7 +1024,7 @@ export function OwnerPricingGrid({
                   roomTypeId: Number(item.rowId),
                   date: item.date,
                 })),
-                guestType: activeGuestType,
+                guestType: pricingGuestType,
                 basePrice: savePayload.basePrice ?? 0,
               }),
             },
@@ -1034,7 +1040,7 @@ export function OwnerPricingGrid({
         (current) =>
           current && {
             ...current,
-            guestType: activeGuestType,
+            guestType: pricingGuestType,
             roomTypes: current.roomTypes.map((roomType) => ({
               ...roomType,
               days: roomType.days.map(
@@ -1061,7 +1067,7 @@ export function OwnerPricingGrid({
           propertyId,
           roomId: Number(roomPrice.roomId),
           roomName: roomPrice.roomLabel,
-          guestType: activeGuestType,
+          guestType: pricingGuestType,
           affectedDateFrom: dates[0],
           affectedDateTo: dates[dates.length - 1],
           oldBasePrice: 0,
@@ -1191,16 +1197,17 @@ export function OwnerPricingGrid({
   }
 
   function openCopyPricingDialog(payload: CalendarRangeApplyPayload) {
+    if (!hasSeparateForeignPricing) return;
     setCopyPayload(payload);
     setCopyError("");
     setCopyDirection(
-      activeGuestType === "Iranian" ? "IranianToForeign" : "ForeignToIranian",
+      pricingGuestType === "Iranian" ? "IranianToForeign" : "ForeignToIranian",
     );
     setCopyDialogOpen(true);
   }
 
   async function confirmCopyPricing() {
-    if (!copyPayload) return;
+    if (!hasSeparateForeignPricing || !copyPayload) return;
     const direction =
       copyPricingDirectionOptions.find(
         (option) => option.value === copyDirection,
@@ -1224,7 +1231,7 @@ export function OwnerPricingGrid({
           body: JSON.stringify(request),
         },
       );
-      if (direction.destination === activeGuestType) {
+      if (direction.destination === pricingGuestType) {
         const updateMap = new Map(
           updated.map((item) => [cellKey(item.roomTypeId, item.date), item]),
         );
@@ -1232,7 +1239,7 @@ export function OwnerPricingGrid({
           (current) =>
             current && {
               ...current,
-              guestType: activeGuestType,
+              guestType: pricingGuestType,
               roomTypes: current.roomTypes.map((roomType) => ({
                 ...roomType,
                 days: roomType.days.map(
@@ -1272,12 +1279,12 @@ export function OwnerPricingGrid({
 
   const monthTitle = monthStart.locale("fa").format("MMMM YYYY");
   const activeGuestTab =
-    pricingGuestTabs.find((tab) => tab.value === activeGuestType) ??
+    pricingGuestTabs.find((tab) => tab.value === pricingGuestType) ??
     pricingGuestTabs[0];
   const bulkReviewDetails = getBulkReviewDetails(bulkReviewPayload);
   const copyReviewDetails = getBulkReviewDetails(copyPayload);
   function changeGuestType(nextGuestType: PricingGuestType) {
-    if (nextGuestType === activeGuestType) return;
+    if (!hasSeparateForeignPricing || nextGuestType === activeGuestType) return;
     setActiveGuestType(nextGuestType);
     setPricing(null);
     setHistory([]);
@@ -1390,30 +1397,32 @@ export function OwnerPricingGrid({
           </KoochButton>
         </div>
       </div>
-      <div
-        className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted p-2"
-        dir="rtl"
-      >
-        <div className="inline-flex rounded-xl border border-border bg-card p-1 shadow-sm">
-          {pricingGuestTabs.map((tab) => (
-            <button
-              className={`rounded-lg px-5 py-2 text-sm font-bold transition ${
-                activeGuestType === tab.value
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
-              }`}
-              key={tab.value}
-              onClick={() => changeGuestType(tab.value)}
-              type="button"
-            >
-              {tab.label}
-            </button>
-          ))}
+      {hasSeparateForeignPricing && (
+        <div
+          className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-muted p-2"
+          dir="rtl"
+        >
+          <div className="inline-flex rounded-xl border border-border bg-card p-1 shadow-sm">
+            {pricingGuestTabs.map((tab) => (
+              <button
+                className={`rounded-lg px-5 py-2 text-sm font-bold transition ${
+                  activeGuestType === tab.value
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                }`}
+                key={tab.value}
+                onClick={() => changeGuestType(tab.value)}
+                type="button"
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs font-bold text-muted-foreground">
+            {activeGuestTab.description}
+          </p>
         </div>
-        <p className="text-xs font-bold text-muted-foreground">
-          {activeGuestTab.description}
-        </p>
-      </div>
+      )}
       {loading && (
         <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">
           در حال بارگذاری قیمت‌ها...
@@ -1754,7 +1763,9 @@ export function OwnerPricingGrid({
                 getCellValue={getCellValue}
                 onApplyRange={applyPrices}
                 confirmApplyRange={confirmPriceApply}
-                onCopyPricing={openCopyPricingDialog}
+                onCopyPricing={
+                  hasSeparateForeignPricing ? openCopyPricingDialog : undefined
+                }
                 pricingCurrencyLabel={currencyLabel}
                 pricingMaxValue={priceBounds.maximum}
                 pricingMinValue={priceBounds.minimum}
@@ -1780,7 +1791,9 @@ export function OwnerPricingGrid({
                 message={message}
                 mode="pricing"
                 onApplyRange={applyPrices}
-                onCopyPricing={openCopyPricingDialog}
+                onCopyPricing={
+                  hasSeparateForeignPricing ? openCopyPricingDialog : undefined
+                }
                 pricingCurrencyLabel={currencyLabel}
                 pricingMaxValue={priceBounds.maximum}
                 pricingMinValue={priceBounds.minimum}
@@ -1802,7 +1815,7 @@ export function OwnerPricingGrid({
                   </div>
                 )}
                 rows={rows}
-                key={activeGuestType}
+                key={pricingGuestType}
                 valueInputType="number"
                 valueLabel="نرخ اتاق"
               />
@@ -1828,7 +1841,7 @@ export function OwnerPricingGrid({
           onModeChange={changeCompactCalendarEditMode}
           onCancel={() => clearCalendarSelection(calendarActiveRoomId)}
           onCopyPricing={
-            calendarEditMode === "pricing"
+            hasSeparateForeignPricing && calendarEditMode === "pricing"
               ? openCompactCopyPricingDialog
               : undefined
           }
@@ -2056,7 +2069,7 @@ export function OwnerPricingGrid({
             setCopyError("");
           }
         }}
-        open={copyDialogOpen}
+        open={hasSeparateForeignPricing && copyDialogOpen}
         title="کپی قیمت‌ها"
         variant="warning"
       >
@@ -2138,12 +2151,14 @@ export function OwnerPricingGrid({
                 {bulkReviewDetails.dateRangeLabel}
               </dd>
             </div>
-            <div className="grid gap-1">
-              <dt className="font-bold text-muted-foreground">نوع مهمان</dt>
-              <dd className="font-bold text-foreground">
-                {pricingGuestTypeLabels[activeGuestType]}
-              </dd>
-            </div>
+            {hasSeparateForeignPricing && (
+              <div className="grid gap-1">
+                <dt className="font-bold text-muted-foreground">نوع مهمان</dt>
+                <dd className="font-bold text-foreground">
+                  {pricingGuestTypeLabels[pricingGuestType]}
+                </dd>
+              </div>
+            )}
             <div className="grid gap-1">
               <dt className="font-bold text-muted-foreground">مبلغ</dt>
               <dd className="font-bold text-foreground">

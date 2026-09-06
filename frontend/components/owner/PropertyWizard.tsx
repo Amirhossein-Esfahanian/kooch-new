@@ -140,6 +140,7 @@ interface WizardData {
   maxFreeChildren: string;
   childPrice: string;
   extraGuestPrice: string;
+  hasSeparateForeignPricing: boolean;
   seoTitle: string;
   seoDescription: string;
 }
@@ -175,6 +176,7 @@ const initialData: WizardData = {
   maxFreeChildren: "",
   childPrice: "",
   extraGuestPrice: "",
+  hasSeparateForeignPricing: false,
   seoTitle: "",
   seoDescription: "",
 };
@@ -481,6 +483,8 @@ export function PropertyWizard({
               propertyResult.extraGuestPrice == null
                 ? ""
                 : String(propertyResult.extraGuestPrice),
+            hasSeparateForeignPricing:
+              propertyResult.hasSeparateForeignPricing ?? false,
             seoTitle: propertyResult.seoTitle ?? "",
             seoDescription: propertyResult.seoDescription ?? "",
           });
@@ -703,6 +707,7 @@ export function PropertyWizard({
       childPrice: data.childPrice === "" ? null : Number(data.childPrice),
       extraGuestPrice:
         data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
+      hasSeparateForeignPricing: data.hasSeparateForeignPricing,
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       landAreaM2: data.landArea === "" ? null : Number(data.landArea),
       floorsCount: data.floors === "" ? null : Number(data.floors),
@@ -963,6 +968,7 @@ export function PropertyWizard({
         childPrice: data.childPrice === "" ? null : Number(data.childPrice),
         extraGuestPrice:
           data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
+        hasSeparateForeignPricing: data.hasSeparateForeignPricing,
       });
     if (step === 9)
       saved = await updatePropertySection("seo", {
@@ -1758,6 +1764,29 @@ export function PropertyWizard({
                   value={formatLocalizedAmount(data.extraGuestPrice)}
                 />
               </KoochField>
+            </div>
+
+            <div className="border-t border-border pt-4">
+              <label className="flex cursor-pointer items-start justify-between gap-4 rounded-lg border border-border bg-muted/40 p-4">
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-foreground">
+                    قیمت مهمان خارجی متفاوت است
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                    اگر خاموش باشد، قیمت مهمان ایرانی برای مهمان خارجی نیز
+                    استفاده می‌شود.
+                  </span>
+                </span>
+                <input
+                  aria-label="قیمت مهمان خارجی متفاوت است"
+                  checked={data.hasSeparateForeignPricing}
+                  className="mt-0.5 h-5 w-5 shrink-0 accent-primary"
+                  onChange={(event) =>
+                    update("hasSeparateForeignPricing", event.target.checked)
+                  }
+                  type="checkbox"
+                />
+              </label>
             </div>
           </section>
         )}
