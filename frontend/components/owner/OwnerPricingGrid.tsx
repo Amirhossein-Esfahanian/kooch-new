@@ -1314,13 +1314,20 @@ export function OwnerPricingGrid({
           className="flex flex-wrap items-center gap-2 lg:col-start-3 lg:row-start-1 lg:justify-self-end"
           dir="rtl"
         >
-          <div className="inline-flex rounded-lg border border-border bg-muted p-1">
+          <div
+            aria-label="نوع نمایش قیمت"
+            className="inline-flex rounded-lg border border-border  p-1"
+            role="group"
+          >
             <button
-              className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${
+              aria-label="نمایش پیش‌فرض"
+              aria-pressed={viewMode === "default"}
+              className={`grid size-9 place-items-center rounded-lg transition-colors duration-150 ease-out ${
                 viewMode === "default"
                   ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "text-muted-foreground hover:bg-background hover:text-foreground"
               }`}
+              title="نمایش پیش‌فرض"
               type="button"
               onClick={() => {
                 if (viewMode === "default") return;
@@ -1329,14 +1336,30 @@ export function OwnerPricingGrid({
                 setCalendarEditorOpen(false);
               }}
             >
-              نمایش پیش‌فرض
+              <span
+                aria-hidden="true"
+                className="size-8 bg-current"
+                style={{
+                  WebkitMaskImage: 'url("/svgs/default.svg")',
+                  WebkitMaskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskSize: "contain",
+                  maskImage: 'url("/svgs/default.svg")',
+                  maskPosition: "center",
+                  maskRepeat: "no-repeat",
+                  maskSize: "contain",
+                }}
+              />
             </button>
             <button
-              className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${
+              aria-label="نمایش جدول"
+              aria-pressed={viewMode === "table"}
+              className={`grid size-9 place-items-center rounded-lg transition-colors duration-150 ease-out ${
                 viewMode === "table"
                   ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "text-muted-foreground hover:bg-background hover:text-foreground"
               }`}
+              title="نمایش جدول"
               type="button"
               onClick={() => {
                 if (viewMode === "table") return;
@@ -1345,14 +1368,30 @@ export function OwnerPricingGrid({
                 setCalendarEditorOpen(false);
               }}
             >
-              نمایش جدول آزمایشی
+              <span
+                aria-hidden="true"
+                className="size-8 bg-current"
+                style={{
+                  WebkitMaskImage: 'url("/svgs/table-2.svg")',
+                  WebkitMaskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskSize: "contain",
+                  maskImage: 'url("/svgs/table-2.svg")',
+                  maskPosition: "center",
+                  maskRepeat: "no-repeat",
+                  maskSize: "contain",
+                }}
+              />
             </button>
             <button
-              className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${
+              aria-label="نمایش تقویم"
+              aria-pressed={viewMode === "calendar"}
+              className={`grid size-9 place-items-center rounded-lg transition-colors duration-150 ease-out ${
                 viewMode === "calendar"
                   ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                  : "text-muted-foreground hover:bg-background hover:text-foreground"
               }`}
+              title="نمایش تقویم"
               type="button"
               onClick={() => {
                 if (viewMode === "calendar") return;
@@ -1361,7 +1400,20 @@ export function OwnerPricingGrid({
                 setCalendarEditorOpen(false);
               }}
             >
-              نمایش تقویم آزمایشی
+              <span
+                aria-hidden="true"
+                className="size-8 bg-current"
+                style={{
+                  WebkitMaskImage: 'url("/svgs/calendar-2.svg")',
+                  WebkitMaskPosition: "center",
+                  WebkitMaskRepeat: "no-repeat",
+                  WebkitMaskSize: "contain",
+                  maskImage: 'url("/svgs/calendar-2.svg")',
+                  maskPosition: "center",
+                  maskRepeat: "no-repeat",
+                  maskSize: "contain",
+                }}
+              />
             </button>
           </div>
         </div>
