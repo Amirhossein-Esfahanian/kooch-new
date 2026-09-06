@@ -309,6 +309,7 @@ export function OwnerPricingGrid({
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryError, setInventoryError] = useState("");
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [guestPricingRulesOpen, setGuestPricingRulesOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<RoomDailyPriceHistoryResponse[]>([]);
   const [quickPriceHistory, setQuickPriceHistory] = useState<
@@ -1428,28 +1429,6 @@ export function OwnerPricingGrid({
         editHref={propertyEditHref}
         warnings={pricingWarnings}
       />
-      {pricingWarnings.length === 0 && property && (
-        <KoochAlert
-          className="mt-5"
-          dir="rtl"
-          title="قوانین قیمت مهمانان"
-          variant="success"
-        >
-          <div className="flex flex-wrap gap-4">
-            <span>
-              نرخ کودک:{" "}
-              {formatPriceWithCurrency(property.childPrice ?? 0, currencyLabel)}
-            </span>
-            <span>
-              نرخ نفر اضافه:{" "}
-              {formatPriceWithCurrency(
-                property.extraGuestPrice ?? 0,
-                currencyLabel,
-              )}
-            </span>
-          </div>
-        </KoochAlert>
-      )}
       {shouldShowNoRoomsState ? (
         <KoochCard
           className="mt-5 flex flex-col items-center justify-center gap-4 border-dashed py-10 text-center"
@@ -1474,21 +1453,44 @@ export function OwnerPricingGrid({
         </KoochCard>
       ) : (
         <>
-          {shouldShowNoPricingWarning && (
-            <KoochAlert
-              className="mt-5"
-              dir="rtl"
-              title="قیمت ثبت نشده"
-              variant="warning"
-            >
-              هنوز قیمتی برای این اقامتگاه ثبت نشده است.
-            </KoochAlert>
-          )}
-          {shouldShowNoPricingWarning && (
-            <p className="mt-3 rounded-xl border border-border bg-muted px-4 py-3 text-right text-sm font-semibold text-muted-foreground">
-              برای این بازه هنوز قیمتی ثبت نشده است.
-            </p>
-          )}
+          <div
+            className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-y border-border/70 py-2 text-sm"
+            dir="rtl"
+          >
+            <div className="min-h-5">
+              {shouldShowNoPricingWarning && (
+                <span className="font-semibold text-[var(--theme-warning)]">
+                  برای این بازه هنوز قیمتی ثبت نشده است.
+                </span>
+              )}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-muted-foreground">
+              {currencyLabel && (
+                <span>
+                  واحد قیمت:{" "}
+                  <span className="text-foreground">{currencyLabel}</span>
+                </span>
+              )}
+
+              {pricingWarnings.length === 0 && property && (
+                <button
+                  className="inline-flex items-center gap-1.5 text-foreground transition hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  onClick={() => setGuestPricingRulesOpen(true)}
+                  type="button"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid size-5 shrink-0 place-items-center rounded-full bg-blue-100 text-[11px] font-black leading-none text-blue-600 dark:bg-blue-950/50 dark:text-blue-300"
+                  >
+                    i
+                  </span>
+                  <span>قوانین قیمت مهمانان</span>
+                </button>
+              )}
+            </div>
+          </div>
+
           <div className="mt-5">
             {usePricingCalendar ? (
               <div className="grid gap-4">
@@ -1918,6 +1920,42 @@ export function OwnerPricingGrid({
           </dl>
         )}
       </KoochConfirmDialog>
+
+      <KoochDialog
+        description="نرخ‌های تکمیلی اقامتگاه برای مهمانان."
+        onOpenChange={setGuestPricingRulesOpen}
+        open={guestPricingRulesOpen}
+        size="sm"
+        title="قوانین قیمت مهمانان"
+      >
+        {property && (
+          <div className="grid gap-3" dir="rtl">
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/50 px-3 py-3">
+              <span className="text-sm font-medium text-muted-foreground">
+                نرخ کودک
+              </span>
+              <span className="text-sm font-semibold text-foreground">
+                {formatPriceWithCurrency(
+                  property.childPrice ?? 0,
+                  currencyLabel,
+                )}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-muted/50 px-3 py-3">
+              <span className="text-sm font-medium text-muted-foreground">
+                نرخ نفر اضافه
+              </span>
+              <span className="text-sm font-semibold text-foreground">
+                {formatPriceWithCurrency(
+                  property.extraGuestPrice ?? 0,
+                  currencyLabel,
+                )}
+              </span>
+            </div>
+          </div>
+        )}
+      </KoochDialog>
 
       <PricingBulkEditDialog
         onOpenChange={setBulkEditOpen}
