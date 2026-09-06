@@ -474,6 +474,12 @@ export function OwnerPricingGrid({
     );
   }, [activeMonth, propertyId, usePricingCalendar]);
   useEffect(() => {
+    if (!usePricingMatrix) return;
+    loadInventoryMonth().catch((caught: Error) =>
+      setInventoryError(caught.message),
+    );
+  }, [activeMonth, propertyId, usePricingMatrix]);
+  useEffect(() => {
     setCalendarSelections({});
     setCalendarActiveRoomId(null);
     setCalendarEditorOpen(false);
@@ -1857,7 +1863,18 @@ export function OwnerPricingGrid({
                   dayjs(date).isBefore(dayjs().startOf("day"), "day")
                 }
                 holidayDateResolver={(date) => dayjs(date).day() === 5}
-                loading={loading || !hasLoadedPricing}
+                getInventoryValue={(rowId, date) => {
+                  const inventoryRoom = inventoryRoomById.get(Number(rowId));
+                  if (!inventoryRoom) return null;
+                  const inventoryDay = inventoryRoom.days.find(
+                    (day) => day.date === date,
+                  );
+                  return {
+                    availableCount: inventoryDay?.availableCount ?? 0,
+                    totalInventory: inventoryRoom.totalInventory,
+                  };
+                }}
+                loading={loading || inventoryLoading || !hasLoadedPricing}
                 childPrice={property?.childPrice}
                 extraGuestPrice={property?.extraGuestPrice}
               />

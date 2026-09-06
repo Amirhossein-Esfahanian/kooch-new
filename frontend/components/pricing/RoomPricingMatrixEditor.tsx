@@ -5,12 +5,9 @@ import { toast } from "sonner";
 import {
   CalendarGridDay,
   CalendarRangeApplyPayload,
+  CalendarSelectionEditor,
 } from "@/components/CalendarRangeGridEditor";
-import { KoochAlert } from "@/components/KoochAlert";
-import { KoochButton } from "@/components/KoochButton";
-import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
-import { QuickPriceSelector } from "@/components/pricing/QuickPriceSelector";
 
 type PricingMatrixRoom = {
   id: number | string;
@@ -33,25 +30,6 @@ function toPersianNumber(value: string | number) {
 
 function toPersianDigits(value: string | number) {
   return String(value).replace(/\d/g, (digit) => "۰۱۲۳۴۵۶۷۸۹"[Number(digit)]);
-}
-
-function normalizeDigits(value: string) {
-  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
-  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
-
-  return value
-    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
-    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)));
-}
-
-function parsePriceInput(value: string) {
-  const normalized = normalizeDigits(value)
-    .replace(/[٬,\s]/g, "")
-    .replace(/[^\d.-]/g, "");
-
-  if (normalized === "") return "";
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : "";
 }
 
 export interface RoomPricingMatrixEditorProps<
@@ -78,6 +56,11 @@ export interface RoomPricingMatrixEditorProps<
   disabledDateResolver?: (date: string) => boolean;
   /** Marks holidays for destructive/red date styling. */
   holidayDateResolver?: (date: string) => boolean;
+  /** Reads the daily sellable inventory used only for the compact matrix ratio. */
+  getInventoryValue?: (
+    rowId: RowType["id"],
+    date: string,
+  ) => { availableCount: number; totalInventory: number } | null;
   /** Keeps the matrix footprint stable while prices are loading. */
   loading?: boolean;
   readonly?: boolean;
@@ -101,16 +84,17 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   pricingValueResolver = (v: any) => ({ basePrice: v?.basePrice ?? 0 }),
   disabledDateResolver,
   holidayDateResolver,
+  getInventoryValue,
   loading = false,
   readonly = false,
-  childPrice,
-  extraGuestPrice,
 }: RoomPricingMatrixEditorProps<RowType>) {
   const [selection, setSelection] = useState(() => new Set<string>());
   const [editorValue, setEditorValue] = useState<number | "">("");
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [pendingValue, setPendingValue] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [localError, setLocalError] = useState("");
   const matrixRootRef = useRef<HTMLDivElement | null>(null);
   const matrixViewportRef = useRef<HTMLDivElement | null>(null);
   const [matrixViewportHeight, setMatrixViewportHeight] = useState<
@@ -134,26 +118,14 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     return new Set(selectedCells.map((cell) => cell.date)).size;
   }, [selectedCells]);
 
-  const selectedDateRangeLabel = useMemo(() => {
-    const sortedDates = selectedCells.map((cell) => cell.date).sort();
-    if (!sortedDates.length) return "";
-
-    const dayByDate = new Map(days.map((day) => [day.date, day]));
-
-    function formatSelectedDate(date: string) {
-      const day = dayByDate.get(date);
-      if (!day) return toPersianDigits(date);
-
-      return `${toPersianDigits(day.label)} ${day.weekday}`.trim();
-    }
-
-    const first = formatSelectedDate(sortedDates[0]);
-    const last = formatSelectedDate(sortedDates[sortedDates.length - 1]);
-
-    return sortedDates[0] === sortedDates[sortedDates.length - 1]
-      ? first
-      : `${first} تا ${last}`;
-  }, [days, selectedCells]);
+  const selectedRoomLabels = useMemo(() => {
+    const selectedRoomIds = new Set(
+      selectedCells.map((cell) => String(cell.roomId)),
+    );
+    return rows
+      .filter((row) => selectedRoomIds.has(String(row.id)))
+      .map((row) => row.label);
+  }, [rows, selectedCells]);
 
   const selectedValues = useMemo(() => {
     return selectedCells
@@ -185,6 +157,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   useEffect(() => {
     if (selectedItems.length === 0) {
       setPanelOpen(false);
+      setLocalError("");
     }
   }, [selectedItems.length]);
 
@@ -307,6 +280,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   function clearSelections() {
     setSelection(new Set());
     setEditorValue("");
+    setLocalError("");
   }
 
   function buildPayloadForApply(value: number): CalendarRangeApplyPayload {
@@ -339,8 +313,10 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   }
 
   async function applyValue(value: number) {
-    if (selectedItems.length === 0) return;
+    if (selectedItems.length === 0 || saving) return;
     const payload = buildPayloadForApply(value);
+    setSaving(true);
+    setLocalError("");
     try {
       if (confirmApplyRange && !(await confirmApplyRange(payload))) return;
       await onApplyRange(payload);
@@ -352,7 +328,10 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "اعمال قیمت با خطا مواجه شد.";
+      setLocalError(message);
       toast.error(message);
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -390,10 +369,12 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     );
 
     try {
+      setLocalError("");
       await onCopyPricing(payload);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "کپی قیمت‌ها انجام نشد.";
+      setLocalError(message);
       toast.error(message);
     }
   }
@@ -407,26 +388,6 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
             : "برای ویرایش قیمت، سلول‌هایی را انتخاب کنید."}
         </div>
       </div>
-
-      {!panelOpen && selectedItems.length > 0 && (
-        <div className="fixed inset-x-0 bottom-4 z-[80] mx-auto flex max-w-md justify-center px-3">
-          <div className="flex w-full items-center justify-between gap-3 rounded-full border border-border bg-card/95 px-4 py-2 shadow-lg backdrop-blur">
-            <span className="min-w-0 truncate text-sm font-bold text-foreground">
-              {toPersianNumber(selectedItems.length)} خانه /{" "}
-              {toPersianNumber(selectedDayCount)} روز انتخاب شده
-            </span>
-
-            <KoochButton
-              onClick={() => setPanelOpen(true)}
-              size="sm"
-              type="button"
-              variant="primary"
-            >
-              ویرایش قیمت
-            </KoochButton>
-          </div>
-        </div>
-      )}
 
       <div className="w-full min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
         <div
@@ -487,9 +448,6 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                       <span className="block truncate text-[11px] font-semibold leading-4 text-foreground">
                         {r.label}
                       </span>
-                      <span className="block truncate text-[9px] font-medium leading-3 text-muted-foreground">
-                        موجودی کل: {toPersianNumber(r.totalInventory ?? 0)}
-                      </span>
                     </th>
                   ))}
                 </tr>
@@ -531,19 +489,15 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                         const cell = getCellValue(r.id, d.date) ?? {};
                         const basePrice =
                           pricingValueResolver(cell)?.basePrice ?? 0;
-                        const isActive = cell.isActive ?? r.isActive ?? true;
-                        const cellInventory =
-                          cell.available ??
-                          cell.inventory ??
-                          cell.capacity ??
-                          "-";
+                        const inventoryValue =
+                          getInventoryValue?.(r.id, d.date) ?? null;
                         const k = keyFor(r.id, d.date);
                         const selected = selection.has(k);
                         const disabled = readonly || isDisabled;
                         const inventoryLabel =
-                          typeof cellInventory === "number"
-                            ? toPersianNumber(cellInventory)
-                            : toPersianDigits(cellInventory);
+                          inventoryValue && inventoryValue.totalInventory > 0
+                            ? `${toPersianNumber(inventoryValue.availableCount)}/${toPersianNumber(inventoryValue.totalInventory)}`
+                            : "—";
                         return (
                           <td
                             key={String(r.id) + "|" + d.date}
@@ -562,11 +516,10 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                                 {formatPrice(basePrice)}
                               </div>
                               <div
-                                className={`truncate text-[9px] leading-3 ${disabled ? "text-muted-foreground/70" : !isActive ? "text-destructive" : "text-muted-foreground"}`}
+                                className={`truncate text-[9px] leading-3 ${disabled ? "text-muted-foreground/70" : "text-muted-foreground"}`}
+                                title="موجودی روز / ظرفیت کل"
                               >
-                                {isActive
-                                  ? `موجودی ${inventoryLabel}`
-                                  : `غیرفعال · ${inventoryLabel}`}
+                                {inventoryLabel}
                               </div>
                             </button>
                           </td>
@@ -581,163 +534,37 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
         </div>
       </div>
 
-      {panelOpen && (
-        <div className="fixed  inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3">
-          <KoochCard
-            className="w-full  border-border/70 shadow-lg"
-            variant="elevated"
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h3 className="text-lg font-bold text-foreground">
-                  ویرایش انتخاب‌شده‌ها
-                </h3>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  {selectedItems.length > 0
-                    ? `${toPersianNumber(selectedDayCount)} روز انتخاب شده`
-                    : "برای اعمال قیمت، ابتدا سلول‌هایی را انتخاب کنید."}
-                </p>
-                {selectedCells.length > 0 && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {selectedDateRangeLabel}
-                  </p>
-                )}
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <KoochButton
-                  onClick={() => setPanelOpen(false)}
-                  type="button"
-                  variant="outline"
-                >
-                  بستن
-                </KoochButton>
-                <KoochButton
-                  onClick={() => {
-                    setEditorValue("");
-                    clearSelections();
-                    setPanelOpen(false);
-                  }}
-                  type="button"
-                  variant="outline"
-                >
-                  انصراف
-                </KoochButton>
-                {onCopyPricing && (
-                  <KoochButton
-                    onClick={() => void handleCopyPricing()}
-                    disabled={selectedItems.length === 0}
-                    type="button"
-                    variant="outline"
-                  >
-                    کپی قیمت‌ها
-                  </KoochButton>
-                )}
-                <KoochButton
-                  onClick={() => {
-                    if (
-                      typeof editorValue === "number" &&
-                      Number.isFinite(editorValue)
-                    ) {
-                      void handleApply(editorValue);
-                    }
-                  }}
-                  disabled={selectedItems.length === 0 || editorValue === ""}
-                  type="button"
-                  variant="primary"
-                >
-                  اعمال قیمت
-                </KoochButton>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
-              <div className="space-y-3">
-                <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold text-muted-foreground">
-                        قیمت فعلی پیش‌فرض
-                      </p>
-                      <p className="text-sm font-bold text-foreground">
-                        {currentPrefillValue !== null
-                          ? `${formatPrice(currentPrefillValue)} ${pricingCurrencyLabel ?? "تومان"}`
-                          : hasMixedValues
-                            ? "مقادیر مختلفی در سلول‌های انتخاب‌شده وجود دارد"
-                            : "قیمت را وارد کنید"}
-                      </p>
-                    </div>
-                    <div className="min-w-[8rem]">
-                      <label
-                        className="mb-1 block text-xs font-semibold text-muted-foreground"
-                        htmlFor="matrix-price-input"
-                      >
-                        مقدار قیمت
-                      </label>
-                      <input
-                        id="matrix-price-input"
-                        inputMode="numeric"
-                        type="text"
-                        value={
-                          typeof editorValue === "number"
-                            ? formatPrice(editorValue)
-                            : ""
-                        }
-                        onChange={(event) =>
-                          setEditorValue(parsePriceInput(event.target.value))
-                        }
-                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                        placeholder="قیمت"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {hasMixedValues && (
-                  <KoochAlert
-                    className="border-dashed"
-                    title="مقدار ترکیبی"
-                    variant="warning"
-                  >
-                    چند سلول با قیمت‌های متفاوت انتخاب شده‌اند. قیمت جدید برای
-                    همه‌ی سلول‌ها اعمال می‌شود.
-                  </KoochAlert>
-                )}
-
-                {(childPrice != null || extraGuestPrice != null) && (
-                  <KoochAlert
-                    className="border-dashed"
-                    title="قوانین مهمانان"
-                    variant="default"
-                  >
-                    <div className="flex flex-wrap gap-3">
-                      {childPrice != null && (
-                        <span>
-                          نرخ کودک: {formatPrice(childPrice)}{" "}
-                          {pricingCurrencyLabel ?? "تومان"}
-                        </span>
-                      )}
-                      {extraGuestPrice != null && (
-                        <span>
-                          نرخ نفر اضافه: {formatPrice(extraGuestPrice)}{" "}
-                          {pricingCurrencyLabel ?? "تومان"}
-                        </span>
-                      )}
-                    </div>
-                  </KoochAlert>
-                )}
-              </div>
-
-              <div className="w-full space-y-3 lg:w-[18rem]">
-                <QuickPriceSelector
-                  className="w-full"
-                  prices={quickPricePresets}
-                  onSelect={(price) => setEditorValue(price)}
-                />
-              </div>
-            </div>
-          </KoochCard>
-        </div>
-      )}
+      <CalendarSelectionEditor
+        error={localError}
+        mixedPricingValue={hasMixedValues}
+        mode="pricing"
+        onCancel={clearSelections}
+        onCopyPricing={
+          onCopyPricing ? () => void handleCopyPricing() : undefined
+        }
+        onOpenChange={setPanelOpen}
+        onPriceValueChange={(value) => {
+          setEditorValue(value);
+          setLocalError("");
+        }}
+        onSave={() => {
+          if (typeof editorValue === "number" && Number.isFinite(editorValue)) {
+            return handleApply(editorValue);
+          }
+          setLocalError("قیمت معتبر وارد کنید.");
+        }}
+        open={panelOpen}
+        priceValue={typeof editorValue === "number" ? editorValue : Number.NaN}
+        pricingCurrencyLabel={pricingCurrencyLabel}
+        quickPricePresets={quickPricePresets}
+        saving={saving}
+        selectedCount={selectedItems.length}
+        selectedDayCount={selectedDayCount}
+        selectedRoomLabels={selectedRoomLabels}
+        selectionRangeCount={selectedItems.length}
+        valueInputType="number"
+        valueLabel="نرخ اتاق"
+      />
 
       <KoochConfirmDialog
         cancelText="انصراف"
