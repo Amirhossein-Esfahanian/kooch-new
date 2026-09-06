@@ -448,8 +448,8 @@ export function OwnerPricingGrid({
   );
   const propertyEditHref =
     context === "admin"
-      ? `/admin/properties/${propertyId}?step=7`
-      : `/owner/properties/${propertyId}?step=7`;
+      ? `/admin/properties/${propertyId}?step=8`
+      : `/owner/properties/${propertyId}?step=8`;
   const roomsHref =
     context === "admin"
       ? `/admin/properties/${propertyId}/rooms`
@@ -1306,20 +1306,103 @@ export function OwnerPricingGrid({
       className="min-w-0 max-w-full overflow-hidden"
       variant="elevated"
     >
-      <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-        <div className="min-w-0" />
+      <div
+        className="grid min-w-0 grid-cols-1 gap-2 lg:grid-cols-[1fr_auto_1fr] lg:items-center"
+        dir="ltr"
+      >
+        <div
+          className="flex flex-wrap items-center gap-2 lg:col-start-3 lg:row-start-1 lg:justify-self-end"
+          dir="rtl"
+        >
+          <div className="inline-flex rounded-lg border border-border bg-muted p-1">
+            <button
+              className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${
+                viewMode === "default"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              type="button"
+              onClick={() => {
+                if (viewMode === "default") return;
+                setUsePricingMatrix(false);
+                setUsePricingCalendar(false);
+                setCalendarEditorOpen(false);
+              }}
+            >
+              نمایش پیش‌فرض
+            </button>
+            <button
+              className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${
+                viewMode === "table"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              type="button"
+              onClick={() => {
+                if (viewMode === "table") return;
+                setUsePricingMatrix(true);
+                setUsePricingCalendar(false);
+                setCalendarEditorOpen(false);
+              }}
+            >
+              نمایش جدول آزمایشی
+            </button>
+            <button
+              className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${
+                viewMode === "calendar"
+                  ? "bg-primary text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-muted hover:text-foreground"
+              }`}
+              type="button"
+              onClick={() => {
+                if (viewMode === "calendar") return;
+                setUsePricingMatrix(false);
+                setUsePricingCalendar(true);
+                setCalendarEditorOpen(false);
+              }}
+            >
+              نمایش تقویم آزمایشی
+            </button>
+          </div>
+        </div>
 
-        <div className="grid min-w-0 gap-2 sm:flex sm:flex-wrap sm:justify-end">
+        <div
+          className="grid grid-cols-3 gap-2 lg:col-start-2 lg:row-start-1 lg:justify-self-center"
+          dir="rtl"
+        >
           <KoochButton
             className="w-full sm:w-auto"
-            onClick={openHistory}
+            onClick={() =>
+              setActiveMonth(monthStart.subtract(1, "month").format("YYYY-MM"))
+            }
             size="sm"
             type="button"
             variant="outline"
           >
-            مشاهده سوابق تغییر قیمت
+            ماه قبل
           </KoochButton>
 
+          <strong className="min-w-0 rounded-lg bg-muted px-3 py-2 text-center text-sm text-foreground sm:min-w-32">
+            {monthTitle}
+          </strong>
+
+          <KoochButton
+            className="w-full sm:w-auto"
+            onClick={() =>
+              setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))
+            }
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            ماه بعد
+          </KoochButton>
+        </div>
+
+        <div
+          className="flex flex-wrap items-center gap-2 lg:col-start-1 lg:row-start-1 lg:justify-self-start"
+          dir="rtl"
+        >
           <KoochButton
             className="w-full sm:w-auto"
             disabled={!hasRooms}
@@ -1331,80 +1414,15 @@ export function OwnerPricingGrid({
             قیمت‌گذاری گروهی
           </KoochButton>
 
-          <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:items-center">
-            <KoochButton
-              className="w-full sm:w-auto"
-              onClick={() =>
-                setActiveMonth(
-                  monthStart.subtract(1, "month").format("YYYY-MM"),
-                )
-              }
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              ماه قبل
-            </KoochButton>
-
-            <strong className="min-w-0 rounded-lg bg-muted px-3 py-2 text-center text-sm text-foreground sm:min-w-32">
-              {monthTitle}
-            </strong>
-
-            <KoochButton
-              className="w-full sm:w-auto"
-              onClick={() =>
-                setActiveMonth(monthStart.add(1, "month").format("YYYY-MM"))
-              }
-              size="sm"
-              type="button"
-              variant="outline"
-            >
-              ماه بعد
-            </KoochButton>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <div className="inline-flex items-center gap-2 flex-wrap" dir="rtl">
-              <div className="inline-flex rounded-lg border border-border bg-muted p-1">
-                <button
-                  className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${viewMode === "default" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                  type="button"
-                  onClick={() => {
-                    if (viewMode === "default") return;
-                    setUsePricingMatrix(false);
-                    setUsePricingCalendar(false);
-                    setCalendarEditorOpen(false);
-                  }}
-                >
-                  نمایش پیش‌فرض
-                </button>
-                <button
-                  className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${viewMode === "table" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                  type="button"
-                  onClick={() => {
-                    if (viewMode === "table") return;
-                    setUsePricingMatrix(true);
-                    setUsePricingCalendar(false);
-                    setCalendarEditorOpen(false);
-                  }}
-                >
-                  نمایش جدول آزمایشی
-                </button>
-                <button
-                  className={`rounded-lg px-3 py-1 text-sm font-semibold transition ${viewMode === "calendar" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:bg-muted hover:text-foreground"}`}
-                  type="button"
-                  onClick={() => {
-                    if (viewMode === "calendar") return;
-                    setUsePricingMatrix(false);
-                    setUsePricingCalendar(true);
-                    setCalendarEditorOpen(false);
-                  }}
-                >
-                  نمایش تقویم آزمایشی
-                </button>
-              </div>
-            </div>
-          </div>
+          <KoochButton
+            className="w-full sm:w-auto"
+            onClick={openHistory}
+            size="sm"
+            type="button"
+            variant="outline"
+          >
+            مشاهده سوابق تغییر قیمت
+          </KoochButton>
         </div>
       </div>
       {hasSeparateForeignPricing && (
@@ -1510,7 +1528,7 @@ export function OwnerPricingGrid({
             </div>
           </div>
 
-          <div className="mt-5">
+          <div className="mt-3">
             {usePricingCalendar ? (
               <div className="grid gap-4">
                 <div
