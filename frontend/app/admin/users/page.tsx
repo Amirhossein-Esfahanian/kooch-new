@@ -1,6 +1,13 @@
 ﻿"use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -154,6 +161,24 @@ type UserForm = {
   permissions: AdminPermissionKey[];
 };
 
+type UserWizardStep = 1 | 2 | 3;
+
+const userWizardSteps: Array<{ step: UserWizardStep; label: string }> = [
+  { step: 1, label: "اطلاعات" },
+  { step: 2, label: "مجوزها" },
+  { step: 3, label: "بررسی و امنیت" },
+];
+
+function permissionLabel(permissionKey: AdminPermissionKey) {
+  for (const category of permissionCategories) {
+    const permission = category.permissions.find(
+      (item) => item.key === permissionKey,
+    );
+    if (permission) return permission.label;
+  }
+  return permissionKey;
+}
+
 const emptyForm: UserForm = {
   id: null,
   firstName: "",
@@ -184,6 +209,25 @@ function statusLabel(user: AdminUserResponse) {
   return user.isActive ? "فعال" : "غیرفعال";
 }
 
+function normalizeIranMobileInput(value: string) {
+  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
+  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
+
+  return value
+    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)))
+    .replace(/\D/g, "")
+    .slice(0, 11);
+}
+
+function validateIranMobile(value: string) {
+  if (!value) return "شماره موبایل الزامی است.";
+  if (!/^09\d{9}$/.test(value)) {
+    return "شماره موبایل باید ۱۱ رقم، فقط عدد و با ۰۹ شروع شود؛ مانند 09132645025.";
+  }
+  return "";
+}
+
 function validatePassword(password: string) {
   if (
     password.length < 8 ||
@@ -209,6 +253,8 @@ export default function AdminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [wizardStep, setWizardStep] = useState<UserWizardStep>(1);
+  const wizardContentRef = useRef<HTMLDivElement>(null);
   const [error, setError] = useState("");
   const [identityErrors, setIdentityErrors] =
     useState<CreateUserIdentityErrors>({});
@@ -235,6 +281,9 @@ export default function AdminUsersPage() {
       ),
     }))
     .filter((category) => category.permissions.length > 0);
+  const selectedAssignablePermissionCount = assignablePermissionKeys.filter(
+    (permission) => form.permissions.includes(permission),
+  ).length;
 
   const filteredUsers = useMemo(() => {
     const query = normalizeSearchText(searchTerm);
@@ -295,6 +344,30 @@ export default function AdminUsersPage() {
       .finally(() => setLoading(false));
   }, [authenticated, canManageUsers, sessionLoading, workspaces]);
 
+  useLayoutEffect(() => {
+    if (!dialogOpen) return;
+
+    const dialogBody = wizardContentRef.current?.closest(
+      '[data-slot="dialog-body"]',
+    ) as HTMLElement | null;
+    dialogBody?.scrollTo({ top: 0 });
+  }, [dialogOpen, wizardStep]);
+
+  function freezeWizardDialogHeight() {
+    const dialogContent = wizardContentRef.current?.closest(
+      '[data-slot="dialog-content"]',
+    ) as HTMLElement | null;
+    if (!dialogContent) return;
+
+    // Freeze the whole dialog at the exact natural height of step 1.
+    // Later steps can only scroll inside the body; they cannot resize it.
+    const currentHeight = Math.ceil(
+      dialogContent.getBoundingClientRect().height,
+    );
+    dialogContent.style.height = `${currentHeight}px`;
+    dialogContent.style.maxHeight = `${currentHeight}px`;
+  }
+
   function resetFilters() {
     setSearchTerm("");
     setRoleFilter("all");
@@ -305,6 +378,7 @@ export default function AdminUsersPage() {
     setForm(emptyForm);
     setError("");
     setIdentityErrors({});
+    setWizardStep(1);
     setDialogOpen(true);
   }
 
@@ -321,6 +395,7 @@ export default function AdminUsersPage() {
     });
     setError("");
     setIdentityErrors({});
+    setWizardStep(1);
     setDialogOpen(true);
   }
 
@@ -329,22 +404,61 @@ export default function AdminUsersPage() {
     setDialogOpen(false);
     setForm(emptyForm);
     setIdentityErrors({});
+    setWizardStep(1);
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
+  function validateIdentityStep() {
     const nextIdentityErrors = validateCreateUserIdentity({
       firstName: form.firstName,
       lastName: form.lastName,
       mobile: form.phoneNumber,
       email: form.email,
     });
+    const mobileError = validateIranMobile(form.phoneNumber);
+    if (mobileError) nextIdentityErrors.mobile = mobileError;
     setIdentityErrors(nextIdentityErrors);
     if (hasCreateUserIdentityErrors(nextIdentityErrors)) {
       const message = Object.values(nextIdentityErrors)[0]!;
       setError(message);
       toast.error(message);
+      return false;
+    }
+
+    setError("");
+    return true;
+  }
+
+  function goToNextWizardStep() {
+    if (wizardStep === 1) {
+      if (!validateIdentityStep()) return;
+      freezeWizardDialogHeight();
+      setWizardStep(2);
+      return;
+    }
+
+    if (wizardStep === 2) {
+      setError("");
+      setWizardStep(3);
+    }
+  }
+
+  function goToPreviousWizardStep() {
+    setError("");
+    setWizardStep((current) =>
+      current === 3 ? 2 : current === 2 ? 1 : current,
+    );
+  }
+
+  function handleWizardSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (wizardStep < 3) goToNextWizardStep();
+  }
+
+  async function saveUser() {
+    if (wizardStep !== 3 || saving) return;
+
+    if (!validateIdentityStep()) {
+      setWizardStep(1);
       return;
     }
 
@@ -687,56 +801,357 @@ export default function AdminUsersPage() {
           </KoochTable>
         </div>
         <KoochDialog
+          bodyClassName="overflow-x-hidden px-4 py-4"
           closeDisabled={saving}
           footer={
-            <>
-              <KoochButton
-                disabled={saving}
-                onClick={closeDialog}
-                type="button"
-                variant="outline"
-              >
-                لغو
-              </KoochButton>
-              <KoochButton
-                form="admin-user-form"
-                loading={saving}
-                type="submit"
-              >
-                ذخیره
-              </KoochButton>
-            </>
+            <div
+              className="flex w-full items-center justify-between gap-2"
+              dir="rtl"
+            >
+              <div>
+                {wizardStep > 1 && (
+                  <KoochButton
+                    disabled={saving}
+                    onClick={goToPreviousWizardStep}
+                    type="button"
+                    variant="outline"
+                  >
+                    قبلی
+                  </KoochButton>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2">
+                <KoochButton
+                  disabled={saving}
+                  onClick={closeDialog}
+                  type="button"
+                  variant="ghost"
+                >
+                  لغو
+                </KoochButton>
+
+                {wizardStep < 3 ? (
+                  <KoochButton
+                    disabled={saving}
+                    onClick={goToNextWizardStep}
+                    type="button"
+                  >
+                    ادامه
+                  </KoochButton>
+                ) : (
+                  <KoochButton
+                    loading={saving}
+                    onClick={() => void saveUser()}
+                    type="button"
+                  >
+                    ذخیره
+                  </KoochButton>
+                )}
+              </div>
+            </div>
           }
           onOpenChange={(open) => {
             if (!open) closeDialog();
             else setDialogOpen(true);
           }}
           open={dialogOpen}
+          size="sm"
           title={form.id ? "ویرایش کاربر" : "افزودن کاربر"}
         >
-          <form className="grid gap-4" id="admin-user-form" onSubmit={submit}>
-            <CreateUserFields
-              errors={identityErrors}
-              idPrefix="admin-user"
-              onChange={(identity) =>
-                setForm((current) => ({
-                  ...current,
-                  firstName: identity.firstName,
-                  lastName: identity.lastName,
-                  phoneNumber: identity.mobile,
-                  email: identity.email,
-                }))
-              }
-              value={{
-                firstName: form.firstName,
-                lastName: form.lastName,
-                mobile: form.phoneNumber,
-                email: form.email,
-              }}
-            />
+          <form
+            className="grid gap-4"
+            id="admin-user-form"
+            onSubmit={handleWizardSubmit}
+          >
+            <div ref={wizardContentRef}>
+              <div
+                aria-label="مراحل فرم کاربر"
+                className="relative grid min-w-0 grid-cols-3 items-start pb-2"
+                dir="rtl"
+              >
+                <span
+                  aria-hidden="true"
+                  className={`absolute right-[16.6667%] top-[11px] h-0.5 w-1/3 rounded-full transition-colors duration-150 ease-out ${
+                    wizardStep >= 2 ? "bg-primary" : "bg-border"
+                  }`}
+                />
+                <span
+                  aria-hidden="true"
+                  className={`absolute right-1/2 top-[11px] h-0.5 w-1/3 rounded-full transition-colors duration-150 ease-out ${
+                    wizardStep >= 3 ? "bg-primary" : "bg-border"
+                  }`}
+                />
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <>
+                {userWizardSteps.map((item) => {
+                  const active = wizardStep === item.step;
+                  const completed = wizardStep > item.step;
+                  const reached = active || completed;
+
+                  return (
+                    <div
+                      className="relative z-10 grid min-w-0 justify-items-center gap-1.5 px-1"
+                      key={item.step}
+                    >
+                      <span
+                        className={`grid h-6 w-6 place-items-center rounded-full border text-[10px] font-bold transition-colors duration-150 ease-out ${
+                          reached
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-border bg-background text-muted-foreground"
+                        }`}
+                      >
+                        {item.step.toLocaleString("fa-IR")}
+                      </span>
+                      <span
+                        className={`max-w-full truncate text-center text-[11px] font-medium leading-4 ${
+                          reached ? "text-primary" : "text-muted-foreground"
+                        }`}
+                        title={item.label}
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {wizardStep === 1 && (
+              <div className="grid min-w-0 gap-4 [&_label]:text-[13px] [&_label]:font-semibold [&_label]:leading-5">
+                <div className="min-w-0 [&>div]:!grid-cols-1 [&>div]:items-start">
+                  <CreateUserFields
+                    errors={identityErrors}
+                    idPrefix="admin-user"
+                    onChange={(identity) =>
+                      setForm((current) => ({
+                        ...current,
+                        firstName: identity.firstName,
+                        lastName: identity.lastName,
+                        phoneNumber: normalizeIranMobileInput(identity.mobile),
+                        email: identity.email,
+                      }))
+                    }
+                    value={{
+                      firstName: form.firstName,
+                      lastName: form.lastName,
+                      mobile: form.phoneNumber,
+                      email: form.email,
+                    }}
+                  />
+                </div>
+
+                <KoochField label="نقش" required>
+                  <KoochSelect
+                    onChange={(event) =>
+                      setForm((current) => ({
+                        ...current,
+                        role: event.target.value as PlatformAdminRole,
+                        permissions:
+                          event.target.value === "AdminAssistant"
+                            ? current.permissions
+                            : [],
+                      }))
+                    }
+                    value={form.role}
+                  >
+                    {assignableRoles.map((role) => (
+                      <option key={role} value={role}>
+                        {roleLabels[role]}
+                      </option>
+                    ))}
+                  </KoochSelect>
+                </KoochField>
+              </div>
+            )}
+
+            {wizardStep === 2 && form.role === "AdminAssistant" && (
+              <div className="grid gap-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">
+                      مجوزهای دسترسی
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {selectedAssignablePermissionCount.toLocaleString(
+                        "fa-IR",
+                      )}{" "}
+                      از{" "}
+                      {assignablePermissionKeys.length.toLocaleString("fa-IR")}{" "}
+                      مجوز انتخاب شده
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <KoochButton
+                      onClick={() =>
+                        setCategoryPermissions(assignablePermissionKeys, true)
+                      }
+                      size="sm"
+                      type="button"
+                      variant="outline"
+                    >
+                      انتخاب همه
+                    </KoochButton>
+                    <KoochButton
+                      disabled={selectedAssignablePermissionCount === 0}
+                      onClick={() =>
+                        setCategoryPermissions(assignablePermissionKeys, false)
+                      }
+                      size="sm"
+                      type="button"
+                      variant="ghost"
+                    >
+                      پاک کردن
+                    </KoochButton>
+                  </div>
+                </div>
+
+                <div className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-card">
+                  {assignablePermissionCategories.map((category) => {
+                    const categoryKeys = category.permissions.map(
+                      (permission) => permission.key,
+                    );
+                    const categorySelected = categoryKeys.every((permission) =>
+                      form.permissions.includes(permission),
+                    );
+                    const singlePermission = category.permissions.length === 1;
+
+                    if (singlePermission) {
+                      const permission = category.permissions[0];
+                      return (
+                        <div className="px-3 py-2.5" key={category.key}>
+                          <KoochCheckbox
+                            checked={form.permissions.includes(permission.key)}
+                            label={permission.label}
+                            onChange={(event) =>
+                              setPermission(
+                                permission.key,
+                                event.target.checked,
+                              )
+                            }
+                          />
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div
+                        className="grid gap-2.5 px-3 py-3"
+                        key={category.key}
+                      >
+                        <KoochCheckbox
+                          checked={categorySelected}
+                          label={category.label}
+                          onChange={(event) =>
+                            setCategoryPermissions(
+                              categoryKeys,
+                              event.target.checked,
+                            )
+                          }
+                          wrapperClassName="font-bold"
+                        />
+                        <div className="grid gap-2 border-r border-border pr-4">
+                          {category.permissions.map((permission) => (
+                            <KoochCheckbox
+                              checked={form.permissions.includes(
+                                permission.key,
+                              )}
+                              key={permission.key}
+                              label={permission.label}
+                              onChange={(event) =>
+                                setPermission(
+                                  permission.key,
+                                  event.target.checked,
+                                )
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {wizardStep === 2 && form.role === "SuperAdmin" && (
+              <KoochCard padding="sm" variant="muted">
+                <p className="text-sm font-bold text-foreground">دسترسی کامل</p>
+                <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                  مدیر ارشد به‌صورت پیش‌فرض به همه بخش‌های پنل مدیریت دسترسی
+                  دارد و نیازی به انتخاب مجوز جداگانه نیست.
+                </p>
+              </KoochCard>
+            )}
+
+            {wizardStep === 3 && (
+              <div className="grid gap-4">
+                <KoochCard padding="sm" variant="muted">
+                  <div className="grid gap-3 text-sm">
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-muted-foreground">کاربر</span>
+                      <span className="text-left font-bold text-foreground">
+                        {[form.firstName, form.lastName]
+                          .filter(Boolean)
+                          .join(" ") || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-muted-foreground">شماره تماس</span>
+                      <span className="font-semibold text-foreground" dir="ltr">
+                        {form.phoneNumber || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-muted-foreground">ایمیل</span>
+                      <span
+                        className="max-w-[65%] break-all text-left font-semibold text-foreground"
+                        dir="ltr"
+                      >
+                        {form.email || "—"}
+                      </span>
+                    </div>
+                    <div className="flex items-start justify-between gap-4">
+                      <span className="text-muted-foreground">نقش</span>
+                      <KoochBadge variant="muted">
+                        {roleLabels[form.role]}
+                      </KoochBadge>
+                    </div>
+                  </div>
+                </KoochCard>
+
+                {form.role === "AdminAssistant" && (
+                  <div className="grid gap-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-sm font-bold text-foreground">
+                        مجوزهای انتخاب‌شده
+                      </p>
+                      <span className="text-xs text-muted-foreground">
+                        {selectedAssignablePermissionCount.toLocaleString(
+                          "fa-IR",
+                        )}{" "}
+                        مجوز
+                      </span>
+                    </div>
+                    {selectedAssignablePermissionCount > 0 ? (
+                      <div className="flex max-h-28 flex-wrap gap-1.5 overflow-y-auto rounded-lg border border-border p-2">
+                        {assignablePermissionKeys
+                          .filter((permission) =>
+                            form.permissions.includes(permission),
+                          )
+                          .map((permission) => (
+                            <KoochBadge key={permission} variant="muted">
+                              {permissionLabel(permission)}
+                            </KoochBadge>
+                          ))}
+                      </div>
+                    ) : (
+                      <p className="rounded-lg border border-dashed border-border px-3 py-2 text-xs text-muted-foreground">
+                        هیچ مجوز سراسری انتخاب نشده است.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <KoochField
                   helperText={
                     form.id
@@ -758,128 +1173,7 @@ export default function AdminUsersPage() {
                     value={form.password}
                   />
                 </KoochField>
-              </>
-
-              <KoochField label="نقش" required>
-                <KoochSelect
-                  onChange={(event) =>
-                    setForm((current) => ({
-                      ...current,
-                      role: event.target.value as PlatformAdminRole,
-                      permissions:
-                        event.target.value === "AdminAssistant"
-                          ? current.permissions
-                          : [],
-                    }))
-                  }
-                  value={form.role}
-                >
-                  {assignableRoles.map((role) => (
-                    <option key={role} value={role}>
-                      {roleLabels[role]}
-                    </option>
-                  ))}
-                </KoochSelect>
-              </KoochField>
-            </div>
-
-            {form.role === "AdminAssistant" && (
-              <KoochCard padding="sm" variant="muted">
-                <div className="grid gap-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-bold text-foreground">
-                        مجوزها
-                      </p>
-                      <p className="mt-1 text-xs leading-6 text-muted-foreground">
-                        دسترسی‌های سراسری دستیار مدیر را انتخاب کنید.
-                      </p>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <KoochButton
-                        onClick={() =>
-                          setCategoryPermissions(assignablePermissionKeys, true)
-                        }
-                        size="sm"
-                        type="button"
-                        variant="outline"
-                      >
-                        انتخاب همه
-                      </KoochButton>
-                      <KoochButton
-                        disabled={form.permissions.length === 0}
-                        onClick={() =>
-                          setCategoryPermissions(
-                            assignablePermissionKeys,
-                            false,
-                          )
-                        }
-                        size="sm"
-                        type="button"
-                        variant="ghost"
-                      >
-                        پاک کردن همه
-                      </KoochButton>
-                    </div>
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {assignablePermissionCategories.map((category) => {
-                      const categoryKeys = category.permissions.map(
-                        (permission) => permission.key,
-                      );
-                      const categorySelected = categoryKeys.every(
-                        (permission) => form.permissions.includes(permission),
-                      );
-
-                      return (
-                        <div
-                          className="grid content-start gap-3 rounded-lg border border-border bg-card p-3"
-                          key={category.key}
-                        >
-                          <KoochCheckbox
-                            checked={categorySelected}
-                            label={category.label}
-                            onChange={(event) =>
-                              setCategoryPermissions(
-                                categoryKeys,
-                                event.target.checked,
-                              )
-                            }
-                            wrapperClassName="border-b border-border pb-2 font-bold"
-                          />
-                          <div className="grid gap-2">
-                            {category.permissions.map((permission) => (
-                              <KoochCheckbox
-                                checked={form.permissions.includes(
-                                  permission.key,
-                                )}
-                                key={permission.key}
-                                label={permission.label}
-                                onChange={(event) =>
-                                  setPermission(
-                                    permission.key,
-                                    event.target.checked,
-                                  )
-                                }
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              </KoochCard>
-            )}
-
-            {form.role === "SuperAdmin" && (
-              <KoochCard padding="sm" variant="muted">
-                <p className="text-sm font-bold text-foreground">مجوزها</p>
-                <p className="mt-1 text-xs leading-6 text-muted-foreground">
-                  مدیر ارشد به‌صورت پیش‌فرض به همه بخش‌ها دسترسی دارد.
-                </p>
-              </KoochCard>
+              </div>
             )}
           </form>
         </KoochDialog>
