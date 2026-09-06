@@ -498,7 +498,7 @@ export default function AdminUsersPage() {
             padding="sm"
             variant="elevated"
           >
-            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_190px_190px_auto] xl:items-end">
+            <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(320px,1fr)_180px_180px_auto] lg:items-end">
               <KoochField label="جستجو">
                 <KoochInput
                   onChange={(event) => setSearchTerm(event.target.value)}
@@ -539,66 +539,66 @@ export default function AdminUsersPage() {
                 </KoochSelect>
               </KoochField>
 
-              <div className="flex flex-wrap items-center gap-2">
-                <KoochButton
-                  disabled={!hasActiveFilters}
-                  onClick={resetFilters}
-                  type="button"
-                  variant="outline"
-                >
-                  حذف فیلترها
-                </KoochButton>
-              </div>
-            </div>
-
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4 text-sm text-muted-foreground">
-              <span>
-                نمایش {filteredUsers.length.toLocaleString("fa-IR")} از{" "}
-                {users.length.toLocaleString("fa-IR")} کاربر
-              </span>
-
-              {hasActiveFilters && (
-                <span className="rounded-md bg-[var(--theme-warning-soft)] px-3 py-1 text-xs font-bold text-[var(--theme-warning)]">
-                  فیلتر فعال است
-                </span>
-              )}
+              <KoochButton
+                disabled={!hasActiveFilters}
+                onClick={resetFilters}
+                type="button"
+                variant="outline"
+              >
+                حذف فیلترها
+              </KoochButton>
             </div>
           </KoochCard>
         )}
+
+        {!loading && users.length > 0 && (
+          <div
+            className="flex min-h-6 flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground"
+            dir="rtl"
+          >
+            <span>
+              {hasActiveFilters
+                ? `نمایش ${filteredUsers.length.toLocaleString("fa-IR")} از ${users.length.toLocaleString("fa-IR")} کاربر`
+                : `${users.length.toLocaleString("fa-IR")} کاربر`}
+            </span>
+
+            {hasActiveFilters && (
+              <span className="rounded-md bg-[var(--theme-warning-soft)] px-2 py-1 font-bold text-[var(--theme-warning)]">
+                فیلتر فعال است
+              </span>
+            )}
+          </div>
+        )}
+
         <div className="min-w-0 max-w-full">
           <KoochTable>
             <KoochTableHeader>
               <KoochTableRow>
-                <KoochTableHead className="w-14">ردیف</KoochTableHead>
                 <KoochTableHead>کاربر</KoochTableHead>
                 <KoochTableHead>شماره تماس</KoochTableHead>
                 <KoochTableHead>نقش</KoochTableHead>
                 <KoochTableHead>وضعیت</KoochTableHead>
-                <KoochTableHead>عملیات</KoochTableHead>
+                <KoochTableHead className="w-28">عملیات</KoochTableHead>
               </KoochTableRow>
             </KoochTableHeader>
 
             <KoochTableBody>
               {loading ? (
-                <KoochTableEmpty colSpan={6}>
+                <KoochTableEmpty colSpan={5}>
                   در حال بارگذاری...
                 </KoochTableEmpty>
               ) : users.length === 0 ? (
-                <KoochTableEmpty colSpan={6}>
+                <KoochTableEmpty colSpan={5}>
                   هنوز کاربری ثبت نشده است.
                 </KoochTableEmpty>
               ) : filteredUsers.length === 0 ? (
-                <KoochTableEmpty colSpan={6}>
+                <KoochTableEmpty colSpan={5}>
                   موردی با فیلترهای انتخاب‌شده پیدا نشد.
                 </KoochTableEmpty>
               ) : (
-                filteredUsers.map((user, index) => (
+                filteredUsers.map((user) => (
                   <KoochTableRow key={user.id}>
-                    <KoochTableCell className="font-bold text-muted-foreground">
-                      {index + 1}
-                    </KoochTableCell>
-
-                    <KoochTableCell>
+                    <KoochTableCell className="min-w-56">
                       <p className="font-bold text-foreground">
                         {user.fullName || user.email}
                       </p>
@@ -610,8 +610,17 @@ export default function AdminUsersPage() {
                       </p>
                     </KoochTableCell>
 
-                    <KoochTableCell>{user.phoneNumber}</KoochTableCell>
-                    <KoochTableCell>{roleLabel(user.role)}</KoochTableCell>
+                    <KoochTableCell>
+                      <span className="font-medium" dir="ltr">
+                        {user.phoneNumber || "—"}
+                      </span>
+                    </KoochTableCell>
+
+                    <KoochTableCell>
+                      <KoochBadge variant="muted">
+                        {roleLabel(user.role)}
+                      </KoochBadge>
+                    </KoochTableCell>
 
                     <KoochTableCell>
                       <KoochBadge variant={statusVariant(user)}>
@@ -620,11 +629,12 @@ export default function AdminUsersPage() {
                     </KoochTableCell>
 
                     <KoochTableCell>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="flex items-center gap-2">
                         {(platformRole === "SuperAdmin" ||
                           user.role !== "SuperAdmin") && (
                           <>
                             <KoochButton
+                              aria-label="ویرایش کاربر"
                               title="ویرایش کاربر"
                               onClick={() => openEdit(user)}
                               size="sm"
@@ -643,24 +653,27 @@ export default function AdminUsersPage() {
                                 title="غیرفعال‌سازی کاربر"
                                 trigger={
                                   <KoochButton
+                                    aria-label="غیرفعال‌سازی کاربر"
                                     title="غیرفعال‌سازی کاربر"
                                     size="sm"
                                     type="button"
                                     variant="destructive"
                                   >
-                                    <KoochIcon name="suspend" />{" "}
+                                    <KoochIcon name="suspend" />
                                   </KoochButton>
                                 }
                                 variant="destructive"
                               />
                             ) : (
                               <KoochButton
+                                aria-label="فعال‌سازی کاربر"
+                                title="فعال‌سازی کاربر"
                                 onClick={() => setActive(user, true)}
                                 size="sm"
                                 type="button"
-                                variant="ghost"
+                                variant="outline"
                               >
-                                فعال
+                                فعال‌سازی
                               </KoochButton>
                             )}
                           </>
