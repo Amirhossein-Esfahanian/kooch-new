@@ -1316,7 +1316,7 @@ export function OwnerPricingGrid({
         >
           <div
             aria-label="نوع نمایش قیمت"
-            className="inline-flex rounded-lg border border-border  p-1"
+            className="inline-flex rounded-lg border border-border bg-muted p-1"
             role="group"
           >
             <button
@@ -1338,7 +1338,7 @@ export function OwnerPricingGrid({
             >
               <span
                 aria-hidden="true"
-                className="size-8 bg-current"
+                className="size-5 bg-current"
                 style={{
                   WebkitMaskImage: 'url("/svgs/default.svg")',
                   WebkitMaskPosition: "center",
@@ -1370,7 +1370,7 @@ export function OwnerPricingGrid({
             >
               <span
                 aria-hidden="true"
-                className="size-8 bg-current"
+                className="size-5 bg-current"
                 style={{
                   WebkitMaskImage: 'url("/svgs/table-2.svg")',
                   WebkitMaskPosition: "center",
@@ -1402,7 +1402,7 @@ export function OwnerPricingGrid({
             >
               <span
                 aria-hidden="true"
-                className="size-8 bg-current"
+                className="size-5 bg-current"
                 style={{
                   WebkitMaskImage: 'url("/svgs/calendar-2.svg")',
                   WebkitMaskPosition: "center",
@@ -1851,11 +1851,12 @@ export function OwnerPricingGrid({
                 pricingMinValue={priceBounds.minimum}
                 quickPricePresets={quickPricePresets}
                 pricingValueResolver={(day) => ({ basePrice: day.basePrice })}
-                pricingCellSize="w-28 h-12"
-                dayColumnSize="w-36"
+                pricingCellSize="w-[6.5rem] min-w-[6.5rem] max-w-[6.5rem]"
+                dayColumnSize="w-[5.25rem] min-w-[5.25rem] max-w-[5.25rem]"
                 disabledDateResolver={(date) =>
                   dayjs(date).isBefore(dayjs().startOf("day"), "day")
                 }
+                holidayDateResolver={(date) => dayjs(date).day() === 5}
                 childPrice={property?.childPrice}
                 extraGuestPrice={property?.extraGuestPrice}
               />
@@ -2275,3 +2276,5 @@ export function OwnerPricingGrid({
     </KoochCard>
   );
 }
+
+export default OwnerPricingGrid;
