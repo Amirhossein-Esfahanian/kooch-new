@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import {
   CalendarGridDay,
@@ -78,6 +78,8 @@ export interface RoomPricingMatrixEditorProps<
   disabledDateResolver?: (date: string) => boolean;
   /** Marks holidays for destructive/red date styling. */
   holidayDateResolver?: (date: string) => boolean;
+  /** Keeps the matrix footprint stable while prices are loading. */
+  loading?: boolean;
   readonly?: boolean;
   childPrice?: number | null;
   extraGuestPrice?: number | null;
@@ -99,6 +101,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   pricingValueResolver = (v: any) => ({ basePrice: v?.basePrice ?? 0 }),
   disabledDateResolver,
   holidayDateResolver,
+  loading = false,
   readonly = false,
   childPrice,
   extraGuestPrice,
@@ -109,7 +112,10 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
   const [pendingValue, setPendingValue] = useState<number | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
   const matrixRootRef = useRef<HTMLDivElement | null>(null);
-  const headerScrollRef = useRef<HTMLDivElement | null>(null);
+  const matrixViewportRef = useRef<HTMLDivElement | null>(null);
+  const [matrixViewportHeight, setMatrixViewportHeight] = useState<
+    number | null
+  >(null);
 
   const selectedItems = useMemo(() => Array.from(selection), [selection]);
   const selectedCells = useMemo(() => {
@@ -182,26 +188,67 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     }
   }, [selectedItems.length]);
 
-  useEffect(() => {
-    const root = matrixRootRef.current;
-    if (!root) return;
+  useLayoutEffect(() => {
+    const viewport = matrixViewportRef.current;
+    if (!viewport) return;
+
+    let frame = 0;
+    const updateHeight = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        const rect = viewport.getBoundingClientRect();
+        const bottomGap = 16;
+        const available = Math.floor(window.innerHeight - rect.top - bottomGap);
+        setMatrixViewportHeight(Math.max(300, available));
+      });
+    };
+
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+
+    const resizeObserver =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(updateHeight)
+        : null;
+    if (matrixRootRef.current) resizeObserver?.observe(matrixRootRef.current);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener("resize", updateHeight);
+      resizeObserver?.disconnect();
+    };
+  }, [loading, rows.length, days.length]);
+
+  useLayoutEffect(() => {
+    if (loading) return;
+    const viewport = matrixViewportRef.current;
+    if (!viewport) return;
 
     const frame = window.requestAnimationFrame(() => {
-      const todayRow = root.querySelector<HTMLElement>(
+      const todayRow = viewport.querySelector<HTMLElement>(
         '[data-pricing-today="true"]',
       );
       if (!todayRow) return;
 
-      const rect = todayRow.getBoundingClientRect();
+      const viewportRect = viewport.getBoundingClientRect();
+      const rowRect = todayRow.getBoundingClientRect();
+      const stickyHeaderHeight =
+        viewport
+          .querySelector<HTMLElement>("[data-pricing-matrix-header]")
+          ?.getBoundingClientRect().height ?? 44;
       const targetTop = Math.max(
         0,
-        window.scrollY + rect.top - Math.min(160, window.innerHeight * 0.22),
+        viewport.scrollTop +
+          rowRect.top -
+          viewportRect.top -
+          stickyHeaderHeight -
+          6,
       );
-      window.scrollTo({ top: targetTop, behavior: "auto" });
+      viewport.scrollTo({ top: targetTop, behavior: "auto" });
     });
 
     return () => window.cancelAnimationFrame(frame);
-  }, [days]);
+  }, [days, loading, rows.length]);
 
   function keyFor(roomId: number | string, date: string) {
     return `${roomId}|${date}`;
@@ -351,12 +398,6 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
     }
   }
 
-  function syncHeaderScroll(scrollLeft: number) {
-    if (headerScrollRef.current) {
-      headerScrollRef.current.scrollLeft = scrollLeft;
-    }
-  }
-
   return (
     <div ref={matrixRootRef} className="mt-5 w-full min-w-0" dir="rtl">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -388,13 +429,51 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
       )}
 
       <div className="w-full min-w-0 overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="sticky top-[var(--header-height)] z-40 w-full bg-card shadow-sm">
-          <div ref={headerScrollRef} className="w-full overflow-hidden">
-            <table className="ml-auto w-max min-w-max table-fixed border-collapse text-right text-xs">
-              <thead>
+        <div
+          ref={matrixViewportRef}
+          aria-busy={loading}
+          className="w-full min-w-0 overflow-auto overscroll-contain"
+          style={
+            matrixViewportHeight
+              ? { height: `${matrixViewportHeight}px` }
+              : { height: "min(62vh, 560px)" }
+          }
+        >
+          {loading ? (
+            <div className="min-h-full bg-card p-3" role="status">
+              <div className="ml-auto w-full max-w-[27rem] overflow-hidden rounded-lg border border-border/70">
+                <div className="grid grid-cols-[5.25rem_repeat(3,6.5rem)] border-b border-border bg-muted/70">
+                  {Array.from({ length: 4 }, (_, index) => (
+                    <div
+                      className="h-11 border-l border-border/70 last:border-l-0"
+                      key={index}
+                    />
+                  ))}
+                </div>
+                {Array.from({ length: 9 }, (_, rowIndex) => (
+                  <div
+                    className="grid grid-cols-[5.25rem_repeat(3,6.5rem)] border-b border-border/60 last:border-b-0"
+                    key={rowIndex}
+                  >
+                    {Array.from({ length: 4 }, (_, columnIndex) => (
+                      <div
+                        className={`h-10 border-l border-border/60 last:border-l-0 ${columnIndex === 0 ? "bg-muted/40" : "bg-card"}`}
+                        key={columnIndex}
+                      />
+                    ))}
+                  </div>
+                ))}
+              </div>
+              <p className="mt-3 text-right text-xs font-medium text-muted-foreground">
+                در حال بارگذاری قیمت‌ها…
+              </p>
+            </div>
+          ) : (
+            <table className="ml-auto w-max min-w-max table-fixed border-separate border-spacing-0 text-right text-xs">
+              <thead data-pricing-matrix-header>
                 <tr>
                   <th
-                    className={`${dayColumnSize} sticky right-0 z-20 h-11 border border-border bg-muted px-1.5 py-1 text-center font-bold shadow-sm`}
+                    className={`${dayColumnSize} sticky right-0 top-0 z-50 h-11 border-b border-l border-border bg-muted px-1.5 py-1 text-center font-bold shadow-sm`}
                   >
                     روز
                   </th>
@@ -402,7 +481,7 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                     <th
                       key={r.id}
                       onClick={() => toggleRoomColumn(r.id)}
-                      className={`${pricingCellSize} h-11 cursor-pointer border border-border bg-card px-1.5 py-1 text-center align-middle transition duration-150 ease-out hover:bg-muted`}
+                      className={`${pricingCellSize} sticky top-0 z-40 h-11 cursor-pointer border-b border-l border-border bg-card px-1.5 py-1 text-center align-middle shadow-sm transition duration-150 ease-out hover:bg-muted`}
                       title={r.label}
                     >
                       <span className="block truncate text-[11px] font-semibold leading-4 text-foreground">
@@ -415,96 +494,90 @@ export function RoomPricingMatrixEditor<RowType extends PricingMatrixRoom>({
                   ))}
                 </tr>
               </thead>
-            </table>
-          </div>
-        </div>
-
-        <div
-          className="w-full min-w-0 overflow-x-auto overscroll-x-contain"
-          onScroll={(event) => syncHeaderScroll(event.currentTarget.scrollLeft)}
-        >
-          <table className="ml-auto w-max min-w-max table-fixed border-collapse text-right text-xs">
-            <tbody>
-              {days.map((d) => {
-                const isDisabled = Boolean(disabledDateResolver?.(d.date));
-                const isHoliday =
-                  holidayDateResolver?.(d.date) ?? d.weekday.includes("جمعه");
-                return (
-                  <tr
-                    key={d.date}
-                    data-pricing-today={d.isToday ? "true" : undefined}
-                    className={d.isToday ? "bg-primary/[0.04]" : undefined}
-                  >
-                    <th
-                      onClick={() => !isDisabled && toggleDayRow(d.date)}
-                      className={`${dayColumnSize} sticky right-0 z-30 h-10 border border-border px-1 py-0.5 text-center align-middle shadow-sm ${d.isToday ? "bg-primary/[0.08] ring-1 ring-inset ring-primary/50" : isDisabled ? "bg-muted" : "bg-card"} ${isDisabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-muted/70"}`}
+              <tbody>
+                {days.map((d) => {
+                  const isDisabled = Boolean(disabledDateResolver?.(d.date));
+                  const isHoliday =
+                    holidayDateResolver?.(d.date) ?? d.weekday.includes("جمعه");
+                  return (
+                    <tr
+                      key={d.date}
+                      data-pricing-today={d.isToday ? "true" : undefined}
+                      className={d.isToday ? "bg-primary/[0.04]" : undefined}
                     >
-                      <div className="flex items-baseline justify-center gap-1 whitespace-nowrap">
-                        <span
-                          className={`text-[11px] font-bold leading-4 ${isHoliday ? (isDisabled ? "text-destructive/70" : "text-destructive") : isDisabled ? "text-muted-foreground" : "text-foreground"}`}
-                        >
-                          {toPersianDigits(d.label)}
-                        </span>
-                        <span
-                          className={`text-[9px] font-medium leading-3 ${isHoliday ? (isDisabled ? "text-destructive/60" : "text-destructive") : isDisabled ? "text-muted-foreground/70" : "text-muted-foreground"}`}
-                        >
-                          <span className="sm:hidden">
-                            {d.weekdayShort ?? d.weekday.slice(0, 1)}
-                          </span>
-                          <span className="hidden sm:inline">{d.weekday}</span>
-                        </span>
-                      </div>
-                    </th>
-                    {rows.map((r) => {
-                      const cell = getCellValue(r.id, d.date) ?? {};
-                      const basePrice =
-                        pricingValueResolver(cell)?.basePrice ?? 0;
-                      const isActive = cell.isActive ?? r.isActive ?? true;
-                      const cellInventory =
-                        cell.available ??
-                        cell.inventory ??
-                        cell.capacity ??
-                        "-";
-                      const k = keyFor(r.id, d.date);
-                      const selected = selection.has(k);
-                      const disabled = readonly || isDisabled;
-                      const inventoryLabel =
-                        typeof cellInventory === "number"
-                          ? toPersianNumber(cellInventory)
-                          : toPersianDigits(cellInventory);
-                      return (
-                        <td
-                          key={String(r.id) + "|" + d.date}
-                          className={`${pricingCellSize} h-10 border border-border p-0 text-center align-middle`}
-                        >
-                          <button
-                            type="button"
-                            disabled={disabled}
-                            onClick={() => toggleCell(r.id, d.date)}
-                            className={`h-full w-full px-1 py-0.5 text-center transition duration-150 ease-out ${selected ? "bg-primary/15 ring-1 ring-inset ring-primary" : disabled ? "bg-muted text-muted-foreground" : d.isToday ? "bg-primary/[0.04] hover:bg-primary/[0.08]" : "bg-card hover:bg-muted/70"}`}
+                      <th
+                        onClick={() => !isDisabled && toggleDayRow(d.date)}
+                        className={`${dayColumnSize} sticky right-0 z-30 h-10 border-b border-l border-border px-1 py-0.5 text-center align-middle shadow-sm ${d.isToday ? "bg-primary/[0.08] ring-1 ring-inset ring-primary/50" : isDisabled ? "bg-muted" : "bg-card"} ${isDisabled ? "cursor-not-allowed" : "cursor-pointer hover:bg-muted/70"}`}
+                      >
+                        <div className="flex items-baseline justify-center gap-1 whitespace-nowrap">
+                          <span
+                            className={`text-[11px] font-bold leading-4 ${isHoliday ? (isDisabled ? "text-destructive/70" : "text-destructive") : isDisabled ? "text-muted-foreground" : "text-foreground"}`}
                           >
-                            <div
-                              className={`truncate text-[11px] font-bold leading-4 ${disabled ? "text-muted-foreground" : "text-foreground"}`}
-                              title={formatPrice(basePrice)}
+                            {toPersianDigits(d.label)}
+                          </span>
+                          <span
+                            className={`text-[9px] font-medium leading-3 ${isHoliday ? (isDisabled ? "text-destructive/60" : "text-destructive") : isDisabled ? "text-muted-foreground/70" : "text-muted-foreground"}`}
+                          >
+                            <span className="sm:hidden">
+                              {d.weekdayShort ?? d.weekday.slice(0, 1)}
+                            </span>
+                            <span className="hidden sm:inline">
+                              {d.weekday}
+                            </span>
+                          </span>
+                        </div>
+                      </th>
+                      {rows.map((r) => {
+                        const cell = getCellValue(r.id, d.date) ?? {};
+                        const basePrice =
+                          pricingValueResolver(cell)?.basePrice ?? 0;
+                        const isActive = cell.isActive ?? r.isActive ?? true;
+                        const cellInventory =
+                          cell.available ??
+                          cell.inventory ??
+                          cell.capacity ??
+                          "-";
+                        const k = keyFor(r.id, d.date);
+                        const selected = selection.has(k);
+                        const disabled = readonly || isDisabled;
+                        const inventoryLabel =
+                          typeof cellInventory === "number"
+                            ? toPersianNumber(cellInventory)
+                            : toPersianDigits(cellInventory);
+                        return (
+                          <td
+                            key={String(r.id) + "|" + d.date}
+                            className={`${pricingCellSize} h-10 border-b border-l border-border p-0 text-center align-middle`}
+                          >
+                            <button
+                              type="button"
+                              disabled={disabled}
+                              onClick={() => toggleCell(r.id, d.date)}
+                              className={`h-full w-full px-1 py-0.5 text-center transition duration-150 ease-out ${selected ? "bg-primary/15 ring-1 ring-inset ring-primary" : disabled ? "bg-muted text-muted-foreground" : d.isToday ? "bg-primary/[0.04] hover:bg-primary/[0.08]" : "bg-card hover:bg-muted/70"}`}
                             >
-                              {formatPrice(basePrice)}
-                            </div>
-                            <div
-                              className={`truncate text-[9px] leading-3 ${disabled ? "text-muted-foreground/70" : !isActive ? "text-destructive" : "text-muted-foreground"}`}
-                            >
-                              {isActive
-                                ? `موجودی ${inventoryLabel}`
-                                : `غیرفعال · ${inventoryLabel}`}
-                            </div>
-                          </button>
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                              <div
+                                className={`truncate text-[11px] font-bold leading-4 ${disabled ? "text-muted-foreground" : "text-foreground"}`}
+                                title={formatPrice(basePrice)}
+                              >
+                                {formatPrice(basePrice)}
+                              </div>
+                              <div
+                                className={`truncate text-[9px] leading-3 ${disabled ? "text-muted-foreground/70" : !isActive ? "text-destructive" : "text-muted-foreground"}`}
+                              >
+                                {isActive
+                                  ? `موجودی ${inventoryLabel}`
+                                  : `غیرفعال · ${inventoryLabel}`}
+                              </div>
+                            </button>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
 

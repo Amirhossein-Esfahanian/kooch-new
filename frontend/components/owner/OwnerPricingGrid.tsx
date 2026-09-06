@@ -1503,7 +1503,7 @@ export function OwnerPricingGrid({
           </p>
         </div>
       )}
-      {loading && (
+      {loading && !usePricingMatrix && (
         <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">
           در حال بارگذاری قیمت‌ها...
         </p>
@@ -1857,6 +1857,7 @@ export function OwnerPricingGrid({
                   dayjs(date).isBefore(dayjs().startOf("day"), "day")
                 }
                 holidayDateResolver={(date) => dayjs(date).day() === 5}
+                loading={loading || !hasLoadedPricing}
                 childPrice={property?.childPrice}
                 extraGuestPrice={property?.extraGuestPrice}
               />
