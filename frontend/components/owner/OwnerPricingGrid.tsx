@@ -1922,10 +1922,10 @@ export function OwnerPricingGrid({
       </KoochConfirmDialog>
 
       <KoochDialog
-        description="نرخ‌های تکمیلی اقامتگاه برای مهمانان."
+        bodyClassName="px-4 py-4"
         onOpenChange={setGuestPricingRulesOpen}
         open={guestPricingRulesOpen}
-        size="sm"
+        size="xs"
         title="قوانین قیمت مهمانان"
       >
         {property && (

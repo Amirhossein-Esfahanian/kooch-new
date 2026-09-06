@@ -3,12 +3,14 @@
 import { ReactNode, useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
-type KoochDialogSize = "md" | "lg" | "xl";
+export type KoochDialogSize = "xs" | "sm" | "md" | "lg" | "xl";
 
 const sizeClass: Record<KoochDialogSize, string> = {
-  md: "max-w-3xl",
-  lg: "max-w-4xl",
-  xl: "max-w-6xl",
+  xs: "h-auto max-h-[90vh] max-w-sm",
+  sm: "h-auto max-h-[90vh] max-w-md",
+  md: "h-[min(760px,90vh)] max-w-3xl",
+  lg: "h-[min(760px,90vh)] max-w-4xl",
+  xl: "h-[min(760px,90vh)] max-w-6xl",
 };
 
 function joinClasses(...classes: Array<string | false | null | undefined>) {
@@ -87,10 +89,8 @@ export function KoochDialog({
 }: KoochDialogProps) {
   const titleId = useId();
   const descriptionId = useId();
-
   const dialogRef = useRef<HTMLElement>(null);
   const previouslyFocusedElementRef = useRef<HTMLElement | null>(null);
-
   const [isClient, setIsClient] = useState(false);
   const [isMounted, setIsMounted] = useState(open);
   const [isVisible, setIsVisible] = useState(false);
@@ -247,7 +247,7 @@ export function KoochDialog({
         aria-labelledby={title ? titleId : undefined}
         aria-modal="true"
         className={joinClasses(
-          "relative z-10 grid h-[min(760px,90vh)] w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-card p-0 text-card-foreground shadow-xl",
+          "relative z-10 grid max-h-[90vh] w-[calc(100vw-2rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border border-border bg-card p-0 text-card-foreground shadow-xl",
           "transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity motion-reduce:duration-100",
           "focus:outline-none",
           isVisible
@@ -262,17 +262,28 @@ export function KoochDialog({
         tabIndex={-1}
       >
         <header
-          className="sticky top-0 z-10 grid gap-1.5 border-b border-border bg-card px-6 py-5 text-right"
+          className="sticky top-0 z-10 flex items-center gap-3 border-b border-foreground/20 bg-card py-[15px] pl-6 pr-3 text-right"
           data-slot="dialog-header"
         >
-          <div
-            className={
-              showCloseButton ? "max-w-[calc(100%-2.5rem)]" : "max-w-full"
-            }
-          >
+          {showCloseButton && (
+            <button
+              aria-label="بستن"
+              className={joinClasses(
+                "touch-target-44 grid h-7 w-7 shrink-0 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-40",
+                closeButtonClassName,
+              )}
+              disabled={closeDisabled}
+              onClick={() => onOpenChange(false)}
+              type="button"
+            >
+              ×
+            </button>
+          )}
+
+          <div className="min-w-0 flex-1">
             {title && (
               <h2
-                className="text-lg font-semibold leading-none tracking-tight text-card-foreground"
+                className="text-[1.0125rem] font-semibold leading-6 tracking-tight text-card-foreground"
                 data-slot="dialog-title"
                 id={titleId}
               >
@@ -282,7 +293,7 @@ export function KoochDialog({
 
             {description && (
               <p
-                className="mt-2 text-sm leading-6 text-muted-foreground"
+                className="mt-1.5 text-sm leading-6 text-muted-foreground"
                 data-slot="dialog-description"
                 id={descriptionId}
               >
@@ -290,21 +301,6 @@ export function KoochDialog({
               </p>
             )}
           </div>
-
-          {showCloseButton && (
-            <button
-              aria-label="بستن"
-              className={joinClasses(
-                "touch-target-44 absolute top-2.5 grid h-6 w-6 place-items-center rounded-sm text-lg leading-none text-muted-foreground opacity-70 ring-offset-card transition hover:bg-muted hover:text-foreground hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring disabled:pointer-events-none disabled:opacity-40",
-                closeButtonClassName || "right-4",
-              )}
-              disabled={closeDisabled}
-              onClick={() => onOpenChange(false)}
-              type="button"
-            >
-              x
-            </button>
-          )}
         </header>
 
         <div
