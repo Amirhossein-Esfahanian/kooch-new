@@ -174,6 +174,35 @@ public sealed class PropertyUserManagementBoundaryTests
     }
 
     [Fact]
+    public async Task PropertyUserCreate_RejectsPropertyOwnerRole()
+    {
+        await using var dbContext = CreateContext();
+        SeedProperty(dbContext);
+        await dbContext.SaveChangesAsync();
+        var service = CreatePropertyUserService(dbContext);
+        var initialUserCount = await dbContext.Users.CountAsync();
+        var initialMembershipCount = await dbContext.UserPropertyAccesses.CountAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateUserAsync(
+                1,
+                UserRole.SuperAdmin,
+                100,
+                new PropertyUserRequest
+                {
+                    FullName = "Invalid Property Owner",
+                    Mobile = "09120001999",
+                    Role = PropertyUserRole.PropertyOwner,
+                    Status = PropertyUserStatus.Active,
+                    IsActive = true
+                }));
+
+        Assert.Equal("Property owner cannot be created from this page.", exception.Message);
+        Assert.Equal(initialUserCount, await dbContext.Users.CountAsync());
+        Assert.Equal(initialMembershipCount, await dbContext.UserPropertyAccesses.CountAsync());
+    }
+
+    [Fact]
     public async Task PropertyUserCreate_PersistsSelectedRoleStatusAndPermissionMatrix()
     {
         await using var dbContext = CreateContext();

@@ -115,32 +115,31 @@ function savedMember(
 function renderFlow(
   candidate: PropertyUserCandidateResponse,
   created = savedMember("Created Member", "Manager"),
+  context: "admin" | "owner" = "owner",
 ) {
+  const apiBase = `/${context}/properties/10`;
   ownerApi.apiRequest.mockImplementation(
     (path: string, options?: RequestInit) => {
-      if (path === "/owner/properties/10") {
+      if (path === apiBase) {
         return Promise.resolve({ name: "Test Property" });
       }
-      if (path === "/owner/properties/10/users" && !options) {
+      if (path === `${apiBase}/users` && !options) {
         return Promise.resolve([]);
       }
-      if (path === "/owner/properties/10/users/permission-metadata") {
+      if (path === `${apiBase}/users/permission-metadata`) {
         return Promise.resolve(permissionMetadata);
       }
-      if (path === "/owner/properties/10/users/resolve") {
+      if (path === `${apiBase}/users/resolve`) {
         return Promise.resolve(candidate);
       }
-      if (
-        path === "/owner/properties/10/users" &&
-        options?.method === "POST"
-      ) {
+      if (path === `${apiBase}/users` && options?.method === "POST") {
         return Promise.resolve(created);
       }
       return Promise.reject(new Error(`Unexpected API request: ${path}`));
     },
   );
 
-  render(<PropertyUsersManagement context="owner" propertyId={10} />);
+  render(<PropertyUsersManagement context={context} propertyId={10} />);
 }
 
 async function openCreateFlow() {
@@ -160,6 +159,71 @@ beforeEach(() => {
 });
 
 describe("PropertyUsersManagement creation flow", () => {
+  it("uses only Admin routes for list, metadata, lookup, and membership creation", async () => {
+    renderFlow(
+      {
+        outcome: "CanContinue",
+        requiresUserCreation: false,
+        maskedName: "A*** M***",
+      },
+      savedMember("Admin-created Reception", "Reception"),
+      "admin",
+    );
+    await openCreateFlow();
+
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "09121234567" },
+    });
+    submitCreateForm();
+
+    expect(await screen.findByText("A*** M***")).toBeTruthy();
+    const [roleSelect] = await screen.findAllByRole("combobox");
+    expect(
+      Array.from(roleSelect.querySelectorAll("option")).map(
+        (option) => option.value,
+      ),
+    ).toEqual([
+      "Manager",
+      "Reception",
+      "Accounting",
+      "Housekeeping",
+      "Custom",
+    ]);
+    fireEvent.change(roleSelect, { target: { value: "Reception" } });
+    submitCreateForm();
+
+    expect(await screen.findByText("Admin-created Reception")).toBeTruthy();
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith("/admin/properties/10");
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+      "/admin/properties/10/users",
+    );
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+      "/admin/properties/10/users/permission-metadata",
+    );
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+      "/admin/properties/10/users/resolve",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+      "/admin/properties/10/users",
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(
+      ownerApi.apiRequest.mock.calls.some(([path]) =>
+        String(path).startsWith("/owner/"),
+      ),
+    ).toBe(false);
+
+    const createCall = ownerApi.apiRequest.mock.calls.find(
+      ([path, options]) =>
+        path === "/admin/properties/10/users" && options?.method === "POST",
+    );
+    expect(JSON.parse(createCall![1].body as string)).toMatchObject({
+      role: "Reception",
+      permissions: roleDefaults.Reception,
+    });
+  });
+
   it("creates membership for an existing user and refreshes the visible list", async () => {
     renderFlow(
       {
