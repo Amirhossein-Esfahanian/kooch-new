@@ -2,6 +2,7 @@
 
 import {
   FormEvent,
+  KeyboardEvent,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -68,6 +69,12 @@ function roleLabel(role: UserRole) {
 
 type UserRoleFilter = "all" | PlatformAdminRole;
 type UserStatusFilter = "all" | "active" | "inactive" | "passwordSetupRequired";
+type AdminUsersView = "platform" | "property";
+
+const adminUserViews: Array<{ id: AdminUsersView; label: string }> = [
+  { id: "platform", label: "کاربران مدیریتی سامانه" },
+  { id: "property", label: "اعضای اقامتگاه‌ها" },
+];
 
 const permissionCategories: Array<{
   key: string;
@@ -266,6 +273,8 @@ export default function AdminUsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
+  const [activeView, setActiveView] = useState<AdminUsersView>("platform");
+  const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [propertiesLoading, setPropertiesLoading] = useState(true);
   const [propertiesError, setPropertiesError] = useState("");
@@ -630,6 +639,35 @@ export default function AdminUsersPage() {
     }));
   }
 
+  function selectView(view: AdminUsersView) {
+    setActiveView(view);
+  }
+
+  function handleViewTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentIndex: number,
+  ) {
+    let nextIndex: number;
+
+    if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = adminUserViews.length - 1;
+    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const isRtl = getComputedStyle(event.currentTarget).direction === "rtl";
+      const moveForward = event.key === "ArrowLeft" ? isRtl : !isRtl;
+      nextIndex =
+        (currentIndex + (moveForward ? 1 : -1) + adminUserViews.length) %
+        adminUserViews.length;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    selectView(adminUserViews[nextIndex].id);
+    viewTabRefs.current[nextIndex]?.focus();
+  }
+
   return (
     <AdminLayout requiredPlatformPermission="ManageUsers">
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
@@ -640,7 +678,50 @@ export default function AdminUsersPage() {
           title="مدیریت کاربران"
         />
 
-        <section aria-labelledby="platform-admin-users-title" className="grid gap-4">
+        <div
+          aria-label="بخش مدیریت کاربران"
+          className="grid w-full grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1 sm:inline-grid sm:w-fit"
+          dir="rtl"
+          role="tablist"
+        >
+          {adminUserViews.map((view, index) => {
+            const active = activeView === view.id;
+
+            return (
+              <button
+                aria-controls={`admin-users-${view.id}-panel`}
+                aria-selected={active}
+                className={[
+                  "min-h-11 rounded-md px-4 py-2 text-sm font-medium transition-colors",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                  active
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
+                ].join(" ")}
+                id={`admin-users-${view.id}-tab`}
+                key={view.id}
+                onClick={() => selectView(view.id)}
+                onKeyDown={(event) => handleViewTabKeyDown(event, index)}
+                ref={(element) => {
+                  viewTabRefs.current[index] = element;
+                }}
+                role="tab"
+                tabIndex={active ? 0 : -1}
+                type="button"
+              >
+                {view.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {activeView === "platform" && (
+          <section
+            aria-labelledby="admin-users-platform-tab"
+            className="grid gap-4"
+            id="admin-users-platform-panel"
+            role="tabpanel"
+          >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h2
@@ -887,13 +968,17 @@ export default function AdminUsersPage() {
             </KoochTableBody>
           </KoochTable>
           </div>
-        </section>
+          </section>
+        )}
 
-        <KoochCard
-          aria-labelledby="property-members-title"
-          className="min-w-0"
-          padding="md"
-        >
+        {activeView === "property" && (
+          <KoochCard
+            aria-labelledby="admin-users-property-tab"
+            className="min-w-0"
+            id="admin-users-property-panel"
+            padding="md"
+            role="tabpanel"
+          >
           <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] lg:items-end">
             <div className="min-w-0">
               <h2
@@ -903,8 +988,11 @@ export default function AdminUsersPage() {
                 اعضای اقامتگاه‌ها
               </h2>
               <p className="mt-1 max-w-2xl text-sm font-normal leading-6 text-muted-foreground">
-                برای مدیریت مالک، مدیر و کارکنان، ابتدا اقامتگاه را انتخاب کنید.
+                برای مدیریت مدیر و کارکنان، ابتدا اقامتگاه را انتخاب کنید.
                 اعضا در صفحه اختصاصی همان اقامتگاه مدیریت می‌شوند.
+              </p>
+              <p className="mt-2 max-w-2xl text-xs font-normal leading-6 text-muted-foreground">
+                مالک اقامتگاه از مسیر مدیریت یا انتقال مالکیت اقامتگاه تعیین می‌شود.
               </p>
             </div>
 
@@ -955,7 +1043,8 @@ export default function AdminUsersPage() {
               {propertiesError}
             </KoochAlert>
           )}
-        </KoochCard>
+          </KoochCard>
+        )}
 
         <KoochDialog
           bodyClassName="overflow-x-hidden px-4 py-4"

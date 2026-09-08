@@ -143,15 +143,59 @@ describe("Admin Users page", () => {
         level: 2,
       }),
     ).toBeTruthy();
+    const platformTab = screen.getByRole("tab", {
+      name: "کاربران مدیریتی سامانه",
+    });
+    const propertyTab = screen.getByRole("tab", {
+      name: "اعضای اقامتگاه‌ها",
+    });
+    expect(platformTab.getAttribute("aria-selected")).toBe("true");
+    expect(
+      screen.queryByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
+    ).toBeNull();
+
+    fireEvent.click(propertyTab);
+    expect(propertyTab.getAttribute("aria-selected")).toBe("true");
     expect(
       screen.getByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
     ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "مالک اقامتگاه از مسیر مدیریت یا انتقال مالکیت اقامتگاه تعیین می‌شود.",
+      ),
+    ).toBeTruthy();
+
+    fireEvent.click(platformTab);
 
     resolveUsers([adminUser(1)]);
     expect(await screen.findByText("Test User 1")).toBeTruthy();
     expect(
       document.querySelector('[data-required-permission="ManageUsers"]'),
     ).toBeTruthy();
+  });
+
+  it("supports roving keyboard focus between the two management views", async () => {
+    ownerApi.apiRequest.mockResolvedValue([]);
+
+    render(<AdminUsersPage />);
+
+    const platformTab = screen.getByRole("tab", {
+      name: "کاربران مدیریتی سامانه",
+    });
+    const propertyTab = screen.getByRole("tab", {
+      name: "اعضای اقامتگاه‌ها",
+    });
+
+    platformTab.focus();
+    fireEvent.keyDown(platformTab, { key: "End" });
+    expect(propertyTab.getAttribute("aria-selected")).toBe("true");
+    expect(propertyTab.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(propertyTab);
+
+    fireEvent.keyDown(propertyTab, { key: "Home" });
+    expect(platformTab.getAttribute("aria-selected")).toBe("true");
+    expect(platformTab.tabIndex).toBe(0);
+    expect(document.activeElement).toBe(platformTab);
   });
 
   it("renders the empty state", async () => {
@@ -311,13 +355,20 @@ describe("Admin Users page", () => {
     );
     render(<AdminUsersPage />);
 
-    const superRow = (await screen.findByText("Super User")).closest("tr")!;
+    await screen.findByText("Super User");
+    fireEvent.click(
+      screen.getByRole("tab", { name: "اعضای اقامتگاه‌ها" }),
+    );
     expect(
       screen.getByText(
         "برای مشاهده فهرست اقامتگاه‌ها، مجوز مدیریت اقامتگاه‌ها لازم است.",
       ),
     ).toBeTruthy();
     expect(ownerApi.apiRequest).not.toHaveBeenCalledWith("/admin/properties");
+    fireEvent.click(
+      screen.getByRole("tab", { name: "کاربران مدیریتی سامانه" }),
+    );
+    const superRow = screen.getByText("Super User").closest("tr")!;
     expect(
       within(superRow).queryByTitle("ویرایش کاربر"),
     ).toBeNull();
@@ -460,6 +511,9 @@ describe("Admin Users page", () => {
       expect(ownerApi.apiRequest).toHaveBeenCalledWith("/admin/properties"),
     );
 
+    fireEvent.click(
+      screen.getByRole("tab", { name: "اعضای اقامتگاه‌ها" }),
+    );
     fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
     fireEvent.click(screen.getByRole("button", { name: /خانه تاریخی کاشان/ }));
     fireEvent.click(
