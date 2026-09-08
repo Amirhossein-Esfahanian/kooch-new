@@ -565,12 +565,17 @@ export default function AdminUsersPage() {
           actions={
             <KoochButton onClick={openCreate} type="button">
               <KoochIcon name="plus" />
-              افزودن کاربر
+              افزودن مدیر سامانه
             </KoochButton>
           }
+          description="مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"
           eyebrow="پنل مدیریت"
-          title="مدیریت کاربران"
+          title="کاربران مدیریتی سامانه"
         />
+
+        <KoochAlert icon="info" variant="information">
+          مالک و اعضای اقامتگاه از بخش اعضای همان اقامتگاه مدیریت می‌شوند.
+        </KoochAlert>
 
         {error && (
           <KoochAlert title="عملیات انجام نشد" variant="destructive">
@@ -857,7 +862,7 @@ export default function AdminUsersPage() {
           }}
           open={dialogOpen}
           size="sm"
-          title={form.id ? "ویرایش کاربر" : "افزودن کاربر"}
+          title={form.id ? "ویرایش مدیر سامانه" : "افزودن مدیر سامانه"}
         >
           <form
             className="grid gap-4"

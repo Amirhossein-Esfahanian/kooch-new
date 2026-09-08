@@ -1,7 +1,18 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+
+const auth = vi.hoisted(() => ({
+  current: {
+    authenticated: true,
+    loading: false,
+    platformPermissions: [] as string[],
+    platformRole: "SuperAdmin" as "SuperAdmin" | "AdminAssistant",
+    refreshSession: vi.fn(),
+    workspaces: ["admin"],
+  },
+}));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/users",
@@ -10,19 +21,23 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   resolveSessionDestination: () => "/",
-  useAuthSession: () => ({
+  useAuthSession: () => auth.current,
+}));
+
+vi.mock("@/components/KoochUserMenu", () => ({
+  KoochUserMenu: () => <button type="button">حساب کاربری</button>,
+}));
+
+beforeEach(() => {
+  auth.current = {
     authenticated: true,
     loading: false,
     platformPermissions: [],
     platformRole: "SuperAdmin",
     refreshSession: vi.fn(),
     workspaces: ["admin"],
-  }),
-}));
-
-vi.mock("@/components/KoochUserMenu", () => ({
-  KoochUserMenu: () => <button type="button">حساب کاربری</button>,
-}));
+  };
+});
 
 describe("Admin header layout", () => {
   it("keeps global search in the integrated navbar", () => {
@@ -94,5 +109,28 @@ describe("Admin header layout", () => {
     expect(
       screen.getByText("فهرست رزروهای حساب کاربری").className,
     ).not.toContain("max-w-3xl");
+  });
+
+  it("shows Admin Users to SuperAdmin regardless of assigned platform permissions", () => {
+    render(<AdminLayout>محتوا</AdminLayout>);
+
+    expect(
+      screen.getByRole("link", { name: "مدیریت کاربران" }),
+    ).toBeTruthy();
+  });
+
+  it("shows Admin Users to AdminAssistant only with ManageUsers", () => {
+    auth.current.platformRole = "AdminAssistant";
+    const { rerender } = render(<AdminLayout>محتوا</AdminLayout>);
+
+    expect(
+      screen.queryByRole("link", { name: "مدیریت کاربران" }),
+    ).toBeNull();
+
+    auth.current.platformPermissions = ["ManageUsers"];
+    rerender(<AdminLayout>محتوا</AdminLayout>);
+    expect(
+      screen.getByRole("link", { name: "مدیریت کاربران" }),
+    ).toBeTruthy();
   });
 });

@@ -49,6 +49,11 @@ vi.mock("sonner", () => ({
 import AdminUsersPage from "@/app/admin/users/page";
 import type { AdminUserResponse } from "@/lib/owner-api";
 
+Object.defineProperty(HTMLElement.prototype, "scrollTo", {
+  configurable: true,
+  value: vi.fn(),
+});
+
 function adminUser(
   id: number,
   options: Partial<AdminUserResponse> = {},
@@ -106,6 +111,17 @@ describe("Admin Users page", () => {
 
     render(<AdminUsersPage />);
     expect(screen.getByText("در حال بارگذاری...")).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { name: "کاربران مدیریتی سامانه" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText("مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "مالک و اعضای اقامتگاه از بخش اعضای همان اقامتگاه مدیریت می‌شوند.",
+      ),
+    ).toBeTruthy();
 
     resolveUsers([adminUser(1)]);
     expect(await screen.findByText("Test User 1")).toBeTruthy();
@@ -157,14 +173,32 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
     await screen.findByText("هنوز کاربری ثبت نشده است.");
 
-    fireEvent.click(screen.getByRole("button", { name: "افزودن کاربر" }));
+    fireEvent.click(screen.getByRole("button", { name: "افزودن مدیر سامانه" }));
     const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "افزودن مدیر سامانه" }),
+    ).toBeTruthy();
     expect(within(dialog).getByTestId("create-user-fields")).toBeTruthy();
     const roleSelect = within(dialog).getByRole("combobox");
     expect(within(roleSelect).getByRole("option", { name: "مدیر ارشد" }))
       .toBeTruthy();
     expect(within(roleSelect).getByRole("option", { name: "دستیار مدیر" }))
       .toBeTruthy();
+    for (const propertyRole of [
+      "Owner",
+      "OwnerAssistant",
+      "Client",
+      "PropertyOwner",
+      "Manager",
+      "Reception",
+      "Accounting",
+      "Housekeeping",
+      "Custom",
+    ]) {
+      expect(
+        within(roleSelect).queryByRole("option", { name: propertyRole }),
+      ).toBeNull();
+    }
 
     fireEvent.change(input("#admin-user-first-name"), {
       target: { value: "New" },
@@ -175,7 +209,19 @@ describe("Admin Users page", () => {
     fireEvent.change(input("#admin-user-mobile"), {
       target: { value: "09123456789" },
     });
+    expect(
+      ownerApi.apiRequest.mock.calls.some(
+        ([path, options]) => path === "/admin/users" && options?.method === "POST",
+      ),
+    ).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
     fireEvent.click(within(dialog).getByLabelText("مدیریت کاربران"));
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
+    expect(
+      ownerApi.apiRequest.mock.calls.some(
+        ([path, options]) => path === "/admin/users" && options?.method === "POST",
+      ),
+    ).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "ذخیره" }));
 
     await waitFor(() => {
@@ -243,17 +289,21 @@ describe("Admin Users page", () => {
     fireEvent.click(within(assistantRow).getByTitle("ویرایش کاربر"));
 
     const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByRole("heading", { name: "ویرایش مدیر سامانه" }),
+    ).toBeTruthy();
     const roleSelect = within(dialog).getByRole("combobox");
     expect(within(roleSelect).getAllByRole("option")).toHaveLength(1);
     expect(
       within(roleSelect).getByRole("option", { name: "دستیار مدیر" }),
     ).toBeTruthy();
-    expect(within(dialog).getByLabelText("مدیریت کاربران")).toBeTruthy();
-    expect(within(dialog).queryByLabelText("مدیریت نقش‌ها")).toBeNull();
-
     fireEvent.change(input("#admin-user-first-name"), {
       target: { value: "Edited" },
     });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
+    expect(within(dialog).getByLabelText("مدیریت کاربران")).toBeTruthy();
+    expect(within(dialog).queryByLabelText("مدیریت نقش‌ها")).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "ادامه" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "ذخیره" }));
 
     await waitFor(() =>
@@ -292,7 +342,9 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
 
     const row = (await screen.findByText("Status User")).closest("tr")!;
-    fireEvent.click(within(row).getByRole("button", { name: "فعال" }));
+    fireEvent.click(
+      within(row).getByRole("button", { name: "فعال‌سازی کاربر" }),
+    );
     await waitFor(() =>
       expect(ownerApi.apiRequest).toHaveBeenCalledWith(
         "/admin/users/2/activate",
