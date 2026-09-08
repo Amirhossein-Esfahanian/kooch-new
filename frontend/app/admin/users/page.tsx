@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -21,6 +22,7 @@ import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
+  KoochSearchableSelect,
   KoochSelect,
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -44,6 +46,7 @@ import {
   AdminPermissionKey,
   AdminUserResponse,
   apiRequest,
+  PropertyResponse,
   UserRole,
 } from "@/lib/owner-api";
 import { KoochIcon } from "../../../components/KoochIcon";
@@ -241,6 +244,7 @@ function validatePassword(password: string) {
 }
 
 export default function AdminUsersPage() {
+  const router = useRouter();
   const {
     authenticated,
     loading: sessionLoading,
@@ -262,9 +266,16 @@ export default function AdminUsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
+  const [properties, setProperties] = useState<PropertyResponse[]>([]);
+  const [propertiesLoading, setPropertiesLoading] = useState(true);
+  const [propertiesError, setPropertiesError] = useState("");
+  const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const canManageUsers =
     platformRole === "SuperAdmin" ||
     platformPermissions.includes("ManageUsers");
+  const canBrowseProperties =
+    platformRole === "SuperAdmin" ||
+    platformPermissions.includes("ManageProperties");
   const assignableRoles: PlatformAdminRole[] =
     platformRole === "SuperAdmin" ? roles : ["AdminAssistant"];
   const assignablePermissionKeys =
@@ -322,6 +333,27 @@ export default function AdminUsersPage() {
     Boolean(searchTerm.trim()) ||
     roleFilter !== "all" ||
     statusFilter !== "all";
+  const propertyOptions = useMemo(
+    () =>
+      properties.map((property) => ({
+        value: property.id,
+        label: property.name,
+        description: [property.city, property.ownerName]
+          .filter(Boolean)
+          .join(" · "),
+        searchText: [
+          property.name,
+          property.englishName,
+          property.city,
+          property.ownerName,
+          property.ownerEmail,
+          property.id,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      })),
+    [properties],
+  );
 
   async function load() {
     setUsers(await apiRequest<AdminUserResponse[]>("/admin/users"));
@@ -343,6 +375,47 @@ export default function AdminUsersPage() {
       })
       .finally(() => setLoading(false));
   }, [authenticated, canManageUsers, sessionLoading, workspaces]);
+
+  useEffect(() => {
+    if (
+      sessionLoading ||
+      !authenticated ||
+      !workspaces.includes("admin") ||
+      !canManageUsers
+    ) {
+      return;
+    }
+
+    if (!canBrowseProperties) {
+      setPropertiesLoading(false);
+      return;
+    }
+
+    let active = true;
+    setPropertiesError("");
+    setPropertiesLoading(true);
+
+    apiRequest<PropertyResponse[]>("/admin/properties")
+      .then((items) => {
+        if (active) setProperties(items);
+      })
+      .catch((caught: Error) => {
+        if (active) setPropertiesError(caught.message);
+      })
+      .finally(() => {
+        if (active) setPropertiesLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [
+    authenticated,
+    canBrowseProperties,
+    canManageUsers,
+    sessionLoading,
+    workspaces,
+  ]);
 
   useLayoutEffect(() => {
     if (!dialogOpen) return;
@@ -562,28 +635,37 @@ export default function AdminUsersPage() {
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
           appearance="plain"
-          actions={
+          description="مدیریت حساب‌های مدیریتی سامانه و دسترسی به اعضای هر اقامتگاه"
+          eyebrow="پنل مدیریت"
+          title="مدیریت کاربران"
+        />
+
+        <section aria-labelledby="platform-admin-users-title" className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <h2
+                className="text-lg font-semibold text-foreground"
+                id="platform-admin-users-title"
+              >
+                کاربران مدیریتی سامانه
+              </h2>
+              <p className="mt-1 text-sm font-normal text-muted-foreground">
+                مدیران ارشد و دستیاران مدیریتی با دسترسی سراسری سامانه
+              </p>
+            </div>
             <KoochButton onClick={openCreate} type="button">
               <KoochIcon name="plus" />
               افزودن مدیر سامانه
             </KoochButton>
-          }
-          description="مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"
-          eyebrow="پنل مدیریت"
-          title="کاربران مدیریتی سامانه"
-        />
+          </div>
 
-        <KoochAlert icon="info" variant="information">
-          مالک و اعضای اقامتگاه از بخش اعضای همان اقامتگاه مدیریت می‌شوند.
-        </KoochAlert>
+          {error && (
+            <KoochAlert title="عملیات انجام نشد" variant="destructive">
+              {error}
+            </KoochAlert>
+          )}
 
-        {error && (
-          <KoochAlert title="عملیات انجام نشد" variant="destructive">
-            {error}
-          </KoochAlert>
-        )}
-
-        {setupLink && process.env.NODE_ENV !== "production" && (
+          {setupLink && process.env.NODE_ENV !== "production" && (
           <KoochCard className="border-primary/30 bg-primary/10" padding="sm">
             <div className="grid gap-3 md:grid-cols-[1fr_auto] md:items-center">
               <div>
@@ -609,9 +691,9 @@ export default function AdminUsersPage() {
               </KoochButton>
             </div>
           </KoochCard>
-        )}
+          )}
 
-        {!loading && users.length > 0 && (
+          {!loading && users.length > 0 && (
           <KoochCard
             className="min-w-0 max-w-full"
             padding="sm"
@@ -668,9 +750,9 @@ export default function AdminUsersPage() {
               </KoochButton>
             </div>
           </KoochCard>
-        )}
+          )}
 
-        {!loading && users.length > 0 && (
+          {!loading && users.length > 0 && (
           <div
             className="flex min-h-6 flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground"
             dir="rtl"
@@ -687,9 +769,9 @@ export default function AdminUsersPage() {
               </span>
             )}
           </div>
-        )}
+          )}
 
-        <div className="min-w-0 max-w-full">
+          <div className="min-w-0 max-w-full">
           <KoochTable>
             <KoochTableHeader>
               <KoochTableRow>
@@ -804,7 +886,77 @@ export default function AdminUsersPage() {
               )}
             </KoochTableBody>
           </KoochTable>
-        </div>
+          </div>
+        </section>
+
+        <KoochCard
+          aria-labelledby="property-members-title"
+          className="min-w-0"
+          padding="md"
+        >
+          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] lg:items-end">
+            <div className="min-w-0">
+              <h2
+                className="text-lg font-semibold text-foreground"
+                id="property-members-title"
+              >
+                اعضای اقامتگاه‌ها
+              </h2>
+              <p className="mt-1 max-w-2xl text-sm font-normal leading-6 text-muted-foreground">
+                برای مدیریت مالک، مدیر و کارکنان، ابتدا اقامتگاه را انتخاب کنید.
+                اعضا در صفحه اختصاصی همان اقامتگاه مدیریت می‌شوند.
+              </p>
+            </div>
+
+            {canBrowseProperties ? (
+              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                <KoochField label="اقامتگاه">
+                  <KoochSearchableSelect
+                    clearText="پاک کردن انتخاب اقامتگاه"
+                    disabled={propertiesLoading}
+                    emptyText="اقامتگاهی پیدا نشد."
+                    id="property-members-property"
+                    onChange={setSelectedPropertyId}
+                    options={propertyOptions}
+                    placeholder={
+                      propertiesLoading
+                        ? "در حال بارگذاری اقامتگاه‌ها..."
+                        : "انتخاب یا جستجوی اقامتگاه"
+                    }
+                    searchPlaceholder="جستجو با نام، شهر یا مالک..."
+                    value={selectedPropertyId}
+                  />
+                </KoochField>
+                <KoochButton
+                  disabled={!selectedPropertyId || propertiesLoading}
+                  onClick={() =>
+                    router.push(
+                      `/admin/properties/${selectedPropertyId}/users`,
+                    )
+                  }
+                  type="button"
+                >
+                  مدیریت اعضای اقامتگاه
+                </KoochButton>
+              </div>
+            ) : (
+              <KoochAlert icon="info" variant="information">
+                برای مشاهده فهرست اقامتگاه‌ها، مجوز مدیریت اقامتگاه‌ها لازم است.
+              </KoochAlert>
+            )}
+          </div>
+
+          {propertiesError && (
+            <KoochAlert
+              className="mt-4"
+              title="فهرست اقامتگاه‌ها بارگذاری نشد"
+              variant="destructive"
+            >
+              {propertiesError}
+            </KoochAlert>
+          )}
+        </KoochCard>
+
         <KoochDialog
           bodyClassName="overflow-x-hidden px-4 py-4"
           closeDisabled={saving}

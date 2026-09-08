@@ -21,6 +21,14 @@ const notifications = vi.hoisted(() => ({
   success: vi.fn(),
 }));
 
+const navigation = vi.hoisted(() => ({
+  push: vi.fn(),
+}));
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => navigation,
+}));
+
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
   return { ...actual, apiRequest: ownerApi.apiRequest };
@@ -47,7 +55,7 @@ vi.mock("sonner", () => ({
 }));
 
 import AdminUsersPage from "@/app/admin/users/page";
-import type { AdminUserResponse } from "@/lib/owner-api";
+import type { AdminUserResponse, PropertyResponse } from "@/lib/owner-api";
 
 Object.defineProperty(HTMLElement.prototype, "scrollTo", {
   configurable: true,
@@ -78,6 +86,20 @@ function adminUser(
   };
 }
 
+function property(
+  id: number,
+  options: Partial<PropertyResponse> = {},
+): PropertyResponse {
+  return {
+    id,
+    name: `اقامتگاه ${id}`,
+    city: "کاشان",
+    ownerName: "مالک نمونه",
+    ownerEmail: "owner@example.test",
+    ...options,
+  } as PropertyResponse;
+}
+
 function setActor(
   role: "SuperAdmin" | "AdminAssistant",
   permissions: string[] = [],
@@ -103,24 +125,26 @@ beforeEach(() => {
 describe("Admin Users page", () => {
   it("shows loading, then renders a successful list", async () => {
     let resolveUsers!: (users: AdminUserResponse[]) => void;
-    ownerApi.apiRequest.mockReturnValue(
-      new Promise<AdminUserResponse[]>((resolve) => {
+    const usersRequest = new Promise<AdminUserResponse[]>((resolve) => {
         resolveUsers = resolve;
-      }),
+    });
+    ownerApi.apiRequest.mockImplementation((path: string) =>
+      path === "/admin/properties" ? Promise.resolve([]) : usersRequest,
     );
 
     render(<AdminUsersPage />);
     expect(screen.getByText("در حال بارگذاری...")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "کاربران مدیریتی سامانه" }),
+      screen.getByRole("heading", { name: "مدیریت کاربران", level: 1 }),
     ).toBeTruthy();
     expect(
-      screen.getByText("مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"),
+      screen.getByRole("heading", {
+        name: "کاربران مدیریتی سامانه",
+        level: 2,
+      }),
     ).toBeTruthy();
     expect(
-      screen.getByText(
-        "مالک و اعضای اقامتگاه از بخش اعضای همان اقامتگاه مدیریت می‌شوند.",
-      ),
+      screen.getByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
     ).toBeTruthy();
 
     resolveUsers([adminUser(1)]);
@@ -141,7 +165,11 @@ describe("Admin Users page", () => {
   });
 
   it("renders API failures through KoochAlert", async () => {
-    ownerApi.apiRequest.mockRejectedValue(new Error("فهرست در دسترس نیست"));
+    ownerApi.apiRequest.mockImplementation((path: string) =>
+      path === "/admin/users"
+        ? Promise.reject(new Error("فهرست در دسترس نیست"))
+        : Promise.resolve([]),
+    );
 
     render(<AdminUsersPage />);
 
@@ -160,6 +188,7 @@ describe("Admin Users page", () => {
     let users: AdminUserResponse[] = [];
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties") return Promise.resolve([]);
         if (path === "/admin/users" && !options) {
           return Promise.resolve(users);
         }
@@ -264,6 +293,7 @@ describe("Admin Users page", () => {
     let users = [superAdmin, assistant];
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties") return Promise.resolve([]);
         if (path === "/admin/users" && !options) {
           return Promise.resolve(users);
         }
@@ -282,6 +312,12 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
 
     const superRow = (await screen.findByText("Super User")).closest("tr")!;
+    expect(
+      screen.getByText(
+        "برای مشاهده فهرست اقامتگاه‌ها، مجوز مدیریت اقامتگاه‌ها لازم است.",
+      ),
+    ).toBeTruthy();
+    expect(ownerApi.apiRequest).not.toHaveBeenCalledWith("/admin/properties");
     expect(
       within(superRow).queryByTitle("ویرایش کاربر"),
     ).toBeNull();
@@ -322,6 +358,7 @@ describe("Admin Users page", () => {
     });
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties") return Promise.resolve([]);
         if (path === "/admin/users" && !options) {
           return Promise.resolve([current]);
         }
@@ -371,6 +408,7 @@ describe("Admin Users page", () => {
     const user = adminUser(2, { fullName: "Failure User" });
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/admin/properties") return Promise.resolve([]);
         if (path === "/admin/users" && !options) {
           return Promise.resolve([user]);
         }
@@ -399,5 +437,42 @@ describe("Admin Users page", () => {
     expect(within(row).getByText("فعال")).toBeTruthy();
     expect(notifications.success).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it("selects a property and navigates to its canonical member management page", async () => {
+    ownerApi.apiRequest.mockImplementation((path: string) => {
+      if (path === "/admin/users") return Promise.resolve([]);
+      if (path === "/admin/properties") {
+        return Promise.resolve([
+          property(42, {
+            name: "خانه تاریخی کاشان",
+            city: "کاشان",
+            ownerName: "سارا محمدی",
+          }),
+        ]);
+      }
+      return Promise.reject(new Error("Unexpected request: " + path));
+    });
+
+    render(<AdminUsersPage />);
+
+    await waitFor(() =>
+      expect(ownerApi.apiRequest).toHaveBeenCalledWith("/admin/properties"),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(screen.getByRole("button", { name: /خانه تاریخی کاشان/ }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه" }),
+    );
+
+    expect(navigation.push).toHaveBeenCalledWith(
+      "/admin/properties/42/users",
+    );
+    expect(
+      ownerApi.apiRequest.mock.calls.some(
+        ([path]) => path === "/admin/properties/42/users",
+      ),
+    ).toBe(false);
   });
 });
