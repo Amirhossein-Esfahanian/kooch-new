@@ -679,7 +679,7 @@ export default function AdminUsersPage() {
                 type="button"
                 variant="outline"
               >
-                مدیریت کاربران اقامتگاه‌ها
+                مدیریت اعضای اقامتگاه‌ها
               </KoochButton>
             ) : null
           }

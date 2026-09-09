@@ -161,7 +161,7 @@ describe("Admin Users page", () => {
     ).toBeNull();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "مدیریت کاربران اقامتگاه‌ها" }),
+      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه‌ها" }),
     );
     expect(propertyTab.getAttribute("aria-selected")).toBe("true");
     expect(
