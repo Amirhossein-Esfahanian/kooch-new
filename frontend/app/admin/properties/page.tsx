@@ -506,6 +506,11 @@ export default function AdminPropertiesPage() {
       return { ownerId: Number(createForm.ownerId), setupLink: null };
     }
 
+    const ownerPassword = createForm.ownerPassword.trim();
+    if (ownerPassword.length < 8) {
+      throw new Error("رمز عبور اولیه مالک جدید باید حداقل ۸ کاراکتر باشد.");
+    }
+
     const createdOwner = await apiRequest<AdminPropertyOwnerAccountResponse>(
       "/admin/properties/owner-candidates",
       {
@@ -515,7 +520,7 @@ export default function AdminPropertiesPage() {
           lastName: createForm.ownerLastName.trim(),
           email: createForm.ownerEmail.trim() || null,
           phoneNumber: createForm.ownerPhoneNumber.trim(),
-          password: createForm.ownerPassword.trim() || null,
+          password: ownerPassword,
         }),
       },
     );
@@ -651,6 +656,11 @@ export default function AdminPropertiesPage() {
       setCreateIdentityErrors(nextIdentityErrors);
       if (hasCreateUserIdentityErrors(nextIdentityErrors)) {
         toast.error(Object.values(nextIdentityErrors)[0]!);
+        return;
+      }
+
+      if (createForm.ownerPassword.trim().length < 8) {
+        toast.error("رمز عبور اولیه مالک جدید باید حداقل ۸ کاراکتر باشد.");
         return;
       }
     }
@@ -1261,8 +1271,14 @@ export default function AdminPropertiesPage() {
                         email: createForm.ownerEmail,
                       }}
                     />
-                    <KoochField className="hidden" label="رمز عبور اولیه">
+                    <KoochField
+                      className="md:col-span-2"
+                      helperText="برای ایجاد مالک و ثبت اقامتگاه در همین مرحله، رمز عبور اولیه الزامی است."
+                      label="رمز عبور اولیه"
+                      required
+                    >
                       <KoochInput
+                        autoComplete="new-password"
                         dir="ltr"
                         minLength={8}
                         onChange={(event) =>
@@ -1271,6 +1287,7 @@ export default function AdminPropertiesPage() {
                             ownerPassword: event.target.value,
                           })
                         }
+                        required
                         type="password"
                         value={createForm.ownerPassword}
                       />
