@@ -167,6 +167,50 @@ public sealed class AdminUserHardeningTests
 
         Assert.Contains("مالکیت", exception.Message);
         await AssertUserAsync(database, TargetId, targetRole, true);
+
+        await using var verification = database.CreateContext();
+        var property = await verification.Properties.IgnoreQueryFilters().SingleAsync();
+        Assert.Equal(TargetId, property.OwnerId);
+        var membership = await verification.UserPropertyAccesses.SingleAsync();
+        Assert.Equal(TargetId, membership.UserId);
+        Assert.Equal(PropertyUserRole.PropertyOwner, membership.PropertyRole);
+        Assert.Equal(PropertyUserStatus.Active, membership.Status);
+        Assert.True(membership.IsActive);
+    }
+
+    [Fact]
+    public async Task OwnerOfMultipleProperties_CannotBeDeactivated()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await SeedUsersAsync(database,
+            User(ActorId, UserRole.SuperAdmin),
+            User(TargetId, UserRole.AdminAssistant));
+        await SeedPropertyAsync(database, TargetId, propertyCount: 2);
+        await using var context = database.CreateContext();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(context).SetActiveAsync(
+                ActorId, UserRole.SuperAdmin, TargetId, false));
+
+        await AssertUserAsync(database, TargetId, UserRole.AdminAssistant, true);
+        await using var verification = database.CreateContext();
+        var properties = await verification.Properties.IgnoreQueryFilters()
+            .OrderBy(property => property.Id)
+            .ToListAsync();
+        Assert.Equal(2, properties.Count);
+        Assert.All(properties, property => Assert.Equal(TargetId, property.OwnerId));
+
+        var memberships = await verification.UserPropertyAccesses
+            .OrderBy(access => access.PropertyId)
+            .ToListAsync();
+        Assert.Equal(2, memberships.Count);
+        Assert.All(memberships, membership =>
+        {
+            Assert.Equal(TargetId, membership.UserId);
+            Assert.Equal(PropertyUserRole.PropertyOwner, membership.PropertyRole);
+            Assert.Equal(PropertyUserStatus.Active, membership.Status);
+            Assert.True(membership.IsActive);
+        });
     }
 
     [Fact]
@@ -505,7 +549,8 @@ public sealed class AdminUserHardeningTests
         TestDatabase database,
         int ownerId,
         bool isDeleted = false,
-        int? membershipUserId = null)
+        int? membershipUserId = null,
+        int propertyCount = 1)
     {
         await using var context = database.CreateContext();
         context.Destinations.Add(new Destination
@@ -515,30 +560,34 @@ public sealed class AdminUserHardeningTests
             Slug = "test",
             Country = "Iran"
         });
-        context.Properties.Add(new Property
+        for (var index = 0; index < propertyCount; index++)
         {
-            Id = 200,
-            OwnerId = ownerId,
-            DestinationId = 100,
-            Name = "Test Property",
-            Slug = "test-property",
-            Description = "Test",
-            Address = "Test",
-            City = "Test",
-            Country = "Iran",
-            Status = PropertyStatus.Approved,
-            Type = PropertyType.TraditionalHouse,
-            InventoryMode = InventoryMode.NamedRooms,
-            IsDeleted = isDeleted
-        });
-        context.UserPropertyAccesses.Add(new UserPropertyAccess
-        {
-            UserId = membershipUserId ?? ownerId,
-            PropertyId = 200,
-            PropertyRole = PropertyUserRole.PropertyOwner,
-            Status = PropertyUserStatus.Active,
-            IsActive = true
-        });
+            var propertyId = 200 + index;
+            context.Properties.Add(new Property
+            {
+                Id = propertyId,
+                OwnerId = ownerId,
+                DestinationId = 100,
+                Name = index == 0 ? "Test Property" : $"Test Property {index + 1}",
+                Slug = index == 0 ? "test-property" : $"test-property-{index + 1}",
+                Description = "Test",
+                Address = "Test",
+                City = "Test",
+                Country = "Iran",
+                Status = PropertyStatus.Approved,
+                Type = PropertyType.TraditionalHouse,
+                InventoryMode = InventoryMode.NamedRooms,
+                IsDeleted = isDeleted
+            });
+            context.UserPropertyAccesses.Add(new UserPropertyAccess
+            {
+                UserId = membershipUserId ?? ownerId,
+                PropertyId = propertyId,
+                PropertyRole = PropertyUserRole.PropertyOwner,
+                Status = PropertyUserStatus.Active,
+                IsActive = true
+            });
+        }
         await context.SaveChangesAsync();
     }
 
