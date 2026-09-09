@@ -72,8 +72,8 @@ type UserStatusFilter = "all" | "active" | "inactive" | "passwordSetupRequired";
 type AdminUsersView = "platform" | "property";
 
 const adminUserViews: Array<{ id: AdminUsersView; label: string }> = [
-  { id: "platform", label: "کاربران مدیریتی سامانه" },
-  { id: "property", label: "اعضای اقامتگاه‌ها" },
+  { id: "platform", label: "مدیران سامانه" },
+  { id: "property", label: "کاربران اقامتگاه‌ها" },
 ];
 
 const permissionCategories: Array<{
@@ -672,17 +672,6 @@ export default function AdminUsersPage() {
     <AdminLayout requiredPlatformPermission="ManageUsers">
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
-          actions={
-            activeView === "platform" ? (
-              <KoochButton
-                onClick={() => selectView("property")}
-                type="button"
-                variant="outline"
-              >
-                مدیریت اعضای اقامتگاه‌ها
-              </KoochButton>
-            ) : null
-          }
           appearance="plain"
           description="مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"
           eyebrow="پنل مدیریت"
@@ -739,7 +728,7 @@ export default function AdminUsersPage() {
                 className="text-lg font-semibold text-foreground"
                 id="platform-admin-users-title"
               >
-                کاربران مدیریتی سامانه
+                مدیران سامانه
               </h2>
               <p className="mt-1 text-sm font-normal text-muted-foreground">
                 مدیران ارشد و دستیاران مدیریتی با دسترسی سراسری سامانه
@@ -996,7 +985,7 @@ export default function AdminUsersPage() {
                 className="text-lg font-semibold text-foreground"
                 id="property-members-title"
               >
-                اعضای اقامتگاه‌ها
+                کاربران اقامتگاه‌ها
               </h2>
               <p className="mt-1 max-w-2xl text-sm font-normal leading-6 text-muted-foreground">
                 برای مدیریت مدیر و کارکنان، ابتدا اقامتگاه را انتخاب کنید.

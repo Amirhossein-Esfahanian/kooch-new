@@ -145,27 +145,25 @@ describe("Admin Users page", () => {
     ).toBeTruthy();
     expect(
       screen.getByRole("heading", {
-        name: "کاربران مدیریتی سامانه",
+        name: "مدیران سامانه",
         level: 2,
       }),
     ).toBeTruthy();
     const platformTab = screen.getByRole("tab", {
-      name: "کاربران مدیریتی سامانه",
+      name: "مدیران سامانه",
     });
     const propertyTab = screen.getByRole("tab", {
-      name: "اعضای اقامتگاه‌ها",
+      name: "کاربران اقامتگاه‌ها",
     });
     expect(platformTab.getAttribute("aria-selected")).toBe("true");
     expect(
-      screen.queryByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
+      screen.queryByRole("heading", { name: "کاربران اقامتگاه‌ها", level: 2 }),
     ).toBeNull();
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه‌ها" }),
-    );
+    fireEvent.click(propertyTab);
     expect(propertyTab.getAttribute("aria-selected")).toBe("true");
     expect(
-      screen.getByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
+      screen.getByRole("heading", { name: "کاربران اقامتگاه‌ها", level: 2 }),
     ).toBeTruthy();
     expect(
       screen.getByText(
@@ -188,10 +186,10 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
 
     const platformTab = screen.getByRole("tab", {
-      name: "کاربران مدیریتی سامانه",
+      name: "مدیران سامانه",
     });
     const propertyTab = screen.getByRole("tab", {
-      name: "اعضای اقامتگاه‌ها",
+      name: "کاربران اقامتگاه‌ها",
     });
 
     platformTab.focus();
@@ -368,7 +366,7 @@ describe("Admin Users page", () => {
 
     await screen.findByText("Super User");
     fireEvent.click(
-      screen.getByRole("tab", { name: "اعضای اقامتگاه‌ها" }),
+      screen.getByRole("tab", { name: "کاربران اقامتگاه‌ها" }),
     );
     expect(
       screen.getByText(
@@ -377,7 +375,7 @@ describe("Admin Users page", () => {
     ).toBeTruthy();
     expect(ownerApi.apiRequest).not.toHaveBeenCalledWith("/admin/properties");
     fireEvent.click(
-      screen.getByRole("tab", { name: "کاربران مدیریتی سامانه" }),
+      screen.getByRole("tab", { name: "مدیران سامانه" }),
     );
     const superRow = screen.getByText("Super User").closest("tr")!;
     expect(
@@ -523,7 +521,7 @@ describe("Admin Users page", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("tab", { name: "اعضای اقامتگاه‌ها" }),
+      screen.getByRole("tab", { name: "کاربران اقامتگاه‌ها" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
     fireEvent.click(screen.getByRole("button", { name: /خانه تاریخی کاشان/ }));
