@@ -141,6 +141,9 @@ describe("Admin Users page", () => {
       }),
     ).toBeTruthy();
     expect(
+      screen.getByText("مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"),
+    ).toBeTruthy();
+    expect(
       screen.getByRole("heading", {
         name: "کاربران مدیریتی سامانه",
         level: 2,
@@ -158,7 +161,7 @@ describe("Admin Users page", () => {
     ).toBeNull();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه‌ها" }),
+      screen.getByRole("button", { name: "مدیریت کاربران اقامتگاه‌ها" }),
     );
     expect(propertyTab.getAttribute("aria-selected")).toBe("true");
     expect(

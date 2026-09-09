@@ -115,7 +115,7 @@ describe("Admin header layout", () => {
     render(<AdminLayout>محتوا</AdminLayout>);
 
     expect(
-      screen.getByRole("link", { name: "مدیریت کاربران" }),
+      screen.getByRole("link", { name: "کاربران مدیریتی سامانه" }),
     ).toBeTruthy();
   });
 
@@ -124,13 +124,13 @@ describe("Admin header layout", () => {
     const { rerender } = render(<AdminLayout>محتوا</AdminLayout>);
 
     expect(
-      screen.queryByRole("link", { name: "مدیریت کاربران" }),
+      screen.queryByRole("link", { name: "کاربران مدیریتی سامانه" }),
     ).toBeNull();
 
     auth.current.platformPermissions = ["ManageUsers"];
     rerender(<AdminLayout>محتوا</AdminLayout>);
     expect(
-      screen.getByRole("link", { name: "مدیریت کاربران" }),
+      screen.getByRole("link", { name: "کاربران مدیریتی سامانه" }),
     ).toBeTruthy();
   });
 });

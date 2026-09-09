@@ -679,12 +679,12 @@ export default function AdminUsersPage() {
                 type="button"
                 variant="outline"
               >
-                مدیریت اعضای اقامتگاه‌ها
+                مدیریت کاربران اقامتگاه‌ها
               </KoochButton>
             ) : null
           }
           appearance="plain"
-          description="مدیریت حساب‌های مدیریتی سامانه و دسترسی به اعضای هر اقامتگاه"
+          description="مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"
           eyebrow="پنل مدیریت"
           title="کاربران مدیریتی سامانه"
         />
