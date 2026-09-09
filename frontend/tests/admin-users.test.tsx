@@ -21,14 +21,6 @@ const notifications = vi.hoisted(() => ({
   success: vi.fn(),
 }));
 
-const navigation = vi.hoisted(() => ({
-  push: vi.fn(),
-}));
-
-vi.mock("next/navigation", () => ({
-  useRouter: () => navigation,
-}));
-
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
   return { ...actual, apiRequest: ownerApi.apiRequest };
@@ -55,7 +47,7 @@ vi.mock("sonner", () => ({
 }));
 
 import AdminUsersPage from "@/app/admin/users/page";
-import type { AdminUserResponse, PropertyResponse } from "@/lib/owner-api";
+import type { AdminUserResponse } from "@/lib/owner-api";
 
 Object.defineProperty(HTMLElement.prototype, "scrollTo", {
   configurable: true,
@@ -84,20 +76,6 @@ function adminUser(
     temporarySetupLink: null,
     ...options,
   };
-}
-
-function property(
-  id: number,
-  options: Partial<PropertyResponse> = {},
-): PropertyResponse {
-  return {
-    id,
-    name: `اقامتگاه ${id}`,
-    city: "کاشان",
-    ownerName: "مالک نمونه",
-    ownerEmail: "owner@example.test",
-    ...options,
-  } as PropertyResponse;
 }
 
 function setActor(
@@ -149,59 +127,14 @@ describe("Admin Users page", () => {
         level: 2,
       }),
     ).toBeTruthy();
-    const platformTab = screen.getByRole("tab", {
-      name: "مدیران سامانه",
-    });
-    const propertyTab = screen.getByRole("tab", {
-      name: "کاربران اقامتگاه‌ها",
-    });
-    expect(platformTab.getAttribute("aria-selected")).toBe("true");
-    expect(
-      screen.queryByRole("heading", { name: "کاربران اقامتگاه‌ها", level: 2 }),
-    ).toBeNull();
-
-    fireEvent.click(propertyTab);
-    expect(propertyTab.getAttribute("aria-selected")).toBe("true");
-    expect(
-      screen.getByRole("heading", { name: "کاربران اقامتگاه‌ها", level: 2 }),
-    ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "مالک اقامتگاه از مسیر مدیریت یا انتقال مالکیت اقامتگاه تعیین می‌شود.",
-      ),
-    ).toBeTruthy();
-
-    fireEvent.click(platformTab);
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(ownerApi.apiRequest).not.toHaveBeenCalledWith("/admin/properties");
 
     resolveUsers([adminUser(1)]);
     expect(await screen.findByText("Test User 1")).toBeTruthy();
     expect(
       document.querySelector('[data-required-permission="ManageUsers"]'),
     ).toBeTruthy();
-  });
-
-  it("supports roving keyboard focus between the two management views", async () => {
-    ownerApi.apiRequest.mockResolvedValue([]);
-
-    render(<AdminUsersPage />);
-
-    const platformTab = screen.getByRole("tab", {
-      name: "مدیران سامانه",
-    });
-    const propertyTab = screen.getByRole("tab", {
-      name: "کاربران اقامتگاه‌ها",
-    });
-
-    platformTab.focus();
-    fireEvent.keyDown(platformTab, { key: "End" });
-    expect(propertyTab.getAttribute("aria-selected")).toBe("true");
-    expect(propertyTab.tabIndex).toBe(0);
-    expect(document.activeElement).toBe(propertyTab);
-
-    fireEvent.keyDown(propertyTab, { key: "Home" });
-    expect(platformTab.getAttribute("aria-selected")).toBe("true");
-    expect(platformTab.tabIndex).toBe(0);
-    expect(document.activeElement).toBe(platformTab);
   });
 
   it("renders the empty state", async () => {
@@ -365,18 +298,7 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
 
     await screen.findByText("Super User");
-    fireEvent.click(
-      screen.getByRole("tab", { name: "کاربران اقامتگاه‌ها" }),
-    );
-    expect(
-      screen.getByText(
-        "برای مشاهده فهرست اقامتگاه‌ها، مجوز مدیریت اقامتگاه‌ها لازم است.",
-      ),
-    ).toBeTruthy();
     expect(ownerApi.apiRequest).not.toHaveBeenCalledWith("/admin/properties");
-    fireEvent.click(
-      screen.getByRole("tab", { name: "مدیران سامانه" }),
-    );
     const superRow = screen.getByText("Super User").closest("tr")!;
     expect(
       within(superRow).queryByTitle("ویرایش کاربر"),
@@ -499,43 +421,4 @@ describe("Admin Users page", () => {
     consoleError.mockRestore();
   });
 
-  it("selects a property and navigates to its canonical member management page", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string) => {
-      if (path === "/admin/users") return Promise.resolve([]);
-      if (path === "/admin/properties") {
-        return Promise.resolve([
-          property(42, {
-            name: "خانه تاریخی کاشان",
-            city: "کاشان",
-            ownerName: "سارا محمدی",
-          }),
-        ]);
-      }
-      return Promise.reject(new Error("Unexpected request: " + path));
-    });
-
-    render(<AdminUsersPage />);
-
-    await waitFor(() =>
-      expect(ownerApi.apiRequest).toHaveBeenCalledWith("/admin/properties"),
-    );
-
-    fireEvent.click(
-      screen.getByRole("tab", { name: "کاربران اقامتگاه‌ها" }),
-    );
-    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
-    fireEvent.click(screen.getByRole("button", { name: /خانه تاریخی کاشان/ }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه" }),
-    );
-
-    expect(navigation.push).toHaveBeenCalledWith(
-      "/admin/properties/42/users",
-    );
-    expect(
-      ownerApi.apiRequest.mock.calls.some(
-        ([path]) => path === "/admin/properties/42/users",
-      ),
-    ).toBe(false);
-  });
 });

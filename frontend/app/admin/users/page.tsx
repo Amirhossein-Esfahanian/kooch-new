@@ -2,14 +2,12 @@
 
 import {
   FormEvent,
-  KeyboardEvent,
   useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from "react";
-import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -23,7 +21,6 @@ import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
-  KoochSearchableSelect,
   KoochSelect,
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -47,7 +44,6 @@ import {
   AdminPermissionKey,
   AdminUserResponse,
   apiRequest,
-  PropertyResponse,
   UserRole,
 } from "@/lib/owner-api";
 import { KoochIcon } from "../../../components/KoochIcon";
@@ -69,12 +65,6 @@ function roleLabel(role: UserRole) {
 
 type UserRoleFilter = "all" | PlatformAdminRole;
 type UserStatusFilter = "all" | "active" | "inactive" | "passwordSetupRequired";
-type AdminUsersView = "platform" | "property";
-
-const adminUserViews: Array<{ id: AdminUsersView; label: string }> = [
-  { id: "platform", label: "مدیران سامانه" },
-  { id: "property", label: "کاربران اقامتگاه‌ها" },
-];
 
 const permissionCategories: Array<{
   key: string;
@@ -251,7 +241,6 @@ function validatePassword(password: string) {
 }
 
 export default function AdminUsersPage() {
-  const router = useRouter();
   const {
     authenticated,
     loading: sessionLoading,
@@ -273,18 +262,9 @@ export default function AdminUsersPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRoleFilter>("all");
   const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
-  const [activeView, setActiveView] = useState<AdminUsersView>("platform");
-  const viewTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const [properties, setProperties] = useState<PropertyResponse[]>([]);
-  const [propertiesLoading, setPropertiesLoading] = useState(true);
-  const [propertiesError, setPropertiesError] = useState("");
-  const [selectedPropertyId, setSelectedPropertyId] = useState("");
   const canManageUsers =
     platformRole === "SuperAdmin" ||
     platformPermissions.includes("ManageUsers");
-  const canBrowseProperties =
-    platformRole === "SuperAdmin" ||
-    platformPermissions.includes("ManageProperties");
   const assignableRoles: PlatformAdminRole[] =
     platformRole === "SuperAdmin" ? roles : ["AdminAssistant"];
   const assignablePermissionKeys =
@@ -342,27 +322,6 @@ export default function AdminUsersPage() {
     Boolean(searchTerm.trim()) ||
     roleFilter !== "all" ||
     statusFilter !== "all";
-  const propertyOptions = useMemo(
-    () =>
-      properties.map((property) => ({
-        value: property.id,
-        label: property.name,
-        description: [property.city, property.ownerName]
-          .filter(Boolean)
-          .join(" · "),
-        searchText: [
-          property.name,
-          property.englishName,
-          property.city,
-          property.ownerName,
-          property.ownerEmail,
-          property.id,
-        ]
-          .filter(Boolean)
-          .join(" "),
-      })),
-    [properties],
-  );
 
   async function load() {
     setUsers(await apiRequest<AdminUserResponse[]>("/admin/users"));
@@ -384,47 +343,6 @@ export default function AdminUsersPage() {
       })
       .finally(() => setLoading(false));
   }, [authenticated, canManageUsers, sessionLoading, workspaces]);
-
-  useEffect(() => {
-    if (
-      sessionLoading ||
-      !authenticated ||
-      !workspaces.includes("admin") ||
-      !canManageUsers
-    ) {
-      return;
-    }
-
-    if (!canBrowseProperties) {
-      setPropertiesLoading(false);
-      return;
-    }
-
-    let active = true;
-    setPropertiesError("");
-    setPropertiesLoading(true);
-
-    apiRequest<PropertyResponse[]>("/admin/properties")
-      .then((items) => {
-        if (active) setProperties(items);
-      })
-      .catch((caught: Error) => {
-        if (active) setPropertiesError(caught.message);
-      })
-      .finally(() => {
-        if (active) setPropertiesLoading(false);
-      });
-
-    return () => {
-      active = false;
-    };
-  }, [
-    authenticated,
-    canBrowseProperties,
-    canManageUsers,
-    sessionLoading,
-    workspaces,
-  ]);
 
   useLayoutEffect(() => {
     if (!dialogOpen) return;
@@ -639,35 +557,6 @@ export default function AdminUsersPage() {
     }));
   }
 
-  function selectView(view: AdminUsersView) {
-    setActiveView(view);
-  }
-
-  function handleViewTabKeyDown(
-    event: KeyboardEvent<HTMLButtonElement>,
-    currentIndex: number,
-  ) {
-    let nextIndex: number;
-
-    if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = adminUserViews.length - 1;
-    } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
-      const isRtl = getComputedStyle(event.currentTarget).direction === "rtl";
-      const moveForward = event.key === "ArrowLeft" ? isRtl : !isRtl;
-      nextIndex =
-        (currentIndex + (moveForward ? 1 : -1) + adminUserViews.length) %
-        adminUserViews.length;
-    } else {
-      return;
-    }
-
-    event.preventDefault();
-    selectView(adminUserViews[nextIndex].id);
-    viewTabRefs.current[nextIndex]?.focus();
-  }
-
   return (
     <AdminLayout requiredPlatformPermission="ManageUsers">
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
@@ -678,50 +567,10 @@ export default function AdminUsersPage() {
           title="کاربران مدیریتی سامانه"
         />
 
-        <div
-          aria-label="بخش مدیریت کاربران"
-          className="grid w-full grid-cols-2 gap-1 rounded-lg border border-border bg-muted/40 p-1 sm:inline-grid sm:w-fit"
-          dir="rtl"
-          role="tablist"
+        <section
+          aria-labelledby="platform-admin-users-title"
+          className="grid gap-4"
         >
-          {adminUserViews.map((view, index) => {
-            const active = activeView === view.id;
-
-            return (
-              <button
-                aria-controls={`admin-users-${view.id}-panel`}
-                aria-selected={active}
-                className={[
-                  "min-h-11 rounded-md px-4 py-2 text-sm font-medium transition-colors",
-                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                  active
-                    ? "bg-background text-foreground shadow-sm"
-                    : "text-muted-foreground hover:bg-background/60 hover:text-foreground",
-                ].join(" ")}
-                id={`admin-users-${view.id}-tab`}
-                key={view.id}
-                onClick={() => selectView(view.id)}
-                onKeyDown={(event) => handleViewTabKeyDown(event, index)}
-                ref={(element) => {
-                  viewTabRefs.current[index] = element;
-                }}
-                role="tab"
-                tabIndex={active ? 0 : -1}
-                type="button"
-              >
-                {view.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {activeView === "platform" && (
-          <section
-            aria-labelledby="admin-users-platform-tab"
-            className="grid gap-4"
-            id="admin-users-platform-panel"
-            role="tabpanel"
-          >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h2
@@ -968,83 +817,7 @@ export default function AdminUsersPage() {
             </KoochTableBody>
           </KoochTable>
           </div>
-          </section>
-        )}
-
-        {activeView === "property" && (
-          <KoochCard
-            aria-labelledby="admin-users-property-tab"
-            className="min-w-0"
-            id="admin-users-property-panel"
-            padding="md"
-            role="tabpanel"
-          >
-          <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)] lg:items-end">
-            <div className="min-w-0">
-              <h2
-                className="text-lg font-semibold text-foreground"
-                id="property-members-title"
-              >
-                کاربران اقامتگاه‌ها
-              </h2>
-              <p className="mt-1 max-w-2xl text-sm font-normal leading-6 text-muted-foreground">
-                برای مدیریت مدیر و کارکنان، ابتدا اقامتگاه را انتخاب کنید.
-                اعضا در صفحه اختصاصی همان اقامتگاه مدیریت می‌شوند.
-              </p>
-              <p className="mt-2 max-w-2xl text-xs font-normal leading-6 text-muted-foreground">
-                مالک اقامتگاه از مسیر مدیریت یا انتقال مالکیت اقامتگاه تعیین می‌شود.
-              </p>
-            </div>
-
-            {canBrowseProperties ? (
-              <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                <KoochField label="اقامتگاه">
-                  <KoochSearchableSelect
-                    clearText="پاک کردن انتخاب اقامتگاه"
-                    disabled={propertiesLoading}
-                    emptyText="اقامتگاهی پیدا نشد."
-                    id="property-members-property"
-                    onChange={setSelectedPropertyId}
-                    options={propertyOptions}
-                    placeholder={
-                      propertiesLoading
-                        ? "در حال بارگذاری اقامتگاه‌ها..."
-                        : "انتخاب یا جستجوی اقامتگاه"
-                    }
-                    searchPlaceholder="جستجو با نام، شهر یا مالک..."
-                    value={selectedPropertyId}
-                  />
-                </KoochField>
-                <KoochButton
-                  disabled={!selectedPropertyId || propertiesLoading}
-                  onClick={() =>
-                    router.push(
-                      `/admin/properties/${selectedPropertyId}/users`,
-                    )
-                  }
-                  type="button"
-                >
-                  مدیریت اعضای اقامتگاه
-                </KoochButton>
-              </div>
-            ) : (
-              <KoochAlert icon="info" variant="information">
-                برای مشاهده فهرست اقامتگاه‌ها، مجوز مدیریت اقامتگاه‌ها لازم است.
-              </KoochAlert>
-            )}
-          </div>
-
-          {propertiesError && (
-            <KoochAlert
-              className="mt-4"
-              title="فهرست اقامتگاه‌ها بارگذاری نشد"
-              variant="destructive"
-            >
-              {propertiesError}
-            </KoochAlert>
-          )}
-          </KoochCard>
-        )}
+        </section>
 
         <KoochDialog
           bodyClassName="overflow-x-hidden px-4 py-4"

@@ -61,6 +61,12 @@ const adminMenuItems: DashboardMenuItem[] = [
     href: "/admin/users",
     platformPermission: "ManageUsers",
   },
+  {
+    label: "اعضای اقامتگاه‌ها",
+    icon: "/svgs/users.svg",
+    href: "/admin/property-members",
+    platformPermission: "ManageUsers",
+  },
   { label: "مدیریت مهمان‌ها", icon: "/svgs/users.svg", href: "/admin/guests" },
   {
     label: "مدیریت امکانات",

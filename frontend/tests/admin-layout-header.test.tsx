@@ -117,6 +117,11 @@ describe("Admin header layout", () => {
     expect(
       screen.getByRole("link", { name: "کاربران مدیریتی سامانه" }),
     ).toBeTruthy();
+    expect(
+      screen
+        .getByRole("link", { name: "اعضای اقامتگاه‌ها" })
+        .getAttribute("href"),
+    ).toBe("/admin/property-members");
   });
 
   it("shows Admin Users to AdminAssistant only with ManageUsers", () => {
@@ -126,11 +131,17 @@ describe("Admin header layout", () => {
     expect(
       screen.queryByRole("link", { name: "کاربران مدیریتی سامانه" }),
     ).toBeNull();
+    expect(
+      screen.queryByRole("link", { name: "اعضای اقامتگاه‌ها" }),
+    ).toBeNull();
 
     auth.current.platformPermissions = ["ManageUsers"];
     rerender(<AdminLayout>محتوا</AdminLayout>);
     expect(
       screen.getByRole("link", { name: "کاربران مدیریتی سامانه" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: "اعضای اقامتگاه‌ها" }),
     ).toBeTruthy();
   });
 });
