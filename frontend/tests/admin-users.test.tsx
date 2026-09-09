@@ -135,7 +135,10 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
     expect(screen.getByText("در حال بارگذاری...")).toBeTruthy();
     expect(
-      screen.getByRole("heading", { name: "مدیریت کاربران", level: 1 }),
+      screen.getByRole("heading", {
+        name: "کاربران مدیریتی سامانه",
+        level: 1,
+      }),
     ).toBeTruthy();
     expect(
       screen.getByRole("heading", {
@@ -154,7 +157,9 @@ describe("Admin Users page", () => {
       screen.queryByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
     ).toBeNull();
 
-    fireEvent.click(propertyTab);
+    fireEvent.click(
+      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه‌ها" }),
+    );
     expect(propertyTab.getAttribute("aria-selected")).toBe("true");
     expect(
       screen.getByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 2 }),
@@ -250,6 +255,9 @@ describe("Admin Users page", () => {
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).getByRole("heading", { name: "افزودن مدیر سامانه" }),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByLabelText("مراحل فرم مدیر سامانه"),
     ).toBeTruthy();
     expect(within(dialog).getByTestId("create-user-fields")).toBeTruthy();
     const roleSelect = within(dialog).getByRole("combobox");

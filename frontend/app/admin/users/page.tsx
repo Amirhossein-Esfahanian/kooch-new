@@ -672,10 +672,21 @@ export default function AdminUsersPage() {
     <AdminLayout requiredPlatformPermission="ManageUsers">
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
+          actions={
+            activeView === "platform" ? (
+              <KoochButton
+                onClick={() => selectView("property")}
+                type="button"
+                variant="outline"
+              >
+                مدیریت اعضای اقامتگاه‌ها
+              </KoochButton>
+            ) : null
+          }
           appearance="plain"
           description="مدیریت حساب‌های مدیریتی سامانه و دسترسی به اعضای هر اقامتگاه"
           eyebrow="پنل مدیریت"
-          title="مدیریت کاربران"
+          title="کاربران مدیریتی سامانه"
         />
 
         <div
@@ -1112,7 +1123,7 @@ export default function AdminUsersPage() {
           >
             <div ref={wizardContentRef}>
               <div
-                aria-label="مراحل فرم کاربر"
+                aria-label="مراحل فرم مدیر سامانه"
                 className="relative grid min-w-0 grid-cols-3 items-start pb-2"
                 dir="rtl"
               >
@@ -1334,7 +1345,7 @@ export default function AdminUsersPage() {
                 <KoochCard padding="sm" variant="muted">
                   <div className="grid gap-3 text-sm">
                     <div className="flex items-start justify-between gap-4">
-                      <span className="text-muted-foreground">کاربر</span>
+                      <span className="text-muted-foreground">مدیر سامانه</span>
                       <span className="text-left font-bold text-foreground">
                         {[form.firstName, form.lastName]
                           .filter(Boolean)
