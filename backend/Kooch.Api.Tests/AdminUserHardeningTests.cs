@@ -39,10 +39,14 @@ public sealed class AdminUserHardeningTests
     public async Task SingleActiveSuperAdmin_CannotBeDemotedByAnotherAuthorizedActor()
     {
         await using var database = await TestDatabase.CreateAsync();
+        var target = User(TargetId, UserRole.SuperAdmin);
+        target.SecurityStampVersion = 7;
         await SeedUsersAsync(
             database,
-            User(TargetId, UserRole.SuperAdmin),
+            target,
             User(ActorId, UserRole.SuperAdmin, isActive: false));
+        await GrantManageUsersAsync(database, TargetId);
+        await SeedPropertyAsync(database, ActorId, membershipUserId: TargetId);
         await using var context = database.CreateContext();
 
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -53,6 +57,22 @@ public sealed class AdminUserHardeningTests
                 UpdateRequest(UserRole.AdminAssistant)));
 
         await AssertUserAsync(database, TargetId, UserRole.SuperAdmin, true);
+        await using var verification = database.CreateContext();
+        var persisted = await verification.Users.IgnoreQueryFilters()
+            .SingleAsync(user => user.Id == TargetId);
+        Assert.Equal(7, persisted.SecurityStampVersion);
+        Assert.True(await verification.UserPermissions.AnyAsync(permission =>
+            permission.UserId == TargetId &&
+            permission.PermissionKey == PermissionKey.ManageUsers &&
+            permission.IsAllowed));
+
+        var property = await verification.Properties.SingleAsync();
+        Assert.Equal(ActorId, property.OwnerId);
+        var membership = await verification.UserPropertyAccesses.SingleAsync();
+        Assert.Equal(TargetId, membership.UserId);
+        Assert.Equal(PropertyUserRole.PropertyOwner, membership.PropertyRole);
+        Assert.Equal(PropertyUserStatus.Active, membership.Status);
+        Assert.True(membership.IsActive);
     }
 
     [Fact]
@@ -116,6 +136,36 @@ public sealed class AdminUserHardeningTests
             .SingleAsync(user => user.Id == TargetId);
         Assert.Equal(UserRole.AdminAssistant, target.Role);
         Assert.True(target.CanBeRestricted);
+        Assert.Equal(1, target.SecurityStampVersion);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_CanDemoteSelf_WhenAnotherActiveSuperAdminRemains()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var actor = User(ActorId, UserRole.SuperAdmin);
+        actor.SecurityStampVersion = 3;
+        await SeedUsersAsync(database,
+            actor,
+            User(TargetId, UserRole.SuperAdmin));
+        await using var context = database.CreateContext();
+        var request = UpdateRequest(UserRole.AdminAssistant);
+        request.FirstName = actor.FirstName;
+        request.LastName = actor.LastName;
+        request.Email = actor.Email;
+        request.PhoneNumber = actor.PhoneNumber!;
+
+        await CreateService(context).UpdateUserAsync(
+            ActorId, UserRole.SuperAdmin, ActorId, request);
+
+        await using var verification = database.CreateContext();
+        var persistedActor = await verification.Users.IgnoreQueryFilters()
+            .SingleAsync(user => user.Id == ActorId);
+        Assert.Equal(UserRole.AdminAssistant, persistedActor.Role);
+        Assert.True(persistedActor.IsActive);
+        Assert.True(persistedActor.CanBeRestricted);
+        Assert.Equal(4, persistedActor.SecurityStampVersion);
+        await AssertUserAsync(database, TargetId, UserRole.SuperAdmin, true);
     }
 
     [Fact]
