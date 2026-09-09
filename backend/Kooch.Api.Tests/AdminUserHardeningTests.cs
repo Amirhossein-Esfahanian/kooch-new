@@ -205,9 +205,11 @@ public sealed class AdminUserHardeningTests
     public async Task PropertyOwner_CannotBeDeactivated(UserRole targetRole)
     {
         await using var database = await TestDatabase.CreateAsync();
+        var target = User(TargetId, targetRole);
+        target.SecurityStampVersion = 11;
         await SeedUsersAsync(database,
             User(ActorId, UserRole.SuperAdmin),
-            User(TargetId, targetRole));
+            target);
         await SeedPropertyAsync(database, TargetId);
         await using var context = database.CreateContext();
 
@@ -219,6 +221,9 @@ public sealed class AdminUserHardeningTests
         await AssertUserAsync(database, TargetId, targetRole, true);
 
         await using var verification = database.CreateContext();
+        var persistedUser = await verification.Users.IgnoreQueryFilters()
+            .SingleAsync(user => user.Id == TargetId);
+        Assert.Equal(11, persistedUser.SecurityStampVersion);
         var property = await verification.Properties.IgnoreQueryFilters().SingleAsync();
         Assert.Equal(TargetId, property.OwnerId);
         var membership = await verification.UserPropertyAccesses.SingleAsync();
