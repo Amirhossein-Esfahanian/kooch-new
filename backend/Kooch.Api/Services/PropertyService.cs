@@ -591,16 +591,7 @@ public class PropertyService(
                 .Where(property => propertyIds.Contains(property.Id));
         }
 
-        var search = request.Search?.Trim();
-        if (!string.IsNullOrWhiteSpace(search))
-        {
-            query = query.Where(property =>
-                property.Name.Contains(search) ||
-                (property.EnglishName != null && property.EnglishName.Contains(search)) ||
-                property.City.Contains(search) ||
-                (property.Owner.FirstName + " " + property.Owner.LastName).Contains(search) ||
-                (property.Owner.Email != null && property.Owner.Email.Contains(search)));
-        }
+        query = ApplyAdminPropertySearch(query, request.Search);
 
         var totalCount = await query.CountAsync(cancellationToken);
         var items = await query
@@ -629,6 +620,139 @@ public class PropertyService(
                 ? 0
                 : (int)Math.Ceiling(totalCount / (double)request.PageSize)
         };
+    }
+
+    internal static IQueryable<Property> ApplyAdminPropertySearch(
+        IQueryable<Property> query,
+        string? searchText)
+    {
+        var search = NormalizeAdminPropertySearchText(searchText);
+        if (search is null)
+        {
+            return query;
+        }
+
+        return query.Where(property =>
+            property.Name
+                .Replace("ي", "ی")
+                .Replace("ك", "ک")
+                .Replace("۰", "0")
+                .Replace("۱", "1")
+                .Replace("۲", "2")
+                .Replace("۳", "3")
+                .Replace("۴", "4")
+                .Replace("۵", "5")
+                .Replace("۶", "6")
+                .Replace("۷", "7")
+                .Replace("۸", "8")
+                .Replace("۹", "9")
+                .Replace("٠", "0")
+                .Replace("١", "1")
+                .Replace("٢", "2")
+                .Replace("٣", "3")
+                .Replace("٤", "4")
+                .Replace("٥", "5")
+                .Replace("٦", "6")
+                .Replace("٧", "7")
+                .Replace("٨", "8")
+                .Replace("٩", "9")
+                .Contains(search) ||
+            (property.EnglishName != null && property.EnglishName
+                .Replace("ي", "ی")
+                .Replace("ك", "ک")
+                .Replace("۰", "0")
+                .Replace("۱", "1")
+                .Replace("۲", "2")
+                .Replace("۳", "3")
+                .Replace("۴", "4")
+                .Replace("۵", "5")
+                .Replace("۶", "6")
+                .Replace("۷", "7")
+                .Replace("۸", "8")
+                .Replace("۹", "9")
+                .Replace("٠", "0")
+                .Replace("١", "1")
+                .Replace("٢", "2")
+                .Replace("٣", "3")
+                .Replace("٤", "4")
+                .Replace("٥", "5")
+                .Replace("٦", "6")
+                .Replace("٧", "7")
+                .Replace("٨", "8")
+                .Replace("٩", "9")
+                .Contains(search)) ||
+            property.City
+                .Replace("ي", "ی")
+                .Replace("ك", "ک")
+                .Replace("۰", "0")
+                .Replace("۱", "1")
+                .Replace("۲", "2")
+                .Replace("۳", "3")
+                .Replace("۴", "4")
+                .Replace("۵", "5")
+                .Replace("۶", "6")
+                .Replace("۷", "7")
+                .Replace("۸", "8")
+                .Replace("۹", "9")
+                .Replace("٠", "0")
+                .Replace("١", "1")
+                .Replace("٢", "2")
+                .Replace("٣", "3")
+                .Replace("٤", "4")
+                .Replace("٥", "5")
+                .Replace("٦", "6")
+                .Replace("٧", "7")
+                .Replace("٨", "8")
+                .Replace("٩", "9")
+                .Contains(search) ||
+            (property.Owner.FirstName + " " + property.Owner.LastName)
+                .Replace("ي", "ی")
+                .Replace("ك", "ک")
+                .Replace("۰", "0")
+                .Replace("۱", "1")
+                .Replace("۲", "2")
+                .Replace("۳", "3")
+                .Replace("۴", "4")
+                .Replace("۵", "5")
+                .Replace("۶", "6")
+                .Replace("۷", "7")
+                .Replace("۸", "8")
+                .Replace("۹", "9")
+                .Replace("٠", "0")
+                .Replace("١", "1")
+                .Replace("٢", "2")
+                .Replace("٣", "3")
+                .Replace("٤", "4")
+                .Replace("٥", "5")
+                .Replace("٦", "6")
+                .Replace("٧", "7")
+                .Replace("٨", "8")
+                .Replace("٩", "9")
+                .Contains(search) ||
+            (property.Owner.Email != null && property.Owner.Email
+                .Replace("ي", "ی")
+                .Replace("ك", "ک")
+                .Replace("۰", "0")
+                .Replace("۱", "1")
+                .Replace("۲", "2")
+                .Replace("۳", "3")
+                .Replace("۴", "4")
+                .Replace("۵", "5")
+                .Replace("۶", "6")
+                .Replace("۷", "7")
+                .Replace("۸", "8")
+                .Replace("۹", "9")
+                .Replace("٠", "0")
+                .Replace("١", "1")
+                .Replace("٢", "2")
+                .Replace("٣", "3")
+                .Replace("٤", "4")
+                .Replace("٥", "5")
+                .Replace("٦", "6")
+                .Replace("٧", "7")
+                .Replace("٨", "8")
+                .Replace("٩", "9")
+                .Contains(search)));
     }
 
     public async Task<IReadOnlyList<PublicPropertyResponse>> GetPublicPropertiesAsync(
@@ -1520,6 +1644,38 @@ public class PropertyService(
         string.IsNullOrWhiteSpace((user.FirstName + " " + user.LastName).Trim())
             ? user.Email ?? string.Empty
             : (user.FirstName + " " + user.LastName).Trim();
+
+    private static string? NormalizeAdminPropertySearchText(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return value.Trim()
+            .Replace("ي", "ی", StringComparison.Ordinal)
+            .Replace("ك", "ک", StringComparison.Ordinal)
+            .Replace("۰", "0", StringComparison.Ordinal)
+            .Replace("۱", "1", StringComparison.Ordinal)
+            .Replace("۲", "2", StringComparison.Ordinal)
+            .Replace("۳", "3", StringComparison.Ordinal)
+            .Replace("۴", "4", StringComparison.Ordinal)
+            .Replace("۵", "5", StringComparison.Ordinal)
+            .Replace("۶", "6", StringComparison.Ordinal)
+            .Replace("۷", "7", StringComparison.Ordinal)
+            .Replace("۸", "8", StringComparison.Ordinal)
+            .Replace("۹", "9", StringComparison.Ordinal)
+            .Replace("٠", "0", StringComparison.Ordinal)
+            .Replace("١", "1", StringComparison.Ordinal)
+            .Replace("٢", "2", StringComparison.Ordinal)
+            .Replace("٣", "3", StringComparison.Ordinal)
+            .Replace("٤", "4", StringComparison.Ordinal)
+            .Replace("٥", "5", StringComparison.Ordinal)
+            .Replace("٦", "6", StringComparison.Ordinal)
+            .Replace("٧", "7", StringComparison.Ordinal)
+            .Replace("٨", "8", StringComparison.Ordinal)
+            .Replace("٩", "9", StringComparison.Ordinal);
+    }
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
 }

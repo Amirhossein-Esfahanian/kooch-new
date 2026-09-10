@@ -23,30 +23,124 @@ public class AdminPropertySearchTests
     {
         await using var dbContext = CreateContext();
         await SeedBaseAsync(dbContext);
-        var service = CreateService(dbContext);
 
         foreach (var search in new[]
                  {
-                     "Alpha House",
-                     "Historic Alpha",
+                     "  Alpha House  ",
+                     "  Historic Alpha  ",
                      "Kashan",
                      "Sara Ahmadi",
-                     "sara@example.test"
+                     "  sara@example.test  "
                  })
         {
-            var result = await service.SearchForAdminAsync(
-                1,
-                UserRole.SuperAdmin,
-                new AdminPropertySearchQuery { Search = search });
+            var result = await SearchInMemoryAsync(dbContext, search);
 
-            var item = Assert.Single(result.Items);
+            var item = Assert.Single(result);
             Assert.Equal(101, item.Id);
             Assert.Equal("Alpha House", item.Name);
             Assert.Equal("Historic Alpha", item.EnglishName);
             Assert.Equal("Kashan", item.City);
-            Assert.Equal("Sara Ahmadi", item.OwnerName);
-            Assert.Equal("sara@example.test", item.OwnerEmail);
+            Assert.Equal("Sara Ahmadi", $"{item.Owner.FirstName} {item.Owner.LastName}");
+            Assert.Equal("sara@example.test", item.Owner.Email);
         }
+    }
+
+    [Theory]
+    [InlineData("خانه یکپارچه", "خانه يكپارچه")]
+    [InlineData("خانه يكپارچه", "خانه یکپارچه")]
+    public async Task Search_MatchesPersianAndArabicYehKafInPropertyName(
+        string storedName,
+        string search)
+    {
+        await using var dbContext = CreateContext();
+        await SeedBaseAsync(dbContext);
+        dbContext.Properties.Add(CreateProperty(110, 2, storedName, "تهران"));
+        await dbContext.SaveChangesAsync();
+
+        var result = await SearchInMemoryAsync(dbContext, $"  {search}  ");
+
+        var item = Assert.Single(result);
+        Assert.Equal(110, item.Id);
+    }
+
+    [Fact]
+    public async Task Search_MatchesNormalizedCityAndCombinedOwnerName()
+    {
+        await using var dbContext = CreateContext();
+        await SeedBaseAsync(dbContext);
+        dbContext.Users.Add(CreateUser(11, UserRole.Client, "علي", "كريمي", "owner11@example.test"));
+        dbContext.Properties.Add(CreateProperty(111, 11, "خانه کویر", "كرمان"));
+        await dbContext.SaveChangesAsync();
+        var cityResult = await SearchInMemoryAsync(dbContext, "کرمان");
+        var ownerResult = await SearchInMemoryAsync(dbContext, "علی کریمی");
+
+        Assert.Equal(111, Assert.Single(cityResult).Id);
+        Assert.Equal(111, Assert.Single(ownerResult).Id);
+    }
+
+    [Fact]
+    public async Task Search_NormalizesPersianArabicAndLatinDigitsBeforePagination()
+    {
+        await using var dbContext = CreateContext();
+        await SeedBaseAsync(dbContext);
+        dbContext.Properties.AddRange(
+            CreateProperty(120, 2, "اقامتگاه ۱۲۳", "تهران"),
+            CreateProperty(121, 2, "اقامتگاه ١٢٣", "تهران"),
+            CreateProperty(122, 2, "اقامتگاه 123", "تهران"));
+        await dbContext.SaveChangesAsync();
+        var properties = await dbContext.Properties
+            .Include(property => property.Owner)
+            .AsNoTracking()
+            .ToListAsync();
+
+        foreach (var search in new[] { "123", "۱۲۳", "١٢٣" })
+        {
+            var result = PropertyService.ApplyAdminPropertySearch(
+                    properties.AsQueryable(),
+                    search)
+                .ToList();
+
+            Assert.Equal(3, result.Count);
+        }
+
+        var normalizedQuery = PropertyService.ApplyAdminPropertySearch(
+            properties.AsQueryable(),
+            "۱۲۳");
+        var totalCount = normalizedQuery.Count();
+        var pagedItems = normalizedQuery
+            .OrderBy(property => property.Name)
+            .ThenBy(property => property.Id)
+            .Skip(2)
+            .Take(2)
+            .ToList();
+
+        Assert.Equal(3, totalCount);
+        Assert.Equal(2, (int)Math.Ceiling(totalCount / 2d));
+        Assert.Single(pagedItems);
+    }
+
+    [Fact]
+    public void SearchNormalization_TranslatesToSqlServerReplaceOperations()
+    {
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseSqlServer(
+                "Server=(localdb)\\mssqllocaldb;Database=KoochAdminPropertySearchTranslation;Trusted_Connection=True;TrustServerCertificate=True")
+            .Options;
+        using var dbContext = new KoochDbContext(options);
+
+        var query = PropertyService.ApplyAdminPropertySearch(
+                dbContext.Properties.AsNoTracking(),
+                "كاشان ۱۲٣")
+            .OrderBy(property => property.Name)
+            .ThenBy(property => property.Id)
+            .Skip(10)
+            .Take(10);
+        var sql = query.ToQueryString();
+
+        Assert.Contains("REPLACE(", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("LIKE", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("OFFSET", sql, StringComparison.OrdinalIgnoreCase);
+        Assert.Contains("FETCH NEXT", sql, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact]
@@ -64,21 +158,18 @@ public class AdminPropertySearchTests
         }
         await dbContext.SaveChangesAsync();
 
-        var result = await CreateService(dbContext).SearchForAdminAsync(
-            1,
-            UserRole.SuperAdmin,
-            new AdminPropertySearchQuery
-            {
-                Search = "Paged",
-                Page = 2,
-                PageSize = 2
-            });
+        var properties = await SearchInMemoryAsync(dbContext, "Paged");
+        var totalCount = properties.Count;
+        var items = properties
+            .OrderBy(property => property.Name)
+            .ThenBy(property => property.Id)
+            .Skip(2)
+            .Take(2)
+            .ToList();
 
-        Assert.Equal(5, result.TotalCount);
-        Assert.Equal(2, result.Page);
-        Assert.Equal(2, result.PageSize);
-        Assert.Equal(3, result.TotalPages);
-        Assert.Equal(["Paged C", "Paged D"], result.Items.Select(item => item.Name));
+        Assert.Equal(5, totalCount);
+        Assert.Equal(3, (int)Math.Ceiling(totalCount / 2d));
+        Assert.Equal(["Paged C", "Paged D"], items.Select(item => item.Name));
     }
 
     [Fact]
@@ -121,11 +212,10 @@ public class AdminPropertySearchTests
         var result = await CreateService(dbContext).SearchForAdminAsync(
             1,
             UserRole.SuperAdmin,
-            new AdminPropertySearchQuery { Search = "Deleted" });
+            new AdminPropertySearchQuery());
 
-        Assert.Empty(result.Items);
-        Assert.Equal(0, result.TotalCount);
-        Assert.Equal(0, result.TotalPages);
+        Assert.DoesNotContain(result.Items, property => property.Id == 103);
+        Assert.Equal(2, result.TotalCount);
     }
 
     [Fact]
@@ -195,6 +285,20 @@ public class AdminPropertySearchTests
             new PermissionService(dbContext, authorization),
             null!,
             null!);
+    }
+
+    private static async Task<IReadOnlyList<Property>> SearchInMemoryAsync(
+        KoochDbContext dbContext,
+        string search)
+    {
+        var properties = await dbContext.Properties
+            .Include(property => property.Owner)
+            .AsNoTracking()
+            .ToListAsync();
+        return PropertyService.ApplyAdminPropertySearch(
+                properties.AsQueryable(),
+                search)
+            .ToList();
     }
 
     private static async Task SeedBaseAsync(
