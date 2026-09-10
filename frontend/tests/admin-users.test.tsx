@@ -118,6 +118,24 @@ describe("Admin Users page", () => {
         level: 1,
       }),
     ).toBeTruthy();
+    const breadcrumb = screen.getByRole("navigation", {
+      name: "مسیر صفحه",
+    });
+    expect(
+      within(breadcrumb)
+        .getByRole("link", { name: "پنل مدیریت" })
+        .getAttribute("href"),
+    ).toBe("/admin");
+    expect(
+      within(breadcrumb)
+        .getByText("کاربران مدیریتی سامانه")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      within(breadcrumb).queryByRole("link", {
+        name: "کاربران مدیریتی سامانه",
+      }),
+    ).toBeNull();
     expect(
       screen.getByText("مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"),
     ).toBeTruthy();

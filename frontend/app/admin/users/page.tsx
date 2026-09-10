@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -562,8 +563,22 @@ export default function AdminUsersPage() {
       <main className="mx-auto grid w-full min-w-0 max-w-[1480px] gap-5 overflow-x-hidden p-4 lg:p-6">
         <KoochPageHeader
           appearance="plain"
+          breadcrumb={
+            <>
+              <li>
+                <Link
+                  className="rounded-sm transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  href="/admin"
+                >
+                  پنل مدیریت
+                </Link>
+              </li>
+              <li aria-hidden="true">/</li>
+              <li aria-current="page">کاربران مدیریتی سامانه</li>
+            </>
+          }
           description="مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"
-          eyebrow="پنل مدیریت"
+          eyebrow=""
           title="کاربران مدیریتی سامانه"
         />
 
