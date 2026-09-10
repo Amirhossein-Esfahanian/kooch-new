@@ -1,5 +1,6 @@
 using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Dtos.Admin;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 
 namespace Kooch.Api.Services;
@@ -19,6 +20,7 @@ public interface IPropertyService
     Task<PropertyResponse> UpdateSeoSectionAsync(int userId, UserRole role, int propertyId, UpdatePropertySeoSectionRequest request, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PropertyResponse>> GetMyPropertiesAsync(int userId, UserRole role, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PropertyResponse>> GetAllForAdminAsync(int userId, UserRole role, CancellationToken cancellationToken = default);
+    Task<PagedResult<AdminPropertySearchItemResponse>> SearchForAdminAsync(int userId, UserRole role, AdminPropertySearchQuery query, CancellationToken cancellationToken = default);
     Task<PropertyResponse> GetPropertyByIdAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PublicPropertyResponse>> GetPublicPropertiesAsync(string? q = null, string? city = null, DateOnly? checkIn = null, DateOnly? checkOut = null, int? rooms = null, int? adults = null, int? children = null, string? childAges = null, string? settingSlugs = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<PublicPropertySuggestionResponse>> GetPublicPropertySuggestionsAsync(string? q = null, string? city = null, CancellationToken cancellationToken = default);

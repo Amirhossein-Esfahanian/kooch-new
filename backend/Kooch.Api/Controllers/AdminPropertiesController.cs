@@ -1,6 +1,7 @@
 ﻿using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -56,6 +57,20 @@ public class AdminPropertiesController(
     {
         var user = GetCurrentUser();
         return Ok(await propertyService.GetAllForAdminAsync(user.UserId, user.Role, cancellationToken));
+    }
+
+    [HttpGet("search")]
+    [ProducesResponseType<PagedResult<AdminPropertySearchItemResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<AdminPropertySearchItemResponse>>> Search(
+        [FromQuery] AdminPropertySearchQuery query,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyService.SearchForAdminAsync(
+            user.UserId,
+            user.Role,
+            query,
+            cancellationToken));
     }
 
     [HttpPut("{id:int}")]

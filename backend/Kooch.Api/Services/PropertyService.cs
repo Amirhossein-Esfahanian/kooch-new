@@ -2,6 +2,7 @@ using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Properties;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Dtos.Users;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
@@ -562,6 +563,72 @@ public class PropertyService(
                 .Where(property => propertyIds.Contains(property.Id))
                 .OrderBy(property => property.Name))
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<PagedResult<AdminPropertySearchItemResponse>> SearchForAdminAsync(
+        int userId,
+        UserRole role,
+        AdminPropertySearchQuery request,
+        CancellationToken cancellationToken = default)
+    {
+        IQueryable<Property> query;
+        if (role == UserRole.SuperAdmin)
+        {
+            query = dbContext.Properties.AsNoTracking();
+        }
+        else
+        {
+            if (role != UserRole.AdminAssistant ||
+                !await HasGlobalManagePermissionAsync(userId, cancellationToken))
+            {
+                throw new UnauthorizedAccessException("ManageProperties permission is required.");
+            }
+
+            var propertyIds = await propertyAuthorizationService.GetAccessiblePropertiesAsync(
+                userId,
+                cancellationToken);
+            query = dbContext.Properties.AsNoTracking()
+                .Where(property => propertyIds.Contains(property.Id));
+        }
+
+        var search = request.Search?.Trim();
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            query = query.Where(property =>
+                property.Name.Contains(search) ||
+                (property.EnglishName != null && property.EnglishName.Contains(search)) ||
+                property.City.Contains(search) ||
+                (property.Owner.FirstName + " " + property.Owner.LastName).Contains(search) ||
+                (property.Owner.Email != null && property.Owner.Email.Contains(search)));
+        }
+
+        var totalCount = await query.CountAsync(cancellationToken);
+        var items = await query
+            .OrderBy(property => property.Name)
+            .ThenBy(property => property.Id)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(property => new AdminPropertySearchItemResponse
+            {
+                Id = property.Id,
+                Name = property.Name,
+                EnglishName = property.EnglishName,
+                City = property.City,
+                OwnerName = (property.Owner.FirstName + " " + property.Owner.LastName).Trim(),
+                OwnerEmail = property.Owner.Email ?? string.Empty
+            })
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<AdminPropertySearchItemResponse>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)request.PageSize)
+        };
     }
 
     public async Task<IReadOnlyList<PublicPropertyResponse>> GetPublicPropertiesAsync(
