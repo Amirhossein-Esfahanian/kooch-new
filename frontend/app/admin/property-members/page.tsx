@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -12,7 +12,24 @@ import {
   KoochSearchableSelect,
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { apiRequest, type PropertyResponse } from "@/lib/owner-api";
+import { apiRequest } from "@/lib/owner-api";
+
+type AdminPropertySearchItem = {
+  id: number;
+  name: string;
+  englishName: string | null;
+  city: string;
+  ownerName: string;
+  ownerEmail: string;
+};
+
+type AdminPropertySearchResponse = {
+  items: AdminPropertySearchItem[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
 
 export default function AdminPropertyMembersPage() {
   const router = useRouter();
@@ -23,17 +40,32 @@ export default function AdminPropertyMembersPage() {
     platformRole,
     workspaces,
   } = useAuthSession();
-  const [properties, setProperties] = useState<PropertyResponse[]>([]);
+  const [properties, setProperties] = useState<AdminPropertySearchItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
   const [selectedPropertyId, setSelectedPropertyId] = useState("");
+  const [selectedProperty, setSelectedProperty] =
+    useState<AdminPropertySearchItem | null>(null);
+  const searchRequestIdRef = useRef(0);
   const canBrowseProperties =
     platformRole === "SuperAdmin" ||
     platformPermissions.includes("ManageProperties");
 
+  const selectableProperties = useMemo(() => {
+    if (
+      !selectedProperty ||
+      properties.some((property) => property.id === selectedProperty.id)
+    ) {
+      return properties;
+    }
+
+    return [selectedProperty, ...properties];
+  }, [properties, selectedProperty]);
+
   const propertyOptions = useMemo(
     () =>
-      properties.map((property) => ({
+      selectableProperties.map((property) => ({
         value: property.id,
         label: property.name,
         description: [property.city, property.ownerName]
@@ -50,7 +82,7 @@ export default function AdminPropertyMembersPage() {
           .filter(Boolean)
           .join(" "),
       })),
-    [properties],
+    [selectableProperties],
   );
 
   useEffect(() => {
@@ -60,34 +92,67 @@ export default function AdminPropertyMembersPage() {
       !workspaces.includes("admin") ||
       !canBrowseProperties
     ) {
+      searchRequestIdRef.current += 1;
       if (!sessionLoading) setLoading(false);
       return;
     }
 
-    let active = true;
-    setError("");
-    setLoading(true);
-
-    apiRequest<PropertyResponse[]>("/admin/properties")
-      .then((items) => {
-        if (active) setProperties(items);
-      })
-      .catch((caught: Error) => {
-        if (active) setError(caught.message);
-      })
-      .finally(() => {
-        if (active) setLoading(false);
+    const requestId = ++searchRequestIdRef.current;
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({
+        search: search.trim(),
+        page: "1",
+        pageSize: "10",
       });
 
+      setError("");
+      setLoading(true);
+      apiRequest<AdminPropertySearchResponse>(
+        `/admin/properties/search?${query.toString()}`,
+      )
+        .then((response) => {
+          if (searchRequestIdRef.current === requestId) {
+            setProperties(response.items);
+          }
+        })
+        .catch((caught: Error) => {
+          if (searchRequestIdRef.current === requestId) {
+            setError(caught.message);
+          }
+        })
+        .finally(() => {
+          if (searchRequestIdRef.current === requestId) {
+            setLoading(false);
+          }
+        });
+    }, 300);
+
     return () => {
-      active = false;
+      window.clearTimeout(timer);
+      if (searchRequestIdRef.current === requestId) {
+        searchRequestIdRef.current += 1;
+      }
     };
   }, [
     authenticated,
     canBrowseProperties,
+    search,
     sessionLoading,
     workspaces,
   ]);
+
+  function handlePropertyChange(value: string) {
+    setSelectedPropertyId(value);
+    if (!value) {
+      setSelectedProperty(null);
+      return;
+    }
+
+    const nextProperty = properties.find(
+      (property) => property.id.toString() === value,
+    );
+    if (nextProperty) setSelectedProperty(nextProperty);
+  }
 
   return (
     <AdminLayout requiredPlatformPermission="ManageUsers">
@@ -132,7 +197,8 @@ export default function AdminPropertyMembersPage() {
                     disabled={loading}
                     emptyText="اقامتگاهی پیدا نشد."
                     id="property-members-property"
-                    onChange={setSelectedPropertyId}
+                    onChange={handlePropertyChange}
+                    onSearchChange={setSearch}
                     options={propertyOptions}
                     placeholder={
                       loading
