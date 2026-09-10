@@ -706,11 +706,11 @@ export default function AdminUsersPage() {
           <KoochTable>
             <KoochTableHeader>
               <KoochTableRow>
-                <KoochTableHead>کاربر</KoochTableHead>
+                <KoochTableHead className="w-72">کاربر</KoochTableHead>
                 <KoochTableHead>شماره تماس</KoochTableHead>
                 <KoochTableHead>نقش</KoochTableHead>
                 <KoochTableHead>وضعیت</KoochTableHead>
-                <KoochTableHead className="w-28">عملیات</KoochTableHead>
+                <KoochTableHead className="w-64">عملیات</KoochTableHead>
               </KoochTableRow>
             </KoochTableHeader>
 
@@ -730,7 +730,7 @@ export default function AdminUsersPage() {
               ) : (
                 filteredUsers.map((user) => (
                   <KoochTableRow key={user.id}>
-                    <KoochTableCell className="min-w-56">
+                    <KoochTableCell className="w-72 min-w-56">
                       <p className="font-bold text-foreground">
                         {user.fullName || user.email}
                       </p>
@@ -760,8 +760,8 @@ export default function AdminUsersPage() {
                       </KoochBadge>
                     </KoochTableCell>
 
-                    <KoochTableCell>
-                      <div className="flex flex-wrap items-center gap-2">
+                    <KoochTableCell className="w-64 min-w-64">
+                      <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap">
                         {(platformRole === "SuperAdmin" ||
                           user.role !== "SuperAdmin") && (
                           <>
