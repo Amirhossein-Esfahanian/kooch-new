@@ -582,22 +582,8 @@ export default function AdminUsersPage() {
           title="کاربران مدیریتی سامانه"
         />
 
-        <section
-          aria-labelledby="platform-admin-users-title"
-          className="grid gap-4"
-        >
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="min-w-0">
-              <h2
-                className="text-lg font-semibold text-foreground"
-                id="platform-admin-users-title"
-              >
-                مدیران سامانه
-              </h2>
-              <p className="mt-1 text-sm font-normal text-muted-foreground">
-                مدیران ارشد و دستیاران مدیریتی با دسترسی سراسری سامانه
-              </p>
-            </div>
+        <section aria-label="فهرست مدیران سامانه" className="grid gap-4">
+          <div className="flex flex-wrap items-center justify-end gap-3">
             <KoochButton onClick={openCreate} type="button">
               <KoochIcon name="plus" />
               افزودن مدیر سامانه
@@ -685,35 +671,35 @@ export default function AdminUsersPage() {
                 </KoochSelect>
               </KoochField>
 
-              <KoochButton
-                disabled={!hasActiveFilters}
-                onClick={resetFilters}
-                type="button"
-                variant="outline"
-              >
-                حذف فیلترها
-              </KoochButton>
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 lg:justify-end">
+                <div
+                  className="flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground"
+                  dir="rtl"
+                >
+                  <span>
+                    {hasActiveFilters
+                      ? `نمایش ${filteredUsers.length.toLocaleString("fa-IR")} از ${users.length.toLocaleString("fa-IR")} کاربر`
+                      : `${users.length.toLocaleString("fa-IR")} کاربر`}
+                  </span>
+
+                  {hasActiveFilters && (
+                    <span className="rounded-md bg-[var(--theme-warning-soft)] px-2 py-1 font-bold text-[var(--theme-warning)]">
+                      فیلتر فعال است
+                    </span>
+                  )}
+                </div>
+
+                <KoochButton
+                  disabled={!hasActiveFilters}
+                  onClick={resetFilters}
+                  type="button"
+                  variant="outline"
+                >
+                  حذف فیلترها
+                </KoochButton>
+              </div>
             </div>
           </KoochCard>
-          )}
-
-          {!loading && users.length > 0 && (
-          <div
-            className="flex min-h-6 flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground"
-            dir="rtl"
-          >
-            <span>
-              {hasActiveFilters
-                ? `نمایش ${filteredUsers.length.toLocaleString("fa-IR")} از ${users.length.toLocaleString("fa-IR")} کاربر`
-                : `${users.length.toLocaleString("fa-IR")} کاربر`}
-            </span>
-
-            {hasActiveFilters && (
-              <span className="rounded-md bg-[var(--theme-warning-soft)] px-2 py-1 font-bold text-[var(--theme-warning)]">
-                فیلتر فعال است
-              </span>
-            )}
-          </div>
           )}
 
           <div className="min-w-0 max-w-full">
@@ -775,7 +761,7 @@ export default function AdminUsersPage() {
                     </KoochTableCell>
 
                     <KoochTableCell>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         {(platformRole === "SuperAdmin" ||
                           user.role !== "SuperAdmin") && (
                           <>
@@ -786,8 +772,9 @@ export default function AdminUsersPage() {
                               size="sm"
                               type="button"
                               variant="outline"
+                              className="whitespace-nowrap"
                             >
-                              <KoochIcon name="edit" />
+                              ویرایش
                             </KoochButton>
 
                             {user.isActive ? (
@@ -804,8 +791,9 @@ export default function AdminUsersPage() {
                                     size="sm"
                                     type="button"
                                     variant="destructive"
+                                    className="whitespace-nowrap"
                                   >
-                                    <KoochIcon name="suspend" />
+                                    غیرفعال‌سازی
                                   </KoochButton>
                                 }
                                 variant="destructive"
@@ -818,6 +806,7 @@ export default function AdminUsersPage() {
                                 size="sm"
                                 type="button"
                                 variant="outline"
+                                className="whitespace-nowrap"
                               >
                                 فعال‌سازی
                               </KoochButton>

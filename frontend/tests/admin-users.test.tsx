@@ -140,19 +140,50 @@ describe("Admin Users page", () => {
       screen.getByText("مدیریت مدیران ارشد و دستیاران مدیریتی سامانه"),
     ).toBeTruthy();
     expect(
-      screen.getByRole("heading", {
+      screen.queryByRole("heading", {
         name: "مدیران سامانه",
         level: 2,
       }),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(
+      screen.queryByText(
+        "مدیران ارشد و دستیاران مدیریتی با دسترسی سراسری سامانه",
+      ),
+    ).toBeNull();
+    const addButton = screen.getByRole("button", {
+      name: "افزودن مدیر سامانه",
+    });
+    expect(addButton.querySelector('[aria-hidden="true"]')).not.toBeNull();
     expect(screen.queryByRole("tab")).toBeNull();
     expect(ownerApi.apiRequest).not.toHaveBeenCalledWith("/admin/properties");
 
     resolveUsers([adminUser(1)]);
     expect(await screen.findByText("Test User 1")).toBeTruthy();
+    const filterCard = screen.getByLabelText("جستجو").closest("section")!;
+    expect(within(filterCard).getByText("۱ کاربر")).toBeTruthy();
     expect(
       document.querySelector('[data-required-permission="ManageUsers"]'),
     ).toBeTruthy();
+  });
+
+  it("shows filtered and total user counts inside the filter card", async () => {
+    ownerApi.apiRequest.mockResolvedValue([
+      adminUser(1, { fullName: "Super User", role: "SuperAdmin" }),
+      adminUser(2, { fullName: "Assistant User" }),
+    ]);
+
+    render(<AdminUsersPage />);
+
+    await screen.findByText("Super User");
+    const filterCard = screen.getByLabelText("جستجو").closest("section")!;
+    expect(within(filterCard).getByText("۲ کاربر")).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("نقش"), {
+      target: { value: "SuperAdmin" },
+    });
+
+    expect(within(filterCard).getByText("نمایش ۱ از ۲ کاربر")).toBeTruthy();
+    expect(within(filterCard).getByText("فیلتر فعال است")).toBeTruthy();
   });
 
   it("renders the empty state", async () => {
@@ -322,7 +353,11 @@ describe("Admin Users page", () => {
       within(superRow).queryByTitle("ویرایش کاربر"),
     ).toBeNull();
     const assistantRow = screen.getByText("Assistant User").closest("tr")!;
-    fireEvent.click(within(assistantRow).getByTitle("ویرایش کاربر"));
+    const editButton = within(assistantRow).getByRole("button", {
+      name: "ویرایش کاربر",
+    });
+    expect(within(editButton).getByText("ویرایش")).toBeTruthy();
+    fireEvent.click(editButton);
 
     const dialog = await screen.findByRole("dialog");
     expect(
@@ -379,9 +414,11 @@ describe("Admin Users page", () => {
     render(<AdminUsersPage />);
 
     const row = (await screen.findByText("Status User")).closest("tr")!;
-    fireEvent.click(
-      within(row).getByRole("button", { name: "فعال‌سازی کاربر" }),
-    );
+    const activateButton = within(row).getByRole("button", {
+      name: "فعال‌سازی کاربر",
+    });
+    expect(within(activateButton).getByText("فعال‌سازی")).toBeTruthy();
+    fireEvent.click(activateButton);
     await waitFor(() =>
       expect(ownerApi.apiRequest).toHaveBeenCalledWith(
         "/admin/users/2/activate",
@@ -390,7 +427,11 @@ describe("Admin Users page", () => {
     );
     expect(within(row).getByText("فعال")).toBeTruthy();
 
-    fireEvent.click(within(row).getByTitle("غیرفعال‌سازی کاربر"));
+    const deactivateButton = within(row).getByRole("button", {
+      name: "غیرفعال‌سازی کاربر",
+    });
+    expect(within(deactivateButton).getByText("غیرفعال‌سازی")).toBeTruthy();
+    fireEvent.click(deactivateButton);
     const confirmation = await screen.findByRole("alertdialog");
     fireEvent.click(
       within(confirmation).getByRole("button", { name: "غیرفعال شود" }),
