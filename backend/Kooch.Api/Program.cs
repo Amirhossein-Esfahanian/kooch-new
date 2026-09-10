@@ -70,6 +70,7 @@ builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
 builder.Services.AddScoped<IAdminPropertyOwnerAccountService, AdminPropertyOwnerAccountService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+builder.Services.AddScoped<IAdminPropertyMemberDirectoryService, AdminPropertyMemberDirectoryService>();
 builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService>();
 builder.Services.AddScoped<IPropertyDescriptionService, PropertyDescriptionService>();
 builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();

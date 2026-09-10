@@ -69,15 +69,91 @@ public class PropertyAccessService(KoochDbContext dbContext)
         }
 
         return effective.PermissionMatrix.TryGetValue(normalizedKey.Value.Group, out var actions) &&
-               normalizedKey.Value.Action switch
-               {
-                   "view" => actions.View,
-                   "create" => actions.Create,
-                   "edit" => actions.Edit,
-                   "delete" => actions.Delete,
-                   "export" => actions.Export,
-                   _ => false
-               };
+               HasAction(actions, normalizedKey.Value.Action);
+    }
+
+    public async Task<IReadOnlyList<int>> GetPropertyIdsWithPermissionAsync(
+        int userId,
+        string permissionKey,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedKey = NormalizePermissionKey(permissionKey);
+        if (normalizedKey is null)
+        {
+            return [];
+        }
+
+        var user = await dbContext.Users.AsNoTracking()
+            .Where(item => item.Id == userId && item.IsActive)
+            .Select(item => new { item.Role })
+            .SingleOrDefaultAsync(cancellationToken);
+        if (user is null)
+        {
+            return [];
+        }
+
+        if (user.Role == UserRole.SuperAdmin)
+        {
+            return await dbContext.Properties.AsNoTracking()
+                .OrderBy(property => property.Id)
+                .Select(property => property.Id)
+                .ToListAsync(cancellationToken);
+        }
+
+        var memberships = await dbContext.UserPropertyAccesses.AsNoTracking()
+            .Where(access =>
+                access.UserId == userId &&
+                access.IsActive &&
+                access.Status == PropertyUserStatus.Active)
+            .OrderBy(access => access.PropertyId)
+            .Select(access => new
+            {
+                access.PropertyId,
+                access.PropertyRole,
+                access.PermissionMatrixJson,
+                access.Property.OwnerId
+            })
+            .ToListAsync(cancellationToken);
+
+        IReadOnlySet<PermissionKey>? platformPermissions = null;
+        if (user.Role == UserRole.AdminAssistant)
+        {
+            platformPermissions = await dbContext.UserPermissions.AsNoTracking()
+                .Where(permission =>
+                    permission.UserId == userId &&
+                    permission.IsAllowed)
+                .Select(permission => permission.PermissionKey)
+                .ToHashSetAsync(cancellationToken);
+        }
+
+        var propertyIds = new List<int>();
+        foreach (var membership in memberships)
+        {
+            var isPropertyOwnerMembership = membership.PropertyRole == PropertyUserRole.PropertyOwner;
+            if (isPropertyOwnerMembership != (membership.OwnerId == userId))
+            {
+                continue;
+            }
+
+            var matrix = DeserializeCanonicalMatrix(membership.PermissionMatrixJson);
+            if (matrix is null)
+            {
+                continue;
+            }
+
+            if (platformPermissions is not null)
+            {
+                matrix = ApplyPlatformPermissionLimits(matrix, platformPermissions);
+            }
+
+            if (matrix.TryGetValue(normalizedKey.Value.Group, out var actions) &&
+                HasAction(actions, normalizedKey.Value.Action))
+            {
+                propertyIds.Add(membership.PropertyId);
+            }
+        }
+
+        return propertyIds;
     }
 
     public async Task<EffectivePropertyPermissions?> GetEffectivePropertyPermissionsAsync(
@@ -337,6 +413,17 @@ public class PropertyAccessService(KoochDbContext dbContext)
 
     private static bool HasAnyAction(PermissionActionsDto actions) =>
         actions.View || actions.Create || actions.Edit || actions.Delete || actions.Export;
+
+    private static bool HasAction(PermissionActionsDto actions, string action) =>
+        action switch
+        {
+            "view" => actions.View,
+            "create" => actions.Create,
+            "edit" => actions.Edit,
+            "delete" => actions.Delete,
+            "export" => actions.Export,
+            _ => false
+        };
 
     private static (string Group, string Action)? NormalizePermissionKey(string permissionKey)
     {
