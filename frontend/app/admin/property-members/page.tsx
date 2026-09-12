@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -63,6 +63,20 @@ const roleLabels: Record<PropertyUserRole, string> = {
   Custom: "سفارشی",
 };
 
+const statusLabels: Record<PropertyUserStatus, string> = {
+  Pending: "در انتظار",
+  Active: "فعال",
+  Suspended: "تعلیق‌شده",
+  Inactive: "غیرفعال",
+};
+
+function membershipStatusVariant(status: PropertyUserStatus) {
+  if (status === "Active") return "success" as const;
+  if (status === "Pending") return "warning" as const;
+  if (status === "Inactive") return "muted" as const;
+  return "destructive" as const;
+}
+
 const numberFormatter = new Intl.NumberFormat("fa-IR");
 
 function distinctRoles(memberships: PropertyMembershipItem[]) {
@@ -80,6 +94,9 @@ export default function AdminPropertyMembersPage() {
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [expandedUserIds, setExpandedUserIds] = useState<Set<number>>(
+    () => new Set(),
+  );
   const requestIdRef = useRef(0);
 
   useEffect(() => {
@@ -112,6 +129,7 @@ export default function AdminPropertyMembersPage() {
     setError("");
     setLoading(true);
     setResult(null);
+    setExpandedUserIds(new Set());
     apiRequest<PropertyMemberDirectoryResponse>(
       `/admin/property-members?${query.toString()}`,
     )
@@ -147,6 +165,15 @@ export default function AdminPropertyMembersPage() {
       ),
     [users],
   );
+
+  function toggleUserDetails(userId: number) {
+    setExpandedUserIds((current) => {
+      const next = new Set(current);
+      if (next.has(userId)) next.delete(userId);
+      else next.add(userId);
+      return next;
+    });
+  }
 
   return (
     <AdminLayout requiredPlatformPermission="ManageUsers">
@@ -229,73 +256,183 @@ export default function AdminPropertyMembersPage() {
                   const fullName = [user.firstName, user.lastName]
                     .filter(Boolean)
                     .join(" ");
+                  const isExpanded = expandedUserIds.has(user.id);
+                  const detailsId = `property-member-details-${user.id}`;
 
                   return (
-                    <KoochTableRow key={user.id}>
-                      <KoochTableCell className="min-w-52">
-                        <div className="font-medium text-foreground">
-                          {fullName || "کاربر بدون نام"}
-                        </div>
-                        {user.email && (
-                          <div
-                            className="mt-1 max-w-64 truncate text-xs text-muted-foreground"
-                            dir="ltr"
+                    <Fragment key={user.id}>
+                      <KoochTableRow>
+                        <KoochTableCell className="min-w-52">
+                          <button
+                            aria-controls={detailsId}
+                            aria-expanded={isExpanded}
+                            className="group block max-w-full rounded-md text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                            onClick={() => toggleUserDetails(user.id)}
+                            type="button"
                           >
-                            {user.email}
-                          </div>
-                        )}
-                      </KoochTableCell>
-                      <KoochTableCell>
-                        {user.phoneNumber ? (
-                          <span
-                            className="inline-block whitespace-nowrap tabular-nums"
-                            dir="ltr"
-                          >
-                            {user.phoneNumber}
-                          </span>
-                        ) : (
-                          <span className="text-muted-foreground">—</span>
-                        )}
-                      </KoochTableCell>
-                      <KoochTableCell className="whitespace-nowrap">
-                        {numberFormatter.format(user.memberships.length)}
-                      </KoochTableCell>
-                      <KoochTableCell>
-                        <div className="flex min-w-40 flex-wrap gap-1.5">
-                          {visibleRoles.map((role) => (
-                            <KoochBadge key={role} variant="muted">
-                              {roleLabels[role]}
-                            </KoochBadge>
-                          ))}
-                          {remainingRoleCount > 0 && (
-                            <KoochBadge
-                              title={roles
-                                .slice(visibleRoles.length)
-                                .map((role) => roleLabels[role])
-                                .join("، ")}
-                              variant="muted"
+                            <span className="flex min-w-0 items-center gap-2 font-medium text-foreground group-hover:text-primary">
+                              <span className="truncate">
+                                {fullName || "کاربر بدون نام"}
+                              </span>
+                              <span
+                                aria-hidden="true"
+                                className="text-sm text-muted-foreground"
+                              >
+                                {isExpanded ? "−" : "+"}
+                              </span>
+                            </span>
+                            {user.email && (
+                              <span
+                                className="mt-1 block max-w-64 truncate text-xs text-muted-foreground"
+                                dir="ltr"
+                              >
+                                {user.email}
+                              </span>
+                            )}
+                          </button>
+                        </KoochTableCell>
+                        <KoochTableCell>
+                          {user.phoneNumber ? (
+                            <span
+                              className="inline-block whitespace-nowrap tabular-nums"
+                              dir="ltr"
                             >
-                              +{numberFormatter.format(remainingRoleCount)} نقش
-                            </KoochBadge>
+                              {user.phoneNumber}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
                           )}
-                        </div>
-                      </KoochTableCell>
-                      <KoochTableCell>
-                        <KoochBadge
-                          variant={user.isActive ? "success" : "muted"}
-                        >
-                          {user.isActive ? "فعال" : "غیرفعال"}
-                        </KoochBadge>
-                      </KoochTableCell>
-                      <KoochTableCell>
-                        <span
-                          className="text-muted-foreground"
-                          title="جزئیات عضویت‌ها در مرحله بعد اضافه می‌شود"
-                        >
-                          —
-                        </span>
-                      </KoochTableCell>
-                    </KoochTableRow>
+                        </KoochTableCell>
+                        <KoochTableCell className="whitespace-nowrap">
+                          {numberFormatter.format(user.memberships.length)}
+                        </KoochTableCell>
+                        <KoochTableCell>
+                          <div className="flex min-w-40 flex-wrap gap-1.5">
+                            {visibleRoles.map((role) => (
+                              <KoochBadge key={role} variant="muted">
+                                {roleLabels[role]}
+                              </KoochBadge>
+                            ))}
+                            {remainingRoleCount > 0 && (
+                              <KoochBadge
+                                title={roles
+                                  .slice(visibleRoles.length)
+                                  .map((role) => roleLabels[role])
+                                  .join("، ")}
+                                variant="muted"
+                              >
+                                +{numberFormatter.format(remainingRoleCount)} نقش
+                              </KoochBadge>
+                            )}
+                          </div>
+                        </KoochTableCell>
+                        <KoochTableCell>
+                          <KoochBadge
+                            variant={user.isActive ? "success" : "muted"}
+                          >
+                            {user.isActive ? "فعال" : "غیرفعال"}
+                          </KoochBadge>
+                        </KoochTableCell>
+                        <KoochTableCell>
+                          <KoochButton
+                            aria-controls={detailsId}
+                            aria-expanded={isExpanded}
+                            onClick={() => toggleUserDetails(user.id)}
+                            size="sm"
+                            type="button"
+                            variant="ghost"
+                          >
+                            {isExpanded ? "بستن جزئیات" : "مشاهده جزئیات"}
+                          </KoochButton>
+                        </KoochTableCell>
+                      </KoochTableRow>
+
+                      {isExpanded && (
+                        <KoochTableRow className="bg-muted/35 hover:bg-muted/35">
+                          <KoochTableCell className="p-0" colSpan={6}>
+                            <section
+                              aria-label={`عضویت‌های ${fullName || "کاربر بدون نام"}`}
+                              className="px-4 py-4"
+                              id={detailsId}
+                            >
+                              <div className="mb-2 text-xs font-medium text-muted-foreground">
+                                عضویت‌های قابل مشاهده
+                              </div>
+                              <div className="min-w-[760px]">
+                                <div
+                                  aria-hidden="true"
+                                  className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.8fr)_auto] gap-3 border-b border-border px-3 pb-2 text-xs font-medium text-muted-foreground"
+                                >
+                                  <span>اقامتگاه</span>
+                                  <span>نقش</span>
+                                  <span>وضعیت عضویت</span>
+                                  <span>فعال بودن عضویت</span>
+                                  <span>عملیات</span>
+                                </div>
+                                <ul className="divide-y divide-border">
+                                  {user.memberships.map((membership) => (
+                                    <li
+                                      className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.8fr)_auto] items-center gap-3 px-3 py-3"
+                                      key={membership.propertyId}
+                                    >
+                                      <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                        <span className="truncate font-medium text-foreground">
+                                          {membership.propertyName}
+                                        </span>
+                                        {membership.isOwner && (
+                                          <KoochBadge variant="default">
+                                            مالک اصلی
+                                          </KoochBadge>
+                                        )}
+                                      </div>
+                                      <div>
+                                        <KoochBadge variant="muted">
+                                          {roleLabels[membership.role]}
+                                        </KoochBadge>
+                                      </div>
+                                      <div>
+                                        <KoochBadge
+                                          variant={membershipStatusVariant(
+                                            membership.status,
+                                          )}
+                                        >
+                                          {statusLabels[membership.status]}
+                                        </KoochBadge>
+                                      </div>
+                                      <div>
+                                        <KoochBadge
+                                          variant={
+                                            membership.isActive
+                                              ? "success"
+                                              : "muted"
+                                          }
+                                        >
+                                          {membership.isActive
+                                            ? "فعال"
+                                            : "غیرفعال"}
+                                        </KoochBadge>
+                                      </div>
+                                      <KoochButton
+                                        onClick={() =>
+                                          router.push(
+                                            `/admin/properties/${membership.propertyId}/users`,
+                                          )
+                                        }
+                                        size="sm"
+                                        type="button"
+                                        variant="outline"
+                                      >
+                                        مدیریت
+                                      </KoochButton>
+                                    </li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </section>
+                          </KoochTableCell>
+                        </KoochTableRow>
+                      )}
+                    </Fragment>
                   );
                 })
               )}

@@ -198,6 +198,99 @@ describe("Admin property members global directory", () => {
     expect(screen.getAllByText("سارا محمدی")).toHaveLength(1);
   });
 
+  it("expands and collapses all membership details with accessible button state", async () => {
+    ownerApi.apiRequest.mockResolvedValue(
+      directoryResponse([
+        member({
+          memberships: [
+            {
+              propertyId: 101,
+              propertyName: "خانه کاشان",
+              role: "PropertyOwner",
+              status: "Active",
+              isActive: true,
+              isOwner: true,
+            },
+            {
+              propertyId: 102,
+              propertyName: "اقامتگاه یزد",
+              role: "Reception",
+              status: "Suspended",
+              isActive: false,
+              isOwner: false,
+            },
+          ],
+        }),
+      ]),
+    );
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+
+    const toggle = screen.getByRole("button", { name: /سارا محمدی/ });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-controls")).toBe(
+      "property-member-details-20",
+    );
+
+    fireEvent.click(toggle);
+
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    const details = screen.getByRole("region", {
+      name: "عضویت‌های سارا محمدی",
+    });
+    const detailQueries = within(details);
+    expect(detailQueries.getByText("خانه کاشان")).toBeTruthy();
+    expect(detailQueries.getByText("اقامتگاه یزد")).toBeTruthy();
+    expect(detailQueries.getByText("مالک اقامتگاه")).toBeTruthy();
+    expect(detailQueries.getByText("پذیرش")).toBeTruthy();
+    expect(detailQueries.getByText("مالک اصلی")).toBeTruthy();
+    expect(detailQueries.getByText("تعلیق‌شده")).toBeTruthy();
+    expect(detailQueries.getByText("غیرفعال")).toBeTruthy();
+    expect(screen.getAllByText("غیرفعال")).toHaveLength(2);
+    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(detailQueries.getAllByRole("button", { name: "مدیریت" })[0]);
+    expect(navigation.push).toHaveBeenCalledWith(
+      "/admin/properties/101/users",
+    );
+    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(
+      screen.queryByRole("region", { name: "عضویت‌های سارا محمدی" }),
+    ).toBeNull();
+  });
+
+  it("allows multiple User rows to remain expanded", async () => {
+    ownerApi.apiRequest.mockResolvedValue(
+      directoryResponse([
+        member(),
+        member({
+          id: 21,
+          firstName: "علی",
+          lastName: "رضایی",
+          email: "ali@example.test",
+        }),
+      ]),
+    );
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+
+    fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+    fireEvent.click(screen.getByRole("button", { name: /علی رضایی/ }));
+
+    expect(
+      screen.getByRole("region", { name: "عضویت‌های سارا محمدی" }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("region", { name: "عضویت‌های علی رضایی" }),
+    ).toBeTruthy();
+    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(1);
+  });
+
   it("debounces server search and resets pagination to page one", async () => {
     ownerApi.apiRequest.mockImplementation((path: string) => {
       const params = new URLSearchParams(path.split("?")[1]);
