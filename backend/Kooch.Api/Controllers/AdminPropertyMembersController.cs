@@ -12,6 +12,20 @@ namespace Kooch.Api.Controllers;
 public sealed class AdminPropertyMembersController(
     IAdminPropertyMemberDirectoryService directoryService) : AuthenticatedControllerBase
 {
+    [HttpGet("properties")]
+    [ProducesResponseType<PagedResult<AdminPropertyMemberPropertyOptionResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<AdminPropertyMemberPropertyOptionResponse>>> GetProperties(
+        [FromQuery] AdminPropertyMemberPropertyOptionQuery query,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await directoryService.SearchPropertiesAsync(
+            user.UserId,
+            user.Role,
+            query,
+            cancellationToken));
+    }
+
     [HttpGet]
     [ProducesResponseType<PagedResult<AdminPropertyMemberDirectoryResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<AdminPropertyMemberDirectoryResponse>>> Get(

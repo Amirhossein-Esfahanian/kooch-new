@@ -17,18 +17,9 @@ public sealed class AdminPropertyMemberDirectoryService(
         AdminPropertyMemberDirectoryQuery request,
         CancellationToken cancellationToken = default)
     {
-        if (currentRole is not UserRole.SuperAdmin and not UserRole.AdminAssistant ||
-            !await permissionService.HasPermissionAsync(
-                currentUserId,
-                PermissionKey.ManageUsers,
-                cancellationToken: cancellationToken))
-        {
-            throw new UnauthorizedAccessException("ManageUsers permission is required.");
-        }
-
-        var visiblePropertyIds = await propertyAccessService.GetPropertyIdsWithPermissionAsync(
+        var visiblePropertyIds = await GetVisiblePropertyIdsAsync(
             currentUserId,
-            "users.view",
+            currentRole,
             cancellationToken);
         if (visiblePropertyIds.Count == 0)
         {
@@ -120,6 +111,78 @@ public sealed class AdminPropertyMemberDirectoryService(
                 ? 0
                 : (int)Math.Ceiling(totalCount / (double)request.PageSize)
         };
+    }
+
+    public async Task<PagedResult<AdminPropertyMemberPropertyOptionResponse>> SearchPropertiesAsync(
+        int currentUserId,
+        UserRole currentRole,
+        AdminPropertyMemberPropertyOptionQuery request,
+        CancellationToken cancellationToken = default)
+    {
+        var visiblePropertyIds = await GetVisiblePropertyIdsAsync(
+            currentUserId,
+            currentRole,
+            cancellationToken);
+        if (visiblePropertyIds.Count == 0)
+        {
+            return new PagedResult<AdminPropertyMemberPropertyOptionResponse>
+            {
+                Page = request.Page,
+                PageSize = request.PageSize
+            };
+        }
+
+        var properties = dbContext.Properties.AsNoTracking()
+            .Where(property => visiblePropertyIds.Contains(property.Id));
+        var search = request.Search?.Trim();
+        if (!string.IsNullOrEmpty(search))
+        {
+            properties = properties.Where(property => property.Name.Contains(search));
+        }
+
+        var totalCount = await properties.CountAsync(cancellationToken);
+        var items = await properties
+            .OrderBy(property => property.Name)
+            .ThenBy(property => property.Id)
+            .Skip((request.Page - 1) * request.PageSize)
+            .Take(request.PageSize)
+            .Select(property => new AdminPropertyMemberPropertyOptionResponse
+            {
+                Id = property.Id,
+                Name = property.Name
+            })
+            .ToListAsync(cancellationToken);
+
+        return new PagedResult<AdminPropertyMemberPropertyOptionResponse>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = request.Page,
+            PageSize = request.PageSize,
+            TotalPages = totalCount == 0
+                ? 0
+                : (int)Math.Ceiling(totalCount / (double)request.PageSize)
+        };
+    }
+
+    private async Task<IReadOnlyList<int>> GetVisiblePropertyIdsAsync(
+        int currentUserId,
+        UserRole currentRole,
+        CancellationToken cancellationToken)
+    {
+        if (currentRole is not UserRole.SuperAdmin and not UserRole.AdminAssistant ||
+            !await permissionService.HasPermissionAsync(
+                currentUserId,
+                PermissionKey.ManageUsers,
+                cancellationToken: cancellationToken))
+        {
+            throw new UnauthorizedAccessException("ManageUsers permission is required.");
+        }
+
+        return await propertyAccessService.GetPropertyIdsWithPermissionAsync(
+            currentUserId,
+            "users.view",
+            cancellationToken);
     }
 
     private IQueryable<VisibleMembership> BuildVisibleMembershipQuery(

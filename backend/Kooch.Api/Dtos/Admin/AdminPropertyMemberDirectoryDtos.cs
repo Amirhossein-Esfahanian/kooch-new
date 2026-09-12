@@ -24,6 +24,24 @@ public sealed class AdminPropertyMemberDirectoryQuery
     public int PageSize { get; set; } = 20;
 }
 
+public sealed class AdminPropertyMemberPropertyOptionQuery
+{
+    [MaxLength(200)]
+    public string? Search { get; set; }
+
+    [Range(1, int.MaxValue)]
+    public int Page { get; set; } = 1;
+
+    [Range(1, 25)]
+    public int PageSize { get; set; } = 10;
+}
+
+public sealed class AdminPropertyMemberPropertyOptionResponse
+{
+    public int Id { get; set; }
+    public string Name { get; set; } = string.Empty;
+}
+
 public sealed class AdminPropertyMemberDirectoryResponse
 {
     public int Id { get; set; }

@@ -18,6 +18,124 @@ namespace Kooch.Api.Tests;
 public sealed class AdminPropertyMemberDirectoryTests
 {
     [Fact]
+    public async Task PropertyOptions_SuperAdmin_ReturnsAllNonDeletedProperties()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+
+        var result = await CreateService(dbContext).SearchPropertiesAsync(
+            1,
+            UserRole.SuperAdmin,
+            new AdminPropertyMemberPropertyOptionQuery());
+
+        Assert.Equal([101, 102], result.Items.Select(item => item.Id));
+        Assert.Equal(2, result.TotalCount);
+        Assert.DoesNotContain(result.Items, item => item.Id == 103);
+    }
+
+    [Fact]
+    public async Task PropertyOptions_AdminAssistant_OnlyReceivesUsersViewProperties()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: true);
+
+        var result = await CreateService(dbContext).SearchPropertiesAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberPropertyOptionQuery());
+
+        var property = Assert.Single(result.Items);
+        Assert.Equal(101, property.Id);
+    }
+
+    [Fact]
+    public async Task PropertyOptions_AdminAssistantWithoutManageUsers_IsDenied()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: false);
+
+        var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            CreateService(dbContext).SearchPropertiesAsync(
+                10,
+                UserRole.AdminAssistant,
+                new AdminPropertyMemberPropertyOptionQuery()));
+
+        Assert.Equal("ManageUsers permission is required.", exception.Message);
+    }
+
+    [Fact]
+    public async Task PropertyOptions_ManagePropertiesAlone_GrantsNoAccess()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: false, grantManageProperties: true);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            CreateService(dbContext).SearchPropertiesAsync(
+                10,
+                UserRole.AdminAssistant,
+                new AdminPropertyMemberPropertyOptionQuery()));
+    }
+
+    [Fact]
+    public async Task PropertyOptions_HiddenPropertyNeverLeaksThroughExactSearch()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: true);
+
+        var result = await CreateService(dbContext).SearchPropertiesAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberPropertyOptionQuery { Search = "Beta Property" });
+
+        Assert.Empty(result.Items);
+        Assert.Equal(0, result.TotalCount);
+    }
+
+    [Fact]
+    public async Task PropertyOptions_SearchTrimsInputAndFiltersByName()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+
+        var result = await CreateService(dbContext).SearchPropertiesAsync(
+            1,
+            UserRole.SuperAdmin,
+            new AdminPropertyMemberPropertyOptionQuery { Search = "  Beta  " });
+
+        var property = Assert.Single(result.Items);
+        Assert.Equal(102, property.Id);
+        Assert.Equal("Beta Property", property.Name);
+    }
+
+    [Fact]
+    public async Task PropertyOptions_PaginatesWithDeterministicNameThenIdOrdering()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Properties.AddRange(
+            Property(104, 2, "Alpha Property"),
+            Property(105, 3, "Gamma Property"));
+        await dbContext.SaveChangesAsync();
+        var service = CreateService(dbContext);
+
+        var firstPage = await service.SearchPropertiesAsync(
+            1,
+            UserRole.SuperAdmin,
+            new AdminPropertyMemberPropertyOptionQuery { Page = 1, PageSize = 2 });
+        var secondPage = await service.SearchPropertiesAsync(
+            1,
+            UserRole.SuperAdmin,
+            new AdminPropertyMemberPropertyOptionQuery { Page = 2, PageSize = 2 });
+
+        Assert.Equal([101, 104], firstPage.Items.Select(item => item.Id));
+        Assert.Equal([102, 105], secondPage.Items.Select(item => item.Id));
+        Assert.Equal(4, firstPage.TotalCount);
+        Assert.Equal(2, firstPage.TotalPages);
+        Assert.Equal(1, firstPage.Page);
+        Assert.Equal(2, firstPage.PageSize);
+    }
+
+    [Fact]
     public async Task SuperAdmin_ReturnsOneUserRow_WithAllVisibleMemberships()
     {
         await using var dbContext = CreateContext();
@@ -227,6 +345,43 @@ public sealed class AdminPropertyMemberDirectoryTests
         Assert.Equal(20, Assert.Single(result.Items).Id);
     }
 
+    [Fact]
+    public async Task PropertyOptionsController_ReturnsSharedPagedResultContract()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        var controller = new AdminPropertyMembersController(CreateService(dbContext));
+        SetCurrentUser(controller, 1, UserRole.SuperAdmin);
+
+        var response = await controller.GetProperties(
+            new AdminPropertyMemberPropertyOptionQuery { Page = 1, PageSize = 1 },
+            CancellationToken.None);
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var result = Assert.IsType<PagedResult<AdminPropertyMemberPropertyOptionResponse>>(ok.Value);
+
+        Assert.Single(result.Items);
+        Assert.Equal(2, result.TotalCount);
+        Assert.Equal(2, result.TotalPages);
+    }
+
+    [Theory]
+    [InlineData(0, 10)]
+    [InlineData(1, 0)]
+    [InlineData(1, 26)]
+    public void PropertyOptionQuery_RejectsInvalidPagination(int page, int pageSize)
+    {
+        var query = new AdminPropertyMemberPropertyOptionQuery { Page = page, PageSize = pageSize };
+        var results = new List<ValidationResult>();
+
+        var valid = Validator.TryValidateObject(
+            query,
+            new ValidationContext(query),
+            results,
+            validateAllProperties: true);
+
+        Assert.False(valid);
+    }
+
     [Theory]
     [InlineData(0, 20)]
     [InlineData(1, 0)]
@@ -255,7 +410,8 @@ public sealed class AdminPropertyMemberDirectoryTests
     private static async Task SeedAsync(
         KoochDbContext dbContext,
         bool grantManageUsers = true,
-        bool grantUsersView = true)
+        bool grantUsersView = true,
+        bool grantManageProperties = false)
     {
         dbContext.Users.AddRange(
             User(1, UserRole.SuperAdmin, "Platform", "Admin", "admin@example.test"),
@@ -304,6 +460,23 @@ public sealed class AdminPropertyMemberDirectoryTests
                 Id = 302,
                 UserId = 10,
                 PermissionKey = PermissionKey.ManageUsers,
+                IsAllowed = true
+            });
+        }
+
+        if (grantManageProperties)
+        {
+            dbContext.Permissions.Add(new Permission
+            {
+                Id = 303,
+                Key = PermissionKey.ManageProperties,
+                Name = nameof(PermissionKey.ManageProperties)
+            });
+            dbContext.UserPermissions.Add(new UserPermission
+            {
+                Id = 304,
+                UserId = 10,
+                PermissionKey = PermissionKey.ManageProperties,
                 IsAllowed = true
             });
         }
