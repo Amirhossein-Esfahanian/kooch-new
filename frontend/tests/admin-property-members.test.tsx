@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -47,37 +47,109 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 
 import AdminPropertyMembersPage from "@/app/admin/property-members/page";
 
-type PropertySearchItem = {
-  id: number;
-  name: string;
-  englishName: string | null;
-  city: string;
-  ownerName: string;
-  ownerEmail: string;
+type Membership = {
+  propertyId: number;
+  propertyName: string;
+  role:
+    | "PropertyOwner"
+    | "Manager"
+    | "Reception"
+    | "Accounting"
+    | "Housekeeping"
+    | "Custom";
+  status: "Pending" | "Active" | "Suspended" | "Inactive";
+  isActive: boolean;
+  isOwner: boolean;
 };
 
-function searchResponse(items: PropertySearchItem[]) {
+type UserItem = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  phoneNumber: string | null;
+  email: string | null;
+  isActive: boolean;
+  memberships: Membership[];
+};
+
+function directoryResponse(
+  items: UserItem[],
+  overrides: Partial<{
+    totalCount: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> = {},
+) {
   return {
     items,
-    totalCount: items.length,
-    page: 1,
-    pageSize: 10,
-    totalPages: items.length > 0 ? 1 : 0,
+    totalCount: overrides.totalCount ?? items.length,
+    page: overrides.page ?? 1,
+    pageSize: overrides.pageSize ?? 20,
+    totalPages: overrides.totalPages ?? (items.length > 0 ? 1 : 0),
+  };
+}
+
+function member(overrides: Partial<UserItem> = {}): UserItem {
+  return {
+    id: 20,
+    firstName: "سارا",
+    lastName: "محمدی",
+    phoneNumber: "09121234567",
+    email: "sara@example.test",
+    isActive: false,
+    memberships: [
+      {
+        propertyId: 101,
+        propertyName: "خانه کاشان",
+        role: "Manager",
+        status: "Active",
+        isActive: true,
+        isOwner: false,
+      },
+      {
+        propertyId: 102,
+        propertyName: "اقامتگاه یزد",
+        role: "Reception",
+        status: "Suspended",
+        isActive: false,
+        isOwner: false,
+      },
+      {
+        propertyId: 103,
+        propertyName: "خانه شیراز",
+        role: "Manager",
+        status: "Active",
+        isActive: true,
+        isOwner: false,
+      },
+    ],
+    ...overrides,
   };
 }
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((nextResolve) => {
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((nextResolve, nextReject) => {
     resolve = nextResolve;
+    reject = nextReject;
   });
-  return { promise, resolve };
+  return { promise, reject, resolve };
+}
+
+async function flushRequests() {
+  await act(async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  });
 }
 
 async function runSearchDebounce() {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(300);
   });
+  await flushRequests();
 }
 
 beforeEach(() => {
@@ -96,193 +168,143 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("Admin property members entry page", () => {
-  it("selects a property and navigates to canonical member management", async () => {
-    ownerApi.apiRequest.mockResolvedValue(
-      searchResponse([
-        {
-          id: 42,
-          name: "خانه تاریخی کاشان",
-          englishName: "Kashan Historic House",
-          city: "کاشان",
-          ownerName: "سارا محمدی",
-          ownerEmail: "owner@example.test",
-        },
-      ]),
-    );
+describe("Admin property members global directory", () => {
+  it("loads the first User page and renders one row with aggregated membership data", async () => {
+    ownerApi.apiRequest.mockResolvedValue(directoryResponse([member()]));
 
     render(<AdminPropertyMembersPage />);
-    await runSearchDebounce();
+    await flushRequests();
 
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+      "/admin/property-members?page=1&pageSize=20",
+    );
     expect(
-      screen.getByRole("heading", { name: "اعضای اقامتگاه‌ها", level: 1 }),
-    ).toBeTruthy();
+      ownerApi.apiRequest.mock.calls.some(([path]) =>
+        String(path).includes("/admin/properties/search"),
+      ),
+    ).toBe(false);
     expect(
       document.querySelector('[data-required-permission="ManageUsers"]'),
     ).toBeTruthy();
-    expect(
-      screen.getByText(
-        "مالک اقامتگاه از مسیر انتقال مالکیت تعیین می‌شود و از فرم افزودن عضو قابل تغییر نیست.",
-      ),
-    ).toBeTruthy();
-    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
-      "/admin/properties/search?search=&page=1&pageSize=10",
-    );
 
-    fireEvent.click(
-      screen.getByRole("button", { name: "مدیریت / انتقال مالکیت" }),
-    );
-    expect(navigation.push).toHaveBeenCalledWith("/admin/properties");
-    navigation.push.mockClear();
-
-    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: /خانه تاریخی کاشان/ }),
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: "مدیریت اعضای اقامتگاه" }),
-    );
-
-    expect(navigation.push).toHaveBeenCalledWith(
-      "/admin/properties/42/users",
-    );
-    expect(
-      ownerApi.apiRequest.mock.calls.some(
-        ([path]) => path === "/admin/properties/42/users",
-      ),
-    ).toBe(false);
+    const row = screen.getByText("سارا محمدی").closest("tr");
+    expect(row).toBeTruthy();
+    const rowQueries = within(row!);
+    expect(rowQueries.getByText("۳")).toBeTruthy();
+    expect(rowQueries.getAllByText("مدیر")).toHaveLength(1);
+    expect(rowQueries.getByText("پذیرش")).toBeTruthy();
+    expect(rowQueries.getByText("غیرفعال")).toBeTruthy();
+    expect(rowQueries.queryByText("تعلیق‌شده")).toBeNull();
+    expect(screen.getAllByText("سارا محمدی")).toHaveLength(1);
   });
 
-  it("replaces options with server-side search results", async () => {
+  it("debounces server search and resets pagination to page one", async () => {
     ownerApi.apiRequest.mockImplementation((path: string) => {
-      if (path.includes("search=%DA%A9%D8%A7%D8%B4%D8%A7%D9%86")) {
-        return Promise.resolve(
-          searchResponse([
-            {
-              id: 42,
-              name: "خانه تاریخی کاشان",
-              englishName: "Kashan Historic House",
-              city: "کاشان",
-              ownerName: "سارا محمدی",
-              ownerEmail: "owner@example.test",
-            },
-          ]),
-        );
-      }
-
+      const params = new URLSearchParams(path.split("?")[1]);
+      const requestedPage = Number(params.get("page"));
       return Promise.resolve(
-        searchResponse([
-          {
-            id: 7,
-            name: "اقامتگاه یزد",
-            englishName: "Yazd Residence",
-            city: "یزد",
-            ownerName: "علی رضایی",
-            ownerEmail: "yazd@example.test",
-          },
-        ]),
+        directoryResponse([member()], {
+          page: requestedPage,
+          totalCount: 40,
+          totalPages: 2,
+        }),
       );
     });
 
     render(<AdminPropertyMembersPage />);
-    await runSearchDebounce();
-
-    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
-    expect(
-      screen.getByRole("button", { name: /اقامتگاه یزد/ }),
-    ).toBeTruthy();
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+    expect(ownerApi.apiRequest).toHaveBeenLastCalledWith(
+      "/admin/property-members?page=2&pageSize=20",
+    );
 
     fireEvent.change(
-      screen.getByPlaceholderText("جستجو با نام، شهر یا مالک..."),
-      { target: { value: "کاشان" } },
+      screen.getByPlaceholderText("نام، شماره تماس یا ایمیل..."),
+      { target: { value: "  سارا  " } },
     );
+    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(2);
+
     await runSearchDebounce();
 
     expect(ownerApi.apiRequest).toHaveBeenLastCalledWith(
-      "/admin/properties/search?search=%DA%A9%D8%A7%D8%B4%D8%A7%D9%86&page=1&pageSize=10",
+      "/admin/property-members?page=1&pageSize=20&search=%D8%B3%D8%A7%D8%B1%D8%A7",
     );
-    expect(
-      screen.queryByRole("button", { name: /اقامتگاه یزد/ }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: /خانه تاریخی کاشان/ }),
-    ).toBeTruthy();
   });
 
-  it("does not let a stale search response replace newer options", async () => {
-    const olderSearch = deferred<ReturnType<typeof searchResponse>>();
-    const newerSearch = deferred<ReturnType<typeof searchResponse>>();
+  it("requests the selected server page and renders returned metadata", async () => {
     ownerApi.apiRequest.mockImplementation((path: string) => {
-      if (path.includes("search=old")) return olderSearch.promise;
-      if (path.includes("search=new")) return newerSearch.promise;
-      return Promise.resolve(searchResponse([]));
+      const requestedPage = path.includes("page=2") ? 2 : 1;
+      return Promise.resolve(
+        directoryResponse([member({ id: requestedPage })], {
+          page: requestedPage,
+          totalCount: 41,
+          totalPages: 3,
+        }),
+      );
     });
 
     render(<AdminPropertyMembersPage />);
-    await runSearchDebounce();
+    await flushRequests();
+    expect(screen.getByText("صفحه ۱ از ۳")).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
-    const searchInput = screen.getByPlaceholderText(
-      "جستجو با نام، شهر یا مالک...",
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+
+    expect(ownerApi.apiRequest).toHaveBeenLastCalledWith(
+      "/admin/property-members?page=2&pageSize=20",
     );
-    fireEvent.change(searchInput, { target: { value: "old" } });
-    await runSearchDebounce();
-    fireEvent.change(searchInput, { target: { value: "new" } });
-    await runSearchDebounce();
-
-    await act(async () => {
-      newerSearch.resolve(
-        searchResponse([
-          {
-            id: 2,
-            name: "new lodge",
-            englishName: "new lodge",
-            city: "Tehran",
-            ownerName: "New Owner",
-            ownerEmail: "new@example.test",
-          },
-        ]),
-      );
-      await newerSearch.promise;
-    });
-    expect(screen.getByRole("button", { name: /new lodge/ })).toBeTruthy();
-
-    await act(async () => {
-      olderSearch.resolve(
-        searchResponse([
-          {
-            id: 1,
-            name: "old lodge",
-            englishName: "old lodge",
-            city: "Shiraz",
-            ownerName: "Old Owner",
-            ownerEmail: "old@example.test",
-          },
-        ]),
-      );
-      await olderSearch.promise;
-    });
-
-    expect(screen.queryByRole("button", { name: /old lodge/ })).toBeNull();
-    expect(screen.getByRole("button", { name: /new lodge/ })).toBeTruthy();
+    expect(screen.getByText("صفحه ۲ از ۳")).toBeTruthy();
   });
 
-  it("explains the additional property permission requirement", () => {
-    auth.current = {
-      authenticated: true,
-      loading: false,
-      platformRole: "AdminAssistant",
-      platformPermissions: ["ManageUsers"],
-      workspaces: ["admin"],
-    };
+  it("shows loading and then the empty state", async () => {
+    const request = deferred<ReturnType<typeof directoryResponse>>();
+    ownerApi.apiRequest.mockReturnValue(request.promise);
 
     render(<AdminPropertyMembersPage />);
 
+    expect(screen.getByText("در حال بارگذاری اعضا...")).toBeTruthy();
+
+    await act(async () => {
+      request.resolve(directoryResponse([]));
+      await request.promise;
+    });
+
+    expect(screen.getByText("هنوز عضوی برای نمایش وجود ندارد.")).toBeTruthy();
+  });
+
+  it("shows a search-specific empty state", async () => {
+    ownerApi.apiRequest.mockResolvedValue(directoryResponse([]));
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.change(
+      screen.getByPlaceholderText("نام، شماره تماس یا ایمیل..."),
+      { target: { value: "ناشناخته" } },
+    );
+    await runSearchDebounce();
+
+    expect(screen.getByText("کاربری مطابق جستجو پیدا نشد.")).toBeTruthy();
+  });
+
+  it("shows the existing alert treatment when loading fails", async () => {
+    const request = deferred<ReturnType<typeof directoryResponse>>();
+    ownerApi.apiRequest.mockReturnValue(request.promise);
+
+    render(<AdminPropertyMembersPage />);
+    await act(async () => {
+      request.reject(new Error("دسترسی به فهرست ممکن نیست"));
+      try {
+        await request.promise;
+      } catch {
+        // The component renders the rejected request through KoochAlert.
+      }
+    });
+
     expect(
-      screen.getByText(
-        "برای انتخاب اقامتگاه، مجوز مدیریت اقامتگاه‌ها نیز لازم است.",
-      ),
+      screen.getByText("فهرست اعضای اقامتگاه‌ها بارگذاری نشد"),
     ).toBeTruthy();
-    expect(ownerApi.apiRequest).not.toHaveBeenCalled();
+    expect(screen.getByText("دسترسی به فهرست ممکن نیست")).toBeTruthy();
+    expect(screen.getByText("امکان نمایش اعضا وجود ندارد.")).toBeTruthy();
   });
 });
