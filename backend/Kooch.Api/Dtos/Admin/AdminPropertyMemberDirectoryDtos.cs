@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Admin;
@@ -40,6 +41,31 @@ public sealed class AdminPropertyMemberPropertyOptionResponse
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class AdminPropertyMemberIdentityUpdateRequest
+{
+    [Required, MaxLength(100)]
+    public string FirstName { get; set; } = string.Empty;
+
+    [Required, MaxLength(100)]
+    public string LastName { get; set; } = string.Empty;
+
+    [Required, MaxLength(30)]
+    public string PhoneNumber { get; set; } = string.Empty;
+
+    [EmailAddress, MaxLength(320)]
+    public string? Email { get; set; }
+}
+
+public sealed class AdminPropertyMemberIdentityResponse
+{
+    public int Id { get; set; }
+    public string FirstName { get; set; } = string.Empty;
+    public string LastName { get; set; } = string.Empty;
+    public string PhoneNumber { get; set; } = string.Empty;
+    public string? Email { get; set; }
 }
 
 public sealed class AdminPropertyMemberDirectoryResponse

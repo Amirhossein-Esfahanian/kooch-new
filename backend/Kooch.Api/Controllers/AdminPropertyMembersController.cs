@@ -12,6 +12,22 @@ namespace Kooch.Api.Controllers;
 public sealed class AdminPropertyMembersController(
     IAdminPropertyMemberDirectoryService directoryService) : AuthenticatedControllerBase
 {
+    [HttpPut("{userId:int}")]
+    [ProducesResponseType<AdminPropertyMemberIdentityResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<AdminPropertyMemberIdentityResponse>> UpdateIdentity(
+        int userId,
+        AdminPropertyMemberIdentityUpdateRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await directoryService.UpdateIdentityAsync(
+            user.UserId,
+            user.Role,
+            userId,
+            request,
+            cancellationToken));
+    }
+
     [HttpGet("properties")]
     [ProducesResponseType<PagedResult<AdminPropertyMemberPropertyOptionResponse>>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PagedResult<AdminPropertyMemberPropertyOptionResponse>>> GetProperties(

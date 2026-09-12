@@ -45,7 +45,8 @@ public enum AuditAction
     PlatformAdminCreated,
     PlatformAdminUpdated,
     PlatformAdminActivated,
-    PlatformAdminDeactivated
+    PlatformAdminDeactivated,
+    PropertyMemberIdentityUpdated
 }
 public enum PermissionKey
 {

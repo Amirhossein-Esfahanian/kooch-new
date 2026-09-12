@@ -1,7 +1,10 @@
+using System.Data;
+using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Admin;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
+using Kooch.Api.Utilities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
@@ -9,8 +12,92 @@ namespace Kooch.Api.Services;
 public sealed class AdminPropertyMemberDirectoryService(
     KoochDbContext dbContext,
     PropertyAccessService propertyAccessService,
-    IPermissionService permissionService) : IAdminPropertyMemberDirectoryService
+    IPermissionService permissionService,
+    IAuditLogService auditLogService) : IAdminPropertyMemberDirectoryService
 {
+    public async Task<AdminPropertyMemberIdentityResponse> UpdateIdentityAsync(
+        int currentUserId,
+        UserRole currentRole,
+        int userId,
+        AdminPropertyMemberIdentityUpdateRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        await using var transaction = dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+
+        var visiblePropertyIds = await GetVisiblePropertyIdsAsync(
+            currentUserId,
+            currentRole,
+            cancellationToken);
+        var targetIsVisible = visiblePropertyIds.Count > 0 &&
+            await BuildVisibleMembershipQuery(visiblePropertyIds)
+                .AnyAsync(item => item.UserId == userId, cancellationToken);
+        if (!targetIsVisible)
+        {
+            throw new UnauthorizedAccessException("You cannot edit this property member.");
+        }
+
+        var user = await dbContext.Users.IgnoreQueryFilters()
+            .SingleOrDefaultAsync(
+                item => item.Id == userId && !item.IsDeleted,
+                cancellationToken)
+            ?? throw new KeyNotFoundException("User not found.");
+        if (user.Role.IsPlatformAdmin())
+        {
+            throw new InvalidOperationException(
+                "Platform administrators must be edited through Admin Users.");
+        }
+
+        var firstName = NormalizeRequiredName(request.FirstName, "First name");
+        var lastName = NormalizeRequiredName(request.LastName, "Last name");
+        var phoneNumber = UserIdentityNormalization.NormalizePhoneNumber(request.PhoneNumber)
+            ?? throw new ArgumentException("Mobile number is required.");
+        var email = UserIdentityNormalization.NormalizeEmail(request.Email);
+        await EnsureUniqueIdentityAsync(email, phoneNumber, user.Id, cancellationToken);
+
+        var changedFields = new List<string>();
+        AddChangedField(changedFields, nameof(User.FirstName), user.FirstName, firstName);
+        AddChangedField(changedFields, nameof(User.LastName), user.LastName, lastName);
+        AddChangedField(changedFields, nameof(User.PhoneNumber), user.PhoneNumber, phoneNumber);
+        AddChangedField(changedFields, nameof(User.Email), user.Email, email);
+        var contactChanged = !string.Equals(user.PhoneNumber, phoneNumber, StringComparison.Ordinal) ||
+                             !string.Equals(user.Email, email, StringComparison.Ordinal);
+
+        user.FirstName = firstName;
+        user.LastName = lastName;
+        user.PhoneNumber = phoneNumber;
+        user.Email = email;
+        if (contactChanged)
+        {
+            user.SecurityStampVersion++;
+        }
+
+        auditLogService.Add(
+            currentUserId,
+            AuditAction.PropertyMemberIdentityUpdated,
+            nameof(User),
+            user.Id,
+            entityName: $"{firstName} {lastName}".Trim(),
+            description: changedFields.Count == 0
+                ? "Property member identity update requested with no changes."
+                : $"Property member identity updated: {string.Join(", ", changedFields)}.");
+        await dbContext.SaveChangesAsync(cancellationToken);
+        if (transaction is not null)
+        {
+            await transaction.CommitAsync(cancellationToken);
+        }
+
+        return new AdminPropertyMemberIdentityResponse
+        {
+            Id = user.Id,
+            FirstName = user.FirstName,
+            LastName = user.LastName,
+            PhoneNumber = user.PhoneNumber ?? string.Empty,
+            Email = user.Email
+        };
+    }
+
     public async Task<PagedResult<AdminPropertyMemberDirectoryResponse>> SearchAsync(
         int currentUserId,
         UserRole currentRole,
@@ -232,6 +319,62 @@ public sealed class AdminPropertyMemberDirectoryService(
         Page = request.Page,
         PageSize = request.PageSize
     };
+
+    private async Task EnsureUniqueIdentityAsync(
+        string? email,
+        string phoneNumber,
+        int currentUserId,
+        CancellationToken cancellationToken)
+    {
+        if (email is not null && await dbContext.Users.IgnoreQueryFilters()
+                .AnyAsync(user => user.Email == email && user.Id != currentUserId, cancellationToken))
+        {
+            throw new ArgumentException(UserIdentityNormalization.DuplicateEmailMessage);
+        }
+
+        var phoneNumberVariants = UserIdentityNormalization.BuildPhoneNumberVariants(phoneNumber);
+        if (await dbContext.Users.IgnoreQueryFilters()
+                .AnyAsync(user =>
+                    user.PhoneNumber != null &&
+                    phoneNumberVariants.Contains(user.PhoneNumber) &&
+                    user.Id != currentUserId,
+                    cancellationToken))
+        {
+            throw new ArgumentException(UserIdentityNormalization.DuplicatePhoneNumberMessage);
+        }
+
+        if (await dbContext.Guests.AsNoTracking()
+                .AnyAsync(guest =>
+                    (email != null && guest.NormalizedEmail == email) ||
+                    guest.NormalizedMobile == phoneNumber,
+                    cancellationToken))
+        {
+            throw new ArgumentException("Guest with this mobile or email already exists.");
+        }
+    }
+
+    private static string NormalizeRequiredName(string value, string fieldName)
+    {
+        var normalized = UserIdentityNormalization.NormalizeName(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new ArgumentException($"{fieldName} is required.");
+        }
+
+        return normalized;
+    }
+
+    private static void AddChangedField(
+        ICollection<string> changedFields,
+        string fieldName,
+        string? before,
+        string? after)
+    {
+        if (!string.Equals(before, after, StringComparison.Ordinal))
+        {
+            changedFields.Add(fieldName);
+        }
+    }
 
     private sealed class VisibleMembership
     {

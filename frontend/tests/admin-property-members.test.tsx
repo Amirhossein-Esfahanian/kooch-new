@@ -90,6 +90,52 @@ function directoryResponse(
   };
 }
 
+type PropertyOption = {
+  id: number;
+  name: string;
+};
+
+function propertyOptionsResponse(items: PropertyOption[]) {
+  return {
+    items,
+    totalCount: items.length,
+    page: 1,
+    pageSize: 10,
+    totalPages: items.length > 0 ? 1 : 0,
+  };
+}
+
+const defaultPropertyOptions = [
+  { id: 101, name: "خانه کاشان" },
+  { id: 102, name: "اقامتگاه یزد" },
+];
+
+function mockApiRequests({
+  directory = () => Promise.resolve(directoryResponse([member()])),
+  properties = () => Promise.resolve(propertyOptionsResponse(defaultPropertyOptions)),
+}: {
+  directory?: (path: string) => Promise<unknown>;
+  properties?: (path: string) => Promise<unknown>;
+} = {}) {
+  ownerApi.apiRequest.mockImplementation((path: string) =>
+    path.startsWith("/admin/property-members/properties?")
+      ? properties(path)
+      : directory(path),
+  );
+}
+
+function directoryRequests() {
+  return ownerApi.apiRequest.mock.calls.filter(([path]) =>
+    String(path).startsWith("/admin/property-members?"),
+  );
+}
+
+function propertyOptionRequests() {
+  return ownerApi.apiRequest.mock.calls.filter(([path]) =>
+    String(path).startsWith("/admin/property-members/properties?"),
+  );
+}
+
 function member(overrides: Partial<UserItem> = {}): UserItem {
   return {
     id: 20,
@@ -162,6 +208,7 @@ beforeEach(() => {
     platformPermissions: [],
     workspaces: ["admin"],
   };
+  mockApiRequests();
 });
 
 afterEach(() => {
@@ -170,8 +217,6 @@ afterEach(() => {
 
 describe("Admin property members global directory", () => {
   it("loads the first User page and renders one row with aggregated membership data", async () => {
-    ownerApi.apiRequest.mockResolvedValue(directoryResponse([member()]));
-
     render(<AdminPropertyMembersPage />);
     await flushRequests();
 
@@ -199,8 +244,8 @@ describe("Admin property members global directory", () => {
   });
 
   it("expands and collapses all membership details with accessible button state", async () => {
-    ownerApi.apiRequest.mockResolvedValue(
-      directoryResponse([
+    mockApiRequests({
+      directory: () => Promise.resolve(directoryResponse([
         member({
           memberships: [
             {
@@ -221,8 +266,8 @@ describe("Admin property members global directory", () => {
             },
           ],
         }),
-      ]),
-    );
+      ])),
+    });
 
     render(<AdminPropertyMembersPage />);
     await flushRequests();
@@ -247,14 +292,14 @@ describe("Admin property members global directory", () => {
     expect(detailQueries.getByText("مالک اصلی")).toBeTruthy();
     expect(detailQueries.getByText("تعلیق‌شده")).toBeTruthy();
     expect(detailQueries.getByText("غیرفعال")).toBeTruthy();
-    expect(screen.getAllByText("غیرفعال")).toHaveLength(2);
-    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(1);
+    expect(within(toggle.closest("tr")!).getByText("غیرفعال")).toBeTruthy();
+    expect(directoryRequests()).toHaveLength(1);
 
     fireEvent.click(detailQueries.getAllByRole("button", { name: "مدیریت" })[0]);
     expect(navigation.push).toHaveBeenCalledWith(
       "/admin/properties/101/users",
     );
-    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(1);
+    expect(directoryRequests()).toHaveLength(1);
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
@@ -264,8 +309,8 @@ describe("Admin property members global directory", () => {
   });
 
   it("allows multiple User rows to remain expanded", async () => {
-    ownerApi.apiRequest.mockResolvedValue(
-      directoryResponse([
+    mockApiRequests({
+      directory: () => Promise.resolve(directoryResponse([
         member(),
         member({
           id: 21,
@@ -273,8 +318,8 @@ describe("Admin property members global directory", () => {
           lastName: "رضایی",
           email: "ali@example.test",
         }),
-      ]),
-    );
+      ])),
+    });
 
     render(<AdminPropertyMembersPage />);
     await flushRequests();
@@ -288,27 +333,29 @@ describe("Admin property members global directory", () => {
     expect(
       screen.getByRole("region", { name: "عضویت‌های علی رضایی" }),
     ).toBeTruthy();
-    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(1);
+    expect(directoryRequests()).toHaveLength(1);
   });
 
   it("debounces server search and resets pagination to page one", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string) => {
-      const params = new URLSearchParams(path.split("?")[1]);
-      const requestedPage = Number(params.get("page"));
-      return Promise.resolve(
-        directoryResponse([member()], {
-          page: requestedPage,
-          totalCount: 40,
-          totalPages: 2,
-        }),
-      );
+    mockApiRequests({
+      directory: (path) => {
+        const params = new URLSearchParams(path.split("?")[1]);
+        const requestedPage = Number(params.get("page"));
+        return Promise.resolve(
+          directoryResponse([member()], {
+            page: requestedPage,
+            totalCount: 40,
+            totalPages: 2,
+          }),
+        );
+      },
     });
 
     render(<AdminPropertyMembersPage />);
     await flushRequests();
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
     await flushRequests();
-    expect(ownerApi.apiRequest).toHaveBeenLastCalledWith(
+    expect(directoryRequests().at(-1)?.[0]).toBe(
       "/admin/property-members?page=2&pageSize=20",
     );
 
@@ -316,25 +363,27 @@ describe("Admin property members global directory", () => {
       screen.getByPlaceholderText("نام، شماره تماس یا ایمیل..."),
       { target: { value: "  سارا  " } },
     );
-    expect(ownerApi.apiRequest).toHaveBeenCalledTimes(2);
+    expect(directoryRequests()).toHaveLength(2);
 
     await runSearchDebounce();
 
-    expect(ownerApi.apiRequest).toHaveBeenLastCalledWith(
+    expect(directoryRequests().at(-1)?.[0]).toBe(
       "/admin/property-members?page=1&pageSize=20&search=%D8%B3%D8%A7%D8%B1%D8%A7",
     );
   });
 
   it("requests the selected server page and renders returned metadata", async () => {
-    ownerApi.apiRequest.mockImplementation((path: string) => {
-      const requestedPage = path.includes("page=2") ? 2 : 1;
-      return Promise.resolve(
-        directoryResponse([member({ id: requestedPage })], {
-          page: requestedPage,
-          totalCount: 41,
-          totalPages: 3,
-        }),
-      );
+    mockApiRequests({
+      directory: (path) => {
+        const requestedPage = path.includes("page=2") ? 2 : 1;
+        return Promise.resolve(
+          directoryResponse([member({ id: requestedPage })], {
+            page: requestedPage,
+            totalCount: 41,
+            totalPages: 3,
+          }),
+        );
+      },
     });
 
     render(<AdminPropertyMembersPage />);
@@ -344,15 +393,218 @@ describe("Admin property members global directory", () => {
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
     await flushRequests();
 
-    expect(ownerApi.apiRequest).toHaveBeenLastCalledWith(
+    expect(directoryRequests().at(-1)?.[0]).toBe(
       "/admin/property-members?page=2&pageSize=20",
     );
     expect(screen.getByText("صفحه ۲ از ۳")).toBeTruthy();
   });
 
+  it("loads Property options from the directory-scoped endpoint and searches server-side", async () => {
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+
+    expect(propertyOptionRequests().at(0)?.[0]).toBe(
+      "/admin/property-members/properties?page=1&pageSize=10",
+    );
+    expect(
+      ownerApi.apiRequest.mock.calls.some(([path]) =>
+        String(path).includes("/admin/properties/search"),
+      ),
+    ).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.change(screen.getByPlaceholderText("جستجوی اقامتگاه..."), {
+      target: { value: "  کاشان  " },
+    });
+    await runSearchDebounce();
+
+    expect(propertyOptionRequests().at(-1)?.[0]).toBe(
+      "/admin/property-members/properties?page=1&pageSize=10&search=%DA%A9%D8%A7%D8%B4%D8%A7%D9%86",
+    );
+  });
+
+  it("keeps the newest Property lookup response when requests resolve out of order", async () => {
+    const older = deferred<ReturnType<typeof propertyOptionsResponse>>();
+    const newer = deferred<ReturnType<typeof propertyOptionsResponse>>();
+    mockApiRequests({
+      properties: (path) => {
+        const search = new URLSearchParams(path.split("?")[1]).get("search");
+        if (search === "خانه") return older.promise;
+        if (search === "یزد") return newer.promise;
+        return Promise.resolve(propertyOptionsResponse(defaultPropertyOptions));
+      },
+    });
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    const propertySearch = screen.getByPlaceholderText("جستجوی اقامتگاه...");
+
+    fireEvent.change(propertySearch, { target: { value: "خانه" } });
+    await runSearchDebounce();
+    fireEvent.change(propertySearch, { target: { value: "یزد" } });
+    await runSearchDebounce();
+
+    await act(async () => {
+      newer.resolve(propertyOptionsResponse([{ id: 102, name: "اقامتگاه یزد" }]));
+      await newer.promise;
+    });
+    await act(async () => {
+      older.resolve(propertyOptionsResponse([{ id: 101, name: "خانه کاشان" }]));
+      await older.promise;
+    });
+    fireEvent.change(propertySearch, { target: { value: "" } });
+
+    expect(screen.getByRole("button", { name: "اقامتگاه یزد" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "خانه کاشان" })).toBeNull();
+  });
+
+  it("serializes combined search and membership filters with backend enum values", async () => {
+    mockApiRequests({
+      directory: (path) => {
+        const requestedPage = Number(
+          new URLSearchParams(path.split("?")[1]).get("page"),
+        );
+        return Promise.resolve(
+          directoryResponse([member()], {
+            page: requestedPage,
+            totalCount: 40,
+            totalPages: 2,
+          }),
+        );
+      },
+    });
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.change(
+      screen.getByPlaceholderText("نام، شماره تماس یا ایمیل..."),
+      { target: { value: "سارا" } },
+    );
+    await runSearchDebounce();
+
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(screen.getByRole("button", { name: "خانه کاشان" }));
+    await flushRequests();
+    fireEvent.change(screen.getByLabelText("نقش"), {
+      target: { value: "Reception" },
+    });
+    await flushRequests();
+    fireEvent.change(screen.getByLabelText("وضعیت عضویت"), {
+      target: { value: "Suspended" },
+    });
+    await flushRequests();
+
+    let params = new URLSearchParams(
+      String(directoryRequests().at(-1)?.[0]).split("?")[1],
+    );
+    expect(params.get("page")).toBe("1");
+    expect(params.get("search")).toBe("سارا");
+    expect(params.get("propertyId")).toBe("101");
+    expect(params.get("role")).toBe("Reception");
+    expect(params.get("status")).toBe("Suspended");
+
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+    params = new URLSearchParams(
+      String(directoryRequests().at(-1)?.[0]).split("?")[1],
+    );
+    expect(params.get("page")).toBe("2");
+    expect(params.get("search")).toBe("سارا");
+    expect(params.get("propertyId")).toBe("101");
+    expect(params.get("role")).toBe("Reception");
+    expect(params.get("status")).toBe("Suspended");
+  });
+
+  it("resets each membership filter to page one and clears filters without clearing search", async () => {
+    mockApiRequests({
+      directory: (path) => {
+        const requestedPage = Number(
+          new URLSearchParams(path.split("?")[1]).get("page"),
+        );
+        return Promise.resolve(
+          directoryResponse([member()], {
+            page: requestedPage,
+            totalCount: 40,
+            totalPages: 2,
+          }),
+        );
+      },
+    });
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.change(
+      screen.getByPlaceholderText("نام، شماره تماس یا ایمیل..."),
+      { target: { value: "سارا" } },
+    );
+    await runSearchDebounce();
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(screen.getByRole("button", { name: "خانه کاشان" }));
+    await flushRequests();
+    expect(
+      new URLSearchParams(
+        String(directoryRequests().at(-1)?.[0]).split("?")[1],
+      ).get("page"),
+    ).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+    fireEvent.change(screen.getByLabelText("نقش"), {
+      target: { value: "Manager" },
+    });
+    await flushRequests();
+    expect(
+      new URLSearchParams(
+        String(directoryRequests().at(-1)?.[0]).split("?")[1],
+      ).get("page"),
+    ).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+    fireEvent.change(screen.getByLabelText("وضعیت عضویت"), {
+      target: { value: "Active" },
+    });
+    await flushRequests();
+    expect(
+      new URLSearchParams(
+        String(directoryRequests().at(-1)?.[0]).split("?")[1],
+      ).get("page"),
+    ).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "پاک کردن فیلترها" }));
+    await flushRequests();
+    const cleared = new URLSearchParams(
+      String(directoryRequests().at(-1)?.[0]).split("?")[1],
+    );
+    expect(cleared.get("search")).toBe("سارا");
+    expect(cleared.has("propertyId")).toBe(false);
+    expect(cleared.has("role")).toBe(false);
+    expect(cleared.has("status")).toBe(false);
+  });
+
+  it("does not filter expanded memberships again on the client", async () => {
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(screen.getByRole("button", { name: "خانه کاشان" }));
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+
+    const details = screen.getByRole("region", {
+      name: "عضویت‌های سارا محمدی",
+    });
+    expect(within(details).getByText("خانه کاشان")).toBeTruthy();
+    expect(within(details).getByText("اقامتگاه یزد")).toBeTruthy();
+    expect(within(details).getByText("خانه شیراز")).toBeTruthy();
+  });
+
   it("shows loading and then the empty state", async () => {
     const request = deferred<ReturnType<typeof directoryResponse>>();
-    ownerApi.apiRequest.mockReturnValue(request.promise);
+    mockApiRequests({ directory: () => request.promise });
 
     render(<AdminPropertyMembersPage />);
 
@@ -367,7 +619,9 @@ describe("Admin property members global directory", () => {
   });
 
   it("shows a search-specific empty state", async () => {
-    ownerApi.apiRequest.mockResolvedValue(directoryResponse([]));
+    mockApiRequests({
+      directory: () => Promise.resolve(directoryResponse([])),
+    });
 
     render(<AdminPropertyMembersPage />);
     await flushRequests();
@@ -377,12 +631,14 @@ describe("Admin property members global directory", () => {
     );
     await runSearchDebounce();
 
-    expect(screen.getByText("کاربری مطابق جستجو پیدا نشد.")).toBeTruthy();
+    expect(
+      screen.getByText("کاربری مطابق جستجو یا فیلترها پیدا نشد."),
+    ).toBeTruthy();
   });
 
   it("shows the existing alert treatment when loading fails", async () => {
     const request = deferred<ReturnType<typeof directoryResponse>>();
-    ownerApi.apiRequest.mockReturnValue(request.promise);
+    mockApiRequests({ directory: () => request.promise });
 
     render(<AdminPropertyMembersPage />);
     await act(async () => {

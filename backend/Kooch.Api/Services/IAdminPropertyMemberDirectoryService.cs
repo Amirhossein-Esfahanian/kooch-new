@@ -6,6 +6,13 @@ namespace Kooch.Api.Services;
 
 public interface IAdminPropertyMemberDirectoryService
 {
+    Task<AdminPropertyMemberIdentityResponse> UpdateIdentityAsync(
+        int currentUserId,
+        UserRole currentRole,
+        int userId,
+        AdminPropertyMemberIdentityUpdateRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResult<AdminPropertyMemberPropertyOptionResponse>> SearchPropertiesAsync(
         int currentUserId,
         UserRole currentRole,

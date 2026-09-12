@@ -8,9 +8,12 @@ using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
+using Kooch.Api.Utilities;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
 
 namespace Kooch.Api.Tests;
@@ -329,6 +332,277 @@ public sealed class AdminPropertyMemberDirectoryTests
     }
 
     [Fact]
+    public async Task UpdateIdentity_SuperAdmin_ChangesOnlyCanonicalIdentity()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        var user = await dbContext.Users.SingleAsync(item => item.Id == 20);
+        user.SecurityStampVersion = 7;
+        var membershipsBefore = await MembershipSnapshotsAsync(dbContext, 20);
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            20,
+            IdentityRequest(firstName: "  Updated  ", lastName: "  Member  "));
+
+        Assert.Equal("Updated", result.FirstName);
+        Assert.Equal("Member", result.LastName);
+        var persisted = await dbContext.Users.IgnoreQueryFilters().SingleAsync(item => item.Id == 20);
+        Assert.Equal(7, persisted.SecurityStampVersion);
+        Assert.True(persisted.IsActive);
+        Assert.Equal(UserRole.Client, persisted.Role);
+        Assert.False(persisted.PasswordSetupRequired);
+        Assert.Equal(membershipsBefore, await MembershipSnapshotsAsync(dbContext, 20));
+        var audit = Assert.Single(await dbContext.AuditLogs.ToListAsync());
+        Assert.Equal(AuditAction.PropertyMemberIdentityUpdated, audit.Action);
+        Assert.Equal(20, audit.EntityId);
+        Assert.Contains(nameof(Kooch.Api.Entities.User.FirstName), audit.Description);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_AdminAssistantWithoutManageUsers_IsDenied()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: false);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            CreateService(dbContext).UpdateIdentityAsync(
+                10,
+                UserRole.AdminAssistant,
+                20,
+                IdentityRequest()));
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_AdminAssistantWithManageUsers_CanEditVisibleGenericUser()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: true);
+
+        var result = await CreateService(dbContext).UpdateIdentityAsync(
+            10,
+            UserRole.AdminAssistant,
+            20,
+            IdentityRequest(firstName: "Visible"));
+
+        Assert.Equal("Visible", result.FirstName);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_TargetOutsideUsersViewVisibility_IsDenied()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: true);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            CreateService(dbContext).UpdateIdentityAsync(
+                10,
+                UserRole.AdminAssistant,
+                3,
+                IdentityRequest(email: "hidden-owner-updated@example.test")));
+
+        Assert.Equal(
+            "beta-owner@example.test",
+            (await dbContext.Users.SingleAsync(item => item.Id == 3)).Email);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_PlatformAdminTarget_IsRejected()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            CreateService(dbContext).UpdateIdentityAsync(
+                1,
+                UserRole.SuperAdmin,
+                10,
+                IdentityRequest()));
+
+        Assert.Contains("Admin Users", exception.Message);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_CanonicalOwner_PreservesOwnershipAndMembership()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        var ownerMembershipBefore = await MembershipSnapshotsAsync(dbContext, 2);
+
+        await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            2,
+            IdentityRequest(
+                firstName: "Renamed",
+                lastName: "Owner",
+                phoneNumber: "09120000002",
+                email: "renamed-owner@example.test"));
+
+        Assert.Equal(2, (await dbContext.Properties.SingleAsync(item => item.Id == 101)).OwnerId);
+        Assert.Equal(ownerMembershipBefore, await MembershipSnapshotsAsync(dbContext, 2));
+    }
+
+    [Theory]
+    [InlineData("+98 912 777 8899", "multi@example.test", "09127778899", "multi@example.test", nameof(Kooch.Api.Entities.User.PhoneNumber))]
+    [InlineData("09121110020", "  UPDATED@EXAMPLE.TEST  ", "09121110020", "updated@example.test", nameof(Kooch.Api.Entities.User.Email))]
+    public async Task UpdateIdentity_ContactChange_NormalizesAndRevokesSessions(
+        string phoneNumber,
+        string email,
+        string expectedPhoneNumber,
+        string expectedEmail,
+        string expectedChangedField)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        var user = await dbContext.Users.SingleAsync(item => item.Id == 20);
+        user.SecurityStampVersion = 4;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            20,
+            IdentityRequest(phoneNumber: phoneNumber, email: email));
+
+        Assert.Equal(expectedPhoneNumber, result.PhoneNumber);
+        Assert.Equal(expectedEmail, result.Email);
+        Assert.Equal(5, (await dbContext.Users.SingleAsync(item => item.Id == 20)).SecurityStampVersion);
+        var audit = Assert.Single(await dbContext.AuditLogs.ToListAsync());
+        Assert.Contains(expectedChangedField, audit.Description);
+    }
+
+    [Theory]
+    [InlineData("09120000021", "unique@example.test", UserIdentityNormalization.DuplicatePhoneNumberMessage)]
+    [InlineData("09129998877", "inactive@example.test", UserIdentityNormalization.DuplicateEmailMessage)]
+    [InlineData("09120000022", "unique@example.test", UserIdentityNormalization.DuplicatePhoneNumberMessage)]
+    [InlineData("09129998877", "deleted@example.test", UserIdentityNormalization.DuplicateEmailMessage)]
+    public async Task UpdateIdentity_DuplicateCanonicalIdentity_IsRejected(
+        string phoneNumber,
+        string email,
+        string expectedMessage)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService(dbContext).UpdateIdentityAsync(
+                1,
+                UserRole.SuperAdmin,
+                20,
+                IdentityRequest(phoneNumber: phoneNumber, email: email)));
+
+        Assert.Equal(expectedMessage, exception.Message);
+        Assert.Empty(await dbContext.AuditLogs.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("09123334455", "guest-unique@example.test")]
+    [InlineData("09129998877", "guest@example.test")]
+    public async Task UpdateIdentity_GuestIdentityConflict_IsRejected(string phoneNumber, string email)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Guests.Add(new Guest
+        {
+            FirstName = "Guest",
+            LastName = "Identity",
+            Mobile = "09123334455",
+            NormalizedMobile = "09123334455",
+            Email = "guest@example.test",
+            NormalizedEmail = "guest@example.test"
+        });
+        await dbContext.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService(dbContext).UpdateIdentityAsync(
+                1,
+                UserRole.SuperAdmin,
+                20,
+                IdentityRequest(phoneNumber: phoneNumber, email: email)));
+
+        Assert.Equal("Guest with this mobile or email already exists.", exception.Message);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_InactiveUser_RemainsInactive()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        var user = await dbContext.Users.SingleAsync(item => item.Id == 20);
+        user.IsActive = false;
+        await dbContext.SaveChangesAsync();
+
+        await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            20,
+            IdentityRequest(firstName: "Inactive Updated"));
+
+        Assert.False((await dbContext.Users.SingleAsync(item => item.Id == 20)).IsActive);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_AuditPersistenceFailure_RollsBackIdentityAndStamp()
+    {
+        var interceptor = new AuditPersistenceFailureInterceptor();
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseSqlite(connection)
+            .AddInterceptors(interceptor)
+            .Options;
+        await using (var setup = new KoochDbContext(options))
+        {
+            await setup.Database.EnsureCreatedAsync();
+            await SeedAsync(setup);
+            var user = await setup.Users.SingleAsync(item => item.Id == 20);
+            user.SecurityStampVersion = 9;
+            await setup.SaveChangesAsync();
+        }
+
+        interceptor.Enabled = true;
+        await using (var dbContext = new KoochDbContext(options))
+        {
+            await Assert.ThrowsAsync<DbUpdateException>(() =>
+                CreateService(dbContext).UpdateIdentityAsync(
+                    1,
+                    UserRole.SuperAdmin,
+                    20,
+                    IdentityRequest(phoneNumber: "09128889900", email: "rollback@example.test")));
+        }
+
+        await using var verification = new KoochDbContext(options);
+        var persisted = await verification.Users.SingleAsync(item => item.Id == 20);
+        Assert.Equal("Multi", persisted.FirstName);
+        Assert.Equal("09121110020", persisted.PhoneNumber);
+        Assert.Equal("multi@example.test", persisted.Email);
+        Assert.Equal(9, persisted.SecurityStampVersion);
+        Assert.Empty(await verification.AuditLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task UpdateIdentityController_ReturnsIdentityOnlyContract()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        var controller = new AdminPropertyMembersController(CreateService(dbContext));
+        SetCurrentUser(controller, 1, UserRole.SuperAdmin);
+
+        var response = await controller.UpdateIdentity(
+            20,
+            IdentityRequest(firstName: "Controller"),
+            CancellationToken.None);
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        var result = Assert.IsType<AdminPropertyMemberIdentityResponse>(ok.Value);
+
+        Assert.Equal(20, result.Id);
+        Assert.Equal("Controller", result.FirstName);
+    }
+
+    [Fact]
     public async Task Controller_ReturnsSharedPagedResultContract()
     {
         await using var dbContext = CreateContext();
@@ -404,8 +678,32 @@ public sealed class AdminPropertyMemberDirectoryTests
     {
         var propertyAccess = new PropertyAccessService(dbContext);
         var permissionService = new PermissionService(dbContext, propertyAccess);
-        return new AdminPropertyMemberDirectoryService(dbContext, propertyAccess, permissionService);
+        var auditLogService = new AuditLogService(dbContext, permissionService);
+        return new AdminPropertyMemberDirectoryService(
+            dbContext,
+            propertyAccess,
+            permissionService,
+            auditLogService);
     }
+
+    private static AdminPropertyMemberIdentityUpdateRequest IdentityRequest(
+        string firstName = "Multi",
+        string lastName = "Member",
+        string phoneNumber = "09121110020",
+        string? email = "multi@example.test") => new()
+    {
+        FirstName = firstName,
+        LastName = lastName,
+        PhoneNumber = phoneNumber,
+        Email = email
+    };
+
+    private static async Task<string[]> MembershipSnapshotsAsync(KoochDbContext dbContext, int userId) =>
+        await dbContext.UserPropertyAccesses.AsNoTracking()
+            .Where(access => access.UserId == userId)
+            .OrderBy(access => access.PropertyId)
+            .Select(access => $"{access.PropertyId}|{access.PropertyRole}|{access.Status}|{access.IsActive}|{access.PermissionMatrixJson}")
+            .ToArrayAsync();
 
     private static async Task SeedAsync(
         KoochDbContext dbContext,
@@ -577,5 +875,24 @@ public sealed class AdminPropertyMemberDirectoryTests
                     "AdminPropertyMemberDirectoryTests"))
             }
         };
+    }
+
+    private sealed class AuditPersistenceFailureInterceptor : SaveChangesInterceptor
+    {
+        public bool Enabled { get; set; }
+
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (Enabled && eventData.Context?.ChangeTracker.Entries<AuditLog>()
+                    .Any(entry => entry.State == EntityState.Added) == true)
+            {
+                throw new DbUpdateException("Simulated audit persistence failure.");
+            }
+
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
     }
 }

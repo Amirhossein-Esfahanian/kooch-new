@@ -8,7 +8,12 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
-import { KoochField, KoochInput } from "@/components/KoochFormControls";
+import {
+  KoochField,
+  KoochInput,
+  KoochSearchableSelect,
+  KoochSelect,
+} from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
   KoochTable,
@@ -52,7 +57,21 @@ type PropertyMemberDirectoryResponse = {
   totalPages: number;
 };
 
+type PropertyOption = {
+  id: number;
+  name: string;
+};
+
+type PropertyOptionResponse = {
+  items: PropertyOption[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
 const pageSize = 20;
+const propertyOptionPageSize = 10;
 
 const roleLabels: Record<PropertyUserRole, string> = {
   PropertyOwner: "مالک اقامتگاه",
@@ -69,6 +88,22 @@ const statusLabels: Record<PropertyUserStatus, string> = {
   Suspended: "تعلیق‌شده",
   Inactive: "غیرفعال",
 };
+
+const roleOptions: PropertyUserRole[] = [
+  "PropertyOwner",
+  "Manager",
+  "Reception",
+  "Accounting",
+  "Housekeeping",
+  "Custom",
+];
+
+const statusOptions: PropertyUserStatus[] = [
+  "Pending",
+  "Active",
+  "Suspended",
+  "Inactive",
+];
 
 function membershipStatusVariant(status: PropertyUserStatus) {
   if (status === "Active") return "success" as const;
@@ -93,11 +128,22 @@ export default function AdminPropertyMembersPage() {
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [propertyId, setPropertyId] = useState("");
+  const [role, setRole] = useState<PropertyUserRole | "">("");
+  const [status, setStatus] = useState<PropertyUserStatus | "">("");
+  const [propertySearch, setPropertySearch] = useState("");
+  const [debouncedPropertySearch, setDebouncedPropertySearch] = useState("");
+  const [propertyOptions, setPropertyOptions] = useState<PropertyOption[]>([]);
+  const [selectedProperty, setSelectedProperty] =
+    useState<PropertyOption | null>(null);
+  const [propertyLookupLoading, setPropertyLookupLoading] = useState(true);
+  const [propertyLookupError, setPropertyLookupError] = useState("");
   const [page, setPage] = useState(1);
   const [expandedUserIds, setExpandedUserIds] = useState<Set<number>>(
     () => new Set(),
   );
   const requestIdRef = useRef(0);
+  const propertyRequestIdRef = useRef(0);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -107,6 +153,68 @@ export default function AdminPropertyMembersPage() {
 
     return () => window.clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedPropertySearch(propertySearch.trim());
+    }, 300);
+
+    return () => window.clearTimeout(timer);
+  }, [propertySearch]);
+
+  useEffect(() => {
+    if (
+      sessionLoading ||
+      !authenticated ||
+      !workspaces.includes("admin")
+    ) {
+      propertyRequestIdRef.current += 1;
+      if (!sessionLoading) setPropertyLookupLoading(false);
+      return;
+    }
+
+    const requestId = ++propertyRequestIdRef.current;
+    const query = new URLSearchParams({
+      page: "1",
+      pageSize: propertyOptionPageSize.toString(),
+    });
+    if (debouncedPropertySearch) {
+      query.set("search", debouncedPropertySearch);
+    }
+
+    setPropertyLookupError("");
+    setPropertyLookupLoading(true);
+    apiRequest<PropertyOptionResponse>(
+      `/admin/property-members/properties?${query.toString()}`,
+    )
+      .then((response) => {
+        if (propertyRequestIdRef.current === requestId) {
+          setPropertyOptions(response.items);
+        }
+      })
+      .catch((caught: Error) => {
+        if (propertyRequestIdRef.current === requestId) {
+          setPropertyOptions([]);
+          setPropertyLookupError(caught.message);
+        }
+      })
+      .finally(() => {
+        if (propertyRequestIdRef.current === requestId) {
+          setPropertyLookupLoading(false);
+        }
+      });
+
+    return () => {
+      if (propertyRequestIdRef.current === requestId) {
+        propertyRequestIdRef.current += 1;
+      }
+    };
+  }, [
+    authenticated,
+    debouncedPropertySearch,
+    sessionLoading,
+    workspaces,
+  ]);
 
   useEffect(() => {
     if (
@@ -125,6 +233,9 @@ export default function AdminPropertyMembersPage() {
       pageSize: pageSize.toString(),
     });
     if (debouncedSearch) query.set("search", debouncedSearch);
+    if (propertyId) query.set("propertyId", propertyId);
+    if (role) query.set("role", role);
+    if (status) query.set("status", status);
 
     setError("");
     setLoading(true);
@@ -154,7 +265,16 @@ export default function AdminPropertyMembersPage() {
         requestIdRef.current += 1;
       }
     };
-  }, [authenticated, debouncedSearch, page, sessionLoading, workspaces]);
+  }, [
+    authenticated,
+    debouncedSearch,
+    page,
+    propertyId,
+    role,
+    sessionLoading,
+    status,
+    workspaces,
+  ]);
 
   const users = result?.items ?? [];
   const totalPages = result?.totalPages ?? 0;
@@ -165,6 +285,44 @@ export default function AdminPropertyMembersPage() {
       ),
     [users],
   );
+  const propertySelectOptions = useMemo(() => {
+    const options = propertyOptions.map((property) => ({
+      value: property.id,
+      label: property.name,
+      searchText: property.name,
+    }));
+    if (
+      selectedProperty &&
+      !options.some((option) => String(option.value) === propertyId)
+    ) {
+      options.unshift({
+        value: selectedProperty.id,
+        label: selectedProperty.name,
+        searchText: selectedProperty.name,
+      });
+    }
+    return options;
+  }, [propertyId, propertyOptions, selectedProperty]);
+  const hasActiveFilters = Boolean(propertyId || role || status);
+
+  function changeProperty(value: string) {
+    setPage(1);
+    setPropertyId(value);
+    setSelectedProperty(
+      value
+        ? propertyOptions.find((property) => String(property.id) === value) ??
+            selectedProperty
+        : null,
+    );
+  }
+
+  function clearFilters() {
+    setPage(1);
+    setPropertyId("");
+    setSelectedProperty(null);
+    setRole("");
+    setStatus("");
+  }
 
   function toggleUserDetails(userId: number) {
     setExpandedUserIds((current) => {
@@ -195,8 +353,8 @@ export default function AdminPropertyMembersPage() {
         />
 
         <KoochCard className="grid min-w-0 gap-4" padding="md">
-          <div className="flex flex-wrap items-end justify-between gap-3">
-            <div className="min-w-0 flex-1 sm:max-w-md">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_minmax(150px,0.7fr)_minmax(160px,0.7fr)_auto] xl:items-end">
+            <div className="min-w-0">
               <KoochField label="جستجوی کاربر">
                 <KoochInput
                   onChange={(event) => setSearch(event.target.value)}
@@ -206,11 +364,83 @@ export default function AdminPropertyMembersPage() {
                 />
               </KoochField>
             </div>
-            {result && (
-              <p className="text-sm text-muted-foreground" role="status">
-                {numberFormatter.format(result.totalCount)} کاربر
-              </p>
-            )}
+
+            <div className="min-w-0">
+              <KoochField label="اقامتگاه">
+                <KoochSearchableSelect
+                  emptyText={
+                    propertyLookupLoading
+                      ? "در حال جستجوی اقامتگاه‌ها..."
+                      : "اقامتگاهی پیدا نشد."
+                  }
+                  error={propertyLookupError || undefined}
+                  onChange={changeProperty}
+                  onSearchChange={setPropertySearch}
+                  options={propertySelectOptions}
+                  placeholder="همه اقامتگاه‌ها"
+                  searchPlaceholder="جستجوی اقامتگاه..."
+                  value={propertyId}
+                />
+              </KoochField>
+            </div>
+
+            <div className="min-w-0">
+              <KoochField label="نقش">
+                <KoochSelect
+                  onChange={(event) => {
+                    setPage(1);
+                    setRole(event.target.value as PropertyUserRole | "");
+                  }}
+                  value={role}
+                >
+                  <option value="">همه نقش‌ها</option>
+                  {roleOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {roleLabels[option]}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+            </div>
+
+            <div className="min-w-0">
+              <KoochField label="وضعیت عضویت">
+                <KoochSelect
+                  onChange={(event) => {
+                    setPage(1);
+                    setStatus(event.target.value as PropertyUserStatus | "");
+                  }}
+                  value={status}
+                >
+                  <option value="">همه وضعیت‌ها</option>
+                  {statusOptions.map((option) => (
+                    <option key={option} value={option}>
+                      {statusLabels[option]}
+                    </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+            </div>
+
+            <div className="flex min-w-0 flex-wrap items-center justify-between gap-2 sm:col-span-2 xl:col-span-1 xl:justify-end">
+              <KoochButton
+                disabled={!hasActiveFilters}
+                onClick={clearFilters}
+                size="sm"
+                type="button"
+                variant="ghost"
+              >
+                پاک کردن فیلترها
+              </KoochButton>
+              {result && (
+                <p
+                  className="whitespace-nowrap text-sm text-muted-foreground"
+                  role="status"
+                >
+                  {numberFormatter.format(result.totalCount)} کاربر
+                </p>
+              )}
+            </div>
           </div>
 
           {error && (
@@ -244,8 +474,8 @@ export default function AdminPropertyMembersPage() {
                 </KoochTableEmpty>
               ) : users.length === 0 ? (
                 <KoochTableEmpty colSpan={6}>
-                  {debouncedSearch
-                    ? "کاربری مطابق جستجو پیدا نشد."
+                  {debouncedSearch || hasActiveFilters
+                    ? "کاربری مطابق جستجو یا فیلترها پیدا نشد."
                     : "هنوز عضوی برای نمایش وجود ندارد."}
                 </KoochTableEmpty>
               ) : (
