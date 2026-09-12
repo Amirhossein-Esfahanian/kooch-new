@@ -4,6 +4,11 @@ import {
   KoochField,
   KoochInput,
 } from "@/components/KoochFormControls";
+import {
+  IRAN_MOBILE_MAX_LENGTH,
+  normalizeIranMobileInput,
+  validateIranMobile,
+} from "@/lib/iran-mobile";
 
 export type CreateUserIdentity = {
   firstName: string;
@@ -31,9 +36,8 @@ export function validateCreateUserIdentity(
     errors.lastName = "نام خانوادگی را وارد کنید.";
   }
 
-  if (!value.mobile.trim()) {
-    errors.mobile = "شماره موبایل را وارد کنید.";
-  }
+  const mobileError = validateIranMobile(value.mobile);
+  if (mobileError) errors.mobile = mobileError;
 
   const email = value.email.trim();
   if (email && !emailPattern.test(email)) {
@@ -95,7 +99,11 @@ export function CreateUserFields({
   value: CreateUserIdentity;
 }) {
   function update(field: keyof CreateUserIdentity, nextValue: string) {
-    onChange({ ...value, [field]: nextValue });
+    onChange({
+      ...value,
+      [field]:
+        field === "mobile" ? normalizeIranMobileInput(nextValue) : nextValue,
+    });
   }
 
   return (
@@ -135,7 +143,8 @@ export function CreateUserFields({
           dir="ltr"
           error={errors.mobile}
           id={`${idPrefix}-mobile`}
-          inputMode="tel"
+          inputMode="numeric"
+          maxLength={IRAN_MOBILE_MAX_LENGTH}
           onChange={(event) => update("mobile", event.target.value)}
           readOnly={mobileReadOnly}
           required

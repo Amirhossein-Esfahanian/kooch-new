@@ -271,7 +271,7 @@ describe("Admin Users page", () => {
       target: { value: "Admin" },
     });
     fireEvent.change(input("#admin-user-mobile"), {
-      target: { value: "09123456789" },
+      target: { value: "۰۹۱۲۳۴۵۶۷۸۹" },
     });
     expect(
       ownerApi.apiRequest.mock.calls.some(

@@ -47,6 +47,7 @@ import {
   apiRequest,
   UserRole,
 } from "@/lib/owner-api";
+import { validateIranMobile } from "@/lib/iran-mobile";
 import { KoochIcon } from "../../../components/KoochIcon";
 
 type PlatformAdminRole = Extract<UserRole, "SuperAdmin" | "AdminAssistant">;
@@ -208,25 +209,6 @@ function statusVariant(user: AdminUserResponse) {
 function statusLabel(user: AdminUserResponse) {
   if (user.passwordSetupRequired) return "در انتظار تنظیم رمز";
   return user.isActive ? "فعال" : "غیرفعال";
-}
-
-function normalizeIranMobileInput(value: string) {
-  const persianDigits = "۰۱۲۳۴۵۶۷۸۹";
-  const arabicDigits = "٠١٢٣٤٥٦٧٨٩";
-
-  return value
-    .replace(/[۰-۹]/g, (digit) => String(persianDigits.indexOf(digit)))
-    .replace(/[٠-٩]/g, (digit) => String(arabicDigits.indexOf(digit)))
-    .replace(/\D/g, "")
-    .slice(0, 11);
-}
-
-function validateIranMobile(value: string) {
-  if (!value) return "شماره موبایل الزامی است.";
-  if (!/^09\d{9}$/.test(value)) {
-    return "شماره موبایل باید ۱۱ رقم، فقط عدد و با ۰۹ شروع شود؛ مانند 09132645025.";
-  }
-  return "";
 }
 
 function validatePassword(password: string) {
@@ -950,7 +932,7 @@ export default function AdminUsersPage() {
                         ...current,
                         firstName: identity.firstName,
                         lastName: identity.lastName,
-                        phoneNumber: normalizeIranMobileInput(identity.mobile),
+                        phoneNumber: identity.mobile,
                         email: identity.email,
                       }))
                     }

@@ -10,6 +10,10 @@ import {
   validateCreateUserIdentity,
   type CreateUserIdentity,
 } from "@/components/users/CreateUserFields";
+import {
+  normalizeIranMobileInput,
+  validateIranMobile,
+} from "@/lib/iran-mobile";
 
 const emptyIdentity: CreateUserIdentity = {
   firstName: "",
@@ -39,6 +43,20 @@ function IdentityHarness({
 }
 
 describe("CreateUserFields", () => {
+  it("normalizes Persian and Arabic mobile digits to the canonical UI format", () => {
+    expect(normalizeIranMobileInput("۰۹۱۲۳۴۵۶۷۸۹")).toBe("09123456789");
+    expect(normalizeIranMobileInput("٠٩١٢٣٤٥٦٧٨٩")).toBe("09123456789");
+    expect(normalizeIranMobileInput("09a12-345 67890")).toBe("09123456789");
+  });
+
+  it("validates the canonical Iranian mobile shape", () => {
+    expect(validateIranMobile("09123456789")).toBe("");
+    expect(validateIranMobile("0912345678")).not.toBe("");
+    expect(validateIranMobile("091234567890")).not.toBe("");
+    expect(validateIranMobile("08123456789")).not.toBe("");
+    expect(validateIranMobile("09123a56789")).not.toBe("");
+  });
+
   it("accepts a complete identity without email", () => {
     const errors = validateCreateUserIdentity({
       firstName: "علی",
@@ -61,7 +79,7 @@ describe("CreateUserFields", () => {
 
     expect(screen.getByText("نام را وارد کنید.")).toBeTruthy();
     expect(screen.getByText("نام خانوادگی را وارد کنید.")).toBeTruthy();
-    expect(screen.getByText("شماره موبایل را وارد کنید.")).toBeTruthy();
+    expect(screen.getByText("شماره موبایل الزامی است.")).toBeTruthy();
     expect(screen.getByText("ایمیل واردشده معتبر نیست.")).toBeTruthy();
   });
 
@@ -81,6 +99,25 @@ describe("CreateUserFields", () => {
     );
     expect(screen.queryByRole("combobox")).toBeNull();
     expect(screen.queryByText(/نقش|دسترسی|Permission/i)).toBeNull();
+  });
+
+  it("normalizes mobile input and exposes numeric input constraints", () => {
+    const { container } = render(<IdentityHarness />);
+    const mobileInput = container.querySelector<HTMLInputElement>(
+      "#test-user-mobile",
+    )!;
+
+    expect(mobileInput.inputMode).toBe("numeric");
+    expect(mobileInput.maxLength).toBe(11);
+
+    fireEvent.change(mobileInput, {
+      target: { value: "۰۹۱۲۳۴۵۶۷۸۹" },
+    });
+
+    expect(mobileInput.value).toBe("09123456789");
+    expect(screen.getByTestId("identity-value").textContent).toContain(
+      '"mobile":"09123456789"',
+    );
   });
 
   it("maps duplicate identity API errors to canonical Persian messages", () => {
