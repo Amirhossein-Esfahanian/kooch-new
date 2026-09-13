@@ -335,6 +335,21 @@ describe("Admin property members global directory", () => {
   });
 
   it("expands and collapses all membership details with accessible button state", async () => {
+    const animationFrames = new Map<number, FrameRequestCallback>();
+    let nextAnimationFrameId = 1;
+    const requestAnimationFrameSpy = vi
+      .spyOn(window, "requestAnimationFrame")
+      .mockImplementation((callback) => {
+        const frameId = nextAnimationFrameId;
+        nextAnimationFrameId += 1;
+        animationFrames.set(frameId, callback);
+        return frameId;
+      });
+    const cancelAnimationFrameSpy = vi
+      .spyOn(window, "cancelAnimationFrame")
+      .mockImplementation((frameId) => {
+        animationFrames.delete(frameId);
+      });
     mockApiRequests({
       directory: () => Promise.resolve(directoryResponse([
         member({
@@ -374,9 +389,19 @@ describe("Admin property members global directory", () => {
     expect(toggle.getAttribute("aria-controls")).toBe(
       "property-member-details-20",
     );
+    expect(document.getElementById("property-member-details-20")).toBeNull();
+    const tableHeader = toggle.closest("table")?.querySelector("thead");
+    expect(
+      tableHeader?.classList.contains("!bg-[var(--theme-primary-soft)]"),
+    ).toBe(true);
     expect(toggle.textContent).toContain("⌄");
     expect(toggle.textContent).not.toContain("+");
     expect(toggle.textContent).not.toContain("−");
+    expect(
+      toggle
+        .closest("tr")!
+        .classList.contains("hover:bg-[var(--theme-primary-soft)]"),
+    ).toBe(true);
     const parentOperations = within(toggle.closest("tr")!.cells[5]);
     expect(
       parentOperations.getByRole("button", { name: "ویرایش" }),
@@ -395,9 +420,51 @@ describe("Admin property members global directory", () => {
     const details = screen.getByRole("region", {
       name: "عضویت‌های سارا محمدی",
     });
+    const animationWrapper = details.parentElement;
+    expect(animationWrapper?.classList.contains("-translate-y-1")).toBe(true);
+    expect(animationWrapper?.classList.contains("opacity-0")).toBe(true);
+    expect(animationFrames.size).toBe(1);
+
+    const paintFrame = animationFrames.entries().next().value;
+    expect(paintFrame).toBeTruthy();
+    act(() => {
+      animationFrames.delete(paintFrame![0]);
+      paintFrame![1](0);
+    });
+
+    expect(animationWrapper?.classList.contains("-translate-y-1")).toBe(true);
+    expect(animationWrapper?.classList.contains("opacity-0")).toBe(true);
+    expect(animationFrames.size).toBe(1);
+
+    const visibleFrame = animationFrames.entries().next().value;
+    expect(visibleFrame).toBeTruthy();
+    act(() => {
+      animationFrames.delete(visibleFrame![0]);
+      visibleFrame![1](16);
+    });
+
+    expect(animationWrapper?.classList.contains("translate-y-0")).toBe(true);
+    expect(animationWrapper?.classList.contains("opacity-100")).toBe(true);
+    expect(animationWrapper?.classList.contains("overflow-hidden")).toBe(true);
+    expect(
+      animationWrapper?.classList.contains(
+        "transition-[opacity,transform]",
+      ),
+    ).toBe(true);
+    expect(
+      animationWrapper?.classList.contains(
+        "motion-reduce:transition-opacity",
+      ),
+    ).toBe(true);
+    expect(
+      details.classList.contains("bg-[var(--theme-primary-soft)]"),
+    ).toBe(true);
     const detailQueries = within(details);
     const detailHeader = details.querySelector('[aria-hidden="true"]');
     expect(detailHeader?.children).toHaveLength(4);
+    expect(detailHeader?.classList.contains("bg-card")).toBe(false);
+    expect(detailHeader?.classList.contains("border-b")).toBe(true);
+    expect(detailHeader?.classList.contains("font-medium")).toBe(true);
     expect(detailQueries.getByText("اقامتگاه")).toBeTruthy();
     expect(detailQueries.getByText("نقش")).toBeTruthy();
     expect(detailQueries.getByText("وضعیت عضویت")).toBeTruthy();
@@ -422,9 +489,14 @@ describe("Admin property members global directory", () => {
 
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(document.getElementById("property-member-details-20")).toBeNull();
+    expect(cancelAnimationFrameSpy).toHaveBeenCalledWith(paintFrame![0]);
+    expect(cancelAnimationFrameSpy).toHaveBeenCalledWith(visibleFrame![0]);
     expect(
       screen.queryByRole("region", { name: "عضویت‌های سارا محمدی" }),
     ).toBeNull();
+    requestAnimationFrameSpy.mockRestore();
+    cancelAnimationFrameSpy.mockRestore();
   });
 
   it("allows multiple User rows to remain expanded", async () => {

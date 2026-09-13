@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
   type FormEvent,
+  type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -92,6 +93,36 @@ type PropertyOption = {
   id: number;
   name: string;
 };
+
+function ExpandedMembershipEntry({ children }: { children: ReactNode }) {
+  const [isVisible, setIsVisible] = useState(false);
+
+  useEffect(() => {
+    let visibleFrame: number | null = null;
+    const paintFrame = window.requestAnimationFrame(() => {
+      visibleFrame = window.requestAnimationFrame(() => setIsVisible(true));
+    });
+
+    return () => {
+      window.cancelAnimationFrame(paintFrame);
+      if (visibleFrame !== null) {
+        window.cancelAnimationFrame(visibleFrame);
+      }
+    };
+  }, []);
+
+  return (
+    <div
+      className={`overflow-hidden transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity motion-reduce:duration-100 ${
+        isVisible
+          ? "translate-y-0 opacity-100"
+          : "-translate-y-1 opacity-0"
+      }`}
+    >
+      {children}
+    </div>
+  );
+}
 
 type PropertyOptionResponse = {
   items: PropertyOption[];
@@ -653,7 +684,7 @@ export default function AdminPropertyMembersPage() {
           )}
 
           <KoochTable>
-            <KoochTableHeader>
+            <KoochTableHeader className="!bg-[var(--theme-primary-soft)] text-foreground">
               <KoochTableRow>
                 <KoochTableHead>
                   کاربر
@@ -696,7 +727,7 @@ export default function AdminPropertyMembersPage() {
 
                   return (
                     <Fragment key={user.id}>
-                      <KoochTableRow>
+                      <KoochTableRow className="hover:bg-[var(--theme-primary-soft)]">
                         <KoochTableCell className="min-w-52">
                           <button
                             aria-controls={detailsId}
@@ -781,13 +812,14 @@ export default function AdminPropertyMembersPage() {
                       </KoochTableRow>
 
                       {isExpanded && (
-                        <KoochTableRow className="bg-muted/35 hover:bg-muted/35">
+                        <KoochTableRow>
                           <KoochTableCell className="p-0" colSpan={6}>
-                            <section
-                              aria-label={`عضویت‌های ${fullName || "کاربر بدون نام"}`}
-                              className="overflow-x-auto px-3 py-3"
-                              id={detailsId}
-                            >
+                            <ExpandedMembershipEntry>
+                              <section
+                                aria-label={`عضویت‌های ${fullName || "کاربر بدون نام"}`}
+                                className="overflow-x-auto bg-[var(--theme-primary-soft)] px-3 py-3"
+                                id={detailsId}
+                              >
                               <div className="w-fit min-w-full lg:min-w-0">
                                 <div
                                   aria-hidden="true"
@@ -925,7 +957,8 @@ export default function AdminPropertyMembersPage() {
                                   ))}
                                 </ul>
                               </div>
-                            </section>
+                              </section>
+                            </ExpandedMembershipEntry>
                           </KoochTableCell>
                         </KoochTableRow>
                       )}
