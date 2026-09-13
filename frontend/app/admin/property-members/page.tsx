@@ -548,10 +548,13 @@ export default function AdminPropertyMembersPage() {
           title="اعضای اقامتگاه‌ها"
         />
 
-        <KoochCard className="grid min-w-0 gap-4" padding="md">
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_minmax(150px,0.7fr)_minmax(160px,0.7fr)_auto] xl:items-end">
+        <KoochCard className="grid min-w-0 gap-3" padding="md">
+          <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,1.2fr)_minmax(220px,1fr)_minmax(150px,0.7fr)_minmax(160px,0.7fr)_auto] xl:items-center">
             <div className="min-w-0">
-              <KoochField label="جستجوی کاربر">
+              <KoochField
+                className="gap-0"
+                label={<span className="sr-only">جستجوی کاربر</span>}
+              >
                 <KoochInput
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder="نام، شماره تماس یا ایمیل..."
@@ -562,7 +565,10 @@ export default function AdminPropertyMembersPage() {
             </div>
 
             <div className="min-w-0">
-              <KoochField label="اقامتگاه">
+              <KoochField
+                className="gap-0"
+                label={<span className="sr-only">اقامتگاه</span>}
+              >
                 <KoochSearchableSelect
                   emptyText={
                     propertyLookupLoading
@@ -581,7 +587,10 @@ export default function AdminPropertyMembersPage() {
             </div>
 
             <div className="min-w-0">
-              <KoochField label="نقش">
+              <KoochField
+                className="gap-0"
+                label={<span className="sr-only">نقش</span>}
+              >
                 <KoochSelect
                   onChange={(event) => {
                     setPage(1);
@@ -600,7 +609,10 @@ export default function AdminPropertyMembersPage() {
             </div>
 
             <div className="min-w-0">
-              <KoochField label="وضعیت عضویت">
+              <KoochField
+                className="gap-0"
+                label={<span className="sr-only">وضعیت عضویت</span>}
+              >
                 <KoochSelect
                   onChange={(event) => {
                     setPage(1);
@@ -628,14 +640,6 @@ export default function AdminPropertyMembersPage() {
               >
                 پاک کردن فیلترها
               </KoochButton>
-              {result && (
-                <p
-                  className="whitespace-nowrap text-sm text-muted-foreground"
-                  role="status"
-                >
-                  {numberFormatter.format(result.totalCount)} کاربر
-                </p>
-              )}
             </div>
           </div>
 
@@ -651,7 +655,12 @@ export default function AdminPropertyMembersPage() {
           <KoochTable>
             <KoochTableHeader>
               <KoochTableRow>
-                <KoochTableHead>کاربر</KoochTableHead>
+                <KoochTableHead>
+                  کاربر
+                  {result
+                    ? ` (${numberFormatter.format(result.totalCount)})`
+                    : ""}
+                </KoochTableHead>
                 <KoochTableHead>تماس</KoochTableHead>
                 <KoochTableHead>تعداد اقامتگاه‌ها</KoochTableHead>
                 <KoochTableHead>نقش‌ها</KoochTableHead>
@@ -776,16 +785,13 @@ export default function AdminPropertyMembersPage() {
                           <KoochTableCell className="p-0" colSpan={6}>
                             <section
                               aria-label={`عضویت‌های ${fullName || "کاربر بدون نام"}`}
-                              className="px-4 py-4"
+                              className="overflow-x-auto px-3 py-3"
                               id={detailsId}
                             >
-                              <div className="mb-2 text-xs font-medium text-muted-foreground">
-                                عضویت‌های قابل مشاهده
-                              </div>
-                              <div className="min-w-[620px]">
+                              <div className="w-fit min-w-full lg:min-w-0">
                                 <div
                                   aria-hidden="true"
-                                  className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_auto] gap-3 border-b border-border px-3 pb-2 text-xs font-medium text-muted-foreground"
+                                  className="grid grid-cols-[minmax(12rem,18rem)_minmax(7rem,9rem)_minmax(8rem,10rem)_minmax(15rem,20rem)] gap-x-3 border-b border-border px-2 pb-2 text-xs font-medium text-muted-foreground"
                                 >
                                   <span>اقامتگاه</span>
                                   <span>نقش</span>
@@ -795,7 +801,7 @@ export default function AdminPropertyMembersPage() {
                                 <ul className="divide-y divide-border">
                                   {user.memberships.map((membership) => (
                                     <li
-                                      className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_auto] items-center gap-3 px-3 py-3"
+                                      className="grid grid-cols-[minmax(12rem,18rem)_minmax(7rem,9rem)_minmax(8rem,10rem)_minmax(15rem,20rem)] items-center gap-x-3 px-2 py-2.5"
                                       key={membership.propertyId}
                                     >
                                       <div className="flex min-w-0 flex-wrap items-center gap-2">

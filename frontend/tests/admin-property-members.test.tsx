@@ -281,6 +281,10 @@ afterEach(() => {
 
 describe("Admin property members global directory", () => {
   it("loads the first User page and renders one row with aggregated membership data", async () => {
+    mockApiRequests({
+      directory: () =>
+        Promise.resolve(directoryResponse([member()], { totalCount: 3 })),
+    });
     render(<AdminPropertyMembersPage />);
     await flushRequests();
 
@@ -294,6 +298,29 @@ describe("Admin property members global directory", () => {
     ).toBe(false);
     expect(
       document.querySelector('[data-required-permission="ManageUsers"]'),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("columnheader", { name: "کاربر (۳)" }),
+    ).toBeTruthy();
+    expect(screen.queryByText("۳ کاربر")).toBeNull();
+
+    const filterNames = [
+      "جستجوی کاربر",
+      "اقامتگاه",
+      "نقش",
+      "وضعیت عضویت",
+    ];
+    filterNames.forEach((name) => {
+      const hiddenLabel = screen.getByText(name, { selector: "label > span" });
+      expect(hiddenLabel.classList.contains("sr-only")).toBe(true);
+    });
+    expect(
+      screen.getByRole("searchbox", { name: "جستجوی کاربر" }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: "اقامتگاه" })).toBeTruthy();
+    expect(screen.getByRole("combobox", { name: "نقش" })).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "وضعیت عضویت" }),
     ).toBeTruthy();
 
     const row = screen.getByText("سارا محمدی").closest("tr");
@@ -375,6 +402,7 @@ describe("Admin property members global directory", () => {
     expect(detailQueries.getByText("نقش")).toBeTruthy();
     expect(detailQueries.getByText("وضعیت عضویت")).toBeTruthy();
     expect(detailQueries.getByText("عملیات")).toBeTruthy();
+    expect(detailQueries.queryByText("عضویت‌های قابل مشاهده")).toBeNull();
     expect(detailQueries.queryByText("فعال بودن عضویت")).toBeNull();
     expect(detailQueries.getByText("خانه کاشان")).toBeTruthy();
     expect(detailQueries.getByText("اقامتگاه یزد")).toBeTruthy();
@@ -713,6 +741,9 @@ describe("Admin property members global directory", () => {
     render(<AdminPropertyMembersPage />);
     await flushRequests();
     expect(screen.getByText("صفحه ۱ از ۳")).toBeTruthy();
+    expect(
+      screen.getByRole("columnheader", { name: "کاربر (۴۱)" }),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
     await flushRequests();
@@ -721,6 +752,9 @@ describe("Admin property members global directory", () => {
       "/admin/property-members?page=2&pageSize=20",
     );
     expect(screen.getByText("صفحه ۲ از ۳")).toBeTruthy();
+    expect(
+      screen.getByRole("columnheader", { name: "کاربر (۴۱)" }),
+    ).toBeTruthy();
   });
 
   it("loads Property options from the directory-scoped endpoint and searches server-side", async () => {
