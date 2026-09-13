@@ -628,7 +628,7 @@ export default function AdminPropertyMembersPage() {
                                 aria-hidden="true"
                                 className="text-sm text-muted-foreground"
                               >
-                                {isExpanded ? "−" : "+"}
+                                {isExpanded ? "⌃" : "⌄"}
                               </span>
                             </span>
                             {user.email && (
@@ -684,28 +684,14 @@ export default function AdminPropertyMembersPage() {
                           </KoochBadge>
                         </KoochTableCell>
                         <KoochTableCell>
-                          <div className="flex flex-wrap items-center gap-2">
-                            <KoochButton
-                              onClick={() => openIdentityEdit(user)}
-                              size="sm"
-                              type="button"
-                              variant="outline"
-                            >
-                              ویرایش
-                            </KoochButton>
-                            <KoochButton
-                              aria-controls={detailsId}
-                              aria-expanded={isExpanded}
-                              onClick={() => toggleUserDetails(user.id)}
-                              size="sm"
-                              type="button"
-                              variant="ghost"
-                            >
-                              {isExpanded
-                                ? "بستن جزئیات"
-                                : "مشاهده جزئیات"}
-                            </KoochButton>
-                          </div>
+                          <KoochButton
+                            onClick={() => openIdentityEdit(user)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            ویرایش
+                          </KoochButton>
                         </KoochTableCell>
                       </KoochTableRow>
 
@@ -720,21 +706,20 @@ export default function AdminPropertyMembersPage() {
                               <div className="mb-2 text-xs font-medium text-muted-foreground">
                                 عضویت‌های قابل مشاهده
                               </div>
-                              <div className="min-w-[760px]">
+                              <div className="min-w-[620px]">
                                 <div
                                   aria-hidden="true"
-                                  className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.8fr)_auto] gap-3 border-b border-border px-3 pb-2 text-xs font-medium text-muted-foreground"
+                                  className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_auto] gap-3 border-b border-border px-3 pb-2 text-xs font-medium text-muted-foreground"
                                 >
                                   <span>اقامتگاه</span>
                                   <span>نقش</span>
                                   <span>وضعیت عضویت</span>
-                                  <span>فعال بودن عضویت</span>
                                   <span>عملیات</span>
                                 </div>
                                 <ul className="divide-y divide-border">
                                   {user.memberships.map((membership) => (
                                     <li
-                                      className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_minmax(120px,0.8fr)_auto] items-center gap-3 px-3 py-3"
+                                      className="grid grid-cols-[minmax(180px,1.5fr)_minmax(120px,0.8fr)_minmax(120px,0.9fr)_auto] items-center gap-3 px-3 py-3"
                                       key={membership.propertyId}
                                     >
                                       <div className="flex min-w-0 flex-wrap items-center gap-2">
@@ -759,19 +744,6 @@ export default function AdminPropertyMembersPage() {
                                           )}
                                         >
                                           {statusLabels[membership.status]}
-                                        </KoochBadge>
-                                      </div>
-                                      <div>
-                                        <KoochBadge
-                                          variant={
-                                            membership.isActive
-                                              ? "success"
-                                              : "muted"
-                                          }
-                                        >
-                                          {membership.isActive
-                                            ? "فعال"
-                                            : "غیرفعال"}
                                         </KoochBadge>
                                       </div>
                                       <KoochButton

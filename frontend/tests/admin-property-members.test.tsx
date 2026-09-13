@@ -312,21 +312,42 @@ describe("Admin property members global directory", () => {
     expect(toggle.getAttribute("aria-controls")).toBe(
       "property-member-details-20",
     );
+    expect(toggle.textContent).toContain("⌄");
+    expect(toggle.textContent).not.toContain("+");
+    expect(toggle.textContent).not.toContain("−");
+    const parentOperations = within(toggle.closest("tr")!.cells[5]);
+    expect(
+      parentOperations.getByRole("button", { name: "ویرایش" }),
+    ).toBeTruthy();
+    expect(
+      parentOperations.queryByRole("button", { name: "مشاهده جزئیات" }),
+    ).toBeNull();
 
     fireEvent.click(toggle);
 
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect(toggle.textContent).toContain("⌃");
+    expect(
+      parentOperations.queryByRole("button", { name: "بستن جزئیات" }),
+    ).toBeNull();
     const details = screen.getByRole("region", {
       name: "عضویت‌های سارا محمدی",
     });
     const detailQueries = within(details);
+    const detailHeader = details.querySelector('[aria-hidden="true"]');
+    expect(detailHeader?.children).toHaveLength(4);
+    expect(detailQueries.getByText("اقامتگاه")).toBeTruthy();
+    expect(detailQueries.getByText("نقش")).toBeTruthy();
+    expect(detailQueries.getByText("وضعیت عضویت")).toBeTruthy();
+    expect(detailQueries.getByText("عملیات")).toBeTruthy();
+    expect(detailQueries.queryByText("فعال بودن عضویت")).toBeNull();
     expect(detailQueries.getByText("خانه کاشان")).toBeTruthy();
     expect(detailQueries.getByText("اقامتگاه یزد")).toBeTruthy();
     expect(detailQueries.getByText("مالک اقامتگاه")).toBeTruthy();
     expect(detailQueries.getByText("پذیرش")).toBeTruthy();
     expect(detailQueries.getByText("مالک اصلی")).toBeTruthy();
     expect(detailQueries.getByText("تعلیق‌شده")).toBeTruthy();
-    expect(detailQueries.getByText("غیرفعال")).toBeTruthy();
+    expect(detailQueries.queryByText("غیرفعال")).toBeNull();
     expect(within(toggle.closest("tr")!).getByText("غیرفعال")).toBeTruthy();
     expect(directoryRequests()).toHaveLength(1);
 
