@@ -420,8 +420,11 @@ describe("Admin property members global directory", () => {
     const details = screen.getByRole("region", {
       name: "عضویت‌های سارا محمدی",
     });
-    const animationWrapper = details.parentElement;
-    expect(animationWrapper?.classList.contains("-translate-y-1")).toBe(true);
+    const clippingWrapper = details.parentElement;
+    const animationWrapper = clippingWrapper?.parentElement;
+    expect(animationWrapper?.classList.contains("grid-rows-[0fr]")).toBe(
+      true,
+    );
     expect(animationWrapper?.classList.contains("opacity-0")).toBe(true);
     expect(animationFrames.size).toBe(1);
 
@@ -432,7 +435,9 @@ describe("Admin property members global directory", () => {
       paintFrame![1](0);
     });
 
-    expect(animationWrapper?.classList.contains("-translate-y-1")).toBe(true);
+    expect(animationWrapper?.classList.contains("grid-rows-[0fr]")).toBe(
+      true,
+    );
     expect(animationWrapper?.classList.contains("opacity-0")).toBe(true);
     expect(animationFrames.size).toBe(1);
 
@@ -443,18 +448,21 @@ describe("Admin property members global directory", () => {
       visibleFrame![1](16);
     });
 
-    expect(animationWrapper?.classList.contains("translate-y-0")).toBe(true);
+    expect(animationWrapper?.classList.contains("grid-rows-[1fr]")).toBe(
+      true,
+    );
     expect(animationWrapper?.classList.contains("opacity-100")).toBe(true);
     expect(animationWrapper?.classList.contains("overflow-hidden")).toBe(true);
+    expect(animationWrapper?.classList.contains("duration-300")).toBe(true);
+    expect(clippingWrapper?.classList.contains("min-h-0")).toBe(true);
+    expect(clippingWrapper?.classList.contains("overflow-hidden")).toBe(true);
     expect(
       animationWrapper?.classList.contains(
-        "transition-[opacity,transform]",
+        "transition-[grid-template-rows,opacity]",
       ),
     ).toBe(true);
     expect(
-      animationWrapper?.classList.contains(
-        "motion-reduce:transition-opacity",
-      ),
+      animationWrapper?.classList.contains("motion-reduce:transition-none"),
     ).toBe(true);
     expect(
       details.classList.contains("bg-[var(--theme-primary-soft)]"),

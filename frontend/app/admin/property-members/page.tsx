@@ -113,13 +113,13 @@ function ExpandedMembershipEntry({ children }: { children: ReactNode }) {
 
   return (
     <div
-      className={`overflow-hidden transition-[opacity,transform] duration-200 ease-out motion-reduce:transform-none motion-reduce:transition-opacity motion-reduce:duration-100 ${
+      className={`grid overflow-hidden transition-[grid-template-rows,opacity] duration-300 ease-out motion-reduce:transition-none ${
         isVisible
-          ? "translate-y-0 opacity-100"
-          : "-translate-y-1 opacity-0"
+          ? "grid-rows-[1fr] opacity-100"
+          : "grid-rows-[0fr] opacity-0"
       }`}
     >
-      {children}
+      <div className="min-h-0 overflow-hidden">{children}</div>
     </div>
   );
 }
