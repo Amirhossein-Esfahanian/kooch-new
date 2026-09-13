@@ -329,6 +329,181 @@ public sealed class AdminPropertyMemberDirectoryTests
         Assert.Equal(PropertyUserRole.PropertyOwner, membership.Role);
         Assert.Equal(PropertyUserStatus.Inactive, membership.Status);
         Assert.False(membership.IsActive);
+        AssertCapabilities(membership, activate: false, suspend: false, deactivate: false);
+    }
+
+    [Fact]
+    public async Task CanonicalOwner_HasNoStatusActionCapabilities()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+
+        var result = await CreateService(dbContext).SearchAsync(
+            1,
+            UserRole.SuperAdmin,
+            new AdminPropertyMemberDirectoryQuery { Search = "AlphaOwner" });
+
+        var membership = Assert.Single(Assert.Single(result.Items).Memberships);
+        Assert.True(membership.IsOwner);
+        AssertCapabilities(membership, activate: false, suspend: false, deactivate: false);
+    }
+
+    [Fact]
+    public async Task SuperAdmin_StatusCapabilitiesFollowCurrentUiTransitionsAcrossProperties()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Users.Add(User(24, UserRole.Client, "Pending", "Member", "pending@example.test"));
+        dbContext.UserPropertyAccesses.Add(Access(
+            226,
+            24,
+            101,
+            PropertyUserRole.Reception,
+            PropertyUserStatus.Pending,
+            false));
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).SearchAsync(
+            1,
+            UserRole.SuperAdmin,
+            new AdminPropertyMemberDirectoryQuery());
+
+        var active = result.Items.Single(user => user.Id == 20).Memberships
+            .Single(membership => membership.PropertyId == 101);
+        var suspended = result.Items.Single(user => user.Id == 20).Memberships
+            .Single(membership => membership.PropertyId == 102);
+        var inactive = result.Items.Single(user => user.Id == 21).Memberships
+            .Single(membership => membership.PropertyId == 101);
+        var pending = result.Items.Single(user => user.Id == 24).Memberships
+            .Single(membership => membership.PropertyId == 101);
+
+        AssertCapabilities(pending, activate: true, suspend: false, deactivate: true);
+        AssertCapabilities(active, activate: false, suspend: true, deactivate: true);
+        AssertCapabilities(suspended, activate: true, suspend: false, deactivate: true);
+        AssertCapabilities(inactive, activate: true, suspend: false, deactivate: false);
+    }
+
+    [Theory]
+    [InlineData(PropertyUserStatus.Pending, true, false)]
+    [InlineData(PropertyUserStatus.Active, false, true)]
+    [InlineData(PropertyUserStatus.Suspended, true, false)]
+    [InlineData(PropertyUserStatus.Inactive, true, false)]
+    public async Task AdminAssistant_WithUsersEditOnly_GetsOnlyEditStatusCapabilities(
+        PropertyUserStatus status,
+        bool canActivate,
+        bool canSuspend)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(
+            dbContext,
+            grantManageUsers: true,
+            grantUsersEdit: true);
+        var access = await dbContext.UserPropertyAccesses.SingleAsync(item => item.Id == 220);
+        access.Status = status;
+        access.IsActive = status == PropertyUserStatus.Active;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).SearchAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberDirectoryQuery { Search = "Multi" });
+
+        var membership = Assert.Single(Assert.Single(result.Items).Memberships);
+        AssertCapabilities(
+            membership,
+            activate: canActivate,
+            suspend: canSuspend,
+            deactivate: false);
+    }
+
+    [Theory]
+    [InlineData(PropertyUserStatus.Pending, true)]
+    [InlineData(PropertyUserStatus.Active, true)]
+    [InlineData(PropertyUserStatus.Suspended, true)]
+    [InlineData(PropertyUserStatus.Inactive, false)]
+    public async Task AdminAssistant_WithUsersDeleteOnly_GetsOnlyDeactivateCapability(
+        PropertyUserStatus status,
+        bool canDeactivate)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(
+            dbContext,
+            grantManageUsers: true,
+            grantUsersDelete: true);
+        var access = await dbContext.UserPropertyAccesses.SingleAsync(item => item.Id == 220);
+        access.Status = status;
+        access.IsActive = status == PropertyUserStatus.Active;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).SearchAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberDirectoryQuery { Search = "Multi" });
+
+        var membership = Assert.Single(Assert.Single(result.Items).Memberships);
+        AssertCapabilities(
+            membership,
+            activate: false,
+            suspend: false,
+            deactivate: canDeactivate);
+    }
+
+    [Fact]
+    public async Task AdminAssistant_WithUsersViewOnly_HasNoStatusActionCapabilities()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext, grantManageUsers: true);
+
+        var result = await CreateService(dbContext).SearchAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberDirectoryQuery { Search = "Multi" });
+
+        var membership = Assert.Single(Assert.Single(result.Items).Memberships);
+        AssertCapabilities(membership, activate: false, suspend: false, deactivate: false);
+    }
+
+    [Fact]
+    public async Task AdminAssistant_WithBothPermissions_CanManageEqualRole()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(
+            dbContext,
+            grantManageUsers: true,
+            grantUsersEdit: true,
+            grantUsersDelete: true);
+
+        var result = await CreateService(dbContext).SearchAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberDirectoryQuery { Search = "Multi" });
+
+        var membership = Assert.Single(Assert.Single(result.Items).Memberships);
+        Assert.Equal(PropertyUserRole.Manager, membership.Role);
+        AssertCapabilities(membership, activate: false, suspend: true, deactivate: true);
+    }
+
+    [Fact]
+    public async Task AdminAssistant_CannotManageHigherTargetRole()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(
+            dbContext,
+            grantManageUsers: true,
+            grantUsersEdit: true,
+            grantUsersDelete: true);
+        var actorAccess = await dbContext.UserPropertyAccesses.SingleAsync(item => item.Id == 210);
+        actorAccess.PropertyRole = PropertyUserRole.Reception;
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).SearchAsync(
+            10,
+            UserRole.AdminAssistant,
+            new AdminPropertyMemberDirectoryQuery { Search = "Multi" });
+
+        var membership = Assert.Single(Assert.Single(result.Items).Memberships);
+        Assert.Equal(PropertyUserRole.Manager, membership.Role);
+        AssertCapabilities(membership, activate: false, suspend: false, deactivate: false);
     }
 
     [Fact]
@@ -847,6 +1022,8 @@ public sealed class AdminPropertyMemberDirectoryTests
         KoochDbContext dbContext,
         bool grantManageUsers = true,
         bool grantUsersView = true,
+        bool grantUsersEdit = false,
+        bool grantUsersDelete = false,
         bool grantManageProperties = false)
     {
         dbContext.Users.AddRange(
@@ -873,7 +1050,12 @@ public sealed class AdminPropertyMemberDirectoryTests
             Access(201, 2, 101, PropertyUserRole.PropertyOwner, PropertyUserStatus.Active, true),
             Access(202, 3, 102, PropertyUserRole.PropertyOwner, PropertyUserStatus.Active, true),
             Access(210, 10, 101, PropertyUserRole.Manager, PropertyUserStatus.Active, true,
-                Matrix(("Users", new PermissionActionsDto { View = grantUsersView }))),
+                Matrix(("Users", new PermissionActionsDto
+                {
+                    View = grantUsersView,
+                    Edit = grantUsersEdit,
+                    Delete = grantUsersDelete
+                }))),
             Access(211, 10, 102, PropertyUserRole.Manager, PropertyUserStatus.Active, true,
                 Matrix(("Users", new PermissionActionsDto { View = false }))),
             Access(220, 20, 101, PropertyUserRole.Manager, PropertyUserStatus.Active, true),
@@ -918,6 +1100,17 @@ public sealed class AdminPropertyMemberDirectoryTests
         }
 
         await dbContext.SaveChangesAsync();
+    }
+
+    private static void AssertCapabilities(
+        AdminPropertyMembershipResponse membership,
+        bool activate,
+        bool suspend,
+        bool deactivate)
+    {
+        Assert.Equal(activate, membership.CanActivate);
+        Assert.Equal(suspend, membership.CanSuspend);
+        Assert.Equal(deactivate, membership.CanDeactivate);
     }
 
     private static User User(

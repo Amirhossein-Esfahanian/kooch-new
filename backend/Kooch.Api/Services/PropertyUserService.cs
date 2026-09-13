@@ -549,7 +549,7 @@ public class PropertyUserService(
         CancellationToken cancellationToken)
     {
         var actorRole = await GetActorPropertyRoleAsync(currentUserId, propertyId, cancellationToken);
-        if (RoleRank(targetRole) > RoleRank(actorRole))
+        if (!PropertyUserAuthorizationRules.CanManageTargetRole(actorRole, targetRole))
         {
             throw new UnauthorizedAccessException(
                 $"You cannot {action} a user with a higher property role.");
@@ -572,18 +572,6 @@ public class PropertyUserService(
 
         return effectivePermissions?.PropertyRole ?? PropertyUserRole.Custom;
     }
-
-    private static int RoleRank(PropertyUserRole role) =>
-        role switch
-        {
-            PropertyUserRole.PropertyOwner => 100,
-            PropertyUserRole.Manager => 80,
-            PropertyUserRole.Accounting => 60,
-            PropertyUserRole.Reception => 50,
-            PropertyUserRole.Housekeeping => 40,
-            PropertyUserRole.Custom => 10,
-            _ => 0
-        };
 
     private static PropertyUserResponse MapOwner(
         Property property,

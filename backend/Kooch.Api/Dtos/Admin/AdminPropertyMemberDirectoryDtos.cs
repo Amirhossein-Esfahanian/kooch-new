@@ -87,4 +87,7 @@ public sealed class AdminPropertyMembershipResponse
     public PropertyUserStatus Status { get; set; }
     public bool IsActive { get; set; }
     public bool IsOwner { get; set; }
+    public bool CanActivate { get; set; }
+    public bool CanSuspend { get; set; }
+    public bool CanDeactivate { get; set; }
 }

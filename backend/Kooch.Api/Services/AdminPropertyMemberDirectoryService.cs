@@ -179,19 +179,30 @@ public sealed class AdminPropertyMemberDirectoryService(
                 .OrderBy(item => item.PropertyName)
                 .ThenBy(item => item.PropertyId)
                 .ToListAsync(cancellationToken);
+            var capabilityContext = await GetMembershipCapabilityContextAsync(
+                currentUserId,
+                pageMemberships.Select(item => item.PropertyId).Distinct().ToArray(),
+                cancellationToken);
             var membershipsByUser = pageMemberships.ToLookup(item => item.UserId);
 
             foreach (var user in pageUsers)
             {
                 user.Memberships = membershipsByUser[user.Id]
-                    .Select(item => new AdminPropertyMembershipResponse
+                    .Select(item =>
                     {
-                        PropertyId = item.PropertyId,
-                        PropertyName = item.PropertyName,
-                        Role = item.Role,
-                        Status = item.Status,
-                        IsActive = item.IsActive,
-                        IsOwner = item.IsOwner
+                        var capabilities = GetMembershipCapabilities(item, capabilityContext);
+                        return new AdminPropertyMembershipResponse
+                        {
+                            PropertyId = item.PropertyId,
+                            PropertyName = item.PropertyName,
+                            Role = item.Role,
+                            Status = item.Status,
+                            IsActive = item.IsActive,
+                            IsOwner = item.IsOwner,
+                            CanActivate = capabilities.CanActivate,
+                            CanSuspend = capabilities.CanSuspend,
+                            CanDeactivate = capabilities.CanDeactivate
+                        };
                     })
                     .ToArray();
             }
@@ -322,6 +333,106 @@ public sealed class AdminPropertyMemberDirectoryService(
         return ownerMemberships.Concat(staffMemberships);
     }
 
+    private async Task<MembershipCapabilityContext> GetMembershipCapabilityContextAsync(
+        int currentUserId,
+        IReadOnlyCollection<int> propertyIds,
+        CancellationToken cancellationToken)
+    {
+        if (propertyIds.Count == 0)
+        {
+            return MembershipCapabilityContext.Empty;
+        }
+
+        var persistedActorRole = await dbContext.Users.AsNoTracking()
+            .Where(user => user.Id == currentUserId && user.IsActive)
+            .Select(user => (UserRole?)user.Role)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (persistedActorRole is null)
+        {
+            return MembershipCapabilityContext.Empty;
+        }
+
+        var propertyIdSet = propertyIds.ToHashSet();
+        var editablePropertyIds = (await propertyAccessService.GetPropertyIdsWithPermissionAsync(
+                currentUserId,
+                "users.edit",
+                cancellationToken))
+            .Where(propertyIdSet.Contains)
+            .ToHashSet();
+        var deletablePropertyIds = (await propertyAccessService.GetPropertyIdsWithPermissionAsync(
+                currentUserId,
+                "users.delete",
+                cancellationToken))
+            .Where(propertyIdSet.Contains)
+            .ToHashSet();
+
+        if (persistedActorRole == UserRole.SuperAdmin)
+        {
+            return new MembershipCapabilityContext(
+                editablePropertyIds,
+                deletablePropertyIds,
+                new Dictionary<int, PropertyUserRole>(),
+                IsSuperAdminBypass: true);
+        }
+
+        var actorMemberships = await dbContext.UserPropertyAccesses.AsNoTracking()
+            .Where(access =>
+                access.UserId == currentUserId &&
+                propertyIds.Contains(access.PropertyId) &&
+                access.IsActive &&
+                access.Status == PropertyUserStatus.Active)
+            .Select(access => new
+            {
+                access.PropertyId,
+                access.PropertyRole,
+                access.Property.OwnerId
+            })
+            .ToListAsync(cancellationToken);
+        var actorRoles = actorMemberships
+            .Where(membership =>
+                (membership.PropertyRole == PropertyUserRole.PropertyOwner) ==
+                (membership.OwnerId == currentUserId))
+            .ToDictionary(membership => membership.PropertyId, membership => membership.PropertyRole);
+
+        return new MembershipCapabilityContext(
+            editablePropertyIds,
+            deletablePropertyIds,
+            actorRoles,
+            IsSuperAdminBypass: false);
+    }
+
+    private static MembershipCapabilities GetMembershipCapabilities(
+        VisibleMembership membership,
+        MembershipCapabilityContext context)
+    {
+        if (membership.IsOwner)
+        {
+            return MembershipCapabilities.None;
+        }
+
+        PropertyUserRole actorRole;
+        if (context.IsSuperAdminBypass)
+        {
+            actorRole = PropertyUserRole.PropertyOwner;
+        }
+        else if (!context.ActorRoles.TryGetValue(membership.PropertyId, out actorRole))
+        {
+            return MembershipCapabilities.None;
+        }
+
+        if (!PropertyUserAuthorizationRules.CanManageTargetRole(actorRole, membership.Role))
+        {
+            return MembershipCapabilities.None;
+        }
+
+        var canEdit = context.EditablePropertyIds.Contains(membership.PropertyId);
+        var canDelete = context.DeletablePropertyIds.Contains(membership.PropertyId);
+        return new MembershipCapabilities(
+            CanActivate: canEdit && membership.Status != PropertyUserStatus.Active,
+            CanSuspend: canEdit && membership.Status == PropertyUserStatus.Active,
+            CanDeactivate: canDelete && membership.Status != PropertyUserStatus.Inactive);
+    }
+
     private static PagedResult<AdminPropertyMemberDirectoryResponse> EmptyResult(
         AdminPropertyMemberDirectoryQuery request) => new()
     {
@@ -401,5 +512,26 @@ public sealed class AdminPropertyMemberDirectoryService(
         public PropertyUserStatus Status { get; init; }
         public bool IsActive { get; init; }
         public bool IsOwner { get; init; }
+    }
+
+    private sealed record MembershipCapabilityContext(
+        IReadOnlySet<int> EditablePropertyIds,
+        IReadOnlySet<int> DeletablePropertyIds,
+        IReadOnlyDictionary<int, PropertyUserRole> ActorRoles,
+        bool IsSuperAdminBypass)
+    {
+        public static MembershipCapabilityContext Empty { get; } = new(
+            new HashSet<int>(),
+            new HashSet<int>(),
+            new Dictionary<int, PropertyUserRole>(),
+            IsSuperAdminBypass: false);
+    }
+
+    private readonly record struct MembershipCapabilities(
+        bool CanActivate,
+        bool CanSuspend,
+        bool CanDeactivate)
+    {
+        public static MembershipCapabilities None { get; } = new(false, false, false);
     }
 }
