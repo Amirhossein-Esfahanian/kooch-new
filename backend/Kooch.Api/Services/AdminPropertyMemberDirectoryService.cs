@@ -54,15 +54,24 @@ public sealed class AdminPropertyMemberDirectoryService(
         var phoneNumber = UserIdentityNormalization.NormalizePhoneNumber(request.PhoneNumber)
             ?? throw new ArgumentException("Mobile number is required.");
         var email = UserIdentityNormalization.NormalizeEmail(request.Email);
-        await EnsureUniqueIdentityAsync(email, phoneNumber, user.Id, cancellationToken);
+        var currentPhoneNumber = UserIdentityNormalization.NormalizePhoneNumber(user.PhoneNumber);
+        var currentEmail = UserIdentityNormalization.NormalizeEmail(user.Email);
+        var phoneChanged = !string.Equals(currentPhoneNumber, phoneNumber, StringComparison.Ordinal);
+        var emailChanged = !string.Equals(currentEmail, email, StringComparison.Ordinal);
+        await EnsureUniqueIdentityAsync(
+            email,
+            emailChanged,
+            phoneNumber,
+            phoneChanged,
+            user.Id,
+            cancellationToken);
 
         var changedFields = new List<string>();
         AddChangedField(changedFields, nameof(User.FirstName), user.FirstName, firstName);
         AddChangedField(changedFields, nameof(User.LastName), user.LastName, lastName);
         AddChangedField(changedFields, nameof(User.PhoneNumber), user.PhoneNumber, phoneNumber);
         AddChangedField(changedFields, nameof(User.Email), user.Email, email);
-        var contactChanged = !string.Equals(user.PhoneNumber, phoneNumber, StringComparison.Ordinal) ||
-                             !string.Equals(user.Email, email, StringComparison.Ordinal);
+        var contactChanged = phoneChanged || emailChanged;
 
         user.FirstName = firstName;
         user.LastName = lastName;
@@ -322,31 +331,38 @@ public sealed class AdminPropertyMemberDirectoryService(
 
     private async Task EnsureUniqueIdentityAsync(
         string? email,
+        bool emailChanged,
         string phoneNumber,
-        int currentUserId,
+        bool phoneChanged,
+        int targetUserId,
         CancellationToken cancellationToken)
     {
-        if (email is not null && await dbContext.Users.IgnoreQueryFilters()
-                .AnyAsync(user => user.Email == email && user.Id != currentUserId, cancellationToken))
+        if (emailChanged && email is not null && await dbContext.Users.IgnoreQueryFilters()
+                .AnyAsync(user => user.Email == email && user.Id != targetUserId, cancellationToken))
         {
             throw new ArgumentException(UserIdentityNormalization.DuplicateEmailMessage);
         }
 
-        var phoneNumberVariants = UserIdentityNormalization.BuildPhoneNumberVariants(phoneNumber);
-        if (await dbContext.Users.IgnoreQueryFilters()
+        if (phoneChanged)
+        {
+            var phoneNumberVariants = UserIdentityNormalization.BuildPhoneNumberVariants(phoneNumber);
+            if (await dbContext.Users.IgnoreQueryFilters()
                 .AnyAsync(user =>
                     user.PhoneNumber != null &&
                     phoneNumberVariants.Contains(user.PhoneNumber) &&
-                    user.Id != currentUserId,
+                    user.Id != targetUserId,
                     cancellationToken))
-        {
-            throw new ArgumentException(UserIdentityNormalization.DuplicatePhoneNumberMessage);
+            {
+                throw new ArgumentException(UserIdentityNormalization.DuplicatePhoneNumberMessage);
+            }
         }
 
-        if (await dbContext.Guests.AsNoTracking()
+        var checkEmailAgainstGuests = emailChanged && email is not null;
+        if ((checkEmailAgainstGuests || phoneChanged) && await dbContext.Guests.AsNoTracking()
                 .AnyAsync(guest =>
-                    (email != null && guest.NormalizedEmail == email) ||
-                    guest.NormalizedMobile == phoneNumber,
+                    (guest.UserId == null || guest.UserId != targetUserId) &&
+                    ((checkEmailAgainstGuests && guest.NormalizedEmail == email) ||
+                     (phoneChanged && guest.NormalizedMobile == phoneNumber)),
                     cancellationToken))
         {
             throw new ArgumentException("Guest with this mobile or email already exists.");

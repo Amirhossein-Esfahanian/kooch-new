@@ -475,6 +475,108 @@ public sealed class AdminPropertyMemberDirectoryTests
     }
 
     [Theory]
+    [InlineData("09121110020", "multi@example.test")]
+    [InlineData("09128887766", "multi@example.test")]
+    [InlineData("09121110020", "updated-multi@example.test")]
+    public async Task UpdateIdentity_LinkedGuest_DoesNotConflictWithCanonicalUserIdentity(
+        string phoneNumber,
+        string email)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Guests.Add(new Guest
+        {
+            UserId = 20,
+            FirstName = "Multi",
+            LastName = "Member",
+            Mobile = "09121110020",
+            NormalizedMobile = "09121110020",
+            Email = "multi@example.test",
+            NormalizedEmail = "multi@example.test"
+        });
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            20,
+            IdentityRequest(
+                firstName: "Updated",
+                phoneNumber: phoneNumber,
+                email: email));
+
+        Assert.Equal("Updated", result.FirstName);
+        Assert.Equal(phoneNumber, result.PhoneNumber);
+        Assert.Equal(email, result.Email);
+        var guest = await dbContext.Guests.SingleAsync();
+        Assert.Equal("09121110020", guest.NormalizedMobile);
+        Assert.Equal("multi@example.test", guest.NormalizedEmail);
+    }
+
+    [Theory]
+    [InlineData("09121110020", "updated-multi@example.test", "09121110020", "unrelated@example.test")]
+    [InlineData("09128887766", "multi@example.test", "09129990001", "multi@example.test")]
+    public async Task UpdateIdentity_ChecksOnlyChangedContactField(
+        string requestPhoneNumber,
+        string requestEmail,
+        string guestPhoneNumber,
+        string guestEmail)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Guests.Add(new Guest
+        {
+            FirstName = "Unlinked",
+            LastName = "Guest",
+            Mobile = guestPhoneNumber,
+            NormalizedMobile = guestPhoneNumber,
+            Email = guestEmail,
+            NormalizedEmail = guestEmail
+        });
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            20,
+            IdentityRequest(
+                firstName: "Updated",
+                phoneNumber: requestPhoneNumber,
+                email: requestEmail));
+
+        Assert.Equal("Updated", result.FirstName);
+        Assert.Equal(requestPhoneNumber, result.PhoneNumber);
+        Assert.Equal(requestEmail, result.Email);
+    }
+
+    [Fact]
+    public async Task UpdateIdentity_NameOnly_DoesNotCheckUnchangedContactIdentity()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Guests.Add(new Guest
+        {
+            FirstName = "Unlinked",
+            LastName = "Guest",
+            Mobile = "09121110020",
+            NormalizedMobile = "09121110020",
+            Email = "multi@example.test",
+            NormalizedEmail = "multi@example.test"
+        });
+        await dbContext.SaveChangesAsync();
+
+        var result = await CreateService(dbContext).UpdateIdentityAsync(
+            1,
+            UserRole.SuperAdmin,
+            20,
+            IdentityRequest(firstName: "Renamed"));
+
+        Assert.Equal("Renamed", result.FirstName);
+        Assert.Equal("09121110020", result.PhoneNumber);
+        Assert.Equal("multi@example.test", result.Email);
+    }
+
+    [Theory]
     [InlineData("09120000021", "unique@example.test", UserIdentityNormalization.DuplicatePhoneNumberMessage)]
     [InlineData("09129998877", "inactive@example.test", UserIdentityNormalization.DuplicateEmailMessage)]
     [InlineData("09120000022", "unique@example.test", UserIdentityNormalization.DuplicatePhoneNumberMessage)]
@@ -522,6 +624,42 @@ public sealed class AdminPropertyMemberDirectoryTests
                 UserRole.SuperAdmin,
                 20,
                 IdentityRequest(phoneNumber: phoneNumber, email: email)));
+
+        Assert.Equal("Guest with this mobile or email already exists.", exception.Message);
+    }
+
+    [Theory]
+    [InlineData(null, "09125550001", "guest-new-email@example.test", "09129990001", "guest-new-email@example.test")]
+    [InlineData(null, "09125550002", "guest-new-phone@example.test", "09125550002", "unique-request@example.test")]
+    [InlineData(21, "09125550003", "other-linked-email@example.test", "09129990002", "other-linked-email@example.test")]
+    [InlineData(21, "09125550004", "other-linked-phone@example.test", "09125550004", "unique-request-2@example.test")]
+    public async Task UpdateIdentity_UnlinkedOrOtherUsersGuestIdentityConflict_IsRejected(
+        int? guestUserId,
+        string guestPhoneNumber,
+        string guestEmail,
+        string requestPhoneNumber,
+        string requestEmail)
+    {
+        await using var dbContext = CreateContext();
+        await SeedAsync(dbContext);
+        dbContext.Guests.Add(new Guest
+        {
+            UserId = guestUserId,
+            FirstName = "Guest",
+            LastName = "Conflict",
+            Mobile = guestPhoneNumber,
+            NormalizedMobile = guestPhoneNumber,
+            Email = guestEmail,
+            NormalizedEmail = guestEmail
+        });
+        await dbContext.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService(dbContext).UpdateIdentityAsync(
+                1,
+                UserRole.SuperAdmin,
+                20,
+                IdentityRequest(phoneNumber: requestPhoneNumber, email: requestEmail)));
 
         Assert.Equal("Guest with this mobile or email already exists.", exception.Message);
     }
