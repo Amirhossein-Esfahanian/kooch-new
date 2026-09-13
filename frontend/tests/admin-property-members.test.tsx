@@ -60,6 +60,9 @@ type Membership = {
   status: "Pending" | "Active" | "Suspended" | "Inactive";
   isActive: boolean;
   isOwner: boolean;
+  canActivate: boolean;
+  canSuspend: boolean;
+  canDeactivate: boolean;
 };
 
 type UserItem = {
@@ -117,15 +120,23 @@ function mockApiRequests({
     const payload = JSON.parse(String(options?.body));
     return Promise.resolve({ id: 20, ...payload });
   },
+  updateMembership = () => Promise.resolve({}),
 }: {
   directory?: (path: string) => Promise<unknown>;
   properties?: (path: string) => Promise<unknown>;
   updateIdentity?: (path: string, options?: RequestInit) => Promise<unknown>;
+  updateMembership?: (path: string, options?: RequestInit) => Promise<unknown>;
 } = {}) {
   ownerApi.apiRequest.mockImplementation(
     (path: string, options?: RequestInit) => {
       if (path.startsWith("/admin/property-members/properties?")) {
         return properties(path);
+      }
+      if (
+        options?.method === "PUT" &&
+        /\/(activate|suspend|deactivate)$/.test(path)
+      ) {
+        return updateMembership(path, options);
       }
       if (options?.method === "PUT") return updateIdentity(path, options);
       return directory(path);
@@ -153,6 +164,15 @@ function identityUpdateRequests() {
   );
 }
 
+function membershipUpdateRequests() {
+  return ownerApi.apiRequest.mock.calls.filter(
+    ([path, options]) =>
+      /\/admin\/properties\/\d+\/users\/\d+\/(activate|suspend|deactivate)$/.test(
+        String(path),
+      ) && options?.method === "PUT",
+  );
+}
+
 function member(overrides: Partial<UserItem> = {}): UserItem {
   return {
     id: 20,
@@ -169,6 +189,9 @@ function member(overrides: Partial<UserItem> = {}): UserItem {
         status: "Active",
         isActive: true,
         isOwner: false,
+        canActivate: false,
+        canSuspend: true,
+        canDeactivate: true,
       },
       {
         propertyId: 102,
@@ -177,6 +200,9 @@ function member(overrides: Partial<UserItem> = {}): UserItem {
         status: "Suspended",
         isActive: false,
         isOwner: false,
+        canActivate: true,
+        canSuspend: false,
+        canDeactivate: true,
       },
       {
         propertyId: 103,
@@ -185,6 +211,9 @@ function member(overrides: Partial<UserItem> = {}): UserItem {
         status: "Active",
         isActive: true,
         isOwner: false,
+        canActivate: false,
+        canSuspend: false,
+        canDeactivate: false,
       },
     ],
     ...overrides,
@@ -290,6 +319,9 @@ describe("Admin property members global directory", () => {
               status: "Active",
               isActive: true,
               isOwner: true,
+              canActivate: false,
+              canSuspend: false,
+              canDeactivate: false,
             },
             {
               propertyId: 102,
@@ -298,6 +330,9 @@ describe("Admin property members global directory", () => {
               status: "Suspended",
               isActive: false,
               isOwner: false,
+              canActivate: true,
+              canSuspend: false,
+              canDeactivate: true,
             },
           ],
         }),
@@ -390,6 +425,239 @@ describe("Admin property members global directory", () => {
       screen.getByRole("region", { name: "عضویت‌های علی رضایی" }),
     ).toBeTruthy();
     expect(directoryRequests()).toHaveLength(1);
+  });
+
+  it("renders only backend-provided membership status capabilities", async () => {
+    mockApiRequests({
+      directory: () =>
+        Promise.resolve(
+          directoryResponse([
+            member({
+              memberships: [
+                {
+                  propertyId: 101,
+                  propertyName: "خانه کاشان",
+                  role: "Manager",
+                  status: "Pending",
+                  isActive: true,
+                  isOwner: false,
+                  canActivate: true,
+                  canSuspend: false,
+                  canDeactivate: true,
+                },
+                {
+                  propertyId: 102,
+                  propertyName: "اقامتگاه یزد",
+                  role: "Reception",
+                  status: "Active",
+                  isActive: true,
+                  isOwner: false,
+                  canActivate: false,
+                  canSuspend: true,
+                  canDeactivate: false,
+                },
+                {
+                  propertyId: 103,
+                  propertyName: "خانه شیراز",
+                  role: "PropertyOwner",
+                  status: "Active",
+                  isActive: true,
+                  isOwner: true,
+                  canActivate: false,
+                  canSuspend: false,
+                  canDeactivate: false,
+                },
+              ],
+            }),
+          ]),
+        ),
+    });
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+
+    const details = screen.getByRole("region", {
+      name: "عضویت‌های سارا محمدی",
+    });
+    const memberships = within(details).getAllByRole("listitem");
+
+    expect(
+      within(memberships[0]).getAllByRole("button").map((item) => item.textContent),
+    ).toEqual(["فعال‌سازی", "غیرفعال‌سازی", "مدیریت"]);
+    expect(
+      within(memberships[1]).getAllByRole("button").map((item) => item.textContent),
+    ).toEqual(["تعلیق", "مدیریت"]);
+    expect(within(memberships[2]).getByText("مالک اصلی")).toBeTruthy();
+    expect(
+      within(memberships[2]).getAllByRole("button").map((item) => item.textContent),
+    ).toEqual(["مدیریت"]);
+  });
+
+  it.each([
+    ["activate", "فعال‌سازی", 102],
+    ["suspend", "تعلیق", 101],
+  ] as const)(
+    "calls the existing %s endpoint once and refreshes the current directory state",
+    async (action, label, targetPropertyId) => {
+      const mutation = deferred<unknown>();
+      let mutationCompleted = false;
+      mockApiRequests({
+        directory: (path) => {
+          const requestedPage = Number(
+            new URLSearchParams(path.split("?")[1]).get("page"),
+          );
+          const current = member({
+            memberships: [
+              {
+                propertyId: targetPropertyId,
+                propertyName:
+                  targetPropertyId === 101 ? "خانه کاشان" : "اقامتگاه یزد",
+                role: "Manager",
+                status: mutationCompleted ? "Active" : "Suspended",
+                isActive: mutationCompleted,
+                isOwner: false,
+                canActivate: !mutationCompleted && action === "activate",
+                canSuspend: mutationCompleted || action === "suspend",
+                canDeactivate: false,
+              },
+            ],
+          });
+          return Promise.resolve(
+            directoryResponse([current], {
+              page: requestedPage,
+              totalCount: 40,
+              totalPages: 2,
+            }),
+          );
+        },
+        updateMembership: () => mutation.promise,
+      });
+
+      render(<AdminPropertyMembersPage />);
+      await flushRequests();
+      fireEvent.change(
+        screen.getByPlaceholderText("نام، شماره تماس یا ایمیل..."),
+        { target: { value: "سارا" } },
+      );
+      await runSearchDebounce();
+      fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+      fireEvent.click(screen.getByRole("button", { name: "خانه کاشان" }));
+      await flushRequests();
+      fireEvent.change(screen.getByLabelText("نقش"), {
+        target: { value: "Manager" },
+      });
+      await flushRequests();
+      fireEvent.change(screen.getByLabelText("وضعیت عضویت"), {
+        target: { value: "Suspended" },
+      });
+      await flushRequests();
+      fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+      await flushRequests();
+      fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+
+      const actionButton = screen.getByRole("button", { name: label });
+      fireEvent.click(actionButton);
+      fireEvent.click(actionButton);
+      expect(membershipUpdateRequests()).toHaveLength(1);
+      expect(membershipUpdateRequests()[0]).toEqual([
+        `/admin/properties/${targetPropertyId}/users/20/${action}`,
+        { method: "PUT" },
+      ]);
+
+      const requestBeforeRefresh = directoryRequests().at(-1)?.[0];
+      mutationCompleted = true;
+      await act(async () => {
+        mutation.resolve({});
+        await mutation.promise;
+      });
+      await flushRequests();
+
+      expect(directoryRequests().at(-1)?.[0]).toBe(requestBeforeRefresh);
+      expect(directoryRequests().length).toBeGreaterThan(3);
+      expect(
+        screen.getByRole("region", { name: "عضویت‌های سارا محمدی" }),
+      ).toBeTruthy();
+      expect(screen.getByPlaceholderText("نام، شماره تماس یا ایمیل...")).toHaveProperty(
+        "value",
+        "سارا",
+      );
+      expect(screen.getByLabelText("نقش")).toHaveProperty("value", "Manager");
+      expect(
+        screen.getByRole("button", { name: "اقامتگاه" }).textContent,
+      ).toContain("خانه کاشان");
+      expect(screen.getByLabelText("وضعیت عضویت")).toHaveProperty(
+        "value",
+        "Suspended",
+      );
+      expect(screen.getByText("صفحه ۲ از ۲")).toBeTruthy();
+      expect(screen.queryByRole("button", { name: "فعال‌سازی" })).toBeNull();
+      expect(screen.getByRole("button", { name: "تعلیق" })).toBeTruthy();
+    },
+  );
+
+  it("confirms membership deactivation before calling its existing endpoint", async () => {
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+
+    const details = screen.getByRole("region", {
+      name: "عضویت‌های سارا محمدی",
+    });
+    const firstMembership = within(details).getAllByRole("listitem")[0];
+    fireEvent.click(
+      within(firstMembership).getByRole("button", { name: "غیرفعال‌سازی" }),
+    );
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20);
+    });
+
+    expect(membershipUpdateRequests()).toHaveLength(0);
+    const confirmation = screen.getByRole("alertdialog", {
+      name: "غیرفعال‌سازی عضویت",
+    });
+    expect(
+      within(confirmation).getByText(
+        "غیرفعال‌سازی فقط عضویت این کاربر در همین اقامتگاه را غیرفعال می‌کند و حساب اصلی کاربر در Kooch غیرفعال نمی‌شود.",
+      ),
+    ).toBeTruthy();
+    fireEvent.click(
+      within(confirmation).getByRole("button", {
+        name: "غیرفعال‌سازی عضویت",
+      }),
+    );
+    await flushRequests();
+
+    expect(membershipUpdateRequests()).toHaveLength(1);
+    expect(membershipUpdateRequests()[0]).toEqual([
+      "/admin/properties/101/users/20/deactivate",
+      { method: "PUT" },
+    ]);
+  });
+
+  it("keeps membership state and expansion unchanged when a status request fails", async () => {
+    mockApiRequests({
+      updateMembership: () => Promise.reject(new Error("تغییر وضعیت مجاز نیست")),
+    });
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+    const directoryRequestCount = directoryRequests().length;
+
+    fireEvent.click(screen.getByRole("button", { name: "تعلیق" }));
+    await flushRequests();
+
+    const details = screen.getByRole("region", {
+      name: "عضویت‌های سارا محمدی",
+    });
+    const unchangedMembership = within(details)
+      .getByText("خانه کاشان")
+      .closest("li")!;
+    expect(within(unchangedMembership).getByText("فعال")).toBeTruthy();
+    expect(
+      within(unchangedMembership).getByRole("button", { name: "تعلیق" }),
+    ).toBeTruthy();
+    expect(directoryRequests()).toHaveLength(directoryRequestCount);
   });
 
   it("debounces server search and resets pagination to page one", async () => {

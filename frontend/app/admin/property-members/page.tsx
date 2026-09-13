@@ -16,6 +16,7 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
@@ -54,7 +55,12 @@ type PropertyMembershipItem = {
   status: PropertyUserStatus;
   isActive: boolean;
   isOwner: boolean;
+  canActivate: boolean;
+  canSuspend: boolean;
+  canDeactivate: boolean;
 };
+
+type MembershipStatusAction = "activate" | "suspend" | "deactivate";
 
 type PropertyMemberUserItem = {
   id: number;
@@ -181,9 +187,15 @@ export default function AdminPropertyMembersPage() {
     useState<CreateUserIdentityErrors>({});
   const [editError, setEditError] = useState("");
   const [savingIdentity, setSavingIdentity] = useState(false);
+  const [directoryRefreshVersion, setDirectoryRefreshVersion] = useState(0);
+  const [pendingMembershipActions, setPendingMembershipActions] = useState<
+    Set<string>
+  >(() => new Set());
   const requestIdRef = useRef(0);
   const propertyRequestIdRef = useRef(0);
   const identitySubmissionRef = useRef(false);
+  const preserveExpandedOnRefreshRef = useRef(false);
+  const membershipMutationKeysRef = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -280,7 +292,11 @@ export default function AdminPropertyMembersPage() {
     setError("");
     setLoading(true);
     setResult(null);
-    setExpandedUserIds(new Set());
+    if (preserveExpandedOnRefreshRef.current) {
+      preserveExpandedOnRefreshRef.current = false;
+    } else {
+      setExpandedUserIds(new Set());
+    }
     apiRequest<PropertyMemberDirectoryResponse>(
       `/admin/property-members?${query.toString()}`,
     )
@@ -308,6 +324,7 @@ export default function AdminPropertyMembersPage() {
   }, [
     authenticated,
     debouncedSearch,
+    directoryRefreshVersion,
     page,
     propertyId,
     role,
@@ -450,6 +467,65 @@ export default function AdminPropertyMembersPage() {
     } finally {
       identitySubmissionRef.current = false;
       setSavingIdentity(false);
+    }
+  }
+
+  function membershipActionKey(
+    userId: number,
+    propertyId: number,
+    action: MembershipStatusAction,
+  ) {
+    return `${userId}:${propertyId}:${action}`;
+  }
+
+  async function changeMembershipStatus(
+    userId: number,
+    membership: PropertyMembershipItem,
+    action: MembershipStatusAction,
+    keepConfirmationOpenOnError = false,
+  ) {
+    const actionKey = membershipActionKey(
+      userId,
+      membership.propertyId,
+      action,
+    );
+    if (membershipMutationKeysRef.current.has(actionKey)) return;
+
+    membershipMutationKeysRef.current.add(actionKey);
+    setPendingMembershipActions((current) => {
+      const next = new Set(current);
+      next.add(actionKey);
+      return next;
+    });
+
+    try {
+      await apiRequest(
+        `/admin/properties/${membership.propertyId}/users/${userId}/${action}`,
+        { method: "PUT" },
+      );
+      preserveExpandedOnRefreshRef.current = true;
+      setDirectoryRefreshVersion((current) => current + 1);
+      toast.success(
+        action === "activate"
+          ? "عضویت کاربر فعال شد."
+          : action === "suspend"
+            ? "عضویت کاربر تعلیق شد."
+            : "عضویت کاربر غیرفعال شد.",
+      );
+    } catch (caught) {
+      const message =
+        caught instanceof Error
+          ? caught.message
+          : "تغییر وضعیت عضویت انجام نشد.";
+      toast.error(message);
+      if (keepConfirmationOpenOnError) throw caught;
+    } finally {
+      membershipMutationKeysRef.current.delete(actionKey);
+      setPendingMembershipActions((current) => {
+        const next = new Set(current);
+        next.delete(actionKey);
+        return next;
+      });
     }
   }
 
@@ -746,18 +822,99 @@ export default function AdminPropertyMembersPage() {
                                           {statusLabels[membership.status]}
                                         </KoochBadge>
                                       </div>
-                                      <KoochButton
-                                        onClick={() =>
-                                          router.push(
-                                            `/admin/properties/${membership.propertyId}/users`,
-                                          )
-                                        }
-                                        size="sm"
-                                        type="button"
-                                        variant="outline"
-                                      >
-                                        مدیریت
-                                      </KoochButton>
+                                      <div className="flex flex-wrap items-center gap-2">
+                                        {membership.canActivate && (
+                                          <KoochButton
+                                            loading={pendingMembershipActions.has(
+                                              membershipActionKey(
+                                                user.id,
+                                                membership.propertyId,
+                                                "activate",
+                                              ),
+                                            )}
+                                            onClick={() =>
+                                              changeMembershipStatus(
+                                                user.id,
+                                                membership,
+                                                "activate",
+                                              )
+                                            }
+                                            size="sm"
+                                            type="button"
+                                            variant="primary"
+                                          >
+                                            فعال‌سازی
+                                          </KoochButton>
+                                        )}
+                                        {membership.canSuspend && (
+                                          <KoochButton
+                                            loading={pendingMembershipActions.has(
+                                              membershipActionKey(
+                                                user.id,
+                                                membership.propertyId,
+                                                "suspend",
+                                              ),
+                                            )}
+                                            onClick={() =>
+                                              changeMembershipStatus(
+                                                user.id,
+                                                membership,
+                                                "suspend",
+                                              )
+                                            }
+                                            size="sm"
+                                            type="button"
+                                            variant="outline"
+                                          >
+                                            تعلیق
+                                          </KoochButton>
+                                        )}
+                                        {membership.canDeactivate && (
+                                          <KoochConfirmDialog
+                                            cancelText="انصراف"
+                                            confirmText="غیرفعال‌سازی عضویت"
+                                            description="غیرفعال‌سازی فقط عضویت این کاربر در همین اقامتگاه را غیرفعال می‌کند و حساب اصلی کاربر در Kooch غیرفعال نمی‌شود."
+                                            loading={pendingMembershipActions.has(
+                                              membershipActionKey(
+                                                user.id,
+                                                membership.propertyId,
+                                                "deactivate",
+                                              ),
+                                            )}
+                                            onConfirm={() =>
+                                              changeMembershipStatus(
+                                                user.id,
+                                                membership,
+                                                "deactivate",
+                                                true,
+                                              )
+                                            }
+                                            title="غیرفعال‌سازی عضویت"
+                                            trigger={
+                                              <KoochButton
+                                                size="sm"
+                                                type="button"
+                                                variant="destructive"
+                                              >
+                                                غیرفعال‌سازی
+                                              </KoochButton>
+                                            }
+                                            variant="destructive"
+                                          />
+                                        )}
+                                        <KoochButton
+                                          onClick={() =>
+                                            router.push(
+                                              `/admin/properties/${membership.propertyId}/users`,
+                                            )
+                                          }
+                                          size="sm"
+                                          type="button"
+                                          variant="outline"
+                                        >
+                                          مدیریت
+                                        </KoochButton>
+                                      </div>
                                     </li>
                                   ))}
                                 </ul>
