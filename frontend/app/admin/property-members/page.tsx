@@ -1,13 +1,22 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
@@ -15,6 +24,14 @@ import {
   KoochSelect,
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import {
+  CreateUserFields,
+  getCreateUserApiError,
+  hasCreateUserIdentityErrors,
+  validateCreateUserIdentity,
+  type CreateUserIdentity,
+  type CreateUserIdentityErrors,
+} from "@/components/users/CreateUserFields";
 import {
   KoochTable,
   KoochTableBody,
@@ -57,6 +74,14 @@ type PropertyMemberDirectoryResponse = {
   totalPages: number;
 };
 
+type PropertyMemberIdentityResponse = {
+  id: number;
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email: string | null;
+};
+
 type PropertyOption = {
   id: number;
   name: string;
@@ -72,6 +97,12 @@ type PropertyOptionResponse = {
 
 const pageSize = 20;
 const propertyOptionPageSize = 10;
+const emptyIdentity: CreateUserIdentity = {
+  firstName: "",
+  lastName: "",
+  mobile: "",
+  email: "",
+};
 
 const roleLabels: Record<PropertyUserRole, string> = {
   PropertyOwner: "مالک اقامتگاه",
@@ -142,8 +173,17 @@ export default function AdminPropertyMembersPage() {
   const [expandedUserIds, setExpandedUserIds] = useState<Set<number>>(
     () => new Set(),
   );
+  const [editingUser, setEditingUser] =
+    useState<PropertyMemberUserItem | null>(null);
+  const [editIdentity, setEditIdentity] =
+    useState<CreateUserIdentity>(emptyIdentity);
+  const [editIdentityErrors, setEditIdentityErrors] =
+    useState<CreateUserIdentityErrors>({});
+  const [editError, setEditError] = useState("");
+  const [savingIdentity, setSavingIdentity] = useState(false);
   const requestIdRef = useRef(0);
   const propertyRequestIdRef = useRef(0);
+  const identitySubmissionRef = useRef(false);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -331,6 +371,86 @@ export default function AdminPropertyMembersPage() {
       else next.add(userId);
       return next;
     });
+  }
+
+  function openIdentityEdit(user: PropertyMemberUserItem) {
+    setEditingUser(user);
+    setEditIdentity({
+      firstName: user.firstName,
+      lastName: user.lastName,
+      mobile: user.phoneNumber ?? "",
+      email: user.email ?? "",
+    });
+    setEditIdentityErrors({});
+    setEditError("");
+  }
+
+  function closeIdentityEdit() {
+    if (identitySubmissionRef.current) return;
+    setEditingUser(null);
+    setEditIdentity(emptyIdentity);
+    setEditIdentityErrors({});
+    setEditError("");
+  }
+
+  async function submitIdentityEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!editingUser || identitySubmissionRef.current) return;
+
+    const nextErrors = validateCreateUserIdentity(editIdentity);
+    setEditIdentityErrors(nextErrors);
+    if (hasCreateUserIdentityErrors(nextErrors)) return;
+
+    identitySubmissionRef.current = true;
+    setSavingIdentity(true);
+    setEditError("");
+    try {
+      const updated = await apiRequest<PropertyMemberIdentityResponse>(
+        `/admin/property-members/${editingUser.id}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            firstName: editIdentity.firstName,
+            lastName: editIdentity.lastName,
+            phoneNumber: editIdentity.mobile,
+            email: editIdentity.email.trim() || null,
+          }),
+        },
+      );
+
+      setResult((current) =>
+        current
+          ? {
+              ...current,
+              items: current.items.map((user) =>
+                user.id === updated.id
+                  ? {
+                      ...user,
+                      firstName: updated.firstName,
+                      lastName: updated.lastName,
+                      phoneNumber: updated.phoneNumber,
+                      email: updated.email,
+                    }
+                  : user,
+              ),
+            }
+          : current,
+      );
+      setEditingUser(null);
+      setEditIdentity(emptyIdentity);
+      setEditIdentityErrors({});
+      toast.success("اطلاعات کاربر ذخیره شد.");
+    } catch (caught) {
+      const message = getCreateUserApiError(
+        caught,
+        "ویرایش اطلاعات کاربر انجام نشد.",
+      );
+      setEditError(message);
+      toast.error(message);
+    } finally {
+      identitySubmissionRef.current = false;
+      setSavingIdentity(false);
+    }
   }
 
   return (
@@ -564,16 +684,28 @@ export default function AdminPropertyMembersPage() {
                           </KoochBadge>
                         </KoochTableCell>
                         <KoochTableCell>
-                          <KoochButton
-                            aria-controls={detailsId}
-                            aria-expanded={isExpanded}
-                            onClick={() => toggleUserDetails(user.id)}
-                            size="sm"
-                            type="button"
-                            variant="ghost"
-                          >
-                            {isExpanded ? "بستن جزئیات" : "مشاهده جزئیات"}
-                          </KoochButton>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <KoochButton
+                              onClick={() => openIdentityEdit(user)}
+                              size="sm"
+                              type="button"
+                              variant="outline"
+                            >
+                              ویرایش
+                            </KoochButton>
+                            <KoochButton
+                              aria-controls={detailsId}
+                              aria-expanded={isExpanded}
+                              onClick={() => toggleUserDetails(user.id)}
+                              size="sm"
+                              type="button"
+                              variant="ghost"
+                            >
+                              {isExpanded
+                                ? "بستن جزئیات"
+                                : "مشاهده جزئیات"}
+                            </KoochButton>
+                          </div>
                         </KoochTableCell>
                       </KoochTableRow>
 
@@ -701,6 +833,58 @@ export default function AdminPropertyMembersPage() {
             </div>
           )}
         </KoochCard>
+
+        <KoochDialog
+          closeDisabled={savingIdentity}
+          footer={
+            <>
+              <KoochButton
+                disabled={savingIdentity}
+                onClick={closeIdentityEdit}
+                type="button"
+                variant="outline"
+              >
+                لغو
+              </KoochButton>
+              <KoochButton
+                form="property-member-identity-form"
+                loading={savingIdentity}
+                type="submit"
+              >
+                ذخیره
+              </KoochButton>
+            </>
+          }
+          onOpenChange={(open) => {
+            if (!open) closeIdentityEdit();
+          }}
+          open={Boolean(editingUser)}
+          size="sm"
+          title="ویرایش اطلاعات کاربر"
+        >
+          <form
+            className="grid gap-4"
+            id="property-member-identity-form"
+            onSubmit={submitIdentityEdit}
+          >
+            {editError && (
+              <KoochAlert title="ذخیره اطلاعات انجام نشد" variant="destructive">
+                {editError}
+              </KoochAlert>
+            )}
+            <CreateUserFields
+              disabled={savingIdentity}
+              errors={editIdentityErrors}
+              idPrefix="property-member-identity"
+              onChange={(identity) => {
+                setEditIdentity(identity);
+                setEditIdentityErrors({});
+                setEditError("");
+              }}
+              value={editIdentity}
+            />
+          </form>
+        </KoochDialog>
       </main>
     </AdminLayout>
   );

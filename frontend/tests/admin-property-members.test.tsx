@@ -113,14 +113,23 @@ const defaultPropertyOptions = [
 function mockApiRequests({
   directory = () => Promise.resolve(directoryResponse([member()])),
   properties = () => Promise.resolve(propertyOptionsResponse(defaultPropertyOptions)),
+  updateIdentity = (_path, options) => {
+    const payload = JSON.parse(String(options?.body));
+    return Promise.resolve({ id: 20, ...payload });
+  },
 }: {
   directory?: (path: string) => Promise<unknown>;
   properties?: (path: string) => Promise<unknown>;
+  updateIdentity?: (path: string, options?: RequestInit) => Promise<unknown>;
 } = {}) {
-  ownerApi.apiRequest.mockImplementation((path: string) =>
-    path.startsWith("/admin/property-members/properties?")
-      ? properties(path)
-      : directory(path),
+  ownerApi.apiRequest.mockImplementation(
+    (path: string, options?: RequestInit) => {
+      if (path.startsWith("/admin/property-members/properties?")) {
+        return properties(path);
+      }
+      if (options?.method === "PUT") return updateIdentity(path, options);
+      return directory(path);
+    },
   );
 }
 
@@ -133,6 +142,14 @@ function directoryRequests() {
 function propertyOptionRequests() {
   return ownerApi.apiRequest.mock.calls.filter(([path]) =>
     String(path).startsWith("/admin/property-members/properties?"),
+  );
+}
+
+function identityUpdateRequests() {
+  return ownerApi.apiRequest.mock.calls.filter(
+    ([path, options]) =>
+      String(path).startsWith("/admin/property-members/") &&
+      options?.method === "PUT",
   );
 }
 
@@ -196,6 +213,24 @@ async function runSearchDebounce() {
     await vi.advanceTimersByTimeAsync(300);
   });
   await flushRequests();
+}
+
+async function openIdentityEdit() {
+  fireEvent.click(screen.getByRole("button", { name: "ویرایش" }));
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(20);
+  });
+  return screen.getByRole("dialog", {
+    name: "ویرایش اطلاعات کاربر",
+  });
+}
+
+function identityInput(
+  field: "first-name" | "last-name" | "mobile" | "email",
+) {
+  return document.getElementById(
+    `property-member-identity-${field}`,
+  ) as HTMLInputElement;
 }
 
 beforeEach(() => {
@@ -600,6 +635,177 @@ describe("Admin property members global directory", () => {
     expect(within(details).getByText("خانه کاشان")).toBeTruthy();
     expect(within(details).getByText("اقامتگاه یزد")).toBeTruthy();
     expect(within(details).getByText("خانه شیراز")).toBeTruthy();
+  });
+
+  it("opens an identity-only edit dialog with canonical mobile behavior", async () => {
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+
+    const dialog = await openIdentityEdit();
+    const dialogQueries = within(dialog);
+    const firstName = identityInput("first-name");
+    const lastName = identityInput("last-name");
+    const mobile = identityInput("mobile");
+    const email = identityInput("email");
+
+    expect(firstName.value).toBe("سارا");
+    expect(lastName.value).toBe("محمدی");
+    expect(mobile.value).toBe("09121234567");
+    expect(email.value).toBe("sara@example.test");
+    expect(dialogQueries.getAllByRole("textbox")).toHaveLength(4);
+    expect(mobile.inputMode).toBe("numeric");
+    expect(mobile.maxLength).toBe(11);
+    expect(dialogQueries.queryByRole("combobox")).toBeNull();
+    expect(dialogQueries.queryByLabelText(/password|رمز|نقش|وضعیت|دسترسی/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: /فعال‌سازی|غیرفعال‌سازی/ })).toBeNull();
+
+    fireEvent.change(mobile, { target: { value: "۰۹۱۲۳۴۵۶۷۸۹" } });
+    expect(mobile.value).toBe("09123456789");
+  });
+
+  it("blocks invalid mobile before sending the identity update", async () => {
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    const dialog = await openIdentityEdit();
+
+    fireEvent.change(identityInput("mobile"), {
+      target: { value: "0912" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ذخیره" }));
+
+    expect(within(dialog).getByText(/۱۱ رقم/)).toBeTruthy();
+    expect(identityUpdateRequests()).toHaveLength(0);
+  });
+
+  it("updates only canonical identity while preserving directory and expanded state", async () => {
+    mockApiRequests({
+      directory: (path) => {
+        const requestedPage = Number(
+          new URLSearchParams(path.split("?")[1]).get("page"),
+        );
+        return Promise.resolve(
+          directoryResponse([member()], {
+            page: requestedPage,
+            totalCount: 40,
+            totalPages: 2,
+          }),
+        );
+      },
+      updateIdentity: () =>
+        Promise.resolve({
+          id: 20,
+          firstName: "سارینا",
+          lastName: "احمدی",
+          phoneNumber: "09123456789",
+          email: "updated@example.test",
+        }),
+    });
+
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    const searchInput = screen.getByPlaceholderText("نام، شماره تماس یا ایمیل...");
+    fireEvent.change(searchInput, { target: { value: "سارا" } });
+    await runSearchDebounce();
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(screen.getByRole("button", { name: "خانه کاشان" }));
+    await flushRequests();
+    fireEvent.change(screen.getByLabelText("نقش"), {
+      target: { value: "Manager" },
+    });
+    await flushRequests();
+    fireEvent.change(screen.getByLabelText("وضعیت عضویت"), {
+      target: { value: "Active" },
+    });
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await flushRequests();
+    fireEvent.click(screen.getByRole("button", { name: /سارا محمدی/ }));
+    const directoryRequestCountBeforeUpdate = directoryRequests().length;
+    const directoryRequestBeforeUpdate = directoryRequests().at(-1)?.[0];
+
+    const dialog = await openIdentityEdit();
+    fireEvent.change(identityInput("first-name"), {
+      target: { value: "سارینا" },
+    });
+    fireEvent.change(identityInput("last-name"), {
+      target: { value: "احمدی" },
+    });
+    fireEvent.change(identityInput("mobile"), {
+      target: { value: "09123456789" },
+    });
+    fireEvent.change(identityInput("email"), {
+      target: { value: "updated@example.test" },
+    });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ذخیره" }));
+    await flushRequests();
+
+    expect(identityUpdateRequests()).toHaveLength(1);
+    const [path, options] = identityUpdateRequests()[0];
+    expect(path).toBe("/admin/property-members/20");
+    expect(JSON.parse(String(options.body))).toEqual({
+      firstName: "سارینا",
+      lastName: "احمدی",
+      phoneNumber: "09123456789",
+      email: "updated@example.test",
+    });
+    expect(directoryRequests()).toHaveLength(directoryRequestCountBeforeUpdate);
+    expect(directoryRequests().at(-1)?.[0]).toBe(directoryRequestBeforeUpdate);
+    expect(
+      screen.queryByRole("dialog", { name: "ویرایش اطلاعات کاربر" }),
+    ).toBeNull();
+    expect(screen.getByText("سارینا احمدی")).toBeTruthy();
+    expect(screen.getByText("updated@example.test")).toBeTruthy();
+    expect(screen.getByText("09123456789")).toBeTruthy();
+    expect(screen.getByPlaceholderText("نام، شماره تماس یا ایمیل...")).toHaveProperty(
+      "value",
+      "سارا",
+    );
+    expect(screen.getByLabelText("نقش")).toHaveProperty("value", "Manager");
+    expect(screen.getByLabelText("وضعیت عضویت")).toHaveProperty(
+      "value",
+      "Active",
+    );
+    expect(screen.getByText("صفحه ۲ از ۲")).toBeTruthy();
+    const details = screen.getByRole("region", {
+      name: "عضویت‌های سارینا احمدی",
+    });
+    expect(within(details).getByText("خانه کاشان")).toBeTruthy();
+    expect(within(details).getByText("اقامتگاه یزد")).toBeTruthy();
+    expect(within(details).getByText("خانه شیراز")).toBeTruthy();
+  });
+
+  it.each([
+    ["Phone number already exists.", "این شماره موبایل قبلاً ثبت شده است."],
+    ["Duplicate email address.", "این ایمیل قبلاً ثبت شده است."],
+  ])("keeps the dialog open for identity conflict: %s", async (message, expected) => {
+    const request = deferred<unknown>();
+    mockApiRequests({ updateIdentity: () => request.promise });
+    render(<AdminPropertyMembersPage />);
+    await flushRequests();
+    const dialog = await openIdentityEdit();
+    const form = document.getElementById("property-member-identity-form")!;
+
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(identityUpdateRequests()).toHaveLength(1);
+
+    await act(async () => {
+      request.reject(new Error(message));
+      try {
+        await request.promise;
+      } catch {
+        // The dialog renders the canonical API error and remains open.
+      }
+    });
+
+    const openDialog = screen.getByRole("dialog", {
+      name: "ویرایش اطلاعات کاربر",
+    });
+    expect(within(openDialog).getByText(expected)).toBeTruthy();
+    expect(identityInput("first-name")).toHaveProperty(
+      "value",
+      "سارا",
+    );
   });
 
   it("shows loading and then the empty state", async () => {
