@@ -288,7 +288,7 @@ public sealed class SiteSettingsCharacterizationTests
         var controller = new AdminSiteSettingsController(
             dbContext,
             permissionService,
-            environment: null!);
+            uploadService: null!);
         SetCurrentUser(controller, userId, role);
         return controller;
     }

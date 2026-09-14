@@ -11,6 +11,7 @@ using Kooch.Api.Services;
 using Kooch.Api.Services.Amenities;
 using Kooch.Api.Services.Holidays;
 using Kooch.Api.Services.MediaStorage;
+using Kooch.Api.Services.SiteSettings;
 using Kooch.Api.Services.Svg;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -74,6 +75,7 @@ builder.Services.AddScoped<IAdminPropertyMemberDirectoryService, AdminPropertyMe
 builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService>();
 builder.Services.AddScoped<IPropertyDescriptionService, PropertyDescriptionService>();
 builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();
+builder.Services.AddScoped<ISiteSettingUploadService, SiteSettingUploadService>();
 builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
 builder.Services.AddScoped<IPropertyCommonAreaService, PropertyCommonAreaService>();
 builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
