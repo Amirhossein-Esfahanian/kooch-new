@@ -430,15 +430,17 @@ export default function AdminSiteSettingsPage() {
                         </p>
                       )}
                     </div>
-                    <KoochButton
-                      disabled={savingKey === setting.key}
-                      loading={savingKey === setting.key}
-                      onClick={() => save(setting)}
-                      size="sm"
-                      type="button"
-                    >
-                      ذخیره
-                    </KoochButton>
+                    {setting.type !== "ImageUrl" && (
+                      <KoochButton
+                        disabled={savingKey === setting.key}
+                        loading={savingKey === setting.key}
+                        onClick={() => save(setting)}
+                        size="sm"
+                        type="button"
+                      >
+                        ذخیره
+                      </KoochButton>
+                    )}
                   </div>
                   <div id={setting.key}>{renderInput(setting)}</div>
                 </div>
