@@ -4,5 +4,6 @@ public enum MediaAssetNamespace
 {
     AmenityCategories = 1,
     Amenities = 2,
-    BedTypes = 3
+    BedTypes = 3,
+    SiteSettings = 4
 }

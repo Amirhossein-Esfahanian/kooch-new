@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using Kooch.Api.Services.MediaStorage;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -44,9 +45,11 @@ public sealed class MediaStorageTests
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "amenity-categories")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "amenities")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "bed-types")));
+        Assert.True(Directory.Exists(Path.Combine(storage.RootPath, "site-settings")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "amenity-categories")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "amenities")));
         Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "bed-types")));
+        Assert.True(Directory.Exists(Path.Combine(storage.RootPath, ".staging", "site-settings")));
         Assert.Empty(Directory.GetFiles(storage.RootPath, ".kooch-write-probe-*"));
     }
 
@@ -211,12 +214,112 @@ public sealed class MediaStorageTests
         var category = await StoreSvgAsync(storage, MediaAssetNamespace.AmenityCategories, 11);
         var amenity = await StoreSvgAsync(storage, MediaAssetNamespace.Amenities, 17);
         var bedType = await StoreSvgAsync(storage, MediaAssetNamespace.BedTypes, 23);
+        var siteSetting = await StoreSvgAsync(storage, MediaAssetNamespace.SiteSettings, 29);
 
         Assert.Matches($"^/uploads/amenity-categories/11/[0-9a-f]{{32}}\\.svg$", category.PublicPath);
         Assert.Matches($"^/uploads/amenities/17/[0-9a-f]{{32}}\\.svg$", amenity.PublicPath);
         Assert.Matches($"^/uploads/bed-types/23/[0-9a-f]{{32}}\\.svg$", bedType.PublicPath);
+        Assert.Matches($"^/uploads/site-settings/29/[0-9a-f]{{32}}\\.svg$", siteSetting.PublicPath);
         Assert.Equal(SvgContent, await File.ReadAllTextAsync(GetPhysicalPath(storage, category)));
         Assert.Equal(SvgContent, await File.ReadAllTextAsync(GetPhysicalPath(storage, amenity)));
+        Assert.Equal(SvgContent, await File.ReadAllTextAsync(GetPhysicalPath(storage, siteSetting)));
+    }
+
+    [Theory]
+    [InlineData(".png")]
+    [InlineData(".jpg")]
+    [InlineData(".jpeg")]
+    [InlineData(".webp")]
+    [InlineData(".PNG")]
+    public async Task StoreValidatedRaster_WritesCanonicalSiteSettingsAssetWithoutChangingContent(string extension)
+    {
+        using var temp = new TemporaryDirectory();
+        var storage = CreateStorage(CreateEnvironment(temp.Path), "../../media-root");
+        var contentBytes = RasterBytes(extension);
+        await using var content = new MemoryStream(contentBytes);
+
+        var stored = await storage.StoreValidatedRasterAsync(
+            MediaAssetNamespace.SiteSettings,
+            29,
+            extension,
+            content);
+
+        Assert.Matches(
+            $"^/uploads/site-settings/29/[0-9a-f]{{32}}{Regex.Escape(extension.ToLowerInvariant())}$",
+            stored.PublicPath);
+        Assert.Equal(contentBytes, await File.ReadAllBytesAsync(GetPhysicalPath(storage, stored)));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("png")]
+    [InlineData(".gif")]
+    [InlineData(".svg")]
+    [InlineData("../escape.png")]
+    [InlineData("C:\\escape.jpg")]
+    public async Task StoreValidatedRaster_RejectsUnsupportedOrPathLikeExtensions(string extension)
+    {
+        using var temp = new TemporaryDirectory();
+        var storage = CreateStorage(CreateEnvironment(temp.Path), "../../media-root");
+        await using var content = new MemoryStream([1, 2, 3]);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            storage.StoreValidatedRasterAsync(
+                MediaAssetNamespace.SiteSettings,
+                29,
+                extension,
+                content));
+
+        Assert.False(
+            Directory.Exists(storage.RootPath) &&
+            Directory.EnumerateFiles(storage.RootPath, "*", SearchOption.AllDirectories).Any());
+    }
+
+    [Fact]
+    public async Task StoreValidatedRaster_RejectsExistingSvgOnlyNamespaces()
+    {
+        using var temp = new TemporaryDirectory();
+        var storage = CreateStorage(CreateEnvironment(temp.Path), "../../media-root");
+        await using var content = new MemoryStream([1, 2, 3]);
+
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            storage.StoreValidatedRasterAsync(
+                MediaAssetNamespace.Amenities,
+                17,
+                ".png",
+                content));
+    }
+
+    [Fact]
+    public async Task DeleteOwnedAsset_SiteSettingsRequiresExactNamespaceEntityAndCanonicalPath()
+    {
+        using var temp = new TemporaryDirectory();
+        var storage = CreateStorage(CreateEnvironment(temp.Path), "../../media-root");
+        await using var content = new MemoryStream(RasterBytes(".png"));
+        var asset = await storage.StoreValidatedRasterAsync(
+            MediaAssetNamespace.SiteSettings,
+            29,
+            ".png",
+            content);
+
+        Assert.False(await storage.DeleteOwnedAssetAsync(MediaAssetNamespace.Amenities, 29, asset.PublicPath));
+        Assert.False(await storage.DeleteOwnedAssetAsync(MediaAssetNamespace.SiteSettings, 30, asset.PublicPath));
+        Assert.False(await storage.DeleteOwnedAssetAsync(
+            MediaAssetNamespace.SiteSettings,
+            29,
+            "/uploads/site/legacy.png"));
+        Assert.False(await storage.DeleteOwnedAssetAsync(
+            MediaAssetNamespace.SiteSettings,
+            29,
+            "https://example.com/logo.png"));
+        Assert.False(await storage.DeleteOwnedAssetAsync(
+            MediaAssetNamespace.SiteSettings,
+            29,
+            "../../uploads/site-settings/29/logo.png"));
+        Assert.True(File.Exists(GetPhysicalPath(storage, asset)));
+
+        Assert.True(await storage.DeleteOwnedAssetAsync(MediaAssetNamespace.SiteSettings, 29, asset.PublicPath));
+        Assert.False(File.Exists(GetPhysicalPath(storage, asset)));
     }
 
     [Fact]
@@ -308,6 +411,25 @@ public sealed class MediaStorageTests
         var environment = CreateEnvironment(temp.Path);
         var storage = CreateStorage(environment, "../../media-root");
         var asset = await StoreSvgAsync(storage, MediaAssetNamespace.Amenities, 17);
+        var siteSvg = await StoreSvgAsync(storage, MediaAssetNamespace.SiteSettings, 29);
+        var siteRasters = new List<(StoredMediaAsset Asset, string ContentType)>();
+        foreach (var (extension, contentType) in new[]
+                 {
+                     (".png", "image/png"),
+                     (".jpg", "image/jpeg"),
+                     (".jpeg", "image/jpeg"),
+                     (".webp", "image/webp")
+                 })
+        {
+            await using var raster = new MemoryStream(RasterBytes(extension));
+            siteRasters.Add((
+                await storage.StoreValidatedRasterAsync(
+                    MediaAssetNamespace.SiteSettings,
+                    29,
+                    extension,
+                    raster),
+                contentType));
+        }
         var staged = await storage.StageSanitizedSvgAsync(MediaAssetNamespace.Amenities, SvgContent);
 
         var legacyDirectory = Path.Combine(environment.WebRootPath, "svgs", "amenities");
@@ -322,6 +444,9 @@ public sealed class MediaStorageTests
         }
         var propertyImageBytes = await File.ReadAllBytesAsync(propertyImagePath);
         await File.WriteAllTextAsync(Path.Combine(storage.RootPath, "not-public.html"), "<p>blocked</p>");
+        var legacySiteDirectory = Path.Combine(environment.WebRootPath, "uploads", "site");
+        Directory.CreateDirectory(legacySiteDirectory);
+        await File.WriteAllBytesAsync(Path.Combine(legacySiteDirectory, "legacy.png"), RasterBytes(".png"));
 
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -350,6 +475,22 @@ public sealed class MediaStorageTests
         Assert.Equal("image/svg+xml", uploadedResponse.Content.Headers.ContentType?.MediaType);
         Assert.Equal("public, max-age=31536000, immutable", uploadedResponse.Headers.CacheControl?.ToString());
 
+        var siteSvgResponse = await client.GetAsync(siteSvg.PublicPath);
+        Assert.Equal(HttpStatusCode.OK, siteSvgResponse.StatusCode);
+        Assert.Equal("image/svg+xml", siteSvgResponse.Content.Headers.ContentType?.MediaType);
+        Assert.Equal("public, max-age=31536000, immutable", siteSvgResponse.Headers.CacheControl?.ToString());
+
+        foreach (var (siteAsset, contentType) in siteRasters)
+        {
+            var siteResponse = await client.GetAsync(siteAsset.PublicPath);
+            Assert.Equal(HttpStatusCode.OK, siteResponse.StatusCode);
+            Assert.Equal(contentType, siteResponse.Content.Headers.ContentType?.MediaType);
+            Assert.Equal("public, max-age=31536000, immutable", siteResponse.Headers.CacheControl?.ToString());
+            Assert.Equal(
+                await File.ReadAllBytesAsync(GetPhysicalPath(storage, siteAsset)),
+                await siteResponse.Content.ReadAsByteArrayAsync());
+        }
+
         var legacyResponse = await client.GetAsync("/svgs/amenities/legacy.svg");
         Assert.Equal(HttpStatusCode.OK, legacyResponse.StatusCode);
         Assert.Equal("image/svg+xml", legacyResponse.Content.Headers.ContentType?.MediaType);
@@ -361,6 +502,7 @@ public sealed class MediaStorageTests
 
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/uploads/amenities/17/")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/uploads/not-public.html")).StatusCode);
+        Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/uploads/site/legacy.png")).StatusCode);
         Assert.Equal(
             HttpStatusCode.NotFound,
             (await client.GetAsync($"/uploads/.staging/amenities/{staged.UploadToken}.svg")).StatusCode);
@@ -391,6 +533,14 @@ public sealed class MediaStorageTests
     }
 
     private static MemoryStream CreateSvgStream() => new(Encoding.UTF8.GetBytes(SvgContent));
+
+    private static byte[] RasterBytes(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".png" => [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3],
+        ".jpg" or ".jpeg" => [0xff, 0xd8, 0xff, 1, 2, 3],
+        ".webp" => [0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4, 0x57, 0x45, 0x42, 0x50],
+        _ => [1, 2, 3]
+    };
 
     private static string GetPhysicalPath(IMediaStorage storage, StoredMediaAsset asset)
     {

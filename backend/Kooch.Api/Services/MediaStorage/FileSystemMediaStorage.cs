@@ -9,6 +9,13 @@ public sealed class FileSystemMediaStorage : IMediaStorage
 {
     private const string StagingDirectoryName = ".staging";
     private const int MaximumSanitizedSvgBytes = 256 * 1024;
+    private static readonly HashSet<string> AllowedRasterExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".webp"
+    };
     private readonly object initializationLock = new();
     private readonly SemaphoreSlim stagingLock = new(1, 1);
     private readonly TimeProvider timeProvider;
@@ -107,6 +114,70 @@ public sealed class FileSystemMediaStorage : IMediaStorage
                 bufferSize: 81920,
                 useAsync: true);
             await sanitizedSvgContent.CopyToAsync(destination, cancellationToken);
+        }
+        catch
+        {
+            File.Delete(physicalPath);
+            throw;
+        }
+
+        return new StoredMediaAsset(
+            immutableId,
+            $"{PublicBasePath}/{namespaceSegment}/{entitySegment}/{fileName}");
+    }
+
+    public async Task<StoredMediaAsset> StoreValidatedRasterAsync(
+        MediaAssetNamespace assetNamespace,
+        int entityId,
+        string extension,
+        Stream validatedRasterContent,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(validatedRasterContent);
+        if (!validatedRasterContent.CanRead)
+        {
+            throw new ArgumentException("The validated raster stream must be readable.", nameof(validatedRasterContent));
+        }
+
+        if (assetNamespace != MediaAssetNamespace.SiteSettings)
+        {
+            throw new ArgumentException(
+                "Validated raster storage is only available for Site Settings assets.",
+                nameof(assetNamespace));
+        }
+
+        if (entityId <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(entityId), "A positive entity ID is required.");
+        }
+
+        var canonicalExtension = extension?.Trim().ToLowerInvariant() ?? string.Empty;
+        if (!AllowedRasterExtensions.Contains(canonicalExtension))
+        {
+            throw new ArgumentException("The raster extension is not supported.", nameof(extension));
+        }
+
+        Initialize();
+
+        var namespaceSegment = GetNamespaceSegment(assetNamespace);
+        var entitySegment = entityId.ToString(CultureInfo.InvariantCulture);
+        var entityDirectory = EnsureWithinRoot(Path.Combine(RootPath, namespaceSegment, entitySegment));
+        Directory.CreateDirectory(entityDirectory);
+
+        var immutableId = Guid.NewGuid();
+        var fileName = $"{immutableId:N}{canonicalExtension}";
+        var physicalPath = EnsureWithinRoot(Path.Combine(entityDirectory, fileName));
+
+        try
+        {
+            await using var destination = new FileStream(
+                physicalPath,
+                FileMode.CreateNew,
+                FileAccess.Write,
+                FileShare.None,
+                bufferSize: 81920,
+                useAsync: true);
+            await validatedRasterContent.CopyToAsync(destination, cancellationToken);
         }
         catch
         {
@@ -311,8 +382,13 @@ public sealed class FileSystemMediaStorage : IMediaStorage
         MediaAssetNamespace.AmenityCategories => "amenity-categories",
         MediaAssetNamespace.Amenities => "amenities",
         MediaAssetNamespace.BedTypes => "bed-types",
+        MediaAssetNamespace.SiteSettings => "site-settings",
         _ => throw new ArgumentOutOfRangeException(nameof(assetNamespace), "Unknown media asset namespace.")
     };
+
+    internal static bool IsOwnedAssetExtension(MediaAssetNamespace assetNamespace, string extension) =>
+        extension.Equals(".svg", StringComparison.OrdinalIgnoreCase) ||
+        assetNamespace == MediaAssetNamespace.SiteSettings && AllowedRasterExtensions.Contains(extension);
 
     private string GetNamespaceRoot(MediaAssetNamespace assetNamespace) =>
         EnsureWithinRoot(Path.Combine(RootPath, GetNamespaceSegment(assetNamespace)));
@@ -401,7 +477,7 @@ public sealed class FileSystemMediaStorage : IMediaStorage
         if (segments.Length != 3 ||
             !segments[0].Equals(expectedNamespace, StringComparison.Ordinal) ||
             !segments[1].Equals(expectedEntity, StringComparison.Ordinal) ||
-            !segments[2].EndsWith(".svg", StringComparison.Ordinal) ||
+            !IsOwnedAssetExtension(assetNamespace, Path.GetExtension(segments[2])) ||
             !Guid.TryParseExact(Path.GetFileNameWithoutExtension(segments[2]), "N", out _))
         {
             return false;

@@ -17,16 +17,23 @@ public static class MediaStorageApplicationBuilderExtensions
         ArgumentNullException.ThrowIfNull(app);
         ArgumentNullException.ThrowIfNull(mediaStorage);
 
-        var contentTypes = new FileExtensionContentTypeProvider(
-            new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-            {
-                [".svg"] = "image/svg+xml"
-            });
-
         foreach (var assetNamespace in Enum.GetValues<MediaAssetNamespace>())
         {
             var namespaceSegment = FileSystemMediaStorage.GetNamespaceSegment(assetNamespace);
             var namespaceRoot = Path.Combine(mediaStorage.RootPath, namespaceSegment);
+            var mappings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                [".svg"] = "image/svg+xml"
+            };
+            if (assetNamespace == MediaAssetNamespace.SiteSettings)
+            {
+                mappings[".jpg"] = "image/jpeg";
+                mappings[".jpeg"] = "image/jpeg";
+                mappings[".png"] = "image/png";
+                mappings[".webp"] = "image/webp";
+            }
+
+            var contentTypes = new FileExtensionContentTypeProvider(mappings);
             var fileProvider = new PhysicalFileProvider(namespaceRoot);
             app.ApplicationServices.GetRequiredService<IHostApplicationLifetime>()
                 .ApplicationStopped.Register(fileProvider.Dispose);
@@ -40,7 +47,7 @@ public static class MediaStorageApplicationBuilderExtensions
                 OnPrepareResponse = context =>
                 {
                     var fileName = Path.GetFileName(context.File.PhysicalPath ?? context.File.Name);
-                    if (Path.GetExtension(fileName).Equals(".svg", StringComparison.OrdinalIgnoreCase) &&
+                    if (FileSystemMediaStorage.IsOwnedAssetExtension(assetNamespace, Path.GetExtension(fileName)) &&
                         Guid.TryParseExact(Path.GetFileNameWithoutExtension(fileName), "N", out _))
                     {
                         context.Context.Response.GetTypedHeaders().CacheControl =
