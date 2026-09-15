@@ -1,5 +1,12 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const currency = vi.hoisted(() => ({ label: "تومان" }));
+
+vi.mock("@/lib/currency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/currency")>();
+  return { ...actual, useSiteCurrencyLabel: () => currency.label };
+});
 import {
   BookingCartMobileActionBar,
   BookingCartSummary,
@@ -68,6 +75,10 @@ function state(items: BookingCartItem[] = []): BookingCartState {
 }
 
 describe("public booking cart", () => {
+  beforeEach(() => {
+    currency.label = "تومان";
+  });
+
   it("uses half-open stay nights", () => {
     expect(expandStayNights("2026-08-20", "2026-08-22")).toEqual([
       "2026-08-20",
@@ -230,6 +241,7 @@ describe("public booking cart", () => {
   });
 
   it("shows two RoomTypes, their subtotals, and the combined live total", () => {
+    currency.label = "ریال آزمایشی";
     const items = [
       item(),
       item({
@@ -252,9 +264,9 @@ describe("public booking cart", () => {
     const summary = screen.getByTestId("booking-choices-summary");
     expect(within(summary).getByText("اتاق شاه‌نشین")).toBeTruthy();
     expect(within(summary).getByText("اتاق نیلوفر")).toBeTruthy();
-    expect(within(summary).getByText(/۲٬۰۰۰٬۰۰۰ تومان/)).toBeTruthy();
-    expect(within(summary).getByText(/۳٬۰۰۰٬۰۰۰ تومان/)).toBeTruthy();
-    expect(within(summary).getByText("۵٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(summary).getByText(/۲٬۰۰۰٬۰۰۰ ریال آزمایشی/)).toBeTruthy();
+    expect(within(summary).getByText(/۳٬۰۰۰٬۰۰۰ ریال آزمایشی/)).toBeTruthy();
+    expect(within(summary).getByText("۵٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
     expect(within(summary).getAllByText("۲").length).toBeGreaterThanOrEqual(2);
   });
 
@@ -502,10 +514,12 @@ describe("public booking cart", () => {
   });
 
   it("renders an accessible RTL mobile action bar", () => {
+    currency.label = "ریال آزمایشی";
     const onContinue = vi.fn();
     render(<BookingCartMobileActionBar count={2} loading={false} onContinue={onContinue} total={4_000_000} />);
     const bar = screen.getByTestId("booking-mobile-action-bar");
     expect(bar.getAttribute("dir")).toBe("rtl");
+    expect(within(bar).getByText("۴٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "ادامه رزرو" }));
     expect(onContinue).toHaveBeenCalledOnce();
   });

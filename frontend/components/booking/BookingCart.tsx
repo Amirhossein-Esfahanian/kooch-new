@@ -7,7 +7,7 @@ import {
   countBookingNights,
   formatBookingDateRange,
 } from "@/components/booking/booking-display";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 
 export interface BookingCartLine {
   key: string;
@@ -52,9 +52,11 @@ export function groupBookingCartItems(items: BookingCartItem[]) {
 }
 
 export function BookingCartItemRow({
+  currencyLabel,
   line,
   onRemove,
 }: {
+  currencyLabel: string;
   line: BookingCartLine;
   onRemove?: (ids: string[]) => void;
 }) {
@@ -72,7 +74,7 @@ export function BookingCartItemRow({
         </p>
         <p className="mt-1 font-semibold text-foreground">
           {line.quantity.toLocaleString("fa-IR")} اتاق ·{" "}
-          {formatCurrency(line.total)}
+          {formatCurrency(line.total, { currencyLabel })}
         </p>
       </div>
       {onRemove && (
@@ -107,6 +109,7 @@ export function BookingCartSummary({
   className?: string;
   title?: string;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const lines = groupBookingCartItems(items);
   const roomTypeCount = new Set(items.map((item) => item.roomTypeId)).size;
   const nightsCount = countBookingNights(items);
@@ -143,6 +146,7 @@ export function BookingCartSummary({
           <ul className="mt-2">
             {lines.map((line) => (
               <BookingCartItemRow
+                currencyLabel={currencyLabel}
                 key={line.key}
                 line={line}
                 onRemove={onRemove ? (ids) => ids.forEach(onRemove) : undefined}
@@ -180,7 +184,7 @@ export function BookingCartSummary({
                 مبلغ کل
               </dt>
               <dd className="text-base font-bold text-foreground">
-                {formatCurrency(total)}
+                {formatCurrency(total, { currencyLabel })}
               </dd>
             </div>
           </dl>
@@ -220,6 +224,7 @@ export function BookingCartMobileActionBar({
   loading: boolean;
   onContinue: () => void;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   if (count === 0) return null;
   return (
     <div
@@ -233,7 +238,7 @@ export function BookingCartMobileActionBar({
             {count.toLocaleString("fa-IR")} اتاق انتخاب‌شده
           </p>
           <p className="truncate font-bold text-foreground">
-            {formatCurrency(total)}
+            {formatCurrency(total, { currencyLabel })}
           </p>
         </div>
         <KoochButton loading={loading} onClick={onContinue}>

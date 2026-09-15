@@ -35,6 +35,7 @@ const authApi = vi.hoisted(() => ({
   request: vi.fn(),
   setToken: vi.fn(),
 }));
+const currency = vi.hoisted(() => ({ label: "تومان" }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: navigation.push }),
@@ -54,6 +55,10 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
     apiRequest: authApi.request,
     setToken: authApi.setToken,
   };
+});
+vi.mock("@/lib/currency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/currency")>();
+  return { ...actual, useSiteCurrencyLabel: () => currency.label };
 });
 
 import {
@@ -160,6 +165,7 @@ describe("multi-step booking checkout skeleton", () => {
     auth.authenticated = false;
     auth.loading = false;
     auth.user = null;
+    currency.label = "تومان";
     navigation.step = "information";
     checkout.revalidate.mockImplementation(async (items: BookingCartItem[]) => ({
       items,
@@ -285,6 +291,7 @@ describe("multi-step booking checkout skeleton", () => {
   });
 
   it("shows the complete read-only review and the same Instant CTA in the mobile action region", async () => {
+    currency.label = "ریال آزمایشی";
     persistCart();
     sessionStorage.setItem(checkoutStayDetailsStorageKey, JSON.stringify({
       version: 1,
@@ -304,13 +311,13 @@ describe("multi-step booking checkout skeleton", () => {
     expect(screen.getByText("خانه کاشان")).toBeTruthy();
     expect(screen.getByText("۲ شب")).toBeTruthy();
     expect(screen.getByText("۲ اتاق")).toBeTruthy();
-    expect(screen.getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
-    expect(screen.getByText("۳٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(screen.getByText("۴٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
+    expect(screen.getByText("۳٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
     expect(screen.getByText("سارا احمدی")).toBeTruthy();
     expect(within(screen.getByTestId("checkout-date-summary")).queryByText(/تومان/)).toBeNull();
     expect(screen.queryByText("۱۴:۳۰")).toBeNull();
     expect(screen.getByText("تخت کودک لطفاً")).toBeTruthy();
-    expect(screen.getAllByText("۷٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("۷٬۰۰۰٬۰۰۰ ریال آزمایشی").length).toBeGreaterThan(0);
     expect(screen.getAllByText("رزرو آنی").length).toBeGreaterThanOrEqual(2);
 
     expect(within(screen.getByTestId("checkout-mobile-actions")).getByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" })).toBeTruthy();

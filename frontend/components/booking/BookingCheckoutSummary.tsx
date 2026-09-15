@@ -1,3 +1,5 @@
+"use client";
+
 import { groupBookingCartItems } from "@/components/booking/BookingCart";
 import type { BookingCartItem } from "@/components/booking/BookingCartProvider";
 import {
@@ -5,7 +7,7 @@ import {
   countBookingNights,
   formatBookingDate,
 } from "@/components/booking/booking-display";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 
 export function BookingCheckoutSummary({
   items,
@@ -14,6 +16,7 @@ export function BookingCheckoutSummary({
   items: BookingCartItem[];
   total: number;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const first = items[0];
   if (!first) return null;
   const lines = groupBookingCartItems(items);
@@ -88,14 +91,14 @@ export function BookingCheckoutSummary({
                 {line.quantity.toLocaleString("fa-IR")}
               </dt>
               <dd className="shrink-0 font-bold text-foreground">
-                {formatCurrency(line.total)}
+                {formatCurrency(line.total, { currencyLabel })}
               </dd>
             </div>
           ))}
           <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
             <dt className="font-bold text-foreground">مبلغ کل</dt>
             <dd className="text-lg font-bold text-foreground">
-              {formatCurrency(total)}
+              {formatCurrency(total, { currencyLabel })}
             </dd>
           </div>
         </dl>
