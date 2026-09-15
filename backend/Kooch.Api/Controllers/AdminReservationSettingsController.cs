@@ -17,6 +17,13 @@ public class AdminReservationSettingsController(
     IPermissionService permissionService,
     IChildPricingRuleResolver childPricingRuleResolver) : AuthenticatedControllerBase
 {
+    private static readonly string[] DeadlineSettingKeys =
+    [
+        ReservationPaymentWindowSettings.SettingKey,
+        ReservationOwnerApprovalWindowSettings.SettingKey,
+        ReservationOwnerApprovalReminderSettings.SettingKey
+    ];
+
     [HttpGet]
     [ProducesResponseType<ReservationSettingsResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<ReservationSettingsResponse>> Get(CancellationToken cancellationToken)
@@ -68,6 +75,63 @@ public class AdminReservationSettingsController(
             request.HalfPriceChildRate));
     }
 
+    [HttpGet("deadlines")]
+    [ProducesResponseType<ReservationDeadlineSettingsResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationDeadlineSettingsResponse>> GetDeadlines(
+        CancellationToken cancellationToken)
+    {
+        await EnsureCanManageSettingsAsync(cancellationToken);
+
+        return Ok(new ReservationDeadlineSettingsResponse(
+            await ReservationPaymentWindowSettings.GetMinutesAsync(dbContext, cancellationToken),
+            await ReservationOwnerApprovalWindowSettings.GetMinutesAsync(dbContext, cancellationToken),
+            await ReservationOwnerApprovalReminderSettings.GetMinutesAsync(dbContext, cancellationToken)));
+    }
+
+    [HttpPut("deadlines")]
+    [ProducesResponseType<ReservationDeadlineSettingsResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationDeadlineSettingsResponse>> UpdateDeadlines(
+        UpdateReservationDeadlineSettingsRequest request,
+        CancellationToken cancellationToken)
+    {
+        await EnsureCanManageSettingsAsync(cancellationToken);
+        ValidateDeadline(request.PaymentWindowMinutes, nameof(request.PaymentWindowMinutes));
+        ValidateDeadline(request.OwnerApprovalWindowMinutes, nameof(request.OwnerApprovalWindowMinutes));
+        ValidateDeadline(
+            request.OwnerApprovalReminderIntervalMinutes,
+            nameof(request.OwnerApprovalReminderIntervalMinutes));
+
+        var values = new Dictionary<string, string>
+        {
+            [ReservationPaymentWindowSettings.SettingKey] =
+                request.PaymentWindowMinutes.ToString(CultureInfo.InvariantCulture),
+            [ReservationOwnerApprovalWindowSettings.SettingKey] =
+                request.OwnerApprovalWindowMinutes.ToString(CultureInfo.InvariantCulture),
+            [ReservationOwnerApprovalReminderSettings.SettingKey] =
+                request.OwnerApprovalReminderIntervalMinutes.ToString(CultureInfo.InvariantCulture)
+        };
+        var settings = await dbContext.SiteSettings
+            .Where(setting => DeadlineSettingKeys.Contains(setting.Key))
+            .ToListAsync(cancellationToken);
+
+        if (settings.Count != DeadlineSettingKeys.Length)
+        {
+            throw new KeyNotFoundException("Reservation deadline setting was not found.");
+        }
+
+        foreach (var setting in settings)
+        {
+            setting.Value = values[setting.Key];
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return Ok(new ReservationDeadlineSettingsResponse(
+            request.PaymentWindowMinutes,
+            request.OwnerApprovalWindowMinutes,
+            request.OwnerApprovalReminderIntervalMinutes));
+    }
+
     private async Task EnsureCanManageSettingsAsync(CancellationToken cancellationToken)
     {
         var user = GetCurrentUser();
@@ -106,6 +170,15 @@ public class AdminReservationSettingsController(
         if (age is < 0 or > 17)
         {
             throw new ArgumentException($"{fieldName} must be between 0 and 17.");
+        }
+    }
+
+    private static void ValidateDeadline(int value, string fieldName)
+    {
+        if (value is < 1 or > ReservationPaymentWindowSettings.MaximumMinutes)
+        {
+            throw new ArgumentException(
+                $"{fieldName} must be between 1 and {ReservationPaymentWindowSettings.MaximumMinutes}.");
         }
     }
 
