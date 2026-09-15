@@ -65,14 +65,11 @@ public sealed class SiteSettingsCharacterizationTests
             [
                 "brand.first",
                 "brand.second",
-                "footer.first",
-                "reservation.paymentWindowMinutes",
-                "reservation.ownerApprovalWindowMinutes",
-                "reservation.ownerApprovalReminderIntervalMinutes"
+                "footer.first"
             ],
             settings.Select(setting => setting.Key).ToArray());
         Assert.All(
-            ChildPricingRuleResolver.SettingKeys,
+            SpecializedReservationKeys,
             key => Assert.DoesNotContain(key, settings.Select(setting => setting.Key)));
     }
 
@@ -155,7 +152,10 @@ public sealed class SiteSettingsCharacterizationTests
     [InlineData(ChildPricingRuleResolver.HalfPriceChildMinAgeKey)]
     [InlineData(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey)]
     [InlineData(ChildPricingRuleResolver.HalfPriceChildRateKey)]
-    public async Task AdminPut_RejectsSpecializedChildPricingKeysWithoutMutation(string key)
+    [InlineData(ReservationPaymentWindowSettings.SettingKey)]
+    [InlineData(ReservationOwnerApprovalWindowSettings.SettingKey)]
+    [InlineData(ReservationOwnerApprovalReminderSettings.SettingKey)]
+    public async Task AdminPut_RejectsAllSpecializedReservationKeysWithoutMutation(string key)
     {
         await using var dbContext = CreateContext();
         dbContext.SiteSettings.Add(Setting(key, "original", "Reservation", 10));
@@ -177,32 +177,6 @@ public sealed class SiteSettingsCharacterizationTests
         Assert.Contains("reservation settings", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(
             "original",
-            (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
-    }
-
-    [Theory]
-    [InlineData("reservation.paymentWindowMinutes")]
-    [InlineData("reservation.ownerApprovalWindowMinutes")]
-    [InlineData("reservation.ownerApprovalReminderIntervalMinutes")]
-    public async Task AdminPut_StillUpdatesReservationDeadlineKeys(string key)
-    {
-        await using var dbContext = CreateContext();
-        dbContext.SiteSettings.Add(Setting(key, "10", "Reservation", 10));
-        await dbContext.SaveChangesAsync();
-        var controller = CreateAdminController(
-            dbContext,
-            permissionService: null!,
-            SuperAdminId,
-            UserRole.SuperAdmin);
-
-        var response = await controller.Update(
-            key,
-            new UpdateSiteSettingRequest("15"),
-            CancellationToken.None);
-
-        Assert.Equal("15", GetSiteSetting(response).Value);
-        Assert.Equal(
-            "15",
             (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
     }
 
@@ -554,6 +528,17 @@ public sealed class SiteSettingsCharacterizationTests
         "site.defaultSeoTitle",
         "site.defaultSeoDescription",
         "pricing.currencyLabel"
+    ];
+
+    private static readonly string[] SpecializedReservationKeys =
+    [
+        ChildPricingRuleResolver.FreeChildMaxAgeKey,
+        ChildPricingRuleResolver.HalfPriceChildMinAgeKey,
+        ChildPricingRuleResolver.HalfPriceChildMaxAgeKey,
+        ChildPricingRuleResolver.HalfPriceChildRateKey,
+        ReservationPaymentWindowSettings.SettingKey,
+        ReservationOwnerApprovalWindowSettings.SettingKey,
+        ReservationOwnerApprovalReminderSettings.SettingKey
     ];
 
     private static readonly string[] NonPublicSettingKeys =

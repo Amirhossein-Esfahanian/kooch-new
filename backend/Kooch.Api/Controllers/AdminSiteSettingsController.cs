@@ -24,9 +24,16 @@ public class AdminSiteSettingsController(
         "ReferralCommissionPercent",
         "CommissionType3Percent"
     };
-    private static readonly HashSet<string> SpecializedSettingKeys = new(
-        ChildPricingRuleResolver.SettingKeys,
-        StringComparer.Ordinal);
+    private static readonly HashSet<string> SpecializedSettingKeys = new(StringComparer.Ordinal)
+    {
+        ChildPricingRuleResolver.FreeChildMaxAgeKey,
+        ChildPricingRuleResolver.HalfPriceChildMinAgeKey,
+        ChildPricingRuleResolver.HalfPriceChildMaxAgeKey,
+        ChildPricingRuleResolver.HalfPriceChildRateKey,
+        ReservationPaymentWindowSettings.SettingKey,
+        ReservationOwnerApprovalWindowSettings.SettingKey,
+        ReservationOwnerApprovalReminderSettings.SettingKey
+    };
 
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<SiteSettingResponse>>(StatusCodes.Status200OK)]
@@ -99,15 +106,6 @@ public class AdminSiteSettingsController(
                 throw new ArgumentException("درصد کمیسیون باید بین ۰ تا ۱۰۰ باشد.");
             }
         }
-        else if (setting.Key is ReservationPaymentWindowSettings.SettingKey or
-                 ReservationOwnerApprovalWindowSettings.SettingKey or
-                 ReservationOwnerApprovalReminderSettings.SettingKey &&
-                 (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var deadlineMinutes) ||
-                  deadlineMinutes is < 1 or > ReservationPaymentWindowSettings.MaximumMinutes))
-        {
-            throw new ArgumentException("مهلت رزرو باید بین ۱ دقیقه و ۷ روز باشد.");
-        }
-
         setting.Value = value;
         await dbContext.SaveChangesAsync(cancellationToken);
 
