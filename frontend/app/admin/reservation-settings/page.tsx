@@ -24,11 +24,33 @@ type ReservationSettingsDraft = {
   halfPriceChildRate: string;
 };
 
+type ReservationDeadlineSettingsResponse = {
+  paymentWindowMinutes: number;
+  ownerApprovalWindowMinutes: number;
+  ownerApprovalReminderIntervalMinutes: number;
+};
+
+type ReservationDeadlineSettingsDraft = {
+  paymentWindowMinutes: string;
+  ownerApprovalWindowMinutes: string;
+  ownerApprovalReminderIntervalMinutes: string;
+};
+
+type ReservationDeadlineSettingsErrors = Partial<
+  Record<keyof ReservationDeadlineSettingsDraft, string>
+>;
+
 const emptyDraft: ReservationSettingsDraft = {
   freeChildMaxAge: "",
   halfPriceChildMinAge: "",
   halfPriceChildMaxAge: "",
   halfPriceChildRate: "50",
+};
+
+const emptyDeadlineDraft: ReservationDeadlineSettingsDraft = {
+  paymentWindowMinutes: "",
+  ownerApprovalWindowMinutes: "",
+  ownerApprovalReminderIntervalMinutes: "",
 };
 
 function toDraft(settings: ReservationSettingsResponse): ReservationSettingsDraft {
@@ -51,11 +73,29 @@ function optionalAge(value: string) {
   return value.trim() === "" ? null : Number(value);
 }
 
+function toDeadlineDraft(
+  settings: ReservationDeadlineSettingsResponse,
+): ReservationDeadlineSettingsDraft {
+  return {
+    paymentWindowMinutes: String(settings.paymentWindowMinutes),
+    ownerApprovalWindowMinutes: String(settings.ownerApprovalWindowMinutes),
+    ownerApprovalReminderIntervalMinutes: String(
+      settings.ownerApprovalReminderIntervalMinutes,
+    ),
+  };
+}
+
 export default function AdminReservationSettingsPage() {
   const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
   const [draft, setDraft] = useState<ReservationSettingsDraft>(emptyDraft);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [deadlineDraft, setDeadlineDraft] =
+    useState<ReservationDeadlineSettingsDraft>(emptyDeadlineDraft);
+  const [deadlineErrors, setDeadlineErrors] =
+    useState<ReservationDeadlineSettingsErrors>({});
+  const [deadlineLoading, setDeadlineLoading] = useState(true);
+  const [deadlineSaving, setDeadlineSaving] = useState(false);
 
   useEffect(() => {
     if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
@@ -66,10 +106,27 @@ export default function AdminReservationSettingsPage() {
         toast.error(caught.message || "تنظیمات رزرو بارگذاری نشد"),
       )
       .finally(() => setLoading(false));
+
+    apiRequest<ReservationDeadlineSettingsResponse>(
+      "/admin/reservation-settings/deadlines",
+    )
+      .then((settings) => setDeadlineDraft(toDeadlineDraft(settings)))
+      .catch((caught: Error) =>
+        toast.error(caught.message || "مهلت‌های رزرو بارگذاری نشد"),
+      )
+      .finally(() => setDeadlineLoading(false));
   }, [authenticated, sessionLoading, workspaces]);
 
   function update(key: keyof ReservationSettingsDraft, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateDeadline(
+    key: keyof ReservationDeadlineSettingsDraft,
+    value: string,
+  ) {
+    setDeadlineDraft((current) => ({ ...current, [key]: value }));
+    setDeadlineErrors((current) => ({ ...current, [key]: undefined }));
   }
 
   function validate() {
@@ -141,6 +198,64 @@ export default function AdminReservationSettingsPage() {
     }
   }
 
+  function validateDeadlines() {
+    const errors: ReservationDeadlineSettingsErrors = {};
+    const values = Object.entries(deadlineDraft) as Array<
+      [keyof ReservationDeadlineSettingsDraft, string]
+    >;
+
+    for (const [key, rawValue] of values) {
+      if (rawValue.trim() === "") {
+        errors[key] = "این مقدار الزامی است";
+        continue;
+      }
+
+      const value = Number(rawValue);
+      if (!Number.isInteger(value) || value < 1 || value > 10080) {
+        errors[key] = "مقدار باید یک عدد صحیح بین ۱ تا ۱۰۰۸۰ دقیقه باشد";
+      }
+    }
+
+    setDeadlineErrors(errors);
+    if (Object.keys(errors).length > 0) return null;
+
+    return {
+      paymentWindowMinutes: Number(deadlineDraft.paymentWindowMinutes),
+      ownerApprovalWindowMinutes: Number(
+        deadlineDraft.ownerApprovalWindowMinutes,
+      ),
+      ownerApprovalReminderIntervalMinutes: Number(
+        deadlineDraft.ownerApprovalReminderIntervalMinutes,
+      ),
+    };
+  }
+
+  async function saveDeadlines(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const payload = validateDeadlines();
+    if (!payload) return;
+
+    setDeadlineSaving(true);
+    try {
+      const updated = await apiRequest<ReservationDeadlineSettingsResponse>(
+        "/admin/reservation-settings/deadlines",
+        {
+          method: "PUT",
+          body: JSON.stringify(payload),
+        },
+      );
+      setDeadlineDraft(toDeadlineDraft(updated));
+      setDeadlineErrors({});
+      toast.success("مهلت‌های رزرو ذخیره شد");
+    } catch (caught) {
+      toast.error(
+        caught instanceof Error ? caught.message : "ذخیره مهلت‌های رزرو ناموفق بود",
+      );
+    } finally {
+      setDeadlineSaving(false);
+    }
+  }
+
   return (
     <AdminLayout>
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
@@ -158,6 +273,10 @@ export default function AdminReservationSettingsPage() {
             </p>
           ) : (
             <form className="grid gap-5" onSubmit={save}>
+              <h2 className="text-base font-semibold text-foreground">
+                قوانین قیمت‌گذاری کودک
+              </h2>
+
               <div className="grid gap-4 md:grid-cols-2">
                 <KoochField
                   helperText="کودکان تا این سن با قانون رایگان پیش‌فرض بررسی می‌شوند."
@@ -219,6 +338,110 @@ export default function AdminReservationSettingsPage() {
               <div className="flex justify-end">
                 <KoochButton disabled={saving} loading={saving} type="submit">
                   ذخیره تنظیمات
+                </KoochButton>
+              </div>
+            </form>
+          )}
+        </KoochCard>
+
+        <KoochCard variant="elevated">
+          {deadlineLoading ? (
+            <p className="text-sm text-muted-foreground">
+              در حال بارگذاری مهلت‌های رزرو...
+            </p>
+          ) : (
+            <form className="grid gap-5" onSubmit={saveDeadlines}>
+              <div className="grid gap-1">
+                <h2 className="text-base font-semibold text-foreground">
+                  مهلت‌های رزرو
+                </h2>
+                <p className="text-sm text-muted-foreground">
+                  زمان‌بندی پرداخت، تأیید مالک و یادآوری رزروهای در انتظار را
+                  بر حسب دقیقه تنظیم کنید.
+                </p>
+              </div>
+
+              <div className="grid gap-4 lg:grid-cols-3">
+                <KoochField
+                  error={deadlineErrors.paymentWindowMinutes}
+                  helperText="مدت زمانی که کاربر پس از ایجاد مرحله پرداخت برای تکمیل آن فرصت دارد، بر حسب دقیقه."
+                  label="مهلت پرداخت"
+                  required
+                >
+                  <KoochInput
+                    dir="ltr"
+                    error={deadlineErrors.paymentWindowMinutes}
+                    inputMode="numeric"
+                    max={10080}
+                    min={1}
+                    onChange={(event) =>
+                      updateDeadline("paymentWindowMinutes", event.target.value)
+                    }
+                    required
+                    step={1}
+                    type="number"
+                    value={deadlineDraft.paymentWindowMinutes}
+                  />
+                </KoochField>
+
+                <KoochField
+                  error={deadlineErrors.ownerApprovalWindowMinutes}
+                  helperText="مدت زمانی که مالک برای تأیید رزروهای درخواستی فرصت دارد، بر حسب دقیقه."
+                  label="مهلت تأیید مالک"
+                  required
+                >
+                  <KoochInput
+                    dir="ltr"
+                    error={deadlineErrors.ownerApprovalWindowMinutes}
+                    inputMode="numeric"
+                    max={10080}
+                    min={1}
+                    onChange={(event) =>
+                      updateDeadline(
+                        "ownerApprovalWindowMinutes",
+                        event.target.value,
+                      )
+                    }
+                    required
+                    step={1}
+                    type="number"
+                    value={deadlineDraft.ownerApprovalWindowMinutes}
+                  />
+                </KoochField>
+
+                <KoochField
+                  error={deadlineErrors.ownerApprovalReminderIntervalMinutes}
+                  helperText="فاصله زمانی بررسی و ارسال یادآوری رزروهای در انتظار تأیید، بر حسب دقیقه."
+                  label="فاصله یادآوری تأیید مالک"
+                  required
+                >
+                  <KoochInput
+                    dir="ltr"
+                    error={deadlineErrors.ownerApprovalReminderIntervalMinutes}
+                    inputMode="numeric"
+                    max={10080}
+                    min={1}
+                    onChange={(event) =>
+                      updateDeadline(
+                        "ownerApprovalReminderIntervalMinutes",
+                        event.target.value,
+                      )
+                    }
+                    required
+                    step={1}
+                    type="number"
+                    value={deadlineDraft.ownerApprovalReminderIntervalMinutes}
+                  />
+                </KoochField>
+              </div>
+
+              <div className="flex justify-end">
+                <KoochButton
+                  disabled={deadlineSaving}
+                  loading={deadlineSaving}
+                  type="submit"
+                >
+                  ذخیره مهلت‌ها
                 </KoochButton>
               </div>
             </form>
