@@ -24,7 +24,9 @@ public class AdminSiteSettingsController(
         "ReferralCommissionPercent",
         "CommissionType3Percent"
     };
-    private static readonly HashSet<string> ChildPricingKeys = new(ChildPricingRuleResolver.SettingKeys, StringComparer.Ordinal);
+    private static readonly HashSet<string> SpecializedSettingKeys = new(
+        ChildPricingRuleResolver.SettingKeys,
+        StringComparer.Ordinal);
 
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<SiteSettingResponse>>(StatusCodes.Status200OK)]
@@ -33,6 +35,7 @@ public class AdminSiteSettingsController(
         await EnsureCanManageSettingsAsync(cancellationToken);
 
         var settings = await dbContext.SiteSettings.AsNoTracking()
+            .Where(setting => !SpecializedSettingKeys.Contains(setting.Key))
             .OrderBy(setting => setting.Group)
             .ThenBy(setting => setting.SortOrder)
             .ToListAsync(cancellationToken);
@@ -48,6 +51,12 @@ public class AdminSiteSettingsController(
         CancellationToken cancellationToken)
     {
         await EnsureCanManageSettingsAsync(cancellationToken);
+
+        if (SpecializedSettingKeys.Contains(key))
+        {
+            throw new InvalidOperationException(
+                "This setting is managed through the reservation settings endpoint.");
+        }
 
         var setting = await dbContext.SiteSettings
             .SingleOrDefaultAsync(setting => setting.Key == key, cancellationToken)
@@ -97,33 +106,6 @@ public class AdminSiteSettingsController(
                   deadlineMinutes is < 1 or > ReservationPaymentWindowSettings.MaximumMinutes))
         {
             throw new ArgumentException("مهلت رزرو باید بین ۱ دقیقه و ۷ روز باشد.");
-        }
-
-        else if (ChildPricingKeys.Contains(setting.Key))
-        {
-            if (string.IsNullOrWhiteSpace(value) &&
-                setting.Key != ChildPricingRuleResolver.HalfPriceChildRateKey)
-            {
-                setting.Value = string.Empty;
-                await dbContext.SaveChangesAsync(cancellationToken);
-
-                return Ok(ToResponse(setting));
-            }
-
-            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var number) || number < 0)
-            {
-                throw new ArgumentException("Reservation child pricing setting is invalid.");
-            }
-
-            if (setting.Key == ChildPricingRuleResolver.HalfPriceChildRateKey && number > 100)
-            {
-                throw new ArgumentException("Half-price child rate must be between 0 and 100.");
-            }
-
-            if (setting.Key != ChildPricingRuleResolver.HalfPriceChildRateKey && number > 17)
-            {
-                throw new ArgumentException("Child age settings must be between 0 and 17.");
-            }
         }
 
         setting.Value = value;

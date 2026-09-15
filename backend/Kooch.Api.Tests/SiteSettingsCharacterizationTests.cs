@@ -44,6 +44,13 @@ public sealed class SiteSettingsCharacterizationTests
             Setting("brand.second", "value", "Brand", 20),
             Setting("footer.first", "value", "Footer", 10),
             Setting("brand.first", "value", "Brand", 10),
+            Setting(ChildPricingRuleResolver.FreeChildMaxAgeKey, "6", "Reservation", 1),
+            Setting(ChildPricingRuleResolver.HalfPriceChildMinAgeKey, "7", "Reservation", 2),
+            Setting(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, "12", "Reservation", 3),
+            Setting(ChildPricingRuleResolver.HalfPriceChildRateKey, "50", "Reservation", 4),
+            Setting("reservation.paymentWindowMinutes", "10", "Reservation", 10),
+            Setting("reservation.ownerApprovalWindowMinutes", "10", "Reservation", 20),
+            Setting("reservation.ownerApprovalReminderIntervalMinutes", "3", "Reservation", 30),
             Setting("brand.deleted", "value", "Brand", 1, isDeleted: true));
         await dbContext.SaveChangesAsync();
         var controller = CreateAdminController(
@@ -55,8 +62,18 @@ public sealed class SiteSettingsCharacterizationTests
         var settings = await GetAdminSettingsAsync(controller);
 
         Assert.Equal(
-            ["brand.first", "brand.second", "footer.first"],
+            [
+                "brand.first",
+                "brand.second",
+                "footer.first",
+                "reservation.paymentWindowMinutes",
+                "reservation.ownerApprovalWindowMinutes",
+                "reservation.ownerApprovalReminderIntervalMinutes"
+            ],
             settings.Select(setting => setting.Key).ToArray());
+        Assert.All(
+            ChildPricingRuleResolver.SettingKeys,
+            key => Assert.DoesNotContain(key, settings.Select(setting => setting.Key)));
     }
 
     [Fact]
@@ -131,6 +148,62 @@ public sealed class SiteSettingsCharacterizationTests
         Assert.Equal(
             "Updated Kooch",
             (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == "site.name")).Value);
+    }
+
+    [Theory]
+    [InlineData(ChildPricingRuleResolver.FreeChildMaxAgeKey)]
+    [InlineData(ChildPricingRuleResolver.HalfPriceChildMinAgeKey)]
+    [InlineData(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey)]
+    [InlineData(ChildPricingRuleResolver.HalfPriceChildRateKey)]
+    public async Task AdminPut_RejectsSpecializedChildPricingKeysWithoutMutation(string key)
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.Add(Setting(key, "original", "Reservation", 10));
+        await dbContext.SaveChangesAsync();
+        var controller = CreateAdminController(
+            dbContext,
+            permissionService: null!,
+            SuperAdminId,
+            UserRole.SuperAdmin);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            controller.Update(
+                key,
+                new UpdateSiteSettingRequest("changed"),
+                CancellationToken.None));
+        dbContext.ChangeTracker.Clear();
+
+        Assert.Equal(StatusCodes.Status409Conflict, MapStatusCode(error));
+        Assert.Contains("reservation settings", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "original",
+            (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
+    }
+
+    [Theory]
+    [InlineData("reservation.paymentWindowMinutes")]
+    [InlineData("reservation.ownerApprovalWindowMinutes")]
+    [InlineData("reservation.ownerApprovalReminderIntervalMinutes")]
+    public async Task AdminPut_StillUpdatesReservationDeadlineKeys(string key)
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.Add(Setting(key, "10", "Reservation", 10));
+        await dbContext.SaveChangesAsync();
+        var controller = CreateAdminController(
+            dbContext,
+            permissionService: null!,
+            SuperAdminId,
+            UserRole.SuperAdmin);
+
+        var response = await controller.Update(
+            key,
+            new UpdateSiteSettingRequest("15"),
+            CancellationToken.None);
+
+        Assert.Equal("15", GetSiteSetting(response).Value);
+        Assert.Equal(
+            "15",
+            (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
     }
 
     [Theory]
@@ -249,7 +322,7 @@ public sealed class SiteSettingsCharacterizationTests
     }
 
     [Fact]
-    public async Task ReservationSettingsUpdate_WritesTheSameSiteSettingsReadByTheAdminEndpoint()
+    public async Task ReservationSettingsGetAndUpdate_RemainCanonicalForChildPricingKeys()
     {
         await using var dbContext = CreateContext();
         dbContext.SiteSettings.AddRange(
@@ -268,18 +341,60 @@ public sealed class SiteSettingsCharacterizationTests
             new UpdateReservationSettingsRequest(5, 6, 11, 45m),
             CancellationToken.None);
 
-        var adminController = CreateAdminController(
-            dbContext,
-            permissionService: null!,
-            SuperAdminId,
-            UserRole.SuperAdmin);
-        var values = (await GetAdminSettingsAsync(adminController))
-            .ToDictionary(setting => setting.Key, setting => setting.Value);
+        var getResponse = await reservationController.Get(CancellationToken.None);
+        var ok = Assert.IsType<OkObjectResult>(getResponse.Result);
+        var reservationSettings = Assert.IsType<ReservationSettingsResponse>(ok.Value);
+        var values = await dbContext.SiteSettings.AsNoTracking()
+            .Where(setting => ChildPricingRuleResolver.SettingKeys.Contains(setting.Key))
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value);
 
+        Assert.Equal(new ReservationSettingsResponse(5, 6, 11, 45m), reservationSettings);
         Assert.Equal("5", values[ChildPricingRuleResolver.FreeChildMaxAgeKey]);
         Assert.Equal("6", values[ChildPricingRuleResolver.HalfPriceChildMinAgeKey]);
         Assert.Equal("11", values[ChildPricingRuleResolver.HalfPriceChildMaxAgeKey]);
         Assert.Equal("45", values[ChildPricingRuleResolver.HalfPriceChildRateKey]);
+    }
+
+    [Theory]
+    [InlineData(-1, 7, 12, 50)]
+    [InlineData(6, 13, 12, 50)]
+    [InlineData(6, 7, 18, 50)]
+    [InlineData(6, 7, 12, 101)]
+    public async Task ReservationSettingsUpdate_InvalidChildRulesLeaveAllFourValuesUnchanged(
+        int freeChildMaxAge,
+        int halfPriceChildMinAge,
+        int halfPriceChildMaxAge,
+        decimal halfPriceChildRate)
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.AddRange(
+            Setting(ChildPricingRuleResolver.FreeChildMaxAgeKey, "6", "Reservation", 10),
+            Setting(ChildPricingRuleResolver.HalfPriceChildMinAgeKey, "7", "Reservation", 20),
+            Setting(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, "12", "Reservation", 30),
+            Setting(ChildPricingRuleResolver.HalfPriceChildRateKey, "50", "Reservation", 40));
+        await dbContext.SaveChangesAsync();
+        var controller = new AdminReservationSettingsController(
+            dbContext,
+            permissionService: null!,
+            new ChildPricingRuleResolver(dbContext));
+        SetCurrentUser(controller, SuperAdminId, UserRole.SuperAdmin);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => controller.Update(
+            new UpdateReservationSettingsRequest(
+                freeChildMaxAge,
+                halfPriceChildMinAge,
+                halfPriceChildMaxAge,
+                halfPriceChildRate),
+            CancellationToken.None));
+        dbContext.ChangeTracker.Clear();
+
+        var values = await dbContext.SiteSettings.AsNoTracking()
+            .Where(setting => ChildPricingRuleResolver.SettingKeys.Contains(setting.Key))
+            .ToDictionaryAsync(setting => setting.Key, setting => setting.Value);
+        Assert.Equal("6", values[ChildPricingRuleResolver.FreeChildMaxAgeKey]);
+        Assert.Equal("7", values[ChildPricingRuleResolver.HalfPriceChildMinAgeKey]);
+        Assert.Equal("12", values[ChildPricingRuleResolver.HalfPriceChildMaxAgeKey]);
+        Assert.Equal("50", values[ChildPricingRuleResolver.HalfPriceChildRateKey]);
     }
 
     [Fact]
