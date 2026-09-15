@@ -104,20 +104,6 @@ export default function HomePage() {
       .finally(() => setLoading(false));
   }, []);
 
-  useEffect(() => {
-    document.title = settingValue(settings, "site.defaultSeoTitle");
-    const description = settingValue(settings, "site.defaultSeoDescription");
-    let metaDescription = document.querySelector<HTMLMetaElement>(
-      'meta[name="description"]',
-    );
-    if (!metaDescription) {
-      metaDescription = document.createElement("meta");
-      metaDescription.name = "description";
-      document.head.appendChild(metaDescription);
-    }
-    metaDescription.content = description;
-  }, [settings]);
-
   const heroBackgroundUrl =
     settingValue(settings, "home.heroBackgroundUrl") ||
     defaultSiteSettings["home.heroBackgroundUrl"];

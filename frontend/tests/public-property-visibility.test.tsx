@@ -65,4 +65,25 @@ describe("public property visibility", () => {
     expect(screen.queryByText("خانه حیاط دار کاشان")).toBeNull();
     await waitFor(() => expect(mocks.fetchProperties).toHaveBeenCalledWith("/properties"));
   });
+
+  it("keeps visual Site Settings without mutating metadata in the browser", async () => {
+    document.title = "server metadata title";
+    const description = document.createElement("meta");
+    description.name = "description";
+    description.content = "server metadata description";
+    document.head.appendChild(description);
+    mocks.fetchProperties.mockResolvedValueOnce([]);
+    mocks.fetchSettings.mockResolvedValueOnce({
+      "home.heroTitle": "عنوان هیرو از تنظیمات",
+      "site.defaultSeoTitle": "عنوان کلاینت",
+      "site.defaultSeoDescription": "توضیحات کلاینت",
+    });
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("عنوان هیرو از تنظیمات")).toBeTruthy();
+    expect(document.title).toBe("server metadata title");
+    expect(description.content).toBe("server metadata description");
+    description.remove();
+  });
 });

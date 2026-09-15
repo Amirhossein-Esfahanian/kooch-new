@@ -4,17 +4,22 @@ import { Header } from "@/components/Header";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 import { OwnerPropertyProvider } from "@/components/owner/OwnerPropertyProvider";
 import { Toaster } from "sonner";
+import { fetchDefaultSeoMetadata } from "@/lib/site-settings.server";
 import { iranYekan } from "./fonts";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 
-export const metadata: Metadata = {
-  title: {
-    default: "Kooch | Find your next stay",
-    template: "%s | Kooch",
-  },
-  description: "Thoughtful stays for slow mornings and memorable journeys.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const seo = await fetchDefaultSeoMetadata();
+
+  return {
+    title: {
+      default: seo.title,
+      template: "%s | Kooch",
+    },
+    description: seo.description,
+  };
+}
 
 export default function RootLayout({
   children,
