@@ -294,15 +294,14 @@ describe("unified owner sellable room type management", () => {
     expect(
       screen.getByRole("button", { name: "افزودن نوع اتاق" }),
     ).toBeTruthy();
-    expect(
-      screen.getByRole("heading", { name: "نوع‌های اتاق ثبت‌شده" }),
-    ).toBeTruthy();
+    const registeredRoomTypesLabel = screen.getByText(
+      "نوع‌های اتاق ثبت‌شده",
+    );
+    expect(registeredRoomTypesLabel).toBeTruthy();
     expect(
       screen.queryByRole("heading", { name: "مدیریت نوع‌های اتاق" }),
     ).toBeNull();
-    const registeredRoomTypesCard = screen
-      .getByRole("heading", { name: "نوع‌های اتاق ثبت‌شده" })
-      .closest("section");
+    const registeredRoomTypesCard = registeredRoomTypesLabel.closest("section");
     expect(
       registeredRoomTypesCard?.querySelector("button")?.textContent,
     ).toBe("افزودن نوع اتاق");

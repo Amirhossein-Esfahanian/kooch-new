@@ -932,11 +932,14 @@ describe("PropertyWizard media and common areas", () => {
     expect(api.replaceCommonAreas).toHaveBeenCalledOnce();
   });
 
-  it("always identifies the active currency without showing the financial warning early", async () => {
+  it("keeps pricing-only currency details and the financial warning out of early steps", async () => {
     window.history.replaceState({}, "", "?step=0");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
-    expect(await screen.findByText(/واحد پول:/)).toBeTruthy();
+    expect(
+      await screen.findByRole("heading", { name: "اطلاعات پایه" }),
+    ).toBeTruthy();
+    expect(screen.queryByText(/واحد پول:/)).toBeNull();
     expect(screen.queryByText("تنظیمات مالی کامل نشده")).toBeNull();
   });
 

@@ -519,8 +519,7 @@ export function OwnerPricingGrid({
     };
   }, [propertyId]);
   useEffect(() => {
-    fetch("/api/backend/site-settings/public")
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
+    apiRequest<Record<string, string>>("/site-settings/management")
       .then((settings: Record<string, string>) => {
         const minimum = Number(settings["pricing.minPrice"] ?? 0);
         const maximum = Number(settings["pricing.maxPrice"] ?? 1_000_000_000);
@@ -528,6 +527,13 @@ export function OwnerPricingGrid({
           minimum: Number.isFinite(minimum) ? minimum : 0,
           maximum: Number.isFinite(maximum) ? maximum : 1_000_000_000,
         });
+      })
+      .catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    fetch("/api/backend/site-settings/public")
+      .then((response) => (response.ok ? response.json() : Promise.reject()))
+      .then((settings: Record<string, string>) => {
         setCurrencyLabel(settings["pricing.currencyLabel"] ?? "");
       })
       .catch(() => undefined);

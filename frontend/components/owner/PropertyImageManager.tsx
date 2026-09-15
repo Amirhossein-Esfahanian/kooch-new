@@ -40,8 +40,7 @@ export function PropertyImageManager({
   const effectivePropertyId = propertyId ?? images[0]?.propertyId ?? null;
 
   useEffect(() => {
-    fetch("/api/backend/site-settings/public")
-      .then((response) => response.ok ? response.json() : Promise.reject())
+    apiRequest<Record<string, string>>("/site-settings/management")
       .then((settings: Record<string, string>) => {
         const positive = (key: string, fallback: number) => {
           const value = Number(settings[key]);
