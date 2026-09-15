@@ -30,7 +30,7 @@ import {
   statusVariant,
   usePaymentCountdown,
 } from "@/lib/account-reservations";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { apiRequest } from "@/lib/owner-api";
 
 const pageSize = 10;
@@ -85,6 +85,7 @@ function ReservationPaymentCountdown({
 export default function AccountReservationsPage() {
   const router = useRouter();
   const session = useAuthSession();
+  const currencyLabel = useSiteCurrencyLabel();
   const { authenticated, loading: sessionLoading, workspaces } = session;
   const [reservations, setReservations] = useState<AccountReservation[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -165,8 +166,8 @@ export default function AccountReservationsPage() {
               <KoochTableHead>ورود</KoochTableHead>
               <KoochTableHead>خروج</KoochTableHead>
               <KoochTableHead>وضعیت</KoochTableHead>
-              <KoochTableHead>مبلغ کل</KoochTableHead>
-              <KoochTableHead>باقی‌مانده</KoochTableHead>
+              <KoochTableHead>مبلغ کل ({currencyLabel})</KoochTableHead>
+              <KoochTableHead>باقی‌مانده ({currencyLabel})</KoochTableHead>
               <KoochTableHead>پرداخت</KoochTableHead>
               <KoochTableHead>عملیات</KoochTableHead>
             </KoochTableRow>

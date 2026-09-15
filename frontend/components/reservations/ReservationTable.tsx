@@ -2,7 +2,7 @@
 
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import {
   KoochTable,
   KoochTableBody,
@@ -222,6 +222,7 @@ export function ReservationTable({
   context,
   emptyMessage = "رزروی برای نمایش وجود ندارد.",
 }: ReservationTableProps) {
+  const currencyLabel = useSiteCurrencyLabel();
   const showProperty = context === "admin";
   const colSpan = showProperty ? 10 : 9;
   const hasPrevious = currentPage > 1;
@@ -239,8 +240,8 @@ export function ReservationTable({
             <KoochTableHead>ورود</KoochTableHead>
             <KoochTableHead>خروج</KoochTableHead>
             <KoochTableHead>وضعیت</KoochTableHead>
-            <KoochTableHead>مبلغ کل</KoochTableHead>
-            <KoochTableHead>باقی‌مانده</KoochTableHead>
+            <KoochTableHead>مبلغ کل ({currencyLabel})</KoochTableHead>
+            <KoochTableHead>باقی‌مانده ({currencyLabel})</KoochTableHead>
             <KoochTableHead>عملیات</KoochTableHead>
           </KoochTableRow>
         </KoochTableHeader>
