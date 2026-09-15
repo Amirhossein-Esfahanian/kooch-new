@@ -152,5 +152,14 @@ describe("multi-inventory availability and pricing grids", () => {
     expect(dialog.className).toContain("z-[111]");
     expect(overlay?.className).toContain("z-[110]");
     expect(pricingDialog).toContain("z-[100]");
+    expect(pricingDialog).toContain(
+      'import { defaultCurrencyLabel } from "@/lib/currency";',
+    );
+    expect(pricingDialog).toContain(
+      "pricingCurrencyLabel = defaultCurrencyLabel",
+    );
+    expect(pricingDialog).not.toContain(
+      'pricingCurrencyLabel = "تومان"',
+    );
   });
 });

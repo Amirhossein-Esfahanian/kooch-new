@@ -51,6 +51,7 @@ import {
   isOutlierPrice,
   PricingSettingsWarning,
 } from "@/components/pricing/PricingWarnings";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { getCheckInCheckoutDates, parseLocalIsoDate } from "@/lib/date-utils";
 
 dayjs.extend(jalaliday);
@@ -121,7 +122,7 @@ function getDatesInWeekdays(
   );
 }
 function formatPriceWithCurrency(value: number, currencyLabel: string) {
-  return `${formatPrice(value)}${currencyLabel ? ` ${currencyLabel}` : ""}`;
+  return formatCurrency(value, { currencyLabel });
 }
 
 const pricingGuestTypeStorageKey = "kooch:owner-pricing-guest-type";
@@ -309,7 +310,7 @@ export function OwnerPricingGrid({
     minimum: 0,
     maximum: 1_000_000_000,
   });
-  const [currencyLabel, setCurrencyLabel] = useState("");
+  const currencyLabel = useSiteCurrencyLabel();
   const [loading, setLoading] = useState(false);
   const [inventoryLoading, setInventoryLoading] = useState(false);
   const [inventoryError, setInventoryError] = useState("");
@@ -530,15 +531,6 @@ export function OwnerPricingGrid({
       })
       .catch(() => undefined);
   }, []);
-  useEffect(() => {
-    fetch("/api/backend/site-settings/public")
-      .then((response) => (response.ok ? response.json() : Promise.reject()))
-      .then((settings: Record<string, string>) => {
-        setCurrencyLabel(settings["pricing.currencyLabel"] ?? "");
-      })
-      .catch(() => undefined);
-  }, []);
-
   async function loadMonth() {
     setLoading(true);
     setError("");
@@ -2080,7 +2072,7 @@ export function OwnerPricingGrid({
         onOpenChange={setBulkEditOpen}
         onSubmit={handleBulkEditSubmit}
         open={bulkEditOpen}
-        pricingCurrencyLabel={currencyLabel || "تومان"}
+        pricingCurrencyLabel={currencyLabel}
         pricingMaxValue={priceBounds.maximum}
         pricingMinValue={priceBounds.minimum}
         rooms={bulkRooms}

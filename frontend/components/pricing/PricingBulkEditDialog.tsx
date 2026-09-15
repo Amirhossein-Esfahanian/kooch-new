@@ -16,6 +16,7 @@ import {
   isBeforeLocalIsoDate,
   isSameOrAfterLocalIsoDate,
 } from "@/lib/date-utils";
+import { defaultCurrencyLabel } from "@/lib/currency";
 
 type RoomId = number | string;
 
@@ -267,7 +268,7 @@ export function PricingBulkEditDialog({
   initialStartDate = "",
   initialEndDate = "",
   initialSelectedRoomIds = emptyRoomIds,
-  pricingCurrencyLabel = "تومان",
+  pricingCurrencyLabel = defaultCurrencyLabel,
   pricingMinValue = 0,
   pricingMaxValue = Number.MAX_SAFE_INTEGER,
   outlierMinPrice = null,

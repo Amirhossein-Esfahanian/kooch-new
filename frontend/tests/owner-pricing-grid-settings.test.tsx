@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
+  currencyLabel: "تومان",
   push: vi.fn(),
 }));
 
@@ -13,6 +14,11 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
   return { ...actual, apiRequest: mocks.apiRequest };
+});
+
+vi.mock("@/lib/currency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/currency")>();
+  return { ...actual, useSiteCurrencyLabel: () => mocks.currencyLabel };
 });
 
 vi.mock("sonner", () => ({
@@ -44,7 +50,9 @@ vi.mock("@/components/pricing/RoomPricingMatrixEditor", () => ({
 }));
 
 vi.mock("@/components/pricing/PricingBulkEditDialog", () => ({
-  default: () => null,
+  default: ({ pricingCurrencyLabel }: { pricingCurrencyLabel?: string }) => (
+    <div data-currency={pricingCurrencyLabel} data-testid="bulk-pricing-dialog" />
+  ),
 }));
 
 import { OwnerPricingGrid } from "@/components/owner/OwnerPricingGrid";
@@ -91,55 +99,45 @@ function installApiResponses(
 describe("OwnerPricingGrid operational settings", () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset();
+    mocks.currencyLabel = "تومان";
     mocks.push.mockReset();
   });
 
-  it("gets price bounds from management while preserving the public currency source", async () => {
+  it("gets price bounds from management and currency from the canonical helper", async () => {
     installApiResponses({
       "pricing.minPrice": "125000",
       "pricing.maxPrice": "9750000",
     });
-    const fetchMock = vi.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        "pricing.currencyLabel": "تومان تست",
-        "pricing.minPrice": "999",
-        "pricing.maxPrice": "999",
-      }),
-    });
+    mocks.currencyLabel = "ریال آزمایشی";
+    const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
 
     render(<OwnerPricingGrid propertyId={51} />);
 
     const editor = await screen.findByTestId("pricing-editor");
     await waitFor(() =>
-      expect(editor.getAttribute("data-currency")).toBe("تومان تست"),
+      expect(editor.getAttribute("data-currency")).toBe("ریال آزمایشی"),
     );
+    expect(screen.getByText("ریال آزمایشی")).toBeTruthy();
+    expect(screen.getByTestId("bulk-pricing-dialog").getAttribute("data-currency"))
+      .toBe("ریال آزمایشی");
     expect(editor.getAttribute("data-minimum")).toBe("125000");
     expect(editor.getAttribute("data-maximum")).toBe("9750000");
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       "/site-settings/management",
     );
-    expect(fetchMock).toHaveBeenCalledWith(
-      "/api/backend/site-settings/public",
-    );
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("keeps price-bound fallbacks when management settings cannot be loaded", async () => {
+  it("keeps price-bound fallbacks independently from the configured currency", async () => {
     installApiResponses(new Error("forbidden"));
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ "pricing.currencyLabel": "تومان" }),
-      }),
-    );
+    mocks.currencyLabel = "ریال آزمایشی";
 
     render(<OwnerPricingGrid context="admin" propertyId={51} />);
 
     const editor = await screen.findByTestId("pricing-editor");
     await waitFor(() =>
-      expect(editor.getAttribute("data-currency")).toBe("تومان"),
+      expect(editor.getAttribute("data-currency")).toBe("ریال آزمایشی"),
     );
     expect(editor.getAttribute("data-minimum")).toBe("0");
     expect(editor.getAttribute("data-maximum")).toBe("1000000000");
@@ -148,5 +146,21 @@ describe("OwnerPricingGrid operational settings", () => {
         ([, init]) => init?.method === "POST" || init?.method === "PUT",
       ),
     ).toBe(false);
+  });
+
+  it("uses the canonical currency fallback without changing management bounds", async () => {
+    installApiResponses({
+      "pricing.minPrice": "125000",
+      "pricing.maxPrice": "9750000",
+    });
+
+    render(<OwnerPricingGrid propertyId={51} />);
+
+    const editor = await screen.findByTestId("pricing-editor");
+    await waitFor(() =>
+      expect(editor.getAttribute("data-currency")).toBe("تومان"),
+    );
+    expect(editor.getAttribute("data-minimum")).toBe("125000");
+    expect(editor.getAttribute("data-maximum")).toBe("9750000");
   });
 });
