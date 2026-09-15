@@ -9,6 +9,22 @@ namespace Kooch.Api.Controllers;
 [Route("api/site-settings")]
 public class SiteSettingsController(KoochDbContext dbContext) : ControllerBase
 {
+    private static readonly string[] PublicKeys =
+    [
+        "site.name",
+        "site.logoUrl",
+        "site.footerText",
+        "home.heroTitle",
+        "home.heroSubtitle",
+        "home.heroBackgroundUrl",
+        "home.searchButtonText",
+        "home.popularSectionTitle",
+        "home.popularSectionSubtitle",
+        "site.defaultSeoTitle",
+        "site.defaultSeoDescription",
+        "pricing.currencyLabel"
+    ];
+
     private static readonly string[] ManagementKeys =
     [
         "image.maxFileSizeMb",
@@ -24,7 +40,7 @@ public class SiteSettingsController(KoochDbContext dbContext) : ControllerBase
     public async Task<ActionResult<Dictionary<string, string>>> GetPublic(CancellationToken cancellationToken)
     {
         var settings = await dbContext.SiteSettings.AsNoTracking()
-            .Where(setting => setting.IsActive)
+            .Where(setting => setting.IsActive && PublicKeys.Contains(setting.Key))
             .OrderBy(setting => setting.Group)
             .ThenBy(setting => setting.SortOrder)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);

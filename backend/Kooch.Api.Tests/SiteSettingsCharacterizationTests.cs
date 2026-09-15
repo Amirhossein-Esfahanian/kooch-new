@@ -179,32 +179,73 @@ public sealed class SiteSettingsCharacterizationTests
     }
 
     [Fact]
-    public async Task PublicGet_IsAnonymousAndReturnsOnlyActiveNonDeletedSettingsIncludingInternalConfiguration()
+    public async Task PublicGet_IsAnonymousAndReturnsExactlyTheActiveNonDeletedPublicWhitelist()
     {
         Assert.Empty(
             typeof(SiteSettingsController)
                 .GetCustomAttributes<AuthorizeAttribute>());
+        var method = typeof(SiteSettingsController).GetMethod(nameof(SiteSettingsController.GetPublic));
+        Assert.Empty(method!.GetCustomAttributes<AuthorizeAttribute>());
 
         await using var dbContext = CreateContext();
         dbContext.SiteSettings.AddRange(
-            Setting("reservation.paymentWindowMinutes", "10", "Reservation", 10),
+            Setting("site.name", "  Kooch Raw  ", "Brand", 10),
+            Setting("site.logoUrl", "/logo.svg", "Brand", 20),
+            Setting("site.footerText", "Footer", "Footer", 10),
+            Setting("home.heroTitle", "Hero", "Home", 10),
+            Setting("home.heroSubtitle", "Subtitle", "Home", 20),
+            Setting("home.heroBackgroundUrl", "/hero.jpg", "Home", 30),
+            Setting("home.searchButtonText", "Search", "Home", 40),
+            Setting("home.popularSectionTitle", "Popular", "Home", 50),
+            Setting("home.popularSectionSubtitle", "Popular subtitle", "Home", 60),
+            Setting("site.defaultSeoTitle", "SEO title", "Seo", 10),
+            Setting("site.defaultSeoDescription", "SEO description", "Seo", 20),
+            Setting("pricing.currencyLabel", "Toman", "Pricing", 10),
             Setting("image.maxFileSizeMb", "2", "Images", 10),
+            Setting("image.minWidth", "800", "Images", 20),
+            Setting("image.minHeight", "600", "Images", 30),
+            Setting("image.maxImagesPerProperty", "30", "Images", 40),
+            Setting("image.enableWebpConversion", "true", "Images", 50),
+            Setting("pricing.minPrice", "100000", "Pricing", 20),
+            Setting("pricing.maxPrice", "50000000", "Pricing", 30),
+            Setting("reservation.freeChildMaxAge", "6", "Reservation", 10),
+            Setting("reservation.halfPriceChildMinAge", "7", "Reservation", 20),
+            Setting("reservation.halfPriceChildMaxAge", "12", "Reservation", 30),
+            Setting("reservation.halfPriceChildRate", "50", "Reservation", 40),
+            Setting("reservation.paymentWindowMinutes", "10", "Reservation", 50),
+            Setting("reservation.ownerApprovalWindowMinutes", "60", "Reservation", 60),
+            Setting("reservation.ownerApprovalReminderIntervalMinutes", "15", "Reservation", 70),
             Setting("ReservationCommissionPercent", "5", "Reservation", 20),
-            Setting("inactive.setting", "hidden", "Brand", 10, isActive: false),
-            Setting("deleted.setting", "hidden", "Brand", 20, isDeleted: true));
+            Setting("ReferralCommissionPercent", "4", "Commission", 20),
+            Setting("CommissionType3Percent", "3", "Commission", 30),
+            Setting("future.internalSetting", "hidden", "Future", 10));
         await dbContext.SaveChangesAsync();
-        var controller = new SiteSettingsController(dbContext);
 
-        var response = await controller.GetPublic(CancellationToken.None);
-        var ok = Assert.IsType<OkObjectResult>(response.Result);
-        var settings = Assert.IsType<Dictionary<string, string>>(ok.Value);
+        var settings = await GetPublicAsync(new SiteSettingsController(dbContext));
 
-        Assert.Equal(3, settings.Count);
-        Assert.Equal("10", settings["reservation.paymentWindowMinutes"]);
-        Assert.Equal("2", settings["image.maxFileSizeMb"]);
-        Assert.Equal("5", settings["ReservationCommissionPercent"]);
-        Assert.DoesNotContain("inactive.setting", settings.Keys);
-        Assert.DoesNotContain("deleted.setting", settings.Keys);
+        Assert.Equal(PublicSettingKeys.Order(), settings.Keys.Order());
+        Assert.Equal("  Kooch Raw  ", settings["site.name"]);
+        Assert.All(NonPublicSettingKeys, key => Assert.DoesNotContain(key, settings.Keys));
+    }
+
+    [Fact]
+    public async Task PublicGet_OmitsInactiveDeletedAndMissingWhitelistedKeys()
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.AddRange(
+            Setting("site.name", "inactive", "Brand", 10, isActive: false),
+            Setting("site.logoUrl", "deleted", "Brand", 20, isDeleted: true),
+            Setting("site.footerText", "visible", "Footer", 10));
+        await dbContext.SaveChangesAsync();
+
+        var settings = await GetPublicAsync(new SiteSettingsController(dbContext));
+
+        var setting = Assert.Single(settings);
+        Assert.Equal("site.footerText", setting.Key);
+        Assert.Equal("visible", setting.Value);
+        Assert.DoesNotContain("site.name", settings.Keys);
+        Assert.DoesNotContain("site.logoUrl", settings.Keys);
+        Assert.DoesNotContain("home.heroTitle", settings.Keys);
     }
 
     [Fact]
@@ -371,10 +412,56 @@ public sealed class SiteSettingsCharacterizationTests
         return Assert.IsAssignableFrom<IReadOnlyList<SiteSettingResponse>>(ok.Value);
     }
 
+    private static async Task<Dictionary<string, string>> GetPublicAsync(
+        SiteSettingsController controller)
+    {
+        var response = await controller.GetPublic(CancellationToken.None);
+        var ok = Assert.IsType<OkObjectResult>(response.Result);
+        return Assert.IsType<Dictionary<string, string>>(ok.Value);
+    }
+
     private static SiteSettingResponse GetSiteSetting(
         ActionResult<SiteSettingResponse> response) =>
         Assert.IsType<SiteSettingResponse>(
             Assert.IsType<OkObjectResult>(response.Result).Value);
+
+    private static readonly string[] PublicSettingKeys =
+    [
+        "site.name",
+        "site.logoUrl",
+        "site.footerText",
+        "home.heroTitle",
+        "home.heroSubtitle",
+        "home.heroBackgroundUrl",
+        "home.searchButtonText",
+        "home.popularSectionTitle",
+        "home.popularSectionSubtitle",
+        "site.defaultSeoTitle",
+        "site.defaultSeoDescription",
+        "pricing.currencyLabel"
+    ];
+
+    private static readonly string[] NonPublicSettingKeys =
+    [
+        "image.maxFileSizeMb",
+        "image.minWidth",
+        "image.minHeight",
+        "image.maxImagesPerProperty",
+        "image.enableWebpConversion",
+        "pricing.minPrice",
+        "pricing.maxPrice",
+        "reservation.freeChildMaxAge",
+        "reservation.halfPriceChildMinAge",
+        "reservation.halfPriceChildMaxAge",
+        "reservation.halfPriceChildRate",
+        "reservation.paymentWindowMinutes",
+        "reservation.ownerApprovalWindowMinutes",
+        "reservation.ownerApprovalReminderIntervalMinutes",
+        "ReservationCommissionPercent",
+        "ReferralCommissionPercent",
+        "CommissionType3Percent",
+        "future.internalSetting"
+    ];
 
     private static int MapStatusCode(Exception exception)
     {
