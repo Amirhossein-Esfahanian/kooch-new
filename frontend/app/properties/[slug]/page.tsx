@@ -13,6 +13,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { PropertyLocationMap } from "@/components/property/PropertyLocationMap";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import {
   fetchPublicApi,
   formatPrice,
@@ -92,6 +93,7 @@ function readGuestParams(
 export default function PublicPropertyPage() {
   const { slug } = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
+  const currencyLabel = useSiteCurrencyLabel();
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -290,7 +292,7 @@ export default function PublicPropertyPage() {
                         value={
                           property.breakfastOption === "Paid" &&
                           property.breakfastPrice != null
-                            ? `${breakfastLabel} (${formatPrice(property.breakfastPrice)})`
+                            ? `${breakfastLabel} (${formatPrice(property.breakfastPrice, currencyLabel)})`
                             : breakfastLabel
                         }
                       />

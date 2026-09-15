@@ -107,6 +107,7 @@ export default function HomePage() {
   const heroBackgroundUrl =
     settingValue(settings, "home.heroBackgroundUrl") ||
     defaultSiteSettings["home.heroBackgroundUrl"];
+  const currencyLabel = settingValue(settings, "pricing.currencyLabel");
 
   return (
     <div className="bg-white text-slate-900" dir="rtl">
@@ -225,7 +226,7 @@ export default function HomePage() {
                       <div>
                         <p className="text-xs text-slate-400">قیمت از</p>
                         <p className="font-bold text-[var(--theme-primary-text)]">
-                          {formatPrice(property.startingPrice)}
+                          {formatPrice(property.startingPrice, currencyLabel)}
                         </p>
                       </div>
                       <Link

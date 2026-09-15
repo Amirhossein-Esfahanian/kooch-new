@@ -86,4 +86,51 @@ describe("public property visibility", () => {
     expect(description.content).toBe("server metadata description");
     description.remove();
   });
+
+  it("uses the configured currency label without another settings request", async () => {
+    mocks.fetchSettings.mockResolvedValueOnce({
+      "pricing.currencyLabel": "ریال آزمایشی",
+    });
+    mocks.fetchProperties.mockResolvedValueOnce([
+      {
+        id: 1,
+        name: "خانه آزمون",
+        slug: "test-house",
+        city: "کاشان",
+        description: "اقامتگاه آزمون",
+        coverImageUrl: null,
+        startingPrice: 1_250_000,
+        propertyType: "TraditionalHouse",
+        promotions: [],
+      },
+    ]);
+
+    render(<HomePage />);
+
+    expect(
+      await screen.findByText("۱٬۲۵۰٬۰۰۰ ریال آزمایشی / شب"),
+    ).toBeTruthy();
+    expect(mocks.fetchSettings).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the canonical currency fallback when settings loading fails", async () => {
+    mocks.fetchSettings.mockRejectedValueOnce(new Error("offline"));
+    mocks.fetchProperties.mockResolvedValueOnce([
+      {
+        id: 1,
+        name: "خانه آزمون",
+        slug: "test-house",
+        city: "کاشان",
+        description: "اقامتگاه آزمون",
+        coverImageUrl: null,
+        startingPrice: 1_250_000,
+        propertyType: "TraditionalHouse",
+        promotions: [],
+      },
+    ]);
+
+    render(<HomePage />);
+
+    expect(await screen.findByText("۱٬۲۵۰٬۰۰۰ تومان / شب")).toBeTruthy();
+  });
 });

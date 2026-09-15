@@ -7,6 +7,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
 import { KoochCheckbox } from "@/components/KoochFormControls";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import {
   fetchPublicApi,
   formatPrice,
@@ -147,6 +148,7 @@ export default function PropertiesPage() {
 function PropertiesContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<ResultProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingSamples, setUsingSamples] = useState(false);
@@ -603,7 +605,7 @@ function PropertiesContent() {
                       <div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right">
                         <p className="text-xs text-slate-400">قیمت از</p>
                         <p className="mt-1 text-lg font-bold text-blue-700">
-                          {formatPrice(property.startingPrice)}
+                          {formatPrice(property.startingPrice, currencyLabel)}
                         </p>
                         <Link
                           className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700"

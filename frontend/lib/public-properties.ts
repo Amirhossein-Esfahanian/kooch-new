@@ -1,4 +1,5 @@
 import type { RoomKind } from "@/lib/owner-api";
+import { defaultSiteSettings } from "@/lib/site-settings";
 
 export type PublicInventoryMode = "NamedRooms" | "TypeBasedInventory";
 export type PublicBreakfastOption = "NoBreakfast" | "Included" | "Paid";
@@ -149,8 +150,14 @@ export async function fetchPublicApi<T>(path: string): Promise<T> {
   return response.json();
 }
 
-export function formatPrice(price: number | null) {
+export function formatPrice(
+  price: number | null,
+  currencyLabel = defaultSiteSettings["pricing.currencyLabel"],
+) {
+  const resolvedCurrencyLabel =
+    currencyLabel || defaultSiteSettings["pricing.currencyLabel"];
+
   return price === null || price <= 0
     ? "قیمت پس از تعیین در تقویم"
-    : `${new Intl.NumberFormat("fa-IR").format(price)} تومان / شب`;
+    : `${new Intl.NumberFormat("fa-IR").format(price)} ${resolvedCurrencyLabel} / شب`;
 }

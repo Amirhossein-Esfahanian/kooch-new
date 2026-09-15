@@ -4,7 +4,7 @@ import Image from "next/image";
 import { KoochButton } from "@/components/KoochButton";
 import { bookingModePresentation } from "@/components/booking/booking-display";
 import type { PublicBookingRoomTypeOption } from "@/lib/booking-sessions";
-import { formatCurrency } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import { formatPrice, type PublicRoomType } from "@/lib/public-properties";
 
@@ -34,6 +34,7 @@ export function PublicRoomTypeCard({
   booking?: PublicRoomTypeBookingState;
   onShowDetails: () => void;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const details = [
     roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
     roomType.stairCount != null ? `${roomType.stairCount} پله` : "",
@@ -107,7 +108,11 @@ export function PublicRoomTypeCard({
           )}
         </div>
         <div className="flex flex-col justify-between gap-5 border-t p-5 md:border-r md:border-t-0">
-          <RoomTypeBookingDetails booking={booking} roomType={roomType} />
+          <RoomTypeBookingDetails
+            booking={booking}
+            currencyLabel={currencyLabel}
+            roomType={roomType}
+          />
           <KoochButton
             className="w-full"
             onClick={onShowDetails}
@@ -123,9 +128,11 @@ export function PublicRoomTypeCard({
 
 function RoomTypeBookingDetails({
   booking,
+  currencyLabel,
   roomType,
 }: {
   booking?: PublicRoomTypeBookingState;
+  currencyLabel: string;
   roomType: PublicRoomType;
 }) {
   if (!booking) {
@@ -137,7 +144,7 @@ function RoomTypeBookingDetails({
             : "قیمت اقامت"}
         </p>
         <p className="mt-1 text-lg font-bold text-blue-700">
-          {formatPrice(roomType.displayPrice)}
+          {formatPrice(roomType.displayPrice, currencyLabel)}
         </p>
         <p className="mt-3 text-xs text-slate-500">
           برای قیمت قطعی و موجودی، تاریخ اقامت را بررسی کنید.
@@ -184,7 +191,7 @@ function RoomTypeBookingDetails({
     <div>
       <p className="text-xs text-slate-500">مبلغ کل اقامت</p>
       <p className="mt-1 text-lg font-bold text-blue-700">
-        {formatCurrency(option.finalAmount)}
+        {formatCurrency(option.finalAmount, { currencyLabel })}
       </p>
       <p className="mt-2 text-xs font-bold text-slate-700">
         <span aria-hidden="true">{mode.icon}</span> {mode.label}

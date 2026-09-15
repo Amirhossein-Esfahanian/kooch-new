@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
+  currencyLabel: "تومان",
   fetchProperty: vi.fn(),
   fetchOptions: vi.fn(),
 }));
@@ -29,6 +30,10 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({ authenticated: false, loading: false }),
 }));
+vi.mock("@/lib/currency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/currency")>();
+  return { ...actual, useSiteCurrencyLabel: () => api.currencyLabel };
+});
 vi.mock("@/components/KoochCompactDateRangePicker", () => ({
   KoochCompactDateRangePicker: ({
     calendarType,
@@ -281,6 +286,7 @@ function storeExistingCart({
 describe("public property booking integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    api.currencyLabel = "تومان";
     sessionStorage.clear();
     searchParams = new URLSearchParams({
       checkIn: "2030-08-10",
@@ -294,6 +300,27 @@ describe("public property booking integration", () => {
     });
     api.fetchProperty.mockResolvedValue(property);
     api.fetchOptions.mockResolvedValue(availableOptions);
+  });
+
+  it("uses one configured label for daily, breakfast, and booked amounts", async () => {
+    api.currencyLabel = "ریال آزمایشی";
+    api.fetchProperty.mockResolvedValueOnce({
+      ...property,
+      breakfastOption: "Paid",
+      breakfastPrice: 300_000,
+    });
+
+    render(<PublicPropertyPage />);
+
+    expect(
+      await screen.findByText("صبحانه با هزینه (۳۰۰٬۰۰۰ ریال آزمایشی / شب)"),
+    ).toBeTruthy();
+    expect(screen.getByText("۲٬۰۰۰٬۰۰۰ ریال آزمایشی / شب")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+
+    expect(await screen.findByText("۴٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
+    expect(screen.queryByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeNull();
   });
 
   it("renders the saved public location without exposing raw coordinates", async () => {

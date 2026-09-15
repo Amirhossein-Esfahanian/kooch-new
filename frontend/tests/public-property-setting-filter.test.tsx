@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  currencyLabel: "تومان",
   fetchPublicApi: vi.fn(),
   replace: vi.fn(),
 }));
@@ -27,6 +28,11 @@ vi.mock("@/components/promotions/PromotionCards", () => ({
   PromotionCards: () => null,
 }));
 
+vi.mock("@/lib/currency", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/currency")>();
+  return { ...actual, useSiteCurrencyLabel: () => mocks.currencyLabel };
+});
+
 vi.mock("@/lib/public-properties", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/public-properties")>();
   return { ...actual, fetchPublicApi: mocks.fetchPublicApi };
@@ -39,13 +45,47 @@ const settings = [
   { id: 2, name: "محدوده بازار", slug: "bazaar-area" },
 ];
 
+const resultProperty = {
+  id: 1,
+  name: "خانه آزمون",
+  slug: "test-house",
+  city: "کاشان",
+  address: "نشانی آزمون",
+  description: "اقامتگاه آزمون",
+  shortDescription: "اقامتگاه آزمون",
+  coverImageUrl: null,
+  startingPrice: 1_250_000,
+  propertyType: "TraditionalHouse",
+  roomTypes: [],
+  matchingRoomTypesCount: 1,
+  matchingRoomTypes: [],
+  guestFitStatus: "Fits",
+  availabilitySummary: "Available",
+  availabilityStatusSummary: "Available",
+  promotions: [],
+};
+
 describe("public PropertySetting search filter", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.currencyLabel = "تومان";
     searchParams = new URLSearchParams();
     mocks.fetchPublicApi.mockImplementation((path: string) =>
       Promise.resolve(path === "/property-settings" ? settings : []),
     );
+  });
+
+  it("uses the configured currency label in property result prices", async () => {
+    mocks.currencyLabel = "ریال آزمایشی";
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [resultProperty]),
+    );
+
+    render(<PropertiesPage />);
+
+    expect(
+      await screen.findByText("۱٬۲۵۰٬۰۰۰ ریال آزمایشی / شب"),
+    ).toBeTruthy();
   });
 
   it("loads options from the catalog and omits an empty filter", async () => {
