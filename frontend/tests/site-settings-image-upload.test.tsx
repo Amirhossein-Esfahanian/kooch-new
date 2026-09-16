@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ownerApi = vi.hoisted(() => ({ request: vi.fn() }));
@@ -28,31 +29,59 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 }));
 vi.mock("@/components/SharedUploader", () => ({
   SharedUploader: ({
+    autoUpload,
+    enableCrop,
     existingFiles,
     extraFormFields,
+    labels,
     onUploadError,
     onUploadSuccess,
   }: {
+    autoUpload?: boolean;
+    enableCrop?: boolean;
     existingFiles?: Array<{ url: string }>;
     extraFormFields?: Record<string, string>;
+    labels?: { description?: string };
     onUploadError?: (error: string) => void;
     onUploadSuccess?: (uploaded: Record<string, unknown>) => void;
   }) => {
     const key = extraFormFields?.key ?? "unknown";
+    const [cropPending, setCropPending] = useState(false);
+    const completeUpload = () => {
+      const uploaded = uploadedValues.get(key);
+      if (uploaded) onUploadSuccess?.(uploaded);
+    };
+
     return (
-      <div data-testid={`uploader-${key}`}>
+      <div data-auto-upload={autoUpload} data-testid={`uploader-${key}`}>
+        <p>{labels?.description}</p>
         <span data-testid={`image-value-${key}`}>
           {existingFiles?.[0]?.url ?? ""}
         </span>
         <button
           onClick={() => {
-            const uploaded = uploadedValues.get(key);
-            if (uploaded) onUploadSuccess?.(uploaded);
+            if (!autoUpload) return;
+            if (enableCrop) {
+              setCropPending(true);
+              return;
+            }
+            completeUpload();
           }}
           type="button"
         >
-          {`upload-${key}`}
+          {`select-${key}`}
         </button>
+        {cropPending && (
+          <button
+            onClick={() => {
+              setCropPending(false);
+              completeUpload();
+            }}
+            type="button"
+          >
+            {`confirm-crop-${key}`}
+          </button>
+        )}
         <button
           onClick={() => onUploadError?.("upload failed")}
           type="button"
@@ -114,6 +143,26 @@ describe("Site Settings image upload persistence", () => {
     expect(screen.getByRole("button", { name: "ذخیره" })).toBeTruthy();
   });
 
+  it("opts both image settings into auto-upload with flow-specific guidance", async () => {
+    render(<AdminSiteSettingsPage />);
+
+    const logo = await screen.findByTestId("uploader-site.logoUrl");
+    const hero = screen.getByTestId("uploader-home.heroBackgroundUrl");
+
+    expect(logo.dataset.autoUpload).toBe("true");
+    expect(hero.dataset.autoUpload).toBe("true");
+    expect(
+      screen.getByText(
+        "پس از انتخاب فایل معتبر، تصویر به‌صورت خودکار بارگذاری و ذخیره می‌شود.",
+      ),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        "پس از انتخاب و تأیید برش تصویر، فایل به‌صورت خودکار بارگذاری و ذخیره می‌شود.",
+      ),
+    ).toBeTruthy();
+  });
+
   it.each([
     ["site.logoUrl", "/uploads/site-settings/1/new-logo.png"],
     ["home.heroBackgroundUrl", "/uploads/site-settings/2/new-hero.webp"],
@@ -127,7 +176,15 @@ describe("Site Settings image upload persistence", () => {
       render(<AdminSiteSettingsPage />);
 
       await screen.findByTestId(`uploader-${key}`);
-      fireEvent.click(screen.getByRole("button", { name: `upload-${key}` }));
+      fireEvent.click(screen.getByRole("button", { name: `select-${key}` }));
+      if (key === "home.heroBackgroundUrl") {
+        expect(screen.getByTestId(`image-value-${key}`).textContent).toBe(
+          "/images/original-hero.jpg",
+        );
+        fireEvent.click(
+          screen.getByRole("button", { name: `confirm-crop-${key}` }),
+        );
+      }
 
       expect(screen.getByTestId(`image-value-${key}`).textContent).toBe(
         uploadedUrl,
@@ -170,7 +227,7 @@ describe("Site Settings image upload persistence", () => {
     const textInput = await screen.findByRole("textbox");
     fireEvent.change(textInput, { target: { value: "Kooch draft" } });
     fireEvent.click(
-      screen.getByRole("button", { name: "upload-site.logoUrl" }),
+      screen.getByRole("button", { name: "select-site.logoUrl" }),
     );
 
     expect((textInput as HTMLInputElement).value).toBe("Kooch draft");

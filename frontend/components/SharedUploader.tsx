@@ -44,6 +44,8 @@ export interface SharedUploaderProps {
   maxFileSizeMb?: number;
   /** Maximum number of pending files. */
   maxFiles?: number;
+  /** Upload accepted files immediately. Cropped images wait for crop confirmation. */
+  autoUpload?: boolean;
   /** Show thumbnails for selected image files. */
   enablePreview?: boolean;
   /** Enable optional client-side crop for images. */
@@ -175,6 +177,7 @@ export function SharedUploader({
   accept = ["image/jpeg", "image/png", "image/webp"],
   maxFileSizeMb = 5,
   maxFiles,
+  autoUpload = false,
   enablePreview = true,
   enableCrop = false,
   cropAspectRatio = 4 / 3,
@@ -198,9 +201,11 @@ export function SharedUploader({
 }: SharedUploaderProps) {
   const text = { ...defaultLabels, ...(labels ?? {}) };
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const uploadingRef = useRef(false);
   const [items, setItems] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [cropTarget, setCropTarget] = useState<PendingFile | null>(null);
@@ -229,41 +234,53 @@ export function SharedUploader({
     [onUploadError, useToastNotifications],
   );
 
-  const addFiles = useCallback(
-    (files: FileList | File[]) => {
-      if (disabled) return;
-      setError("");
-      setMessage("");
-      const incoming = Array.from(files);
-      const next: PendingFile[] = [];
-      for (const file of incoming) {
-        if (accept.length && !accept.includes(file.type)) {
-          setSafeError("فرمت تصویر پشتیبانی نمی‌شود");
-          continue;
-        }
-        if (file.size > maxFileSizeMb * 1024 * 1024) {
-          setSafeError("حجم تصویر بیش از حد مجاز است");
-          continue;
-        }
-        next.push(makePendingFile(file, enablePreview));
+  function addFiles(files: FileList | File[]) {
+    if (disabled || uploadingRef.current) return;
+    setUploadFailed(false);
+    setError("");
+    setMessage("");
+    const incoming = Array.from(files);
+    const next: PendingFile[] = [];
+    for (const file of incoming) {
+      if (accept.length && !accept.includes(file.type)) {
+        setSafeError("فرمت تصویر پشتیبانی نمی‌شود");
+        continue;
       }
+      if (file.size > maxFileSizeMb * 1024 * 1024) {
+        setSafeError("حجم تصویر بیش از حد مجاز است");
+        continue;
+      }
+      next.push(makePendingFile(file, enablePreview));
+    }
+
+    if (!autoUpload) {
       setItems((current) => {
         const combined = multiple ? [...current, ...next] : next.slice(0, 1);
         return typeof maxFiles === "number"
           ? combined.slice(0, maxFiles)
           : combined;
       });
-    },
-    [
-      accept,
-      disabled,
-      enablePreview,
-      maxFileSizeMb,
-      maxFiles,
-      multiple,
-      setSafeError,
-    ],
-  );
+      return;
+    }
+
+    const combined = multiple ? [...items, ...next] : next.slice(0, 1);
+    const acceptedItems =
+      typeof maxFiles === "number"
+        ? combined.slice(0, maxFiles)
+        : combined;
+    setItems(acceptedItems);
+
+    if (acceptedItems.length === 0) return;
+
+    const cropCandidate = acceptedItems[0];
+    if (enableCrop && cropCandidate.previewUrl) {
+      setCroppedPixels(null);
+      setCropTarget(cropCandidate);
+      return;
+    }
+
+    upload(acceptedItems);
+  }
 
   function removeItem(id: string) {
     setItems((current) => {
@@ -280,14 +297,15 @@ export function SharedUploader({
       const previewUrl = enablePreview
         ? URL.createObjectURL(croppedFile)
         : null;
-      setItems((current) =>
-        current.map((item) => {
-          if (item.id !== cropTarget.id) return item;
-          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-          return { ...item, file: croppedFile, previewUrl };
-        }),
-      );
+      const croppedItem = { ...cropTarget, file: croppedFile, previewUrl };
+      const updatedItems = items.map((item) => {
+        if (item.id !== cropTarget.id) return item;
+        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+        return croppedItem;
+      });
+      setItems(updatedItems);
       setCropTarget(null);
+      if (autoUpload) upload(updatedItems);
     } catch (caught) {
       setSafeError(
         caught instanceof Error ? caught.message : "برش تصویر انجام نشد.",
@@ -295,17 +313,21 @@ export function SharedUploader({
     }
   }
 
-  function upload() {
-    if (!items.length) {
+  function upload(uploadItems: PendingFile[] = items) {
+    if (!uploadItems.length) {
       setSafeError("حداقل یک فایل انتخاب کنید.");
       return;
     }
+    if (uploadingRef.current) return;
+
+    uploadingRef.current = true;
     setUploading(true);
+    setUploadFailed(false);
     setError("");
     setMessage("");
 
     const formData = new FormData();
-    items.forEach((item) => formData.append(fieldName, item.file));
+    uploadItems.forEach((item) => formData.append(fieldName, item.file));
     const fields = { ...(metadata ?? {}), ...(extraFormFields ?? {}) };
     Object.entries(fields).forEach(([key, value]) => {
       if (value !== null && value !== undefined)
@@ -323,12 +345,13 @@ export function SharedUploader({
       setItems((current) => current.map((item) => ({ ...item, progress })));
     };
     request.onload = () => {
+      uploadingRef.current = false;
       setUploading(false);
       if (request.status >= 200 && request.status < 300) {
         const parsed = request.responseText
           ? JSON.parse(request.responseText)
           : {};
-        items.forEach(
+        uploadItems.forEach(
           (item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl),
         );
         setItems([]);
@@ -337,13 +360,16 @@ export function SharedUploader({
         onUploadSuccess?.(parsed);
         return;
       }
+      setUploadFailed(true);
       const body = JSON.parse(request.responseText || "{}") as {
         message?: string;
       };
       setSafeError(body.message ?? "آپلود فایل انجام نشد.");
     };
     request.onerror = () => {
+      uploadingRef.current = false;
       setUploading(false);
+      setUploadFailed(true);
       setSafeError("ارتباط با سرور برای آپلود برقرار نشد.");
     };
     request.send(formData);
@@ -615,14 +641,16 @@ export function SharedUploader({
         </p>
       )}
 
-      <button
-        className="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-60"
-        disabled={disabled || uploading || !items.length}
-        onClick={upload}
-        type="button"
-      >
-        {uploading ? text.uploadingText : text.uploadText}
-      </button>
+      {(!autoUpload || uploading || (uploadFailed && items.length > 0)) && (
+        <button
+          className="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-60"
+          disabled={disabled || uploading || !items.length}
+          onClick={() => upload()}
+          type="button"
+        >
+          {uploading ? text.uploadingText : text.uploadText}
+        </button>
+      )}
 
       <KoochDialog
         footer={

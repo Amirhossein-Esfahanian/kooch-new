@@ -475,6 +475,7 @@ export default function AdminSiteSettingsPage() {
               ? ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
               : ["image/png", "image/jpeg", "image/webp"]
           }
+          autoUpload
           aspectRatio={isLogo ? "1 / 1" : "16 / 9"}
           cropAspectRatio={isLogo ? 1 : 16 / 9}
           enableCrop={!isLogo}
@@ -499,8 +500,8 @@ export default function AdminSiteSettingsPage() {
           labels={{
             title: imageLabels[setting.key] ?? setting.label,
             description: isLogo
-              ? "لوگوی سایت را انتخاب و آپلود کنید."
-              : "تصویر سایت را انتخاب و آپلود کنید.",
+              ? "پس از انتخاب فایل معتبر، تصویر به‌صورت خودکار بارگذاری و ذخیره می‌شود."
+              : "پس از انتخاب و تأیید برش تصویر، فایل به‌صورت خودکار بارگذاری و ذخیره می‌شود.",
             browseText: "انتخاب تصویر",
             uploadText: "آپلود",
             uploadingText: "در حال آپلود...",
