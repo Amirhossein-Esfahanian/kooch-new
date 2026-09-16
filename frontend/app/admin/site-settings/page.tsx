@@ -191,6 +191,42 @@ function validateGenericSetting(
   return numberValue < 1 ? "مقدار باید حداقل ۱ باشد" : undefined;
 }
 
+function parseBooleanValue(value: string) {
+  const normalized = value.trim().toLowerCase();
+  if (normalized === "true") return true;
+  if (normalized === "false") return false;
+  return null;
+}
+
+function isGenericSettingDirty(
+  setting: SiteSettingResponse,
+  draftValue: string,
+) {
+  if (setting.type === "ImageUrl") return false;
+
+  if (setting.type === "Number") {
+    const persistedIsNumeric =
+      setting.value.trim() !== "" && Number.isFinite(Number(setting.value));
+    const draftIsNumeric =
+      draftValue.trim() !== "" && Number.isFinite(Number(draftValue));
+
+    return persistedIsNumeric && draftIsNumeric
+      ? Number(setting.value) !== Number(draftValue)
+      : setting.value !== draftValue;
+  }
+
+  if (setting.type === "Boolean") {
+    const persistedBoolean = parseBooleanValue(setting.value);
+    const draftBoolean = parseBooleanValue(draftValue);
+
+    return persistedBoolean !== null && draftBoolean !== null
+      ? persistedBoolean !== draftBoolean
+      : setting.value !== draftValue;
+  }
+
+  return setting.value !== draftValue;
+}
+
 function toPricingBoundsDraft(
   bounds: PricingBoundsResponse,
 ): PricingBoundsDraft {
@@ -239,7 +275,7 @@ export default function AdminSiteSettingsPage() {
   const [settings, setSettings] = useState<SiteSettingResponse[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set());
   const [pricingBounds, setPricingBounds] =
     useState<PricingBoundsResponse | null>(null);
   const [pricingBoundsDraft, setPricingBoundsDraft] =
@@ -309,12 +345,24 @@ export default function AdminSiteSettingsPage() {
   }
 
   async function save(setting: SiteSettingResponse) {
-    if (validateGenericSetting(setting, drafts[setting.key] ?? "")) return;
+    const draftValue = drafts[setting.key] ?? "";
+    if (
+      savingKeys.has(setting.key) ||
+      validateGenericSetting(setting, draftValue) ||
+      !isGenericSettingDirty(setting, draftValue)
+    ) {
+      return;
+    }
 
-    setSavingKey(setting.key);
+    setSavingKeys((current) => new Set(current).add(setting.key));
     try {
+      const response = await updateSetting(setting.key, draftValue);
       const updatedSettings = [
-        await updateSetting(setting.key, drafts[setting.key] ?? ""),
+        {
+          ...response,
+          value:
+            typeof response.value === "string" ? response.value : draftValue,
+        },
       ];
 
       setSettings((current) =>
@@ -335,7 +383,11 @@ export default function AdminSiteSettingsPage() {
         caught instanceof Error ? caught.message : "ذخیره تنظیمات ناموفق بود",
       );
     } finally {
-      setSavingKey(null);
+      setSavingKeys((current) => {
+        const next = new Set(current);
+        next.delete(setting.key);
+        return next;
+      });
     }
   }
 
@@ -563,6 +615,11 @@ export default function AdminSiteSettingsPage() {
     const errorId = error ? `${controlId}-error` : undefined;
     const describedBy = [descriptionId, errorId].filter(Boolean).join(" ") ||
       undefined;
+    const isDirty = isGenericSettingDirty(
+      setting,
+      drafts[setting.key] ?? "",
+    );
+    const isSaving = savingKeys.has(setting.key);
 
     return (
       <div
@@ -590,8 +647,8 @@ export default function AdminSiteSettingsPage() {
           </div>
           {setting.type !== "ImageUrl" && (
             <KoochButton
-              disabled={savingKey === setting.key}
-              loading={savingKey === setting.key}
+              disabled={!isDirty || Boolean(error) || isSaving}
+              loading={isSaving}
               onClick={() => save(setting)}
               size="sm"
               type="button"
