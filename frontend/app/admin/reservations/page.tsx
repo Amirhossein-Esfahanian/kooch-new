@@ -26,6 +26,7 @@ import {
   type RoomResponse,
   type RoomTypeResponse,
 } from "@/lib/owner-api";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import { toast } from "sonner";
 
 type ReservationStatusFilter = "" | ReservationTableStatus;
@@ -174,6 +175,7 @@ const paymentStatusOptions: Array<{
 ];
 
 export default function AdminReservationsPage() {
+  const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [rooms, setRooms] = useState<RoomResponse[]>([]);
@@ -789,6 +791,10 @@ export default function AdminReservationsPage() {
                     value={draftFilters.createdTo}
                   />
                 </KoochField>
+
+                <p className="text-xs font-medium text-muted-foreground md:col-span-2 xl:col-span-4">
+                  واحد مبالغ: {currencyLabel}
+                </p>
 
                 <KoochField label="مبلغ کل از">
                   <KoochInput

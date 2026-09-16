@@ -20,6 +20,7 @@ import {
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import { KoochIcon } from "../KoochIcon";
 
 const promotionTypes: { value: PromotionType; label: string }[] = [
@@ -97,6 +98,7 @@ export function PromotionWorkspace({
   propertyId?: number;
   admin?: boolean;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [promotions, setPromotions] = useState<PromotionResponse[]>([]);
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [rooms, setRooms] = useState<RoomTypeResponse[]>([]);
@@ -699,7 +701,7 @@ export function PromotionWorkspace({
             )}
             {draft.type === "FixedAmountDiscount" && (
               <label className="grid gap-2 text-sm font-bold">
-                مبلغ تخفیف
+                مبلغ تخفیف ({currencyLabel})
                 <KoochInput
                   min="0"
                   onChange={(event) =>
