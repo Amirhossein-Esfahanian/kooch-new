@@ -16,7 +16,15 @@ vi.mock("@/components/auth/AuthSessionProvider", () => ({
   }),
 }));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
-  AdminLayout: ({ children }: { children: React.ReactNode }) => children,
+  AdminLayout: ({
+    children,
+    requiredPlatformPermission,
+  }: {
+    children: React.ReactNode;
+    requiredPlatformPermission?: string;
+  }) => (
+    <div data-required-permission={requiredPlatformPermission}>{children}</div>
+  ),
 }));
 vi.mock("@/components/SharedUploader", () => ({
   SharedUploader: ({
@@ -94,6 +102,10 @@ describe("Site Settings image upload persistence", () => {
     render(<AdminSiteSettingsPage />);
 
     await screen.findByTestId("uploader-site.logoUrl");
+
+    expect(
+      document.querySelector('[data-required-permission="ManageSettings"]'),
+    ).toBeTruthy();
 
     expect(screen.getAllByRole("button", { name: "ذخیره" })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "ذخیره" })).toBeTruthy();

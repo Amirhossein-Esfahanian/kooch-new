@@ -78,6 +78,7 @@ const adminMenuItems: DashboardMenuItem[] = [
     label: "تنظیمات سایت",
     icon: "/svgs/gear-complex-code.svg",
     href: "/admin/site-settings",
+    platformPermission: "ManageSettings",
   },
   {
     label: "تنظیمات رزرو",

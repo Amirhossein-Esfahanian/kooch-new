@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
@@ -14,9 +14,11 @@ const auth = vi.hoisted(() => ({
   },
 }));
 
+const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/users",
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => navigation,
 }));
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
@@ -29,6 +31,7 @@ vi.mock("@/components/KoochUserMenu", () => ({
 }));
 
 beforeEach(() => {
+  navigation.replace.mockReset();
   auth.current = {
     authenticated: true,
     loading: false,
@@ -143,5 +146,53 @@ describe("Admin header layout", () => {
     expect(
       screen.getByRole("link", { name: "اعضای اقامتگاه‌ها" }),
     ).toBeTruthy();
+  });
+
+  it("shows Site Settings only to SuperAdmin or an AdminAssistant with ManageSettings", () => {
+    const { rerender } = render(<AdminLayout>محتوا</AdminLayout>);
+
+    expect(
+      screen.getByRole("link", { name: "تنظیمات سایت" }),
+    ).toBeTruthy();
+
+    auth.current.platformRole = "AdminAssistant";
+    rerender(<AdminLayout>محتوا</AdminLayout>);
+    expect(
+      screen.queryByRole("link", { name: "تنظیمات سایت" }),
+    ).toBeNull();
+
+    auth.current.platformPermissions = ["ManageSettings"];
+    rerender(<AdminLayout>محتوا</AdminLayout>);
+    expect(
+      screen.getByRole("link", { name: "تنظیمات سایت" }),
+    ).toBeTruthy();
+  });
+
+  it("redirects an AdminAssistant without ManageSettings away from guarded content", async () => {
+    auth.current.platformRole = "AdminAssistant";
+
+    render(
+      <AdminLayout requiredPlatformPermission="ManageSettings">
+        <div data-testid="site-settings-content">تنظیمات</div>
+      </AdminLayout>,
+    );
+
+    await waitFor(() =>
+      expect(navigation.replace).toHaveBeenCalledWith("/admin"),
+    );
+    expect(screen.queryByTestId("site-settings-content")).toBeNull();
+  });
+
+  it("allows an AdminAssistant with ManageSettings into guarded content", () => {
+    auth.current.platformRole = "AdminAssistant";
+    auth.current.platformPermissions = ["ManageSettings"];
+
+    render(
+      <AdminLayout requiredPlatformPermission="ManageSettings">
+        <div data-testid="site-settings-content">تنظیمات</div>
+      </AdminLayout>,
+    );
+
+    expect(screen.getByTestId("site-settings-content")).toBeTruthy();
   });
 });

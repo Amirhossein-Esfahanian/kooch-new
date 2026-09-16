@@ -382,7 +382,7 @@ export default function AdminSiteSettingsPage() {
   }
 
   return (
-    <AdminLayout>
+    <AdminLayout requiredPlatformPermission="ManageSettings">
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
         <KoochPageHeader
           appearance="plain"
