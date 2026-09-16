@@ -51,15 +51,66 @@ type PricingBoundsDraft = {
 
 type PricingBoundsErrors = Partial<Record<keyof PricingBoundsDraft, string>>;
 
-const groupLabels: Record<string, string> = {
-  Brand: "برند سایت",
-  Homepage: "صفحه اصلی",
-  SEO: "سئو",
-  Footer: "فوتر",
-  Images: "تنظیمات تصاویر",
-  Pricing: "تنظیمات قیمت‌گذاری",
-  Reservation: "تنظیمات رزرو",
-};
+const siteSettingsSections = [
+  {
+    id: "identity-and-brand",
+    title: "هویت و برند",
+    description: "نام، لوگو و اطلاعات پایه نمایش سایت",
+    settingKeys: ["site.name", "site.logoUrl", "site.footerText"],
+  },
+  {
+    id: "homepage",
+    title: "صفحه اصلی",
+    description: "محتوا و تصویر بخش‌های اصلی صفحه نخست",
+    settingKeys: [
+      "home.heroTitle",
+      "home.heroSubtitle",
+      "home.heroBackgroundUrl",
+      "home.searchButtonText",
+      "home.popularSectionTitle",
+      "home.popularSectionSubtitle",
+    ],
+  },
+  {
+    id: "images-and-uploads",
+    title: "تصاویر و بارگذاری",
+    description: "محدودیت‌ها و رفتار پردازش تصاویر اقامتگاه",
+    settingKeys: [
+      "image.maxFileSizeMb",
+      "image.minWidth",
+      "image.minHeight",
+      "image.maxImagesPerProperty",
+      "image.enableWebpConversion",
+    ],
+  },
+  {
+    id: "pricing-and-currency",
+    title: "قیمت‌گذاری و نمایش مبلغ",
+    description: "حدود قیمت‌گذاری و نحوه نمایش واحد پول",
+    settingKeys: ["pricing.currencyLabel"],
+    includesPricingBounds: true,
+  },
+  {
+    id: "seo",
+    title: "سئو",
+    description: "عنوان و توضیحات پیش‌فرض برای موتورهای جستجو",
+    settingKeys: ["site.defaultSeoTitle", "site.defaultSeoDescription"],
+  },
+  {
+    id: "commissions",
+    title: "کمیسیون‌ها",
+    description: "تنظیمات آماده‌سازی‌شده برای مدل‌های کمیسیون آینده",
+    settingKeys: [
+      "ReservationCommissionPercent",
+      "ReferralCommissionPercent",
+      "CommissionType3Percent",
+    ],
+  },
+] as const;
+
+const knownSiteSettingKeys = new Set<string>(
+  siteSettingsSections.flatMap((section) => section.settingKeys),
+);
 
 const imageLabels: Record<string, string> = {
   "site.logoUrl": "لوگوی سایت",
@@ -67,9 +118,9 @@ const imageLabels: Record<string, string> = {
 };
 
 const settingDisplayLabels: Record<string, string> = {
-  ReservationCommissionPercent: "ReservationCommissionPercent",
-  ReferralCommissionPercent: "ReferralCommissionPercent",
-  CommissionType3Percent: "CommissionType3Percent",
+  ReservationCommissionPercent: "کمیسیون رزرو عادی",
+  ReferralCommissionPercent: "کمیسیون رزرو از لینک پذیرش",
+  CommissionType3Percent: "کمیسیون رزرو از لینک اختصاصی اقامتگاه",
   "reservation.freeChildMaxAge": "حداکثر سن کودک رایگان",
   "reservation.halfPriceChildMinAge": "حداقل سن کودک نیم‌بها",
   "reservation.halfPriceChildMaxAge": "حداکثر سن کودک نیم‌بها",
@@ -184,16 +235,21 @@ export default function AdminSiteSettingsPage() {
       .finally(() => setPricingBoundsLoading(false));
   }, [authenticated, sessionLoading, workspaces]);
 
-  const groupedSettings = useMemo(() => {
-    return settings.reduce<Record<string, SiteSettingResponse[]>>(
-      (groups, setting) => {
-        groups[setting.group] = groups[setting.group] ?? [];
-        groups[setting.group].push(setting);
-        return groups;
-      },
-      {},
-    );
+  const sectionedSettings = useMemo(() => {
+    return siteSettingsSections.map((section) => ({
+      ...section,
+      includesPricingBounds:
+        "includesPricingBounds" in section && section.includesPricingBounds,
+      items: settings.filter((setting) =>
+        section.settingKeys.some((key) => key === setting.key),
+      ),
+    }));
   }, [settings]);
+
+  const unmappedSettings = useMemo(
+    () => settings.filter((setting) => !knownSiteSettingKeys.has(setting.key)),
+    [settings],
+  );
 
   function validateCentralSettings() {
     for (const key of commissionSettingKeys) {
@@ -457,6 +513,42 @@ export default function AdminSiteSettingsPage() {
     );
   }
 
+  function renderSetting(setting: SiteSettingResponse) {
+    return (
+      <div
+        className="grid gap-3 rounded-lg border border-border bg-muted p-4"
+        key={setting.key}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <label className="font-bold text-foreground" htmlFor={setting.key}>
+              {settingDisplayLabels[setting.key] ??
+                imageLabels[setting.key] ??
+                setting.label}
+            </label>
+            {setting.description && (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {setting.description}
+              </p>
+            )}
+          </div>
+          {setting.type !== "ImageUrl" && (
+            <KoochButton
+              disabled={savingKey === setting.key}
+              loading={savingKey === setting.key}
+              onClick={() => save(setting)}
+              size="sm"
+              type="button"
+            >
+              ذخیره
+            </KoochButton>
+          )}
+        </div>
+        <div id={setting.key}>{renderInput(setting)}</div>
+      </div>
+    );
+  }
+
   return (
     <AdminLayout requiredPlatformPermission="ManageSettings">
       <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
@@ -466,6 +558,22 @@ export default function AdminSiteSettingsPage() {
           eyebrow="پنل مدیریت"
           title="تنظیمات سایت"
         />
+        <nav aria-label="بخش‌های تنظیمات سایت">
+          <KoochCard
+            className="flex flex-wrap items-center gap-2"
+            padding="sm"
+          >
+            {siteSettingsSections.map((section) => (
+              <a
+                className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                href={`#${section.id}`}
+                key={section.id}
+              >
+                {section.title}
+              </a>
+            ))}
+          </KoochCard>
+        </nav>
         {loading && (
           <KoochCard variant="elevated">
             <p className="text-sm text-muted-foreground">
@@ -473,13 +581,23 @@ export default function AdminSiteSettingsPage() {
             </p>
           </KoochCard>
         )}
-        {Object.entries(groupedSettings).map(([group, items]) => (
-          <KoochCard key={group} variant="elevated">
-            <h2 className="text-xl font-bold text-foreground">
-              {groupLabels[group] ?? group}
-            </h2>
+        {sectionedSettings.map((section) => (
+          <KoochCard
+            className="scroll-mt-24"
+            id={section.id}
+            key={section.id}
+            variant="elevated"
+          >
+            <div className="grid gap-1">
+              <h2 className="text-xl font-semibold text-foreground">
+                {section.title}
+              </h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                {section.description}
+              </p>
+            </div>
             <div className="mt-5 grid gap-5">
-              {group === "Pricing" && (
+              {section.includesPricingBounds && (
                 <div className="grid gap-4 rounded-lg border border-border bg-muted p-4">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="grid gap-1">
@@ -576,51 +694,31 @@ export default function AdminSiteSettingsPage() {
                   )}
                 </div>
               )}
-              {items.map((setting) => (
-                <div
-                  className="grid gap-3 rounded-lg border border-border bg-muted p-4"
-                  key={setting.key}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <label
-                        className="font-bold text-foreground"
-                        htmlFor={setting.key}
-                      >
-                        {settingDisplayLabels[setting.key] ??
-                          imageLabels[setting.key] ??
-                          setting.label}
-                      </label>
-                      <p
-                        className="mt-1 text-xs font-semibold text-muted-foreground"
-                        dir="ltr"
-                      >
-                        {setting.key}
-                      </p>
-                      {setting.description && (
-                        <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                          {setting.description}
-                        </p>
-                      )}
-                    </div>
-                    {setting.type !== "ImageUrl" && (
-                      <KoochButton
-                        disabled={savingKey === setting.key}
-                        loading={savingKey === setting.key}
-                        onClick={() => save(setting)}
-                        size="sm"
-                        type="button"
-                      >
-                        ذخیره
-                      </KoochButton>
-                    )}
-                  </div>
-                  <div id={setting.key}>{renderInput(setting)}</div>
-                </div>
-              ))}
+              {section.id === "commissions" && (
+                <p className="rounded-lg border border-border bg-muted p-3 text-sm leading-6 text-muted-foreground">
+                  این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در حال
+                  حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
+                </p>
+              )}
+              {section.items.map(renderSetting)}
             </div>
           </KoochCard>
         ))}
+        {unmappedSettings.length > 0 && (
+          <KoochCard variant="elevated">
+            <div className="grid gap-1">
+              <h2 className="text-xl font-semibold text-foreground">
+                سایر تنظیمات
+              </h2>
+              <p className="text-sm leading-6 text-muted-foreground">
+                تنظیمات جدیدی که هنوز در بخش‌های اصلی دسته‌بندی نشده‌اند.
+              </p>
+            </div>
+            <div className="mt-5 grid gap-5">
+              {unmappedSettings.map(renderSetting)}
+            </div>
+          </KoochCard>
+        )}
       </main>
     </AdminLayout>
   );

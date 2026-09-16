@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ownerApi = vi.hoisted(() => ({ request: vi.fn() }));
@@ -68,7 +74,8 @@ describe("Admin Site Settings pricing bounds editor", () => {
     expect(screen.getAllByLabelText(/حداکثر قیمت روزانه/)).toHaveLength(1);
     expect(screen.queryByText("pricing.minPrice")).toBeNull();
     expect(screen.queryByText("pricing.maxPrice")).toBeNull();
-    expect(screen.getByText("pricing.currencyLabel")).toBeTruthy();
+    expect(screen.getByText("واحد پول")).toBeTruthy();
+    expect(screen.queryByText("pricing.currencyLabel")).toBeNull();
     expect(ownerApi.request).toHaveBeenCalledWith(
       "/admin/site-settings/pricing-bounds",
     );
@@ -186,7 +193,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
     expect(await screen.findByText("دریافت قیمت ناموفق بود")).toBeTruthy();
     const siteName = screen.getByDisplayValue("Kooch");
     fireEvent.change(siteName, { target: { value: "Kooch updated" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "ذخیره" })[1]);
+    fireEvent.click(saveButtonFor(siteName));
 
     await waitFor(() =>
       expect(ownerApi.request).toHaveBeenCalledWith(
@@ -207,7 +214,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
 
     const currency = screen.getByDisplayValue("تومان");
     fireEvent.change(currency, { target: { value: "ریال آزمایشی" } });
-    fireEvent.click(screen.getAllByRole("button", { name: "ذخیره" })[0]);
+    fireEvent.click(saveButtonFor(currency));
 
     await waitFor(() =>
       expect(ownerApi.request).toHaveBeenCalledWith(
@@ -220,6 +227,14 @@ describe("Admin Site Settings pricing bounds editor", () => {
     );
   });
 });
+
+function saveButtonFor(input: HTMLElement) {
+  const settingCard = input.closest("div.grid.gap-3");
+  expect(settingCard).toBeTruthy();
+  return within(settingCard as HTMLElement).getByRole("button", {
+    name: "ذخیره",
+  });
+}
 
 function setting(
   id: number,
