@@ -51,6 +51,10 @@ public sealed class SiteSettingsCharacterizationTests
             Setting("reservation.paymentWindowMinutes", "10", "Reservation", 10),
             Setting("reservation.ownerApprovalWindowMinutes", "10", "Reservation", 20),
             Setting("reservation.ownerApprovalReminderIntervalMinutes", "3", "Reservation", 30),
+            Setting(PricingBoundsService.MinimumPriceKey, "100000", "Pricing", 10),
+            Setting(PricingBoundsService.MaximumPriceKey, "50000000", "Pricing", 20),
+            Setting("pricing.currencyLabel", "Toman", "Pricing", 30),
+            Setting("pricing.minPrice.future", "visible", "Pricing", 40),
             Setting("brand.deleted", "value", "Brand", 1, isDeleted: true));
         await dbContext.SaveChangesAsync();
         var controller = CreateAdminController(
@@ -65,11 +69,16 @@ public sealed class SiteSettingsCharacterizationTests
             [
                 "brand.first",
                 "brand.second",
-                "footer.first"
+                "footer.first",
+                "pricing.currencyLabel",
+                "pricing.minPrice.future"
             ],
             settings.Select(setting => setting.Key).ToArray());
         Assert.All(
             SpecializedReservationKeys,
+            key => Assert.DoesNotContain(key, settings.Select(setting => setting.Key)));
+        Assert.All(
+            SpecializedPricingKeys,
             key => Assert.DoesNotContain(key, settings.Select(setting => setting.Key)));
     }
 
@@ -177,6 +186,59 @@ public sealed class SiteSettingsCharacterizationTests
         Assert.Contains("reservation settings", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.Equal(
             "original",
+            (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
+    }
+
+    [Theory]
+    [InlineData(PricingBoundsService.MinimumPriceKey)]
+    [InlineData(PricingBoundsService.MaximumPriceKey)]
+    public async Task AdminPut_RejectsSpecializedPricingBoundsWithoutMutation(string key)
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.Add(Setting(key, "100", "Pricing", 10));
+        await dbContext.SaveChangesAsync();
+        var controller = CreateAdminController(
+            dbContext,
+            permissionService: null!,
+            SuperAdminId,
+            UserRole.SuperAdmin);
+
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            controller.Update(
+                key,
+                new UpdateSiteSettingRequest("200"),
+                CancellationToken.None));
+        dbContext.ChangeTracker.Clear();
+
+        Assert.Equal(StatusCodes.Status409Conflict, MapStatusCode(error));
+        Assert.Contains("pricing bounds", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "100",
+            (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
+    }
+
+    [Theory]
+    [InlineData("pricing.currencyLabel")]
+    [InlineData("pricing.minPrice.future")]
+    public async Task AdminPut_PreservesNonSpecializedPricingKeys(string key)
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.Add(Setting(key, "original", "Pricing", 10));
+        await dbContext.SaveChangesAsync();
+        var controller = CreateAdminController(
+            dbContext,
+            permissionService: null!,
+            SuperAdminId,
+            UserRole.SuperAdmin);
+
+        var response = await controller.Update(
+            key,
+            new UpdateSiteSettingRequest("changed"),
+            CancellationToken.None);
+
+        Assert.Equal("changed", GetSiteSetting(response).Value);
+        Assert.Equal(
+            "changed",
             (await dbContext.SiteSettings.SingleAsync(setting => setting.Key == key)).Value);
     }
 
@@ -539,6 +601,12 @@ public sealed class SiteSettingsCharacterizationTests
         ReservationPaymentWindowSettings.SettingKey,
         ReservationOwnerApprovalWindowSettings.SettingKey,
         ReservationOwnerApprovalReminderSettings.SettingKey
+    ];
+
+    private static readonly string[] SpecializedPricingKeys =
+    [
+        PricingBoundsService.MinimumPriceKey,
+        PricingBoundsService.MaximumPriceKey
     ];
 
     private static readonly string[] NonPublicSettingKeys =

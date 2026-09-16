@@ -201,7 +201,7 @@ public sealed class AdminPricingBoundsTests
     }
 
     [Fact]
-    public async Task GenericAdminEndpoints_StillExposeAndUpdatePricingBoundsTemporarily()
+    public async Task GenericAdminEndpoints_ExcludeAndRejectPricingBounds()
     {
         await using var dbContext = CreateContext();
         AddBounds(dbContext, "100", "1000");
@@ -215,15 +215,18 @@ public sealed class AdminPricingBoundsTests
         var getResponse = await controller.Get(CancellationToken.None);
         var settings = Assert.IsAssignableFrom<IReadOnlyList<SiteSettingResponse>>(
             Assert.IsType<OkObjectResult>(getResponse.Result).Value);
-        await controller.Update(
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.Update(
             PricingBoundsService.MinimumPriceKey,
             new UpdateSiteSettingRequest("200"),
-            CancellationToken.None);
+            CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => controller.Update(
+            PricingBoundsService.MaximumPriceKey,
+            new UpdateSiteSettingRequest("2000"),
+            CancellationToken.None));
 
-        Assert.Contains(settings, setting => setting.Key == PricingBoundsService.MinimumPriceKey);
-        Assert.Contains(settings, setting => setting.Key == PricingBoundsService.MaximumPriceKey);
-        Assert.Equal("200", dbContext.SiteSettings.Single(
-            setting => setting.Key == PricingBoundsService.MinimumPriceKey).Value);
+        Assert.DoesNotContain(settings, setting => setting.Key == PricingBoundsService.MinimumPriceKey);
+        Assert.DoesNotContain(settings, setting => setting.Key == PricingBoundsService.MaximumPriceKey);
+        await AssertPersistedValuesAsync(dbContext, "100", "1000");
     }
 
     private static AdminPricingBoundsController CreateController(

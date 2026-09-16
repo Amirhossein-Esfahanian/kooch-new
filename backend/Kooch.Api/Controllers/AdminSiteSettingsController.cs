@@ -32,7 +32,9 @@ public class AdminSiteSettingsController(
         ChildPricingRuleResolver.HalfPriceChildRateKey,
         ReservationPaymentWindowSettings.SettingKey,
         ReservationOwnerApprovalWindowSettings.SettingKey,
-        ReservationOwnerApprovalReminderSettings.SettingKey
+        ReservationOwnerApprovalReminderSettings.SettingKey,
+        PricingBoundsService.MinimumPriceKey,
+        PricingBoundsService.MaximumPriceKey
     };
 
     [HttpGet]
@@ -61,8 +63,11 @@ public class AdminSiteSettingsController(
 
         if (SpecializedSettingKeys.Contains(key))
         {
+            var managementEndpoint = key is PricingBoundsService.MinimumPriceKey or PricingBoundsService.MaximumPriceKey
+                ? "pricing bounds endpoint"
+                : "reservation settings endpoint";
             throw new InvalidOperationException(
-                "This setting is managed through the reservation settings endpoint.");
+                $"This setting is managed through the {managementEndpoint}.");
         }
 
         var setting = await dbContext.SiteSettings
@@ -80,24 +85,6 @@ public class AdminSiteSettingsController(
         else if (setting.Key == "image.enableWebpConversion" && !bool.TryParse(value, out _))
         {
             throw new ArgumentException("مقدار تبدیل WebP معتبر نیست.");
-        }
-        else if (setting.Key is "pricing.minPrice" or "pricing.maxPrice")
-        {
-            if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out var price) || price < 0)
-            {
-                throw new ArgumentException("محدوده قیمت معتبر نیست.");
-            }
-            var otherKey = setting.Key == "pricing.minPrice" ? "pricing.maxPrice" : "pricing.minPrice";
-            var otherValue = await dbContext.SiteSettings.AsNoTracking()
-                .Where(item => item.Key == otherKey)
-                .Select(item => item.Value)
-                .SingleAsync(cancellationToken);
-            var otherPrice = decimal.Parse(otherValue, CultureInfo.InvariantCulture);
-            if ((setting.Key == "pricing.minPrice" && price > otherPrice) ||
-                (setting.Key == "pricing.maxPrice" && price < otherPrice))
-            {
-                throw new ArgumentException("حداقل قیمت نمی‌تواند بیشتر از حداکثر قیمت باشد.");
-            }
         }
         else if (CommissionKeys.Contains(setting.Key))
         {
