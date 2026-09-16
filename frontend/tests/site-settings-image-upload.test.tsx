@@ -90,6 +90,9 @@ describe("Site Settings image upload persistence", () => {
     uploadedValues.clear();
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
+        if (path === "/admin/site-settings/pricing-bounds") {
+          return { minPrice: 100000, maxPrice: 10000000 };
+        }
         if (!options?.method) return initialSettings;
         const key = decodeURIComponent(path.split("/").at(-1) ?? "");
         const value = JSON.parse(options.body ?? "{}").value as string;

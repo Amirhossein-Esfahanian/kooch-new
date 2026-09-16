@@ -31,9 +31,15 @@ describe("generic Site Settings reservation boundary", () => {
     ownerApi.request.mockReset();
     notifications.error.mockReset();
     notifications.success.mockReset();
-    ownerApi.request.mockResolvedValue([
-      setting(1, "site.footerText", "متن پایین صفحه", "متن عمومی پایین سایت."),
-    ]);
+    ownerApi.request.mockImplementation(async (path: string) => {
+      if (path === "/admin/site-settings/pricing-bounds") {
+        return { minPrice: 100000, maxPrice: 10000000 };
+      }
+
+      return [
+        setting(1, "site.footerText", "متن پایین صفحه", "متن عمومی پایین سایت."),
+      ];
+    });
   });
 
   it("renders unrelated settings without exposing reservation-owned settings", async () => {

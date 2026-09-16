@@ -6,10 +6,12 @@ import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import {
+  KoochField,
   KoochInput,
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import { KoochAlert } from "@/components/KoochAlert";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { apiRequest, getToken } from "@/lib/owner-api";
@@ -37,6 +39,18 @@ interface SiteSettingResponse {
   updatedAtUtc: string | null;
 }
 
+type PricingBoundsResponse = {
+  minPrice: number;
+  maxPrice: number;
+};
+
+type PricingBoundsDraft = {
+  minPrice: string;
+  maxPrice: string;
+};
+
+type PricingBoundsErrors = Partial<Record<keyof PricingBoundsDraft, string>>;
+
 const groupLabels: Record<string, string> = {
   Brand: "برند سایت",
   Homepage: "صفحه اصلی",
@@ -53,8 +67,6 @@ const imageLabels: Record<string, string> = {
 };
 
 const settingDisplayLabels: Record<string, string> = {
-  "pricing.minPrice": "MinimumPrice",
-  "pricing.maxPrice": "MaximumPrice",
   ReservationCommissionPercent: "ReservationCommissionPercent",
   ReferralCommissionPercent: "ReferralCommissionPercent",
   CommissionType3Percent: "CommissionType3Percent",
@@ -65,6 +77,7 @@ const settingDisplayLabels: Record<string, string> = {
 };
 
 const priceSettingKeys = ["pricing.minPrice", "pricing.maxPrice"] as const;
+const priceSettingKeySet = new Set<string>(priceSettingKeys);
 const commissionSettingKeys = [
   "ReservationCommissionPercent",
   "ReferralCommissionPercent",
@@ -82,6 +95,45 @@ function inputType(type: SiteSettingType) {
   return "text";
 }
 
+function toPricingBoundsDraft(
+  bounds: PricingBoundsResponse,
+): PricingBoundsDraft {
+  return {
+    minPrice: String(bounds.minPrice),
+    maxPrice: String(bounds.maxPrice),
+  };
+}
+
+function validatePricingBounds(draft: PricingBoundsDraft) {
+  const errors: PricingBoundsErrors = {};
+  const parsed: PricingBoundsResponse = {
+    minPrice: Number(draft.minPrice),
+    maxPrice: Number(draft.maxPrice),
+  };
+
+  for (const key of ["minPrice", "maxPrice"] as const) {
+    if (draft[key].trim() === "") {
+      errors[key] = "این مقدار الزامی است";
+    } else if (!Number.isFinite(parsed[key])) {
+      errors[key] = "یک عدد معتبر وارد کنید";
+    } else if (parsed[key] < 0) {
+      errors[key] = "مقدار نمی‌تواند منفی باشد";
+    }
+  }
+
+  if (
+    Object.keys(errors).length === 0 &&
+    parsed.minPrice > parsed.maxPrice
+  ) {
+    errors.maxPrice = "حداکثر قیمت باید بزرگ‌تر یا مساوی حداقل قیمت باشد";
+  }
+
+  return {
+    errors,
+    parsed: Object.keys(errors).length === 0 ? parsed : null,
+  };
+}
+
 export default function AdminSiteSettingsPage() {
   const {
     authenticated,
@@ -92,6 +144,15 @@ export default function AdminSiteSettingsPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [pricingBounds, setPricingBounds] =
+    useState<PricingBoundsResponse | null>(null);
+  const [pricingBoundsDraft, setPricingBoundsDraft] =
+    useState<PricingBoundsDraft>({ minPrice: "", maxPrice: "" });
+  const [pricingBoundsLoading, setPricingBoundsLoading] = useState(true);
+  const [pricingBoundsSaving, setPricingBoundsSaving] = useState(false);
+  const [pricingBoundsError, setPricingBoundsError] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     if (sessionLoading || !authenticated || !workspaces.includes("admin"))
@@ -108,11 +169,27 @@ export default function AdminSiteSettingsPage() {
         toast.error(caught.message || "تنظیمات سایت بارگذاری نشد"),
       )
       .finally(() => setLoading(false));
+
+    apiRequest<PricingBoundsResponse>(
+      "/admin/site-settings/pricing-bounds",
+    )
+      .then((bounds) => {
+        setPricingBounds(bounds);
+        setPricingBoundsDraft(toPricingBoundsDraft(bounds));
+        setPricingBoundsError(null);
+      })
+      .catch((caught: Error) =>
+        setPricingBoundsError(
+          caught.message || "محدوده قیمت بارگذاری نشد",
+        ),
+      )
+      .finally(() => setPricingBoundsLoading(false));
   }, [authenticated, sessionLoading, workspaces]);
 
   const groupedSettings = useMemo(() => {
     return settings.reduce<Record<string, SiteSettingResponse[]>>(
       (groups, setting) => {
+        if (priceSettingKeySet.has(setting.key)) return groups;
         groups[setting.group] = groups[setting.group] ?? [];
         groups[setting.group].push(setting);
         return groups;
@@ -122,24 +199,6 @@ export default function AdminSiteSettingsPage() {
   }, [settings]);
 
   function validateCentralSettings() {
-    const minimumPrice = Number(drafts["pricing.minPrice"] ?? 0);
-    const maximumPrice = Number(drafts["pricing.maxPrice"] ?? 0);
-
-    if (
-      !Number.isFinite(minimumPrice) ||
-      !Number.isFinite(maximumPrice) ||
-      minimumPrice < 0 ||
-      maximumPrice < 0
-    ) {
-      toast.error("قیمت‌ها باید عددی و بزرگ‌تر یا مساوی صفر باشند");
-      return false;
-    }
-
-    if (maximumPrice < minimumPrice) {
-      toast.error("حداکثر قیمت باید بزرگ‌تر یا مساوی حداقل قیمت باشد");
-      return false;
-    }
-
     for (const key of commissionSettingKeys) {
       const percent = Number(drafts[key] ?? 0);
       if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
@@ -170,34 +229,14 @@ export default function AdminSiteSettingsPage() {
     );
   }
 
-  async function savePriceSettingsInSafeOrder() {
-    const minimumPrice = Number(drafts["pricing.minPrice"]);
-    const currentMaximum = Number(
-      settings.find((setting) => setting.key === "pricing.maxPrice")?.value ??
-        0,
-    );
-    const orderedKeys =
-      minimumPrice > currentMaximum
-        ? [...priceSettingKeys].reverse()
-        : [...priceSettingKeys];
-
-    const updatedSettings: SiteSettingResponse[] = [];
-    for (const key of orderedKeys) {
-      updatedSettings.push(await updateSetting(key, drafts[key] ?? ""));
-    }
-    return updatedSettings;
-  }
-
   async function save(setting: SiteSettingResponse) {
     if (!validateCentralSettings()) return;
 
     setSavingKey(setting.key);
     try {
-      const updatedSettings = priceSettingKeys.includes(
-        setting.key as (typeof priceSettingKeys)[number],
-      )
-        ? await savePriceSettingsInSafeOrder()
-        : [await updateSetting(setting.key, drafts[setting.key] ?? "")];
+      const updatedSettings = [
+        await updateSetting(setting.key, drafts[setting.key] ?? ""),
+      ];
 
       setSettings((current) =>
         current.map(
@@ -218,6 +257,49 @@ export default function AdminSiteSettingsPage() {
       );
     } finally {
       setSavingKey(null);
+    }
+  }
+
+  const pricingBoundsValidation = validatePricingBounds(pricingBoundsDraft);
+  const pricingBoundsDirty =
+    pricingBounds !== null &&
+    pricingBoundsValidation.parsed !== null &&
+    (pricingBoundsValidation.parsed.minPrice !== pricingBounds.minPrice ||
+      pricingBoundsValidation.parsed.maxPrice !== pricingBounds.maxPrice);
+
+  function updatePricingBound(
+    key: keyof PricingBoundsDraft,
+    value: string,
+  ) {
+    setPricingBoundsDraft((current) => ({ ...current, [key]: value }));
+    setPricingBoundsError(null);
+  }
+
+  async function savePricingBounds() {
+    const { parsed } = validatePricingBounds(pricingBoundsDraft);
+    if (!parsed || !pricingBoundsDirty || pricingBoundsSaving) return;
+
+    setPricingBoundsSaving(true);
+    setPricingBoundsError(null);
+    try {
+      const updated = await apiRequest<PricingBoundsResponse>(
+        "/admin/site-settings/pricing-bounds",
+        {
+          method: "PUT",
+          body: JSON.stringify(parsed),
+        },
+      );
+      setPricingBounds(updated);
+      setPricingBoundsDraft(toPricingBoundsDraft(updated));
+      toast.success("محدوده قیمت ذخیره شد");
+    } catch (caught) {
+      setPricingBoundsError(
+        caught instanceof Error
+          ? caught.message
+          : "ذخیره محدوده قیمت ناموفق بود",
+      );
+    } finally {
+      setPricingBoundsSaving(false);
     }
   }
 
@@ -346,10 +428,7 @@ export default function AdminSiteSettingsPage() {
         }
         min={
           setting.type === "Number"
-            ? priceSettingKeys.includes(
-                setting.key as (typeof priceSettingKeys)[number],
-              ) ||
-              commissionSettingKeys.includes(
+            ? commissionSettingKeys.includes(
                 setting.key as (typeof commissionSettingKeys)[number],
               )
               ? 0
@@ -403,6 +482,103 @@ export default function AdminSiteSettingsPage() {
               {groupLabels[group] ?? group}
             </h2>
             <div className="mt-5 grid gap-5">
+              {group === "Pricing" && (
+                <div className="grid gap-4 rounded-lg border border-border bg-muted p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="grid gap-1">
+                      <h3 className="font-semibold text-foreground">
+                        محدوده قیمت روزانه
+                      </h3>
+                      <p className="text-sm leading-6 text-muted-foreground">
+                        حداقل و حداکثر قیمت مجاز را به‌صورت یکپارچه تنظیم کنید.
+                      </p>
+                    </div>
+                    <KoochButton
+                      disabled={
+                        pricingBoundsLoading ||
+                        pricingBoundsSaving ||
+                        !pricingBoundsDirty
+                      }
+                      loading={pricingBoundsSaving}
+                      onClick={savePricingBounds}
+                      size="sm"
+                      type="button"
+                    >
+                      ذخیره محدوده قیمت
+                    </KoochButton>
+                  </div>
+
+                  {pricingBoundsLoading ? (
+                    <p className="text-sm text-muted-foreground">
+                      در حال بارگذاری محدوده قیمت...
+                    </p>
+                  ) : pricingBounds === null ? (
+                    <KoochAlert
+                      title="محدوده قیمت بارگذاری نشد"
+                      variant="destructive"
+                    >
+                      {pricingBoundsError ?? "دوباره تلاش کنید."}
+                    </KoochAlert>
+                  ) : (
+                    <>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <KoochField
+                          error={pricingBoundsValidation.errors.minPrice}
+                          label="حداقل قیمت روزانه"
+                          required
+                        >
+                          <KoochInput
+                            dir="ltr"
+                            error={pricingBoundsValidation.errors.minPrice}
+                            inputMode="decimal"
+                            min={0}
+                            onChange={(event) =>
+                              updatePricingBound(
+                                "minPrice",
+                                event.target.value,
+                              )
+                            }
+                            required
+                            step="any"
+                            type="number"
+                            value={pricingBoundsDraft.minPrice}
+                          />
+                        </KoochField>
+                        <KoochField
+                          error={pricingBoundsValidation.errors.maxPrice}
+                          label="حداکثر قیمت روزانه"
+                          required
+                        >
+                          <KoochInput
+                            dir="ltr"
+                            error={pricingBoundsValidation.errors.maxPrice}
+                            inputMode="decimal"
+                            min={0}
+                            onChange={(event) =>
+                              updatePricingBound(
+                                "maxPrice",
+                                event.target.value,
+                              )
+                            }
+                            required
+                            step="any"
+                            type="number"
+                            value={pricingBoundsDraft.maxPrice}
+                          />
+                        </KoochField>
+                      </div>
+                      {pricingBoundsError && (
+                        <KoochAlert
+                          title="ذخیره محدوده قیمت انجام نشد"
+                          variant="destructive"
+                        >
+                          {pricingBoundsError}
+                        </KoochAlert>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
               {items.map((setting) => (
                 <div
                   className="grid gap-3 rounded-lg border border-border bg-muted p-4"
