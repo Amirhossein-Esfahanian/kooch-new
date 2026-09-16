@@ -155,10 +155,7 @@ function genericControlId(setting: SiteSettingResponse) {
   return `site-setting-${setting.id}-${safeKey}`;
 }
 
-function validateGenericSetting(
-  setting: SiteSettingResponse,
-  value: string,
-) {
+function validateGenericSetting(setting: SiteSettingResponse, value: string) {
   if (setting.type !== "Number") return undefined;
 
   if (value.trim() === "" || !Number.isFinite(Number(value))) {
@@ -253,10 +250,7 @@ function validatePricingBounds(draft: PricingBoundsDraft) {
     }
   }
 
-  if (
-    Object.keys(errors).length === 0 &&
-    parsed.minPrice > parsed.maxPrice
-  ) {
+  if (Object.keys(errors).length === 0 && parsed.minPrice > parsed.maxPrice) {
     errors.maxPrice = "حداکثر قیمت باید بزرگ‌تر یا مساوی حداقل قیمت باشد";
   }
 
@@ -320,18 +314,14 @@ export default function AdminSiteSettingsPage() {
   useEffect(() => {
     if (sessionLoading || !authenticated || !hasAdminWorkspace) return;
 
-    apiRequest<PricingBoundsResponse>(
-      "/admin/site-settings/pricing-bounds",
-    )
+    apiRequest<PricingBoundsResponse>("/admin/site-settings/pricing-bounds")
       .then((bounds) => {
         setPricingBounds(bounds);
         setPricingBoundsDraft(toPricingBoundsDraft(bounds));
         setPricingBoundsError(null);
       })
       .catch((caught: Error) =>
-        setPricingBoundsError(
-          caught.message || "محدوده قیمت بارگذاری نشد",
-        ),
+        setPricingBoundsError(caught.message || "محدوده قیمت بارگذاری نشد"),
       )
       .finally(() => setPricingBoundsLoading(false));
   }, [authenticated, hasAdminWorkspace, sessionLoading]);
@@ -423,10 +413,7 @@ export default function AdminSiteSettingsPage() {
     (pricingBoundsValidation.parsed.minPrice !== pricingBounds.minPrice ||
       pricingBoundsValidation.parsed.maxPrice !== pricingBounds.maxPrice);
 
-  function updatePricingBound(
-    key: keyof PricingBoundsDraft,
-    value: string,
-  ) {
+  function updatePricingBound(key: keyof PricingBoundsDraft, value: string) {
     setPricingBoundsDraft((current) => ({ ...current, [key]: value }));
     setPricingBoundsError(null);
   }
@@ -536,7 +523,7 @@ export default function AdminSiteSettingsPage() {
       return (
         <KoochTextarea
           aria-describedby={accessibility?.describedBy}
-          className="font-bold leading-7"
+          className="leading-7"
           error={accessibility?.error}
           id={accessibility?.controlId}
           onChange={(event) =>
@@ -573,7 +560,6 @@ export default function AdminSiteSettingsPage() {
     const numberInput = (
       <KoochInput
         aria-describedby={accessibility?.describedBy}
-        className="font-bold"
         dir="rtl"
         error={accessibility?.error}
         id={accessibility?.controlId}
@@ -620,7 +606,7 @@ export default function AdminSiteSettingsPage() {
     ) ? (
       <div className="flex items-center gap-2">
         <div className="min-w-0 flex-1">{numberInput}</div>
-        <span className="shrink-0 text-sm font-bold text-muted-foreground">
+        <span className="shrink-0 text-sm font-medium text-muted-foreground">
           دقیقه
         </span>
       </div>
@@ -639,23 +625,20 @@ export default function AdminSiteSettingsPage() {
       ? undefined
       : validateGenericSetting(setting, drafts[setting.key] ?? "");
     const errorId = error ? `${controlId}-error` : undefined;
-    const describedBy = [descriptionId, errorId].filter(Boolean).join(" ") ||
-      undefined;
-    const isDirty = isGenericSettingDirty(
-      setting,
-      drafts[setting.key] ?? "",
-    );
+    const describedBy =
+      [descriptionId, errorId].filter(Boolean).join(" ") || undefined;
+    const isDirty = isGenericSettingDirty(setting, drafts[setting.key] ?? "");
     const isSaving = savingKeys.has(setting.key);
 
     return (
       <div
-        className="grid gap-3 rounded-lg border border-border bg-muted p-4"
+        className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4 sm:p-5"
         key={setting.key}
       >
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
+        <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+          <div className="min-w-0 flex-1">
             <label
-              className="font-bold text-foreground"
+              className="text-sm font-medium leading-6 text-foreground"
               htmlFor={isImage ? undefined : controlId}
             >
               {settingDisplayLabels[setting.key] ??
@@ -664,7 +647,7 @@ export default function AdminSiteSettingsPage() {
             </label>
             {setting.description && (
               <p
-                className="mt-2 text-sm leading-6 text-muted-foreground"
+                className="mt-1.5 text-sm leading-6 text-muted-foreground"
                 id={descriptionId}
               >
                 {setting.description}
@@ -706,7 +689,7 @@ export default function AdminSiteSettingsPage() {
 
   return (
     <AdminLayout requiredPlatformPermission="ManageSettings">
-      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+      <main className="mx-auto grid w-full max-w-[1480px] gap-6 p-4 sm:p-5 lg:p-6">
         <KoochPageHeader
           appearance="plain"
           description="تنظیمات عمومی، برند، تصاویر و مقادیر مرکزی سایت را مدیریت کنید."
@@ -715,12 +698,12 @@ export default function AdminSiteSettingsPage() {
         />
         <nav aria-label="بخش‌های تنظیمات سایت">
           <KoochCard
-            className="flex flex-wrap items-center gap-2"
+            className="flex flex-wrap items-center gap-1.5 sm:gap-2"
             padding="sm"
           >
             {visibleSections.map((section) => (
               <a
-                className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium leading-5 text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 href={`#${section.id}`}
                 key={section.id}
               >
@@ -778,20 +761,20 @@ export default function AdminSiteSettingsPage() {
             key={section.id}
             variant="elevated"
           >
-            <div className="grid gap-1">
-              <h2 className="text-xl font-semibold text-foreground">
+            <div className="grid gap-1.5">
+              <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
                 {section.title}
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 {section.description}
               </p>
             </div>
-            <div className="mt-5 grid gap-5">
+            <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
               {section.includesPricingBounds && (
-                <div className="grid gap-4 rounded-lg border border-border bg-muted p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="grid gap-1">
-                      <h3 className="font-semibold text-foreground">
+                <div className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
+                  <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+                    <div className="min-w-0 flex-1 grid gap-1.5">
+                      <h3 className="text-base font-semibold leading-6 text-foreground">
                         محدوده قیمت روزانه
                       </h3>
                       <p className="text-sm leading-6 text-muted-foreground">
@@ -838,10 +821,7 @@ export default function AdminSiteSettingsPage() {
                             inputMode="decimal"
                             min={0}
                             onChange={(event) =>
-                              updatePricingBound(
-                                "minPrice",
-                                event.target.value,
-                              )
+                              updatePricingBound("minPrice", event.target.value)
                             }
                             required
                             step="any"
@@ -860,10 +840,7 @@ export default function AdminSiteSettingsPage() {
                             inputMode="decimal"
                             min={0}
                             onChange={(event) =>
-                              updatePricingBound(
-                                "maxPrice",
-                                event.target.value,
-                              )
+                              updatePricingBound("maxPrice", event.target.value)
                             }
                             required
                             step="any"
@@ -884,11 +861,10 @@ export default function AdminSiteSettingsPage() {
                   )}
                 </div>
               )}
-              {genericInventoryAvailable &&
-                section.id === "commissions" && (
-                <p className="rounded-lg border border-border bg-muted p-3 text-sm leading-6 text-muted-foreground">
-                  این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در حال
-                  حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
+              {genericInventoryAvailable && section.id === "commissions" && (
+                <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground sm:p-4">
+                  این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در
+                  حال حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
                 </p>
               )}
               {genericInventoryAvailable && section.items.map(renderSetting)}
@@ -897,15 +873,15 @@ export default function AdminSiteSettingsPage() {
         ))}
         {genericInventoryAvailable && unmappedSettings.length > 0 && (
           <KoochCard variant="elevated">
-            <div className="grid gap-1">
-              <h2 className="text-xl font-semibold text-foreground">
+            <div className="grid gap-1.5">
+              <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
                 سایر تنظیمات
               </h2>
               <p className="text-sm leading-6 text-muted-foreground">
                 تنظیمات جدیدی که هنوز در بخش‌های اصلی دسته‌بندی نشده‌اند.
               </p>
             </div>
-            <div className="mt-5 grid gap-5">
+            <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
               {unmappedSettings.map(renderSetting)}
             </div>
           </KoochCard>
