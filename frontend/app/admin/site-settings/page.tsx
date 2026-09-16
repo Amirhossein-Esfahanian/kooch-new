@@ -51,6 +51,12 @@ type PricingBoundsDraft = {
 
 type PricingBoundsErrors = Partial<Record<keyof PricingBoundsDraft, string>>;
 
+type GenericFieldAccessibility = {
+  controlId: string;
+  describedBy?: string;
+  error?: string;
+};
+
 const siteSettingsSections = [
   {
     id: "identity-and-brand",
@@ -142,6 +148,47 @@ function inputType(type: SiteSettingType) {
   if (type === "Color") return "color";
   if (type === "Number") return "number";
   return "text";
+}
+
+function genericControlId(setting: SiteSettingResponse) {
+  const safeKey = setting.key.replace(/[^a-zA-Z0-9_-]/g, "-");
+  return `site-setting-${setting.id}-${safeKey}`;
+}
+
+function validateGenericSetting(
+  setting: SiteSettingResponse,
+  value: string,
+) {
+  if (setting.type !== "Number") return undefined;
+
+  if (value.trim() === "" || !Number.isFinite(Number(value))) {
+    return "یک عدد معتبر وارد کنید";
+  }
+
+  const numberValue = Number(value);
+  if (
+    commissionSettingKeys.includes(
+      setting.key as (typeof commissionSettingKeys)[number],
+    )
+  ) {
+    return numberValue < 0 || numberValue > 100
+      ? "درصد کمیسیون باید بین ۰ تا ۱۰۰ باشد"
+      : undefined;
+  }
+
+  if (
+    reservationDeadlineSettingKeys.includes(
+      setting.key as (typeof reservationDeadlineSettingKeys)[number],
+    )
+  ) {
+    return !Number.isInteger(numberValue) ||
+      numberValue < 1 ||
+      numberValue > 10080
+      ? "مهلت رزرو باید یک عدد صحیح بین ۱ دقیقه و ۷ روز باشد"
+      : undefined;
+  }
+
+  return numberValue < 1 ? "مقدار باید حداقل ۱ باشد" : undefined;
 }
 
 function toPricingBoundsDraft(
@@ -251,27 +298,6 @@ export default function AdminSiteSettingsPage() {
     [settings],
   );
 
-  function validateCentralSettings() {
-    for (const key of commissionSettingKeys) {
-      const percent = Number(drafts[key] ?? 0);
-      if (!Number.isFinite(percent) || percent < 0 || percent > 100) {
-        toast.error("درصد کمیسیون باید بین ۰ تا ۱۰۰ باشد");
-        return false;
-      }
-    }
-
-    for (const key of reservationDeadlineSettingKeys) {
-      if (!settings.some((setting) => setting.key === key)) continue;
-      const minutes = Number(drafts[key]);
-      if (!Number.isInteger(minutes) || minutes < 1 || minutes > 10080) {
-        toast.error("مهلت رزرو باید یک عدد صحیح بین ۱ دقیقه و ۷ روز باشد");
-        return false;
-      }
-    }
-
-    return true;
-  }
-
   async function updateSetting(key: string, value: string) {
     return apiRequest<SiteSettingResponse>(
       `/admin/site-settings/${encodeURIComponent(key)}`,
@@ -283,7 +309,7 @@ export default function AdminSiteSettingsPage() {
   }
 
   async function save(setting: SiteSettingResponse) {
-    if (!validateCentralSettings()) return;
+    if (validateGenericSetting(setting, drafts[setting.key] ?? "")) return;
 
     setSavingKey(setting.key);
     try {
@@ -356,7 +382,10 @@ export default function AdminSiteSettingsPage() {
     }
   }
 
-  function renderInput(setting: SiteSettingResponse) {
+  function renderInput(
+    setting: SiteSettingResponse,
+    accessibility?: GenericFieldAccessibility,
+  ) {
     const value = drafts[setting.key] ?? "";
 
     if (setting.type === "ImageUrl") {
@@ -428,7 +457,10 @@ export default function AdminSiteSettingsPage() {
     if (setting.type === "LongText") {
       return (
         <KoochTextarea
+          aria-describedby={accessibility?.describedBy}
           className="font-bold leading-7"
+          error={accessibility?.error}
+          id={accessibility?.controlId}
           onChange={(event) =>
             setDrafts((current) => ({
               ...current,
@@ -443,6 +475,9 @@ export default function AdminSiteSettingsPage() {
     if (setting.type === "Boolean") {
       return (
         <KoochSelect
+          aria-describedby={accessibility?.describedBy}
+          error={accessibility?.error}
+          id={accessibility?.controlId}
           onChange={(event) =>
             setDrafts((current) => ({
               ...current,
@@ -459,8 +494,11 @@ export default function AdminSiteSettingsPage() {
 
     const numberInput = (
       <KoochInput
+        aria-describedby={accessibility?.describedBy}
         className="font-bold"
         dir="rtl"
+        error={accessibility?.error}
+        id={accessibility?.controlId}
         onChange={(event) =>
           setDrafts((current) => ({
             ...current,
@@ -514,6 +552,18 @@ export default function AdminSiteSettingsPage() {
   }
 
   function renderSetting(setting: SiteSettingResponse) {
+    const isImage = setting.type === "ImageUrl";
+    const controlId = genericControlId(setting);
+    const descriptionId = setting.description
+      ? `${controlId}-description`
+      : undefined;
+    const error = isImage
+      ? undefined
+      : validateGenericSetting(setting, drafts[setting.key] ?? "");
+    const errorId = error ? `${controlId}-error` : undefined;
+    const describedBy = [descriptionId, errorId].filter(Boolean).join(" ") ||
+      undefined;
+
     return (
       <div
         className="grid gap-3 rounded-lg border border-border bg-muted p-4"
@@ -521,13 +571,19 @@ export default function AdminSiteSettingsPage() {
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <label className="font-bold text-foreground" htmlFor={setting.key}>
+            <label
+              className="font-bold text-foreground"
+              htmlFor={isImage ? undefined : controlId}
+            >
               {settingDisplayLabels[setting.key] ??
                 imageLabels[setting.key] ??
                 setting.label}
             </label>
             {setting.description && (
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              <p
+                className="mt-2 text-sm leading-6 text-muted-foreground"
+                id={descriptionId}
+              >
                 {setting.description}
               </p>
             )}
@@ -544,7 +600,23 @@ export default function AdminSiteSettingsPage() {
             </KoochButton>
           )}
         </div>
-        <div id={setting.key}>{renderInput(setting)}</div>
+        <div>
+          {renderInput(setting, {
+            controlId,
+            describedBy,
+            error,
+          })}
+          {error && (
+            <p
+              aria-atomic="true"
+              className="mt-2 text-xs font-medium text-destructive"
+              id={errorId}
+              role="alert"
+            >
+              {error}
+            </p>
+          )}
+        </div>
       </div>
     );
   }
