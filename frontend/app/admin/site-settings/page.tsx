@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
@@ -272,9 +272,11 @@ export default function AdminSiteSettingsPage() {
     loading: sessionLoading,
     workspaces,
   } = useAuthSession();
+  const hasAdminWorkspace = workspaces.includes("admin");
   const [settings, setSettings] = useState<SiteSettingResponse[]>([]);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set());
   const [pricingBounds, setPricingBounds] =
     useState<PricingBoundsResponse | null>(null);
@@ -285,22 +287,38 @@ export default function AdminSiteSettingsPage() {
   const [pricingBoundsError, setPricingBoundsError] = useState<string | null>(
     null,
   );
+  const genericLoadPendingRef = useRef(false);
+
+  const loadGenericSettings = useCallback(async () => {
+    if (genericLoadPendingRef.current) return;
+
+    genericLoadPendingRef.current = true;
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const items = await apiRequest<SiteSettingResponse[]>(
+        "/admin/site-settings",
+      );
+      setSettings(items);
+      setDrafts(
+        Object.fromEntries(items.map((item) => [item.key, item.value])),
+      );
+    } catch {
+      setLoadError("دریافت تنظیمات سایت انجام نشد.");
+    } finally {
+      genericLoadPendingRef.current = false;
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    if (sessionLoading || !authenticated || !workspaces.includes("admin"))
-      return;
+    if (sessionLoading || !authenticated || !hasAdminWorkspace) return;
 
-    apiRequest<SiteSettingResponse[]>("/admin/site-settings")
-      .then((items) => {
-        setSettings(items);
-        setDrafts(
-          Object.fromEntries(items.map((item) => [item.key, item.value])),
-        );
-      })
-      .catch((caught: Error) =>
-        toast.error(caught.message || "تنظیمات سایت بارگذاری نشد"),
-      )
-      .finally(() => setLoading(false));
+    void loadGenericSettings();
+  }, [authenticated, hasAdminWorkspace, loadGenericSettings, sessionLoading]);
+
+  useEffect(() => {
+    if (sessionLoading || !authenticated || !hasAdminWorkspace) return;
 
     apiRequest<PricingBoundsResponse>(
       "/admin/site-settings/pricing-bounds",
@@ -316,7 +334,7 @@ export default function AdminSiteSettingsPage() {
         ),
       )
       .finally(() => setPricingBoundsLoading(false));
-  }, [authenticated, sessionLoading, workspaces]);
+  }, [authenticated, hasAdminWorkspace, sessionLoading]);
 
   const sectionedSettings = useMemo(() => {
     return siteSettingsSections.map((section) => ({
@@ -332,6 +350,13 @@ export default function AdminSiteSettingsPage() {
   const unmappedSettings = useMemo(
     () => settings.filter((setting) => !knownSiteSettingKeys.has(setting.key)),
     [settings],
+  );
+
+  const genericInventoryAvailable = !loading && loadError === null;
+  const visibleSections = sectionedSettings.filter(
+    (section) =>
+      section.includesPricingBounds ||
+      (genericInventoryAvailable && section.items.length > 0),
   );
 
   async function updateSetting(key: string, value: string) {
@@ -692,7 +717,7 @@ export default function AdminSiteSettingsPage() {
             className="flex flex-wrap items-center gap-2"
             padding="sm"
           >
-            {siteSettingsSections.map((section) => (
+            {visibleSections.map((section) => (
               <a
                 className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 href={`#${section.id}`}
@@ -704,13 +729,48 @@ export default function AdminSiteSettingsPage() {
           </KoochCard>
         </nav>
         {loading && (
-          <KoochCard variant="elevated">
+          <KoochCard aria-live="polite" role="status" variant="elevated">
+            <div className="flex items-center gap-3 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent motion-reduce:animate-none"
+              />
+              <p>در حال بارگذاری تنظیمات...</p>
+            </div>
+          </KoochCard>
+        )}
+        {!loading && loadError && (
+          <KoochAlert
+            title="دریافت تنظیمات سایت انجام نشد"
+            variant="destructive"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p>اتصال را بررسی کنید و دوباره تلاش کنید.</p>
+              <KoochButton
+                disabled={loading}
+                loading={loading}
+                onClick={loadGenericSettings}
+                size="sm"
+                type="button"
+                variant="outline"
+              >
+                تلاش دوباره
+              </KoochButton>
+            </div>
+          </KoochAlert>
+        )}
+        {!loading && !loadError && settings.length === 0 && (
+          <KoochCard
+            className="border-dashed text-center"
+            padding="lg"
+            variant="elevated"
+          >
             <p className="text-sm text-muted-foreground">
-              در حال بارگذاری تنظیمات...
+              تنظیمی برای نمایش وجود ندارد.
             </p>
           </KoochCard>
         )}
-        {sectionedSettings.map((section) => (
+        {visibleSections.map((section) => (
           <KoochCard
             className="scroll-mt-24"
             id={section.id}
@@ -823,17 +883,18 @@ export default function AdminSiteSettingsPage() {
                   )}
                 </div>
               )}
-              {section.id === "commissions" && (
+              {genericInventoryAvailable &&
+                section.id === "commissions" && (
                 <p className="rounded-lg border border-border bg-muted p-3 text-sm leading-6 text-muted-foreground">
                   این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در حال
                   حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
                 </p>
               )}
-              {section.items.map(renderSetting)}
+              {genericInventoryAvailable && section.items.map(renderSetting)}
             </div>
           </KoochCard>
         ))}
-        {unmappedSettings.length > 0 && (
+        {genericInventoryAvailable && unmappedSettings.length > 0 && (
           <KoochCard variant="elevated">
             <div className="grid gap-1">
               <h2 className="text-xl font-semibold text-foreground">
