@@ -1,4 +1,6 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("sonner", () => ({
@@ -30,6 +32,11 @@ vi.mock("react-easy-crop", async () => {
 });
 
 import { SharedUploader } from "@/components/SharedUploader";
+
+const sharedUploaderSourcePath = resolve(
+  process.cwd(),
+  "components/SharedUploader.tsx",
+);
 
 class FakeXMLHttpRequest {
   static requests: FakeXMLHttpRequest[] = [];
@@ -123,6 +130,120 @@ describe("SharedUploader automatic upload", () => {
     expect(onUploadSuccess).toHaveBeenCalledOnce();
   });
 
+  it("uses semantic tokens for shell, muted, primary, and destructive states", () => {
+    const { container } = render(
+      <SharedUploader
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+      />,
+    );
+
+    const shell = container.querySelector("section");
+    expect(shell?.classList.contains("border-border")).toBe(true);
+    expect(shell?.classList.contains("bg-card")).toBe(true);
+    expect(screen.getByText("بارگذاری فایل").classList.contains("text-foreground")).toBe(
+      true,
+    );
+
+    const emptyState = screen.getByText("فایلی ثبت نشده است.");
+    expect(emptyState.classList.contains("bg-muted")).toBe(true);
+    expect(emptyState.classList.contains("text-muted-foreground")).toBe(true);
+
+    const dropzone = screen
+      .getByText("فایل‌ها را اینجا رها کنید")
+      .closest('[role="button"]');
+    if (!dropzone) throw new Error("Dropzone was not rendered.");
+    fireEvent.dragEnter(dropzone);
+    expect(dropzone.classList.contains("border-primary")).toBe(true);
+    expect(dropzone.classList.contains("bg-[var(--theme-primary-soft)]")).toBe(
+      true,
+    );
+
+    selectFile(
+      container,
+      new File(["invalid"], "notes.txt", { type: "text/plain" }),
+    );
+    const error = screen.getByText("فرمت تصویر پشتیبانی نمی‌شود");
+    expect(error.classList.contains("bg-[var(--destructive-soft)]")).toBe(true);
+    expect(error.classList.contains("text-destructive")).toBe(true);
+  });
+
+  it("keeps pending removal and existing previews on semantic surfaces", () => {
+    const pendingView = render(
+      <SharedUploader
+        enablePreview={false}
+        multiple={false}
+        uploadUrl="/api/upload"
+      />,
+    );
+    selectFile(
+      pendingView.container,
+      new File(["image"], "pending.png", { type: "image/png" }),
+    );
+
+    const placeholder = screen.getByText("FILE");
+    expect(placeholder.classList.contains("bg-muted")).toBe(true);
+    expect(placeholder.closest("article")?.classList.contains("border-border")).toBe(
+      true,
+    );
+    const remove = screen.getByRole("button", { name: "حذف" });
+    expect(remove.classList.contains("border-destructive/30")).toBe(true);
+    expect(remove.classList.contains("text-destructive")).toBe(true);
+    fireEvent.click(remove);
+    expect(screen.queryByText("FILE")).toBeNull();
+
+    pendingView.unmount();
+    const existingView = render(
+      <SharedUploader
+        existingFiles={[
+          { id: "existing", url: "/existing.png", alt: "تصویر موجود" },
+        ]}
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+    expect(screen.getByRole("img", { name: "تصویر موجود" })).toBeTruthy();
+    expect(
+      existingView.container.querySelector(".bg-slate-950\\/20"),
+    ).toBeTruthy();
+  });
+
+  it("removes targeted palette classes while preserving image contrast surfaces", () => {
+    const source = readFileSync(
+      sharedUploaderSourcePath,
+      "utf8",
+    );
+    const removedClasses = [
+      "border-slate-200",
+      "border-slate-300",
+      "bg-white",
+      "bg-white/90",
+      "bg-slate-50",
+      "bg-slate-100",
+      "text-slate-950",
+      "text-slate-800",
+      "text-slate-700",
+      "text-slate-500",
+      "text-slate-400",
+      "border-blue-500",
+      "border-blue-300",
+      "border-blue-200",
+      "bg-blue-600",
+      "bg-blue-50",
+      "text-blue-700",
+      "border-red-200",
+      "bg-red-50",
+      "text-red-700",
+    ];
+
+    removedClasses.forEach((className) => expect(source).not.toContain(className));
+    expect(source).toContain("bg-slate-950/20");
+    expect(source).toContain("bg-slate-900");
+  });
+
   it("auto-uploads one accepted file exactly once and keeps the success callback", () => {
     const onUploadSuccess = vi.fn();
     const { container } = render(
@@ -200,7 +321,10 @@ describe("SharedUploader automatic upload", () => {
 
     selectFile(container, original);
     expect(FakeXMLHttpRequest.requests).toHaveLength(0);
-    await screen.findByTestId("cropper");
+    const cropper = await screen.findByTestId("cropper");
+    expect(cropper.parentElement?.classList.contains("bg-slate-900")).toBe(
+      true,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "تایید برش" }));
     await waitFor(() => expect(FakeXMLHttpRequest.requests).toHaveLength(1));

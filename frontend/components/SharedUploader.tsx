@@ -382,26 +382,26 @@ export function SharedUploader({
 
   return (
     <section
-      className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"
+      className="rounded-2xl border border-border bg-card p-4 shadow-sm"
       dir="rtl"
     >
       <div>
-        <h3 className="text-lg font-bold text-slate-950">{text.title}</h3>
-        <p className="mt-1 text-sm leading-6 text-slate-500">
+        <h3 className="text-lg font-bold text-foreground">{text.title}</h3>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">
           {text.description}
         </p>
       </div>
 
       {variant === "dropzone" && showExistingFiles && (
         <div className="mt-4">
-          <p className="mb-2 text-sm font-bold text-slate-700">
+          <p className="mb-2 text-sm font-bold text-foreground">
             {text.previewText}
           </p>
           {existingFiles.length ? (
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {existingFiles.map((file) => (
                 <article
-                  className="rounded-2xl border border-slate-200 bg-slate-50 p-3"
+                  className="rounded-2xl border border-border bg-muted p-3"
                   key={file.id}
                 >
                   <img
@@ -413,13 +413,13 @@ export function SharedUploader({
                     className={`mt-2 flex items-center justify-between gap-2 ${hideFileDetails && !allowDeleteExisting ? "sr-only" : ""}`}
                   >
                     {!hideFileDetails && (
-                      <p className="truncate text-xs font-bold text-slate-500">
+                      <p className="truncate text-xs font-bold text-muted-foreground">
                         {file.name ?? file.url}
                       </p>
                     )}
                     {allowDeleteExisting && (
                       <button
-                        className="text-xs font-bold text-red-700"
+                        className="text-xs font-bold text-destructive"
                         onClick={() => onDeleteExisting?.(file.id)}
                         type="button"
                       >
@@ -431,7 +431,7 @@ export function SharedUploader({
               ))}
             </div>
           ) : (
-            <div className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-slate-300 bg-slate-50 text-sm font-bold text-slate-400">
+            <div className="grid min-h-28 place-items-center rounded-2xl border border-dashed border-border bg-muted text-sm font-bold text-muted-foreground">
               {text.existingEmptyText}
             </div>
           )}
@@ -474,13 +474,13 @@ export function SharedUploader({
                   src={squarePreview}
                 />
                 <span className="absolute inset-0 bg-slate-950/20 opacity-0 transition group-hover:opacity-100" />
-                <span className="relative z-[1] rounded-xl bg-white/90 px-3 py-2 text-xs font-bold text-slate-900 shadow-sm opacity-0 transition group-hover:opacity-100">
+                <span className="relative z-[1] rounded-xl bg-card/90 px-3 py-2 text-xs font-bold text-card-foreground shadow-sm opacity-0 transition group-hover:opacity-100">
                   {text.browseText}
                 </span>
               </>
             ) : (
               <span className="grid justify-items-center gap-2 text-[var(--theme-muted-text)]">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-card text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">
                   +
                 </span>
                 <span className="text-sm font-bold">{text.browseText}</span>
@@ -508,8 +508,8 @@ export function SharedUploader({
         <div
           className={`mt-4 grid min-h-40 cursor-pointer place-items-center rounded-2xl border-2 border-dashed p-6 text-center transition ${
             dragging
-              ? "border-blue-500 bg-blue-50"
-              : "border-slate-300 bg-slate-50 hover:border-blue-300 hover:bg-blue-50/50"
+              ? "border-primary bg-[var(--theme-primary-soft)]"
+              : "border-border bg-muted hover:border-[var(--theme-primary-border)] hover:bg-[var(--theme-primary-soft)]"
           } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
           onClick={() => !disabled && inputRef.current?.click()}
           onDragEnter={(event) => {
@@ -527,14 +527,14 @@ export function SharedUploader({
           tabIndex={0}
         >
           <div>
-            <p className="text-base font-bold text-slate-800">
+            <p className="text-base font-bold text-foreground">
               {text.dropText}
             </p>
-            <p className="mt-2 text-sm text-slate-500">
+            <p className="mt-2 text-sm text-muted-foreground">
               حداکثر {maxFileSizeMb} مگابایت
             </p>
             <button
-              className="mt-4 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white"
+              className="mt-4 rounded-xl bg-primary px-5 py-2.5 text-sm font-bold text-primary-foreground"
               disabled={disabled}
               type="button"
             >
@@ -559,7 +559,7 @@ export function SharedUploader({
         <div className="mt-5 grid gap-3">
           {items.map((item) => (
             <article
-              className="grid gap-3 rounded-2xl border border-slate-200 p-3 sm:grid-cols-[96px_minmax(0,1fr)_auto]"
+              className="grid gap-3 rounded-2xl border border-border p-3 sm:grid-cols-[96px_minmax(0,1fr)_auto]"
               key={item.id}
             >
               {item.previewUrl ? (
@@ -569,7 +569,7 @@ export function SharedUploader({
                   src={item.previewUrl}
                 />
               ) : (
-                <div className="grid aspect-[4/3] w-24 place-items-center rounded-xl bg-slate-100 text-xs font-bold text-slate-500">
+                <div className="grid aspect-[4/3] w-24 place-items-center rounded-xl bg-muted text-xs font-bold text-muted-foreground">
                   FILE
                 </div>
               )}
@@ -578,13 +578,13 @@ export function SharedUploader({
                   <p className="truncate text-sm font-bold">{item.file.name}</p>
                 )}
                 <p
-                  className={`${hideFileDetails ? "" : "mt-1"} text-xs text-slate-500`}
+                  className={`${hideFileDetails ? "" : "mt-1"} text-xs text-muted-foreground`}
                 >
                   {formatSize(item.file.size)}
                 </p>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
                   <span
-                    className="block h-full rounded-full bg-blue-600 transition-all motion-reduce:transition-none"
+                    className="block h-full rounded-full bg-primary transition-all motion-reduce:transition-none"
                     style={{ width: `${item.progress}%` }}
                   />
                 </div>
@@ -592,7 +592,7 @@ export function SharedUploader({
               <div className="flex flex-wrap items-center gap-2">
                 {enableCrop && item.previewUrl && (
                   <button
-                    className="rounded-xl border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700"
+                    className="rounded-xl border border-[var(--theme-primary-border)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)]"
                     onClick={() => setCropTarget(item)}
                     type="button"
                   >
@@ -600,7 +600,7 @@ export function SharedUploader({
                   </button>
                 )}
                 <button
-                  className="rounded-xl border border-red-200 px-3 py-2 text-sm font-bold text-red-700"
+                  className="rounded-xl border border-destructive/30 px-3 py-2 text-sm font-bold text-destructive"
                   onClick={() => removeItem(item.id)}
                   type="button"
                 >
@@ -616,7 +616,7 @@ export function SharedUploader({
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {enableCrop && items[0]?.previewUrl && (
             <button
-              className="rounded-xl border border-blue-200 px-3 py-2 text-sm font-bold text-blue-700"
+              className="rounded-xl border border-[var(--theme-primary-border)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)]"
               onClick={() => setCropTarget(items[0])}
               type="button"
             >
@@ -624,7 +624,7 @@ export function SharedUploader({
             </button>
           )}
           <button
-            className="rounded-xl border border-red-200 px-3 py-2 text-sm font-bold text-red-700"
+            className="rounded-xl border border-destructive/30 px-3 py-2 text-sm font-bold text-destructive"
             onClick={() => removeItem(items[0].id)}
             type="button"
           >
@@ -635,7 +635,7 @@ export function SharedUploader({
 
       {!hideInlineStatus && (error || message) && (
         <p
-          className={`mt-4 rounded-xl p-3 text-sm font-semibold ${error ? "bg-red-50 text-red-700" : "bg-blue-50 text-blue-700"}`}
+          className={`mt-4 rounded-xl p-3 text-sm font-semibold ${error ? "bg-[var(--destructive-soft)] text-destructive" : "bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]"}`}
         >
           {error || message}
         </p>
@@ -643,7 +643,7 @@ export function SharedUploader({
 
       {(!autoUpload || uploading || (uploadFailed && items.length > 0)) && (
         <button
-          className="mt-5 rounded-xl bg-blue-600 px-5 py-3 font-bold text-white disabled:opacity-60"
+          className="mt-5 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-60"
           disabled={disabled || uploading || !items.length}
           onClick={() => upload()}
           type="button"
