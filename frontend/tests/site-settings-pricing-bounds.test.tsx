@@ -27,10 +27,8 @@ vi.mock("@/lib/owner-api", () => ({
 import AdminSiteSettingsPage from "@/app/admin/site-settings/page";
 
 const genericSettings = [
-  setting(1, "pricing.minPrice", "100", "Number", "Pricing", "حداقل قدیمی"),
-  setting(2, "pricing.maxPrice", "1000", "Number", "Pricing", "حداکثر قدیمی"),
-  setting(3, "pricing.currencyLabel", "تومان", "Text", "Pricing", "واحد پول"),
-  setting(4, "site.name", "Kooch", "Text", "Brand", "نام سایت"),
+  setting(1, "pricing.currencyLabel", "تومان", "Text", "Pricing", "واحد پول"),
+  setting(2, "site.name", "Kooch", "Text", "Brand", "نام سایت"),
 ];
 
 describe("Admin Site Settings pricing bounds editor", () => {
@@ -56,7 +54,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
     );
   });
 
-  it("renders one dedicated pair while keeping currencyLabel generic", async () => {
+  it("renders one dedicated pair from the finalized generic contract", async () => {
     render(<AdminSiteSettingsPage />);
 
     expect(
@@ -66,8 +64,10 @@ describe("Admin Site Settings pricing bounds editor", () => {
       screen.getByLabelText(/حداکثر قیمت روزانه/) as HTMLInputElement,
     ).toHaveProperty("value", "1000");
     expect(screen.getByText("محدوده قیمت روزانه")).toBeTruthy();
-    expect(screen.queryByText("حداقل قدیمی")).toBeNull();
-    expect(screen.queryByText("حداکثر قدیمی")).toBeNull();
+    expect(screen.getAllByLabelText(/حداقل قیمت روزانه/)).toHaveLength(1);
+    expect(screen.getAllByLabelText(/حداکثر قیمت روزانه/)).toHaveLength(1);
+    expect(screen.queryByText("pricing.minPrice")).toBeNull();
+    expect(screen.queryByText("pricing.maxPrice")).toBeNull();
     expect(screen.getByText("pricing.currencyLabel")).toBeTruthy();
     expect(ownerApi.request).toHaveBeenCalledWith(
       "/admin/site-settings/pricing-bounds",

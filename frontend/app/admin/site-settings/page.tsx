@@ -76,8 +76,6 @@ const settingDisplayLabels: Record<string, string> = {
   "reservation.halfPriceChildRate": "درصد کودک نیم‌بها",
 };
 
-const priceSettingKeys = ["pricing.minPrice", "pricing.maxPrice"] as const;
-const priceSettingKeySet = new Set<string>(priceSettingKeys);
 const commissionSettingKeys = [
   "ReservationCommissionPercent",
   "ReferralCommissionPercent",
@@ -189,7 +187,6 @@ export default function AdminSiteSettingsPage() {
   const groupedSettings = useMemo(() => {
     return settings.reduce<Record<string, SiteSettingResponse[]>>(
       (groups, setting) => {
-        if (priceSettingKeySet.has(setting.key)) return groups;
         groups[setting.group] = groups[setting.group] ?? [];
         groups[setting.group].push(setting);
         return groups;
