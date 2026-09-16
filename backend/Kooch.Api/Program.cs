@@ -76,6 +76,7 @@ builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService
 builder.Services.AddScoped<IPropertyDescriptionService, PropertyDescriptionService>();
 builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();
 builder.Services.AddScoped<ISiteSettingUploadService, SiteSettingUploadService>();
+builder.Services.AddScoped<IPricingBoundsService, PricingBoundsService>();
 builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
 builder.Services.AddScoped<IPropertyCommonAreaService, PropertyCommonAreaService>();
 builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
