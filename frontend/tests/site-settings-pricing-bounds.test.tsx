@@ -229,7 +229,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
 });
 
 function saveButtonFor(input: HTMLElement) {
-  const settingCard = input.closest("div.grid.gap-3");
+  const settingCard = input.closest("div.grid.gap-4");
   expect(settingCard).toBeTruthy();
   return within(settingCard as HTMLElement).getByRole("button", {
     name: "ذخیره",

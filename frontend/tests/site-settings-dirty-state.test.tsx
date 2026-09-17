@@ -237,7 +237,7 @@ function genericPutCalls() {
 }
 
 function saveButtonFor(control: HTMLElement) {
-  const settingCard = control.closest("div.grid.gap-3");
+  const settingCard = control.closest("div.grid.gap-4");
   expect(settingCard).toBeTruthy();
   return within(settingCard as HTMLElement).getByRole("button", {
     name: "ذخیره",
