@@ -260,6 +260,22 @@ function validatePricingBounds(draft: PricingBoundsDraft) {
   };
 }
 
+function findScrollContainer(element: HTMLElement) {
+  let parent = element.parentElement;
+
+  while (parent) {
+    const overflowY = window.getComputedStyle(parent).overflowY;
+    if (overflowY === "auto" || overflowY === "scroll") return parent;
+    parent = parent.parentElement;
+  }
+
+  return window;
+}
+
+function sectionScrollOffset(navigation: HTMLElement) {
+  return navigation.getBoundingClientRect().height + 8;
+}
+
 export default function AdminSiteSettingsPage() {
   const {
     authenticated,
@@ -282,6 +298,13 @@ export default function AdminSiteSettingsPage() {
     null,
   );
   const genericLoadPendingRef = useRef(false);
+  const sectionNavRef = useRef<HTMLElement>(null);
+  const sectionNavSentinelRef = useRef<HTMLDivElement>(null);
+  const programmaticSectionRef = useRef<string | null>(null);
+  const [sectionNavStuck, setSectionNavStuck] = useState(false);
+  const [activeSectionId, setActiveSectionId] = useState<string>(
+    siteSettingsSections[0].id,
+  );
 
   const loadGenericSettings = useCallback(async () => {
     if (genericLoadPendingRef.current) return;
@@ -343,11 +366,131 @@ export default function AdminSiteSettingsPage() {
   );
 
   const genericInventoryAvailable = !loading && loadError === null;
-  const visibleSections = sectionedSettings.filter(
-    (section) =>
-      section.includesPricingBounds ||
-      (genericInventoryAvailable && section.items.length > 0),
+  const visibleSections = useMemo(
+    () =>
+      sectionedSettings.filter(
+        (section) =>
+          section.includesPricingBounds ||
+          (genericInventoryAvailable && section.items.length > 0),
+      ),
+    [genericInventoryAvailable, sectionedSettings],
   );
+  const visibleSectionIds = useMemo(
+    () => visibleSections.map((section) => section.id),
+    [visibleSections],
+  );
+
+  useEffect(() => {
+    const sentinel = sectionNavSentinelRef.current;
+    const navigation = sectionNavRef.current;
+    if (!sentinel || !navigation || visibleSectionIds.length === 0) return;
+
+    const scrollContainer = findScrollContainer(sentinel);
+    const updateNavigationState = () => {
+      const scrollTop =
+        scrollContainer === window
+          ? 0
+          : (scrollContainer as HTMLElement).getBoundingClientRect().top;
+      const offset = sectionScrollOffset(navigation);
+      const navigationBottom = scrollTop + offset + 1;
+
+      setSectionNavStuck(sentinel.getBoundingClientRect().top <= scrollTop);
+
+      let nextActiveSection = visibleSectionIds[0];
+      for (const sectionId of visibleSectionIds) {
+        const section = document.getElementById(sectionId);
+        if (!section) continue;
+
+        section.style.scrollMarginTop = `${offset}px`;
+        if (section.getBoundingClientRect().top <= navigationBottom) {
+          nextActiveSection = sectionId;
+        }
+      }
+      const targetId = programmaticSectionRef.current;
+      if (targetId) {
+        const target = visibleSectionIds.includes(
+          targetId as (typeof visibleSectionIds)[number],
+        )
+          ? document.getElementById(targetId)
+          : null;
+        if (target) {
+          const scrollingElement =
+            scrollContainer === window
+              ? document.scrollingElement ?? document.documentElement
+              : (scrollContainer as HTMLElement);
+          const currentScroll = scrollingElement.scrollTop;
+          const maximumScroll = Math.max(
+            0,
+            scrollingElement.scrollHeight - scrollingElement.clientHeight,
+          );
+          // The last section may not have enough content below it to align at the top.
+          const destination = Math.min(
+            maximumScroll,
+            Math.max(
+              0,
+              currentScroll + target.getBoundingClientRect().top - scrollTop - offset,
+            ),
+          );
+          if (Math.abs(currentScroll - destination) <= 1) {
+            programmaticSectionRef.current = null;
+          }
+          setActiveSectionId(targetId);
+          return;
+        }
+        programmaticSectionRef.current = null;
+      }
+      setActiveSectionId(nextActiveSection);
+    };
+
+    const interruptNavigation = () => {
+      if (!programmaticSectionRef.current) return;
+      programmaticSectionRef.current = null;
+      updateNavigationState();
+    };
+
+    updateNavigationState();
+    scrollContainer.addEventListener("scroll", updateNavigationState, {
+      passive: true,
+    });
+    scrollContainer.addEventListener("wheel", interruptNavigation, { passive: true });
+    scrollContainer.addEventListener("touchmove", interruptNavigation, { passive: true });
+    window.addEventListener("resize", updateNavigationState);
+    const navigationResizeObserver =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(updateNavigationState);
+    navigationResizeObserver?.observe(navigation);
+
+    return () => {
+      navigationResizeObserver?.disconnect();
+      scrollContainer.removeEventListener("scroll", updateNavigationState);
+      scrollContainer.removeEventListener("wheel", interruptNavigation);
+      scrollContainer.removeEventListener("touchmove", interruptNavigation);
+      window.removeEventListener("resize", updateNavigationState);
+    };
+  }, [visibleSectionIds]);
+
+  function navigateToSection(
+    event: React.MouseEvent<HTMLAnchorElement>,
+    sectionId: string,
+  ) {
+    event.preventDefault();
+    const section = document.getElementById(sectionId);
+    if (!section) return;
+
+    if (sectionNavRef.current) {
+      section.style.scrollMarginTop = `${sectionScrollOffset(sectionNavRef.current)}px`;
+    }
+    programmaticSectionRef.current = sectionId;
+    setActiveSectionId(sectionId);
+    const prefersReducedMotion =
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    section.scrollIntoView?.({
+      behavior: prefersReducedMotion ? "auto" : "smooth",
+      block: "start",
+    });
+  }
 
   async function updateSetting(key: string, value: string) {
     return apiRequest<SiteSettingResponse>(
@@ -689,203 +832,243 @@ export default function AdminSiteSettingsPage() {
 
   return (
     <AdminLayout requiredPlatformPermission="ManageSettings">
-      <main className="mx-auto grid w-full max-w-[1480px] gap-6 p-4 sm:p-5 lg:p-6">
-        <KoochPageHeader
-          appearance="plain"
-          description="تنظیمات عمومی، برند، تصاویر و مقادیر مرکزی سایت را مدیریت کنید."
-          eyebrow="پنل مدیریت"
-          title="تنظیمات سایت"
-        />
-        <nav aria-label="بخش‌های تنظیمات سایت">
-          <KoochCard
-            className="flex flex-wrap items-center gap-1.5 sm:gap-2"
-            padding="sm"
-          >
-            {visibleSections.map((section) => (
-              <a
-                className="inline-flex min-h-11 items-center rounded-lg border border-border bg-background px-3 py-2 text-sm font-medium leading-5 text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-                href={`#${section.id}`}
-                key={section.id}
-              >
-                {section.title}
-              </a>
-            ))}
-          </KoochCard>
-        </nav>
-        {loading && (
-          <KoochCard aria-live="polite" role="status" variant="elevated">
-            <div className="flex items-center gap-3 text-sm text-muted-foreground">
-              <span
-                aria-hidden="true"
-                className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent motion-reduce:animate-none"
-              />
-              <p>در حال بارگذاری تنظیمات...</p>
-            </div>
-          </KoochCard>
-        )}
-        {!loading && loadError && (
-          <KoochAlert
-            title="دریافت تنظیمات سایت انجام نشد"
-            variant="destructive"
-          >
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p>اتصال را بررسی کنید و دوباره تلاش کنید.</p>
-              <KoochButton
-                disabled={loading}
-                loading={loading}
-                onClick={loadGenericSettings}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                تلاش دوباره
-              </KoochButton>
-            </div>
-          </KoochAlert>
-        )}
-        {!loading && !loadError && settings.length === 0 && (
-          <KoochCard
-            className="border-dashed text-center"
-            padding="lg"
-            variant="elevated"
-          >
-            <p className="text-sm text-muted-foreground">
-              تنظیمی برای نمایش وجود ندارد.
-            </p>
-          </KoochCard>
-        )}
-        {visibleSections.map((section) => (
-          <KoochCard
-            className="scroll-mt-24"
-            id={section.id}
-            key={section.id}
-            variant="elevated"
-          >
-            <div className="grid gap-1.5">
-              <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
-                {section.title}
-              </h2>
-              <p className="text-sm leading-6 text-muted-foreground">
-                {section.description}
-              </p>
-            </div>
-            <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
-              {section.includesPricingBounds && (
-                <div className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
-                  <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
-                    <div className="min-w-0 flex-1 grid gap-1.5">
-                      <h3 className="text-base font-semibold leading-6 text-foreground">
-                        محدوده قیمت روزانه
-                      </h3>
-                      <p className="text-sm leading-6 text-muted-foreground">
-                        حداقل و حداکثر قیمت مجاز را به‌صورت یکپارچه تنظیم کنید.
-                      </p>
-                    </div>
-                    <KoochButton
-                      disabled={
-                        pricingBoundsLoading ||
-                        pricingBoundsSaving ||
-                        !pricingBoundsDirty
-                      }
-                      loading={pricingBoundsSaving}
-                      onClick={savePricingBounds}
-                      size="sm"
-                      type="button"
-                    >
-                      ذخیره محدوده قیمت
-                    </KoochButton>
-                  </div>
-
-                  {pricingBoundsLoading ? (
-                    <p className="text-sm text-muted-foreground">
-                      در حال بارگذاری محدوده قیمت...
-                    </p>
-                  ) : pricingBounds === null ? (
-                    <KoochAlert
-                      title="محدوده قیمت بارگذاری نشد"
-                      variant="destructive"
-                    >
-                      {pricingBoundsError ?? "دوباره تلاش کنید."}
-                    </KoochAlert>
-                  ) : (
-                    <>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <KoochField
-                          error={pricingBoundsValidation.errors.minPrice}
-                          label="حداقل قیمت روزانه"
-                          required
-                        >
-                          <KoochInput
-                            dir="ltr"
-                            error={pricingBoundsValidation.errors.minPrice}
-                            inputMode="decimal"
-                            min={0}
-                            onChange={(event) =>
-                              updatePricingBound("minPrice", event.target.value)
-                            }
-                            required
-                            step="any"
-                            type="number"
-                            value={pricingBoundsDraft.minPrice}
-                          />
-                        </KoochField>
-                        <KoochField
-                          error={pricingBoundsValidation.errors.maxPrice}
-                          label="حداکثر قیمت روزانه"
-                          required
-                        >
-                          <KoochInput
-                            dir="ltr"
-                            error={pricingBoundsValidation.errors.maxPrice}
-                            inputMode="decimal"
-                            min={0}
-                            onChange={(event) =>
-                              updatePricingBound("maxPrice", event.target.value)
-                            }
-                            required
-                            step="any"
-                            type="number"
-                            value={pricingBoundsDraft.maxPrice}
-                          />
-                        </KoochField>
-                      </div>
-                      {pricingBoundsError && (
-                        <KoochAlert
-                          title="ذخیره محدوده قیمت انجام نشد"
-                          variant="destructive"
-                        >
-                          {pricingBoundsError}
-                        </KoochAlert>
-                      )}
-                    </>
+      <main className="w-full">
+        <div className="mx-auto grid w-full max-w-[1480px] gap-6 px-4 pt-4 sm:px-5 sm:pt-5 lg:px-6 lg:pt-6">
+          <KoochPageHeader
+            appearance="plain"
+            description="تنظیمات عمومی، برند، تصاویر و مقادیر مرکزی سایت را مدیریت کنید."
+            eyebrow="پنل مدیریت"
+            title="تنظیمات سایت"
+          />
+          <div
+            aria-hidden="true"
+            className="h-px"
+            ref={sectionNavSentinelRef}
+          />
+        </div>
+        <nav
+          aria-label="بخش‌های تنظیمات سایت"
+          className={`sticky top-0 z-30 w-full transition-colors ${
+            sectionNavStuck ? "bg-card shadow-sm" : "bg-transparent"
+          }`}
+          ref={sectionNavRef}
+        >
+          <div className="mx-auto w-full max-w-[1480px] px-4 sm:px-5 lg:px-6">
+            <div
+              className={`flex flex-nowrap items-center gap-1.5 overflow-x-auto border bg-card sm:gap-2 ${
+                sectionNavStuck
+                  ? "rounded-none border-transparent"
+                  : "rounded-lg border-border"
+              }`}
+            >
+              {visibleSections.map((section) => (
+                <a
+                  aria-current={
+                    activeSectionId === section.id ? "location" : undefined
+                  }
+                  className={`relative inline-flex min-h-11 shrink-0 items-center whitespace-nowrap px-3 py-1.5 text-sm font-medium leading-5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+                    activeSectionId === section.id
+                      ? "text-primary"
+                      : "text-muted-foreground hover:text-foreground"
+                  }`}
+                  href={`#${section.id}`}
+                  key={section.id}
+                  onClick={(event) => navigateToSection(event, section.id)}
+                >
+                  {section.title}
+                  {activeSectionId === section.id && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-x-3 bottom-0 h-0.5 bg-primary"
+                    />
                   )}
-                </div>
-              )}
-              {genericInventoryAvailable && section.id === "commissions" && (
-                <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground sm:p-4">
-                  این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در
-                  حال حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
-                </p>
-              )}
-              {genericInventoryAvailable && section.items.map(renderSetting)}
+                </a>
+              ))}
             </div>
-          </KoochCard>
-        ))}
-        {genericInventoryAvailable && unmappedSettings.length > 0 && (
-          <KoochCard variant="elevated">
-            <div className="grid gap-1.5">
-              <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
-                سایر تنظیمات
-              </h2>
-              <p className="text-sm leading-6 text-muted-foreground">
-                تنظیمات جدیدی که هنوز در بخش‌های اصلی دسته‌بندی نشده‌اند.
+          </div>
+        </nav>
+        <div className="mx-auto grid w-full max-w-[1480px] gap-6 px-4 pb-4 pt-6 sm:px-5 sm:pb-5 lg:px-6 lg:pb-6">
+          {loading && (
+            <KoochCard aria-live="polite" role="status" variant="elevated">
+              <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <span
+                  aria-hidden="true"
+                  className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent motion-reduce:animate-none"
+                />
+                <p>در حال بارگذاری تنظیمات...</p>
+              </div>
+            </KoochCard>
+          )}
+          {!loading && loadError && (
+            <KoochAlert
+              title="دریافت تنظیمات سایت انجام نشد"
+              variant="destructive"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p>اتصال را بررسی کنید و دوباره تلاش کنید.</p>
+                <KoochButton
+                  disabled={loading}
+                  loading={loading}
+                  onClick={loadGenericSettings}
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                >
+                  تلاش دوباره
+                </KoochButton>
+              </div>
+            </KoochAlert>
+          )}
+          {!loading && !loadError && settings.length === 0 && (
+            <KoochCard
+              className="border-dashed text-center"
+              padding="lg"
+              variant="elevated"
+            >
+              <p className="text-sm text-muted-foreground">
+                تنظیمی برای نمایش وجود ندارد.
               </p>
-            </div>
-            <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
-              {unmappedSettings.map(renderSetting)}
-            </div>
-          </KoochCard>
-        )}
+            </KoochCard>
+          )}
+          {visibleSections.map((section) => (
+            <KoochCard
+              id={section.id}
+              key={section.id}
+              variant="elevated"
+            >
+              <div className="grid gap-1.5">
+                <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
+                  {section.title}
+                </h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  {section.description}
+                </p>
+              </div>
+              <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
+                {section.includesPricingBounds && (
+                  <div className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
+                    <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
+                      <div className="min-w-0 flex-1 grid gap-1.5">
+                        <h3 className="text-base font-semibold leading-6 text-foreground">
+                          محدوده قیمت روزانه
+                        </h3>
+                        <p className="text-sm leading-6 text-muted-foreground">
+                          حداقل و حداکثر قیمت مجاز را به‌صورت یکپارچه تنظیم
+                          کنید.
+                        </p>
+                      </div>
+                      <KoochButton
+                        disabled={
+                          pricingBoundsLoading ||
+                          pricingBoundsSaving ||
+                          !pricingBoundsDirty
+                        }
+                        loading={pricingBoundsSaving}
+                        onClick={savePricingBounds}
+                        size="sm"
+                        type="button"
+                      >
+                        ذخیره محدوده قیمت
+                      </KoochButton>
+                    </div>
+
+                    {pricingBoundsLoading ? (
+                      <p className="text-sm text-muted-foreground">
+                        در حال بارگذاری محدوده قیمت...
+                      </p>
+                    ) : pricingBounds === null ? (
+                      <KoochAlert
+                        title="محدوده قیمت بارگذاری نشد"
+                        variant="destructive"
+                      >
+                        {pricingBoundsError ?? "دوباره تلاش کنید."}
+                      </KoochAlert>
+                    ) : (
+                      <>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <KoochField
+                            error={pricingBoundsValidation.errors.minPrice}
+                            label="حداقل قیمت روزانه"
+                            required
+                          >
+                            <KoochInput
+                              dir="ltr"
+                              error={pricingBoundsValidation.errors.minPrice}
+                              inputMode="decimal"
+                              min={0}
+                              onChange={(event) =>
+                                updatePricingBound(
+                                  "minPrice",
+                                  event.target.value,
+                                )
+                              }
+                              required
+                              step="any"
+                              type="number"
+                              value={pricingBoundsDraft.minPrice}
+                            />
+                          </KoochField>
+                          <KoochField
+                            error={pricingBoundsValidation.errors.maxPrice}
+                            label="حداکثر قیمت روزانه"
+                            required
+                          >
+                            <KoochInput
+                              dir="ltr"
+                              error={pricingBoundsValidation.errors.maxPrice}
+                              inputMode="decimal"
+                              min={0}
+                              onChange={(event) =>
+                                updatePricingBound(
+                                  "maxPrice",
+                                  event.target.value,
+                                )
+                              }
+                              required
+                              step="any"
+                              type="number"
+                              value={pricingBoundsDraft.maxPrice}
+                            />
+                          </KoochField>
+                        </div>
+                        {pricingBoundsError && (
+                          <KoochAlert
+                            title="ذخیره محدوده قیمت انجام نشد"
+                            variant="destructive"
+                          >
+                            {pricingBoundsError}
+                          </KoochAlert>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+                {genericInventoryAvailable && section.id === "commissions" && (
+                  <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground sm:p-4">
+                    این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در
+                    حال حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
+                  </p>
+                )}
+                {genericInventoryAvailable && section.items.map(renderSetting)}
+              </div>
+            </KoochCard>
+          ))}
+          {genericInventoryAvailable && unmappedSettings.length > 0 && (
+            <KoochCard variant="elevated">
+              <div className="grid gap-1.5">
+                <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
+                  سایر تنظیمات
+                </h2>
+                <p className="text-sm leading-6 text-muted-foreground">
+                  تنظیمات جدیدی که هنوز در بخش‌های اصلی دسته‌بندی نشده‌اند.
+                </p>
+              </div>
+              <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
+                {unmappedSettings.map(renderSetting)}
+              </div>
+            </KoochCard>
+          )}
+        </div>
       </main>
     </AdminLayout>
   );

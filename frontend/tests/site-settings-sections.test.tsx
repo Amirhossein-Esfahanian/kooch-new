@@ -1,5 +1,5 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ownerApi = vi.hoisted(() => ({ request: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
@@ -51,6 +51,10 @@ const standardSettings = [
 ];
 
 describe("Admin Site Settings information architecture", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
   beforeEach(() => {
     ownerApi.request.mockReset();
     notifications.error.mockReset();
@@ -98,6 +102,191 @@ describe("Admin Site Settings information architecture", () => {
     fireEvent.click(within(navigation).getByRole("link", { name: "سئو" }));
     expect(screen.getByDisplayValue("کوچ")).toBeTruthy();
     expect(screen.getByDisplayValue("تومان")).toBeTruthy();
+  });
+
+  it("keeps the section navigation contained normally and expands its surface when sticky", async () => {
+    const rectSpy = vi
+      .spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockReturnValue({
+        bottom: 101,
+        height: 1,
+        left: 0,
+        right: 100,
+        top: 100,
+        width: 100,
+        x: 0,
+        y: 100,
+        toJSON: () => ({}),
+      });
+
+    render(<AdminSiteSettingsPage />);
+    await screen.findByDisplayValue("کوچ");
+
+    const navigation = screen.getByRole("navigation", {
+      name: "بخش‌های تنظیمات سایت",
+    });
+    const linksSurface = navigation.firstElementChild?.firstElementChild;
+    expect(navigation.className).toContain("sticky top-0");
+    expect(navigation.className).toContain("bg-transparent");
+    expect(linksSurface?.className).toContain("rounded-lg");
+    expect(linksSurface?.className).toContain("bg-card");
+    expect(linksSurface?.className).toContain("flex-nowrap");
+    expect(linksSurface?.className).toContain("overflow-x-auto");
+
+    const sentinel = navigation.previousElementSibling?.lastElementChild;
+    expect(sentinel).toBeTruthy();
+    vi.spyOn(sentinel as HTMLElement, "getBoundingClientRect").mockReturnValue({
+      bottom: 0,
+      height: 1,
+      left: 0,
+      right: 100,
+      top: -1,
+      width: 100,
+      x: 0,
+      y: -1,
+      toJSON: () => ({}),
+    });
+    fireEvent.scroll(window);
+
+    await waitFor(() => {
+      expect(navigation.className).toContain("bg-card");
+      expect(navigation.className).not.toContain("bg-transparent");
+      expect(linksSurface?.className).toContain("rounded-none");
+    });
+
+    rectSpy.mockRestore();
+  });
+
+  it("marks the active section and respects reduced motion for anchor navigation", async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: vi.fn(() => ({ matches: true })),
+    });
+
+    render(<AdminSiteSettingsPage />);
+    await screen.findByDisplayValue("کوچ");
+
+    const navigation = screen.getByRole("navigation", {
+      name: "بخش‌های تنظیمات سایت",
+    });
+    const seoSection = document.getElementById("seo");
+    const scrollIntoView = vi.fn();
+    Object.defineProperty(seoSection, "scrollIntoView", {
+      configurable: true,
+      value: scrollIntoView,
+    });
+
+    const seoLink = within(navigation).getByRole("link", { name: "سئو" });
+    fireEvent.click(seoLink);
+
+    expect(seoLink.getAttribute("aria-current")).toBe("location");
+    expect(scrollIntoView).toHaveBeenCalledWith({
+      behavior: "auto",
+      block: "start",
+    });
+
+    Object.defineProperty(window, "matchMedia", {
+      configurable: true,
+      value: originalMatchMedia,
+    });
+  });
+
+  it("holds the newest clicked section during scroll and releases at arrival or user interruption", async () => {
+    render(
+      <div data-testid="scroll-root" style={{ overflowY: "auto" }}>
+        <AdminSiteSettingsPage />
+      </div>,
+    );
+    await screen.findByDisplayValue("کوچ");
+    const root = screen.getByTestId("scroll-root");
+    const navigation = screen.getByRole("navigation", { name: "بخش‌های تنظیمات سایت" });
+    const links = within(navigation).getAllByRole("link");
+    const rect = (top: number, height = 46) => ({
+      top, bottom: top + height, height, left: 0, right: 800,
+      width: 800, x: 0, y: top, toJSON: () => ({}),
+    });
+    vi.spyOn(root, "getBoundingClientRect").mockImplementation(() => rect(80, 600));
+    vi.spyOn(navigation, "getBoundingClientRect").mockImplementation(() => rect(80));
+    Object.defineProperties(root, {
+      scrollHeight: { configurable: true, value: 2600 },
+      clientHeight: { configurable: true, value: 600 },
+    });
+    let reduced = false;
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: reduced })));
+    const scrollIntoView = vi.fn();
+    links.forEach((link, index) => {
+      const target = document.querySelector(link.getAttribute("href")!) as HTMLElement;
+      vi.spyOn(target, "getBoundingClientRect").mockImplementation(
+        () => rect(80 + 200 + index * 300 - root.scrollTop, 280),
+      );
+      Object.defineProperty(target, "scrollIntoView", { configurable: true, value: scrollIntoView });
+    });
+    const scrollTo = (top: number) => {
+      root.scrollTop = top;
+      fireEvent.scroll(root);
+    };
+    const expectActive = (index: number) => {
+      expect(links[index].getAttribute("aria-current")).toBe("location");
+      expect(links.filter(link => link.hasAttribute("aria-current"))).toHaveLength(1);
+    };
+
+    fireEvent.click(links[1]);
+    expectActive(1);
+    scrollTo(250);
+    expectActive(1);
+    scrollTo(446);
+    expectActive(1);
+    scrollTo(747);
+    expectActive(2);
+
+    fireEvent.click(links[5]);
+    for (const top of [850, 1050, 1350, 1646]) {
+      scrollTo(top);
+      expectActive(5);
+    }
+    scrollTo(1346);
+    expectActive(4);
+
+    fireEvent.click(links[0]);
+    for (const top of [1100, 700, 350, 146]) {
+      scrollTo(top);
+      expectActive(0);
+    }
+    scrollTo(447);
+    expectActive(1);
+
+    fireEvent.click(links[5]);
+    scrollTo(750);
+    fireEvent.click(links[3]);
+    scrollTo(900);
+    expectActive(3);
+    scrollTo(1046);
+    expectActive(3);
+    scrollTo(1347);
+    expectActive(4);
+
+    fireEvent.click(links[0]);
+    fireEvent.wheel(root);
+    expectActive(4);
+    fireEvent.click(links[0]);
+    fireEvent.touchMove(root);
+    expectActive(4);
+
+    reduced = true;
+    fireEvent.click(links[2]);
+    expect(scrollIntoView).toHaveBeenLastCalledWith({ behavior: "auto", block: "start" });
+    scrollTo(746);
+    expectActive(2);
+    scrollTo(1047);
+    expectActive(3);
+
+    Object.defineProperty(root, "scrollHeight", { configurable: true, value: 2000 });
+    fireEvent.click(links[5]);
+    scrollTo(1400);
+    expectActive(5);
+    scrollTo(1300);
+    expectActive(3);
   });
 
   it("places exact known settings in their user-facing sections", async () => {
