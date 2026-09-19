@@ -96,6 +96,27 @@ describe("MediaGallery property image workflow", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "گزینه‌های تصویر" })[0]);
     fireEvent.click(screen.getByRole("button", { name: "حذف تصویر" }));
     expect(onDelete).toHaveBeenCalledWith(items[0]);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("marks the property cover and exposes the current cover/crop/delete menu", () => {
+    const { props } = renderGallery();
+    expect(screen.getByText("عکس اصلی")).toBeTruthy();
+    fireEvent.click(screen.getAllByRole("button", { name: "گزینه‌های تصویر" })[1]);
+    expect(screen.getByRole("button", { name: "برش تصویر" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "حذف تصویر" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "جایگزینی" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "تعیین به عنوان عکس کاور" }));
+    expect(props.onSetMain).toHaveBeenCalledWith(items[1]);
+  });
+
+  it("labels the first RoomType image without exposing an independent cover action", () => {
+    renderGallery({ mode: "room" });
+    expect(screen.getAllByText("عکس اول")).toHaveLength(1);
+    expect(screen.queryByText("عکس اصلی")).toBeNull();
+    fireEvent.click(screen.getAllByRole("button", { name: "گزینه‌های تصویر" })[0]);
+    expect(screen.queryByRole("button", { name: "تعیین به عنوان عکس کاور" })).toBeNull();
+    expect(screen.getByRole("button", { name: "برش تصویر" })).toBeTruthy();
   });
 
   it("previews an image added to the current gallery items", async () => {

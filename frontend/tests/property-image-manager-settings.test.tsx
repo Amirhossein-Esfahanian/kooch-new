@@ -1,5 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PropertyImageResponse } from "@/lib/owner-api";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
@@ -18,6 +19,9 @@ vi.mock("@/components/MediaGallery", () => ({
   MediaGallery: ({
     constraints,
     disabled,
+    items,
+    totalItemCount,
+    onAdd,
   }: {
     constraints: {
       maxFileSizeMb: number;
@@ -26,6 +30,9 @@ vi.mock("@/components/MediaGallery", () => ({
       maxImages: number;
     };
     disabled?: boolean;
+    items: PropertyImageResponse[];
+    totalItemCount: number;
+    onAdd: (files: File[]) => Promise<void>;
   }) => (
     <div
       data-disabled={String(Boolean(disabled))}
@@ -34,15 +41,69 @@ vi.mock("@/components/MediaGallery", () => ({
       data-min-height={constraints.minHeight}
       data-min-width={constraints.minWidth}
       data-testid="media-gallery"
-    />
+      data-total-count={totalItemCount}
+    >
+      {items.map((item) => <span key={item.id} data-testid="gallery-image">{item.id}</span>)}
+      <button onClick={() => void onAdd([new File(["image"], "room.png", { type: "image/png" })])}>test-add</button>
+    </div>
   ),
 }));
 
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
 describe("PropertyImageManager operational settings", () => {
+  afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     mocks.apiRequest.mockReset();
+  });
+
+  const images: PropertyImageResponse[] = [
+    { id: 1, roomTypeId: null, roomId: null, sortOrder: 4 },
+    { id: 2, roomTypeId: 20, roomId: null, sortOrder: 1 },
+    { id: 3, roomTypeId: 21, roomId: null, sortOrder: 2 },
+    { id: 4, roomTypeId: null, roomId: null, sortOrder: 0 },
+    { id: 5, roomTypeId: null, roomId: 99, sortOrder: 3 },
+  ].map((item) => ({ ...item, propertyId: 12, url: `/images/${item.id}.png`,
+    altText: null, caption: null, tag: null, isCover: item.id === 1, isGallery: true }));
+
+  it.each([
+    [undefined, [4, 1]],
+    [20, [2]],
+    [21, [3]],
+  ])("filters gallery scope %s while retaining the property-wide count", async (fixedRoomTypeId, expected) => {
+    mocks.apiRequest.mockResolvedValue({});
+    render(<PropertyImageManager propertyId={12} fixedRoomTypeId={fixedRoomTypeId} images={images} onImagesChange={vi.fn()} />);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalled());
+    expect(screen.getAllByTestId("gallery-image").map((node) => Number(node.textContent))).toEqual(expected);
+    expect(screen.getByTestId("media-gallery").getAttribute("data-total-count")).toBe("5");
+  });
+
+  it.each([undefined, 20])("uploads with current scope metadata for %s", async (roomTypeId) => {
+    mocks.apiRequest.mockResolvedValue({});
+    const open = vi.fn();
+    let body!: FormData;
+    let complete!: () => void;
+    vi.stubGlobal("XMLHttpRequest", class {
+      upload = {};
+      open = open;
+      setRequestHeader = vi.fn();
+      status = 201;
+      responseText = JSON.stringify([images[1]]);
+      onload: (() => void) | null = null;
+      send(value: FormData) { body = value; complete = () => this.onload?.(); }
+    });
+    const onImagesChange = vi.fn();
+    render(<PropertyImageManager propertyId={12} fixedRoomTypeId={roomTypeId} images={images} onImagesChange={onImagesChange} />);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole("button", { name: "test-add" }));
+    expect(open).toHaveBeenCalledWith("POST", "/api/backend/owner/properties/12/images/upload");
+    expect(body.getAll("files")).toHaveLength(1);
+    expect(body.get("roomTypeId")).toBe(roomTypeId ? "20" : null);
+    expect(body.get("tag")).toBe(roomTypeId ? "room" : "other");
+    expect(body.get("isCover")).toBe("false");
+    expect(body.get("replaceImageId")).toBeNull();
+    await act(async () => complete());
+    expect(onImagesChange).toHaveBeenCalledWith([...images, images[1]]);
   });
 
   it("loads and applies image constraints from the authenticated management endpoint", async () => {
