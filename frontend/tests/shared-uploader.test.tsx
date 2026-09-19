@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -100,13 +106,113 @@ describe("SharedUploader automatic upload", () => {
       drawImage: vi.fn(),
     } as unknown as CanvasRenderingContext2D);
     vi.spyOn(HTMLCanvasElement.prototype, "toBlob").mockImplementation(
-      (callback) => callback(new Blob(["cropped-image"], { type: "image/jpeg" })),
+      (callback) =>
+        callback(new Blob(["cropped-image"], { type: "image/jpeg" })),
     );
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it.each([{}, undefined])(
+    "selects and independently removes pending files without randomUUID (%j)",
+    (cryptoValue) => {
+      vi.stubGlobal("crypto", cryptoValue);
+      vi.spyOn(Date, "now").mockReturnValue(123);
+      const onFilesChange = vi.fn();
+      const { container } = render(
+        <SharedUploader
+          onFilesChange={onFilesChange}
+          uploadUrl="/api/upload"
+        />,
+      );
+      const file = new File(["image"], "same.png", {
+        type: "image/png",
+        lastModified: 123,
+      });
+      selectFile(container, file);
+      selectFile(container, file);
+      expect(onFilesChange).toHaveBeenLastCalledWith([file, file]);
+      fireEvent.click(screen.getAllByRole("button", { name: "حذف" })[0]);
+      expect(onFilesChange).toHaveBeenLastCalledWith([file]);
+    },
+  );
+
+  it.each(["square", "dropzone"] as const)(
+    "forwards the %s browse action to the single-image picker and respects disabled",
+    (variant) => {
+      const props = {
+        variant,
+        multiple: false,
+        maxFiles: 1,
+        uploadUrl: "/api/upload",
+        labels: { browseText: "انتخاب تصویر" },
+      };
+      const { container, rerender } = render(<SharedUploader {...props} />);
+      const input =
+        container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      const click = vi.spyOn(input, "click").mockImplementation(() => {});
+      expect(input.accept).toBe("image/jpeg,image/png,image/webp");
+      expect(input.multiple).toBe(false);
+      expect(input.disabled).toBe(false);
+      fireEvent.click(
+        screen.getByRole("button", { name: "انتخاب تصویر", exact: true }),
+      );
+      expect(click).toHaveBeenCalledOnce();
+      rerender(<SharedUploader {...props} disabled />);
+      fireEvent.click(
+        screen.getByRole("button", { name: "انتخاب تصویر", exact: true }),
+      );
+      expect(click).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(["image/png", "image/jpeg", "image/webp"])(
+    "selects %s with the native UUID path and clears input for reselection",
+    (type) => {
+      const randomUUID = vi.fn(() => "pending-id");
+      vi.stubGlobal("crypto", { randomUUID });
+      const onFilesChange = vi.fn();
+      const { container } = render(
+        <SharedUploader
+          multiple={false}
+          onFilesChange={onFilesChange}
+          uploadUrl="/api/upload"
+        />,
+      );
+      const input =
+        container.querySelector<HTMLInputElement>('input[type="file"]')!;
+      const resetValue = vi.spyOn(input, "value", "set");
+      const file = new File(["image"], "image", { type });
+      selectFile(container, file);
+      expect(onFilesChange).toHaveBeenLastCalledWith([file]);
+      expect(resetValue).toHaveBeenCalledWith("");
+      selectFile(container, file);
+      expect(randomUUID).toHaveBeenCalledTimes(2);
+      expect(onFilesChange).toHaveBeenLastCalledWith([file]);
+    },
+  );
+
+  it("preserves the failed pending file and retry when a replacement fails validation", async () => {
+    const { container } = render(
+      <SharedUploader autoUpload multiple={false} uploadUrl="/api/upload" />,
+    );
+    const file = new File(["image"], "original.png", { type: "image/png" });
+    selectFile(container, file);
+    FakeXMLHttpRequest.requests[0].respond(500, { message: "upload failed" });
+    await screen.findByRole("button", { name: "آپلود" });
+    selectFile(
+      container,
+      new File(["invalid"], "notes.txt", { type: "text/plain" }),
+    );
+    expect(screen.getByText("original.png")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "آپلود" }));
+    expect(FakeXMLHttpRequest.requests).toHaveLength(2);
+    expect((FakeXMLHttpRequest.requests[1].body as FormData).get("files")).toBe(
+      file,
+    );
   });
 
   it("preserves manual upload when autoUpload is omitted", () => {
@@ -142,9 +248,9 @@ describe("SharedUploader automatic upload", () => {
     const shell = container.querySelector("section");
     expect(shell?.classList.contains("border-border")).toBe(true);
     expect(shell?.classList.contains("bg-card")).toBe(true);
-    expect(screen.getByText("بارگذاری فایل").classList.contains("text-foreground")).toBe(
-      true,
-    );
+    expect(
+      screen.getByText("بارگذاری فایل").classList.contains("text-foreground"),
+    ).toBe(true);
 
     const emptyState = screen.getByText("فایلی ثبت نشده است.");
     expect(emptyState.classList.contains("bg-muted")).toBe(true);
@@ -169,7 +275,7 @@ describe("SharedUploader automatic upload", () => {
     expect(error.classList.contains("text-destructive")).toBe(true);
   });
 
-  it("keeps pending removal and existing previews on semantic surfaces", () => {
+  it("keeps pending removal and existing square previews on semantic surfaces", () => {
     const pendingView = render(
       <SharedUploader
         enablePreview={false}
@@ -184,9 +290,9 @@ describe("SharedUploader automatic upload", () => {
 
     const placeholder = screen.getByText("FILE");
     expect(placeholder.classList.contains("bg-muted")).toBe(true);
-    expect(placeholder.closest("article")?.classList.contains("border-border")).toBe(
-      true,
-    );
+    expect(
+      placeholder.closest("article")?.classList.contains("border-border"),
+    ).toBe(true);
     const remove = screen.getByRole("button", { name: "حذف" });
     expect(remove.classList.contains("border-destructive/30")).toBe(true);
     expect(remove.classList.contains("text-destructive")).toBe(true);
@@ -208,14 +314,259 @@ describe("SharedUploader automatic upload", () => {
     expect(screen.getByRole("img", { name: "تصویر موجود" })).toBeTruthy();
     expect(
       existingView.container.querySelector(".bg-slate-950\\/20"),
-    ).toBeTruthy();
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "مشاهده تصویر" })).toBeTruthy();
   });
 
-  it("removes targeted palette classes while preserving image contrast surfaces", () => {
-    const source = readFileSync(
-      sharedUploaderSourcePath,
-      "utf8",
+  it("opens a persisted square image by clicking the image without opening the file picker", () => {
+    const { container } = render(
+      <SharedUploader
+        existingFiles={[
+          {
+            id: "logo",
+            url: "/logo.svg",
+            name: "لوگوی سایت",
+            alt: "لوگوی سایت",
+          },
+        ]}
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
     );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const click = vi.spyOn(input, "click").mockImplementation(() => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده تصویر" }));
+
+    expect(click).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog");
+    expect(
+      within(dialog).getByRole("img", { name: "لوگوی سایت" }),
+    ).toBeTruthy();
+    expect(
+      within(dialog).queryByRole("button", { name: "جایگزینی" }),
+    ).toBeNull();
+    expect(
+      within(dialog).queryByRole("button", { name: "برش تصویر" }),
+    ).toBeNull();
+  });
+
+  it("keeps the square image clean and exposes management actions only from the corner menu", () => {
+    const { container } = render(
+      <SharedUploader
+        existingFiles={[
+          { id: "existing", url: "/existing.png", alt: "تصویر موجود" },
+        ]}
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const click = vi.spyOn(input, "click").mockImplementation(() => {});
+
+    expect(screen.queryByRole("button", { name: "جایگزینی" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    expect(click).not.toHaveBeenCalled();
+
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu).queryByRole("menuitem", { name: "مشاهده تصویر" }),
+    ).toBeNull();
+    const replace = within(menu).getByRole("menuitem", { name: "جایگزینی" });
+    const crop = within(menu).getByRole("menuitem", { name: "برش تصویر" });
+    const remove = within(menu).getByRole("menuitem", { name: "حذف تصویر" });
+    expect(replace).toBeTruthy();
+    expect(crop).toHaveProperty("disabled", true);
+    expect(remove).toHaveProperty("disabled", true);
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "جایگزینی" }));
+    expect(click).toHaveBeenCalledOnce();
+    expect(container.querySelector("button button")).toBeNull();
+  });
+
+  it("offers replace, crop, and delete in the menu for a local pending raster image", () => {
+    const { container } = render(
+      <SharedUploader
+        enableCrop
+        multiple={false}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    selectFile(
+      container,
+      new File(["image"], "photo.png", { type: "image/png" }),
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    const click = vi.spyOn(input, "click").mockImplementation(() => {});
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "جایگزینی" }),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByRole("menuitem", { name: "برش تصویر" }),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByRole("menuitem", { name: "حذف تصویر" }),
+    ).toBeTruthy();
+
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "جایگزینی" }));
+    expect(click).toHaveBeenCalledOnce();
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(1);
+  });
+
+  it("previews SVG files by clicking the image and disables crop in the menu", () => {
+    const { container } = render(
+      <SharedUploader
+        accept={["image/svg+xml"]}
+        enableCrop
+        multiple={false}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    selectFile(
+      container,
+      new File(["<svg></svg>"], "mark.svg", { type: "image/svg+xml" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    const menu = screen.getByRole("menu");
+    const crop = within(menu).getByRole("menuitem", { name: "برش تصویر" });
+    expect(crop).toHaveProperty("disabled", true);
+    expect(
+      within(menu).getByRole("menuitem", { name: "جایگزینی" }),
+    ).toBeTruthy();
+    expect(
+      within(menu).getByRole("menuitem", { name: "حذف تصویر" }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده تصویر" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.getAllByRole("img", { name: "mark.svg" })).toHaveLength(2);
+  });
+
+  it("deletes a local pending square image from the contextual menu", () => {
+    const { container } = render(
+      <SharedUploader
+        multiple={false}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    selectFile(
+      container,
+      new File(["image"], "pending.png", { type: "image/png" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    const menu = screen.getByRole("menu");
+    const remove = within(menu).getByRole("menuitem", { name: "حذف تصویر" });
+    expect(remove.classList.contains("text-destructive")).toBe(true);
+    fireEvent.click(remove);
+    expect(screen.queryByRole("img", { name: "pending.png" })).toBeNull();
+  });
+
+  it("uses the existing-file delete callback when the consumer explicitly enables it", () => {
+    const onDeleteExisting = vi.fn();
+    render(
+      <SharedUploader
+        allowDeleteExisting
+        existingFiles={[
+          { id: "persisted", url: "/persisted.png", alt: "تصویر ذخیره‌شده" },
+        ]}
+        multiple={false}
+        onDeleteExisting={onDeleteExisting}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    const menu = screen.getByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "حذف تصویر" }));
+    expect(onDeleteExisting).toHaveBeenCalledOnce();
+    expect(onDeleteExisting).toHaveBeenCalledWith("persisted");
+  });
+
+  it("shows persisted delete disabled without an explicit delete contract", () => {
+    render(
+      <SharedUploader
+        existingFiles={[
+          { id: "persisted", url: "/persisted.png", alt: "تصویر ذخیره‌شده" },
+        ]}
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    const menu = screen.getByRole("menu");
+    expect(
+      within(menu).getByRole("menuitem", { name: "حذف تصویر" }),
+    ).toHaveProperty("disabled", true);
+  });
+
+  it("keeps persisted preview clickable while hiding management actions when disabled", () => {
+    const { container } = render(
+      <SharedUploader
+        disabled
+        enableCrop
+        existingFiles={[
+          { id: "existing", url: "/existing.png", alt: "تصویر موجود" },
+        ]}
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    const input =
+      container.querySelector<HTMLInputElement>('input[type="file"]')!;
+    expect(input.disabled).toBe(true);
+    expect(
+      screen.queryByRole("button", { name: "گزینه‌های تصویر" }),
+    ).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده تصویر" }));
+    expect(screen.getByRole("dialog")).toBeTruthy();
+  });
+
+  it("shows a simple plus and Add photo when the square uploader is empty", () => {
+    render(
+      <SharedUploader
+        multiple={false}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    expect(screen.getByText("+")).toBeTruthy();
+    expect(screen.getByText("Add photo")).toBeTruthy();
+  });
+
+  it("uses semantic palette classes and only the requested image-action SVGs", () => {
+    const source = readFileSync(sharedUploaderSourcePath, "utf8");
     const removedClasses = [
       "border-slate-200",
       "border-slate-300",
@@ -239,9 +590,18 @@ describe("SharedUploader automatic upload", () => {
       "text-red-700",
     ];
 
-    removedClasses.forEach((className) => expect(source).not.toContain(className));
-    expect(source).toContain("bg-slate-950/20");
+    removedClasses.forEach((className) =>
+      expect(source).not.toContain(className),
+    );
+    expect(source).not.toContain("bg-slate-950/20");
     expect(source).toContain("bg-slate-900");
+    [
+      "/svgs/crop-alt.svg",
+      "/svgs/repeat-3.svg",
+      "/svgs/ellipsis-v.svg",
+      "/svgs/image-circle-xmark.svg",
+    ].forEach((iconPath) => expect(source).toContain(iconPath));
+    expect(source).not.toContain("/svgs/eye-2.svg");
   });
 
   it("auto-uploads one accepted file exactly once and keeps the success callback", () => {

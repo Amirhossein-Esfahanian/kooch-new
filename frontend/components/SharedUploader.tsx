@@ -28,6 +28,9 @@ export interface SharedUploaderLabels {
   cancelText?: string;
   successText?: string;
   previewText?: string;
+  previewImageText?: string;
+  imageActionsText?: string;
+  replaceText?: string;
   existingEmptyText?: string;
 }
 
@@ -113,6 +116,9 @@ const defaultLabels: Required<SharedUploaderLabels> = {
   cancelText: "انصراف",
   successText: "فایل با موفقیت آپلود شد.",
   previewText: "پیش‌نمایش",
+  previewImageText: "مشاهده",
+  imageActionsText: "گزینه‌های تصویر",
+  replaceText: "جایگزینی",
   existingEmptyText: "فایلی ثبت نشده است.",
 };
 
@@ -121,9 +127,20 @@ function formatSize(size: number) {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+let pendingFileSequence = 0;
+
+function createPendingFileId(file: File) {
+  const uniquePart =
+    typeof globalThis.crypto?.randomUUID === "function"
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now().toString(36)}-${++pendingFileSequence}`;
+
+  return `${file.name}-${file.lastModified}-${uniquePart}`;
+}
+
 function makePendingFile(file: File, enablePreview: boolean): PendingFile {
   return {
-    id: `${file.name}-${file.lastModified}-${crypto.randomUUID()}`,
+    id: createPendingFileId(file),
     file,
     previewUrl:
       enablePreview && file.type.startsWith("image/")
@@ -131,6 +148,43 @@ function makePendingFile(file: File, enablePreview: boolean): PendingFile {
         : null,
     progress: 0,
   };
+}
+
+function isCroppableRasterImage(file: File) {
+  return ["image/jpeg", "image/png", "image/webp"].includes(file.type);
+}
+
+const uploaderIcons = {
+  crop: "/svgs/crop-alt.svg",
+  preview: "/svgs/eye-2.svg",
+  replace: "/svgs/repeat-3.svg",
+  menu: "/svgs/ellipsis-v.svg",
+  remove: "/svgs/image-circle-xmark.svg",
+} as const;
+
+function UploaderIcon({
+  src,
+  className = "size-5",
+}: {
+  src: string;
+  className?: string;
+}) {
+  return (
+    <span
+      aria-hidden="true"
+      className={`${className} block shrink-0 bg-current`}
+      style={{
+        WebkitMaskImage: `url("${src}")`,
+        WebkitMaskPosition: "center",
+        WebkitMaskRepeat: "no-repeat",
+        WebkitMaskSize: "contain",
+        maskImage: `url("${src}")`,
+        maskPosition: "center",
+        maskRepeat: "no-repeat",
+        maskSize: "contain",
+      }}
+    />
+  );
 }
 
 async function cropImage(file: File, croppedAreaPixels: Area): Promise<File> {
@@ -201,6 +255,7 @@ export function SharedUploader({
 }: SharedUploaderProps) {
   const text = { ...defaultLabels, ...(labels ?? {}) };
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const uploadingRef = useRef(false);
   const [items, setItems] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -208,6 +263,8 @@ export function SharedUploader({
   const [uploadFailed, setUploadFailed] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<PendingFile | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -225,6 +282,27 @@ export function SharedUploader({
     onFilesChange?.(items.map((item) => item.file));
   }, [items, onFilesChange]);
 
+  useEffect(() => {
+    if (!actionMenuOpen) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!actionMenuRef.current?.contains(target)) setActionMenuOpen(false);
+    }
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setActionMenuOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [actionMenuOpen]);
+
   const setSafeError = useCallback(
     (value: string) => {
       setError(value);
@@ -234,11 +312,29 @@ export function SharedUploader({
     [onUploadError, useToastNotifications],
   );
 
+  function openFilePicker() {
+    if (disabled || uploadingRef.current) return;
+    setActionMenuOpen(false);
+    setPreviewOpen(false);
+    inputRef.current?.click();
+  }
+
+  function openPreview() {
+    setActionMenuOpen(false);
+    setPreviewOpen(true);
+  }
+
+  function openCrop(item: PendingFile) {
+    if (disabled || !enableCrop || !isCroppableRasterImage(item.file)) return;
+    setActionMenuOpen(false);
+    setPreviewOpen(false);
+    setCroppedPixels(null);
+    setCropTarget(item);
+  }
+
   function addFiles(files: FileList | File[]) {
     if (disabled || uploadingRef.current) return;
-    setUploadFailed(false);
     setError("");
-    setMessage("");
     const incoming = Array.from(files);
     const next: PendingFile[] = [];
     for (const file of incoming) {
@@ -253,6 +349,10 @@ export function SharedUploader({
       next.push(makePendingFile(file, enablePreview));
     }
 
+    if (next.length === 0) return;
+    setUploadFailed(false);
+    setMessage("");
+
     if (!autoUpload) {
       setItems((current) => {
         const combined = multiple ? [...current, ...next] : next.slice(0, 1);
@@ -265,15 +365,17 @@ export function SharedUploader({
 
     const combined = multiple ? [...items, ...next] : next.slice(0, 1);
     const acceptedItems =
-      typeof maxFiles === "number"
-        ? combined.slice(0, maxFiles)
-        : combined;
+      typeof maxFiles === "number" ? combined.slice(0, maxFiles) : combined;
     setItems(acceptedItems);
 
     if (acceptedItems.length === 0) return;
 
     const cropCandidate = acceptedItems[0];
-    if (enableCrop && cropCandidate.previewUrl) {
+    if (
+      enableCrop &&
+      cropCandidate.previewUrl &&
+      isCroppableRasterImage(cropCandidate.file)
+    ) {
       setCroppedPixels(null);
       setCropTarget(cropCandidate);
       return;
@@ -283,6 +385,8 @@ export function SharedUploader({
   }
 
   function removeItem(id: string) {
+    setActionMenuOpen(false);
+    setPreviewOpen(false);
     setItems((current) => {
       const found = current.find((item) => item.id === id);
       if (found?.previewUrl) URL.revokeObjectURL(found.previewUrl);
@@ -354,6 +458,8 @@ export function SharedUploader({
         uploadItems.forEach(
           (item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl),
         );
+        setActionMenuOpen(false);
+        setPreviewOpen(false);
         setItems([]);
         setMessage(text.successText);
         if (useToastNotifications) toast.success(text.successText);
@@ -377,8 +483,23 @@ export function SharedUploader({
 
   const firstExistingPreview =
     showExistingFiles && existingFiles.length ? existingFiles[0] : null;
+  const pendingSquarePreview = items[0]?.previewUrl ? items[0] : null;
   const squarePreview =
-    items[0]?.previewUrl ?? firstExistingPreview?.url ?? null;
+    pendingSquarePreview?.previewUrl ?? firstExistingPreview?.url ?? null;
+  const squarePreviewAlt = pendingSquarePreview
+    ? pendingSquarePreview.file.name
+    : (firstExistingPreview?.alt ??
+      firstExistingPreview?.name ??
+      text.previewText);
+  const squarePreviewTitle = pendingSquarePreview
+    ? pendingSquarePreview.file.name
+    : (firstExistingPreview?.name ?? text.previewText);
+  const canCropSquarePreview = Boolean(
+    !disabled &&
+    enableCrop &&
+    pendingSquarePreview &&
+    isCroppableRasterImage(pendingSquarePreview.file),
+  );
 
   return (
     <section
@@ -440,17 +561,17 @@ export function SharedUploader({
 
       {variant === "square" && (
         <div className="mt-4 grid gap-3 sm:max-w-64">
-          <button
-            aria-label={text.browseText}
-            className={`group relative grid w-full place-items-center overflow-hidden rounded-2xl border-2 border-dashed text-center transition ${
-              dragging
-                ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)]"
-                : "border-[var(--theme-border)] bg-[var(--theme-surface-muted)] hover:border-[var(--theme-primary)] hover:bg-[var(--theme-primary-soft)]"
-            } ${disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
-            onClick={() => !disabled && inputRef.current?.click()}
+          <div
+            className={`group relative grid w-full place-items-center text-center transition ${
+              squarePreview
+                ? "rounded-2xl bg-muted"
+                : dragging
+                  ? "rounded-2xl border-2 border-dashed border-primary bg-[var(--theme-primary-soft)]"
+                  : "rounded-2xl border-2 border-dashed border-border bg-muted hover:border-[var(--theme-primary-border)] hover:bg-[var(--theme-primary-soft)]"
+            } ${disabled && !squarePreview ? "opacity-60" : ""}`}
             onDragEnter={(event) => {
               event.preventDefault();
-              setDragging(true);
+              if (!disabled) setDragging(true);
             }}
             onDragOver={(event) => event.preventDefault()}
             onDragLeave={() => setDragging(false)}
@@ -460,38 +581,169 @@ export function SharedUploader({
               addFiles(event.dataTransfer.files);
             }}
             style={{ aspectRatio }}
-            type="button"
           >
             {squarePreview ? (
               <>
-                <img
-                  alt={
-                    firstExistingPreview?.alt ??
-                    firstExistingPreview?.name ??
-                    text.previewText
-                  }
-                  className="absolute inset-0 h-full w-full object-cover"
-                  src={squarePreview}
-                />
-                <span className="absolute inset-0 bg-slate-950/20 opacity-0 transition group-hover:opacity-100" />
-                <span className="relative z-[1] rounded-xl bg-card/90 px-3 py-2 text-xs font-bold text-card-foreground shadow-sm opacity-0 transition group-hover:opacity-100">
-                  {text.browseText}
-                </span>
+                <button
+                  aria-label={text.previewImageText}
+                  className="absolute inset-0 overflow-hidden rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  onClick={openPreview}
+                  title={text.previewImageText}
+                  type="button"
+                >
+                  <img
+                    alt={squarePreviewAlt}
+                    className="h-full w-full object-cover transition duration-200 ease-out hover:scale-[1.015] hover:brightness-95 motion-reduce:transition-none motion-reduce:hover:scale-100"
+                    src={squarePreview}
+                  />
+                </button>
+
+                <div className="absolute end-2 top-2 z-[4]" ref={actionMenuRef}>
+                  <button
+                    aria-expanded={actionMenuOpen}
+                    aria-haspopup="menu"
+                    aria-label={text.imageActionsText}
+                    className="grid size-[29px] place-items-center rounded-full bg-white text-foreground shadow-md transition duration-150 ease-out hover:scale-110 hover:shadow-lg active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 motion-reduce:hover:scale-100 motion-reduce:active:scale-100"
+                    onClick={() => setActionMenuOpen((open) => !open)}
+                    title={text.imageActionsText}
+                    type="button"
+                  >
+                    <img
+                      alt=""
+                      aria-hidden="true"
+                      className="size-[18px]"
+                      src={uploaderIcons.menu}
+                    />
+                  </button>
+
+                  {actionMenuOpen && (
+                    <div
+                      className="absolute end-0 mt-1 min-w-48 rounded-xl border border-border bg-card p-1 text-start shadow-lg"
+                      role="menu"
+                    >
+                      <button
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                        onClick={openPreview}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <UploaderIcon
+                          className="size-4"
+                          src={uploaderIcons.preview}
+                        />
+                        {text.previewImageText}
+                      </button>
+
+                      {!disabled && (
+                        <button
+                          className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          onClick={openFilePicker}
+                          role="menuitem"
+                          type="button"
+                        >
+                          <UploaderIcon
+                            className="size-4"
+                            src={uploaderIcons.replace}
+                          />
+                          {text.replaceText}
+                        </button>
+                      )}
+
+                      <button
+                        aria-disabled={!canCropSquarePreview}
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+                        disabled={!canCropSquarePreview}
+                        onClick={() => {
+                          if (pendingSquarePreview)
+                            openCrop(pendingSquarePreview);
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <UploaderIcon
+                          className="size-4"
+                          src={uploaderIcons.crop}
+                        />
+                        {text.cropText}
+                      </button>
+
+                      <button
+                        aria-disabled={
+                          !pendingSquarePreview &&
+                          !(
+                            firstExistingPreview &&
+                            allowDeleteExisting &&
+                            onDeleteExisting
+                          )
+                        }
+                        className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
+                        disabled={
+                          !pendingSquarePreview &&
+                          !(
+                            firstExistingPreview &&
+                            allowDeleteExisting &&
+                            onDeleteExisting
+                          )
+                        }
+                        onClick={() => {
+                          setActionMenuOpen(false);
+                          if (pendingSquarePreview) {
+                            removeItem(pendingSquarePreview.id);
+                            return;
+                          }
+                          if (
+                            firstExistingPreview &&
+                            allowDeleteExisting &&
+                            onDeleteExisting
+                          ) {
+                            onDeleteExisting(firstExistingPreview.id);
+                          }
+                        }}
+                        role="menuitem"
+                        type="button"
+                      >
+                        <UploaderIcon
+                          className="size-4"
+                          src={uploaderIcons.remove}
+                        />
+                        {text.removeText}
+                      </button>
+                    </div>
+                  )}
+                </div>
               </>
             ) : (
-              <span className="grid justify-items-center gap-2 text-[var(--theme-muted-text)]">
-                <span className="grid h-10 w-10 place-items-center rounded-full bg-card text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">
-                  +
+              <button
+                aria-label={text.browseText}
+                className={`absolute inset-0 grid place-items-center rounded-2xl text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${
+                  disabled ? "cursor-not-allowed" : "cursor-pointer"
+                }`}
+                disabled={disabled}
+                onClick={openFilePicker}
+                title={text.browseText}
+                type="button"
+              >
+                <span className="grid justify-items-center gap-2">
+                  <span
+                    aria-hidden="true"
+                    className="text-4xl font-light leading-none text-primary transition-transform duration-150 group-hover:scale-110 motion-reduce:group-hover:scale-100"
+                  >
+                    +
+                  </span>
+                  <span className="text-sm font-bold text-primary">
+                    Add photo
+                  </span>
+                  <span className="text-xs font-semibold text-muted-foreground">
+                    حداکثر {maxFileSizeMb} مگابایت
+                  </span>
                 </span>
-                <span className="text-sm font-bold">{text.browseText}</span>
-                <span className="text-xs font-semibold">
-                  حداکثر {maxFileSizeMb} مگابایت
-                </span>
-              </span>
+              </button>
             )}
+
             <input
               accept={acceptText}
               className="hidden"
+              disabled={disabled}
               multiple={multiple}
               onChange={(event) => {
                 if (event.target.files) addFiles(event.target.files);
@@ -500,7 +752,7 @@ export function SharedUploader({
               ref={inputRef}
               type="file"
             />
-          </button>
+          </div>
         </div>
       )}
 
@@ -590,15 +842,18 @@ export function SharedUploader({
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
-                {enableCrop && item.previewUrl && (
-                  <button
-                    className="rounded-xl border border-[var(--theme-primary-border)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)]"
-                    onClick={() => setCropTarget(item)}
-                    type="button"
-                  >
-                    {text.cropText}
-                  </button>
-                )}
+                {enableCrop &&
+                  !disabled &&
+                  item.previewUrl &&
+                  isCroppableRasterImage(item.file) && (
+                    <button
+                      className="rounded-xl border border-[var(--theme-primary-border)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)]"
+                      onClick={() => openCrop(item)}
+                      type="button"
+                    >
+                      {text.cropText}
+                    </button>
+                  )}
                 <button
                   className="rounded-xl border border-destructive/30 px-3 py-2 text-sm font-bold text-destructive"
                   onClick={() => removeItem(item.id)}
@@ -609,27 +864,6 @@ export function SharedUploader({
               </div>
             </article>
           ))}
-        </div>
-      )}
-
-      {items.length > 0 && variant === "square" && (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {enableCrop && items[0]?.previewUrl && (
-            <button
-              className="rounded-xl border border-[var(--theme-primary-border)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)]"
-              onClick={() => setCropTarget(items[0])}
-              type="button"
-            >
-              {text.cropText}
-            </button>
-          )}
-          <button
-            className="rounded-xl border border-destructive/30 px-3 py-2 text-sm font-bold text-destructive"
-            onClick={() => removeItem(items[0].id)}
-            type="button"
-          >
-            {text.removeText}
-          </button>
         </div>
       )}
 
@@ -651,6 +885,23 @@ export function SharedUploader({
           {uploading ? text.uploadingText : text.uploadText}
         </button>
       )}
+
+      <KoochDialog
+        onOpenChange={setPreviewOpen}
+        open={Boolean(previewOpen && squarePreview)}
+        size="lg"
+        title={squarePreviewTitle}
+      >
+        {squarePreview && (
+          <div className="grid max-h-[70vh] min-h-64 place-items-center overflow-hidden rounded-2xl bg-muted p-2">
+            <img
+              alt={squarePreviewAlt}
+              className="max-h-[68vh] max-w-full object-contain"
+              src={squarePreview}
+            />
+          </div>
+        )}
+      </KoochDialog>
 
       <KoochDialog
         footer={
