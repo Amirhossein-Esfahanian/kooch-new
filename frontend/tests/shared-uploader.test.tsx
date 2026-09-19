@@ -158,12 +158,12 @@ describe("SharedUploader automatic upload", () => {
       expect(input.multiple).toBe(false);
       expect(input.disabled).toBe(false);
       fireEvent.click(
-        screen.getByRole("button", { name: "انتخاب تصویر", exact: true }),
+        screen.getByRole("button", { name: "انتخاب تصویر" }),
       );
       expect(click).toHaveBeenCalledOnce();
       rerender(<SharedUploader {...props} disabled />);
       fireEvent.click(
-        screen.getByRole("button", { name: "انتخاب تصویر", exact: true }),
+        screen.getByRole("button", { name: "انتخاب تصویر" }),
       );
       expect(click).toHaveBeenCalledOnce();
     },
@@ -315,7 +315,7 @@ describe("SharedUploader automatic upload", () => {
     expect(
       existingView.container.querySelector(".bg-slate-950\\/20"),
     ).toBeNull();
-    expect(screen.getByRole("button", { name: "مشاهده تصویر" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "مشاهده" })).toBeTruthy();
   });
 
   it("opens a persisted square image by clicking the image without opening the file picker", () => {
@@ -340,7 +340,7 @@ describe("SharedUploader automatic upload", () => {
       container.querySelector<HTMLInputElement>('input[type="file"]')!;
     const click = vi.spyOn(input, "click").mockImplementation(() => {});
 
-    fireEvent.click(screen.getByRole("button", { name: "مشاهده تصویر" }));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده" }));
 
     expect(click).not.toHaveBeenCalled();
     const dialog = screen.getByRole("dialog");
@@ -379,11 +379,11 @@ describe("SharedUploader automatic upload", () => {
 
     const menu = screen.getByRole("menu");
     expect(
-      within(menu).queryByRole("menuitem", { name: "مشاهده تصویر" }),
-    ).toBeNull();
+      within(menu).getByRole("menuitem", { name: "مشاهده" }),
+    ).toBeTruthy();
     const replace = within(menu).getByRole("menuitem", { name: "جایگزینی" });
     const crop = within(menu).getByRole("menuitem", { name: "برش تصویر" });
-    const remove = within(menu).getByRole("menuitem", { name: "حذف تصویر" });
+    const remove = within(menu).getByRole("menuitem", { name: "حذف" });
     expect(replace).toBeTruthy();
     expect(crop).toHaveProperty("disabled", true);
     expect(remove).toHaveProperty("disabled", true);
@@ -421,7 +421,7 @@ describe("SharedUploader automatic upload", () => {
       within(menu).getByRole("menuitem", { name: "برش تصویر" }),
     ).toBeTruthy();
     expect(
-      within(menu).getByRole("menuitem", { name: "حذف تصویر" }),
+      within(menu).getByRole("menuitem", { name: "حذف" }),
     ).toBeTruthy();
 
     fireEvent.click(within(menu).getByRole("menuitem", { name: "جایگزینی" }));
@@ -453,10 +453,10 @@ describe("SharedUploader automatic upload", () => {
       within(menu).getByRole("menuitem", { name: "جایگزینی" }),
     ).toBeTruthy();
     expect(
-      within(menu).getByRole("menuitem", { name: "حذف تصویر" }),
+      within(menu).getByRole("menuitem", { name: "حذف" }),
     ).toBeTruthy();
 
-    fireEvent.click(screen.getByRole("button", { name: "مشاهده تصویر" }));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
     expect(screen.getAllByRole("img", { name: "mark.svg" })).toHaveLength(2);
   });
@@ -477,10 +477,12 @@ describe("SharedUploader automatic upload", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
     const menu = screen.getByRole("menu");
-    const remove = within(menu).getByRole("menuitem", { name: "حذف تصویر" });
+    const remove = within(menu).getByRole("menuitem", { name: "حذف" });
     expect(remove.classList.contains("text-destructive")).toBe(true);
     fireEvent.click(remove);
     expect(screen.queryByRole("img", { name: "pending.png" })).toBeNull();
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
   });
 
   it("uses the existing-file delete callback when the consumer explicitly enables it", () => {
@@ -501,7 +503,9 @@ describe("SharedUploader automatic upload", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
     const menu = screen.getByRole("menu");
-    fireEvent.click(within(menu).getByRole("menuitem", { name: "حذف تصویر" }));
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "حذف" }));
+    expect(onDeleteExisting).not.toHaveBeenCalled();
+    fireEvent.click(within(screen.getByRole("alertdialog")).getByRole("button", { name: "حذف تصویر" }));
     expect(onDeleteExisting).toHaveBeenCalledOnce();
     expect(onDeleteExisting).toHaveBeenCalledWith("persisted");
   });
@@ -522,11 +526,11 @@ describe("SharedUploader automatic upload", () => {
     fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
     const menu = screen.getByRole("menu");
     expect(
-      within(menu).getByRole("menuitem", { name: "حذف تصویر" }),
+      within(menu).getByRole("menuitem", { name: "حذف" }),
     ).toHaveProperty("disabled", true);
   });
 
-  it("keeps persisted preview clickable while hiding management actions when disabled", () => {
+  it("keeps persisted preview clickable while disabling mutations when disabled", () => {
     const { container } = render(
       <SharedUploader
         disabled
@@ -544,11 +548,12 @@ describe("SharedUploader automatic upload", () => {
     const input =
       container.querySelector<HTMLInputElement>('input[type="file"]')!;
     expect(input.disabled).toBe(true);
-    expect(
-      screen.queryByRole("button", { name: "گزینه‌های تصویر" }),
-    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    expect(screen.queryByRole("menuitem", { name: "جایگزینی" })).toBeNull();
+    expect(screen.getByRole("menuitem", { name: "حذف" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("menuitem", { name: "برش تصویر" })).toHaveProperty("disabled", true);
 
-    fireEvent.click(screen.getByRole("button", { name: "مشاهده تصویر" }));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده" }));
     expect(screen.getByRole("dialog")).toBeTruthy();
   });
 
@@ -570,7 +575,6 @@ describe("SharedUploader automatic upload", () => {
     const removedClasses = [
       "border-slate-200",
       "border-slate-300",
-      "bg-white",
       "bg-white/90",
       "bg-slate-50",
       "bg-slate-100",
@@ -601,7 +605,7 @@ describe("SharedUploader automatic upload", () => {
       "/svgs/ellipsis-v.svg",
       "/svgs/image-circle-xmark.svg",
     ].forEach((iconPath) => expect(source).toContain(iconPath));
-    expect(source).not.toContain("/svgs/eye-2.svg");
+    expect(source).toContain("/svgs/eye-2.svg");
   });
 
   it("auto-uploads one accepted file exactly once and keeps the success callback", () => {

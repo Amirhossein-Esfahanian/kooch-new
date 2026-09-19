@@ -606,6 +606,22 @@ export default function AdminSiteSettingsPage() {
               : ["image/png", "image/jpeg", "image/webp"]
           }
           autoUpload
+          allowDeleteExisting={isLogo || setting.key === "home.heroBackgroundUrl"}
+          onDeleteExisting={
+            isLogo || setting.key === "home.heroBackgroundUrl"
+              ? async () => {
+                  const updated = await apiRequest<SiteSettingResponse>(
+                    `/admin/site-settings/${encodeURIComponent(setting.key)}/image`,
+                    { method: "DELETE" },
+                  );
+                  setSettings((current) =>
+                    current.map((item) => item.key === updated.key ? updated : item),
+                  );
+                  setDrafts((current) => ({ ...current, [updated.key]: updated.value }));
+                  toast.success("تصویر حذف شد");
+                }
+              : undefined
+          }
           aspectRatio={isLogo ? "1 / 1" : "16 / 9"}
           cropAspectRatio={isLogo ? 1 : 16 / 9}
           enableCrop={!isLogo}

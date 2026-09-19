@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 
 export type SharedUploadedFile = Record<string, unknown>;
 
@@ -79,7 +80,7 @@ export interface SharedUploaderProps {
   /** Show delete button for existing files. */
   allowDeleteExisting?: boolean;
   /** Called when deleting an existing file. */
-  onDeleteExisting?: (fileId: string | number) => void;
+  onDeleteExisting?: (fileId: string | number) => void | Promise<void>;
   /** Persian label overrides. */
   labels?: SharedUploaderLabels;
   /** Disable upload button and file selection. */
@@ -257,6 +258,9 @@ export function SharedUploader({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const uploadingRef = useRef(false);
+  const deletingRef = useRef(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | number | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const [items, setItems] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -313,7 +317,7 @@ export function SharedUploader({
   );
 
   function openFilePicker() {
-    if (disabled || uploadingRef.current) return;
+    if (disabled || uploadingRef.current || deletingRef.current) return;
     setActionMenuOpen(false);
     setPreviewOpen(false);
     inputRef.current?.click();
@@ -333,7 +337,7 @@ export function SharedUploader({
   }
 
   function addFiles(files: FileList | File[]) {
-    if (disabled || uploadingRef.current) return;
+    if (disabled || uploadingRef.current || deletingRef.current) return;
     setError("");
     const incoming = Array.from(files);
     const next: PendingFile[] = [];
@@ -422,7 +426,7 @@ export function SharedUploader({
       setSafeError("حداقل یک فایل انتخاب کنید.");
       return;
     }
-    if (uploadingRef.current) return;
+    if (uploadingRef.current || deletingRef.current) return;
 
     uploadingRef.current = true;
     setUploading(true);
@@ -541,7 +545,8 @@ export function SharedUploader({
                     {allowDeleteExisting && (
                       <button
                         className="text-xs font-bold text-destructive"
-                        onClick={() => onDeleteExisting?.(file.id)}
+                        disabled={disabled || uploading || deleting || !onDeleteExisting}
+                        onClick={() => setDeleteTarget(file.id)}
                         type="button"
                       >
                         {text.removeText}
@@ -669,21 +674,15 @@ export function SharedUploader({
 
                       <button
                         aria-disabled={
-                          !pendingSquarePreview &&
-                          !(
-                            firstExistingPreview &&
-                            allowDeleteExisting &&
-                            onDeleteExisting
-                          )
+                          disabled || uploading || deleting ||
+                          (!pendingSquarePreview &&
+                            !(firstExistingPreview && allowDeleteExisting && onDeleteExisting))
                         }
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
                         disabled={
-                          !pendingSquarePreview &&
-                          !(
-                            firstExistingPreview &&
-                            allowDeleteExisting &&
-                            onDeleteExisting
-                          )
+                          disabled || uploading || deleting ||
+                          (!pendingSquarePreview &&
+                            !(firstExistingPreview && allowDeleteExisting && onDeleteExisting))
                         }
                         onClick={() => {
                           setActionMenuOpen(false);
@@ -696,7 +695,7 @@ export function SharedUploader({
                             allowDeleteExisting &&
                             onDeleteExisting
                           ) {
-                            onDeleteExisting(firstExistingPreview.id);
+                            setDeleteTarget(firstExistingPreview.id);
                           }
                         }}
                         role="menuitem"
@@ -885,6 +884,35 @@ export function SharedUploader({
           {uploading ? text.uploadingText : text.uploadText}
         </button>
       )}
+
+      <KoochConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingRef.current) setDeleteTarget(null);
+        }}
+        title="حذف تصویر"
+        description="آیا از حذف تصویر فعلی مطمئن هستید؟"
+        cancelText="انصراف"
+        confirmText="حذف تصویر"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={async () => {
+          if (deleteTarget === null || !onDeleteExisting || deletingRef.current) return;
+          deletingRef.current = true;
+          setDeleting(true);
+          try {
+            await onDeleteExisting(deleteTarget);
+            setDeleteTarget(null);
+          } catch (failure) {
+            const message = failure instanceof Error ? failure.message : "حذف تصویر انجام نشد.";
+            setError(message);
+            if (useToastNotifications) toast.error(message);
+          } finally {
+            deletingRef.current = false;
+            setDeleting(false);
+          }
+        }}
+      />
 
       <KoochDialog
         onOpenChange={setPreviewOpen}
