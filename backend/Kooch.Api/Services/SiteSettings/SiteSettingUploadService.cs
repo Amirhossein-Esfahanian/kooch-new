@@ -96,6 +96,43 @@ public sealed class SiteSettingUploadService(
         return setting;
     }
 
+    public async Task<SiteSetting> DeleteImageAsync(
+        string key,
+        CancellationToken cancellationToken = default)
+    {
+        var canonicalKey = ResolveUploadableKey(key);
+        var setting = await dbContext.SiteSettings
+            .SingleOrDefaultAsync(item => item.Key == canonicalKey, cancellationToken)
+            ?? throw new KeyNotFoundException("Site setting was not found.");
+
+        if (string.IsNullOrEmpty(setting.Value))
+        {
+            return setting;
+        }
+
+        var previousValue = setting.Value;
+        await using (var transaction = await BeginTransactionAsync(cancellationToken))
+        {
+            try
+            {
+                setting.Value = string.Empty;
+                await dbContext.SaveChangesAsync(cancellationToken);
+                if (transaction is not null)
+                {
+                    await transaction.CommitAsync(cancellationToken);
+                }
+            }
+            catch
+            {
+                setting.Value = previousValue;
+                throw;
+            }
+        }
+
+        await CleanupPreviousAssetAsync(setting.Id, previousValue, setting.Value);
+        return setting;
+    }
+
     private static string ResolveUploadableKey(string key)
     {
         if (string.Equals(key, LogoKey, StringComparison.OrdinalIgnoreCase))

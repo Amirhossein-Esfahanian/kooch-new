@@ -14,6 +14,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
@@ -27,6 +28,187 @@ public sealed class SiteSettingUploadTests
     private const string HeroKey = "home.heroBackgroundUrl";
     private const string SafeSvg =
         "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 1 1\"><path d=\"M0 0h1v1H0z\"/></svg>";
+
+    [Theory]
+    [InlineData(LogoKey)]
+    [InlineData(HeroKey)]
+    public async Task DeleteImage_PersistsEmptyValueBeforeOwnedCleanup_AndIsIdempotent(string key)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var setting = await database.SeedSettingAsync(key, string.Empty);
+        var asset = await database.StoreRasterAsync(setting.Id, ".png");
+        setting.Value = asset.PublicPath;
+        await database.Context.SaveChangesAsync();
+        var storage = new DelegatingMediaStorage(database.Storage)
+        {
+            BeforeDelete = async () =>
+            {
+                Assert.Equal(string.Empty, await database.PersistedValueAsync(key));
+                Assert.Null(database.Context.Database.CurrentTransaction);
+            }
+        };
+        var service = database.CreateService(storage);
+        var controller = ConfigureController(
+            new AdminSiteSettingsController(database.Context, new DenyPermissionService(), service),
+            UserRole.SuperAdmin);
+
+        var result = await controller.DeleteImage(key, CancellationToken.None);
+
+        var response = Assert.IsType<Kooch.Api.Dtos.SiteSettings.SiteSettingResponse>(
+            Assert.IsType<OkObjectResult>(result.Result).Value);
+        Assert.Equal(setting.Id, response.Id);
+        Assert.Equal(string.Empty, response.Value);
+        Assert.False(setting.IsDeleted);
+        Assert.True(setting.IsActive);
+        Assert.False(File.Exists(database.GetFinalPath(asset.PublicPath)));
+        Assert.Equal((MediaAssetNamespace.SiteSettings, setting.Id, asset.PublicPath), Assert.Single(storage.DeleteCalls));
+
+        await controller.DeleteImage(key, CancellationToken.None);
+        Assert.Single(storage.DeleteCalls);
+        Assert.Single(await database.Context.SiteSettings.ToListAsync());
+    }
+
+    [Fact]
+    public async Task DeleteImage_AdminAssistantWithoutManageSettings_IsRejectedBeforeServiceCall()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var service = new StubUploadService();
+        var controller = ConfigureController(
+            new AdminSiteSettingsController(database.Context, new DenyPermissionService(), service),
+            UserRole.AdminAssistant);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.DeleteImage(LogoKey, CancellationToken.None));
+        Assert.Equal(0, service.CallCount);
+    }
+
+    [Fact]
+    public async Task DeleteImage_AdminAssistantWithManageSettings_IsAllowed()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        await database.SeedSettingAsync(LogoKey, "/images/logo.png");
+        var controller = ConfigureController(
+            new AdminSiteSettingsController(database.Context, new AllowPermissionService(), database.CreateService()),
+            UserRole.AdminAssistant);
+
+        Assert.IsType<OkObjectResult>((await controller.DeleteImage(LogoKey, CancellationToken.None)).Result);
+        Assert.Equal(string.Empty, await database.PersistedValueAsync(LogoKey));
+    }
+
+    [Fact]
+    public async Task DeleteImage_UnsupportedKey_IsRejectedWithoutMutation()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var setting = await database.SeedSettingAsync("site.footerText", "unchanged");
+        var storage = new DelegatingMediaStorage(database.Storage);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => database.CreateService(storage).DeleteImageAsync(setting.Key));
+
+        Assert.Equal("unchanged", await database.PersistedValueAsync(setting.Key));
+        Assert.Empty(storage.DeleteCalls);
+    }
+
+    [Theory]
+    [InlineData("/uploads/site/legacy.png")]
+    [InlineData("https://cdn.example.test/logo.png")]
+    [InlineData("/images/default-logo.png")]
+    [InlineData("/uploads/site-settings/1/../../outside.png")]
+    [InlineData("/uploads/site-settings/1/not-a-guid.png")]
+    public async Task DeleteImage_NonOwnedOrMalformedValue_IsClearedWithoutDeletingFiles(string value)
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var setting = await database.SeedSettingAsync(LogoKey, value);
+        var legacyPath = database.CreateLegacyFile(value);
+        var unrelated = await database.StoreRasterAsync(setting.Id, ".png");
+
+        await database.CreateService().DeleteImageAsync(LogoKey);
+
+        Assert.Equal(string.Empty, await database.PersistedValueAsync(LogoKey));
+        Assert.True(File.Exists(database.GetFinalPath(unrelated.PublicPath)));
+        if (legacyPath is not null) Assert.True(File.Exists(legacyPath));
+    }
+
+    [Fact]
+    public async Task DeleteImage_AssetBelongingToAnotherSetting_IsNotDeleted()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var logo = await database.SeedSettingAsync(LogoKey, string.Empty);
+        var hero = await database.SeedSettingAsync(HeroKey, string.Empty);
+        var asset = await database.StoreRasterAsync(hero.Id, ".png");
+        logo.Value = hero.Value = asset.PublicPath;
+        await database.Context.SaveChangesAsync();
+
+        await database.CreateService().DeleteImageAsync(LogoKey);
+
+        Assert.Equal(string.Empty, await database.PersistedValueAsync(LogoKey));
+        Assert.Equal(asset.PublicPath, await database.PersistedValueAsync(HeroKey));
+        Assert.True(File.Exists(database.GetFinalPath(asset.PublicPath)));
+    }
+
+    [Fact]
+    public async Task DeleteImage_CleanupFailure_LogsWarningAndKeepsCommittedEmptyValue()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var setting = await database.SeedSettingAsync(LogoKey, string.Empty);
+        var asset = await database.StoreRasterAsync(setting.Id, ".png");
+        setting.Value = asset.PublicPath;
+        await database.Context.SaveChangesAsync();
+        var storage = new DelegatingMediaStorage(database.Storage) { DeleteFailurePath = asset.PublicPath };
+        var logger = new RecordingLogger();
+        var service = new SiteSettingUploadService(database.Context, storage, new SvgSanitizer(), logger);
+
+        var result = await service.DeleteImageAsync(LogoKey);
+
+        Assert.Equal(string.Empty, result.Value);
+        Assert.Equal(string.Empty, await database.PersistedValueAsync(LogoKey));
+        Assert.True(File.Exists(database.GetFinalPath(asset.PublicPath)));
+        Assert.Contains(LogLevel.Warning, logger.Levels);
+    }
+
+    [Fact]
+    public async Task DeleteImage_DatabaseFailure_DoesNotAttemptCleanup()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var setting = await database.SeedSettingAsync(LogoKey, string.Empty);
+        var asset = await database.StoreRasterAsync(setting.Id, ".png");
+        setting.Value = asset.PublicPath;
+        await database.Context.SaveChangesAsync();
+        var storage = new DelegatingMediaStorage(database.Storage);
+        database.Context.FailNextSave();
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => database.CreateService(storage).DeleteImageAsync(LogoKey));
+
+        Assert.Equal(asset.PublicPath, setting.Value);
+        Assert.Equal(asset.PublicPath, await database.PersistedValueAsync(LogoKey));
+        Assert.True(File.Exists(database.GetFinalPath(asset.PublicPath)));
+        Assert.Empty(storage.DeleteCalls);
+    }
+
+    [Fact]
+    public async Task DeleteImage_PreservesUploadVisibilitySemantics()
+    {
+        await using var database = await TestDatabase.CreateAsync();
+        var setting = await database.SeedSettingAsync(LogoKey, "/images/logo.png");
+        setting.IsDeleted = true;
+        await database.Context.SaveChangesAsync();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => database.CreateService().DeleteImageAsync(LogoKey));
+        Assert.Equal("/images/logo.png", setting.Value);
+
+        setting.IsDeleted = false;
+        setting.IsActive = false;
+        await database.Context.SaveChangesAsync();
+        await database.CreateService().DeleteImageAsync(LogoKey);
+        Assert.Equal(string.Empty, await database.PersistedValueAsync(LogoKey));
+        Assert.False(setting.IsActive);
+    }
+
+    private sealed class RecordingLogger : ILogger<SiteSettingUploadService>
+    {
+        public List<LogLevel> Levels { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception,
+            Func<TState, Exception?, string> formatter) => Levels.Add(logLevel);
+    }
 
     [Fact]
     public async Task Upload_AdminAssistantWithoutManageSettings_IsRejectedBeforeServiceCall()
@@ -592,6 +774,8 @@ public sealed class SiteSettingUploadTests
 
     private sealed class DelegatingMediaStorage(IMediaStorage inner) : IMediaStorage
     {
+        public Func<Task>? BeforeDelete { get; init; }
+        public List<(MediaAssetNamespace Namespace, int EntityId, string? Path)> DeleteCalls { get; } = [];
         public bool FailRasterStore { get; init; }
         public string? DeleteFailurePath { get; init; }
         public string RootPath => inner.RootPath;
@@ -634,14 +818,18 @@ public sealed class SiteSettingUploadTests
             CancellationToken cancellationToken = default) =>
             inner.FinalizeStagedSvgAsync(assetNamespace, uploadToken, entityId, cancellationToken);
 
-        public Task<bool> DeleteOwnedAssetAsync(
+        public async Task<bool> DeleteOwnedAssetAsync(
             MediaAssetNamespace assetNamespace,
             int entityId,
             string? publicPath,
-            CancellationToken cancellationToken = default) =>
-            string.Equals(publicPath, DeleteFailurePath, StringComparison.Ordinal)
-                ? Task.FromException<bool>(new IOException("Simulated old asset cleanup failure."))
-                : inner.DeleteOwnedAssetAsync(assetNamespace, entityId, publicPath, cancellationToken);
+            CancellationToken cancellationToken = default)
+        {
+            DeleteCalls.Add((assetNamespace, entityId, publicPath));
+            if (BeforeDelete is not null) await BeforeDelete();
+            if (string.Equals(publicPath, DeleteFailurePath, StringComparison.Ordinal))
+                throw new IOException("Simulated old asset cleanup failure.");
+            return await inner.DeleteOwnedAssetAsync(assetNamespace, entityId, publicPath, cancellationToken);
+        }
 
         public Task<int> CleanupExpiredStagedAssetsAsync(CancellationToken cancellationToken = default) =>
             inner.CleanupExpiredStagedAssetsAsync(cancellationToken);
@@ -650,6 +838,12 @@ public sealed class SiteSettingUploadTests
     private sealed class StubUploadService(SiteSetting? result = null) : ISiteSettingUploadService
     {
         public int CallCount { get; private set; }
+
+        public Task<SiteSetting> DeleteImageAsync(string key, CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return Task.FromResult(result ?? throw new InvalidOperationException("No stub result configured."));
+        }
 
         public Task<SiteSetting> UploadAsync(
             string key,

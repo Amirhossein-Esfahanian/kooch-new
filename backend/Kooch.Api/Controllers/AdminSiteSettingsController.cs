@@ -112,6 +112,17 @@ public class AdminSiteSettingsController(
         return Ok(ToResponse(setting));
     }
 
+    [HttpDelete("{key}/image")]
+    [ProducesResponseType<SiteSettingResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<SiteSettingResponse>> DeleteImage(
+        string key,
+        CancellationToken cancellationToken)
+    {
+        await EnsureCanManageSettingsAsync(cancellationToken);
+        var setting = await uploadService.DeleteImageAsync(key, cancellationToken);
+        return Ok(ToResponse(setting));
+    }
+
     private async Task EnsureCanManageSettingsAsync(CancellationToken cancellationToken)
     {
         var user = GetCurrentUser();
