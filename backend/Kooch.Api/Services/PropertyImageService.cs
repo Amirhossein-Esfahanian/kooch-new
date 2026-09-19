@@ -187,6 +187,31 @@ public class PropertyImageService(
         var image = await dbContext.PropertyImages.SingleOrDefaultAsync(item => item.Id == imageId, cancellationToken)
             ?? throw new KeyNotFoundException("Property image not found.");
         await EnsureCanManageAsync(userId, role, image.PropertyId, cancellationToken);
+
+        var shouldPromotePropertyCover =
+            image.IsCover &&
+            image.RoomTypeId is null &&
+            image.RoomId is null;
+
+        if (shouldPromotePropertyCover)
+        {
+            var replacementCover = await dbContext.PropertyImages
+                .Where(item =>
+                    item.PropertyId == image.PropertyId &&
+                    item.RoomTypeId == null &&
+                    item.RoomId == null &&
+                    item.Id != image.Id)
+                .OrderBy(item => item.SortOrder)
+                .ThenBy(item => item.Id)
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (replacementCover is not null)
+            {
+                await UnsetOtherCoversAsync(image.PropertyId, null, replacementCover.Id, cancellationToken);
+                replacementCover.IsCover = true;
+            }
+        }
+
         image.IsDeleted = true;
         image.DeletedAtUtc = DateTime.UtcNow;
         image.DeletedByUserId = userId;

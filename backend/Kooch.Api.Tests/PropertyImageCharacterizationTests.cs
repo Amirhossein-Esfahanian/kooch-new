@@ -17,7 +17,7 @@ using Xunit;
 
 namespace Kooch.Api.Tests;
 
-// These tests deliberately record existing behavior, including missing cover promotion/cleanup.
+// These tests record the current Property image behavior, including cover promotion and retained-file cleanup semantics.
 public sealed class PropertyImageCharacterizationTests
 {
     [Fact]
@@ -166,32 +166,94 @@ public sealed class PropertyImageCharacterizationTests
     }
 
     [Fact]
-    public async Task DeletingCover_SoftDeletesOnly_LeavesFileAndDoesNotPromoteRemainingImage()
+    public async Task DeletingPropertyCover_PromotesLowestSortOrderThenId_AndKeepsPhysicalFile()
     {
         using var f = new Fixture();
-        var cover = Assert.Single(await f.Upload(null));
-        var remaining = Assert.Single(await f.Upload(null));
-        await f.Service.DeleteAsync(1, UserRole.SuperAdmin, cover.Id);
-        var deleted = await f.Db.PropertyImages.IgnoreQueryFilters().AsNoTracking().SingleAsync(i => i.Id == cover.Id);
+        f.Db.PropertyImages.AddRange(
+            new PropertyImage { Id = 40, PropertyId = 10, SortOrder = 0, IsCover = true, Url = "/40.png" },
+            new PropertyImage { Id = 46, PropertyId = 10, SortOrder = 2, Url = "/46.png" },
+            new PropertyImage { Id = 44, PropertyId = 10, SortOrder = 1, Url = "/44.png" },
+            new PropertyImage { Id = 43, PropertyId = 10, SortOrder = 1, Url = "/43.png" },
+            new PropertyImage { Id = 45, PropertyId = 10, RoomTypeId = 20, SortOrder = -1, Url = "/45.png" });
+        await f.Db.SaveChangesAsync();
+
+        var coverPath = f.PathFor("/40.png");
+        Directory.CreateDirectory(Path.GetDirectoryName(coverPath)!);
+        await File.WriteAllTextAsync(coverPath, "cover");
+
+        await f.Service.DeleteAsync(1, UserRole.SuperAdmin, 40);
+
+        var deleted = await f.Db.PropertyImages
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleAsync(i => i.Id == 40);
         Assert.True(deleted.IsDeleted);
         Assert.NotNull(deleted.DeletedAtUtc);
         Assert.Equal(1, deleted.DeletedByUserId);
-        Assert.True(File.Exists(f.PathFor(cover.Url)));
-        Assert.False(Assert.Single(await f.Service.GetAsync(1, UserRole.SuperAdmin, 10)).IsCover);
-        await f.Service.DeleteAsync(1, UserRole.SuperAdmin, remaining.Id);
-        Assert.Empty(await f.Service.GetAsync(1, UserRole.SuperAdmin, 10));
-        Assert.True(File.Exists(f.PathFor(remaining.Url)));
+        Assert.True(File.Exists(coverPath));
+
+        var active = await f.Db.PropertyImages.AsNoTracking().Where(i => i.PropertyId == 10).ToListAsync();
+        Assert.True(active.Single(i => i.Id == 43).IsCover);
+        Assert.False(active.Single(i => i.Id == 44).IsCover);
+        Assert.False(active.Single(i => i.Id == 46).IsCover);
+        Assert.False(active.Single(i => i.Id == 45).IsCover);
+        Assert.Single(active.Where(i => i.RoomTypeId == null && i.RoomId == null && i.IsCover));
+
+        var ordered = await f.Service.GetAsync(1, UserRole.SuperAdmin, 10);
+        Assert.Equal(43, ordered[0].Id);
+        Assert.True(ordered[0].IsCover);
     }
 
     [Fact]
-    public async Task DeletingRoomImage_LeavesPropertyAndOtherRoomImagesUntouched()
+    public async Task DeletingLastPropertyCover_SucceedsWithoutReplacement()
+    {
+        using var f = new Fixture();
+        var cover = Assert.Single(await f.Upload(null));
+
+        await f.Service.DeleteAsync(1, UserRole.SuperAdmin, cover.Id);
+
+        Assert.Empty(await f.Service.GetAsync(1, UserRole.SuperAdmin, 10));
+        var deleted = await f.Db.PropertyImages
+            .IgnoreQueryFilters()
+            .AsNoTracking()
+            .SingleAsync(i => i.Id == cover.Id);
+        Assert.True(deleted.IsDeleted);
+        Assert.True(deleted.IsCover);
+        Assert.NotNull(deleted.DeletedAtUtc);
+        Assert.Equal(1, deleted.DeletedByUserId);
+        Assert.True(File.Exists(f.PathFor(cover.Url)));
+    }
+
+    [Fact]
+    public async Task DeletingNonCoverPropertyImage_DoesNotChangeCurrentCover()
+    {
+        using var f = new Fixture();
+        var cover = Assert.Single(await f.Upload(null));
+        var nonCover = Assert.Single(await f.Upload(null));
+
+        await f.Service.DeleteAsync(1, UserRole.SuperAdmin, nonCover.Id);
+
+        var remaining = Assert.Single(await f.Service.GetAsync(1, UserRole.SuperAdmin, 10));
+        Assert.Equal(cover.Id, remaining.Id);
+        Assert.True(remaining.IsCover);
+    }
+
+    [Fact]
+    public async Task DeletingRoomImage_LeavesPropertyCoverAndOtherRoomImagesUntouched()
     {
         using var f = new Fixture();
         var property = Assert.Single(await f.Upload(null));
         var room = Assert.Single(await f.Upload(20));
         var other = Assert.Single(await f.Upload(21));
+        await f.Service.UpdateAsync(1, UserRole.SuperAdmin, room.Id,
+            new PropertyImageRequest { Url = room.Url, RoomTypeId = 20, IsCover = true, SortOrder = room.SortOrder });
+
         await f.Service.DeleteAsync(1, UserRole.SuperAdmin, room.Id);
-        Assert.Equal(new[] { property.Id, other.Id }, (await f.Service.GetAsync(1, UserRole.SuperAdmin, 10)).Select(i => i.Id));
+
+        var remaining = await f.Service.GetAsync(1, UserRole.SuperAdmin, 10);
+        Assert.Equal(new[] { property.Id, other.Id }, remaining.Select(i => i.Id));
+        Assert.True(remaining.Single(i => i.Id == property.Id).IsCover);
+        Assert.False(remaining.Single(i => i.Id == other.Id).IsCover);
         Assert.True(File.Exists(f.PathFor(room.Url)));
     }
 
