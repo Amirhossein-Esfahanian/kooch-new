@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 export interface MediaGalleryItem {
@@ -212,6 +213,11 @@ export function MediaGallery<T extends MediaGalleryItem>({
   uploadProgress = null,
 }: MediaGalleryProps<T>) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [deleteTarget, setDeleteTarget] = useState<T | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const deletingRef = useRef(false);
+  const promotesCover = mode === "property" && Boolean(deleteTarget?.isMain) &&
+    items.some((item) => item.id !== deleteTarget?.id);
   const [openMenuImageId, setOpenMenuImageId] = useState<
     string | number | null
   >(null);
@@ -429,6 +435,17 @@ export function MediaGallery<T extends MediaGalleryItem>({
                   onClick={(event) => event.stopPropagation()}
                   onPointerDown={(event) => event.stopPropagation()}
                 >
+                  <button
+                    className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-surface-muted)] [@media(pointer:coarse)]:min-h-11"
+                    onClick={() => {
+                      setOpenMenuImageId(null);
+                      setPreviewIndex(index);
+                      setPreviewZoom(1);
+                    }}
+                    type="button"
+                  >
+                    مشاهده
+                  </button>
                   {mode === "property" && onSetMain && (
                     <button
                       className="block w-full px-4 py-2.5 text-right hover:bg-[var(--theme-primary-soft)] disabled:cursor-default disabled:opacity-50 [@media(pointer:coarse)]:min-h-11"
@@ -462,11 +479,11 @@ export function MediaGallery<T extends MediaGalleryItem>({
                     className="block w-full px-4 py-2.5 text-right text-[var(--theme-danger)] hover:bg-[var(--theme-danger-soft)] [@media(pointer:coarse)]:min-h-11"
                     onClick={() => {
                       setOpenMenuImageId(null);
-                      void onDelete(item);
+                      setDeleteTarget(item);
                     }}
                     type="button"
                   >
-                    حذف تصویر
+                    حذف
                   </button>
                 </div>
               )}
@@ -474,6 +491,35 @@ export function MediaGallery<T extends MediaGalleryItem>({
           </article>
         ))}
       </div>
+
+      <KoochConfirmDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open && !deletingRef.current) setDeleteTarget(null);
+        }}
+        title={promotesCover ? "حذف تصویر اصلی" : "حذف تصویر"}
+        description={promotesCover
+          ? "این تصویر، تصویر اصلی اقامتگاه است. پس از حذف، تصویر بعدی به‌عنوان تصویر اصلی انتخاب می‌شود. آیا از حذف آن مطمئن هستید؟"
+          : "آیا از حذف این تصویر مطمئن هستید؟"}
+        confirmText="حذف تصویر"
+        cancelText="انصراف"
+        variant="destructive"
+        loading={deleting}
+        onConfirm={async () => {
+          if (!deleteTarget || deletingRef.current) return;
+          deletingRef.current = true;
+          setDeleting(true);
+          try {
+            await onDelete(deleteTarget);
+            setDeleteTarget(null);
+          } catch (caught) {
+            toast.error(caught instanceof Error ? caught.message : "تصویر حذف نشد.", { id: "media-gallery-error" });
+          } finally {
+            deletingRef.current = false;
+            setDeleting(false);
+          }
+        }}
+      />
 
       {preview && (
         <KoochDialog

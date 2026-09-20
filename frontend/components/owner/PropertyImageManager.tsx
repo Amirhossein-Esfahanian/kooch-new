@@ -156,10 +156,11 @@ export function PropertyImageManager({
     setError("");
     try {
       await apiRequest(`/owner/property-images/${image.id}`, { method: "DELETE" });
-      onImagesChange(images.filter((item) => item.id !== image.id));
+      const refreshed = await apiRequest<PropertyImageResponse[]>(`/owner/properties/${image.propertyId}/images`);
+      onImagesChange(refreshed);
       toast.success("تصویر حذف شد");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "تصویر حذف نشد.");
+      throw new Error(caught instanceof Error ? caught.message : "تصویر حذف نشد.");
     } finally {
       setBusyId(null);
     }

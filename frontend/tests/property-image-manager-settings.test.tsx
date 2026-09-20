@@ -1,9 +1,11 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PropertyImageResponse } from "@/lib/owner-api";
+import { useState } from "react";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
+  deleteFailure: vi.fn(),
 }));
 
 vi.mock("@/lib/owner-api", async (importOriginal) => {
@@ -22,6 +24,7 @@ vi.mock("@/components/MediaGallery", () => ({
     items,
     totalItemCount,
     onAdd,
+    onDelete,
   }: {
     constraints: {
       maxFileSizeMb: number;
@@ -30,9 +33,10 @@ vi.mock("@/components/MediaGallery", () => ({
       maxImages: number;
     };
     disabled?: boolean;
-    items: PropertyImageResponse[];
+    items: (PropertyImageResponse & { isMain: boolean })[];
     totalItemCount: number;
     onAdd: (files: File[]) => Promise<void>;
+    onDelete: (image: PropertyImageResponse) => Promise<void>;
   }) => (
     <div
       data-disabled={String(Boolean(disabled))}
@@ -43,7 +47,9 @@ vi.mock("@/components/MediaGallery", () => ({
       data-testid="media-gallery"
       data-total-count={totalItemCount}
     >
-      {items.map((item) => <span key={item.id} data-testid="gallery-image">{item.id}</span>)}
+      {items.map((item) => <span key={item.id} data-testid="gallery-image" data-main={item.isMain}>
+        {item.id}<button onClick={() => void onDelete(item).catch(mocks.deleteFailure)}>{`delete-${item.id}`}</button>
+      </span>)}
       <button onClick={() => void onAdd([new File(["image"], "room.png", { type: "image/png" })])}>test-add</button>
     </div>
   ),
@@ -55,6 +61,7 @@ describe("PropertyImageManager operational settings", () => {
   afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     mocks.apiRequest.mockReset();
+    mocks.deleteFailure.mockReset();
   });
 
   const images: PropertyImageResponse[] = [
@@ -74,8 +81,46 @@ describe("PropertyImageManager operational settings", () => {
     mocks.apiRequest.mockResolvedValue({});
     render(<PropertyImageManager propertyId={12} fixedRoomTypeId={fixedRoomTypeId} images={images} onImagesChange={vi.fn()} />);
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalled());
-    expect(screen.getAllByTestId("gallery-image").map((node) => Number(node.textContent))).toEqual(expected);
+    expect(screen.getAllByTestId("gallery-image").map((node) => Number(node.firstChild?.textContent))).toEqual(expected);
     expect(screen.getByTestId("media-gallery").getAttribute("data-total-count")).toBe("5");
+  });
+
+  it.each([undefined, 20])("refreshes the authoritative collection after deletion in scope %s", async (roomTypeId) => {
+    const removedId = roomTypeId ? 2 : 1;
+    const refreshed = images.filter((item) => item.id !== removedId).map((item) => ({ ...item, isCover: item.id === 4 }));
+    mocks.apiRequest.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (options?.method === "DELETE") return undefined;
+      return path.endsWith("/images") ? refreshed : {};
+    });
+    function Harness() {
+      const [value, setValue] = useState(images);
+      return <PropertyImageManager propertyId={12} fixedRoomTypeId={roomTypeId} images={value} onImagesChange={setValue} />;
+    }
+    render(<Harness />);
+    fireEvent.click(screen.getByRole("button", { name: `delete-${removedId}` }));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith("/owner/properties/12/images"));
+    expect(mocks.apiRequest).toHaveBeenCalledWith(`/owner/property-images/${removedId}`, { method: "DELETE" });
+    await waitFor(() => expect(screen.queryByRole("button", { name: `delete-${removedId}` })).toBeNull());
+    if (!roomTypeId) {
+      expect(screen.getByTestId("gallery-image").getAttribute("data-main")).toBe("true");
+      expect(screen.getByRole("button", { name: "delete-4" })).toBeTruthy();
+    } else {
+      expect(screen.queryAllByTestId("gallery-image")).toHaveLength(0);
+    }
+  });
+
+  it("does not change the collection or refetch when DELETE fails", async () => {
+    mocks.apiRequest.mockImplementation(async (_path: string, options?: RequestInit) => {
+      if (options?.method === "DELETE") throw new Error("denied");
+      return {};
+    });
+    const changed = vi.fn();
+    render(<PropertyImageManager propertyId={12} images={images} onImagesChange={changed} />);
+    fireEvent.click(screen.getByRole("button", { name: "delete-1" }));
+    await waitFor(() => expect(mocks.deleteFailure).toHaveBeenCalled());
+    expect(changed).not.toHaveBeenCalled();
+    expect(mocks.apiRequest).not.toHaveBeenCalledWith("/owner/properties/12/images");
+    expect(screen.getByRole("button", { name: "delete-1" })).toBeTruthy();
   });
 
   it.each([undefined, 20])("uploads with current scope metadata for %s", async (roomTypeId) => {
