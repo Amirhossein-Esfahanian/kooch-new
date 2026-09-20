@@ -56,6 +56,8 @@ export interface SharedUploaderProps {
   maxFileSizeMb?: number;
   /** Maximum number of pending files. */
   maxFiles?: number;
+  /** Optional domain-neutral validation after MIME and file-size checks. */
+  validateFile?: (file: File) => string | null | undefined | Promise<string | null | undefined>;
   /** Upload accepted files immediately. Cropped images wait for crop confirmation. */
   autoUpload?: boolean;
   /** Show thumbnails for selected image files. */
@@ -293,6 +295,7 @@ export function SharedUploader({
   accept = ["image/jpeg", "image/png", "image/webp"],
   maxFileSizeMb = 5,
   maxFiles,
+  validateFile,
   autoUpload = false,
   enablePreview = true,
   enableCrop = false,
@@ -320,6 +323,9 @@ export function SharedUploader({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const uploadingRef = useRef(false);
+  const validatingRef = useRef(false);
+  const mountedRef = useRef(true);
+  const [validating, setValidating] = useState(false);
   const deletingRef = useRef(false);
   const croppingRef = useRef(false);
   const touchStartX = useRef<number | null>(null);
@@ -343,6 +349,11 @@ export function SharedUploader({
   const [cropping, setCropping] = useState(false);
   const [croppedPixels, setCroppedPixels] = useState<Area | null>(null);
   const acceptText = useMemo(() => accept.join(","), [accept]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     return () =>
@@ -389,6 +400,7 @@ export function SharedUploader({
     if (
       disabled ||
       uploadingRef.current ||
+      validatingRef.current ||
       deletingRef.current ||
       croppingRef.current
     )
@@ -405,6 +417,7 @@ export function SharedUploader({
   }
 
   function openCrop(item: PendingFile) {
+    if (validatingRef.current) return;
     if (disabled || !enableCrop || !isCroppableRasterImage(item.file)) return;
     setActionMenuOpen(false);
     setPreviewIndex(null);
@@ -415,62 +428,76 @@ export function SharedUploader({
     setCropTarget(item);
   }
 
-  function addFiles(files: FileList | File[]) {
-    if (disabled || uploadingRef.current || deletingRef.current) return;
+  async function addFiles(files: FileList | File[]) {
+    if (disabled || uploadingRef.current || deletingRef.current || validatingRef.current) return;
+    validatingRef.current = true;
+    setValidating(true);
     setError("");
     const incoming = Array.from(files);
-    const next: PendingFile[] = [];
-    for (const file of incoming) {
-      if (accept.length && !accept.includes(file.type)) {
-        setSafeError("فرمت تصویر پشتیبانی نمی‌شود");
-        continue;
+    const accepted: File[] = [];
+    try {
+      for (const file of incoming) {
+        if (accept.length && !accept.includes(file.type)) {
+          setSafeError("فرمت تصویر پشتیبانی نمی‌شود");
+          continue;
+        }
+        if (file.size > maxFileSizeMb * 1024 * 1024) {
+          setSafeError("حجم تصویر بیش از حد مجاز است");
+          continue;
+        }
+        if (validateFile) {
+          let validationError: string | null | undefined;
+          try {
+            validationError = await validateFile(file);
+          } catch (caught) {
+            validationError = caught instanceof Error ? caught.message : "اعتبارسنجی فایل انجام نشد.";
+          }
+          if (!mountedRef.current) return;
+          if (typeof validationError === "string") {
+            setSafeError(validationError);
+            continue;
+          }
+        }
+        accepted.push(file);
       }
-      if (file.size > maxFileSizeMb * 1024 * 1024) {
-        setSafeError("حجم تصویر بیش از حد مجاز است");
-        continue;
+
+      if (accepted.length === 0) return;
+      if (typeof maxFiles === "number" && (multiple ? items.length : 0) + accepted.length > maxFiles) {
+        setSafeError("تعداد فایل‌های انتخاب‌شده بیش از ظرفیت مجاز است.");
+        return;
       }
-      next.push(makePendingFile(file, enablePreview));
+      const selected = multiple ? accepted : accepted.slice(0, 1);
+      const next = selected.map((file) => makePendingFile(file, enablePreview));
+      const acceptedItems = multiple ? [...items, ...next] : next;
+      setUploadFailed(false);
+      setMessage("");
+      setItems(acceptedItems);
+      if (!autoUpload) return;
+
+      const cropCandidate = acceptedItems[0];
+      if (
+        enableCrop &&
+        cropCandidate.previewUrl &&
+        isCroppableRasterImage(cropCandidate.file)
+      ) {
+        setCroppedPixels(null);
+        setCrop({ x: 0, y: 0 });
+        setCropZoom(1);
+        setCropAspect(cropAspectRatio);
+        setCropTarget(cropCandidate);
+        return;
+      }
+
+      validatingRef.current = false;
+      upload(acceptedItems);
+    } finally {
+      validatingRef.current = false;
+      if (mountedRef.current) setValidating(false);
     }
-
-    if (next.length === 0) return;
-    setUploadFailed(false);
-    setMessage("");
-
-    if (!autoUpload) {
-      setItems((current) => {
-        const combined = multiple ? [...current, ...next] : next.slice(0, 1);
-        return typeof maxFiles === "number"
-          ? combined.slice(0, maxFiles)
-          : combined;
-      });
-      return;
-    }
-
-    const combined = multiple ? [...items, ...next] : next.slice(0, 1);
-    const acceptedItems =
-      typeof maxFiles === "number" ? combined.slice(0, maxFiles) : combined;
-    setItems(acceptedItems);
-
-    if (acceptedItems.length === 0) return;
-
-    const cropCandidate = acceptedItems[0];
-    if (
-      enableCrop &&
-      cropCandidate.previewUrl &&
-      isCroppableRasterImage(cropCandidate.file)
-    ) {
-      setCroppedPixels(null);
-      setCrop({ x: 0, y: 0 });
-      setCropZoom(1);
-      setCropAspect(cropAspectRatio);
-      setCropTarget(cropCandidate);
-      return;
-    }
-
-    upload(acceptedItems);
   }
 
   function removeItem(id: string) {
+    if (validatingRef.current) return;
     setActionMenuOpen(false);
     setPreviewIndex(null);
     setItems((current) => {
@@ -485,6 +512,7 @@ export function SharedUploader({
       !cropTarget ||
       !croppedPixels ||
       croppingRef.current ||
+      validatingRef.current ||
       uploadingRef.current
     )
       return;
@@ -520,7 +548,7 @@ export function SharedUploader({
       setSafeError("حداقل یک فایل انتخاب کنید.");
       return;
     }
-    if (uploadingRef.current || deletingRef.current) return;
+    if (uploadingRef.current || deletingRef.current || validatingRef.current) return;
 
     uploadingRef.current = true;
     setUploading(true);
@@ -1088,7 +1116,7 @@ export function SharedUploader({
       {(!autoUpload || uploading || (uploadFailed && items.length > 0)) && (
         <button
           className="mt-5 rounded-xl bg-primary px-5 py-3 font-bold text-primary-foreground disabled:opacity-60"
-          disabled={disabled || uploading || !items.length}
+          disabled={disabled || uploading || validating || !items.length}
           onClick={() => upload()}
           type="button"
         >

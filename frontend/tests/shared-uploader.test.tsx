@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -145,6 +146,86 @@ describe("SharedUploader automatic upload", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("runs MIME and size checks before the custom validator", async () => {
+    const validateFile = vi.fn().mockReturnValue(null);
+    const onUploadError = vi.fn();
+    const { container } = render(<SharedUploader uploadUrl="/api/upload" autoUpload maxFileSizeMb={0.000001} validateFile={validateFile} onUploadError={onUploadError} />);
+    selectFile(container, new File(["bad"], "bad.txt", { type: "text/plain" }));
+    selectFile(container, new File(["too large"], "large.png", { type: "image/png" }));
+    expect(validateFile).not.toHaveBeenCalled();
+    expect(onUploadError).toHaveBeenCalledWith("فرمت تصویر پشتیبانی نمی‌شود");
+    expect(onUploadError).toHaveBeenCalledWith("حجم تصویر بیش از حد مجاز است");
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+  });
+
+  it.each([false, true])("rejects custom validation errors (async=%s) without uploading", async (asyncValidator) => {
+    const validateFile = vi.fn(() => asyncValidator ? Promise.resolve("dimensions rejected") : "dimensions rejected");
+    const onUploadError = vi.fn();
+    const { container } = render(<SharedUploader uploadUrl="/api/upload" autoUpload validateFile={validateFile} onUploadError={onUploadError} />);
+    selectFile(container, new File(["image"], "small.png", { type: "image/png" }));
+    await waitFor(() => expect(onUploadError).toHaveBeenCalledWith("dimensions rejected"));
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+  });
+
+  it("waits for sequential validation, preserves accepted order, and ignores repeated selection while busy", async () => {
+    let resolveFirst!: (value: null) => void;
+    const validateFile = vi.fn().mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockReturnValueOnce("invalid middle").mockResolvedValueOnce(undefined);
+    const { container } = render(<SharedUploader uploadUrl="/api/upload" multiple autoUpload validateFile={validateFile} />);
+    const files = ["first", "invalid", "last"].map((name) => new File([name], `${name}.png`, { type: "image/png" }));
+    const input = container.querySelector('input[type="file"]')!;
+    fireEvent.change(input, { target: { files } });
+    fireEvent.change(input, { target: { files } });
+    expect(validateFile).toHaveBeenCalledTimes(1);
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+    await act(async () => resolveFirst(null));
+    expect(validateFile.mock.calls.map(([file]) => file.name)).toEqual(files.map((file) => file.name));
+    expect(FakeXMLHttpRequest.requests).toHaveLength(1);
+    const body = FakeXMLHttpRequest.requests[0].body as FormData;
+    expect(body.getAll("files").map((file) => (file as File).name)).toEqual(["first.png", "last.png"]);
+  });
+
+  it("preserves a valid pending image after an invalid replacement and accepts same-file reselection", async () => {
+    const valid = new File(["valid"], "valid.png", { type: "image/png" });
+    const validateFile = vi.fn((file: File) => file.name === "bad.png" ? "invalid" : null);
+    const { container } = render(<SharedUploader uploadUrl="/api/upload" multiple={false} validateFile={validateFile} />);
+    selectFile(container, valid);
+    await screen.findByRole("img", { name: "valid.png" });
+    selectFile(container, new File(["bad"], "bad.png", { type: "image/png" }));
+    await screen.findByText("invalid");
+    expect(screen.getByRole("img", { name: "valid.png" })).toBeTruthy();
+    selectFile(container, valid);
+    await waitFor(() => expect(validateFile).toHaveBeenCalledTimes(3));
+    expect(container.querySelector<HTMLInputElement>('input[type="file"]')!.value).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "آپلود" }));
+    expect(FakeXMLHttpRequest.requests).toHaveLength(1);
+    expect((FakeXMLHttpRequest.requests[0].body as FormData).getAll("files")).toHaveLength(1);
+  });
+
+  it.each([false, true])("rejects over-capacity batches without truncation (auto=%s)", async (autoUpload) => {
+    const error = vi.fn();
+    const { container } = render(<SharedUploader uploadUrl="/api/upload" multiple maxFiles={1} autoUpload={autoUpload} onUploadError={error} />);
+    fireEvent.change(container.querySelector('input[type="file"]')!, { target: { files: [
+      new File(["a"], "a.png", { type: "image/png" }),
+      new File(["b"], "b.png", { type: "image/png" }),
+    ] } });
+    expect(error).toHaveBeenCalledWith("تعداد فایل‌های انتخاب‌شده بیش از ظرفیت مجاز است.");
+    expect(FakeXMLHttpRequest.requests).toHaveLength(0);
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(screen.queryByRole("img")).toBeNull();
+  });
+
+  it("counts existing pending files toward capacity and preserves them on overflow", () => {
+    const { container } = render(<SharedUploader uploadUrl="/api/upload" multiple maxFiles={1} />);
+    selectFile(container, new File(["a"], "a.png", { type: "image/png" }));
+    selectFile(container, new File(["b"], "b.png", { type: "image/png" }));
+    expect(screen.getByRole("img", { name: "a.png" })).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "b.png" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "آپلود" }));
+    expect((FakeXMLHttpRequest.requests[0].body as FormData).getAll("files").map((file) => (file as File).name)).toEqual(["a.png"]);
   });
 
   it.each([{}, undefined])(
