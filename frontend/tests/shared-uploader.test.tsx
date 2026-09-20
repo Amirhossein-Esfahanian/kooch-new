@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -13,17 +14,41 @@ vi.mock("sonner", () => ({
   toast: { error: vi.fn(), success: vi.fn() },
 }));
 
+vi.mock("next/image", () => ({
+  default: ({
+    fill: _fill,
+    priority: _priority,
+    quality: _quality,
+    sizes: _sizes,
+    unoptimized: _unoptimized,
+    ...props
+  }: ComponentProps<"img"> & {
+    fill?: boolean;
+    priority?: boolean;
+    quality?: number;
+    sizes?: string;
+    unoptimized?: boolean;
+  }) => (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img {...props} />
+  ),
+}));
+
 vi.mock("react-easy-crop", async () => {
   const React = await import("react");
 
   return {
     default: ({
+      aspect,
       onCropComplete,
+      zoom,
     }: {
+      aspect?: number;
       onCropComplete: (
         croppedArea: Record<string, number>,
         croppedAreaPixels: Record<string, number>,
       ) => void;
+      zoom?: number;
     }) => {
       React.useEffect(() => {
         const area = { x: 0, y: 0, width: 40, height: 30 };
@@ -32,7 +57,13 @@ vi.mock("react-easy-crop", async () => {
         // eslint-disable-next-line react-hooks/exhaustive-deps
       }, []);
 
-      return <div data-testid="cropper" />;
+      return (
+        <div
+          data-aspect={aspect === undefined ? "free" : String(aspect)}
+          data-testid="cropper"
+          data-zoom={String(zoom ?? 1)}
+        />
+      );
     },
   };
 });
@@ -568,6 +599,124 @@ describe("SharedUploader automatic upload", () => {
 
     expect(screen.getByText("+")).toBeTruthy();
     expect(screen.getByText("Add photo")).toBeTruthy();
+  });
+
+  it("uses zoom cursor on square previews and provides viewer zoom controls", async () => {
+    render(
+      <SharedUploader
+        existingFiles={[
+          { id: "existing", url: "/existing.png", alt: "تصویر موجود" },
+        ]}
+        multiple={false}
+        showExistingFiles
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    const previewButton = screen.getByRole("button", { name: "مشاهده" });
+    expect(previewButton.classList.contains("cursor-zoom-in")).toBe(true);
+
+    fireEvent.click(previewButton);
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("100٪")).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "بزرگ‌نمایی" }),
+    );
+    expect(within(dialog).getByText("125٪")).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "کوچک‌نمایی" }),
+    );
+    expect(within(dialog).getByText("100٪")).toBeTruthy();
+  });
+
+  it("navigates multiple existing images in the rich preview and resets zoom", async () => {
+    render(
+      <SharedUploader
+        existingFiles={[
+          { id: 1, url: "/one.png", alt: "تصویر اول" },
+          { id: 2, url: "/two.png", alt: "تصویر دوم" },
+        ]}
+        multiple
+        showExistingFiles
+        uploadUrl="/api/upload"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "مشاهده" })[0],
+    );
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByRole("img", { name: "تصویر اول" })).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "بزرگ‌نمایی" }),
+    );
+    expect(within(dialog).getByText("125٪")).toBeTruthy();
+
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "تصویر بعدی" }),
+    );
+    expect(within(dialog).getByRole("img", { name: "تصویر دوم" })).toBeTruthy();
+    expect(within(dialog).getByText("100٪")).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    expect(within(dialog).getByRole("img", { name: "تصویر اول" })).toBeTruthy();
+  });
+
+  it("supports optional crop aspect choices without changing fixed-ratio consumers", async () => {
+    const { container, rerender } = render(
+      <SharedUploader
+        enableCrop
+        multiple={false}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    selectFile(
+      container,
+      new File(["image"], "fixed.png", { type: "image/png" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "برش تصویر" }));
+
+    let cropper = await screen.findByTestId("cropper");
+    expect(cropper.getAttribute("data-aspect")).toBe(String(4 / 3));
+    expect(screen.queryByRole("button", { name: "۱:۱" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+
+    rerender(
+      <SharedUploader
+        cropAspectOptions={[
+          { label: "۱:۱", value: 1 },
+          { label: "۴:۳", value: 4 / 3 },
+          { label: "آزاد", value: null },
+        ]}
+        enableCrop
+        multiple={false}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "گزینه‌های تصویر" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "برش تصویر" }));
+    cropper = await screen.findByTestId("cropper");
+
+    fireEvent.click(screen.getByRole("button", { name: "۱:۱" }));
+    expect(cropper.getAttribute("data-aspect")).toBe("1");
+
+    fireEvent.click(screen.getByRole("button", { name: "آزاد" }));
+    expect(cropper.getAttribute("data-aspect")).toBe("free");
+
+    const zoom = screen.getByRole("slider", { name: "بزرگ‌نمایی برش" });
+    fireEvent.change(zoom, { target: { value: "1.7" } });
+    expect(cropper.getAttribute("data-zoom")).toBe("1.7");
   });
 
   it("uses semantic palette classes and only the requested image-action SVGs", () => {

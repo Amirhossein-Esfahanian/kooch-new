@@ -1,11 +1,14 @@
 "use client";
 
-import Cropper, { Area } from "react-easy-crop";
+import Cropper from "react-easy-crop";
+import type { Area } from "react-easy-crop";
+import NextImage from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 
 export type SharedUploadedFile = Record<string, unknown>;
 
@@ -14,6 +17,11 @@ export interface SharedExistingFile {
   url: string;
   name?: string | null;
   alt?: string | null;
+}
+
+export interface SharedCropAspectOption {
+  label: string;
+  value: number | null;
 }
 
 export interface SharedUploaderLabels {
@@ -56,6 +64,8 @@ export interface SharedUploaderProps {
   enableCrop?: boolean;
   /** Crop aspect ratio, for example 16 / 9 for hero images. */
   cropAspectRatio?: number;
+  /** Optional crop aspect choices. Use null for free crop. Existing consumers remain fixed-ratio when omitted. */
+  cropAspectOptions?: SharedCropAspectOption[];
   /** Metadata appended to the form. Values are stringified. */
   metadata?: Record<string, string | number | boolean | null | undefined>;
   /** Extra form fields appended to the form. Values are stringified. */
@@ -188,6 +198,57 @@ function UploaderIcon({
   );
 }
 
+type SharedViewerItem = {
+  id: string;
+  url: string;
+  alt: string;
+  title: string;
+};
+
+function ProgressiveViewerImage({ item }: { item: SharedViewerItem }) {
+  const [fullLoaded, setFullLoaded] = useState(false);
+  const isObjectUrl =
+    item.url.startsWith("blob:") || item.url.startsWith("data:");
+
+  if (isObjectUrl) {
+    return (
+      <img
+        alt={item.alt}
+        className="h-full w-full object-contain"
+        src={item.url}
+      />
+    );
+  }
+
+  return (
+    <div className="relative h-full w-full">
+      <NextImage
+        alt=""
+        className="object-contain blur-sm"
+        fill
+        priority
+        quality={35}
+        sizes="92vw"
+        src={item.url}
+        unoptimized={shouldBypassImageOptimization(item.url)}
+      />
+      <NextImage
+        alt={item.alt}
+        className={`object-contain transition-opacity duration-500 motion-reduce:transition-none ${
+          fullLoaded ? "opacity-100" : "opacity-0"
+        }`}
+        fill
+        onLoad={() => setFullLoaded(true)}
+        priority
+        quality={85}
+        sizes="92vw"
+        src={item.url}
+        unoptimized={shouldBypassImageOptimization(item.url)}
+      />
+    </div>
+  );
+}
+
 async function cropImage(file: File, croppedAreaPixels: Area): Promise<File> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
@@ -236,6 +297,7 @@ export function SharedUploader({
   enablePreview = true,
   enableCrop = false,
   cropAspectRatio = 4 / 3,
+  cropAspectOptions = [],
   metadata,
   extraFormFields,
   headers,
@@ -259,7 +321,11 @@ export function SharedUploader({
   const actionMenuRef = useRef<HTMLDivElement | null>(null);
   const uploadingRef = useRef(false);
   const deletingRef = useRef(false);
-  const [deleteTarget, setDeleteTarget] = useState<string | number | null>(null);
+  const croppingRef = useRef(false);
+  const touchStartX = useRef<number | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<string | number | null>(
+    null,
+  );
   const [deleting, setDeleting] = useState(false);
   const [items, setItems] = useState<PendingFile[]>([]);
   const [dragging, setDragging] = useState(false);
@@ -267,11 +333,14 @@ export function SharedUploader({
   const [uploadFailed, setUploadFailed] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [previewZoom, setPreviewZoom] = useState(1);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
   const [cropTarget, setCropTarget] = useState<PendingFile | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
-  const [zoom, setZoom] = useState(1);
+  const [cropZoom, setCropZoom] = useState(1);
+  const [cropAspect, setCropAspect] = useState<number | null>(cropAspectRatio);
+  const [cropping, setCropping] = useState(false);
   const [croppedPixels, setCroppedPixels] = useState<Area | null>(null);
   const acceptText = useMemo(() => accept.join(","), [accept]);
 
@@ -317,22 +386,32 @@ export function SharedUploader({
   );
 
   function openFilePicker() {
-    if (disabled || uploadingRef.current || deletingRef.current) return;
+    if (
+      disabled ||
+      uploadingRef.current ||
+      deletingRef.current ||
+      croppingRef.current
+    )
+      return;
     setActionMenuOpen(false);
-    setPreviewOpen(false);
+    setPreviewIndex(null);
     inputRef.current?.click();
   }
 
-  function openPreview() {
+  function openPreview(index = 0) {
     setActionMenuOpen(false);
-    setPreviewOpen(true);
+    setPreviewZoom(1);
+    setPreviewIndex(index);
   }
 
   function openCrop(item: PendingFile) {
     if (disabled || !enableCrop || !isCroppableRasterImage(item.file)) return;
     setActionMenuOpen(false);
-    setPreviewOpen(false);
+    setPreviewIndex(null);
     setCroppedPixels(null);
+    setCrop({ x: 0, y: 0 });
+    setCropZoom(1);
+    setCropAspect(cropAspectRatio);
     setCropTarget(item);
   }
 
@@ -381,6 +460,9 @@ export function SharedUploader({
       isCroppableRasterImage(cropCandidate.file)
     ) {
       setCroppedPixels(null);
+      setCrop({ x: 0, y: 0 });
+      setCropZoom(1);
+      setCropAspect(cropAspectRatio);
       setCropTarget(cropCandidate);
       return;
     }
@@ -390,7 +472,7 @@ export function SharedUploader({
 
   function removeItem(id: string) {
     setActionMenuOpen(false);
-    setPreviewOpen(false);
+    setPreviewIndex(null);
     setItems((current) => {
       const found = current.find((item) => item.id === id);
       if (found?.previewUrl) URL.revokeObjectURL(found.previewUrl);
@@ -399,7 +481,16 @@ export function SharedUploader({
   }
 
   async function confirmCrop() {
-    if (!cropTarget || !croppedPixels) return;
+    if (
+      !cropTarget ||
+      !croppedPixels ||
+      croppingRef.current ||
+      uploadingRef.current
+    )
+      return;
+
+    croppingRef.current = true;
+    setCropping(true);
     try {
       const croppedFile = await cropImage(cropTarget.file, croppedPixels);
       const previewUrl = enablePreview
@@ -418,6 +509,9 @@ export function SharedUploader({
       setSafeError(
         caught instanceof Error ? caught.message : "برش تصویر انجام نشد.",
       );
+    } finally {
+      croppingRef.current = false;
+      setCropping(false);
     }
   }
 
@@ -463,7 +557,7 @@ export function SharedUploader({
           (item) => item.previewUrl && URL.revokeObjectURL(item.previewUrl),
         );
         setActionMenuOpen(false);
-        setPreviewOpen(false);
+        setPreviewIndex(null);
         setItems([]);
         setMessage(text.successText);
         if (useToastNotifications) toast.success(text.successText);
@@ -485,6 +579,94 @@ export function SharedUploader({
     request.send(formData);
   }
 
+  const viewerItems = useMemo<SharedViewerItem[]>(() => {
+    const existing = showExistingFiles
+      ? existingFiles.map((file) => ({
+          id: `existing-${file.id}`,
+          url: file.url,
+          alt: file.alt ?? file.name ?? text.previewText,
+          title: file.name ?? text.previewText,
+        }))
+      : [];
+    const pending = items
+      .filter((item) => Boolean(item.previewUrl))
+      .map((item) => ({
+        id: `pending-${item.id}`,
+        url: item.previewUrl!,
+        alt: item.file.name,
+        title: item.file.name,
+      }));
+
+    if (variant === "square" && !multiple) {
+      return pending.length ? [pending[0]] : existing.slice(0, 1);
+    }
+
+    return [...existing, ...pending];
+  }, [
+    existingFiles,
+    items,
+    multiple,
+    showExistingFiles,
+    text.previewText,
+    variant,
+  ]);
+
+  const preview =
+    previewIndex === null ? null : (viewerItems[previewIndex] ?? null);
+
+  useEffect(() => {
+    if (previewIndex === null) return;
+    if (viewerItems.length === 0) {
+      setPreviewIndex(null);
+      return;
+    }
+    if (previewIndex >= viewerItems.length) {
+      setPreviewIndex(viewerItems.length - 1);
+    }
+  }, [previewIndex, viewerItems.length]);
+
+  useEffect(() => {
+    if (previewIndex === null || viewerItems.length < 2) return;
+
+    function handlePreviewKeyDown(event: KeyboardEvent) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        setPreviewIndex((current) =>
+          current === null ? null : (current + 1) % viewerItems.length,
+        );
+        setPreviewZoom(1);
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        setPreviewIndex((current) =>
+          current === null
+            ? null
+            : (current - 1 + viewerItems.length) % viewerItems.length,
+        );
+        setPreviewZoom(1);
+      }
+    }
+
+    document.addEventListener("keydown", handlePreviewKeyDown);
+    return () => document.removeEventListener("keydown", handlePreviewKeyDown);
+  }, [previewIndex, viewerItems.length]);
+
+  function movePreview(direction: -1 | 1) {
+    if (viewerItems.length < 2) return;
+    setPreviewIndex((current) =>
+      current === null
+        ? null
+        : (current + direction + viewerItems.length) % viewerItems.length,
+    );
+    setPreviewZoom(1);
+  }
+
+  function previewIndexForUrl(url: string | null) {
+    if (!url) return 0;
+    const index = viewerItems.findIndex((item) => item.url === url);
+    return index >= 0 ? index : 0;
+  }
+
   const firstExistingPreview =
     showExistingFiles && existingFiles.length ? existingFiles[0] : null;
   const pendingSquarePreview = items[0]?.previewUrl ? items[0] : null;
@@ -495,9 +677,6 @@ export function SharedUploader({
     : (firstExistingPreview?.alt ??
       firstExistingPreview?.name ??
       text.previewText);
-  const squarePreviewTitle = pendingSquarePreview
-    ? pendingSquarePreview.file.name
-    : (firstExistingPreview?.name ?? text.previewText);
   const canCropSquarePreview = Boolean(
     !disabled &&
     enableCrop &&
@@ -529,11 +708,18 @@ export function SharedUploader({
                   className="rounded-2xl border border-border bg-muted p-3"
                   key={file.id}
                 >
-                  <img
-                    alt={file.alt ?? file.name ?? ""}
-                    className="aspect-video w-full rounded-xl object-cover"
-                    src={file.url}
-                  />
+                  <button
+                    aria-label={text.previewImageText}
+                    className="block w-full cursor-zoom-in overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                    onClick={() => openPreview(previewIndexForUrl(file.url))}
+                    type="button"
+                  >
+                    <img
+                      alt={file.alt ?? file.name ?? ""}
+                      className="aspect-video w-full object-cover transition duration-300 hover:scale-[1.03] motion-reduce:duration-100 motion-reduce:hover:scale-100"
+                      src={file.url}
+                    />
+                  </button>
                   <div
                     className={`mt-2 flex items-center justify-between gap-2 ${hideFileDetails && !allowDeleteExisting ? "sr-only" : ""}`}
                   >
@@ -545,7 +731,9 @@ export function SharedUploader({
                     {allowDeleteExisting && (
                       <button
                         className="text-xs font-bold text-destructive"
-                        disabled={disabled || uploading || deleting || !onDeleteExisting}
+                        disabled={
+                          disabled || uploading || deleting || !onDeleteExisting
+                        }
                         onClick={() => setDeleteTarget(file.id)}
                         type="button"
                       >
@@ -591,8 +779,8 @@ export function SharedUploader({
               <>
                 <button
                   aria-label={text.previewImageText}
-                  className="absolute inset-0 overflow-hidden rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                  onClick={openPreview}
+                  className="absolute inset-0 cursor-zoom-in overflow-hidden rounded-2xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  onClick={() => openPreview(previewIndexForUrl(squarePreview))}
                   title={text.previewImageText}
                   type="button"
                 >
@@ -628,7 +816,9 @@ export function SharedUploader({
                     >
                       <button
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        onClick={openPreview}
+                        onClick={() =>
+                          openPreview(previewIndexForUrl(squarePreview))
+                        }
                         role="menuitem"
                         type="button"
                       >
@@ -674,15 +864,27 @@ export function SharedUploader({
 
                       <button
                         aria-disabled={
-                          disabled || uploading || deleting ||
+                          disabled ||
+                          uploading ||
+                          deleting ||
                           (!pendingSquarePreview &&
-                            !(firstExistingPreview && allowDeleteExisting && onDeleteExisting))
+                            !(
+                              firstExistingPreview &&
+                              allowDeleteExisting &&
+                              onDeleteExisting
+                            ))
                         }
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-destructive transition-colors duration-150 hover:bg-destructive/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
                         disabled={
-                          disabled || uploading || deleting ||
+                          disabled ||
+                          uploading ||
+                          deleting ||
                           (!pendingSquarePreview &&
-                            !(firstExistingPreview && allowDeleteExisting && onDeleteExisting))
+                            !(
+                              firstExistingPreview &&
+                              allowDeleteExisting &&
+                              onDeleteExisting
+                            ))
                         }
                         onClick={() => {
                           setActionMenuOpen(false);
@@ -814,11 +1016,20 @@ export function SharedUploader({
               key={item.id}
             >
               {item.previewUrl ? (
-                <img
-                  alt={item.file.name}
-                  className="aspect-[4/3] w-24 rounded-xl object-cover"
-                  src={item.previewUrl}
-                />
+                <button
+                  aria-label={`${text.previewImageText}: ${item.file.name}`}
+                  className="cursor-zoom-in overflow-hidden rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                  onClick={() =>
+                    openPreview(previewIndexForUrl(item.previewUrl))
+                  }
+                  type="button"
+                >
+                  <img
+                    alt={item.file.name}
+                    className="aspect-[4/3] w-24 object-cover transition duration-300 hover:scale-[1.03] motion-reduce:duration-100 motion-reduce:hover:scale-100"
+                    src={item.previewUrl}
+                  />
+                </button>
               ) : (
                 <div className="grid aspect-[4/3] w-24 place-items-center rounded-xl bg-muted text-xs font-bold text-muted-foreground">
                   FILE
@@ -897,14 +1108,18 @@ export function SharedUploader({
         variant="destructive"
         loading={deleting}
         onConfirm={async () => {
-          if (deleteTarget === null || !onDeleteExisting || deletingRef.current) return;
+          if (deleteTarget === null || !onDeleteExisting || deletingRef.current)
+            return;
           deletingRef.current = true;
           setDeleting(true);
           try {
             await onDeleteExisting(deleteTarget);
             setDeleteTarget(null);
           } catch (failure) {
-            const message = failure instanceof Error ? failure.message : "حذف تصویر انجام نشد.";
+            const message =
+              failure instanceof Error
+                ? failure.message
+                : "حذف تصویر انجام نشد.";
             setError(message);
             if (useToastNotifications) toast.error(message);
           } finally {
@@ -914,61 +1129,176 @@ export function SharedUploader({
         }}
       />
 
-      <KoochDialog
-        onOpenChange={setPreviewOpen}
-        open={Boolean(previewOpen && squarePreview)}
-        size="lg"
-        title={squarePreviewTitle}
-      >
-        {squarePreview && (
-          <div className="grid max-h-[70vh] min-h-64 place-items-center overflow-hidden rounded-2xl bg-muted p-2">
-            <img
-              alt={squarePreviewAlt}
-              className="max-h-[68vh] max-w-full object-contain"
-              src={squarePreview}
-            />
+      {preview && (
+        <KoochDialog
+          bodyClassName="relative overflow-hidden bg-slate-950 p-0"
+          contentClassName="h-[min(840px,94vh)] w-[calc(100vw-1rem)]"
+          onOpenChange={(open) => {
+            if (!open) setPreviewIndex(null);
+          }}
+          open
+          size="xl"
+          title={
+            viewerItems.length > 1
+              ? `${text.previewText} ${previewIndex! + 1} از ${viewerItems.length}`
+              : preview.title
+          }
+        >
+          <div
+            className="relative h-full min-h-[55vh] w-full overflow-hidden"
+            onTouchEnd={(event) => {
+              if (touchStartX.current === null) return;
+              const distance =
+                event.changedTouches[0].clientX - touchStartX.current;
+              if (Math.abs(distance) > 50) movePreview(distance < 0 ? 1 : -1);
+              touchStartX.current = null;
+            }}
+            onTouchStart={(event) => {
+              touchStartX.current = event.touches[0].clientX;
+            }}
+          >
+            {viewerItems.length > 1 && (
+              <>
+                <button
+                  aria-label="تصویر قبلی"
+                  className="touch-target-44 absolute right-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    movePreview(-1);
+                  }}
+                  type="button"
+                >
+                  ‹
+                </button>
+                <button
+                  aria-label="تصویر بعدی"
+                  className="touch-target-44 absolute left-3 top-1/2 z-10 grid h-12 w-12 -translate-y-1/2 place-items-center rounded-full bg-white/10 text-3xl text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    movePreview(1);
+                  }}
+                  type="button"
+                >
+                  ›
+                </button>
+              </>
+            )}
+
+            <div
+              className="absolute inset-4 select-none transition-transform motion-reduce:transition-none sm:inset-8"
+              style={{ transform: `scale(${previewZoom})` }}
+            >
+              <ProgressiveViewerImage item={preview} key={preview.id} />
+            </div>
+
+            <div className="absolute bottom-5 left-1/2 flex -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950/70 p-2 text-white backdrop-blur">
+              <button
+                aria-label="کوچک‌نمایی"
+                className="touch-target-44 h-9 w-9 rounded-full bg-white/10 text-xl transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
+                disabled={previewZoom <= 1}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreviewZoom((value) => Math.max(1, value - 0.25));
+                }}
+                type="button"
+              >
+                −
+              </button>
+              <span
+                aria-live="polite"
+                className="min-w-14 text-center text-sm font-bold"
+              >
+                {Math.round(previewZoom * 100)}٪
+              </span>
+              <button
+                aria-label="بزرگ‌نمایی"
+                className="touch-target-44 h-9 w-9 rounded-full bg-white/10 text-xl transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white motion-reduce:transition-none"
+                disabled={previewZoom >= 3}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  setPreviewZoom((value) => Math.min(3, value + 0.25));
+                }}
+                type="button"
+              >
+                +
+              </button>
+            </div>
           </div>
-        )}
-      </KoochDialog>
+        </KoochDialog>
+      )}
 
       <KoochDialog
+        closeDisabled={cropping}
         footer={
           <>
-            <KoochButton onClick={() => setCropTarget(null)} variant="outline">
+            <KoochButton
+              disabled={cropping}
+              onClick={() => setCropTarget(null)}
+              variant="outline"
+            >
               {text.cancelText}
             </KoochButton>
-            <KoochButton onClick={confirmCrop} variant="primary">
+            <KoochButton
+              loading={cropping}
+              onClick={() => void confirmCrop()}
+              variant="primary"
+            >
               {text.confirmCropText}
             </KoochButton>
           </>
         }
         onOpenChange={(open) => {
-          if (!open) setCropTarget(null);
+          if (!open && !croppingRef.current) setCropTarget(null);
         }}
         open={Boolean(cropTarget)}
         size="lg"
         title={text.cropText}
       >
-        <div className="relative h-[420px] overflow-hidden rounded-2xl bg-slate-900">
+        <div className="relative h-[min(55vh,440px)] overflow-hidden rounded-2xl bg-slate-900">
           <Cropper
-            aspect={cropAspectRatio}
+            aspect={cropAspect ?? undefined}
             crop={crop}
             image={cropTarget?.previewUrl ?? ""}
             onCropChange={setCrop}
             onCropComplete={(_, pixels) => setCroppedPixels(pixels)}
-            onZoomChange={setZoom}
-            zoom={zoom}
+            onZoomChange={setCropZoom}
+            zoom={cropZoom}
           />
         </div>
-        <label className="mt-4 grid gap-1 text-sm font-bold">
+
+        {cropAspectOptions.length > 0 && (
+          <fieldset className="mt-4">
+            <legend className="mb-2 text-sm font-bold text-foreground">
+              نسبت برش
+            </legend>
+            <div className="flex flex-wrap gap-2">
+              {cropAspectOptions.map((option) => (
+                <KoochButton
+                  aria-pressed={cropAspect === option.value}
+                  disabled={cropping}
+                  key={`${option.label}-${String(option.value)}`}
+                  onClick={() => setCropAspect(option.value)}
+                  size="sm"
+                  variant={cropAspect === option.value ? "primary" : "outline"}
+                >
+                  {option.label}
+                </KoochButton>
+              ))}
+            </div>
+          </fieldset>
+        )}
+
+        <label className="mt-4 grid gap-2 text-sm font-bold text-foreground">
           بزرگ‌نمایی
           <input
+            aria-label="بزرگ‌نمایی برش"
+            disabled={cropping}
             max="3"
             min="1"
-            onChange={(event) => setZoom(Number(event.target.value))}
+            onChange={(event) => setCropZoom(Number(event.target.value))}
             step="0.1"
             type="range"
-            value={zoom}
+            value={cropZoom}
           />
         </label>
       </KoochDialog>
