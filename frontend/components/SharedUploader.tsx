@@ -58,7 +58,9 @@ export interface SharedUploaderProps {
   /** Maximum number of pending files. */
   maxFiles?: number;
   /** Optional domain-neutral validation after MIME and file-size checks. */
-  validateFile?: (file: File) => string | null | undefined | Promise<string | null | undefined>;
+  validateFile?: (
+    file: File,
+  ) => string | null | undefined | Promise<string | null | undefined>;
   /** Upload accepted files immediately. Cropped images wait for crop confirmation. */
   autoUpload?: boolean;
   /** Show thumbnails for selected image files. */
@@ -118,6 +120,10 @@ type PendingFile = {
   previewUrl: string | null;
   progress: number;
 };
+
+type CropTarget =
+  | { kind: "pending"; item: PendingFile }
+  | { kind: "existing"; file: SharedExistingFile };
 
 const defaultLabels: Required<SharedUploaderLabels> = {
   title: "بارگذاری فایل",
@@ -255,12 +261,18 @@ function ProgressiveViewerImage({ item }: { item: SharedViewerItem }) {
   );
 }
 
-async function cropImage(file: File, croppedAreaPixels: Area): Promise<File> {
+async function cropImageSource(
+  src: string,
+  croppedAreaPixels: Area,
+  fileName: string,
+  outputType: string,
+): Promise<File> {
   const image = await new Promise<HTMLImageElement>((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = URL.createObjectURL(file);
+    img.onerror = () => reject(new Error("بارگذاری تصویر برای برش ممکن نشد."));
+    img.src = src;
   });
 
   const canvas = document.createElement("canvas");
@@ -280,16 +292,42 @@ async function cropImage(file: File, croppedAreaPixels: Area): Promise<File> {
     croppedAreaPixels.width,
     croppedAreaPixels.height,
   );
-  URL.revokeObjectURL(image.src);
 
   const blob = await new Promise<Blob | null>((resolve) =>
-    canvas.toBlob(resolve, file.type || "image/jpeg", 0.92),
+    canvas.toBlob(resolve, outputType, 0.92),
   );
   if (!blob) throw new Error("برش تصویر انجام نشد.");
-  return new File([blob], file.name, {
-    type: blob.type,
+
+  return new File([blob], fileName, {
+    type: blob.type || outputType,
     lastModified: Date.now(),
   });
+}
+
+async function cropImage(file: File, croppedAreaPixels: Area): Promise<File> {
+  const sourceUrl = URL.createObjectURL(file);
+  try {
+    return await cropImageSource(
+      sourceUrl,
+      croppedAreaPixels,
+      file.name,
+      file.type || "image/jpeg",
+    );
+  } finally {
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+
+async function cropExistingImage(
+  file: SharedExistingFile,
+  croppedAreaPixels: Area,
+): Promise<File> {
+  return cropImageSource(
+    file.url,
+    croppedAreaPixels,
+    `cropped-${String(file.id)}.webp`,
+    "image/webp",
+  );
 }
 
 export function SharedUploader({
@@ -347,7 +385,7 @@ export function SharedUploader({
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const [previewZoom, setPreviewZoom] = useState(1);
   const [actionMenuOpen, setActionMenuOpen] = useState(false);
-  const [cropTarget, setCropTarget] = useState<PendingFile | null>(null);
+  const [cropTarget, setCropTarget] = useState<CropTarget | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [cropZoom, setCropZoom] = useState(1);
   const [cropAspect, setCropAspect] = useState<number | null>(cropAspectRatio);
@@ -357,7 +395,9 @@ export function SharedUploader({
 
   useEffect(() => {
     mountedRef.current = true;
-    return () => { mountedRef.current = false; };
+    return () => {
+      mountedRef.current = false;
+    };
   }, []);
 
   useEffect(() => {
@@ -421,20 +461,33 @@ export function SharedUploader({
     setPreviewIndex(index);
   }
 
-  function openCrop(item: PendingFile) {
+  function openCrop(target: CropTarget) {
     if (validatingRef.current) return;
-    if (disabled || !enableCrop || !isCroppableRasterImage(item.file)) return;
+    if (disabled || !enableCrop) return;
+    if (
+      target.kind === "pending" &&
+      !isCroppableRasterImage(target.item.file)
+    ) {
+      return;
+    }
+
     setActionMenuOpen(false);
     setPreviewIndex(null);
     setCroppedPixels(null);
     setCrop({ x: 0, y: 0 });
     setCropZoom(1);
     setCropAspect(cropAspectRatio);
-    setCropTarget(item);
+    setCropTarget(target);
   }
 
   async function addFiles(files: FileList | File[]) {
-    if (disabled || uploadingRef.current || deletingRef.current || validatingRef.current) return;
+    if (
+      disabled ||
+      uploadingRef.current ||
+      deletingRef.current ||
+      validatingRef.current
+    )
+      return;
     validatingRef.current = true;
     setValidating(true);
     setError("");
@@ -455,7 +508,10 @@ export function SharedUploader({
           try {
             validationError = await validateFile(file);
           } catch (caught) {
-            validationError = caught instanceof Error ? caught.message : "اعتبارسنجی فایل انجام نشد.";
+            validationError =
+              caught instanceof Error
+                ? caught.message
+                : "اعتبارسنجی فایل انجام نشد.";
           }
           if (!mountedRef.current) return;
           if (typeof validationError === "string") {
@@ -467,7 +523,10 @@ export function SharedUploader({
       }
 
       if (accepted.length === 0) return;
-      if (typeof maxFiles === "number" && (multiple ? items.length : 0) + accepted.length > maxFiles) {
+      if (
+        typeof maxFiles === "number" &&
+        (multiple ? items.length : 0) + accepted.length > maxFiles
+      ) {
         setSafeError("تعداد فایل‌های انتخاب‌شده بیش از ظرفیت مجاز است.");
         return;
       }
@@ -489,7 +548,7 @@ export function SharedUploader({
         setCrop({ x: 0, y: 0 });
         setCropZoom(1);
         setCropAspect(cropAspectRatio);
-        setCropTarget(cropCandidate);
+        setCropTarget({ kind: "pending", item: cropCandidate });
         return;
       }
 
@@ -525,16 +584,36 @@ export function SharedUploader({
     croppingRef.current = true;
     setCropping(true);
     try {
-      const croppedFile = await cropImage(cropTarget.file, croppedPixels);
-      const previewUrl = enablePreview
-        ? URL.createObjectURL(croppedFile)
-        : null;
-      const croppedItem = { ...cropTarget, file: croppedFile, previewUrl };
-      const updatedItems = items.map((item) => {
-        if (item.id !== cropTarget.id) return item;
-        if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
-        return croppedItem;
-      });
+      if (cropTarget.kind === "pending") {
+        const croppedFile = await cropImage(
+          cropTarget.item.file,
+          croppedPixels,
+        );
+        const previewUrl = enablePreview
+          ? URL.createObjectURL(croppedFile)
+          : null;
+        const croppedItem = {
+          ...cropTarget.item,
+          file: croppedFile,
+          previewUrl,
+        };
+        const updatedItems = items.map((item) => {
+          if (item.id !== cropTarget.item.id) return item;
+          if (item.previewUrl) URL.revokeObjectURL(item.previewUrl);
+          return croppedItem;
+        });
+        setItems(updatedItems);
+        setCropTarget(null);
+        if (autoUpload) upload(updatedItems);
+        return;
+      }
+
+      const croppedFile = await cropExistingImage(
+        cropTarget.file,
+        croppedPixels,
+      );
+      const croppedItem = makePendingFile(croppedFile, enablePreview);
+      const updatedItems = multiple ? [...items, croppedItem] : [croppedItem];
       setItems(updatedItems);
       setCropTarget(null);
       if (autoUpload) upload(updatedItems);
@@ -553,7 +632,8 @@ export function SharedUploader({
       setSafeError("حداقل یک فایل انتخاب کنید.");
       return;
     }
-    if (uploadingRef.current || deletingRef.current || validatingRef.current) return;
+    if (uploadingRef.current || deletingRef.current || validatingRef.current)
+      return;
 
     uploadingRef.current = true;
     setUploading(true);
@@ -713,8 +793,9 @@ export function SharedUploader({
   const canCropSquarePreview = Boolean(
     !disabled &&
     enableCrop &&
-    pendingSquarePreview &&
-    isCroppableRasterImage(pendingSquarePreview.file),
+    (pendingSquarePreview
+      ? isCroppableRasterImage(pendingSquarePreview.file)
+      : firstExistingPreview),
   );
 
   return (
@@ -792,7 +873,9 @@ export function SharedUploader({
       )}
 
       {variant === "square" && (
-        <div className={embedded ? "grid gap-3" : "mt-4 grid gap-3 sm:max-w-64"}>
+        <div
+          className={embedded ? "grid gap-3" : "mt-4 grid gap-3 sm:max-w-64"}
+        >
           <div
             className={`group relative grid w-full place-items-center text-center transition ${
               squarePreview
@@ -888,8 +971,19 @@ export function SharedUploader({
                         className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-start text-sm font-bold text-foreground transition-colors duration-150 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent"
                         disabled={!canCropSquarePreview}
                         onClick={() => {
-                          if (pendingSquarePreview)
-                            openCrop(pendingSquarePreview);
+                          if (pendingSquarePreview) {
+                            openCrop({
+                              kind: "pending",
+                              item: pendingSquarePreview,
+                            });
+                            return;
+                          }
+                          if (firstExistingPreview) {
+                            openCrop({
+                              kind: "existing",
+                              file: firstExistingPreview,
+                            });
+                          }
                         }}
                         role="menuitem"
                         type="button"
@@ -1113,7 +1207,7 @@ export function SharedUploader({
                   isCroppableRasterImage(item.file) && (
                     <button
                       className="rounded-xl border border-[var(--theme-primary-border)] px-3 py-2 text-sm font-bold text-[var(--theme-primary-text)]"
-                      onClick={() => openCrop(item)}
+                      onClick={() => openCrop({ kind: "pending", item })}
                       type="button"
                     >
                       {text.cropText}
@@ -1313,7 +1407,11 @@ export function SharedUploader({
           <Cropper
             aspect={cropAspect ?? undefined}
             crop={crop}
-            image={cropTarget?.previewUrl ?? ""}
+            image={
+              cropTarget?.kind === "pending"
+                ? (cropTarget.item.previewUrl ?? "")
+                : (cropTarget?.file.url ?? "")
+            }
             onCropChange={setCrop}
             onCropComplete={(_, pixels) => setCroppedPixels(pixels)}
             onZoomChange={setCropZoom}
