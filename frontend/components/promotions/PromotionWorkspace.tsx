@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
   apiRequest,
@@ -20,6 +20,7 @@ import {
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import { KoochWeekdaySelector } from "@/components/KoochWeekdaySelector";
 import { useSiteCurrencyLabel } from "@/lib/currency";
 import { KoochIcon } from "../KoochIcon";
 
@@ -31,13 +32,13 @@ const promotionTypes: { value: PromotionType; label: string }[] = [
 ];
 
 const weekdays: { value: PromotionWeekday; label: string }[] = [
-  { value: "Saturday", label: "شنبه" },
-  { value: "Sunday", label: "یکشنبه" },
-  { value: "Monday", label: "دوشنبه" },
-  { value: "Tuesday", label: "سه‌شنبه" },
-  { value: "Wednesday", label: "چهارشنبه" },
-  { value: "Thursday", label: "پنجشنبه" },
-  { value: "Friday", label: "جمعه" },
+  { value: "Saturday", label: "شنبه‌ها" },
+  { value: "Sunday", label: "یکشنبه‌ها" },
+  { value: "Monday", label: "دوشنبه‌ها" },
+  { value: "Tuesday", label: "سه‌شنبه‌ها" },
+  { value: "Wednesday", label: "چهارشنبه‌ها" },
+  { value: "Thursday", label: "پنجشنبه‌ها" },
+  { value: "Friday", label: "جمعه‌ها" },
 ];
 
 type WizardStep = 1 | 2 | 3 | 4;
@@ -158,7 +159,7 @@ type Draft = {
 };
 
 const dateControlClass =
-  "h-10 px-3 py-2 text-sm transition";
+  "h-9 px-3 py-1.5 text-xs font-medium text-foreground/80 transition";
 const today = () => new Date().toISOString().slice(0, 10);
 
 function emptyDraft(propertyId: number | null = null): Draft {
@@ -213,6 +214,7 @@ export function PromotionWorkspace({
   const [modalOpen, setModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [customColorMode, setCustomColorMode] = useState(false);
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   const apiBase = admin
@@ -294,6 +296,7 @@ export function PromotionWorkspace({
     setDraft(emptyDraft(selectedProperty));
     setCurrentStep(1);
     setFieldErrors({});
+    setCustomColorMode(false);
     setModalOpen(true);
   }
 
@@ -327,6 +330,12 @@ export function PromotionWorkspace({
     });
     setCurrentStep(1);
     setFieldErrors({});
+    setCustomColorMode(
+      Boolean(promotion.badgeColor) &&
+        !badgeColorPresets.some(
+          (option) => option.value === promotion.badgeColor,
+        ),
+    );
     setModalOpen(true);
   }
 
@@ -426,12 +435,8 @@ export function PromotionWorkspace({
           "توضیحات عمومی برای پروموشن اطلاع‌رسانی الزامی است.";
       }
 
-      const isPresetColor = badgeColorPresets.some(
-        (option) => option.value === draft.badgeColor,
-      );
       if (
-        draft.badgeColor &&
-        !isPresetColor &&
+        customColorMode &&
         !hexColorPattern.test(draft.badgeColor)
       ) {
         errors.badgeColor = "کد رنگ باید به‌صورت کامل مثل #2563eb باشد.";
@@ -495,14 +500,7 @@ export function PromotionWorkspace({
     return errors;
   }
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-
-    if (currentStep < 4) {
-      goToNextStep();
-      return;
-    }
-
+  async function savePromotion() {
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setFieldErrors(validationErrors);
@@ -934,9 +932,9 @@ export function PromotionWorkspace({
             ) : (
               <KoochButton
                 disabled={saving}
-                form="promotion-form"
                 loading={saving}
-                type="submit"
+                onClick={() => void savePromotion()}
+                type="button"
                 variant="primary"
               >
                 {admin && draft.isPublished
@@ -950,6 +948,7 @@ export function PromotionWorkspace({
           if (!open && !saving) {
             setModalOpen(false);
             setFieldErrors({});
+            setCustomColorMode(false);
           }
         }}
         open={modalOpen}
@@ -964,7 +963,11 @@ export function PromotionWorkspace({
               : "پروموشن جدید"
         }
       >
-        <form className="grid gap-5" id="promotion-form" onSubmit={submit}>
+        <form
+          className="grid gap-5"
+          id="promotion-form"
+          onSubmit={(event) => event.preventDefault()}
+        >
           <div>
             <div className="flex items-center justify-between gap-3 sm:hidden">
               <div>
@@ -1047,7 +1050,7 @@ export function PromotionWorkspace({
           </div>
 
           {admin && (
-            <div className="rounded-xl border border-border bg-muted px-4 py-3 text-sm font-semibold leading-6 text-muted-foreground">
+            <div className="rounded-xl border border-border bg-muted px-3 py-2.5 text-xs font-normal leading-5 text-muted-foreground">
               این مورد به‌عنوان قالب مدیریتی ساخته می‌شود و در مرحله آخر
               می‌توانید درباره انتشار آن در کتابخانه مالک‌ها تصمیم بگیرید.
             </div>
@@ -1056,7 +1059,7 @@ export function PromotionWorkspace({
           {Object.keys(fieldErrors).length > 0 && (
             <div
               aria-live="polite"
-              className="rounded-xl border border-destructive/30 bg-destructive/5 px-4 py-3 text-sm font-semibold text-destructive"
+              className="rounded-xl border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-xs font-semibold text-destructive"
             >
               لطفاً موارد مشخص‌شده در این مرحله را اصلاح کنید.
             </div>
@@ -1076,7 +1079,7 @@ export function PromotionWorkspace({
                 </p>
               </div>
 
-              <label className="grid gap-2 text-sm font-bold">
+              <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                 <span>
                   عنوان پروموشن
                   <span aria-hidden="true" className="text-destructive">
@@ -1085,6 +1088,7 @@ export function PromotionWorkspace({
                   </span>
                 </span>
                 <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                   aria-invalid={Boolean(fieldErrors.title)}
                   maxLength={150}
                   onChange={(event) =>
@@ -1101,9 +1105,10 @@ export function PromotionWorkspace({
               </label>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-bold">
+                <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                   نوع پروموشن
                   <KoochSelect
+                    className="text-xs font-medium text-foreground/80"
                     onChange={(event) =>
                       setDraft((current) => ({
                         ...current,
@@ -1122,9 +1127,10 @@ export function PromotionWorkspace({
 
                 {(draft.type === "PercentageDiscount" ||
                   draft.type === "LastMinute") && (
-                  <label className="grid gap-2 text-sm font-bold">
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                     درصد تخفیف
                     <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                       aria-invalid={Boolean(fieldErrors.percentage)}
                       inputMode="decimal"
                       max="100"
@@ -1145,9 +1151,10 @@ export function PromotionWorkspace({
                 )}
 
                 {draft.type === "FixedAmountDiscount" && (
-                  <label className="grid gap-2 text-sm font-bold">
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                     مبلغ تخفیف ({currencyLabel})
                     <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                       aria-invalid={Boolean(fieldErrors.amount)}
                       inputMode="numeric"
                       onChange={(event) =>
@@ -1166,9 +1173,10 @@ export function PromotionWorkspace({
                 )}
 
                 {draft.type === "LastMinute" && (
-                  <label className="grid gap-2 text-sm font-bold">
+                  <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                     حداکثر روز مانده تا ورود
                     <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                       aria-invalid={Boolean(fieldErrors.lastMinuteDays)}
                       inputMode="numeric"
                       min="0"
@@ -1194,7 +1202,7 @@ export function PromotionWorkspace({
               </div>
 
               {draft.type === "Informational" && (
-                <div className="rounded-xl border border-border bg-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+                <div className="rounded-xl border border-border bg-muted px-3 py-2.5 text-xs leading-5 text-muted-foreground">
                   این نوع پروموشن تخفیف عددی ندارد و برای نمایش پیشنهادهایی
                   مانند «گشت رایگان» یا «ناهار رایگان» استفاده می‌شود.
                 </div>
@@ -1228,8 +1236,10 @@ export function PromotionWorkspace({
                     end: "تاریخ پایان",
                     rangeTitle: "انتخاب بازه پروموشن",
                   }}
+                  autoConfirmOnComplete
                   labelsAbove
                   mode="range"
+                  openOnDialog
                   onChange={(nextValue) =>
                     setDraft((current) => ({
                       ...current,
@@ -1250,9 +1260,10 @@ export function PromotionWorkspace({
               </div>
 
               <div className="grid gap-4 sm:grid-cols-2">
-                <label className="grid gap-2 text-sm font-bold">
+                <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                   حداقل شب اقامت
                   <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                     aria-invalid={Boolean(fieldErrors.minimumStayNights)}
                     inputMode="numeric"
                     min="0"
@@ -1275,9 +1286,10 @@ export function PromotionWorkspace({
                   <InlineFieldError message={fieldErrors.minimumStayNights} />
                 </label>
 
-                <label className="grid gap-2 text-sm font-bold">
+                <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                   حداقل مهمان
                   <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                     aria-invalid={Boolean(fieldErrors.minimumGuests)}
                     inputMode="numeric"
                     min="0"
@@ -1301,83 +1313,33 @@ export function PromotionWorkspace({
                 </label>
               </div>
 
-              <fieldset className="grid gap-3">
-                <legend className="text-sm font-bold">روزهای هفته</legend>
-                <div className="flex flex-wrap justify-end gap-2">
-                    <KoochButton
-                      onClick={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          weekdays: weekdays.map((day) => day.value),
-                        }))
-                      }
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      انتخاب همه
-                    </KoochButton>
-                    <KoochButton
-                      onClick={() =>
-                        setDraft((current) => ({
-                          ...current,
-                          weekdays: [],
-                        }))
-                      }
-                      size="sm"
-                      type="button"
-                      variant="outline"
-                    >
-                      پاک کردن
-                    </KoochButton>
-                </div>
-
-                <div className="flex flex-wrap gap-2">
-                  {weekdays.map((day) => {
-                    const selected = draft.weekdays.includes(day.value);
-
-                    return (
-                      <label
-                        className={`cursor-pointer rounded-xl border px-3 py-2 text-sm font-bold transition ${
-                          selected
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-background text-muted-foreground hover:bg-muted"
-                        }`}
-                        key={day.value}
-                      >
-                        <input
-                          checked={selected}
-                          className="sr-only"
-                          onChange={() =>
-                            setDraft((current) => ({
-                              ...current,
-                              weekdays: current.weekdays.includes(day.value)
-                                ? current.weekdays.filter(
-                                    (item) => item !== day.value,
-                                  )
-                                : [...current.weekdays, day.value],
-                            }))
-                          }
-                          type="checkbox"
-                        />
-                        {day.label}
-                      </label>
-                    );
-                  })}
-                </div>
-                <InlineFieldError message={fieldErrors.weekdays} />
-              </fieldset>
+              <KoochWeekdaySelector
+                error={fieldErrors.weekdays}
+                onChange={(nextWeekdays) => {
+                  setFieldErrors((current) => ({
+                    ...current,
+                    weekdays: undefined,
+                  }));
+                  setDraft((current) => ({
+                    ...current,
+                    weekdays: nextWeekdays,
+                  }));
+                }}
+                options={weekdays}
+                required
+                value={draft.weekdays}
+              />
 
               {!admin && (
                 <fieldset className="grid gap-3">
-                  <legend className="text-sm font-bold">اتاق‌های منتخب</legend>
+                  <legend className="text-xs font-semibold text-muted-foreground">اتاق‌های منتخب</legend>
                   <div className="grid max-h-52 gap-2 overflow-y-auto rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-2">
                     {rooms.map((room) => {
                       const selected = draft.roomTypeIds.includes(room.id);
 
                       return (
                         <label
-                          className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm font-bold transition ${
+                          className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-xs font-semibold transition ${
                             selected
                               ? "border-primary bg-background text-foreground"
                               : "border-border bg-background/60 text-muted-foreground"
@@ -1434,7 +1396,7 @@ export function PromotionWorkspace({
                 </p>
               </div>
 
-              <label className="grid gap-2 text-sm font-bold">
+              <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                 <span>
                   توضیحات عمومی
                   {draft.type === "Informational" && (
@@ -1446,7 +1408,7 @@ export function PromotionWorkspace({
                 </span>
                 <KoochTextarea
                   aria-invalid={Boolean(fieldErrors.publicDescription)}
-                  className="resize-y"
+                  className="resize-y text-xs font-medium text-foreground/80"
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -1464,10 +1426,10 @@ export function PromotionWorkspace({
                 <InlineFieldError message={fieldErrors.publicDescription} />
               </label>
 
-              <label className="grid gap-2 text-sm font-bold">
+              <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                 توضیحات داخلی
                 <KoochTextarea
-                  className="resize-y"
+                  className="resize-y text-xs font-medium text-foreground/80"
                   onChange={(event) =>
                     setDraft((current) => ({
                       ...current,
@@ -1486,7 +1448,7 @@ export function PromotionWorkspace({
               </label>
 
               <fieldset className="grid gap-3">
-                <legend className="text-sm font-bold">آیکن پروموشن</legend>
+                <legend className="text-xs font-semibold text-muted-foreground">آیکن پروموشن</legend>
                 <p className="text-xs leading-5 text-muted-foreground">
                   اگر «پیش‌فرض» را انتخاب کنید، آیکن متناسب با نوع پروموشن
                   استفاده می‌شود.
@@ -1543,7 +1505,7 @@ export function PromotionWorkspace({
               </fieldset>
 
               <fieldset className="grid gap-3">
-                <legend className="text-sm font-bold">رنگ نشان</legend>
+                <legend className="text-xs font-semibold text-muted-foreground">رنگ نشان</legend>
                 <p className="text-xs leading-5 text-muted-foreground">
                   یک رنگ آماده انتخاب کنید یا از رنگ دلخواه استفاده کنید.
                 </p>
@@ -1555,18 +1517,19 @@ export function PromotionWorkspace({
                     return (
                       <button
                         aria-pressed={selected}
-                        className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition ${
+                        className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition ${
                           selected
                             ? "border-primary bg-muted text-foreground"
                             : "border-border bg-background text-muted-foreground hover:bg-muted"
                         }`}
                         key={option.label}
-                        onClick={() =>
+                        onClick={() => {
+                          setCustomColorMode(false);
                           setDraft((current) => ({
                             ...current,
                             badgeColor: option.value,
-                          }))
-                        }
+                          }));
+                        }}
                         type="button"
                       >
                         <span
@@ -1583,28 +1546,21 @@ export function PromotionWorkspace({
                   })}
 
                   <button
-                    aria-pressed={
-                      Boolean(draft.badgeColor) &&
-                      !badgeColorPresets.some(
-                        (option) => option.value === draft.badgeColor,
-                      )
-                    }
-                    className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-sm font-bold transition ${
-                      Boolean(draft.badgeColor) &&
-                      !badgeColorPresets.some(
-                        (option) => option.value === draft.badgeColor,
-                      )
+                    aria-pressed={customColorMode}
+                    className={`inline-flex min-h-11 items-center gap-2 rounded-xl border px-3 text-xs font-semibold transition ${
+                      customColorMode
                         ? "border-primary bg-muted text-foreground"
                         : "border-border bg-background text-muted-foreground hover:bg-muted"
                     }`}
-                    onClick={() =>
+                    onClick={() => {
+                      setCustomColorMode(true);
                       setDraft((current) => ({
                         ...current,
                         badgeColor: hexColorPattern.test(current.badgeColor)
                           ? current.badgeColor
                           : "#2563eb",
-                      }))
-                    }
+                      }));
+                    }}
                     type="button"
                   >
                     <span
@@ -1619,12 +1575,9 @@ export function PromotionWorkspace({
                   </button>
                 </div>
 
-                {Boolean(draft.badgeColor) &&
-                  !badgeColorPresets.some(
-                    (option) => option.value === draft.badgeColor,
-                  ) && (
+                {customColorMode && (
                     <div className="grid gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-end">
-                      <label className="grid gap-2 text-sm font-bold">
+                      <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                         انتخاب رنگ
                         <input
                           aria-label="انتخاب رنگ دلخواه"
@@ -1644,9 +1597,10 @@ export function PromotionWorkspace({
                         />
                       </label>
 
-                      <label className="grid gap-2 text-sm font-bold">
+                      <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
                         کد رنگ
                         <KoochInput
+                      className="text-xs font-medium text-foreground/80"
                           dir="ltr"
                           maxLength={7}
                           onChange={(event) => {
@@ -1860,7 +1814,7 @@ export function PromotionWorkspace({
                     type="checkbox"
                   />
                   <span>
-                    <span className="block text-sm font-bold text-foreground">
+                    <span className="block text-xs font-semibold text-foreground/85">
                       پروموشن فعال باشد
                     </span>
                     <span className="mt-1 block text-xs leading-5 text-muted-foreground">
@@ -1884,7 +1838,7 @@ export function PromotionWorkspace({
                       type="checkbox"
                     />
                     <span>
-                      <span className="block text-sm font-bold text-foreground">
+                      <span className="block text-xs font-semibold text-foreground/85">
                         انتشار در کتابخانه مالک‌ها
                       </span>
                       <span className="mt-1 block text-xs leading-5 text-muted-foreground">

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -6,10 +6,8 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
-import {
-  KoochCheckbox,
-  KoochMultiSelect,
-} from "@/components/KoochFormControls";
+import { KoochMultiSelect } from "@/components/KoochFormControls";
+import { KoochWeekdaySelector } from "@/components/KoochWeekdaySelector";
 import {
   formatLocalIsoDate,
   getExclusiveRangeLength,
@@ -600,51 +598,15 @@ export function PricingBulkEditDialog({
               />
             </div>
 
-            <div className="grid gap-2 text-sm font-bold text-foreground">
-              <div className="flex items-center justify-between gap-3">
-                <span>
-                  روزهای هفته<span className="text-destructive"> *</span>
-                </span>
-                <div className="flex items-center gap-2 text-xs">
-                  <button
-                    className="font-bold text-primary hover:underline"
-                    onClick={selectAllWeekdays}
-                    type="button"
-                  >
-                    انتخاب همه
-                  </button>
-                  <button
-                    className="font-bold text-destructive hover:underline"
-                    onClick={clearWeekdays}
-                    type="button"
-                  >
-                    حذف همه
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid w-full grid-cols-2 gap-2 rounded-lg border border-border bg-muted/40 p-3 sm:grid-cols-4 md:grid-cols-7">
-                {weekdayOptions.map((weekday) => {
-                  const checked = selectedWeekdays.includes(weekday.value);
-                  return (
-                    <KoochCheckbox
-                      checked={checked}
-                      boxBorder={true}
-                      boxBackground={true}
-                      // checkedBoxBorder={false}
-                      // checkedBoxBackground={false}
-                      className="h-4 w-4 rounded"
-                      containerClassName={joinClasses(
-                        "rounded-lg border border-border bg-background p-2 transition ",
-                      )}
-                      key={weekday.value}
-                      label={weekday.label}
-                      onChange={() => toggleWeekday(weekday.value)}
-                    />
-                  );
-                })}
-              </div>
-            </div>
+            <KoochWeekdaySelector
+              onChange={(nextWeekdays) => {
+                setError("");
+                setSelectedWeekdays(nextWeekdays);
+              }}
+              options={weekdayOptions}
+              required
+              value={selectedWeekdays}
+            />
           </div>
 
           {selectedRooms.length > 0 && (
