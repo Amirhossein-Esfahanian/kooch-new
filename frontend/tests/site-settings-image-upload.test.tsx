@@ -1,11 +1,17 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { useState } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const ownerApi = vi.hoisted(() => ({ request: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
-const uploadedValues = vi.hoisted(() =>
-  new Map<string, Record<string, unknown>>(),
+const uploadedValues = vi.hoisted(
+  () => new Map<string, Record<string, unknown>>(),
 );
 
 vi.mock("sonner", () => ({ toast: notifications }));
@@ -33,6 +39,7 @@ vi.mock("@/components/SharedUploader", () => ({
     enableCrop,
     existingFiles,
     extraFormFields,
+    embedded,
     labels,
     onUploadError,
     onUploadSuccess,
@@ -41,6 +48,7 @@ vi.mock("@/components/SharedUploader", () => ({
     enableCrop?: boolean;
     existingFiles?: Array<{ url: string }>;
     extraFormFields?: Record<string, string>;
+    embedded?: boolean;
     labels?: { description?: string };
     onUploadError?: (error: string) => void;
     onUploadSuccess?: (uploaded: Record<string, unknown>) => void;
@@ -54,7 +62,7 @@ vi.mock("@/components/SharedUploader", () => ({
 
     return (
       <div data-auto-upload={autoUpload} data-testid={`uploader-${key}`}>
-        <p>{labels?.description}</p>
+        {!embedded && <p>{labels?.description}</p>}
         <span data-testid={`image-value-${key}`}>
           {existingFiles?.[0]?.url ?? ""}
         </span>
@@ -82,10 +90,7 @@ vi.mock("@/components/SharedUploader", () => ({
             {`confirm-crop-${key}`}
           </button>
         )}
-        <button
-          onClick={() => onUploadError?.("upload failed")}
-          type="button"
-        >
+        <button onClick={() => onUploadError?.("upload failed")} type="button">
           {`fail-${key}`}
         </button>
       </div>
@@ -109,6 +114,8 @@ const initialSettings = [
     "Homepage",
   ),
   setting(3, "site.name", "Kooch", "Text", "Brand"),
+  setting(4, "site.footerText", "Kooch footer", "LongText", "Brand"),
+  setting(5, "pricing.currencyLabel", "تومان", "Text", "Pricing"),
 ];
 
 describe("Site Settings image upload persistence", () => {
@@ -120,6 +127,9 @@ describe("Site Settings image upload persistence", () => {
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
         if (path === "/admin/site-settings/pricing-bounds") {
+          if (options?.method === "PUT") {
+            return JSON.parse(options.body ?? "{}");
+          }
           return { minPrice: 100000, maxPrice: 10000000 };
         }
         if (!options?.method) return initialSettings;
@@ -130,7 +140,7 @@ describe("Site Settings image upload persistence", () => {
     );
   });
 
-  it("does not expose generic Save for ImageUrl settings", async () => {
+  it("uses one section-level save action instead of per-field save buttons", async () => {
     render(<AdminSiteSettingsPage />);
 
     await screen.findByTestId("uploader-site.logoUrl");
@@ -139,8 +149,16 @@ describe("Site Settings image upload persistence", () => {
       document.querySelector('[data-required-permission="ManageSettings"]'),
     ).toBeTruthy();
 
-    expect(screen.getAllByRole("button", { name: "ذخیره" })).toHaveLength(1);
-    expect(screen.getByRole("button", { name: "ذخیره" })).toBeTruthy();
+    const identitySection = document.getElementById("identity-and-brand");
+    expect(identitySection).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ذخیره" })).toBeNull();
+    const sectionSave = within(identitySection!).getByRole("button", {
+      name: "ذخیره تغییرات",
+    });
+    expect(sectionSave).toHaveProperty("disabled", true);
+    expect(identitySection?.textContent).toContain(
+      "همه تغییرات این بخش ذخیره شده‌اند",
+    );
   });
 
   it("opts both image settings into auto-upload with flow-specific guidance", async () => {
@@ -200,15 +218,13 @@ describe("Site Settings image upload persistence", () => {
   it("preserves the previous image and unrelated drafts after upload failure", async () => {
     render(<AdminSiteSettingsPage />);
 
-    const textInput = await screen.findByRole("textbox");
+    const textInput = await screen.findByLabelText("site.name");
     fireEvent.change(textInput, { target: { value: "Kooch draft" } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "fail-site.logoUrl" }),
-    );
+    fireEvent.click(screen.getByRole("button", { name: "fail-site.logoUrl" }));
 
-    expect(
-      screen.getByTestId("image-value-site.logoUrl").textContent,
-    ).toBe("/images/original-logo.png");
+    expect(screen.getByTestId("image-value-site.logoUrl").textContent).toBe(
+      "/images/original-logo.png",
+    );
     expect((textInput as HTMLInputElement).value).toBe("Kooch draft");
     expect(
       ownerApi.request.mock.calls.filter(
@@ -224,37 +240,91 @@ describe("Site Settings image upload persistence", () => {
     });
     render(<AdminSiteSettingsPage />);
 
-    const textInput = await screen.findByRole("textbox");
+    const textInput = await screen.findByLabelText("site.name");
     fireEvent.change(textInput, { target: { value: "Kooch draft" } });
     fireEvent.click(
       screen.getByRole("button", { name: "select-site.logoUrl" }),
     );
 
     expect((textInput as HTMLInputElement).value).toBe("Kooch draft");
-    expect(
-      screen.getByTestId("image-value-site.logoUrl").textContent,
-    ).toBe("/uploads/site-settings/1/new-logo.png");
+    expect(screen.getByTestId("image-value-site.logoUrl").textContent).toBe(
+      "/uploads/site-settings/1/new-logo.png",
+    );
   });
 
-  it("keeps the existing generic Save behavior for non-image settings", async () => {
+  it("saves all dirty non-image fields in a section with one action", async () => {
     render(<AdminSiteSettingsPage />);
 
-    const textInput = await screen.findByRole("textbox");
-    fireEvent.change(textInput, { target: { value: "Kooch updated" } });
-    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    const nameInput = await screen.findByLabelText("site.name");
+    const footerInput = screen.getByLabelText("site.footerText");
+    fireEvent.change(nameInput, { target: { value: "Kooch updated" } });
+    fireEvent.change(footerInput, { target: { value: "Footer updated" } });
 
-    await waitFor(() =>
+    const identitySection = document.getElementById("identity-and-brand");
+    expect(identitySection?.textContent).toContain("2 تغییر ذخیره‌نشده");
+    const saveButton = within(identitySection!).getByRole("button", {
+      name: "ذخیره تغییرات",
+    });
+    expect(saveButton).toHaveProperty("disabled", false);
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
       expect(ownerApi.request).toHaveBeenCalledWith(
         "/admin/site-settings/site.name",
         {
           method: "PUT",
           body: JSON.stringify({ value: "Kooch updated" }),
         },
-      ),
-    );
+      );
+      expect(ownerApi.request).toHaveBeenCalledWith(
+        "/admin/site-settings/site.footerText",
+        {
+          method: "PUT",
+          body: JSON.stringify({ value: "Footer updated" }),
+        },
+      );
+    });
     expect(notifications.success).toHaveBeenCalledWith(
-      "تنظیمات سایت ذخیره شد",
+      "تغییرات این بخش ذخیره شد",
     );
+  });
+
+  it("uses the pricing section action for currency and daily price bounds together", async () => {
+    render(<AdminSiteSettingsPage />);
+
+    const currencyInput = await screen.findByLabelText("pricing.currencyLabel");
+    const minPriceInput = screen.getByDisplayValue("100000");
+
+    fireEvent.change(currencyInput, { target: { value: "ریال" } });
+    fireEvent.change(minPriceInput, { target: { value: "200000" } });
+
+    const pricingSection = document.getElementById("pricing-and-currency");
+    expect(pricingSection?.textContent).toContain("2 تغییر ذخیره‌نشده");
+
+    const saveButton = within(pricingSection!).getByRole("button", {
+      name: "ذخیره تغییرات",
+    });
+    fireEvent.click(saveButton);
+
+    await waitFor(() => {
+      expect(ownerApi.request).toHaveBeenCalledWith(
+        "/admin/site-settings/pricing.currencyLabel",
+        {
+          method: "PUT",
+          body: JSON.stringify({ value: "ریال" }),
+        },
+      );
+      expect(ownerApi.request).toHaveBeenCalledWith(
+        "/admin/site-settings/pricing-bounds",
+        {
+          method: "PUT",
+          body: JSON.stringify({
+            minPrice: 200000,
+            maxPrice: 10000000,
+          }),
+        },
+      );
+    });
   });
 });
 
@@ -262,7 +332,7 @@ function setting(
   id: number,
   key: string,
   value: string,
-  type: "Text" | "ImageUrl",
+  type: "Text" | "LongText" | "ImageUrl",
   group: string,
 ) {
   return {

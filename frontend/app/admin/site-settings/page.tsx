@@ -287,13 +287,15 @@ export default function AdminSiteSettingsPage() {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [savingKeys, setSavingKeys] = useState<Set<string>>(() => new Set());
+  const [savingSectionIds, setSavingSectionIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const savingSectionIdsRef = useRef<Set<string>>(new Set());
   const [pricingBounds, setPricingBounds] =
     useState<PricingBoundsResponse | null>(null);
   const [pricingBoundsDraft, setPricingBoundsDraft] =
     useState<PricingBoundsDraft>({ minPrice: "", maxPrice: "" });
   const [pricingBoundsLoading, setPricingBoundsLoading] = useState(true);
-  const [pricingBoundsSaving, setPricingBoundsSaving] = useState(false);
   const [pricingBoundsError, setPricingBoundsError] = useState<string | null>(
     null,
   );
@@ -502,90 +504,226 @@ export default function AdminSiteSettingsPage() {
     );
   }
 
-  async function save(setting: SiteSettingResponse) {
-    const draftValue = drafts[setting.key] ?? "";
-    if (
-      savingKeys.has(setting.key) ||
-      validateGenericSetting(setting, draftValue) ||
-      !isGenericSettingDirty(setting, draftValue)
-    ) {
-      return;
-    }
-
-    setSavingKeys((current) => new Set(current).add(setting.key));
-    try {
-      const response = await updateSetting(setting.key, draftValue);
-      const updatedSettings = [
-        {
-          ...response,
-          value:
-            typeof response.value === "string" ? response.value : draftValue,
-        },
-      ];
-
-      setSettings((current) =>
-        current.map(
-          (item) =>
-            updatedSettings.find((updated) => updated.key === item.key) ?? item,
-        ),
-      );
-      setDrafts((current) => ({
-        ...current,
-        ...Object.fromEntries(
-          updatedSettings.map((updated) => [updated.key, updated.value]),
-        ),
-      }));
-      toast.success("تنظیمات سایت ذخیره شد");
-    } catch (caught) {
-      toast.error(
-        caught instanceof Error ? caught.message : "ذخیره تنظیمات ناموفق بود",
-      );
-    } finally {
-      setSavingKeys((current) => {
-        const next = new Set(current);
-        next.delete(setting.key);
-        return next;
-      });
-    }
-  }
-
   const pricingBoundsValidation = validatePricingBounds(pricingBoundsDraft);
   const pricingBoundsDirty =
     pricingBounds !== null &&
-    pricingBoundsValidation.parsed !== null &&
-    (pricingBoundsValidation.parsed.minPrice !== pricingBounds.minPrice ||
-      pricingBoundsValidation.parsed.maxPrice !== pricingBounds.maxPrice);
+    (pricingBoundsValidation.parsed !== null
+      ? pricingBoundsValidation.parsed.minPrice !== pricingBounds.minPrice ||
+        pricingBoundsValidation.parsed.maxPrice !== pricingBounds.maxPrice
+      : pricingBoundsDraft.minPrice !== String(pricingBounds.minPrice) ||
+        pricingBoundsDraft.maxPrice !== String(pricingBounds.maxPrice));
 
   function updatePricingBound(key: keyof PricingBoundsDraft, value: string) {
     setPricingBoundsDraft((current) => ({ ...current, [key]: value }));
     setPricingBoundsError(null);
   }
 
-  async function savePricingBounds() {
-    const { parsed } = validatePricingBounds(pricingBoundsDraft);
-    if (!parsed || !pricingBoundsDirty || pricingBoundsSaving) return;
+  function dirtySettingsForSection(items: SiteSettingResponse[]) {
+    return items.filter(
+      (setting) =>
+        setting.type !== "ImageUrl" &&
+        isGenericSettingDirty(setting, drafts[setting.key] ?? ""),
+    );
+  }
 
-    setPricingBoundsSaving(true);
-    setPricingBoundsError(null);
-    try {
-      const updated = await apiRequest<PricingBoundsResponse>(
-        "/admin/site-settings/pricing-bounds",
-        {
-          method: "PUT",
-          body: JSON.stringify(parsed),
+  function sectionHasValidationError(
+    items: SiteSettingResponse[],
+    includesPricingBounds: boolean,
+  ) {
+    const genericError = items.some(
+      (setting) =>
+        setting.type !== "ImageUrl" &&
+        Boolean(validateGenericSetting(setting, drafts[setting.key] ?? "")),
+    );
+    const pricingError =
+      includesPricingBounds &&
+      pricingBoundsDirty &&
+      pricingBoundsValidation.parsed === null;
+
+    return genericError || pricingError;
+  }
+
+  function sectionChangeCount(
+    items: SiteSettingResponse[],
+    includesPricingBounds: boolean,
+  ) {
+    return (
+      dirtySettingsForSection(items).length +
+      (includesPricingBounds && pricingBoundsDirty ? 1 : 0)
+    );
+  }
+
+  function sectionHasSaveableContent(
+    items: SiteSettingResponse[],
+    includesPricingBounds: boolean,
+  ) {
+    return (
+      includesPricingBounds ||
+      items.some((setting) => setting.type !== "ImageUrl")
+    );
+  }
+
+  async function saveSection(
+    sectionId: string,
+    items: SiteSettingResponse[],
+    includesPricingBounds: boolean,
+  ) {
+    if (savingSectionIdsRef.current.has(sectionId)) return;
+
+    const dirtySettings = dirtySettingsForSection(items);
+    const shouldSavePricing = includesPricingBounds && pricingBoundsDirty;
+    const parsedPricing = pricingBoundsValidation.parsed;
+
+    if (dirtySettings.length === 0 && !shouldSavePricing) return;
+
+    if (
+      sectionHasValidationError(items, includesPricingBounds) ||
+      (shouldSavePricing && !parsedPricing)
+    ) {
+      toast.error("مقادیر این بخش را بررسی کنید.");
+      return;
+    }
+
+    savingSectionIdsRef.current.add(sectionId);
+    setSavingSectionIds((current) => new Set(current).add(sectionId));
+    if (shouldSavePricing) setPricingBoundsError(null);
+
+    type SectionSaveResult =
+      | {
+          kind: "setting";
+          updated: SiteSettingResponse;
+          submittedValue: string;
+        }
+      | {
+          kind: "pricing";
+          updated: PricingBoundsResponse;
+          submittedValue: PricingBoundsResponse;
+        };
+
+    const tasks: Promise<SectionSaveResult>[] = dirtySettings.map((setting) => {
+      const submittedValue = drafts[setting.key] ?? "";
+      return updateSetting(setting.key, submittedValue).then((response) => ({
+        kind: "setting" as const,
+        submittedValue,
+        updated: {
+          ...response,
+          value:
+            typeof response.value === "string"
+              ? response.value
+              : submittedValue,
         },
+      }));
+    });
+
+    let pricingTaskIndex: number | null = null;
+    if (shouldSavePricing && parsedPricing) {
+      pricingTaskIndex = tasks.length;
+      const submittedValue = { ...parsedPricing };
+      tasks.push(
+        apiRequest<PricingBoundsResponse>(
+          "/admin/site-settings/pricing-bounds",
+          {
+            method: "PUT",
+            body: JSON.stringify(submittedValue),
+          },
+        ).then((updated) => ({
+          kind: "pricing" as const,
+          updated,
+          submittedValue,
+        })),
       );
-      setPricingBounds(updated);
-      setPricingBoundsDraft(toPricingBoundsDraft(updated));
-      toast.success("محدوده قیمت ذخیره شد");
-    } catch (caught) {
-      setPricingBoundsError(
-        caught instanceof Error
-          ? caught.message
-          : "ذخیره محدوده قیمت ناموفق بود",
+    }
+
+    try {
+      const results = await Promise.allSettled(tasks);
+      const fulfilled = results
+        .filter(
+          (
+            result,
+          ): result is PromiseFulfilledResult<SectionSaveResult> =>
+            result.status === "fulfilled",
+        )
+        .map((result) => result.value);
+      const updatedSettings = fulfilled.filter(
+        (
+          result,
+        ): result is Extract<SectionSaveResult, { kind: "setting" }> =>
+          result.kind === "setting",
       );
+      const updatedPricing = fulfilled.find(
+        (
+          result,
+        ): result is Extract<SectionSaveResult, { kind: "pricing" }> =>
+          result.kind === "pricing",
+      );
+
+      if (updatedSettings.length > 0) {
+        setSettings((current) =>
+          current.map(
+            (item) =>
+              updatedSettings.find(
+                (result) => result.updated.key === item.key,
+              )?.updated ?? item,
+          ),
+        );
+        setDrafts((current) => {
+          const next = { ...current };
+          updatedSettings.forEach((result) => {
+            if (current[result.updated.key] === result.submittedValue) {
+              next[result.updated.key] = result.updated.value;
+            }
+          });
+          return next;
+        });
+      }
+
+      if (updatedPricing) {
+        setPricingBounds(updatedPricing.updated);
+        setPricingBoundsDraft((current) => {
+          const unchangedSinceSubmit =
+            Number(current.minPrice) === updatedPricing.submittedValue.minPrice &&
+            Number(current.maxPrice) === updatedPricing.submittedValue.maxPrice;
+          return unchangedSinceSubmit
+            ? toPricingBoundsDraft(updatedPricing.updated)
+            : current;
+        });
+        setPricingBoundsError(null);
+      }
+
+      const rejected = results.filter(
+        (result): result is PromiseRejectedResult =>
+          result.status === "rejected",
+      );
+
+      if (
+        pricingTaskIndex !== null &&
+        results[pricingTaskIndex]?.status === "rejected"
+      ) {
+        const failure = results[pricingTaskIndex] as PromiseRejectedResult;
+        setPricingBoundsError(
+          failure.reason instanceof Error
+            ? failure.reason.message
+            : "ذخیره محدوده قیمت ناموفق بود",
+        );
+      }
+
+      if (rejected.length > 0) {
+        const firstFailure = rejected[0].reason;
+        toast.error(
+          firstFailure instanceof Error
+            ? firstFailure.message
+            : "بخشی از تغییرات این بخش ذخیره نشد.",
+        );
+      } else {
+        toast.success("تغییرات این بخش ذخیره شد");
+      }
     } finally {
-      setPricingBoundsSaving(false);
+      savingSectionIdsRef.current.delete(sectionId);
+      setSavingSectionIds((current) => {
+        const next = new Set(current);
+        next.delete(sectionId);
+        return next;
+      });
     }
   }
 
@@ -598,83 +736,92 @@ export default function AdminSiteSettingsPage() {
     if (setting.type === "ImageUrl") {
       const isLogo = setting.key === "site.logoUrl";
       const token = getToken();
+      const immediateSaveDescription = isLogo
+        ? "پس از انتخاب فایل معتبر، تصویر به‌صورت خودکار بارگذاری و ذخیره می‌شود."
+        : "پس از انتخاب و تأیید برش تصویر، فایل به‌صورت خودکار بارگذاری و ذخیره می‌شود.";
+
       return (
-        <SharedUploader
-          accept={
-            isLogo
-              ? ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
-              : ["image/png", "image/jpeg", "image/webp"]
-          }
-          autoUpload
-          allowDeleteExisting={isLogo || setting.key === "home.heroBackgroundUrl"}
-          onDeleteExisting={
-            isLogo || setting.key === "home.heroBackgroundUrl"
-              ? async () => {
-                  const updated = await apiRequest<SiteSettingResponse>(
-                    `/admin/site-settings/${encodeURIComponent(setting.key)}/image`,
-                    { method: "DELETE" },
-                  );
-                  setSettings((current) =>
-                    current.map((item) => item.key === updated.key ? updated : item),
-                  );
-                  setDrafts((current) => ({ ...current, [updated.key]: updated.value }));
-                  toast.success("تصویر حذف شد");
-                }
-              : undefined
-          }
-          aspectRatio={isLogo ? "1 / 1" : "16 / 9"}
-          cropAspectRatio={isLogo ? 1 : 16 / 9}
-          enableCrop={!isLogo}
-          enablePreview
-          existingFiles={
-            value
-              ? [
-                  {
-                    id: setting.key,
-                    url: value,
-                    name: imageLabels[setting.key] ?? setting.label,
-                    alt: imageLabels[setting.key] ?? setting.label,
-                  },
-                ]
-              : []
-          }
-          extraFormFields={{ key: setting.key }}
-          fieldName="file"
-          headers={token ? { Authorization: `Bearer ${token}` } : undefined}
-          hideFileDetails
-          hideInlineStatus
-          labels={{
-            title: imageLabels[setting.key] ?? setting.label,
-            description: isLogo
-              ? "پس از انتخاب فایل معتبر، تصویر به‌صورت خودکار بارگذاری و ذخیره می‌شود."
-              : "پس از انتخاب و تأیید برش تصویر، فایل به‌صورت خودکار بارگذاری و ذخیره می‌شود.",
-            browseText: "انتخاب تصویر",
-            uploadText: "آپلود",
-            uploadingText: "در حال آپلود...",
-            successText: "تصویر آپلود و ذخیره شد",
-            previewText: "پیش‌نمایش",
-            existingEmptyText: "تصویری ثبت نشده است.",
-          }}
-          maxFileSizeMb={5}
-          maxFiles={1}
-          multiple={false}
-          onUploadSuccess={(uploaded) => {
-            const updated = uploaded as unknown as SiteSettingResponse;
-            setSettings((current) =>
-              current.map((item) =>
-                item.key === updated.key ? updated : item,
-              ),
-            );
-            setDrafts((current) => ({
-              ...current,
-              [updated.key]: updated.value,
-            }));
-          }}
-          showExistingFiles
-          uploadUrl="/api/backend/admin/site-settings/upload"
-          useToastNotifications
-          variant="square"
-        />
+        <div className={isLogo ? "max-w-[176px]" : "max-w-lg"}>
+          <SharedUploader
+            accept={
+              isLogo
+                ? ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
+                : ["image/png", "image/jpeg", "image/webp"]
+            }
+            autoUpload
+            allowDeleteExisting={isLogo || setting.key === "home.heroBackgroundUrl"}
+            embedded
+            onDeleteExisting={
+              isLogo || setting.key === "home.heroBackgroundUrl"
+                ? async () => {
+                    const updated = await apiRequest<SiteSettingResponse>(
+                      `/admin/site-settings/${encodeURIComponent(setting.key)}/image`,
+                      { method: "DELETE" },
+                    );
+                    setSettings((current) =>
+                      current.map((item) => item.key === updated.key ? updated : item),
+                    );
+                    setDrafts((current) => ({ ...current, [updated.key]: updated.value }));
+                    toast.success("تصویر حذف شد");
+                  }
+                : undefined
+            }
+            aspectRatio={isLogo ? "1 / 1" : "16 / 9"}
+            cropAspectRatio={isLogo ? 1 : 16 / 9}
+            enableCrop={!isLogo}
+            enablePreview
+            existingFiles={
+              value
+                ? [
+                    {
+                      id: setting.key,
+                      url: value,
+                      name: imageLabels[setting.key] ?? setting.label,
+                      alt: imageLabels[setting.key] ?? setting.label,
+                    },
+                  ]
+                : []
+            }
+            extraFormFields={{ key: setting.key }}
+            fieldName="file"
+            headers={token ? { Authorization: `Bearer ${token}` } : undefined}
+            hideFileDetails
+            hideInlineStatus
+            labels={{
+              title: imageLabels[setting.key] ?? setting.label,
+              description: immediateSaveDescription,
+              browseText: "انتخاب تصویر",
+              uploadText: "آپلود",
+              uploadingText: "در حال آپلود...",
+              successText: "تصویر آپلود و ذخیره شد",
+              previewText: "پیش‌نمایش",
+              existingEmptyText: "تصویری ثبت نشده است.",
+              addPhotoText: "افزودن عکس",
+            }}
+            maxFileSizeMb={5}
+            maxFiles={1}
+            multiple={false}
+            onUploadSuccess={(uploaded) => {
+              const updated = uploaded as unknown as SiteSettingResponse;
+              setSettings((current) =>
+                current.map((item) =>
+                  item.key === updated.key ? updated : item,
+                ),
+              );
+              setDrafts((current) => ({
+                ...current,
+                [updated.key]: updated.value,
+              }));
+            }}
+            showExistingFiles
+            uploadUrl="/api/backend/admin/site-settings/upload"
+            useToastNotifications
+            variant="square"
+          />
+          <p className="text-xs leading-5 text-muted-foreground">
+            {immediateSaveDescription}
+          </p>
+        </div>
       );
     }
 
@@ -774,6 +921,87 @@ export default function AdminSiteSettingsPage() {
     );
   }
 
+  function renderPricingBounds() {
+    return (
+      <div className="md:col-span-2">
+        <div className="grid gap-3">
+          <div>
+            <h3 className="text-sm font-medium leading-6 text-foreground">
+              محدوده قیمت روزانه
+            </h3>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              حداقل و حداکثر قیمت مجاز روزانه را مشخص کنید.
+            </p>
+          </div>
+
+          {pricingBoundsLoading ? (
+            <p className="text-sm text-muted-foreground">
+              در حال بارگذاری محدوده قیمت...
+            </p>
+          ) : pricingBounds === null ? (
+            <KoochAlert
+              title="محدوده قیمت بارگذاری نشد"
+              variant="destructive"
+            >
+              {pricingBoundsError ?? "دوباره تلاش کنید."}
+            </KoochAlert>
+          ) : (
+            <div className="grid gap-4">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <KoochField
+                  error={pricingBoundsValidation.errors.minPrice}
+                  label="حداقل قیمت روزانه"
+                  required
+                >
+                  <KoochInput
+                    dir="ltr"
+                    error={pricingBoundsValidation.errors.minPrice}
+                    inputMode="decimal"
+                    min={0}
+                    onChange={(event) =>
+                      updatePricingBound("minPrice", event.target.value)
+                    }
+                    required
+                    step="any"
+                    type="number"
+                    value={pricingBoundsDraft.minPrice}
+                  />
+                </KoochField>
+                <KoochField
+                  error={pricingBoundsValidation.errors.maxPrice}
+                  label="حداکثر قیمت روزانه"
+                  required
+                >
+                  <KoochInput
+                    dir="ltr"
+                    error={pricingBoundsValidation.errors.maxPrice}
+                    inputMode="decimal"
+                    min={0}
+                    onChange={(event) =>
+                      updatePricingBound("maxPrice", event.target.value)
+                    }
+                    required
+                    step="any"
+                    type="number"
+                    value={pricingBoundsDraft.maxPrice}
+                  />
+                </KoochField>
+              </div>
+              {pricingBoundsError && (
+                <KoochAlert
+                  title="ذخیره محدوده قیمت انجام نشد"
+                  variant="destructive"
+                >
+                  {pricingBoundsError}
+                </KoochAlert>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   function renderSetting(setting: SiteSettingResponse) {
     const isImage = setting.type === "ImageUrl";
     const controlId = genericControlId(setting);
@@ -786,16 +1014,18 @@ export default function AdminSiteSettingsPage() {
     const errorId = error ? `${controlId}-error` : undefined;
     const describedBy =
       [descriptionId, errorId].filter(Boolean).join(" ") || undefined;
-    const isDirty = isGenericSettingDirty(setting, drafts[setting.key] ?? "");
-    const isSaving = savingKeys.has(setting.key);
+    const fieldWidthClass = isImage
+      ? ""
+      : setting.type === "Number" || setting.type === "Boolean"
+        ? "w-full max-w-sm"
+        : "w-full max-w-xl";
+    const fieldSpanClass =
+      setting.key === "home.heroBackgroundUrl" ? "md:col-span-2" : "";
 
     return (
-      <div
-        className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4 sm:p-5"
-        key={setting.key}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
-          <div className="min-w-0 flex-1">
+      <div className={`min-w-0 ${fieldSpanClass}`} key={setting.key}>
+        <div className={`grid content-start gap-2 ${fieldWidthClass}`}>
+          <div>
             <label
               className="text-sm font-medium leading-6 text-foreground"
               htmlFor={isImage ? undefined : controlId}
@@ -806,43 +1036,111 @@ export default function AdminSiteSettingsPage() {
             </label>
             {setting.description && (
               <p
-                className="mt-1.5 text-sm leading-6 text-muted-foreground"
+                className="mt-1 text-sm leading-6 text-muted-foreground"
                 id={descriptionId}
               >
                 {setting.description}
               </p>
             )}
           </div>
-          {setting.type !== "ImageUrl" && (
+
+          <div className="min-w-0">
+            {renderInput(setting, {
+              controlId,
+              describedBy,
+              error,
+            })}
+            {error && (
+              <p
+                aria-atomic="true"
+                className="mt-2 text-xs font-medium text-destructive"
+                id={errorId}
+                role="alert"
+              >
+                {error}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  function renderSectionCard({
+    id,
+    title,
+    description,
+    items,
+    includesPricingBounds = false,
+    showCommissionNotice = false,
+  }: {
+    id: string;
+    title: string;
+    description: string;
+    items: SiteSettingResponse[];
+    includesPricingBounds?: boolean;
+    showCommissionNotice?: boolean;
+  }) {
+    const changeCount = sectionChangeCount(items, includesPricingBounds);
+    const hasValidationError = sectionHasValidationError(
+      items,
+      includesPricingBounds,
+    );
+    const isSaving = savingSectionIds.has(id);
+    const hasSaveableContent = sectionHasSaveableContent(
+      items,
+      includesPricingBounds,
+    );
+
+    return (
+      <KoochCard id={id} key={id} variant="elevated">
+        <div className="grid gap-1.5">
+          <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
+            {title}
+          </h2>
+          <p className="text-sm leading-6 text-muted-foreground">
+            {description}
+          </p>
+        </div>
+
+        {showCommissionNotice && (
+          <p className="mt-4 rounded-lg bg-muted px-3 py-2.5 text-sm leading-6 text-muted-foreground">
+            این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در حال
+            حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
+          </p>
+        )}
+
+        <div className="me-auto mt-5 grid w-full max-w-5xl gap-x-8 gap-y-6 border-t border-border pt-5 md:grid-cols-2">
+          {genericInventoryAvailable && items.map(renderSetting)}
+          {includesPricingBounds && renderPricingBounds()}
+        </div>
+
+        {hasSaveableContent && (
+          <div className="mt-4 flex flex-wrap items-center justify-end gap-3 border-t border-border pt-4">
+            {changeCount > 0 && (
+              <p
+                aria-live="polite"
+                className="text-xs font-medium text-foreground"
+              >
+                {`${changeCount} تغییر ذخیره‌نشده`}
+              </p>
+            )}
             <KoochButton
-              disabled={!isDirty || Boolean(error) || isSaving}
+              disabled={
+                changeCount === 0 || hasValidationError || isSaving
+              }
               loading={isSaving}
-              onClick={() => save(setting)}
+              onClick={() =>
+                void saveSection(id, items, includesPricingBounds)
+              }
               size="sm"
               type="button"
             >
-              ذخیره
+              ذخیره تغییرات
             </KoochButton>
-          )}
-        </div>
-        <div>
-          {renderInput(setting, {
-            controlId,
-            describedBy,
-            error,
-          })}
-          {error && (
-            <p
-              aria-atomic="true"
-              className="mt-2 text-xs font-medium text-destructive"
-              id={errorId}
-              role="alert"
-            >
-              {error}
-            </p>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </KoochCard>
     );
   }
 
@@ -946,144 +1244,25 @@ export default function AdminSiteSettingsPage() {
               </p>
             </KoochCard>
           )}
-          {visibleSections.map((section) => (
-            <KoochCard
-              id={section.id}
-              key={section.id}
-              variant="elevated"
-            >
-              <div className="grid gap-1.5">
-                <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
-                  {section.title}
-                </h2>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  {section.description}
-                </p>
-              </div>
-              <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
-                {section.includesPricingBounds && (
-                  <div className="grid gap-4 rounded-lg border border-border bg-muted/40 p-4 sm:p-5">
-                    <div className="flex flex-wrap items-start justify-between gap-3 sm:gap-4">
-                      <div className="min-w-0 flex-1 grid gap-1.5">
-                        <h3 className="text-base font-semibold leading-6 text-foreground">
-                          محدوده قیمت روزانه
-                        </h3>
-                        <p className="text-sm leading-6 text-muted-foreground">
-                          حداقل و حداکثر قیمت مجاز را به‌صورت یکپارچه تنظیم
-                          کنید.
-                        </p>
-                      </div>
-                      <KoochButton
-                        disabled={
-                          pricingBoundsLoading ||
-                          pricingBoundsSaving ||
-                          !pricingBoundsDirty
-                        }
-                        loading={pricingBoundsSaving}
-                        onClick={savePricingBounds}
-                        size="sm"
-                        type="button"
-                      >
-                        ذخیره محدوده قیمت
-                      </KoochButton>
-                    </div>
-
-                    {pricingBoundsLoading ? (
-                      <p className="text-sm text-muted-foreground">
-                        در حال بارگذاری محدوده قیمت...
-                      </p>
-                    ) : pricingBounds === null ? (
-                      <KoochAlert
-                        title="محدوده قیمت بارگذاری نشد"
-                        variant="destructive"
-                      >
-                        {pricingBoundsError ?? "دوباره تلاش کنید."}
-                      </KoochAlert>
-                    ) : (
-                      <>
-                        <div className="grid gap-4 md:grid-cols-2">
-                          <KoochField
-                            error={pricingBoundsValidation.errors.minPrice}
-                            label="حداقل قیمت روزانه"
-                            required
-                          >
-                            <KoochInput
-                              dir="ltr"
-                              error={pricingBoundsValidation.errors.minPrice}
-                              inputMode="decimal"
-                              min={0}
-                              onChange={(event) =>
-                                updatePricingBound(
-                                  "minPrice",
-                                  event.target.value,
-                                )
-                              }
-                              required
-                              step="any"
-                              type="number"
-                              value={pricingBoundsDraft.minPrice}
-                            />
-                          </KoochField>
-                          <KoochField
-                            error={pricingBoundsValidation.errors.maxPrice}
-                            label="حداکثر قیمت روزانه"
-                            required
-                          >
-                            <KoochInput
-                              dir="ltr"
-                              error={pricingBoundsValidation.errors.maxPrice}
-                              inputMode="decimal"
-                              min={0}
-                              onChange={(event) =>
-                                updatePricingBound(
-                                  "maxPrice",
-                                  event.target.value,
-                                )
-                              }
-                              required
-                              step="any"
-                              type="number"
-                              value={pricingBoundsDraft.maxPrice}
-                            />
-                          </KoochField>
-                        </div>
-                        {pricingBoundsError && (
-                          <KoochAlert
-                            title="ذخیره محدوده قیمت انجام نشد"
-                            variant="destructive"
-                          >
-                            {pricingBoundsError}
-                          </KoochAlert>
-                        )}
-                      </>
-                    )}
-                  </div>
-                )}
-                {genericInventoryAvailable && section.id === "commissions" && (
-                  <p className="rounded-lg border border-border bg-muted/40 p-3 text-sm leading-6 text-muted-foreground sm:p-4">
-                    این تنظیمات برای جریان‌های کمیسیون آینده آماده شده‌اند و در
-                    حال حاضر در محاسبات رزروهای فعال اعمال نمی‌شوند.
-                  </p>
-                )}
-                {genericInventoryAvailable && section.items.map(renderSetting)}
-              </div>
-            </KoochCard>
-          ))}
-          {genericInventoryAvailable && unmappedSettings.length > 0 && (
-            <KoochCard variant="elevated">
-              <div className="grid gap-1.5">
-                <h2 className="text-lg font-semibold leading-7 text-foreground sm:text-xl">
-                  سایر تنظیمات
-                </h2>
-                <p className="text-sm leading-6 text-muted-foreground">
-                  تنظیمات جدیدی که هنوز در بخش‌های اصلی دسته‌بندی نشده‌اند.
-                </p>
-              </div>
-              <div className="mt-4 grid gap-4 sm:mt-5 sm:gap-5">
-                {unmappedSettings.map(renderSetting)}
-              </div>
-            </KoochCard>
+          {visibleSections.map((section) =>
+            renderSectionCard({
+              id: section.id,
+              title: section.title,
+              description: section.description,
+              items: section.items,
+              includesPricingBounds: section.includesPricingBounds,
+              showCommissionNotice: section.id === "commissions",
+            }),
           )}
+          {genericInventoryAvailable &&
+            unmappedSettings.length > 0 &&
+            renderSectionCard({
+              id: "other-settings",
+              title: "سایر تنظیمات",
+              description:
+                "تنظیمات جدیدی که هنوز در بخش‌های اصلی دسته‌بندی نشده‌اند.",
+              items: unmappedSettings,
+            })}
         </div>
       </main>
     </AdminLayout>
