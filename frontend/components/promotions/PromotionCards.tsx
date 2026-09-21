@@ -41,6 +41,19 @@ const typeMeta: Record<string, { icon: string; badge: string }> = {
   Informational: { icon: "✨", badge: "پیشنهاد ویژه" },
 };
 
+const hexColorPattern = /^#[0-9a-fA-F]{6}$/;
+
+function getBadgeTextColor(backgroundColor: string) {
+  if (!hexColorPattern.test(backgroundColor)) return "#ffffff";
+
+  const red = Number.parseInt(backgroundColor.slice(1, 3), 16);
+  const green = Number.parseInt(backgroundColor.slice(3, 5), 16);
+  const blue = Number.parseInt(backgroundColor.slice(5, 7), 16);
+  const luminance = (0.299 * red + 0.587 * green + 0.114 * blue) / 255;
+
+  return luminance > 0.62 ? "#111827" : "#ffffff";
+}
+
 export function PromotionCards({
   promotions,
   title,
@@ -78,7 +91,10 @@ export function PromotionCards({
           const meta = typeMeta[promotion.type ?? ""] ?? typeMeta.Informational;
           const customColor = promotion.badgeColor?.trim();
           const badgeStyle = customColor
-            ? { backgroundColor: customColor, color: "#fff" }
+            ? {
+                backgroundColor: customColor,
+                color: getBadgeTextColor(customColor),
+              }
             : undefined;
           const requirements = [
             promotion.minimumStayNights
