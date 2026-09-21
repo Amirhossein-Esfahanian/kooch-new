@@ -389,14 +389,33 @@ export default function AdminSiteSettingsPage() {
 
     const scrollContainer = findScrollContainer(sentinel);
     const updateNavigationState = () => {
-      const scrollTop =
-        scrollContainer === window
-          ? 0
-          : (scrollContainer as HTMLElement).getBoundingClientRect().top;
+      const containerElement =
+        scrollContainer === window ? null : (scrollContainer as HTMLElement);
+      const viewportTop = containerElement
+        ? containerElement.getBoundingClientRect().top
+        : 0;
+      const viewportHeight = containerElement
+        ? containerElement.clientHeight
+        : window.innerHeight;
       const offset = sectionScrollOffset(navigation);
-      const navigationBottom = scrollTop + offset + 1;
+      const availableHeight = Math.max(0, viewportHeight - offset);
+      const activationLine =
+        viewportTop + offset + Math.min(220, Math.max(72, availableHeight * 0.35));
+      const scrollingElement =
+        scrollContainer === window
+          ? document.scrollingElement ?? document.documentElement
+          : containerElement;
+      const currentScroll = scrollingElement?.scrollTop ?? 0;
+      const maximumScroll = Math.max(
+        0,
+        (scrollingElement?.scrollHeight ?? 0) -
+          (scrollingElement?.clientHeight ?? viewportHeight),
+      );
+      const atScrollEnd = maximumScroll - currentScroll <= 2;
 
-      setSectionNavStuck(sentinel.getBoundingClientRect().top <= scrollTop);
+      setSectionNavStuck(
+        sentinel.getBoundingClientRect().top <= viewportTop,
+      );
 
       let nextActiveSection = visibleSectionIds[0];
       for (const sectionId of visibleSectionIds) {
@@ -404,43 +423,30 @@ export default function AdminSiteSettingsPage() {
         if (!section) continue;
 
         section.style.scrollMarginTop = `${offset}px`;
-        if (section.getBoundingClientRect().top <= navigationBottom) {
+        if (section.getBoundingClientRect().top <= activationLine) {
           nextActiveSection = sectionId;
         }
       }
+
+      // Short final sections may never reach the activation line. At the real
+      // bottom of the scroll area, the final visible section is authoritative.
+      if (atScrollEnd) {
+        nextActiveSection = visibleSectionIds[visibleSectionIds.length - 1];
+      }
+
       const targetId = programmaticSectionRef.current;
       if (targetId) {
-        const target = visibleSectionIds.includes(
-          targetId as (typeof visibleSectionIds)[number],
-        )
-          ? document.getElementById(targetId)
-          : null;
-        if (target) {
-          const scrollingElement =
-            scrollContainer === window
-              ? document.scrollingElement ?? document.documentElement
-              : (scrollContainer as HTMLElement);
-          const currentScroll = scrollingElement.scrollTop;
-          const maximumScroll = Math.max(
-            0,
-            scrollingElement.scrollHeight - scrollingElement.clientHeight,
-          );
-          // The last section may not have enough content below it to align at the top.
-          const destination = Math.min(
-            maximumScroll,
-            Math.max(
-              0,
-              currentScroll + target.getBoundingClientRect().top - scrollTop - offset,
-            ),
-          );
-          if (Math.abs(currentScroll - destination) <= 1) {
-            programmaticSectionRef.current = null;
-          }
+        const targetExists =
+          visibleSectionIds.includes(
+            targetId as (typeof visibleSectionIds)[number],
+          ) && Boolean(document.getElementById(targetId));
+        if (targetExists) {
           setActiveSectionId(targetId);
           return;
         }
         programmaticSectionRef.current = null;
       }
+
       setActiveSectionId(nextActiveSection);
     };
 
@@ -449,6 +455,21 @@ export default function AdminSiteSettingsPage() {
       programmaticSectionRef.current = null;
       updateNavigationState();
     };
+    const interruptNavigationWithKeyboard = (event: KeyboardEvent) => {
+      if (
+        [
+          "ArrowUp",
+          "ArrowDown",
+          "PageUp",
+          "PageDown",
+          "Home",
+          "End",
+          " ",
+        ].includes(event.key)
+      ) {
+        interruptNavigation();
+      }
+    };
 
     updateNavigationState();
     scrollContainer.addEventListener("scroll", updateNavigationState, {
@@ -456,6 +477,8 @@ export default function AdminSiteSettingsPage() {
     });
     scrollContainer.addEventListener("wheel", interruptNavigation, { passive: true });
     scrollContainer.addEventListener("touchmove", interruptNavigation, { passive: true });
+    scrollContainer.addEventListener("pointerdown", interruptNavigation, { passive: true });
+    window.addEventListener("keydown", interruptNavigationWithKeyboard);
     window.addEventListener("resize", updateNavigationState);
     const navigationResizeObserver =
       typeof ResizeObserver === "undefined"
@@ -468,6 +491,8 @@ export default function AdminSiteSettingsPage() {
       scrollContainer.removeEventListener("scroll", updateNavigationState);
       scrollContainer.removeEventListener("wheel", interruptNavigation);
       scrollContainer.removeEventListener("touchmove", interruptNavigation);
+      scrollContainer.removeEventListener("pointerdown", interruptNavigation);
+      window.removeEventListener("keydown", interruptNavigationWithKeyboard);
       window.removeEventListener("resize", updateNavigationState);
     };
   }, [visibleSectionIds]);
