@@ -921,84 +921,85 @@ export default function AdminSiteSettingsPage() {
     );
   }
 
-  function renderPricingBounds() {
-    return (
-      <div className="md:col-span-2">
-        <div className="grid gap-3">
-          <div>
-            <h3 className="text-sm font-medium leading-6 text-foreground">
-              محدوده قیمت روزانه
-            </h3>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              حداقل و حداکثر قیمت مجاز روزانه را مشخص کنید.
-            </p>
-          </div>
+  function renderPricingBoundsFields() {
+    if (pricingBoundsLoading) {
+      return (
+        <div className="md:col-span-2">
+          <p className="text-sm text-muted-foreground">
+            در حال بارگذاری محدوده قیمت...
+          </p>
+        </div>
+      );
+    }
 
-          {pricingBoundsLoading ? (
-            <p className="text-sm text-muted-foreground">
-              در حال بارگذاری محدوده قیمت...
-            </p>
-          ) : pricingBounds === null ? (
+    if (pricingBounds === null) {
+      return (
+        <div className="md:col-span-2">
+          <KoochAlert
+            title="محدوده قیمت بارگذاری نشد"
+            variant="destructive"
+          >
+            {pricingBoundsError ?? "دوباره تلاش کنید."}
+          </KoochAlert>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <div className="min-w-0">
+          <KoochField
+            error={pricingBoundsValidation.errors.minPrice}
+            label="حداقل قیمت روزانه"
+            required
+          >
+            <KoochInput
+              dir="ltr"
+              error={pricingBoundsValidation.errors.minPrice}
+              inputMode="decimal"
+              min={0}
+              onChange={(event) =>
+                updatePricingBound("minPrice", event.target.value)
+              }
+              required
+              step="any"
+              type="number"
+              value={pricingBoundsDraft.minPrice}
+            />
+          </KoochField>
+        </div>
+        <div className="min-w-0">
+          <KoochField
+            error={pricingBoundsValidation.errors.maxPrice}
+            label="حداکثر قیمت روزانه"
+            required
+          >
+            <KoochInput
+              dir="ltr"
+              error={pricingBoundsValidation.errors.maxPrice}
+              inputMode="decimal"
+              min={0}
+              onChange={(event) =>
+                updatePricingBound("maxPrice", event.target.value)
+              }
+              required
+              step="any"
+              type="number"
+              value={pricingBoundsDraft.maxPrice}
+            />
+          </KoochField>
+        </div>
+        {pricingBoundsError && (
+          <div className="md:col-span-3">
             <KoochAlert
-              title="محدوده قیمت بارگذاری نشد"
+              title="ذخیره محدوده قیمت انجام نشد"
               variant="destructive"
             >
-              {pricingBoundsError ?? "دوباره تلاش کنید."}
+              {pricingBoundsError}
             </KoochAlert>
-          ) : (
-            <div className="grid gap-4">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <KoochField
-                  error={pricingBoundsValidation.errors.minPrice}
-                  label="حداقل قیمت روزانه"
-                  required
-                >
-                  <KoochInput
-                    dir="ltr"
-                    error={pricingBoundsValidation.errors.minPrice}
-                    inputMode="decimal"
-                    min={0}
-                    onChange={(event) =>
-                      updatePricingBound("minPrice", event.target.value)
-                    }
-                    required
-                    step="any"
-                    type="number"
-                    value={pricingBoundsDraft.minPrice}
-                  />
-                </KoochField>
-                <KoochField
-                  error={pricingBoundsValidation.errors.maxPrice}
-                  label="حداکثر قیمت روزانه"
-                  required
-                >
-                  <KoochInput
-                    dir="ltr"
-                    error={pricingBoundsValidation.errors.maxPrice}
-                    inputMode="decimal"
-                    min={0}
-                    onChange={(event) =>
-                      updatePricingBound("maxPrice", event.target.value)
-                    }
-                    required
-                    step="any"
-                    type="number"
-                    value={pricingBoundsDraft.maxPrice}
-                  />
-                </KoochField>
-              </div>
-              {pricingBoundsError && (
-                <KoochAlert
-                  title="ذخیره محدوده قیمت انجام نشد"
-                  variant="destructive"
-                >
-                  {pricingBoundsError}
-                </KoochAlert>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
+          </div>
+        )}
+      </>
     );
   }
 
@@ -1017,32 +1018,20 @@ export default function AdminSiteSettingsPage() {
     const fieldWidthClass = isImage
       ? ""
       : setting.type === "Number" || setting.type === "Boolean"
-        ? "w-full max-w-sm"
-        : "w-full max-w-xl";
-    const fieldSpanClass =
-      setting.key === "home.heroBackgroundUrl" ? "md:col-span-2" : "";
+        ? "w-full"
+        : "w-full";
 
     return (
-      <div className={`min-w-0 ${fieldSpanClass}`} key={setting.key}>
+      <div className="min-w-0" key={setting.key}>
         <div className={`grid content-start gap-2 ${fieldWidthClass}`}>
-          <div>
-            <label
-              className="text-sm font-medium leading-6 text-foreground"
-              htmlFor={isImage ? undefined : controlId}
-            >
-              {settingDisplayLabels[setting.key] ??
-                imageLabels[setting.key] ??
-                setting.label}
-            </label>
-            {setting.description && (
-              <p
-                className="mt-1 text-sm leading-6 text-muted-foreground"
-                id={descriptionId}
-              >
-                {setting.description}
-              </p>
-            )}
-          </div>
+          <label
+            className="text-sm font-medium leading-6 text-foreground"
+            htmlFor={isImage ? undefined : controlId}
+          >
+            {settingDisplayLabels[setting.key] ??
+              imageLabels[setting.key] ??
+              setting.label}
+          </label>
 
           <div className="min-w-0">
             {renderInput(setting, {
@@ -1050,6 +1039,14 @@ export default function AdminSiteSettingsPage() {
               describedBy,
               error,
             })}
+            {setting.description && (
+              <p
+                className="mt-1.5 text-xs leading-5 text-muted-foreground"
+                id={descriptionId}
+              >
+                {setting.description}
+              </p>
+            )}
             {error && (
               <p
                 aria-atomic="true"
@@ -1062,6 +1059,70 @@ export default function AdminSiteSettingsPage() {
             )}
           </div>
         </div>
+      </div>
+    );
+  }
+
+  function renderSettingByKey(
+    items: SiteSettingResponse[],
+    key: string,
+  ) {
+    const setting = items.find((item) => item.key === key);
+    return setting ? renderSetting(setting) : null;
+  }
+
+  function renderSectionFields(
+    id: string,
+    items: SiteSettingResponse[],
+    includesPricingBounds: boolean,
+  ) {
+    if (id === "identity-and-brand") {
+      return (
+        <div className="grid gap-8 md:grid-cols-2 md:gap-x-12">
+          <div className="grid content-start gap-7">
+            {renderSettingByKey(items, "site.name")}
+            {renderSettingByKey(items, "site.footerText")}
+          </div>
+          <div className="min-w-0">
+            {renderSettingByKey(items, "site.logoUrl")}
+          </div>
+        </div>
+      );
+    }
+
+    if (id === "homepage") {
+      return (
+        <div className="grid gap-8 md:grid-cols-2 md:gap-x-12 md:gap-y-10">
+          <div className="grid content-start gap-7">
+            {renderSettingByKey(items, "home.heroTitle")}
+            {renderSettingByKey(items, "home.heroSubtitle")}
+          </div>
+          <div className="min-w-0">
+            {renderSettingByKey(items, "home.heroBackgroundUrl")}
+          </div>
+          <div className="grid content-start gap-7">
+            {renderSettingByKey(items, "home.searchButtonText")}
+            {renderSettingByKey(items, "home.popularSectionTitle")}
+          </div>
+          <div className="min-w-0">
+            {renderSettingByKey(items, "home.popularSectionSubtitle")}
+          </div>
+        </div>
+      );
+    }
+
+    const desktopColumns =
+      id === "images-and-uploads" ||
+      id === "pricing-and-currency" ||
+      id === "seo" ||
+      id === "commissions"
+        ? "md:grid-cols-3"
+        : "md:grid-cols-2";
+
+    return (
+      <div className={`grid gap-x-8 gap-y-7 ${desktopColumns}`}>
+        {genericInventoryAvailable && items.map(renderSetting)}
+        {includesPricingBounds && renderPricingBoundsFields()}
       </div>
     );
   }
@@ -1110,9 +1171,8 @@ export default function AdminSiteSettingsPage() {
           </p>
         )}
 
-        <div className="me-auto mt-5 grid w-full max-w-5xl gap-x-8 gap-y-6 border-t border-border pt-5 md:grid-cols-2">
-          {genericInventoryAvailable && items.map(renderSetting)}
-          {includesPricingBounds && renderPricingBounds()}
+        <div className="mt-5 border-t border-border pt-5">
+          {renderSectionFields(id, items, includesPricingBounds)}
         </div>
 
         {hasSaveableContent && (
