@@ -766,8 +766,9 @@ export default function AdminSiteSettingsPage() {
         : "پس از انتخاب و تأیید برش تصویر، فایل به‌صورت خودکار بارگذاری و ذخیره می‌شود.";
 
       return (
-        <div className={isLogo ? "max-w-[176px]" : "max-w-lg"}>
-          <SharedUploader
+        <div className={isLogo ? "max-w-sm" : "w-full max-w-xl"}>
+          <div className={isLogo ? "max-w-[176px]" : "max-w-lg"}>
+            <SharedUploader
             accept={
               isLogo
                 ? ["image/png", "image/jpeg", "image/webp", "image/svg+xml"]
@@ -841,9 +842,14 @@ export default function AdminSiteSettingsPage() {
             showExistingFiles
             uploadUrl="/api/backend/admin/site-settings/upload"
             useToastNotifications
-            variant="square"
-          />
-          <p className="text-xs leading-5 text-muted-foreground">
+              variant="square"
+            />
+          </div>
+          <p
+            className={`mt-1 text-xs leading-4 text-muted-foreground ${
+              isLogo ? "max-w-sm" : "max-w-xl"
+            }`}
+          >
             {immediateSaveDescription}
           </p>
         </div>
