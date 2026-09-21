@@ -41,6 +41,7 @@ export interface SharedUploaderLabels {
   imageActionsText?: string;
   replaceText?: string;
   existingEmptyText?: string;
+  addPhotoText?: string;
 }
 
 export interface SharedUploaderProps {
@@ -107,6 +108,8 @@ export interface SharedUploaderProps {
   hideFileDetails?: boolean;
   /** Hide inline status message, useful when using toast notifications. */
   hideInlineStatus?: boolean;
+  /** Remove outer card/header chrome when embedding the uploader inside another gallery. */
+  embedded?: boolean;
 }
 
 type PendingFile = {
@@ -133,6 +136,7 @@ const defaultLabels: Required<SharedUploaderLabels> = {
   imageActionsText: "گزینه‌های تصویر",
   replaceText: "جایگزینی",
   existingEmptyText: "فایلی ثبت نشده است.",
+  addPhotoText: "Add photo",
 };
 
 function formatSize(size: number) {
@@ -318,6 +322,7 @@ export function SharedUploader({
   useToastNotifications = false,
   hideFileDetails = false,
   hideInlineStatus = false,
+  embedded = false,
 }: SharedUploaderProps) {
   const text = { ...defaultLabels, ...(labels ?? {}) };
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -714,15 +719,21 @@ export function SharedUploader({
 
   return (
     <section
-      className="rounded-2xl border border-border bg-card p-4 shadow-sm"
+      className={
+        embedded
+          ? "min-w-0"
+          : "rounded-2xl border border-border bg-card p-4 shadow-sm"
+      }
       dir="rtl"
     >
-      <div>
-        <h3 className="text-lg font-bold text-foreground">{text.title}</h3>
-        <p className="mt-1 text-sm leading-6 text-muted-foreground">
-          {text.description}
-        </p>
-      </div>
+      {!embedded && (
+        <div>
+          <h3 className="text-lg font-bold text-foreground">{text.title}</h3>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            {text.description}
+          </p>
+        </div>
+      )}
 
       {variant === "dropzone" && showExistingFiles && (
         <div className="mt-4">
@@ -781,7 +792,7 @@ export function SharedUploader({
       )}
 
       {variant === "square" && (
-        <div className="mt-4 grid gap-3 sm:max-w-64">
+        <div className={embedded ? "grid gap-3" : "mt-4 grid gap-3 sm:max-w-64"}>
           <div
             className={`group relative grid w-full place-items-center text-center transition ${
               squarePreview
@@ -960,13 +971,29 @@ export function SharedUploader({
                     +
                   </span>
                   <span className="text-sm font-bold text-primary">
-                    Add photo
+                    {text.addPhotoText}
                   </span>
                   <span className="text-xs font-semibold text-muted-foreground">
                     حداکثر {maxFileSizeMb} مگابایت
                   </span>
                 </span>
               </button>
+            )}
+
+            {embedded && (validating || uploading) && (
+              <div
+                aria-live="polite"
+                className="absolute inset-0 z-[5] grid place-items-center rounded-2xl bg-card/80 text-foreground backdrop-blur-sm"
+              >
+                <span className="grid justify-items-center gap-2 text-sm font-bold">
+                  <span className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  <span>
+                    {validating
+                      ? "در حال بررسی…"
+                      : `${text.uploadingText} ${items[0]?.progress ?? 0}٪`}
+                  </span>
+                </span>
+              </div>
             )}
 
             <input

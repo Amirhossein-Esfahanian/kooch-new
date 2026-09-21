@@ -3,11 +3,13 @@
 import Cropper, { Area } from "react-easy-crop";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { toast } from "sonner";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
+import { readImageDimensions } from "@/lib/image-file";
 
 export interface MediaGalleryItem {
   id: string | number;
@@ -26,7 +28,7 @@ export interface ImageUploadConstraints {
 interface MediaGalleryProps<T extends MediaGalleryItem> {
   items: T[];
   mode: "property" | "room";
-  onAdd: (files: File[]) => void | Promise<void>;
+  onAdd?: (files: File[]) => void | Promise<void>;
   onCrop: (item: T, file: File, saveMode: CropSaveMode) => void | Promise<void>;
   onDelete: (item: T) => void | Promise<void>;
   onSetMain?: (item: T) => void | Promise<void>;
@@ -41,6 +43,7 @@ interface MediaGalleryProps<T extends MediaGalleryItem> {
   allowFreeCrop?: boolean;
   cropSaveMode?: CropSaveMode;
   uploadProgress?: number | null;
+  addControl?: ReactNode;
 }
 
 export type CropSaveMode = "replace" | "new";
@@ -51,23 +54,6 @@ const defaultConstraints: ImageUploadConstraints = {
   minHeight: 600,
   maxImages: 30,
 };
-
-async function dimensions(file: File) {
-  const url = URL.createObjectURL(file);
-  try {
-    return await new Promise<{ width: number; height: number }>(
-      (resolve, reject) => {
-        const image = new window.Image();
-        image.onload = () =>
-          resolve({ width: image.naturalWidth, height: image.naturalHeight });
-        image.onerror = () => reject(new Error("فرمت تصویر پشتیبانی نمی‌شود"));
-        image.src = url;
-      },
-    );
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 function DotsIcon() {
   return (
@@ -211,6 +197,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
   allowFreeCrop = false,
   cropSaveMode = "replace",
   uploadProgress = null,
+  addControl,
 }: MediaGalleryProps<T>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [deleteTarget, setDeleteTarget] = useState<T | null>(null);
@@ -313,7 +300,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
         if (file.size > constraints.maxFileSizeMb * 1024 * 1024) {
           throw new Error("حجم تصویر بیش از حد مجاز است");
         }
-        const size = await dimensions(file);
+        const size = await readImageDimensions(file);
         if (
           size.width < constraints.minWidth ||
           size.height < constraints.minHeight
@@ -321,7 +308,7 @@ export function MediaGallery<T extends MediaGalleryItem>({
           throw new Error("ابعاد تصویر مناسب نیست");
         }
       }
-      await onAdd(files);
+      if (onAdd) await onAdd(files);
     } catch (caught) {
       toast.error(
         caught instanceof Error ? caught.message : "بارگذاری تصویر انجام نشد.",
@@ -338,42 +325,44 @@ export function MediaGallery<T extends MediaGalleryItem>({
         </p>
       )}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6">
-        <button
-          aria-label="افزودن عکس"
-          className="group grid w-full place-items-center rounded-2xl border-2 border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)] transition hover:border-[var(--theme-primary)] hover:bg-[var(--theme-primary-soft)] hover:text-[var(--theme-primary-text)] disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={disabled || uploading}
-          onClick={() => inputRef.current?.click()}
-          style={{ aspectRatio }}
-          type="button"
-        >
-          <span className="grid justify-items-center gap-2">
-            {uploading ? (
-              <span className="grid justify-items-center gap-1">
-                <span className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent" />
-                <span className="text-xs">{uploadProgress ?? 0}٪</span>
+        {addControl ?? (
+          <button
+            aria-label="افزودن عکس"
+            className="group grid w-full place-items-center rounded-2xl border-2 border-dashed border-[var(--theme-border)] bg-[var(--theme-surface-muted)] text-[var(--theme-muted-text)] transition hover:border-[var(--theme-primary)] hover:bg-[var(--theme-primary-soft)] hover:text-[var(--theme-primary-text)] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={disabled || uploading}
+            onClick={() => inputRef.current?.click()}
+            style={{ aspectRatio }}
+            type="button"
+          >
+            <span className="grid justify-items-center gap-2">
+              {uploading ? (
+                <span className="grid justify-items-center gap-1">
+                  <span className="h-8 w-8 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                  <span className="text-xs">{uploadProgress ?? 0}٪</span>
+                </span>
+              ) : (
+                <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">
+                  +
+                </span>
+              )}
+              <span className="text-sm font-bold">
+                {uploading ? "در حال بارگذاری…" : "افزودن عکس"}
               </span>
-            ) : (
-              <span className="grid h-10 w-10 place-items-center rounded-full bg-white text-3xl leading-none shadow-sm transition group-hover:scale-105 motion-reduce:group-hover:scale-100">
-                +
-              </span>
-            )}
-            <span className="text-sm font-bold">
-              {uploading ? "در حال بارگذاری…" : "افزودن عکس"}
             </span>
-          </span>
-          <input
-            ref={inputRef}
-            accept={accept}
-            className="hidden"
-            multiple
-            onChange={(event) => {
-              const files = Array.from(event.target.files ?? []);
-              if (files.length) void validateAndAdd(files);
-              event.currentTarget.value = "";
-            }}
-            type="file"
-          />
-        </button>
+            <input
+              ref={inputRef}
+              accept={accept}
+              className="hidden"
+              multiple
+              onChange={(event: ChangeEvent<HTMLInputElement>) => {
+                const files = Array.from(event.target.files ?? []);
+                if (files.length) void validateAndAdd(files);
+                event.currentTarget.value = "";
+              }}
+              type="file"
+            />
+          </button>
+        )}
 
         {items.map((item, index) => (
           <article

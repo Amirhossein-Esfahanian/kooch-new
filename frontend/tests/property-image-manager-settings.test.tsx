@@ -1,31 +1,46 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PropertyImageResponse } from "@/lib/owner-api";
 import { useState } from "react";
+import type { ReactNode } from "react";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
   deleteFailure: vi.fn(),
+  getToken: vi.fn(),
+  sharedUploaderProps: vi.fn(),
 }));
 
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
-  return { ...actual, apiRequest: mocks.apiRequest };
+  return {
+    ...actual,
+    apiRequest: mocks.apiRequest,
+    getToken: mocks.getToken,
+  };
 });
 
 vi.mock("sonner", () => ({
-  toast: { success: vi.fn() },
+  toast: { error: vi.fn(), success: vi.fn() },
+}));
+
+vi.mock("@/components/SharedUploader", () => ({
+  SharedUploader: (props: Record<string, unknown>) => {
+    mocks.sharedUploaderProps(props);
+    return <div data-testid="shared-uploader" />;
+  },
 }));
 
 vi.mock("@/components/MediaGallery", () => ({
   MediaGallery: ({
+    addControl,
     constraints,
     disabled,
     items,
     totalItemCount,
-    onAdd,
     onDelete,
   }: {
+    addControl?: ReactNode;
     constraints: {
       maxFileSizeMb: number;
       minWidth: number;
@@ -35,7 +50,6 @@ vi.mock("@/components/MediaGallery", () => ({
     disabled?: boolean;
     items: (PropertyImageResponse & { isMain: boolean })[];
     totalItemCount: number;
-    onAdd: (files: File[]) => Promise<void>;
     onDelete: (image: PropertyImageResponse) => Promise<void>;
   }) => (
     <div
@@ -47,13 +61,25 @@ vi.mock("@/components/MediaGallery", () => ({
       data-testid="media-gallery"
       data-total-count={totalItemCount}
     >
-      {items.map((item) => <span key={item.id} data-testid="gallery-image" data-main={item.isMain}>
-        {item.id}<button onClick={() => void onDelete(item).catch(mocks.deleteFailure)}>{`delete-${item.id}`}</button>
-      </span>)}
-      <button onClick={() => void onAdd([new File(["image"], "room.png", { type: "image/png" })])}>test-add</button>
+      {addControl}
+      {items.map((item) => (
+        <span
+          data-main={item.isMain}
+          data-testid="gallery-image"
+          key={item.id}
+        >
+          {item.id}
+          <button
+            onClick={() => void onDelete(item).catch(mocks.deleteFailure)}
+          >
+            {`delete-${item.id}`}
+          </button>
+        </span>
+      ))}
     </div>
   ),
 }));
+
 
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 
@@ -62,6 +88,9 @@ describe("PropertyImageManager operational settings", () => {
   beforeEach(() => {
     mocks.apiRequest.mockReset();
     mocks.deleteFailure.mockReset();
+    mocks.getToken.mockReset();
+    mocks.getToken.mockReturnValue("test-token");
+    mocks.sharedUploaderProps.mockReset();
   });
 
   const images: PropertyImageResponse[] = [
@@ -123,33 +152,136 @@ describe("PropertyImageManager operational settings", () => {
     expect(screen.getByRole("button", { name: "delete-1" })).toBeTruthy();
   });
 
-  it.each([undefined, 20])("uploads with current scope metadata for %s", async (roomTypeId) => {
+  it.each([
+    [undefined, { tag: "other", roomTypeId: undefined }],
+    [20, { tag: "room", roomTypeId: 20 }],
+  ] as const)(
+    "configures SharedUploader metadata for RoomType %s",
+    async (roomTypeId, expected) => {
+      mocks.apiRequest.mockResolvedValue({});
+      const onImagesChange = vi.fn();
+
+      render(
+        <PropertyImageManager
+          fixedRoomTypeId={roomTypeId}
+          images={images}
+          onImagesChange={onImagesChange}
+          propertyId={12}
+        />,
+      );
+
+      await waitFor(() => expect(mocks.sharedUploaderProps).toHaveBeenCalled());
+      const uploaderCalls = mocks.sharedUploaderProps.mock.calls;
+      const props = uploaderCalls[uploaderCalls.length - 1][0] as {
+        autoUpload: boolean;
+        embedded: boolean;
+        fieldName: string;
+        headers?: Record<string, string>;
+        maxFiles: number;
+        metadata: Record<string, unknown>;
+        multiple: boolean;
+        onUploadSuccess: (payload: PropertyImageResponse[]) => void;
+        uploadUrl: string;
+        variant: string;
+      };
+
+      expect(props.uploadUrl).toBe(
+        "/api/backend/owner/properties/12/images/upload",
+      );
+      expect(props.autoUpload).toBe(true);
+      expect(props.embedded).toBe(true);
+      expect(props.fieldName).toBe("files");
+      expect(props.multiple).toBe(true);
+      expect(props.variant).toBe("square");
+      expect(props.headers).toEqual({
+        Authorization: "Bearer test-token",
+      });
+      expect(props.maxFiles).toBe(25);
+      expect(props.metadata).toEqual({
+        tag: expected.tag,
+        caption: "",
+        altText: "",
+        isCover: false,
+        ...(expected.roomTypeId
+          ? { roomTypeId: expected.roomTypeId }
+          : {}),
+      });
+
+      const uploaded: PropertyImageResponse = {
+        ...images[0],
+        id: 99,
+        roomTypeId: roomTypeId ?? null,
+        isCover: roomTypeId === undefined,
+        sortOrder: 99,
+        url: "/images/99.png",
+      };
+      props.onUploadSuccess([uploaded]);
+
+      expect(onImagesChange).toHaveBeenCalledWith([...images, uploaded]);
+    },
+  );
+
+  it("validates new-image dimensions through the SharedUploader validator", async () => {
     mocks.apiRequest.mockResolvedValue({});
-    const open = vi.fn();
-    let body!: FormData;
-    let complete!: () => void;
-    vi.stubGlobal("XMLHttpRequest", class {
-      upload = {};
-      open = open;
-      setRequestHeader = vi.fn();
-      status = 201;
-      responseText = JSON.stringify([images[1]]);
-      onload: (() => void) | null = null;
-      send(value: FormData) { body = value; complete = () => this.onload?.(); }
+    const createObjectURL = vi.fn(() => "blob:dimension-test");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL,
+      revokeObjectURL,
     });
-    const onImagesChange = vi.fn();
-    render(<PropertyImageManager propertyId={12} fixedRoomTypeId={roomTypeId} images={images} onImagesChange={onImagesChange} />);
-    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalled());
-    fireEvent.click(screen.getByRole("button", { name: "test-add" }));
-    expect(open).toHaveBeenCalledWith("POST", "/api/backend/owner/properties/12/images/upload");
-    expect(body.getAll("files")).toHaveLength(1);
-    expect(body.get("roomTypeId")).toBe(roomTypeId ? "20" : null);
-    expect(body.get("tag")).toBe(roomTypeId ? "room" : "other");
-    expect(body.get("isCover")).toBe("false");
-    expect(body.get("replaceImageId")).toBeNull();
-    await act(async () => complete());
-    expect(onImagesChange).toHaveBeenCalledWith([...images, images[1]]);
+
+    let naturalWidth = 1200;
+    let naturalHeight = 900;
+    vi.stubGlobal(
+      "Image",
+      class {
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        get naturalWidth() {
+          return naturalWidth;
+        }
+
+        get naturalHeight() {
+          return naturalHeight;
+        }
+
+        set src(_value: string) {
+          this.onload?.();
+        }
+      },
+    );
+
+    render(
+      <PropertyImageManager
+        images={images}
+        onImagesChange={vi.fn()}
+        propertyId={12}
+      />,
+    );
+
+    await waitFor(() => expect(mocks.sharedUploaderProps).toHaveBeenCalled());
+    const uploaderCalls = mocks.sharedUploaderProps.mock.calls;
+    const props = uploaderCalls[uploaderCalls.length - 1][0] as {
+      validateFile: (file: File) => Promise<string | null>;
+    };
+    const file = new File(["image"], "photo.png", { type: "image/png" });
+
+    expect(await props.validateFile(file)).toBeNull();
+
+    naturalWidth = 799;
+    naturalHeight = 900;
+    expect(await props.validateFile(file)).toBe("ابعاد تصویر مناسب نیست");
+
+    naturalWidth = 1200;
+    naturalHeight = 599;
+    expect(await props.validateFile(file)).toBe("ابعاد تصویر مناسب نیست");
+
+    expect(createObjectURL).toHaveBeenCalledTimes(3);
+    expect(revokeObjectURL).toHaveBeenCalledTimes(3);
   });
+
 
   it("loads and applies image constraints from the authenticated management endpoint", async () => {
     mocks.apiRequest.mockResolvedValue({
@@ -181,6 +313,11 @@ describe("PropertyImageManager operational settings", () => {
     expect(gallery.getAttribute("data-min-height")).toBe("900");
     expect(gallery.getAttribute("data-max-images")).toBe("45");
     expect(gallery.getAttribute("data-disabled")).toBe("false");
+    const uploaderCalls = mocks.sharedUploaderProps.mock.calls;
+    const uploaderProps = uploaderCalls[uploaderCalls.length - 1][0] as {
+      maxFiles: number;
+    };
+    expect(uploaderProps.maxFiles).toBe(40);
     expect(mocks.apiRequest).not.toHaveBeenCalledWith(
       "/site-settings/public",
     );
@@ -236,5 +373,10 @@ describe("PropertyImageManager operational settings", () => {
     expect(
       screen.getByTestId("media-gallery").getAttribute("data-disabled"),
     ).toBe("true");
+    const uploaderCalls = mocks.sharedUploaderProps.mock.calls;
+    const uploaderProps = uploaderCalls[uploaderCalls.length - 1][0] as {
+      disabled: boolean;
+    };
+    expect(uploaderProps.disabled).toBe(true);
   });
 });

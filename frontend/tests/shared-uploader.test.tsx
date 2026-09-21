@@ -800,6 +800,96 @@ describe("SharedUploader automatic upload", () => {
     expect(cropper.getAttribute("data-zoom")).toBe("1.7");
   });
 
+  it("renders an embedded square uploader without card/header chrome", () => {
+    const { container } = render(
+      <SharedUploader
+        embedded
+        labels={{ addPhotoText: "افزودن عکس", browseText: "افزودن عکس" }}
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    const shell = container.querySelector("section");
+    expect(shell?.classList.contains("border-border")).toBe(false);
+    expect(shell?.classList.contains("bg-card")).toBe(false);
+    expect(screen.queryByText("بارگذاری فایل")).toBeNull();
+    expect(screen.queryByText("فایل را بکشید و رها کنید یا از سیستم انتخاب کنید.")).toBeNull();
+    expect(screen.getByText("افزودن عکس")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "افزودن عکس" }),
+    ).toBeTruthy();
+  });
+
+  it("serializes metadata and authorization headers for automatic uploads", () => {
+    const { container } = render(
+      <SharedUploader
+        autoUpload
+        headers={{ Authorization: "Bearer token-123" }}
+        metadata={{
+          tag: "room",
+          caption: "",
+          altText: "",
+          isCover: false,
+          roomTypeId: 20,
+        }}
+        uploadUrl="/api/backend/owner/properties/12/images/upload"
+      />,
+    );
+
+    selectFile(
+      container,
+      new File(["image"], "room.png", { type: "image/png" }),
+    );
+
+    const request = FakeXMLHttpRequest.requests[0];
+    expect(request.open).toHaveBeenCalledWith(
+      "POST",
+      "/api/backend/owner/properties/12/images/upload",
+    );
+    expect(request.setRequestHeader).toHaveBeenCalledWith(
+      "Authorization",
+      "Bearer token-123",
+    );
+
+    const body = request.body as FormData;
+    expect(body.getAll("files")).toHaveLength(1);
+    expect(body.get("tag")).toBe("room");
+    expect(body.get("caption")).toBe("");
+    expect(body.get("altText")).toBe("");
+    expect(body.get("isCover")).toBe("false");
+    expect(body.get("roomTypeId")).toBe("20");
+  });
+
+  it("shows upload progress on the embedded square control", () => {
+    const { container } = render(
+      <SharedUploader
+        autoUpload
+        embedded
+        uploadUrl="/api/upload"
+        variant="square"
+      />,
+    );
+
+    selectFile(
+      container,
+      new File(["image"], "room.png", { type: "image/png" }),
+    );
+
+    const request = FakeXMLHttpRequest.requests[0];
+    expect(screen.getByText("در حال آپلود... 0٪")).toBeTruthy();
+
+    act(() => {
+      request.upload.onprogress?.({
+        lengthComputable: true,
+        loaded: 50,
+        total: 100,
+      } as ProgressEvent);
+    });
+
+    expect(screen.getByText("در حال آپلود... 50٪")).toBeTruthy();
+  });
+
   it("uses semantic palette classes and only the requested image-action SVGs", () => {
     const source = readFileSync(sharedUploaderSourcePath, "utf8");
     const removedClasses = [

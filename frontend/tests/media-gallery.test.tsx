@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ComponentProps, ImgHTMLAttributes } from "react";
 import { toast } from "sonner";
 
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
 
 vi.mock("next/image", () => ({
-  default: ({ fill: _fill, priority: _priority, quality: _quality, unoptimized: _unoptimized, ...props }: React.ImgHTMLAttributes<HTMLImageElement> & Record<string, unknown>) => (
+  default: ({ fill: _fill, priority: _priority, quality: _quality, unoptimized: _unoptimized, ...props }: ImgHTMLAttributes<HTMLImageElement> & Record<string, unknown>) => (
     // eslint-disable-next-line @next/next/no-img-element
     <img {...props} />
   ),
@@ -22,7 +23,7 @@ const items: MediaGalleryItem[] = [
   { id: 2, url: "/roof.jpg", alt: "بام اقامتگاه" },
 ];
 
-function renderGallery(overrides: Partial<React.ComponentProps<typeof MediaGallery<MediaGalleryItem>>> = {}) {
+function renderGallery(overrides: Partial<ComponentProps<typeof MediaGallery<MediaGalleryItem>>> = {}) {
   const props = {
     items,
     mode: "property" as const,
@@ -72,6 +73,55 @@ describe("MediaGallery property image workflow", () => {
     await screen.findByRole("dialog");
     fireEvent.click(screen.getByRole("button", { name: "بستن دیالوگ" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("renders addControl as the first gallery cell and omits the native file input", () => {
+    const { container } = renderGallery({
+      addControl: <div data-testid="custom-add-control">custom add</div>,
+    });
+
+    const control = screen.getByTestId("custom-add-control");
+    expect(control.parentElement?.firstElementChild).toBe(control);
+    expect(container.querySelector('input[type="file"]')).toBeNull();
+    expect(screen.getAllByRole("button", { name: "نمایش تصویر" })).toHaveLength(
+      items.length,
+    );
+  });
+
+  it("keeps the native add-photo fallback when addControl is omitted", async () => {
+    const onAdd = vi.fn();
+    const { container } = renderGallery({ onAdd });
+    const input = container.querySelector<HTMLInputElement>(
+      'input[type="file"]',
+    );
+    expect(input).toBeTruthy();
+
+    const createObjectUrl = vi.fn(() => "blob:test-image");
+    const revokeObjectUrl = vi.fn();
+    vi.stubGlobal("URL", {
+      ...URL,
+      createObjectURL: createObjectUrl,
+      revokeObjectURL: revokeObjectUrl,
+    });
+    vi.stubGlobal(
+      "Image",
+      class {
+        naturalWidth = 1200;
+        naturalHeight = 900;
+        onload: (() => void) | null = null;
+        onerror: (() => void) | null = null;
+
+        set src(_value: string) {
+          this.onload?.();
+        }
+      },
+    );
+
+    const file = new File(["image"], "fallback.jpg", {
+      type: "image/jpeg",
+    });
+    fireEvent.change(input!, { target: { files: [file] } });
+    await waitFor(() => expect(onAdd).toHaveBeenCalledWith([file]));
   });
 
   it("keeps upload and remove actions connected to the shared gallery", async () => {
