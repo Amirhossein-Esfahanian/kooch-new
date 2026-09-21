@@ -195,6 +195,20 @@ function parseBooleanValue(value: string) {
   return null;
 }
 
+function normalizeIntegerInput(value: string) {
+  const normalizedDigits = value
+    .replace(/[۰-۹]/g, (digit) => String("۰۱۲۳۴۵۶۷۸۹".indexOf(digit)))
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+
+  return normalizedDigits.replace(/[^0-9]/g, "");
+}
+
+function formatGroupedIntegerInput(value: string) {
+  if (!/^\d+$/.test(value)) return value;
+
+  return value.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
 function isGenericSettingDirty(
   setting: SiteSettingResponse,
   draftValue: string,
@@ -245,6 +259,8 @@ function validatePricingBounds(draft: PricingBoundsDraft) {
       errors[key] = "این مقدار الزامی است";
     } else if (!Number.isFinite(parsed[key])) {
       errors[key] = "یک عدد معتبر وارد کنید";
+    } else if (!Number.isInteger(parsed[key])) {
+      errors[key] = "قیمت باید عدد صحیح باشد";
     } else if (parsed[key] < 0) {
       errors[key] = "مقدار نمی‌تواند منفی باشد";
     }
@@ -987,15 +1003,17 @@ export default function AdminSiteSettingsPage() {
             <KoochInput
               dir="ltr"
               error={pricingBoundsValidation.errors.minPrice}
-              inputMode="decimal"
-              min={0}
+              inputMode="numeric"
+              pattern="[0-9]*"
               onChange={(event) =>
-                updatePricingBound("minPrice", event.target.value)
+                updatePricingBound(
+                  "minPrice",
+                  normalizeIntegerInput(event.target.value),
+                )
               }
               required
-              step="any"
-              type="number"
-              value={pricingBoundsDraft.minPrice}
+              type="text"
+              value={formatGroupedIntegerInput(pricingBoundsDraft.minPrice)}
             />
           </KoochField>
         </div>
@@ -1008,15 +1026,17 @@ export default function AdminSiteSettingsPage() {
             <KoochInput
               dir="ltr"
               error={pricingBoundsValidation.errors.maxPrice}
-              inputMode="decimal"
-              min={0}
+              inputMode="numeric"
+              pattern="[0-9]*"
               onChange={(event) =>
-                updatePricingBound("maxPrice", event.target.value)
+                updatePricingBound(
+                  "maxPrice",
+                  normalizeIntegerInput(event.target.value),
+                )
               }
               required
-              step="any"
-              type="number"
-              value={pricingBoundsDraft.maxPrice}
+              type="text"
+              value={formatGroupedIntegerInput(pricingBoundsDraft.maxPrice)}
             />
           </KoochField>
         </div>
