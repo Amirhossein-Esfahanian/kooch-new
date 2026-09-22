@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -8,6 +8,7 @@ import { ReservationFollowUpRecipients } from "@/components/admin/ReservationFol
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
+import { KoochInfoHint } from "@/components/KoochInfoHint";
 import {
   KoochField,
   KoochInput,
@@ -46,61 +47,6 @@ type ReservationDeadlineSettingsErrors = Partial<
   Record<keyof ReservationDeadlineSettingsDraft, string>
 >;
 
-function DeadlineHelpPopover({
-  description,
-  id,
-  title,
-}: {
-  description: string;
-  id: string;
-  title: string;
-}) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-      if (!rootRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
-
-  return (
-    <div className="relative inline-flex" ref={rootRef}>
-      <KoochButton
-        aria-describedby={open ? id : undefined}
-        aria-expanded={open}
-        aria-label={`راهنمای ${title}`}
-        className="!h-6 !min-h-6 !w-6 !rounded-full !p-0 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!w-11"
-        onClick={() => setOpen(true)}
-        size="icon"
-        type="button"
-        variant="outline"
-      >
-        ؟
-      </KoochButton>
-
-      {open && (
-        <div
-          className="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-border bg-background p-3 text-xs font-medium leading-6 text-foreground shadow-lg"
-          id={id}
-          role="tooltip"
-        >
-          {description}
-        </div>
-      )}
-    </div>
-  );
-}
-
 function DeadlineFieldLabel({
   description,
   htmlFor,
@@ -121,10 +67,9 @@ function DeadlineFieldLabel({
           *
         </span>
       </label>
-      <DeadlineHelpPopover
-        description={description}
-        id={`${htmlFor}-help`}
-        title={title}
+      <KoochInfoHint
+        ariaLabel={`راهنمای ${title}`}
+        content={description}
       />
     </div>
   );
