@@ -29,9 +29,11 @@ export type KoochSingleDatePickerProps = BaseDatePickerProps & {
   mode: "single";
   value: string | null;
   onChange: (value: string | null) => void;
-  label?: string;
+  label?: string | null;
   placeholder?: string;
   labels?: SharedSingleDateLabels;
+  size?: "default" | "compact";
+  autoConfirmOnSelect?: boolean;
 };
 
 export type KoochDateRangePickerProps = BaseDatePickerProps & {

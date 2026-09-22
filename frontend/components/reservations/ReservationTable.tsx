@@ -3,6 +3,7 @@
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { toPersianDigits } from "@/lib/persian-digits";
 import {
   KoochTable,
   KoochTableBody,
@@ -264,23 +265,23 @@ export function ReservationTable({
               return (
                 <KoochTableRow key={rowKey(reservation)}>
                   <KoochTableCell className="font-semibold text-xs">
-                    {reservation.reservationNumber || "-"}
+                    {toPersianDigits(reservation.reservationNumber || "-")}
                   </KoochTableCell>
                   <KoochTableCell>
                     <div className="grid gap-1">
                       <span className="font-semibold text-xs">{guestName}</span>
                       <span className="text-xs text-muted-foreground">
-                        {reservation.guestMobile ?? "-"}
+                        {toPersianDigits(reservation.guestMobile ?? "-")}
                       </span>
                     </div>
                   </KoochTableCell>
                   {showProperty && (
                     <KoochTableCell>
-                      {reservation.propertyName ?? "-"}
+                      {toPersianDigits(reservation.propertyName ?? "-")}
                     </KoochTableCell>
                   )}
                   <KoochTableCell className="text-xs font-semibold">
-                    {roomName}
+                    {toPersianDigits(roomName)}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
                     {formatDate(reservation.checkInDate)}
@@ -299,12 +300,14 @@ export function ReservationTable({
                     )}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
-                    {formatCurrency(totalPrice, { showCurrency: false })}
+                    {toPersianDigits(formatCurrency(totalPrice, { showCurrency: false }))}
                   </KoochTableCell>
                   <KoochTableCell className="whitespace-nowrap text-xs font-semibold">
-                    {formatCurrency(reservation.remainingAmount, {
-                      showCurrency: false,
-                    })}
+                    {toPersianDigits(
+                      formatCurrency(reservation.remainingAmount, {
+                        showCurrency: false,
+                      }),
+                    )}
                   </KoochTableCell>
                   <KoochTableCell>
                     <KoochButton

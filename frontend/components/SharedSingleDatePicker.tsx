@@ -5,6 +5,7 @@ import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
 import { CalendarType } from "@/components/SharedDateRangePicker";
+import { toPersianDigits } from "@/lib/persian-digits";
 import {
   HolidayCalendarDayContent,
   HolidayCalendarDetails,
@@ -40,8 +41,15 @@ export interface SharedSingleDatePickerProps {
   disabledDates?: string[] | ((isoDate: string) => boolean);
   /** Placeholder shown when no date is selected. */
   placeholder?: string;
-  /** Field label. */
-  label?: string;
+  /** Field label. Pass null to hide the internal label. */
+  label?: string | null;
+  /** Visual density of the control and calendar popover. */
+  size?: "default" | "compact";
+  /**
+   * Commit immediately after selecting a day and hide footer actions.
+   * Clicking outside closes the popover without changing the confirmed value.
+   */
+  autoConfirmOnSelect?: boolean;
   /** Persian label overrides. */
   labels?: SharedSingleDateLabels;
   /** Confirm button text. */
@@ -105,8 +113,10 @@ function displayDate(
   placeholder: string,
 ) {
   if (!isoDate) return placeholder;
-  return asCalendar(dayjs(isoDate), calendarType).format(
-    calendarType === "jalali" ? "YYYY/MM/DD" : "YYYY-MM-DD",
+  return toPersianDigits(
+    asCalendar(dayjs(isoDate), calendarType).format(
+      calendarType === "jalali" ? "YYYY/MM/DD" : "YYYY-MM-DD",
+    ),
   );
 }
 
@@ -116,7 +126,7 @@ function monthTitle(month: Dayjs, calendarType: CalendarType) {
     calendarType === "jalali"
       ? jalaliMonths[view.month()]
       : gregorianMonths[view.month()];
-  return `${monthName} ${view.format("YYYY")}`;
+  return `${monthName} ${toPersianDigits(view.format("YYYY"))}`;
 }
 
 function firstWeekdayOffset(month: Dayjs, calendarType: CalendarType) {
@@ -166,6 +176,8 @@ export function SharedSingleDatePicker({
   disabledDates,
   placeholder = "انتخاب تاریخ",
   label = "تاریخ",
+  size = "default",
+  autoConfirmOnSelect = false,
   labels,
   confirmText = "تایید",
   cancelText = "انصراف",
@@ -188,8 +200,15 @@ export function SharedSingleDatePicker({
   const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonClass = `kooch-form-control ${
-    controlClassName ?? "grid px-4 py-3 text-right transition"
+    controlClassName ??
+    (size === "compact"
+      ? "grid min-h-9 w-full min-w-0 max-w-full px-3 py-1.5 text-right text-xs transition"
+      : "grid px-4 py-3 text-right transition")
   }`;
+  const popoverClass =
+    size === "compact"
+      ? "absolute right-0 top-full z-50 mt-2 max-h-[min(72vh,360px)] w-[300px] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+      : "absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:w-[360px]";
   const { holidayByDate } = useHolidayCalendarMonths({
     visibleMonth,
     calendarType: activeCalendar,
@@ -210,8 +229,22 @@ export function SharedSingleDatePicker({
   }, []);
 
   return (
-    <div className="relative grid gap-2" ref={wrapperRef} dir="rtl">
-      <span className="text-sm font-bold text-slate-700">{label}</span>
+    <div
+      className={`relative grid ${size === "compact" ? "gap-1.5" : "gap-2"}`}
+      ref={wrapperRef}
+      dir="rtl"
+    >
+      {label && (
+        <span
+          className={
+            size === "compact"
+              ? "text-xs font-semibold text-slate-700"
+              : "text-sm font-bold text-slate-700"
+          }
+        >
+          {label}
+        </span>
+      )}
       <button
         className={buttonClass}
         data-control-active={open ? "true" : undefined}
@@ -234,12 +267,28 @@ export function SharedSingleDatePicker({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:w-[360px]">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <p className="text-sm font-bold text-slate-700">{text.title}</p>
+        <div className={popoverClass}>
+          <div
+            className={`flex flex-wrap items-center justify-between ${
+              size === "compact" ? "mb-3 gap-2" : "mb-4 gap-3"
+            }`}
+          >
+            <p
+              className={
+                size === "compact"
+                  ? "text-xs font-bold text-slate-700"
+                  : "text-sm font-bold text-slate-700"
+              }
+            >
+              {text.title}
+            </p>
             {showGregorianToggle && (
               <button
-                className="rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                className={
+                  size === "compact"
+                    ? "rounded-md border border-slate-200 px-2 py-1.5 text-xs font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                    : "rounded-lg border border-slate-200 px-3 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                }
                 onClick={() => {
                   const nextCalendar =
                     activeCalendar === "jalali" ? "gregorian" : "jalali";
@@ -257,10 +306,19 @@ export function SharedSingleDatePicker({
               </button>
             )}
           </div>
-          <div className="mb-4 flex items-center justify-between" dir="rtl">
+          <div
+            className={`flex items-center justify-between ${
+              size === "compact" ? "mb-3" : "mb-4"
+            }`}
+            dir="rtl"
+          >
             <button
               aria-label="ماه قبل"
-              className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+              className={
+                size === "compact"
+                  ? "grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-base font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                  : "grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+              }
               onClick={() =>
                 setVisibleMonth((current) =>
                   asCalendar(current, activeCalendar)
@@ -272,12 +330,22 @@ export function SharedSingleDatePicker({
             >
               ›
             </button>
-            <h3 className="text-center text-base font-bold text-slate-950">
+            <h3
+              className={
+                size === "compact"
+                  ? "text-center text-sm font-bold text-slate-950"
+                  : "text-center text-base font-bold text-slate-950"
+              }
+            >
               {monthTitle(visibleMonth, activeCalendar)}
             </h3>
             <button
               aria-label="ماه بعد"
-              className="grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+              className={
+                size === "compact"
+                  ? "grid h-8 w-8 place-items-center rounded-full border border-slate-200 text-base font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                  : "grid h-9 w-9 place-items-center rounded-full border border-slate-200 text-lg font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+              }
               onClick={() =>
                 setVisibleMonth((current) =>
                   asCalendar(current, activeCalendar)
@@ -290,7 +358,11 @@ export function SharedSingleDatePicker({
               ‹
             </button>
           </div>
-          <div className="grid grid-cols-7 text-center text-xs font-bold text-slate-400">
+          <div
+            className={`grid grid-cols-7 text-center font-bold text-slate-400 ${
+              size === "compact" ? "text-[11px]" : "text-xs"
+            }`}
+          >
             {weekdayLabels.map((weekday) => (
               <span className="py-1" key={weekday}>
                 {weekday}
@@ -300,7 +372,12 @@ export function SharedSingleDatePicker({
           <div className="mt-1 grid grid-cols-7">
             {buildMonthDays(visibleMonth, activeCalendar).map((date, index) => {
               if (!date)
-                return <span className="h-10" key={`empty-${index}`} />;
+                return (
+                  <span
+                    className={size === "compact" ? "h-8" : "h-10"}
+                    key={`empty-${index}`}
+                  />
+                );
               const iso = toIso(date);
               const disabled = isDisabled(
                 date,
@@ -312,12 +389,20 @@ export function SharedSingleDatePicker({
               const selected = tempDate === iso;
               const today = iso === dayjs().format(isoFormat);
               const holiday = holidayByDate.get(iso);
-              const dayText = asCalendar(date, activeCalendar).format("D");
+              const dayText = toPersianDigits(
+                asCalendar(date, activeCalendar).format("D"),
+              );
               const visualState = { selected, disabled, today };
               return (
                 <button
                   aria-label={holidayAccessibleLabel(dayText, holiday)}
-                  className={`h-10 rounded-[4px] text-sm font-bold transition ${holidayDayStateClass(visualState, holiday, "text-slate-700 hover:bg-[var(--theme-primary-soft)]")}`}
+                  className={`${
+                    size === "compact" ? "h-8 text-xs" : "h-10 text-sm"
+                  } rounded-[4px] font-bold transition ${holidayDayStateClass(
+                    visualState,
+                    holiday,
+                    "text-slate-700 hover:bg-[var(--theme-primary-soft)]",
+                  )}`}
                   data-calendar-date={iso}
                   data-holiday={holiday ? "true" : undefined}
                   data-holiday-kind={
@@ -333,6 +418,10 @@ export function SharedSingleDatePicker({
                   onClick={() => {
                     setTempDate(iso);
                     holidayDetails.selectHoliday(holiday);
+                    if (autoConfirmOnSelect) {
+                      onChange(iso);
+                      setOpen(false);
+                    }
                   }}
                   onFocus={() => holidayDetails.focusHoliday(holiday)}
                   onMouseEnter={() => holidayDetails.hoverHoliday(holiday)}
@@ -348,15 +437,22 @@ export function SharedSingleDatePicker({
               );
             })}
           </div>
-          <div
-            className="mt-5 border-t border-slate-100 pt-3"
-            data-picker-footer="true"
-          >
+          {!autoConfirmOnSelect && (
+            <div
+              className={
+                size === "compact"
+                  ? "mt-3 border-t border-slate-100 pt-2"
+                  : "mt-5 border-t border-slate-100 pt-3"
+              }
+              data-picker-footer="true"
+            >
             <div className="sm:hidden" data-mobile-holiday-details-row="true">
               <HolidayCalendarDetails titles={holidayDetails.titles} />
             </div>
             <div
-              className="grid min-h-12 w-full min-w-0 grid-cols-[auto_1fr_auto] items-center gap-3"
+              className={`grid w-full min-w-0 grid-cols-[auto_1fr_auto] items-center ${
+                size === "compact" ? "min-h-10 gap-2" : "min-h-12 gap-3"
+              }`}
               data-picker-footer-grid="true"
               dir="rtl"
             >
@@ -365,14 +461,22 @@ export function SharedSingleDatePicker({
                 data-picker-action-group="true"
               >
                 <button
-                  className="shrink-0 rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+                  className={
+                    size === "compact"
+                      ? "shrink-0 rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700"
+                      : "shrink-0 rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700"
+                  }
                   onClick={() => setOpen(false)}
                   type="button"
                 >
                   {cancelText}
                 </button>
                 <button
-                  className="shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-bold text-white hover:bg-[var(--theme-primary-hover)]"
+                  className={
+                    size === "compact"
+                      ? "shrink-0 rounded-md bg-[var(--theme-primary)] px-3 py-1.5 text-xs font-bold text-white hover:bg-[var(--theme-primary-hover)]"
+                      : "shrink-0 rounded-lg bg-[var(--theme-primary)] px-5 py-2 text-sm font-bold text-white hover:bg-[var(--theme-primary-hover)]"
+                  }
                   onClick={() => {
                     onChange(tempDate);
                     setOpen(false);
@@ -394,7 +498,11 @@ export function SharedSingleDatePicker({
                 <HolidayCalendarDetails titles={holidayDetails.titles} />
               </div>
               <button
-                className="col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                className={
+                  size === "compact"
+                    ? "col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-md border border-slate-200 px-3 py-1.5 text-xs font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                    : "col-start-3 min-w-0 max-w-full justify-self-end whitespace-normal rounded-lg border border-slate-200 px-4 py-2 text-sm font-bold text-slate-700 hover:border-[var(--theme-primary-border)] hover:text-[var(--theme-primary-text)]"
+                }
                 data-picker-today-action="true"
                 onClick={() => {
                   const today = dayjs();
@@ -407,8 +515,9 @@ export function SharedSingleDatePicker({
               >
                 {text.today}
               </button>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       )}
     </div>

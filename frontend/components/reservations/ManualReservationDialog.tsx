@@ -24,6 +24,7 @@ import {
   type PropertyResponse,
 } from "@/lib/owner-api";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { toPersianDigits } from "@/lib/persian-digits";
 import { KoochDatePicker } from "../KoochDatePicker";
 import type {
   ReservationTableItem,
@@ -267,11 +268,11 @@ function daysBetween(checkInDate: string, checkOutDate: string) {
 }
 
 function formatAge(value: number) {
-  return new Intl.NumberFormat("fa-IR").format(value);
+  return toPersianDigits(new Intl.NumberFormat("fa-IR").format(value));
 }
 
 function formatPercent(value: number) {
-  return new Intl.NumberFormat("fa-IR").format(value);
+  return toPersianDigits(new Intl.NumberFormat("fa-IR").format(value));
 }
 
 function buildChildRuleSummary(
@@ -658,11 +659,13 @@ export function ManualReservationDialog({
     const updatedGuestName = selectedGuest
       ? guestName(selectedGuest)
       : draft.guestSearch || "-";
-    const originalRoomName = reservation.roomName ?? "-";
+    const originalRoomName = toPersianDigits(reservation.roomName ?? "-");
     const updatedRoomName =
-      confirmationRoomNames.length > 0 ? confirmationRoomNames.join("، ") : "-";
-    const originalGuestCount = `${reservation.adults ?? 0} بزرگسال، ${reservation.children ?? 0} کودک`;
-    const updatedGuestCount = `${toPositiveInt(draft.adults, 1)} بزرگسال، ${toNonNegativeInt(draft.children)} کودک`;
+      confirmationRoomNames.length > 0
+        ? toPersianDigits(confirmationRoomNames.join("، "))
+        : "-";
+    const originalGuestCount = `${toPersianDigits(reservation.adults ?? 0)} بزرگسال، ${toPersianDigits(reservation.children ?? 0)} کودک`;
+    const updatedGuestCount = `${toPersianDigits(toPositiveInt(draft.adults, 1))} بزرگسال، ${toPersianDigits(toNonNegativeInt(draft.children))} کودک`;
     const originalCalculatedPrice =
       reservation.calculatedPrice ?? reservation.totalPrice;
     const originalTotal =
@@ -691,15 +694,15 @@ export function ManualReservationDialog({
     if (draft.checkInDate !== reservation.checkInDate) {
       editChangeSummary.push({
         label: "تاریخ ورود",
-        before: reservation.checkInDate,
-        after: draft.checkInDate,
+        before: toPersianDigits(reservation.checkInDate),
+        after: toPersianDigits(draft.checkInDate),
       });
     }
     if (draft.checkOutDate !== reservation.checkOutDate) {
       editChangeSummary.push({
         label: "تاریخ خروج",
-        before: reservation.checkOutDate,
-        after: draft.checkOutDate,
+        before: toPersianDigits(reservation.checkOutDate),
+        after: toPersianDigits(draft.checkOutDate),
       });
     }
     if (
@@ -761,7 +764,7 @@ export function ManualReservationDialog({
         )
         .map((room) => ({
           value: room.roomId,
-          label: room.roomName,
+          label: toPersianDigits(room.roomName),
           group:
             room.baseCapacity > 0
               ? `ظرفیت ${new Intl.NumberFormat("fa-IR").format(room.baseCapacity)} نفر`
@@ -778,7 +781,9 @@ export function ManualReservationDialog({
   const guestOptions = useMemo(() => {
     const options: KoochSearchableSelectOption[] = guests.map((guest) => {
       const name = guestName(guest);
-      const description = guest.mobile ?? guest.email ?? "-";
+      const description = guest.mobile
+        ? toPersianDigits(guest.mobile)
+        : (guest.email ?? "-");
 
       return {
         value: guest.id,
@@ -1986,20 +1991,20 @@ export function ManualReservationDialog({
               <span className="text-muted-foreground">اتاق</span>
               <span className="font-bold text-foreground">
                 {confirmationRoomNames.length > 0
-                  ? confirmationRoomNames.join("، ")
+                  ? toPersianDigits(confirmationRoomNames.join("، "))
                   : "-"}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">ورود</span>
               <span className="font-bold text-foreground">
-                {draft.checkInDate || "-"}
+                {toPersianDigits(draft.checkInDate || "-")}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">
               <span className="text-muted-foreground">خروج</span>
               <span className="font-bold text-foreground">
-                {draft.checkOutDate || "-"}
+                {toPersianDigits(draft.checkOutDate || "-")}
               </span>
             </div>
             <div className="flex items-center justify-between gap-4">

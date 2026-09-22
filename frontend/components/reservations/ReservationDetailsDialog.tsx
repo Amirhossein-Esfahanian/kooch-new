@@ -21,6 +21,7 @@ import type {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { toPersianDigits } from "@/lib/persian-digits";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
 interface ReservationDetailsDialogProps {
@@ -172,11 +173,13 @@ function formatDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return new Intl.DateTimeFormat("fa-IR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
+  return toPersianDigits(
+    new Intl.DateTimeFormat("fa-IR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(date),
+  );
 }
 
 function formatDateTime(value?: string | null) {
@@ -185,18 +188,20 @@ function formatDateTime(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
 
-  return new Intl.DateTimeFormat("fa-IR", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
+  return toPersianDigits(
+    new Intl.DateTimeFormat("fa-IR", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date),
+  );
 }
 
 function formatNumber(value?: number | null) {
   if (value === null || value === undefined) return "-";
-  return new Intl.NumberFormat("fa-IR").format(value);
+  return toPersianDigits(new Intl.NumberFormat("fa-IR").format(value));
 }
 
 function formatSource(value?: string | null) {
@@ -214,7 +219,9 @@ function formatDuration(seconds?: number | null) {
     minimumIntegerDigits: 2,
   });
 
-  return `${formatter.format(minutes)}:${formatter.format(remainingSeconds)}`;
+  return toPersianDigits(
+    `${formatter.format(minutes)}:${formatter.format(remainingSeconds)}`,
+  );
 }
 
 function isUnpaidReservation(reservation: ReservationTableItem) {
@@ -301,7 +308,7 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
                 </div>
                 {event.actor && (
                   <span className="text-xs font-semibold text-muted-foreground">
-                    توسط {event.actor}
+                    توسط {toPersianDigits(event.actor)}
                   </span>
                 )}
                 {status && (
@@ -317,8 +324,14 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
                 {(event.oldAmount !== null && event.oldAmount !== undefined) ||
                 (event.newAmount !== null && event.newAmount !== undefined) ? (
                   <span className="text-xs font-semibold text-muted-foreground">
-                    از {formatCurrency(event.oldAmount, { currencyLabel })} به{" "}
-                    {formatCurrency(event.newAmount, { currencyLabel })}
+                    از{" "}
+                    {toPersianDigits(
+                      formatCurrency(event.oldAmount, { currencyLabel }),
+                    )}{" "}
+                    به{" "}
+                    {toPersianDigits(
+                      formatCurrency(event.newAmount, { currencyLabel }),
+                    )}
                   </span>
                 ) : null}
                 {event.note && (
@@ -395,11 +408,11 @@ function ReservationPriceAdjustmentAlert({
         <div className="grid gap-3 pt-2">
           <p>
             قیمت محاسبه‌شده:{" "}
-            {formatCurrency(calculatedPrice, { currencyLabel })}
+            {toPersianDigits(formatCurrency(calculatedPrice, { currencyLabel }))}
             <br />
-            اصلاح دستی: {formatCurrency(parsedAmount, { currencyLabel })}
+            اصلاح دستی: {toPersianDigits(formatCurrency(parsedAmount, { currencyLabel }))}
             <br />
-            مبلغ نهایی: {formatCurrency(nextFinalAmount, { currencyLabel })}
+            مبلغ نهایی: {toPersianDigits(formatCurrency(nextFinalAmount, { currencyLabel }))}
           </p>
           <div className="flex flex-wrap gap-2">
             <KoochButton loading={submitting} onClick={confirmAdjustment}>
@@ -845,7 +858,7 @@ export function ReservationDetailsDialog({
             <DetailSection title="رزرو">
               <DetailItem
                 label="شماره رزرو"
-                value={reservation.reservationNumber || "-"}
+                value={toPersianDigits(reservation.reservationNumber || "-")}
               />
               <DetailItem
                 label="منبع"
@@ -865,12 +878,12 @@ export function ReservationDetailsDialog({
               <DetailItem label="نام کامل" value={guestName} />
               <DetailItem
                 label="موبایل"
-                value={reservation.guestMobile ?? "-"}
+                value={toPersianDigits(reservation.guestMobile ?? "-")}
               />
               <DetailItem label="ایمیل" value={guestEmail} />
               <DetailItem
                 label="کد ملی / شماره پاسپورت"
-                value={identityNumber}
+                value={toPersianDigits(identityNumber)}
               />
               <DetailItem
                 label="ملیت"
@@ -881,9 +894,9 @@ export function ReservationDetailsDialog({
             <DetailSection title="اقامت">
               <DetailItem
                 label="اقامتگاه"
-                value={reservation.propertyName ?? "-"}
+                value={toPersianDigits(reservation.propertyName ?? "-")}
               />
-              <DetailItem label="نوع اتاق" value={roomName} />
+              <DetailItem label="نوع اتاق" value={toPersianDigits(roomName)} />
               <DetailItem
                 label="تاریخ ورود"
                 value={formatDate(reservation.checkInDate)}
@@ -941,61 +954,61 @@ export function ReservationDetailsDialog({
             >
               <DetailItem
                 label="قیمت پایه"
-                value={formatCurrency(baseAmount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(baseAmount, { currencyLabel }))}
               />
               <DetailItem
                 label="هزینه کودک"
-                value={formatCurrency(childAmount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(childAmount, { currencyLabel }))}
               />
               <DetailItem
                 label="هزینه نفر اضافه"
-                value={formatCurrency(extraGuestAmount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(extraGuestAmount, { currencyLabel }))}
               />
               <DetailItem
                 label="تخفیف پروموشن"
-                value={formatCurrency(promotionDiscount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(promotionDiscount, { currencyLabel }))}
               />
               <DetailItem
                 label="تخفیف کوپن"
-                value={formatCurrency(couponDiscount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(couponDiscount, { currencyLabel }))}
               />
               <DetailItem
                 label="هزینه خدمات"
-                value={formatCurrency(reservation.serviceFeeAmount, {
+                value={toPersianDigits(formatCurrency(reservation.serviceFeeAmount, {
                   currencyLabel,
-                })}
+                }))}
               />
               <DetailItem
                 label="مالیات"
-                value={formatCurrency(reservation.taxAmount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(reservation.taxAmount, { currencyLabel }))}
               />
               <DetailItem
                 label="قیمت محاسبه‌شده"
-                value={formatCurrency(calculatedPrice, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(calculatedPrice, { currencyLabel }))}
               />
               <DetailItem
                 label="اصلاح دستی"
-                value={formatCurrency(manualAdjustment, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(manualAdjustment, { currencyLabel }))}
               />
               <DetailItem
                 label="مبلغ نهایی"
-                value={formatCurrency(totalAmount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(totalAmount, { currencyLabel }))}
               />
               <DetailItem
                 label="مبلغ قابل پرداخت"
-                value={formatCurrency(reservation.payableAmount, {
+                value={toPersianDigits(formatCurrency(reservation.payableAmount, {
                   currencyLabel,
-                })}
+                }))}
               />
               <DetailItem
                 label="مبلغ پرداخت‌شده"
-                value={formatCurrency(paidAmount, { currencyLabel })}
+                value={toPersianDigits(formatCurrency(paidAmount, { currencyLabel }))}
               />
               <DetailItem
                 label="باقی‌مانده"
-                value={formatCurrency(reservation.remainingAmount, {
+                value={toPersianDigits(formatCurrency(reservation.remainingAmount, {
                   currencyLabel,
-                })}
+                }))}
               />
               <DetailItem label="واحد پول" value={currencyLabel} />
             </DetailSection>

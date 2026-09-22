@@ -11,6 +11,7 @@ import {
   KoochSelect,
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { ReservationFollowUpRecipients } from "@/components/admin/ReservationFollowUpRecipients";
 import {
   ReservationTable,
@@ -27,6 +28,7 @@ import {
   type RoomTypeResponse,
 } from "@/lib/owner-api";
 import { useSiteCurrencyLabel } from "@/lib/currency";
+import { toPersianDigits } from "@/lib/persian-digits";
 import { toast } from "sonner";
 
 type ReservationStatusFilter = "" | ReservationTableStatus;
@@ -68,8 +70,6 @@ interface ReservationListQuery {
   source: ReservationSourceFilter;
   createdBy: string;
   paymentStatus: PaymentStatusFilter;
-  paymentDeadlineFrom: string;
-  paymentDeadlineTo: string;
 }
 
 interface PagedResult<T> {
@@ -127,8 +127,6 @@ const initialFilters: ReservationListQuery = {
   source: "",
   createdBy: "",
   paymentStatus: "",
-  paymentDeadlineFrom: "",
-  paymentDeadlineTo: "",
 };
 
 function buildReservationsPath(filters: ReservationListQuery, page: number) {
@@ -551,18 +549,11 @@ export default function AdminReservationsPage() {
                 </p>
                 <p className="text-xs text-muted-foreground">
                   {activeFilterCount > 0
-                    ? `${activeFilterCount} فیلتر فعال است.`
+                    ? `${toPersianDigits(activeFilterCount)} فیلتر فعال است.`
                     : "بدون فیلتر فعال"}
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
-                <KoochButton
-                  onClick={() => setFiltersOpen((open) => !open)}
-                  type="button"
-                  variant="outline"
-                >
-                  {filtersOpen ? "بستن فیلترها" : "فیلترهای پیشرفته"}
-                </KoochButton>
                 <KoochButton loading={loading} type="submit">
                   اعمال
                 </KoochButton>
@@ -638,8 +629,43 @@ export default function AdminReservationsPage() {
               </KoochField>
             </div>
 
-            {filtersOpen && (
-              <div className="grid gap-4 border-t border-border pt-4 md:grid-cols-2 xl:grid-cols-4">
+            <button
+              aria-expanded={filtersOpen}
+              aria-label={
+                filtersOpen
+                  ? "بستن فیلترهای پیشرفته"
+                  : "باز کردن فیلترهای پیشرفته"
+              }
+              className="group -mx-1 -mb-3 flex h-6 items-center justify-center rounded-md border border-border bg-muted text-muted-foreground transition hover:bg-muted/80 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              onClick={() => setFiltersOpen((open) => !open)}
+              type="button"
+            >
+              <span
+                aria-hidden="true"
+                className={`text-base leading-none transition-transform duration-300 ${
+                  filtersOpen ? "rotate-180" : ""
+                }`}
+              >
+                ⌄
+              </span>
+            </button>
+
+            <div
+              aria-hidden={!filtersOpen}
+              className={`grid transition-[grid-template-rows,opacity] duration-300 ease-out ${
+                filtersOpen
+                  ? "grid-rows-[1fr] opacity-100"
+                  : "pointer-events-none grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div
+                className={
+                  filtersOpen
+                    ? "min-h-0 overflow-visible pb-3"
+                    : "min-h-0 overflow-hidden"
+                }
+              >
+                <div className="grid gap-3 border-t border-border pt-2 md:grid-cols-2 xl:grid-cols-4">
                 <KoochField label="اتاق / تیپ اتاق">
                   <KoochInput
                     onChange={(event) =>
@@ -715,82 +741,112 @@ export default function AdminReservationsPage() {
                 </KoochField>
 
                 <KoochField label="ورود از">
-                  <KoochInput
-                    onChange={(event) =>
+                  <KoochDatePicker
+                    mode="single"
+                    size="compact"
+                    autoConfirmOnSelect
+                    label={null}
+                    placeholder="انتخاب تاریخ"
+                    value={draftFilters.checkInFrom || null}
+                    onChange={(value) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        checkInFrom: event.target.value,
+                        checkInFrom: value ?? "",
                       }))
                     }
-                    type="date"
-                    value={draftFilters.checkInFrom}
                   />
                 </KoochField>
 
                 <KoochField label="ورود تا">
-                  <KoochInput
-                    onChange={(event) =>
+                  <KoochDatePicker
+                    mode="single"
+                    size="compact"
+                    autoConfirmOnSelect
+                    label={null}
+                    placeholder="انتخاب تاریخ"
+                    value={draftFilters.checkInTo || null}
+                    onChange={(value) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        checkInTo: event.target.value,
+                        checkInTo: value ?? "",
                       }))
                     }
-                    type="date"
-                    value={draftFilters.checkInTo}
                   />
                 </KoochField>
 
                 <KoochField label="خروج از">
-                  <KoochInput
-                    onChange={(event) =>
+                  <KoochDatePicker
+                    mode="single"
+                    size="compact"
+                    autoConfirmOnSelect
+                    label={null}
+                    placeholder="انتخاب تاریخ"
+                    value={draftFilters.checkOutFrom || null}
+                    onChange={(value) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        checkOutFrom: event.target.value,
+                        checkOutFrom: value ?? "",
                       }))
                     }
-                    type="date"
-                    value={draftFilters.checkOutFrom}
                   />
                 </KoochField>
 
                 <KoochField label="خروج تا">
-                  <KoochInput
-                    onChange={(event) =>
+                  <KoochDatePicker
+                    mode="single"
+                    size="compact"
+                    autoConfirmOnSelect
+                    label={null}
+                    placeholder="انتخاب تاریخ"
+                    value={draftFilters.checkOutTo || null}
+                    onChange={(value) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        checkOutTo: event.target.value,
+                        checkOutTo: value ?? "",
                       }))
                     }
-                    type="date"
-                    value={draftFilters.checkOutTo}
                   />
                 </KoochField>
 
                 <KoochField label="ایجاد از">
-                  <KoochInput
-                    onChange={(event) =>
+                  <KoochDatePicker
+                    mode="single"
+                    size="compact"
+                    autoConfirmOnSelect
+                    label={null}
+                    placeholder="انتخاب تاریخ"
+                    value={draftFilters.createdFrom || null}
+                    onChange={(value) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        createdFrom: event.target.value,
+                        createdFrom: value ?? "",
                       }))
                     }
-                    type="date"
-                    value={draftFilters.createdFrom}
                   />
                 </KoochField>
 
                 <KoochField label="ایجاد تا">
-                  <KoochInput
-                    onChange={(event) =>
+                  <KoochDatePicker
+                    mode="single"
+                    size="compact"
+                    autoConfirmOnSelect
+                    label={null}
+                    placeholder="انتخاب تاریخ"
+                    value={draftFilters.createdTo || null}
+                    onChange={(value) =>
                       setDraftFilters((current) => ({
                         ...current,
-                        createdTo: event.target.value,
+                        createdTo: value ?? "",
                       }))
                     }
-                    type="date"
-                    value={draftFilters.createdTo}
                   />
                 </KoochField>
+
+
+
+
+
+
 
                 <p className="text-xs font-medium text-muted-foreground md:col-span-2 xl:col-span-4">
                   واحد مبالغ: {currencyLabel}
@@ -924,33 +980,10 @@ export default function AdminReservationsPage() {
                   </KoochSelect>
                 </KoochField>
 
-                <KoochField label="مهلت پرداخت از">
-                  <KoochInput
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        paymentDeadlineFrom: event.target.value,
-                      }))
-                    }
-                    type="datetime-local"
-                    value={draftFilters.paymentDeadlineFrom}
-                  />
-                </KoochField>
 
-                <KoochField label="مهلت پرداخت تا">
-                  <KoochInput
-                    onChange={(event) =>
-                      setDraftFilters((current) => ({
-                        ...current,
-                        paymentDeadlineTo: event.target.value,
-                      }))
-                    }
-                    type="datetime-local"
-                    value={draftFilters.paymentDeadlineTo}
-                  />
-                </KoochField>
+                </div>
               </div>
-            )}
+            </div>
           </form>
         </KoochCard>
 
