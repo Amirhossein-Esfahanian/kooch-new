@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import type { ReactNode } from "react";
 import { toast } from "sonner";
 import {
   apiRequest,
@@ -15,6 +16,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochDialog } from "@/components/KoochDialog";
+import { KoochInfoHint } from "@/components/KoochInfoHint";
 import {
   KoochInput,
   KoochSelect,
@@ -181,54 +183,6 @@ function InlineFieldError({ message }: { message?: string }) {
   );
 }
 
-function FieldHelpPopover({ help }: { help: string }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-
-    function handlePointerDown(event: PointerEvent) {
-      const target = event.target;
-      if (!(target instanceof Node)) return;
-
-      if (!rootRef.current?.contains(target)) {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("pointerdown", handlePointerDown);
-    return () => document.removeEventListener("pointerdown", handlePointerDown);
-  }, [open]);
-
-  return (
-    <span className="relative inline-flex shrink-0" ref={rootRef}>
-      <button
-        aria-expanded={open}
-        aria-label={open ? "بستن توضیح" : "نمایش توضیح"}
-        className="grid h-5 w-5 shrink-0 place-items-center rounded-full border border-primary bg-transparent p-0 text-[10px] font-bold leading-none text-primary transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(pointer:coarse)]:h-11 [@media(pointer:coarse)]:w-11"
-        onClick={(event) => {
-          event.preventDefault();
-          event.stopPropagation();
-          setOpen((current) => !current);
-        }}
-        type="button"
-      >
-        i
-      </button>
-
-      {open && (
-        <span
-          className="absolute right-0 top-full z-30 mt-2 w-64 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-popover px-3 py-2 text-right text-xs font-normal leading-5 text-popover-foreground shadow-lg"
-          role="note"
-        >
-          {help}
-        </span>
-      )}
-    </span>
-  );
-}
-
 function FieldHelpLabel({
   children,
   help,
@@ -250,7 +204,7 @@ function FieldHelpLabel({
         )}
       </span>
 
-      <FieldHelpPopover help={help} />
+      <KoochInfoHint content={help} />
     </span>
   );
 }
