@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -45,6 +45,90 @@ type ReservationDeadlineSettingsDraft = {
 type ReservationDeadlineSettingsErrors = Partial<
   Record<keyof ReservationDeadlineSettingsDraft, string>
 >;
+
+function DeadlineHelpPopover({
+  description,
+  id,
+  title,
+}: {
+  description: string;
+  id: string;
+  title: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+      if (!(target instanceof Node)) return;
+      if (!rootRef.current?.contains(target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => document.removeEventListener("pointerdown", handlePointerDown);
+  }, [open]);
+
+  return (
+    <div className="relative inline-flex" ref={rootRef}>
+      <KoochButton
+        aria-describedby={open ? id : undefined}
+        aria-expanded={open}
+        aria-label={`راهنمای ${title}`}
+        className="!h-6 !min-h-6 !w-6 !rounded-full !p-0 text-xs [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!w-11"
+        onClick={() => setOpen(true)}
+        size="icon"
+        type="button"
+        variant="outline"
+      >
+        ؟
+      </KoochButton>
+
+      {open && (
+        <div
+          className="absolute right-0 top-full z-40 mt-2 w-[min(18rem,calc(100vw-2rem))] rounded-lg border border-border bg-background p-3 text-xs font-medium leading-6 text-foreground shadow-lg"
+          id={id}
+          role="tooltip"
+        >
+          {description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeadlineFieldLabel({
+  description,
+  htmlFor,
+  title,
+}: {
+  description: string;
+  htmlFor: string;
+  title: string;
+}) {
+  return (
+    <div className="flex min-h-7 items-center gap-1.5">
+      <label
+        className="text-sm font-semibold text-foreground"
+        htmlFor={htmlFor}
+      >
+        {title}
+        <span aria-hidden="true" className="ms-1 text-destructive">
+          *
+        </span>
+      </label>
+      <DeadlineHelpPopover
+        description={description}
+        id={`${htmlFor}-help`}
+        title={title}
+      />
+    </div>
+  );
+}
 
 const emptyDraft: ReservationSettingsDraft = {
   freeChildMaxAge: "",
@@ -415,15 +499,16 @@ export default function AdminReservationSettingsPage() {
               </div>
 
               <div className="grid gap-4 lg:grid-cols-3">
-                <KoochField
-                  error={deadlineErrors.paymentWindowMinutes}
-                  helperText="مدت زمانی که کاربر پس از ایجاد مرحله پرداخت برای تکمیل آن فرصت دارد، بر حسب دقیقه."
-                  label="مهلت پرداخت"
-                  required
-                >
+                <div className="grid content-start gap-2">
+                  <DeadlineFieldLabel
+                    description="مدت زمانی که کاربر پس از ایجاد مرحله پرداخت برای تکمیل آن فرصت دارد، بر حسب دقیقه."
+                    htmlFor="reservation-payment-window"
+                    title="مهلت پرداخت"
+                  />
                   <KoochInput
                     dir="ltr"
                     error={deadlineErrors.paymentWindowMinutes}
+                    id="reservation-payment-window"
                     inputMode="numeric"
                     max={10080}
                     min={1}
@@ -435,17 +520,26 @@ export default function AdminReservationSettingsPage() {
                     type="number"
                     value={deadlineDraft.paymentWindowMinutes}
                   />
-                </KoochField>
+                  {deadlineErrors.paymentWindowMinutes && (
+                    <p
+                      className="text-xs font-medium text-destructive"
+                      role="alert"
+                    >
+                      {deadlineErrors.paymentWindowMinutes}
+                    </p>
+                  )}
+                </div>
 
-                <KoochField
-                  error={deadlineErrors.ownerApprovalWindowMinutes}
-                  helperText="مدت زمانی که مالک برای تأیید رزروهای درخواستی فرصت دارد، بر حسب دقیقه."
-                  label="مهلت تأیید مالک"
-                  required
-                >
+                <div className="grid content-start gap-2">
+                  <DeadlineFieldLabel
+                    description="مدت زمانی که مالک برای تأیید رزروهای درخواستی فرصت دارد، بر حسب دقیقه."
+                    htmlFor="reservation-owner-approval-window"
+                    title="مهلت تأیید مالک"
+                  />
                   <KoochInput
                     dir="ltr"
                     error={deadlineErrors.ownerApprovalWindowMinutes}
+                    id="reservation-owner-approval-window"
                     inputMode="numeric"
                     max={10080}
                     min={1}
@@ -460,17 +554,26 @@ export default function AdminReservationSettingsPage() {
                     type="number"
                     value={deadlineDraft.ownerApprovalWindowMinutes}
                   />
-                </KoochField>
+                  {deadlineErrors.ownerApprovalWindowMinutes && (
+                    <p
+                      className="text-xs font-medium text-destructive"
+                      role="alert"
+                    >
+                      {deadlineErrors.ownerApprovalWindowMinutes}
+                    </p>
+                  )}
+                </div>
 
-                <KoochField
-                  error={deadlineErrors.ownerApprovalReminderIntervalMinutes}
-                  helperText="فاصله زمانی بررسی و ارسال یادآوری رزروهای در انتظار تأیید، بر حسب دقیقه."
-                  label="فاصله یادآوری تأیید مالک"
-                  required
-                >
+                <div className="grid content-start gap-2">
+                  <DeadlineFieldLabel
+                    description="فاصله زمانی بررسی و ارسال یادآوری رزروهای در انتظار تأیید، بر حسب دقیقه."
+                    htmlFor="reservation-owner-approval-reminder"
+                    title="فاصله یادآوری تأیید مالک"
+                  />
                   <KoochInput
                     dir="ltr"
                     error={deadlineErrors.ownerApprovalReminderIntervalMinutes}
+                    id="reservation-owner-approval-reminder"
                     inputMode="numeric"
                     max={10080}
                     min={1}
@@ -485,7 +588,15 @@ export default function AdminReservationSettingsPage() {
                     type="number"
                     value={deadlineDraft.ownerApprovalReminderIntervalMinutes}
                   />
-                </KoochField>
+                  {deadlineErrors.ownerApprovalReminderIntervalMinutes && (
+                    <p
+                      className="text-xs font-medium text-destructive"
+                      role="alert"
+                    >
+                      {deadlineErrors.ownerApprovalReminderIntervalMinutes}
+                    </p>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-end">
