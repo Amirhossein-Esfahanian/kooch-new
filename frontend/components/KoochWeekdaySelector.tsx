@@ -14,7 +14,7 @@ export type KoochWeekdaySelectorProps<T extends WeekdayValue> = {
   options: readonly KoochWeekdayOption<T>[];
   value: readonly T[];
   onChange: (value: T[]) => void;
-  label?: ReactNode;
+  label?: ReactNode | null;
   required?: boolean;
   error?: string;
   disabled?: boolean;
@@ -59,22 +59,28 @@ export function KoochWeekdaySelector<T extends WeekdayValue>({
 
   return (
     <div
-      aria-labelledby={labelId}
+      aria-labelledby={label ? labelId : undefined}
       className={`grid gap-2 ${className}`}
       role="group"
     >
-      <div className="flex items-center justify-between gap-3">
-        <span
-          className="text-xs font-semibold text-muted-foreground"
-          id={labelId}
-        >
-          {label}
-          {required && (
-            <span aria-hidden="true" className="mr-1 text-destructive">
-              *
-            </span>
-          )}
-        </span>
+      <div
+        className={`flex items-center gap-3 ${
+          label ? "justify-between" : "justify-start"
+        }`}
+      >
+        {label && (
+          <span
+            className="text-xs font-semibold text-muted-foreground"
+            id={labelId}
+          >
+            {label}
+            {required && (
+              <span aria-hidden="true" className="mr-1 text-destructive">
+                *
+              </span>
+            )}
+          </span>
+        )}
 
         <div className="flex items-center gap-2 text-xs">
           <button

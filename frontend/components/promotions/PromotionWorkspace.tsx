@@ -127,6 +127,50 @@ function getBadgeTextColor(backgroundColor: string) {
   return luminance > 0.62 ? "#111827" : "#ffffff";
 }
 
+function hexToRgba(color: string, alpha: number) {
+  if (!hexColorPattern.test(color)) return undefined;
+
+  const red = Number.parseInt(color.slice(1, 3), 16);
+  const green = Number.parseInt(color.slice(3, 5), 16);
+  const blue = Number.parseInt(color.slice(5, 7), 16);
+
+  return `rgba(${red}, ${green}, ${blue}, ${alpha})`;
+}
+
+function promotionValueLabel(
+  promotion: PromotionResponse,
+  currencyLabel: string,
+) {
+  if (
+    promotion.type === "PercentageDiscount" &&
+    promotion.percentage !== null
+  ) {
+    return `${promotion.percentage.toLocaleString("fa-IR")}٪`;
+  }
+
+  if (
+    promotion.type === "FixedAmountDiscount" &&
+    promotion.amount !== null
+  ) {
+    return `${promotion.amount.toLocaleString("fa-IR")} ${currencyLabel}`;
+  }
+
+  if (promotion.type === "LastMinute") {
+    const parts = [
+      promotion.percentage !== null
+        ? `${promotion.percentage.toLocaleString("fa-IR")}٪`
+        : "",
+      promotion.lastMinuteDays !== null
+        ? `تا ${promotion.lastMinuteDays.toLocaleString("fa-IR")} روز مانده`
+        : "",
+    ].filter(Boolean);
+
+    return parts.join(" · ");
+  }
+
+  return "—";
+}
+
 function InlineFieldError({ message }: { message?: string }) {
   if (!message) return null;
 
@@ -134,6 +178,45 @@ function InlineFieldError({ message }: { message?: string }) {
     <p className="text-xs font-semibold text-destructive" role="alert">
       {message}
     </p>
+  );
+}
+
+function FieldHelpLabel({
+  children,
+  help,
+  required = false,
+}: {
+  children: ReactNode;
+  help: string;
+  required?: boolean;
+}) {
+  return (
+    <span className="flex items-center gap-1.5">
+      <span>
+        {children}
+        {required && (
+          <span aria-hidden="true" className="text-destructive">
+            {" "}
+            *
+          </span>
+        )}
+      </span>
+
+      <details className="group relative">
+        <summary
+          aria-label="نمایش توضیح"
+          className="grid h-4 w-4 cursor-pointer list-none place-items-center rounded-full border border-primary text-[10px] font-bold leading-none text-primary transition hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&::-webkit-details-marker]:hidden"
+        >
+          ?
+        </summary>
+        <div
+          className="absolute right-0 z-30 mt-2 w-64 rounded-lg border border-border bg-popover px-3 py-2 text-right text-xs font-normal leading-5 text-popover-foreground shadow-lg"
+          role="note"
+        >
+          {help}
+        </div>
+      </details>
+    </span>
   );
 }
 
@@ -213,8 +296,12 @@ export function PromotionWorkspace({
   );
   const [modalOpen, setModalOpen] = useState(false);
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
+  const [maxReachedStep, setMaxReachedStep] = useState<WizardStep>(1);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [customColorMode, setCustomColorMode] = useState(false);
+  const [expandedPromotionId, setExpandedPromotionId] = useState<number | null>(
+    null,
+  );
   const [draggedId, setDraggedId] = useState<number | null>(null);
 
   const apiBase = admin
@@ -295,6 +382,7 @@ export function PromotionWorkspace({
     setEditing(null);
     setDraft(emptyDraft(selectedProperty));
     setCurrentStep(1);
+    setMaxReachedStep(1);
     setFieldErrors({});
     setCustomColorMode(false);
     setModalOpen(true);
@@ -329,6 +417,7 @@ export function PromotionWorkspace({
       isPublished: promotion.isPublished,
     });
     setCurrentStep(1);
+    setMaxReachedStep(4);
     setFieldErrors({});
     setCustomColorMode(
       Boolean(promotion.badgeColor) &&
@@ -481,13 +570,25 @@ export function PromotionWorkspace({
       return;
     }
 
+    const nextStep = Math.min(4, currentStep + 1) as WizardStep;
     setFieldErrors({});
-    setCurrentStep((step) => Math.min(4, step + 1) as WizardStep);
+    setMaxReachedStep((step) =>
+      Math.max(step, nextStep) as WizardStep,
+    );
+    setCurrentStep(nextStep);
   }
 
   function goToPreviousStep() {
     setFieldErrors({});
     setCurrentStep((step) => Math.max(1, step - 1) as WizardStep);
+  }
+
+  function goToWizardStep(step: WizardStep) {
+    const canNavigate = editing !== null || step <= maxReachedStep;
+    if (!canNavigate || step === currentStep) return;
+
+    setFieldErrors({});
+    setCurrentStep(step);
   }
 
   function validate() {
@@ -503,8 +604,12 @@ export function PromotionWorkspace({
   async function savePromotion() {
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
+      const invalidStep = firstInvalidStep(validationErrors);
       setFieldErrors(validationErrors);
-      setCurrentStep(firstInvalidStep(validationErrors));
+      setMaxReachedStep((step) =>
+        Math.max(step, invalidStep) as WizardStep,
+      );
+      setCurrentStep(invalidStep);
       return;
     }
 
@@ -753,148 +858,347 @@ export function PromotionWorkspace({
           </p>
         </KoochCard>
       )}
-      <div className="grid gap-4 xl:grid-cols-2">
-        {filtered.map((promotion) => (
-          <KoochCard
-            className={`transition ${promotion.isLibraryTemplate ? "" : "cursor-grab active:cursor-grabbing"} ${promotion.isActive ? "border-primary" : "opacity-75"}`}
-            draggable={!promotion.isLibraryTemplate}
-            key={promotion.id}
-            onDragOver={(event) =>
-              !promotion.isLibraryTemplate && event.preventDefault()
-            }
-            onDragStart={() =>
-              !promotion.isLibraryTemplate && setDraggedId(promotion.id)
-            }
-            onDrop={() => !promotion.isLibraryTemplate && drop(promotion.id)}
-            variant="elevated"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-bold text-foreground">
-                    {promotion.title}
-                  </h3>
-                  <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
-                    {promotion.source === "Admin"
-                      ? "Admin Promotion"
-                      : "Owner Promotion"}
-                  </span>
-                  {admin && promotion.source === "Admin" && (
-                    <span className="rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
-                      {promotion.isPublished ? "منتشر شده" : "پیش‌نویس"}
-                    </span>
-                  )}
-                </div>
-                <p className="mt-1 text-xs font-bold text-[var(--theme-primary-text)]">
-                  {typeLabel(promotion.type)}
-                </p>
-              </div>
-              <span
-                className={`rounded-full px-3 py-1 text-xs font-bold ${promotion.isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}
+      {!loading && filtered.length > 0 && (
+        <section
+          aria-label="فهرست پروموشن‌ها"
+          className="overflow-hidden rounded-xl border border-border bg-card"
+        >
+          <div className="hidden border-b border-border bg-muted/40 px-4 py-2.5 text-[11px] font-semibold text-muted-foreground lg:grid lg:grid-cols-[minmax(220px,2fr)_minmax(120px,1fr)_minmax(140px,1fr)_minmax(150px,1.2fr)_auto] lg:items-center lg:gap-4">
+            <span>پروموشن</span>
+            <span>وضعیت</span>
+            <span>{admin ? "اقامتگاه" : "منبع"}</span>
+            <span>بازه اجرا</span>
+            <span className="w-8" aria-hidden="true" />
+          </div>
+
+          {filtered.map((promotion, index) => {
+            const expanded = expandedPromotionId === promotion.id;
+            const weekdayLabels = promotion.weekdays
+              .map(
+                (day) =>
+                  weekdays.find((item) => item.value === day)?.label,
+              )
+              .filter(Boolean)
+              .join("، ");
+
+            return (
+              <article
+                className={`${index > 0 ? "border-t border-border" : ""} ${
+                  promotion.isActive ? "" : "opacity-75"
+                }`}
+                draggable={!promotion.isLibraryTemplate}
+                key={promotion.id}
+                onDragOver={(event) =>
+                  !promotion.isLibraryTemplate && event.preventDefault()
+                }
+                onDragStart={() =>
+                  !promotion.isLibraryTemplate && setDraggedId(promotion.id)
+                }
+                onDrop={() =>
+                  !promotion.isLibraryTemplate && drop(promotion.id)
+                }
               >
-                {promotion.isLibraryTemplate
-                  ? "کتابخانه"
-                  : promotion.isActive
-                    ? "فعال"
-                    : "غیرفعال"}
-              </span>
-            </div>
-            {admin && (
-              <p className="mt-3 text-sm font-bold text-muted-foreground">
-                {promotion.propertyName}
-              </p>
-            )}
-            {promotion.publicDescription && (
-              <p className="mt-3 rounded-xl bg-muted p-3 text-sm leading-6 text-muted-foreground">
-                {promotion.publicDescription}
-              </p>
-            )}
-            <dl className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
-              <div>
-                <dt className="text-xs text-muted-foreground">بازه اجرا</dt>
-                <dd>
-                  {new Date(promotion.startDate).toLocaleDateString("fa-IR")} تا{" "}
-                  {new Date(promotion.endDate).toLocaleDateString("fa-IR")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">روزهای هفته</dt>
-                <dd>
-                  {promotion.weekdays
-                    .map(
-                      (day) =>
-                        weekdays.find((item) => item.value === day)?.label,
+                <button
+                  aria-expanded={expanded}
+                  className="grid w-full gap-3 px-4 py-3 text-right transition hover:bg-muted/35 lg:grid-cols-[minmax(220px,2fr)_minmax(120px,1fr)_minmax(140px,1fr)_minmax(150px,1.2fr)_auto] lg:items-center lg:gap-4"
+                  onClick={() =>
+                    setExpandedPromotionId((current) =>
+                      current === promotion.id ? null : promotion.id,
                     )
-                    .join("، ")}
-                </dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">
-                  اتاق‌های انتخاب‌شده
-                </dt>
-                <dd>{promotion.roomTypes.length} اتاق</dd>
-              </div>
-              <div>
-                <dt className="text-xs text-muted-foreground">ایجادکننده</dt>
-                <dd>{promotion.createdBy}</dd>
-              </div>
-            </dl>
-            <div className="mt-5 flex flex-wrap gap-2 border-t border-border pt-4">
-              {promotion.canEdit &&
-                !(!admin && promotion.source === "Admin") && (
-                  <KoochButton
-                    onClick={() => openEdit(promotion)}
-                    size="sm"
-                    type="button"
-                    variant="outline"
-                  >
-                    ویرایش
-                  </KoochButton>
-                )}
-              <KoochButton
-                onClick={() => toggle(promotion)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {promotion.isLibraryTemplate
-                  ? "فعال‌سازی"
-                  : promotion.isActive
-                    ? "غیرفعال کردن"
-                    : "فعال کردن"}
-              </KoochButton>
-              <KoochButton
-                onClick={() => duplicate(promotion)}
-                size="sm"
-                type="button"
-                variant="outline"
-              >
-                {!admin && promotion.source === "Admin" ? "کپی خصوصی" : "کپی"}
-              </KoochButton>
-              {(admin || promotion.source === "Owner") && (
-                <KoochConfirmDialog
-                  cancelText="انصراف"
-                  confirmText="حذف"
-                  description={`آیا از حذف پروموشن «${promotion.title}» مطمئن هستید؟ این عملیات قابل بازگشت نیست.`}
-                  onConfirm={() => remove(promotion)}
-                  title="حذف پروموشن"
-                  trigger={
-                    <KoochButton size="sm" type="button" variant="destructive">
-                      حذف
-                    </KoochButton>
                   }
-                  variant="destructive"
-                />
-              )}
-              {!promotion.isLibraryTemplate && (
-                <span className="mr-auto self-center text-xs text-muted-foreground">
-                  ☰ برای مرتب‌سازی بکشید
-                </span>
-              )}
-            </div>
-          </KoochCard>
-        ))}
-      </div>
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="flex min-w-0 flex-wrap items-center gap-2">
+                      <strong className="truncate text-sm font-bold text-foreground">
+                        {promotion.title}
+                      </strong>
+                      <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">
+                        {typeLabel(promotion.type)}
+                      </span>
+                      {promotion.isLibraryTemplate && (
+                        <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-semibold text-primary-foreground">
+                          کتابخانه
+                        </span>
+                      )}
+                    </span>
+
+                    <span className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground lg:hidden">
+                      <span>
+                        {promotionValueLabel(promotion, currencyLabel)}
+                      </span>
+                      <span aria-hidden="true">·</span>
+                      <span>
+                        {formatPromotionDate(promotion.startDate)} تا{" "}
+                        {formatPromotionDate(promotion.endDate)}
+                      </span>
+                    </span>
+                  </span>
+
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    {!promotion.isLibraryTemplate && (
+                      <span
+                        className={`rounded-full px-2 py-1 text-[10px] font-semibold ${
+                          promotion.isActive
+                            ? "bg-primary/10 text-primary"
+                            : "bg-muted text-muted-foreground"
+                        }`}
+                      >
+                        {promotion.isActive ? "فعال" : "غیرفعال"}
+                      </span>
+                    )}
+
+                    {admin && promotion.source === "Admin" && (
+                      <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+                        {promotion.isPublished
+                          ? "منتشر شده"
+                          : "منتشر نشده"}
+                      </span>
+                    )}
+
+                    {!admin && (
+                      <span className="rounded-full bg-muted px-2 py-1 text-[10px] font-semibold text-muted-foreground">
+                        {promotion.source === "Admin"
+                          ? "کتابخانه"
+                          : "اختصاصی"}
+                      </span>
+                    )}
+                  </span>
+
+                  <span className="truncate text-xs text-muted-foreground">
+                    {admin
+                      ? promotion.propertyName
+                      : promotion.source === "Admin"
+                        ? "قالب مدیریتی"
+                        : "پروموشن اقامتگاه"}
+                  </span>
+
+                  <span className="hidden text-xs leading-5 text-muted-foreground lg:block">
+                    {formatPromotionDate(promotion.startDate)}
+                    <span className="mx-1">تا</span>
+                    {formatPromotionDate(promotion.endDate)}
+                  </span>
+
+                  <span
+                    aria-hidden="true"
+                    className={`grid h-8 w-8 place-items-center rounded-lg border border-border bg-background text-sm text-muted-foreground transition-transform ${
+                      expanded ? "rotate-180" : ""
+                    }`}
+                  >
+                    ⌄
+                  </span>
+                </button>
+
+                {expanded && (
+                  <div
+                    className="border-y border-primary/15 bg-[var(--theme-primary-soft)] px-4 py-3"
+                    style={
+                      promotion.badgeColor &&
+                      hexColorPattern.test(promotion.badgeColor)
+                        ? {
+                            backgroundColor: hexToRgba(
+                              promotion.badgeColor,
+                              0.06,
+                            ),
+                            borderColor: hexToRgba(
+                              promotion.badgeColor,
+                              0.16,
+                            ),
+                          }
+                        : undefined
+                    }
+                  >
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
+                      <div className="grid content-start gap-4">
+                        <div className="flex flex-wrap items-center gap-x-5 gap-y-1 border-b border-border/70 pb-2 text-xs">
+                          <span className="text-muted-foreground">
+                            شروع:
+                            <strong className="mr-1.5 font-semibold text-foreground">
+                              {formatPromotionDate(promotion.startDate)}
+                            </strong>
+                          </span>
+                          <span className="text-muted-foreground">
+                            پایان:
+                            <strong className="mr-1.5 font-semibold text-foreground">
+                              {formatPromotionDate(promotion.endDate)}
+                            </strong>
+                          </span>
+                        </div>
+
+                        <dl className="grid gap-x-6 gap-y-4 text-xs sm:grid-cols-2 xl:grid-cols-3">
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              نوع و مقدار
+                            </dt>
+                            <dd className="mt-1 font-semibold text-foreground">
+                              {typeLabel(promotion.type)}
+                              {promotionValueLabel(
+                                promotion,
+                                currencyLabel,
+                              ) !== "—" &&
+                                ` · ${promotionValueLabel(
+                                  promotion,
+                                  currencyLabel,
+                                )}`}
+                            </dd>
+                          </div>
+
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              روزهای اجرا
+                            </dt>
+                            <dd className="mt-1 leading-5 text-foreground/80">
+                              {weekdayLabels || "—"}
+                            </dd>
+                          </div>
+
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              شرایط اقامت
+                            </dt>
+                            <dd className="mt-1 leading-5 text-foreground/80">
+                              {promotion.minimumStayNights
+                                ? `حداقل ${promotion.minimumStayNights.toLocaleString(
+                                    "fa-IR",
+                                  )} شب`
+                                : "بدون حداقل شب"}
+                              {" · "}
+                              {promotion.minimumGuests
+                                ? `حداقل ${promotion.minimumGuests.toLocaleString(
+                                    "fa-IR",
+                                  )} مهمان`
+                                : "بدون حداقل مهمان"}
+                            </dd>
+                          </div>
+
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              اتاق‌های انتخاب‌شده
+                            </dt>
+                            <dd className="mt-1 font-semibold text-foreground">
+                              {promotion.roomTypes.length.toLocaleString(
+                                "fa-IR",
+                              )}{" "}
+                              اتاق
+                            </dd>
+                          </div>
+
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              ایجادکننده
+                            </dt>
+                            <dd className="mt-1 text-foreground/80">
+                              {promotion.createdBy}
+                            </dd>
+                          </div>
+
+                          <div>
+                            <dt className="text-[11px] text-muted-foreground">
+                              منبع
+                            </dt>
+                            <dd className="mt-1 text-foreground/80">
+                              {promotion.source === "Admin"
+                                ? "Admin Promotion"
+                                : "Owner Promotion"}
+                            </dd>
+                          </div>
+                        </dl>
+                      </div>
+
+                      <div className="grid content-start gap-3">
+                        <div className="rounded-xl border border-border bg-background px-3 py-2.5">
+                          <p className="text-[11px] font-semibold text-muted-foreground">
+                            توضیحات عمومی
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-foreground/80">
+                            {promotion.publicDescription || "—"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl border border-border bg-background px-3 py-2.5">
+                          <p className="text-[11px] font-semibold text-muted-foreground">
+                            توضیحات داخلی
+                          </p>
+                          <p className="mt-1 text-xs leading-5 text-foreground/80">
+                            {promotion.internalDescription || "—"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-2 xl:col-span-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {promotion.canEdit &&
+                            !(!admin &&
+                              promotion.source === "Admin") && (
+                              <KoochButton
+                                onClick={() => openEdit(promotion)}
+                                size="sm"
+                                type="button"
+                                variant="outline"
+                              >
+                                ویرایش
+                              </KoochButton>
+                            )}
+
+                          <KoochButton
+                            onClick={() => toggle(promotion)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {promotion.isLibraryTemplate
+                              ? "فعال‌سازی"
+                              : promotion.isActive
+                                ? "غیرفعال کردن"
+                                : "فعال کردن"}
+                          </KoochButton>
+
+                          <KoochButton
+                            onClick={() => duplicate(promotion)}
+                            size="sm"
+                            type="button"
+                            variant="outline"
+                          >
+                            {!admin && promotion.source === "Admin"
+                              ? "کپی خصوصی"
+                              : "کپی"}
+                          </KoochButton>
+
+                          {(admin || promotion.source === "Owner") && (
+                            <KoochConfirmDialog
+                              cancelText="انصراف"
+                              confirmText="حذف"
+                              description={`آیا از حذف پروموشن «${promotion.title}» مطمئن هستید؟ این عملیات قابل بازگشت نیست.`}
+                              onConfirm={() => remove(promotion)}
+                              title="حذف پروموشن"
+                              trigger={
+                                <KoochButton
+                                  size="sm"
+                                  type="button"
+                                  variant="destructive"
+                                >
+                                  حذف
+                                </KoochButton>
+                              }
+                              variant="destructive"
+                            />
+                          )}
+                        </div>
+
+                        {!promotion.isLibraryTemplate && (
+                          <p className="text-[10px] text-muted-foreground">
+                            ☰ برای تغییر ترتیب، ردیف را بکشید.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })}
+        </section>
+      )}
 
       <KoochDialog
         closeDisabled={saving}
@@ -969,23 +1273,68 @@ export function PromotionWorkspace({
           onSubmit={(event) => event.preventDefault()}
         >
           <div>
-            <div className="flex items-center justify-between gap-3 sm:hidden">
-              <div>
-                <p className="text-xs font-bold text-muted-foreground">
-                  مرحله {currentStep.toLocaleString("fa-IR")} از ۴
-                </p>
-                <p className="mt-1 text-sm font-bold text-foreground">
-                  {wizardSteps.find((item) => item.step === currentStep)?.label}
-                </p>
+            <div className="grid gap-3 sm:hidden">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-bold text-muted-foreground">
+                    مرحله {currentStep.toLocaleString("fa-IR")} از ۴
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-foreground">
+                    {wizardSteps.find((item) => item.step === currentStep)?.label}
+                  </p>
+                </div>
+                <div
+                  aria-hidden="true"
+                  className="h-2 w-28 overflow-hidden rounded-full bg-muted"
+                >
+                  <span
+                    className="block h-full rounded-full bg-primary transition-[width]"
+                    style={{ width: `${currentStep * 25}%` }}
+                  />
+                </div>
               </div>
+
               <div
-                aria-hidden="true"
-                className="h-2 w-28 overflow-hidden rounded-full bg-muted"
+                aria-label="مراحل ثبت پروموشن"
+                className="grid grid-cols-4 gap-2"
               >
-                <span
-                  className="block h-full rounded-full bg-primary transition-[width]"
-                  style={{ width: `${currentStep * 25}%` }}
-                />
+                {wizardSteps.map((item) => {
+                  const isCurrent = item.step === currentStep;
+                  const canNavigate =
+                    editing !== null || item.step <= maxReachedStep;
+
+                  return (
+                    <button
+                      aria-current={isCurrent ? "step" : undefined}
+                      className={`grid min-w-0 justify-items-center gap-1 rounded-lg px-1 py-1.5 transition ${
+                        isCurrent
+                          ? "bg-primary/10 text-primary"
+                          : canNavigate
+                            ? "text-foreground hover:bg-muted"
+                            : "cursor-not-allowed text-muted-foreground/50"
+                      }`}
+                      disabled={!canNavigate}
+                      key={item.step}
+                      onClick={() => goToWizardStep(item.step)}
+                      type="button"
+                    >
+                      <span
+                        className={`grid h-6 w-6 place-items-center rounded-full border text-[10px] font-bold ${
+                          isCurrent
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : canNavigate
+                              ? "border-border bg-background"
+                              : "border-border/60 bg-muted/40"
+                        }`}
+                      >
+                        {item.step.toLocaleString("fa-IR")}
+                      </span>
+                      <span className="max-w-full truncate text-[9px] font-semibold">
+                        {item.label}
+                      </span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
@@ -997,6 +1346,8 @@ export function PromotionWorkspace({
                 const isCurrent = item.step === currentStep;
                 const isComplete = item.step < currentStep;
                 const isUpcoming = item.step > currentStep;
+                const canNavigate =
+                  editing !== null || item.step <= maxReachedStep;
 
                 return (
                   <li
@@ -1017,7 +1368,16 @@ export function PromotionWorkspace({
                       />
                     )}
 
-                    <div className="relative z-10 mx-auto flex w-fit flex-col items-center">
+                    <button
+                      className={`relative z-10 mx-auto flex w-fit flex-col items-center rounded-lg px-2 py-1 transition ${
+                        canNavigate
+                          ? "cursor-pointer hover:bg-muted/60"
+                          : "cursor-not-allowed"
+                      }`}
+                      disabled={!canNavigate}
+                      onClick={() => goToWizardStep(item.step)}
+                      type="button"
+                    >
                       <span
                         aria-hidden="true"
                         className={`grid h-8 w-8 place-items-center rounded-full border-2 text-xs font-extrabold shadow-sm transition ${
@@ -1025,7 +1385,9 @@ export function PromotionWorkspace({
                             ? "border-primary bg-primary text-primary-foreground ring-4 ring-primary/10"
                             : isComplete
                               ? "border-primary bg-primary text-primary-foreground"
-                              : "border-border bg-background text-muted-foreground"
+                              : canNavigate
+                                ? "border-border bg-background text-muted-foreground"
+                                : "border-border/60 bg-muted/40 text-muted-foreground/50"
                         }`}
                       >
                         {isComplete ? "✓" : item.step.toLocaleString("fa-IR")}
@@ -1035,14 +1397,16 @@ export function PromotionWorkspace({
                         className={`mt-1.5 block max-w-28 text-[11px] font-bold leading-4 ${
                           isCurrent
                             ? "text-primary"
-                            : isUpcoming
-                              ? "text-muted-foreground"
-                              : "text-foreground"
+                            : !canNavigate
+                              ? "text-muted-foreground/50"
+                              : isUpcoming
+                                ? "text-muted-foreground"
+                                : "text-foreground"
                         }`}
                       >
                         {item.label}
                       </span>
-                    </div>
+                    </button>
                   </li>
                 );
               })}
@@ -1237,6 +1601,8 @@ export function PromotionWorkspace({
                     rangeTitle: "انتخاب بازه پروموشن",
                   }}
                   autoConfirmOnComplete
+                  dialogBodyClassName="px-4 py-3 sm:px-5"
+                  dialogContentClassName="h-auto max-h-[90vh]"
                   labelsAbove
                   mode="range"
                   openOnDialog
@@ -1280,9 +1646,6 @@ export function PromotionWorkspace({
                     type="number"
                     value={draft.minimumStayNights}
                   />
-                  <p className="text-xs font-normal text-muted-foreground">
-                    خالی بگذارید تا محدودیتی اعمال نشود.
-                  </p>
                   <InlineFieldError message={fieldErrors.minimumStayNights} />
                 </label>
 
@@ -1306,9 +1669,6 @@ export function PromotionWorkspace({
                     type="number"
                     value={draft.minimumGuests}
                   />
-                  <p className="text-xs font-normal text-muted-foreground">
-                    خالی بگذارید تا محدودیتی اعمال نشود.
-                  </p>
                   <InlineFieldError message={fieldErrors.minimumGuests} />
                 </label>
               </div>
@@ -1325,6 +1685,7 @@ export function PromotionWorkspace({
                     weekdays: nextWeekdays,
                   }));
                 }}
+                label={null}
                 options={weekdays}
                 required
                 value={draft.weekdays}
@@ -1390,22 +1751,15 @@ export function PromotionWorkspace({
                 >
                   محتوا و ظاهر
                 </h3>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  متن قابل مشاهده برای مهمان و ظاهر نشان پروموشن را تنظیم
-                  کنید.
-                </p>
               </div>
 
               <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
-                <span>
+                <FieldHelpLabel
+                  help="این متن برای مهمان نمایش داده می‌شود."
+                  required={draft.type === "Informational"}
+                >
                   توضیحات عمومی
-                  {draft.type === "Informational" && (
-                    <span aria-hidden="true" className="text-destructive">
-                      {" "}
-                      *
-                    </span>
-                  )}
-                </span>
+                </FieldHelpLabel>
                 <KoochTextarea
                   aria-invalid={Boolean(fieldErrors.publicDescription)}
                   className="resize-y text-xs font-medium text-foreground/80"
@@ -1420,14 +1774,13 @@ export function PromotionWorkspace({
                   style={{ minHeight: 92 }}
                   value={draft.publicDescription}
                 />
-                <p className="text-xs font-normal leading-5 text-muted-foreground">
-                  این متن برای مهمان نمایش داده می‌شود.
-                </p>
                 <InlineFieldError message={fieldErrors.publicDescription} />
               </label>
 
               <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
-                توضیحات داخلی
+                <FieldHelpLabel help="فقط در پنل مدیریت استفاده می‌شود و به مهمان نمایش داده نمی‌شود.">
+                  توضیحات داخلی
+                </FieldHelpLabel>
                 <KoochTextarea
                   className="resize-y text-xs font-medium text-foreground/80"
                   onChange={(event) =>
@@ -1441,10 +1794,6 @@ export function PromotionWorkspace({
                   style={{ minHeight: 76 }}
                   value={draft.internalDescription}
                 />
-                <p className="text-xs font-normal leading-5 text-muted-foreground">
-                  فقط در پنل مدیریت استفاده می‌شود و به مهمان نمایش داده
-                  نمی‌شود.
-                </p>
               </label>
 
               <fieldset className="grid gap-3">
@@ -1506,10 +1855,6 @@ export function PromotionWorkspace({
 
               <fieldset className="grid gap-3">
                 <legend className="text-xs font-semibold text-muted-foreground">رنگ نشان</legend>
-                <p className="text-xs leading-5 text-muted-foreground">
-                  یک رنگ آماده انتخاب کنید یا از رنگ دلخواه استفاده کنید.
-                </p>
-
                 <div className="flex flex-wrap gap-2">
                   {badgeColorPresets.map((option) => {
                     const selected = draft.badgeColor === option.value;
