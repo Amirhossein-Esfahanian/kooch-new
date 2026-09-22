@@ -8,6 +8,15 @@ export interface ReservationFollowUpRecipient {
   isActive: boolean;
 }
 
+export interface ReservationAutomaticRecipient {
+  userId: number;
+  fullName: string;
+  email: string | null;
+  phoneNumber: string | null;
+  propertyRole: string | null;
+  isOwner: boolean;
+}
+
 export interface ReservationFollowUpCandidate {
   userId: number;
   fullName: string;
@@ -20,6 +29,12 @@ const basePath = (propertyId: number) =>
 
 export function getReservationFollowUpRecipients(propertyId: number) {
   return apiRequest<ReservationFollowUpRecipient[]>(basePath(propertyId));
+}
+
+export function getAutomaticReservationRecipients(propertyId: number) {
+  return apiRequest<ReservationAutomaticRecipient[]>(
+    `${basePath(propertyId)}/automatic`,
+  );
 }
 
 export function searchReservationFollowUpCandidates(

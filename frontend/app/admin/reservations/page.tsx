@@ -12,7 +12,6 @@ import {
 } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
-import { ReservationFollowUpRecipients } from "@/components/admin/ReservationFollowUpRecipients";
 import {
   ReservationTable,
   type ReservationCancellationPayload,
@@ -195,10 +194,6 @@ export default function AdminReservationsPage() {
   >(null);
   const [error, setError] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const selectedFollowUpPropertyId = Number(draftFilters.propertyId);
-  const hasSelectedFollowUpProperty =
-    Number.isInteger(selectedFollowUpPropertyId) &&
-    selectedFollowUpPropertyId > 0;
   const propertyOptions = useMemo(
     () =>
       properties.map((property) => ({
@@ -986,12 +981,6 @@ export default function AdminReservationsPage() {
             </div>
           </form>
         </KoochCard>
-
-        {hasSelectedFollowUpProperty && (
-          <ReservationFollowUpRecipients
-            propertyId={selectedFollowUpPropertyId}
-          />
-        )}
 
         <ReservationTable
           context="admin"

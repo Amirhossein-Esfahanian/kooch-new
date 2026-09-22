@@ -25,6 +25,19 @@ public sealed class AdminPropertyReservationFollowUpRecipientsController(
             cancellationToken));
     }
 
+    [HttpGet("automatic")]
+    public async Task<ActionResult<IReadOnlyList<ReservationAutomaticRecipientResponse>>> Automatic(
+        int propertyId,
+        CancellationToken cancellationToken)
+    {
+        var actor = GetCurrentUser();
+        return Ok(await recipientService.GetAutomaticRecipientsAsync(
+            actor.UserId,
+            actor.Role,
+            propertyId,
+            cancellationToken));
+    }
+
     [HttpGet("candidates")]
     public async Task<ActionResult<IReadOnlyList<ReservationFollowUpCandidateResponse>>> Candidates(
         int propertyId,

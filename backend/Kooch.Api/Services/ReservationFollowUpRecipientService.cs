@@ -13,6 +13,12 @@ public interface IReservationFollowUpRecipientService
         int propertyId,
         CancellationToken cancellationToken = default);
 
+    Task<IReadOnlyList<ReservationAutomaticRecipientResponse>> GetAutomaticRecipientsAsync(
+        int actorUserId,
+        UserRole actorRole,
+        int propertyId,
+        CancellationToken cancellationToken = default);
+
     Task<IReadOnlyList<ReservationFollowUpCandidateResponse>> SearchCandidatesAsync(
         int actorUserId,
         UserRole actorRole,
@@ -52,6 +58,72 @@ public sealed class ReservationFollowUpRecipientService(
         return await ProjectAssignments(propertyId)
             .OrderBy(recipient => recipient.FullName)
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<ReservationAutomaticRecipientResponse>> GetAutomaticRecipientsAsync(
+        int actorUserId,
+        UserRole actorRole,
+        int propertyId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanManageAsync(actorUserId, actorRole, propertyId, cancellationToken);
+
+        var resolvedRecipients = await recipientResolver.ResolveAsync(
+            propertyId,
+            cancellationToken);
+        var automaticRecipients = resolvedRecipients
+            .Where(recipient => !recipient.IsPlatformFollowUp)
+            .ToArray();
+
+        if (automaticRecipients.Length == 0)
+        {
+            return [];
+        }
+
+        var userIds = automaticRecipients
+            .Select(recipient => recipient.UserId)
+            .Distinct()
+            .ToArray();
+
+        var ownerId = await dbContext.Properties.AsNoTracking()
+            .Where(property => property.Id == propertyId)
+            .Select(property => property.OwnerId)
+            .SingleAsync(cancellationToken);
+
+        var propertyRoles = await dbContext.UserPropertyAccesses.AsNoTracking()
+            .Where(access =>
+                access.PropertyId == propertyId &&
+                access.IsActive &&
+                access.Status == PropertyUserStatus.Active &&
+                userIds.Contains(access.UserId))
+            .Select(access => new
+            {
+                access.UserId,
+                access.PropertyRole
+            })
+            .ToDictionaryAsync(
+                access => access.UserId,
+                access => access.PropertyRole,
+                cancellationToken);
+
+        return automaticRecipients
+            .OrderBy(recipient => recipient.FullName)
+            .Select(recipient => new ReservationAutomaticRecipientResponse
+            {
+                UserId = recipient.UserId,
+                FullName = recipient.FullName,
+                Email = recipient.Email,
+                PhoneNumber = recipient.Mobile,
+                PropertyRole = propertyRoles.TryGetValue(
+                    recipient.UserId,
+                    out var propertyRole)
+                    ? propertyRole.ToString()
+                    : recipient.UserId == ownerId
+                        ? PropertyUserRole.PropertyOwner.ToString()
+                        : null,
+                IsOwner = recipient.UserId == ownerId
+            })
+            .ToList();
     }
 
     public async Task<IReadOnlyList<ReservationFollowUpCandidateResponse>> SearchCandidatesAsync(

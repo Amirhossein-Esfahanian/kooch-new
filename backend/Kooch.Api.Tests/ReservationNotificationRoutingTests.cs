@@ -200,6 +200,44 @@ public sealed class ReservationNotificationRoutingTests
     }
 
     [Fact]
+    public async Task AutomaticRecipients_ExposeOnlyActualPropertyNotificationRecipients()
+    {
+        await using var context = CreateContext();
+        SeedRecipients(context, includeAssignment: true);
+        await context.SaveChangesAsync();
+
+        var authorization = CreateAuthorization();
+        authorization.Allow(1, 10, "property.edit");
+        var permissions = new StubPermissionService([6]);
+        var resolver = new ReservationNotificationRecipientResolver(
+            context,
+            permissions,
+            authorization);
+        var service = new ReservationFollowUpRecipientService(
+            context,
+            permissions,
+            authorization,
+            resolver);
+
+        var recipients = await service.GetAutomaticRecipientsAsync(
+            1,
+            UserRole.SuperAdmin,
+            10);
+
+        Assert.Equal([1, 2], recipients.Select(item => item.UserId).Order().ToArray());
+
+        var owner = recipients.Single(item => item.UserId == 1);
+        Assert.True(owner.IsOwner);
+        Assert.Equal("PropertyOwner", owner.PropertyRole);
+
+        var manager = recipients.Single(item => item.UserId == 2);
+        Assert.False(manager.IsOwner);
+        Assert.Equal("Manager", manager.PropertyRole);
+
+        Assert.DoesNotContain(recipients, item => item.UserId == 6);
+    }
+
+    [Fact]
     public async Task FollowUpAssignment_RequiresExistingPermissionsAndRejectsDuplicates()
     {
         await using var context = CreateContext();

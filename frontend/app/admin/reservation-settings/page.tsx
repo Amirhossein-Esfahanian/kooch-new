@@ -1,14 +1,20 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { ReservationFollowUpRecipients } from "@/components/admin/ReservationFollowUpRecipients";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
-import { KoochField, KoochInput } from "@/components/KoochFormControls";
+import { KoochDialog } from "@/components/KoochDialog";
+import {
+  KoochField,
+  KoochInput,
+  KoochSearchableSelect,
+} from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { apiRequest } from "@/lib/owner-api";
+import { apiRequest, type PropertyResponse } from "@/lib/owner-api";
 
 type ReservationSettingsResponse = {
   freeChildMaxAge: number | null;
@@ -96,6 +102,10 @@ export default function AdminReservationSettingsPage() {
     useState<ReservationDeadlineSettingsErrors>({});
   const [deadlineLoading, setDeadlineLoading] = useState(true);
   const [deadlineSaving, setDeadlineSaving] = useState(false);
+  const [properties, setProperties] = useState<PropertyResponse[]>([]);
+  const [propertiesLoading, setPropertiesLoading] = useState(true);
+  const [followUpDialogOpen, setFollowUpDialogOpen] = useState(false);
+  const [followUpPropertyId, setFollowUpPropertyId] = useState("");
 
   useEffect(() => {
     if (sessionLoading || !authenticated || !workspaces.includes("admin")) return;
@@ -115,7 +125,50 @@ export default function AdminReservationSettingsPage() {
         toast.error(caught.message || "مهلت‌های رزرو بارگذاری نشد"),
       )
       .finally(() => setDeadlineLoading(false));
+
+    apiRequest<PropertyResponse[]>("/admin/properties")
+      .then(setProperties)
+      .catch((caught: Error) => {
+        setProperties([]);
+        toast.error(caught.message || "فهرست اقامتگاه‌ها بارگذاری نشد");
+      })
+      .finally(() => setPropertiesLoading(false));
   }, [authenticated, sessionLoading, workspaces]);
+
+  const propertyOptions = useMemo(
+    () =>
+      properties.map((property) => ({
+        value: property.id,
+        label: property.name,
+        description: [property.city, `مالک: ${property.ownerName}`]
+          .filter(Boolean)
+          .join(" · "),
+        searchText: [
+          property.name,
+          property.englishName,
+          property.city,
+          property.ownerName,
+          property.ownerEmail,
+          property.id.toString(),
+        ]
+          .filter(Boolean)
+          .join(" "),
+      })),
+    [properties],
+  );
+
+  const selectedFollowUpProperty = useMemo(
+    () =>
+      properties.find(
+        (property) => property.id === Number(followUpPropertyId),
+      ) ?? null,
+    [followUpPropertyId, properties],
+  );
+
+  const selectedFollowUpPropertyId = Number(followUpPropertyId);
+  const hasSelectedFollowUpProperty =
+    Number.isInteger(selectedFollowUpPropertyId) &&
+    selectedFollowUpPropertyId > 0;
 
   function update(key: keyof ReservationSettingsDraft, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -447,6 +500,93 @@ export default function AdminReservationSettingsPage() {
             </form>
           )}
         </KoochCard>
+
+        <KoochCard variant="elevated">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="max-w-3xl">
+              <h2 className="text-base font-semibold text-foreground">
+                پیگیری رزروهای استعلامی
+              </h2>
+              <p className="mt-1 text-sm leading-7 text-muted-foreground">
+                گیرندگان خودکار هر اقامتگاه را مشاهده کنید و مدیران واجد شرایط
+                پلتفرم را برای پیگیری رزروهای نیازمند تأیید تعیین کنید.
+              </p>
+            </div>
+            <KoochButton
+              className="w-full sm:w-auto"
+              onClick={() => setFollowUpDialogOpen(true)}
+              type="button"
+            >
+              مدیریت گیرندگان
+            </KoochButton>
+          </div>
+        </KoochCard>
+
+        <KoochDialog
+          description="ابتدا اقامتگاه را انتخاب کنید. مالک و اعضای فعال دارای مجوز مدیریت رزرو به‌صورت خودکار نمایش داده می‌شوند."
+          footer={
+            <KoochButton
+              onClick={() => setFollowUpDialogOpen(false)}
+              type="button"
+              variant="outline"
+            >
+              بستن
+            </KoochButton>
+          }
+          onOpenChange={setFollowUpDialogOpen}
+          open={followUpDialogOpen}
+          size="lg"
+          title="مدیریت گیرندگان اعلان رزروهای استعلامی"
+        >
+          <div className="grid gap-5">
+            <KoochField
+              helperText="تنظیمات پیگیری برای هر اقامتگاه مستقل است."
+              label="اقامتگاه"
+            >
+              <KoochSearchableSelect
+                disabled={propertiesLoading}
+                emptyText="اقامتگاهی برای مدیریت پیدا نشد."
+                onChange={setFollowUpPropertyId}
+                options={propertyOptions}
+                placeholder={
+                  propertiesLoading
+                    ? "در حال بارگذاری اقامتگاه‌ها..."
+                    : "انتخاب اقامتگاه"
+                }
+                searchPlaceholder="جستجو با نام اقامتگاه، شهر یا مالک"
+                value={followUpPropertyId}
+              />
+            </KoochField>
+
+            {selectedFollowUpProperty && (
+              <div className="rounded-lg border border-border bg-muted p-3">
+                <p className="text-sm font-bold text-foreground">
+                  {selectedFollowUpProperty.name}
+                </p>
+                <p className="mt-1 text-xs leading-6 text-muted-foreground">
+                  {[
+                    selectedFollowUpProperty.city,
+                    `مالک: ${selectedFollowUpProperty.ownerName}`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            )}
+
+            {hasSelectedFollowUpProperty ? (
+              <ReservationFollowUpRecipients
+                embedded
+                propertyId={selectedFollowUpPropertyId}
+              />
+            ) : (
+              <p className="rounded-lg border border-dashed border-border bg-muted p-5 text-center text-sm leading-7 text-muted-foreground">
+                برای مشاهده گیرندگان خودکار و پیگیرهای مدیریت سایت، یک اقامتگاه
+                را انتخاب کنید.
+              </p>
+            )}
+          </div>
+        </KoochDialog>
       </main>
     </AdminLayout>
   );
