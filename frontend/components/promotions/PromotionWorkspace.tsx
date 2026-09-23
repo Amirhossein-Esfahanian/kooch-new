@@ -1602,7 +1602,7 @@ export function PromotionWorkspace({
                     end: "تاریخ پایان",
                     rangeTitle: "انتخاب بازه پروموشن",
                   }}
-                  autoConfirmOnComplete
+                  autoCommit
                   dialogBodyClassName="px-4 py-3 sm:px-5"
                   dialogContentClassName="h-auto max-h-[90vh]"
                   labelsAbove

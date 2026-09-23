@@ -49,6 +49,7 @@ export type KoochDateRangePickerProps = BaseDatePickerProps & {
   dialogContentClassName?: string;
   dialogBodyClassName?: string;
   dialogFooterClassName?: string;
+  autoCommit?: boolean;
 };
 
 export type KoochDatePickerProps =
