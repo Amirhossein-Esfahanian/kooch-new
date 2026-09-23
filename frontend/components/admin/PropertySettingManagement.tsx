@@ -169,8 +169,8 @@ export function PropertySettingManagement() {
 
   return (
     <>
-      <KoochCard className="min-w-0" variant="elevated">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <KoochCard className="min-w-0" padding="sm" variant="elevated">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-2xl">
             <h2 className="text-lg font-bold text-foreground">
               مدیریت بافت و موقعیت محیطی
@@ -183,6 +183,7 @@ export function PropertySettingManagement() {
           <KoochButton
             className="w-full sm:w-auto"
             onClick={openCreateDialog}
+            size="sm"
             variant="primary"
           >
             <KoochIcon className="h-5 w-5" name="plus" />
@@ -190,7 +191,7 @@ export function PropertySettingManagement() {
           </KoochButton>
         </div>
 
-        <div className="mt-5" aria-live="polite">
+        <div className="mt-4" aria-live="polite">
           {loading ? (
             <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
               در حال بارگذاری بافت و موقعیت‌ها...
@@ -211,12 +212,12 @@ export function PropertySettingManagement() {
                   key={setting.id}
                 >
                   <div className="min-w-0 flex-1">
-                    <div className="flex min-w-0 flex-wrap items-center gap-2">
+                    <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
                       <h3 className="min-w-0 truncate text-sm font-bold text-foreground">
                         {setting.name}
                       </h3>
                       <span
-                        className={`inline-flex shrink-0 rounded-full px-2 py-0.5 text-xs font-bold ${
+                        className={`inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-semibold leading-5 ${
                           setting.isActive
                             ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"
                             : "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]"

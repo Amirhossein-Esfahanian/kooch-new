@@ -6,10 +6,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
-import {
-  KoochField,
-  KoochInput,
-} from "@/components/KoochFormControls";
+import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { KoochIcon } from "@/components/KoochIcon";
 import { KoochSvgIcon } from "@/components/KoochSvgIcon";
 import { KoochSvgUploader } from "@/components/KoochSvgUploader";
@@ -33,9 +30,12 @@ const emptyForm: BedTypeFormValues = {
 
 export function BedTypeManagement() {
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
-  const [editingBedType, setEditingBedType] =
-    useState<BedTypeResponse | null>(null);
-  const [deleteTarget, setDeleteTarget] = useState<BedTypeResponse | null>(null);
+  const [editingBedType, setEditingBedType] = useState<BedTypeResponse | null>(
+    null,
+  );
+  const [deleteTarget, setDeleteTarget] = useState<BedTypeResponse | null>(
+    null,
+  );
   const [form, setForm] = useState<BedTypeFormValues>(emptyForm);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -44,7 +44,10 @@ export function BedTypeManagement() {
   const [iconStaging, setIconStaging] = useState(false);
 
   const orderedBedTypes = useMemo(
-    () => [...bedTypes].sort((first, second) => first.name.localeCompare(second.name, "fa")),
+    () =>
+      [...bedTypes].sort((first, second) =>
+        first.name.localeCompare(second.name, "fa"),
+      ),
     [bedTypes],
   );
 
@@ -168,8 +171,8 @@ export function BedTypeManagement() {
 
   return (
     <>
-      <KoochCard className="min-w-0" variant="elevated">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+      <KoochCard className="min-w-0" padding="sm" variant="elevated">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-2xl">
             <h2 className="text-lg font-bold text-foreground">
               مدیریت نوع تخت
@@ -181,6 +184,7 @@ export function BedTypeManagement() {
           <KoochButton
             className="w-full sm:w-auto"
             onClick={openCreateDialog}
+            size="sm"
             variant="primary"
           >
             <KoochIcon className="size-5" name="plus" />
@@ -188,7 +192,7 @@ export function BedTypeManagement() {
           </KoochButton>
         </div>
 
-        <div className="mt-5" aria-live="polite">
+        <div className="mt-4" aria-live="polite">
           {loading ? (
             <p className="rounded-lg bg-muted p-4 text-sm text-muted-foreground">
               در حال بارگذاری نوع‌های تخت...
@@ -216,34 +220,36 @@ export function BedTypeManagement() {
             >
               {orderedBedTypes.map((bedType) => (
                 <article
-                  className="flex min-w-0 items-center gap-3 rounded-lg border border-border bg-card p-3"
+                  className="flex min-h-40 min-w-0 flex-col rounded-lg border border-border bg-card px-4 pb-2 pt-4"
                   data-testid={`bed-type-${bedType.id}`}
                   key={bedType.id}
                 >
-                  <span className="grid size-10 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
-                    {bedType.icon ? (
-                      <KoochSvgIcon
-                        data-testid={`bed-type-icon-${bedType.id}`}
-                        size="lg"
-                        src={bedType.icon}
-                      />
-                    ) : (
-                      <KoochIcon className="size-6" name="capacity" />
-                    )}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-sm font-bold text-foreground">
-                      {bedType.name}
-                    </h3>
-                    <p
-                      className="mt-1 truncate text-xs text-muted-foreground"
-                      dir="ltr"
-                      title={bedType.slug}
-                    >
-                      {bedType.slug}
-                    </p>
+                  <div className="flex min-w-0 flex-1 items-center gap-4">
+                    <span className="grid size-20 shrink-0 place-items-center text-foreground [&>*]:scale-[2]">
+                      {bedType.icon ? (
+                        <KoochSvgIcon
+                          data-testid={`bed-type-icon-${bedType.id}`}
+                          size="lg"
+                          src={bedType.icon}
+                        />
+                      ) : (
+                        <KoochIcon className="size-14" name="capacity" />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <h3 className="truncate text-sm font-bold text-foreground">
+                        {bedType.name}
+                      </h3>
+                      <p
+                        className="mt-1 truncate text-xs text-muted-foreground"
+                        dir="ltr"
+                        title={bedType.slug}
+                      >
+                        {bedType.slug}
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex shrink-0 gap-1">
+                  <div className="mt-1 flex items-center justify-end gap-0 border-t border-border pt-1">
                     <KoochButton
                       aria-label={`ویرایش ${bedType.name}`}
                       onClick={() => openEditDialog(bedType)}
@@ -260,7 +266,10 @@ export function BedTypeManagement() {
                       title={`حذف ${bedType.name}`}
                       variant="ghost"
                     >
-                      <KoochIcon className="size-4 text-destructive" name="delete" />
+                      <KoochIcon
+                        className="size-4 text-destructive"
+                        name="delete"
+                      />
                     </KoochButton>
                   </div>
                 </article>
@@ -395,8 +404,8 @@ export function BedTypeManagement() {
       >
         {deleteTarget && (
           <p>
-            آیا از حذف «{deleteTarget.name}» مطمئن هستید؟ اگر این نوع تخت در اتاقی
-            استفاده شده باشد، حذف انجام نمی‌شود.
+            آیا از حذف «{deleteTarget.name}» مطمئن هستید؟ اگر این نوع تخت در
+            اتاقی استفاده شده باشد، حذف انجام نمی‌شود.
           </p>
         )}
       </KoochConfirmDialog>

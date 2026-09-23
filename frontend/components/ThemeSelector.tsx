@@ -32,21 +32,21 @@ export function ThemeSelector({ compact = false }: { compact?: boolean }) {
     <div className={compact ? "flex flex-wrap gap-2" : "grid gap-3"}>
       {!compact && (
         <div>
-          <h3 className="text-lg font-bold text-slate-950">رنگ محیط کاربری</h3>
-          <p className="mt-1 text-sm text-slate-500">
+          <h3 className="text-lg font-bold text-foreground">رنگ محیط کاربری</h3>
+          <p className="mt-1 text-sm text-muted-foreground">
             رنگ اصلی پنل و بخش‌های عمومی را انتخاب کنید.
           </p>
         </div>
       )}
-      <div className="grid gap-2 sm:grid-cols-2">
+      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {themes.map((item) => {
           const active = theme === item.value;
           return (
             <button
-              className={`flex items-center justify-between rounded-xl border px-3 py-2 text-sm font-bold transition ${
+              className={`flex min-h-10 items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm font-semibold transition-colors duration-150 ease-out motion-reduce:transition-none ${
                 active
                   ? "border-[var(--theme-primary)] bg-[var(--theme-primary-soft)] text-[var(--theme-primary-text)]"
-                  : "border-slate-200 bg-white text-slate-700 hover:border-slate-300"
+                  : "border-border bg-background text-foreground hover:bg-muted"
               }`}
               key={item.value}
               onClick={() => {
@@ -57,7 +57,7 @@ export function ThemeSelector({ compact = false }: { compact?: boolean }) {
             >
               <span>{item.label}</span>
               <span
-                className="h-5 w-5 rounded-full border border-white shadow-sm"
+                className="h-5 w-5 shrink-0 rounded-full border border-border shadow-sm"
                 style={{ backgroundColor: item.color }}
               />
             </button>

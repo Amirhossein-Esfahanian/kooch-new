@@ -10,7 +10,7 @@ export default function AdminSettingsPage() {
     <AdminPage title="تنظیمات">
       <BedTypeManagement />
       <PropertySettingManagement />
-      <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-[var(--shadow-subtle)]">
+      <section className="rounded-lg border border-border bg-card p-4 text-card-foreground shadow-[var(--shadow-subtle)]">
         <ThemeSelector />
       </section>
     </AdminPage>
