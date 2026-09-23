@@ -492,6 +492,34 @@ describe("property workspace authorization", () => {
   });
 });
 
+describe("Admin Reports permission boundary", () => {
+  it.each([
+    ["SuperAdmin", []],
+    ["AdminAssistant", ["ViewReports"]],
+  ] as const)("allows %s with report access and shows Reports navigation", async (role, permissions) => {
+    renderWithSession(session({ platformRole: role, platformPermissions: [...permissions], workspaces: ["admin"], defaultWorkspace: "admin" }),
+      <AdminLayout requiredPlatformPermission="ViewReports"><div data-testid="reports-content">reports</div></AdminLayout>,
+      { pathname: "/admin/reports" });
+    expect(await screen.findByTestId("reports-content")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "گزارش‌ها" }).getAttribute("href")).toBe("/admin/reports");
+  });
+
+  it("denies the direct Reports URL without ViewReports", async () => {
+    renderWithSession(session({ platformRole: "AdminAssistant", platformPermissions: ["ManageProperties"], workspaces: ["admin"], defaultWorkspace: "admin" }),
+      <AdminLayout requiredPlatformPermission="ViewReports"><div data-testid="reports-content">reports</div></AdminLayout>,
+      { pathname: "/admin/reports" });
+    await waitFor(() => expect(navigation.router.replace).toHaveBeenCalledWith("/admin"));
+    expect(screen.queryByTestId("reports-content")).toBeNull();
+  });
+
+  it("hides Reports navigation without ViewReports", async () => {
+    renderWithSession(session({ platformRole: "AdminAssistant", workspaces: ["admin"], defaultWorkspace: "admin" }),
+      <AdminLayout><div data-testid="reports-home">home</div></AdminLayout>, { pathname: "/admin" });
+    await screen.findByTestId("reports-home");
+    expect(screen.queryByRole("link", { name: "گزارش‌ها" })).toBeNull();
+  });
+});
+
 describe("legacy storage regression", () => {
   it("does not grant admin authority from the cached role", async () => {
     localStorage.setItem("kooch_user_role", "SuperAdmin");

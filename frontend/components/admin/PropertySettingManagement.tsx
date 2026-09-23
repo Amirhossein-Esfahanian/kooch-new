@@ -12,10 +12,7 @@ import {
   KoochInput,
 } from "@/components/KoochFormControls";
 import { KoochIcon } from "@/components/KoochIcon";
-import {
-  apiRequest,
-  type PropertySettingResponse,
-} from "@/lib/owner-api";
+import { apiRequest, type PropertySettingResponse } from "@/lib/owner-api";
 
 type PropertySettingFormValues = {
   name: string;
@@ -136,9 +133,7 @@ export function PropertySettingManagement() {
       setForm(emptyForm);
     } catch (caught) {
       toast.error(
-        caught instanceof Error
-          ? caught.message
-          : "بافت و موقعیت ذخیره نشد.",
+        caught instanceof Error ? caught.message : "بافت و موقعیت ذخیره نشد.",
       );
     } finally {
       setSaving(false);
@@ -169,7 +164,7 @@ export function PropertySettingManagement() {
 
   return (
     <>
-      <KoochCard className="min-w-0" padding="sm" variant="elevated">
+      <KoochCard className="min-w-0" padding="md" variant="elevated">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-2xl">
             <h2 className="text-lg font-bold text-foreground">
@@ -251,7 +246,10 @@ export function PropertySettingManagement() {
                       title={`حذف ${setting.name}`}
                       variant="ghost"
                     >
-                      <KoochIcon className="size-4 text-destructive" name="delete" />
+                      <KoochIcon
+                        className="size-4 text-destructive"
+                        name="delete"
+                      />
                     </KoochButton>
                   </div>
                 </article>
@@ -298,7 +296,11 @@ export function PropertySettingManagement() {
         size="md"
         title={editingSetting ? "ویرایش بافت و موقعیت" : "افزودن بافت و موقعیت"}
       >
-        <form className="grid gap-3" id="property-setting-form" onSubmit={saveSetting}>
+        <form
+          className="grid gap-3"
+          id="property-setting-form"
+          onSubmit={saveSetting}
+        >
           <KoochField label="نام" required>
             <KoochInput
               autoFocus

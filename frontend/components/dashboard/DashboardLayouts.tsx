@@ -91,7 +91,7 @@ const adminMenuItems: DashboardMenuItem[] = [
     href: "/admin/reservations",
   },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
-  { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports" },
+  { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports", platformPermission: "ViewReports" },
   { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },
 ];
 

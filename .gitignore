@@ -17,7 +17,7 @@ backend/**/bin/
 backend/**/uploads/
 backend/**/obj/
 backend/**/appsettings.Development.json
-
+backend/.reports-verification/
 # Runtime media storage
 storage/uploads/
 

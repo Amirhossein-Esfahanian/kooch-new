@@ -171,7 +171,7 @@ export function BedTypeManagement() {
 
   return (
     <>
-      <KoochCard className="min-w-0" padding="sm" variant="elevated">
+      <KoochCard className="min-w-0 " padding="md" variant="elevated">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="max-w-2xl">
             <h2 className="text-lg font-bold text-foreground">
