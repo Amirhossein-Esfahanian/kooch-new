@@ -326,6 +326,7 @@ export type PromotionType =
   | "PercentageDiscount"
   | "FixedAmountDiscount"
   | "LastMinute"
+  | "StayXGetOneFree"
   | "Informational";
 
 export type PromotionSource = "Admin" | "Owner";

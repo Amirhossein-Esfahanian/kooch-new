@@ -31,6 +31,7 @@ const promotionTypes: { value: PromotionType; label: string }[] = [
   { value: "FixedAmountDiscount", label: "تخفیف مبلغ ثابت" },
   { value: "LastMinute", label: "لحظه آخری" },
   { value: "Informational", label: "اطلاع‌رسانی" },
+  { value: "StayXGetOneFree", label: "X شب اقامت، ۱ شب رایگان" },
 ];
 
 const weekdays: { value: PromotionWeekday; label: string }[] = [
@@ -72,6 +73,7 @@ const promotionDefaultIcons: Record<PromotionType, string> = {
   FixedAmountDiscount: "🎁",
   LastMinute: "⚡",
   Informational: "✨",
+  StayXGetOneFree: "🌙",
 };
 
 const emojiOptions = [
@@ -143,6 +145,9 @@ function promotionValueLabel(
   promotion: PromotionResponse,
   currencyLabel: string,
 ) {
+  if (promotion.type === "StayXGetOneFree") {
+    return `${promotion.minimumStayNights?.toLocaleString("fa-IR")} شب اقامت، ۱ شب رایگان`;
+  }
   if (
     promotion.type === "PercentageDiscount" &&
     promotion.percentage !== null
@@ -173,11 +178,11 @@ function promotionValueLabel(
   return "—";
 }
 
-function InlineFieldError({ message }: { message?: string }) {
+function InlineFieldError({ message, id }: { message?: string; id?: string }) {
   if (!message) return null;
 
   return (
-    <p className="text-xs font-semibold text-destructive" role="alert">
+    <p className="text-xs font-semibold text-destructive" role="alert" id={id}>
       {message}
     </p>
   );
@@ -494,6 +499,13 @@ export function PromotionWorkspace({
         if (!Number.isInteger(nights) || nights < 0) {
           errors.minimumStayNights = "حداقل تعداد شب معتبر نیست.";
         }
+      }
+      if (
+        draft.type === "StayXGetOneFree" &&
+        (!Number.isInteger(Number(draft.minimumStayNights)) ||
+          Number(draft.minimumStayNights) < 1)
+      ) {
+        errors.minimumStayNights = "حداقل شب اقامت برای یک شب رایگان باید عددی مثبت باشد.";
       }
 
       if (draft.minimumGuests) {
@@ -1554,6 +1566,13 @@ export function PromotionWorkspace({
                   مانند «گشت رایگان» یا «ناهار رایگان» استفاده می‌شود.
                 </div>
               )}
+              {draft.type === "StayXGetOneFree" && (
+                <p className="text-xs leading-5 text-muted-foreground">
+                  حداقل شب اقامت را در مرحله «زمان و شرایط» تعیین کنید. با رسیدن به این حد،
+                  ارزان‌ترین شب واجد شرایط پس از تخفیف‌های قبلی رایگان می‌شود؛
+                  حتی در اقامت طولانی‌تر، فقط یک شب رایگان است.
+                </p>
+              )}
             </section>
           )}
 
@@ -1610,12 +1629,21 @@ export function PromotionWorkspace({
 
               <div className="grid gap-4 sm:grid-cols-2">
                 <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
-                  حداقل شب اقامت
+                  <span>
+                    حداقل شب اقامت
+                    {draft.type === "StayXGetOneFree" && (
+                      <span aria-hidden="true" className="text-destructive"> *</span>
+                    )}
+                  </span>
                   <KoochInput
                       className="text-xs font-medium text-foreground/80"
                     aria-invalid={Boolean(fieldErrors.minimumStayNights)}
+                    aria-describedby={draft.type === "StayXGetOneFree"
+                      ? `promotion-free-night-help${fieldErrors.minimumStayNights ? " promotion-minimum-stay-error" : ""}`
+                      : undefined}
+                    required={draft.type === "StayXGetOneFree"}
                     inputMode="numeric"
-                    min="0"
+                    min={draft.type === "StayXGetOneFree" ? "1" : "0"}
                     onChange={(event) =>
                       setDraft((current) => ({
                         ...current,
@@ -1624,12 +1652,17 @@ export function PromotionWorkspace({
                         ),
                       }))
                     }
-                    placeholder="بدون محدودیت"
+                    placeholder={draft.type === "StayXGetOneFree" ? "تعداد شب اقامت" : "بدون محدودیت"}
                     step="1"
                     type="number"
                     value={draft.minimumStayNights}
                   />
-                  <InlineFieldError message={fieldErrors.minimumStayNights} />
+                  <InlineFieldError id="promotion-minimum-stay-error" message={fieldErrors.minimumStayNights} />
+                  {draft.type === "StayXGetOneFree" && (
+                    <span id="promotion-free-night-help" className="text-xs font-normal leading-5 text-muted-foreground">
+                      ارزان‌ترین شب واجد شرایط فقط یک بار رایگان می‌شود.
+                    </span>
+                  )}
                 </label>
 
                 <label className="grid gap-1.5 text-xs font-semibold text-muted-foreground">
@@ -2028,6 +2061,8 @@ export function PromotionWorkspace({
                       ` — ${formatGroupedIntegerInput(draft.amount)} ${currencyLabel}`}
                     {draft.type === "LastMinute" &&
                       ` — ${draft.percentage}٪، حداکثر ${draft.lastMinuteDays} روز مانده`}
+                    {draft.type === "StayXGetOneFree" &&
+                      ` — ${Number(draft.minimumStayNights).toLocaleString("fa-IR")} شب اقامت، ۱ شب رایگان`}
                   </p>
                 </div>
 

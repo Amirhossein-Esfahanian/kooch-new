@@ -260,6 +260,8 @@ public sealed class PromotionService(
         if (request.StartDate > request.EndDate) throw new ArgumentException("تاریخ شروع نمی‌تواند بعد از تاریخ پایان باشد.");
         if (request.Weekdays.Count == 0) throw new ArgumentException("حداقل یک روز هفته را انتخاب کنید.");
         if (request.MinimumStayNights is < 0) throw new ArgumentException("حداقل تعداد شب معتبر نیست.");
+        if (request.Type == PromotionType.StayXGetOneFree && request.MinimumStayNights is null or < 1)
+            throw new ArgumentException("حداقل شب اقامت برای یک شب رایگان باید عددی مثبت باشد.");
         if (request.MinimumGuests is < 0) throw new ArgumentException("حداقل تعداد مهمان معتبر نیست.");
 
         var rooms = new List<RoomType>();

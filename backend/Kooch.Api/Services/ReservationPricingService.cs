@@ -94,22 +94,26 @@ public class ReservationPricingService(
                 effectiveRules.ExtraGuestPrice,
                 pricedAdults,
                 occupancy.ChargeableChildren);
-            var promotionCalculation = pricingService.CalculateFinalPrice(
-                calculation.TotalPrice,
-                roomType.Id,
-                night,
-                bookingDate,
-                promotions);
-
             nightSnapshots.Add(new ReservationNightPriceSnapshot
             {
                 Date = night,
                 BasePrice = calculation.BasePrice,
                 ChildAmount = calculation.ChildCharge,
                 ExtraGuestAmount = calculation.ExtraGuestCharge,
-                DiscountAmount = calculation.TotalPrice - promotionCalculation.FinalPrice,
-                FinalAmount = promotionCalculation.FinalPrice
+                FinalAmount = calculation.TotalPrice
             });
+        }
+
+        var promotionCalculations = pricingService.CalculateStayPrices(
+            nightSnapshots.Select(night => (night.Date, night.FinalAmount)).ToArray(),
+            roomType.Id,
+            bookingDate,
+            promotions);
+        for (var index = 0; index < nightSnapshots.Count; index++)
+        {
+            var night = nightSnapshots[index];
+            night.DiscountAmount = night.FinalAmount - promotionCalculations[index].FinalPrice;
+            night.FinalAmount = promotionCalculations[index].FinalPrice;
         }
 
         return new ReservationPricePreviewResponse

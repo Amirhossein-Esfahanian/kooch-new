@@ -7,6 +7,7 @@ export type PromotionCardType =
   | "PercentageDiscount"
   | "FixedAmountDiscount"
   | "LastMinute"
+  | "StayXGetOneFree"
   | "Informational"
   | string;
 
@@ -39,6 +40,7 @@ const typeMeta: Record<string, { icon: string; badge: string }> = {
   FixedAmountDiscount: { icon: "🎁", badge: "تخفیف ویژه" },
   LastMinute: { icon: "⚡", badge: "لحظه آخری" },
   Informational: { icon: "✨", badge: "پیشنهاد ویژه" },
+  StayXGetOneFree: { icon: "🌙", badge: "۱ شب رایگان" },
 };
 
 const hexColorPattern = /^#[0-9a-fA-F]{6}$/;
@@ -98,7 +100,9 @@ export function PromotionCards({
             : undefined;
           const requirements = [
             promotion.minimumStayNights
-              ? `حداقل ${promotion.minimumStayNights} شب`
+              ? promotion.type === "StayXGetOneFree"
+                ? `${promotion.minimumStayNights.toLocaleString("fa-IR")} شب اقامت، ۱ شب رایگان`
+                : `حداقل ${promotion.minimumStayNights} شب`
               : "",
             promotion.minimumGuests
               ? `حداقل ${promotion.minimumGuests} مهمان`

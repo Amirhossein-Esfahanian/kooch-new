@@ -120,7 +120,7 @@ public enum ReservationCancellationReason
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
 public enum AmenityScope { Property, RoomType, Both }
 public enum DiscountType { Percentage, FixedAmount }
-public enum PromotionType { PercentageDiscount, FixedAmountDiscount, LastMinute, Informational }
+public enum PromotionType { PercentageDiscount, FixedAmountDiscount, LastMinute, Informational, StayXGetOneFree }
 public enum PromotionSource { Admin, Owner }
 public enum PricingGuestType { Iranian, Foreign }
 public enum CouponType { PercentageDiscount, FixedAmountDiscount, FreeNight, Informational }

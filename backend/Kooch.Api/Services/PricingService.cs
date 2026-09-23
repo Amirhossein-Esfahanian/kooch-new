@@ -30,39 +30,76 @@ public sealed class PricingService
         IEnumerable<Promotion> promotions)
     {
         if (basePrice < 0) throw new ArgumentOutOfRangeException(nameof(basePrice));
+        return CalculateStayPrices([(stayDate, basePrice)], roomTypeId, bookingDate, promotions)[0];
+    }
+
+    /// <summary>
+    /// Applies promotions in their existing order across the stay. Results retain input-night
+    /// order; equal remaining amounts select the first eligible night in that order.
+    /// </summary>
+    public IReadOnlyList<PromotionPriceResult> CalculateStayPrices(
+        IReadOnlyList<(DateOnly Date, decimal BasePrice)> nights,
+        int roomTypeId,
+        DateOnly bookingDate,
+        IEnumerable<Promotion> promotions)
+    {
+        ArgumentNullException.ThrowIfNull(nights);
+        if (nights.Any(night => night.BasePrice < 0)) throw new ArgumentOutOfRangeException(nameof(nights));
         ArgumentNullException.ThrowIfNull(promotions);
 
-        var finalPrice = basePrice;
-        var applied = new List<AppliedPromotionResponse>();
+        var remaining = nights.Select(night => night.BasePrice).ToArray();
+        var applied = nights.Select(_ => new List<AppliedPromotionResponse>()).ToArray();
         foreach (var promotion in promotions
-                     .Where(item => IsApplicable(item, roomTypeId, stayDate, bookingDate))
                      .OrderBy(item => item.SortOrder).ThenBy(item => item.Id))
         {
-            decimal discount;
-            switch (promotion.Type)
+            var eligible = Enumerable.Range(0, nights.Count)
+                .Where(index => IsApplicable(promotion, roomTypeId, nights[index].Date, bookingDate))
+                .ToList();
+            if (eligible.Count == 0) continue;
+
+            if (promotion.Type == PromotionType.StayXGetOneFree)
             {
-                case PromotionType.PercentageDiscount:
-                case PromotionType.LastMinute:
-                    if (promotion.Percentage is null or < 0 or > 100)
-                        throw new ArgumentException("Promotion percentage must be between 0 and 100.", nameof(promotions));
-                    discount = finalPrice * promotion.Percentage.Value / 100m;
-                    break;
-                case PromotionType.FixedAmountDiscount:
-                    if (promotion.Amount is null or < 0 || promotion.Amount > basePrice)
-                        throw new ArgumentException("Promotion amount must be between zero and the base price.", nameof(promotions));
-                    discount = Math.Min(finalPrice, promotion.Amount.Value);
-                    break;
-                case PromotionType.Informational:
-                    continue;
-                default:
-                    continue;
+                if (promotion.MinimumStayNights is null or < 1)
+                    throw new ArgumentException("Free-night promotion requires a positive minimum stay.", nameof(promotions));
+                if (nights.Count < promotion.MinimumStayNights.Value) continue;
+
+                var selected = eligible.OrderBy(index => remaining[index]).First();
+                applied[selected].Add(new AppliedPromotionResponse(promotion.Id, promotion.Title, remaining[selected]));
+                remaining[selected] = 0;
+                continue;
             }
 
-            finalPrice = Math.Max(0, finalPrice - discount);
-            applied.Add(new AppliedPromotionResponse(promotion.Id, promotion.Title, discount));
+            foreach (var index in eligible)
+            {
+                var basePrice = nights[index].BasePrice;
+                var finalPrice = remaining[index];
+                decimal discount;
+                switch (promotion.Type)
+                {
+                    case PromotionType.PercentageDiscount:
+                    case PromotionType.LastMinute:
+                        if (promotion.Percentage is null or < 0 or > 100)
+                            throw new ArgumentException("Promotion percentage must be between 0 and 100.", nameof(promotions));
+                        discount = finalPrice * promotion.Percentage.Value / 100m;
+                        break;
+                    case PromotionType.FixedAmountDiscount:
+                        if (promotion.Amount is null or < 0 || promotion.Amount > basePrice)
+                            throw new ArgumentException("Promotion amount must be between zero and the base price.", nameof(promotions));
+                        discount = Math.Min(finalPrice, promotion.Amount.Value);
+                        break;
+                    case PromotionType.Informational:
+                        continue;
+                    default:
+                        continue;
+                }
+
+                remaining[index] = Math.Max(0, finalPrice - discount);
+                applied[index].Add(new AppliedPromotionResponse(promotion.Id, promotion.Title, discount));
+            }
         }
 
-        return new PromotionPriceResult(basePrice, finalPrice, applied);
+        return nights.Select((night, index) =>
+            new PromotionPriceResult(night.BasePrice, remaining[index], applied[index])).ToArray();
     }
 
     /// <summary>
