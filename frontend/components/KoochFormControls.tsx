@@ -132,15 +132,39 @@ export function KoochSelect({
   const generatedId = useId();
 
   return (
-    <select
-      aria-describedby={ariaDescribedBy}
-      aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
-      className={joinClasses("h-10 px-3 py-2 text-sm", controlClass, className)}
-      id={id ?? `kooch-select-${generatedId}`}
-      {...props}
-    >
-      {children}
-    </select>
+    <div className="relative w-full">
+      <select
+        aria-describedby={ariaDescribedBy}
+        aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
+        className={joinClasses(
+          "h-10 appearance-none py-2 pl-10 pr-3 text-sm",
+          controlClass,
+          className,
+        )}
+        id={id ?? `kooch-select-${generatedId}`}
+        {...props}
+      >
+        {children}
+      </select>
+      <span
+        aria-hidden="true"
+        className="pointer-events-none absolute left-3 top-1/2 flex -translate-y-1/2 items-center text-muted-foreground"
+      >
+        <svg
+          className="h-4 w-4 shrink-0"
+          fill="none"
+          viewBox="0 0 16 16"
+        >
+          <path
+            d="M4 6l4 4 4-4"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="1.5"
+          />
+        </svg>
+      </span>
+    </div>
   );
 }
 
@@ -549,6 +573,56 @@ function searchableOptionSearchText(option: KoochSearchableSelectOption) {
   return String(option.value);
 }
 
+
+function useDropdownPresence(open: boolean, duration = 150) {
+  const [mounted, setMounted] = useState(open);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    let frame: number | null = null;
+    let timer: number | null = null;
+
+    if (open) {
+      setMounted(true);
+      frame = window.requestAnimationFrame(() => {
+        frame = window.requestAnimationFrame(() => setVisible(true));
+      });
+    } else {
+      setVisible(false);
+      timer = window.setTimeout(() => setMounted(false), duration);
+    }
+
+    return () => {
+      if (frame !== null) window.cancelAnimationFrame(frame);
+      if (timer !== null) window.clearTimeout(timer);
+    };
+  }, [duration, open]);
+
+  return { mounted, visible };
+}
+
+function KoochDropdownChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className={joinClasses(
+        "h-4 w-4 shrink-0 transition-transform duration-150 ease-out motion-reduce:transition-none",
+        open && "rotate-180",
+      )}
+      fill="none"
+      viewBox="0 0 16 16"
+    >
+      <path
+        d="M4 6l4 4 4-4"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+}
+
 export function KoochSearchableSelect({
   options,
   value,
@@ -571,6 +645,7 @@ export function KoochSearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const dropdownPresence = useDropdownPresence(open);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const searchRef = useRef<HTMLInputElement | null>(null);
   const selectedOption = options.find((option) =>
@@ -698,7 +773,7 @@ export function KoochSearchableSelect({
           aria-expanded={open}
           aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
           className={joinClasses(
-            "kooch-form-control flex min-h-10 w-full items-center justify-between gap-2 px-3 py-2 text-right text-sm transition disabled:opacity-50",
+            "kooch-form-control flex min-h-10 w-full items-center justify-between gap-2 py-2 pl-4 pr-3 text-right text-sm transition disabled:opacity-50",
             className,
           )}
           data-control-active={open ? "true" : undefined}
@@ -739,14 +814,18 @@ export function KoochSearchableSelect({
                 ×
               </span>
             )}
-            <span aria-hidden="true">{open ? "⌃" : "⌄"}</span>
+            <KoochDropdownChevron open={open} />
           </span>
         </button>
 
-        {open && (
+        {dropdownPresence.mounted && (
           <div
+            aria-hidden={!dropdownPresence.visible}
             className={joinClasses(
-              "absolute right-0 top-[calc(100%+0.375rem)] z-50 w-full overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl",
+              "absolute right-0 top-[calc(100%+0.375rem)] z-50 w-full overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+              dropdownPresence.visible
+                ? "translate-y-0 opacity-100"
+                : "pointer-events-none -translate-y-1 opacity-0",
               dropdownClassName,
             )}
           >
@@ -848,6 +927,7 @@ export function KoochMultiSelect({
   const generatedId = useId();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const dropdownPresence = useDropdownPresence(open);
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const controlId = id ?? `kooch-multi-select-${generatedId}`;
   const messageId = error || helperText ? `${controlId}-message` : undefined;
@@ -930,7 +1010,7 @@ export function KoochMultiSelect({
           aria-expanded={open}
           aria-invalid={resolveAriaInvalid(error, ariaInvalid)}
           className={joinClasses(
-            "kooch-form-control flex min-h-10 w-full items-center justify-between gap-2 px-3 py-2 text-right text-sm transition disabled:opacity-50",
+            "kooch-form-control flex min-h-10 w-full items-center justify-between gap-2 py-2 pl-4 pr-3 text-right text-sm transition disabled:opacity-50",
             className,
           )}
           data-control-active={open ? "true" : undefined}
@@ -960,15 +1040,19 @@ export function KoochMultiSelect({
             )}
           </span>
 
-          <span className="shrink-0 text-muted-foreground">
-            {open ? "⌃" : "⌄"}
+          <span className="flex shrink-0 items-center text-muted-foreground">
+            <KoochDropdownChevron open={open} />
           </span>
         </button>
 
-        {open && (
+        {dropdownPresence.mounted && (
           <div
+            aria-hidden={!dropdownPresence.visible}
             className={joinClasses(
-              "absolute right-0 top-[calc(100%+0.375rem)] z-50 w-full overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl",
+              "absolute right-0 top-[calc(100%+0.375rem)] z-50 w-full overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl transition-[opacity,transform] duration-150 ease-out motion-reduce:transition-none",
+              dropdownPresence.visible
+                ? "translate-y-0 opacity-100"
+                : "pointer-events-none -translate-y-1 opacity-0",
               dropdownClassName,
             )}
           >
