@@ -202,7 +202,7 @@ export function SharedSingleDatePicker({
   const buttonClass = `kooch-form-control ${
     controlClassName ??
     (size === "compact"
-      ? "grid min-h-9 w-full min-w-0 max-w-full px-3 py-1.5 text-right text-xs transition"
+      ? "grid h-10 w-full min-w-0 max-w-full px-3 py-2 text-right text-sm transition"
       : "grid px-4 py-3 text-right transition")
   }`;
   const popoverClass =
@@ -260,7 +260,7 @@ export function SharedSingleDatePicker({
         type="button"
       >
         <span
-          className={`font-bold ${value ? "text-slate-950" : "text-slate-400"}`}
+          className={`text-sm font-normal ${value ? "text-foreground" : "text-muted-foreground"}`}
         >
           {displayDate(value, activeCalendar, placeholder)}
         </span>

@@ -635,14 +635,22 @@ export default function AdminReservationsPage() {
               onClick={() => setFiltersOpen((open) => !open)}
               type="button"
             >
-              <span
+              <svg
                 aria-hidden="true"
-                className={`text-base leading-none transition-transform duration-300 ${
+                className={`h-4 w-4 transition-transform duration-150 ease-out motion-reduce:transition-none ${
                   filtersOpen ? "rotate-180" : ""
                 }`}
+                fill="none"
+                viewBox="0 0 16 16"
               >
-                ⌄
-              </span>
+                <path
+                  d="M4 6l4 4 4-4"
+                  stroke="currentColor"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="1.5"
+                />
+              </svg>
             </button>
 
             <div
