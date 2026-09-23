@@ -46,8 +46,8 @@ export function KoochInfoHint({
         aria-controls={popoverId}
         aria-expanded={open}
         aria-label={ariaLabel}
-        className="!h-6 !min-h-6 !w-6 !rounded-full !p-0 text-muted-foreground hover:text-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!w-11"
-        onClick={() => setOpen(true)}
+        className="!h-6 !min-h-6 !w-6 !rounded-full !p-0 text-muted-foreground [@media(pointer:coarse)]:!h-11 [@media(pointer:coarse)]:!min-h-11 [@media(pointer:coarse)]:!w-11"
+        onClick={() => setOpen((current) => !current)}
         size="icon"
         type="button"
         variant="ghost"
