@@ -30,28 +30,51 @@ public sealed class AdminReportService(
         {
             throw new ArgumentException("وضعیت رزرو معتبر نیست.");
         }
+        var selectedPropertyTypes = (query.PropertyTypes ?? [])
+            .Distinct()
+            .ToArray();
+        if (selectedPropertyTypes.Any(propertyType => !Enum.IsDefined(propertyType)))
+        {
+            throw new ArgumentException("نوع اقامتگاه معتبر نیست.");
+        }
 
         var visibleIds = await propertyAccessService.GetPropertyIdsWithPermissionAsync(
             userId, "reports.view", cancellationToken);
+        var selectedPropertyIds = (query.PropertyIds ?? [])
+            .Where(propertyId => propertyId > 0)
+            .Distinct()
+            .ToArray();
         var options = await dbContext.Properties.AsNoTracking()
             .Where(property => visibleIds.Contains(property.Id))
             .OrderBy(property => property.Name).ThenBy(property => property.Id)
             .Select(property => new AdminReportPropertyOption(property.Id, property.Name))
             .ToListAsync(cancellationToken);
-        if (query.PropertyId.HasValue && !options.Any(property => property.Id == query.PropertyId))
+        var visibleIdSet = options.Select(property => property.Id).ToHashSet();
+        if (selectedPropertyIds.Any(propertyId => !visibleIdSet.Contains(propertyId)))
         {
             // Identical response for a hidden property and an unknown property.
             throw new UnauthorizedAccessException("You cannot view reports for this property.");
+        }
+
+        var reportablePropertyIds = selectedPropertyIds.Length > 0
+            ? selectedPropertyIds
+            : visibleIds.Distinct().ToArray();
+        if (selectedPropertyTypes.Length > 0)
+        {
+            reportablePropertyIds = await dbContext.Properties.AsNoTracking()
+                .Where(property => reportablePropertyIds.Contains(property.Id) &&
+                    selectedPropertyTypes.Contains(property.Type))
+                .Select(property => property.Id)
+                .ToArrayAsync(cancellationToken);
         }
 
         // Report calendar days are explicitly UTC, matching the stored creation timestamps.
         var from = query.From?.ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var to = query.To?.AddDays(1).ToDateTime(TimeOnly.MinValue, DateTimeKind.Utc);
         var reservations = dbContext.Reservations.AsNoTracking()
-            .Where(reservation => visibleIds.Contains(reservation.PropertyId));
+            .Where(reservation => reportablePropertyIds.Contains(reservation.PropertyId));
         if (from.HasValue) reservations = reservations.Where(reservation => reservation.CreatedAtUtc >= from.Value);
         if (to.HasValue) reservations = reservations.Where(reservation => reservation.CreatedAtUtc < to.Value);
-        if (query.PropertyId.HasValue) reservations = reservations.Where(reservation => reservation.PropertyId == query.PropertyId.Value);
 
         // SQL-translatable equivalent of ReservationStatusNormalizer; never mutate legacy rows.
         var normalized = reservations.Select(reservation => new
@@ -60,6 +83,8 @@ public sealed class AdminReportService(
             reservation.PropertyId,
             PropertyName = reservation.Property.Name,
             Date = reservation.CreatedAtUtc.Date,
+            reservation.FinalAmount,
+            reservation.Currency,
             Status = reservation.Status == ReservationStatusNormalizer.LegacyPendingApproval
                 ? ReservationStatus.PendingApproval
                 : reservation.Status == ReservationStatusNormalizer.LegacyPaymentExpired
@@ -70,8 +95,13 @@ public sealed class AdminReportService(
 
         // One aggregate cube, not reservation rows: all breakdowns share the same snapshot.
         var counts = await normalized
-            .GroupBy(reservation => new { reservation.Date, reservation.PropertyId, reservation.PropertyName, reservation.Status })
-            .Select(group => new { group.Key, Count = group.Select(reservation => reservation.Id).Distinct().Count() })
+            .GroupBy(reservation => new { reservation.Date, reservation.PropertyId, reservation.PropertyName, reservation.Status, reservation.Currency })
+            .Select(group => new
+            {
+                group.Key,
+                Count = group.Select(reservation => reservation.Id).Distinct().Count(),
+                BookingValue = group.Sum(reservation => reservation.FinalAmount)
+            })
             .ToListAsync(cancellationToken);
         var statuses = counts.GroupBy(item => item.Key.Status).OrderBy(group => group.Key)
             .Select(group => new AdminReportStatusCount(group.Key, group.Sum(item => item.Count))).ToArray();
@@ -80,9 +110,21 @@ public sealed class AdminReportService(
         var properties = counts.GroupBy(item => new { item.Key.PropertyId, item.Key.PropertyName })
             .OrderByDescending(group => group.Sum(item => item.Count)).ThenBy(group => group.Key.PropertyId)
             .Select(group => new AdminReportPropertyCount(group.Key.PropertyId, group.Key.PropertyName, group.Sum(item => item.Count))).ToArray();
+        var bookingValuesByCurrency = counts
+            .GroupBy(item => item.Key.Currency)
+            .Select(group => new { Currency = group.Key, Value = group.Sum(item => item.BookingValue) })
+            .ToArray();
+        var hasMixedCurrencies = bookingValuesByCurrency.Length > 1;
+        var bookingValue = hasMixedCurrencies
+            ? (decimal?)null
+            : bookingValuesByCurrency.SingleOrDefault()?.Value ?? 0m;
+        var bookingValueCurrency = hasMixedCurrencies
+            ? null
+            : bookingValuesByCurrency.SingleOrDefault()?.Currency;
 
         return new AdminReservationReportResponse(
-            new(query.From, query.To, query.PropertyId, status, "UTC", from, to),
-            new(counts.Sum(item => item.Count), statuses), trend, properties, statuses, options);
+            new(query.From, query.To, selectedPropertyIds, selectedPropertyTypes, status, "UTC", from, to),
+            new(counts.Sum(item => item.Count), bookingValue, bookingValueCurrency, hasMixedCurrencies, statuses),
+            trend, properties, statuses, options);
     }
 }

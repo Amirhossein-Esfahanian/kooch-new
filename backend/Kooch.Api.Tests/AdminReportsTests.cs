@@ -34,6 +34,9 @@ public sealed class AdminReportsTests
         Assert.Equal(8, report.Trend.Sum(item => item.Count));
         Assert.Equal(8, report.Properties.Sum(item => item.Count));
         Assert.Equal(8, report.Statuses.Sum(item => item.Count));
+        Assert.Equal(360m, report.Summary.BookingValue);
+        Assert.Equal("IRR", report.Summary.BookingValueCurrency);
+        Assert.False(report.Summary.BookingValueHasMixedCurrencies);
         Assert.Equal([101, 102], report.ReportableProperties.Select(item => item.Id));
         Assert.DoesNotContain(report.Properties, item => item.PropertyId == 103);
     }
@@ -67,8 +70,53 @@ public sealed class AdminReportsTests
     {
         await using var db = await SeedAsync();
         var error = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service(db)
-            .GetReservationsAsync(10, UserRole.AdminAssistant, new() { PropertyId = propertyId }));
+            .GetReservationsAsync(10, UserRole.AdminAssistant, new() { PropertyIds = [propertyId] }));
         Assert.Equal("You cannot view reports for this property.", error.Message);
+    }
+
+    [Fact]
+    public async Task PropertyIds_FilterAllReportProjections_AndAggregateMultipleSelections()
+    {
+        await using var db = await SeedAsync();
+
+        var single = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
+            new() { PropertyIds = [102] });
+        Assert.Equal(1, single.Summary.TotalCount);
+        Assert.Equal(102, Assert.Single(single.Properties).PropertyId);
+        Assert.Equal(1, single.Trend.Sum(item => item.Count));
+        Assert.Equal(1, single.Statuses.Sum(item => item.Count));
+        Assert.Equal(80m, single.Summary.BookingValue);
+
+        var multiple = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
+            new() { PropertyIds = [101, 102, 101] });
+        Assert.Equal(8, multiple.Summary.TotalCount);
+        Assert.Equal([101, 102], multiple.Filters.PropertyIds);
+        Assert.Equal(2, multiple.Properties.Count);
+        Assert.Equal(8, multiple.Trend.Sum(item => item.Count));
+        Assert.Equal(8, multiple.Statuses.Sum(item => item.Count));
+    }
+
+    [Fact]
+    public async Task PropertyTypes_FilterAndComposeWithSelectedProperties()
+    {
+        await using var db = await SeedAsync();
+
+        var singleType = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
+            new() { PropertyTypes = [PropertyType.BoutiqueHotel] });
+        Assert.Equal(1, singleType.Summary.TotalCount);
+        Assert.Equal(102, Assert.Single(singleType.Properties).PropertyId);
+
+        var multipleTypes = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
+            new() { PropertyTypes = [PropertyType.Hotel, PropertyType.BoutiqueHotel, PropertyType.Hotel] });
+        Assert.Equal(8, multipleTypes.Summary.TotalCount);
+        Assert.Equal([PropertyType.Hotel, PropertyType.BoutiqueHotel], multipleTypes.Filters.PropertyTypes);
+
+        var intersection = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
+            new() { PropertyIds = [101], PropertyTypes = [PropertyType.BoutiqueHotel] });
+        Assert.Equal(0, intersection.Summary.TotalCount);
+        Assert.Empty(intersection.Properties);
+        Assert.Empty(intersection.Trend);
+        Assert.Empty(intersection.Statuses);
     }
 
     [Fact]
@@ -89,25 +137,28 @@ public sealed class AdminReportsTests
     {
         await using var db = await SeedAsync();
         var report = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
-            new() { From = new(2026, 9, 20), To = new(2026, 9, 20), PropertyId = 101 });
+            new() { From = new(2026, 9, 20), To = new(2026, 9, 20), PropertyIds = [101] });
         Assert.Equal(5, report.Summary.TotalCount);
         Assert.Equal("UTC", report.Filters.TimeZone);
         Assert.Equal(Utc(20), report.Filters.FromUtcInclusive);
         Assert.Equal(Utc(21), report.Filters.ToUtcExclusive);
         Assert.Equal(new DateOnly(2026, 9, 20), Assert.Single(report.Trend).Date);
+        Assert.Equal(200m, report.Summary.BookingValue);
     }
 
     [Theory]
-    [InlineData(6, 8, 2)]
-    [InlineData(8, 8, 2)]
-    [InlineData(7, 10, 1)]
-    [InlineData(10, 10, 1)]
-    public async Task LegacyStatuses_NormalizeForFilterAndGrouping(int requested, int expected, int count)
+    [InlineData(6, 8, 2, 70)]
+    [InlineData(8, 8, 2, 70)]
+    [InlineData(7, 10, 1, 60)]
+    [InlineData(10, 10, 1, 60)]
+    public async Task LegacyStatuses_NormalizeForFilterAndGrouping(
+        int requested, int expected, int count, decimal bookingValue)
     {
         await using var db = await SeedAsync();
         var report = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
             new() { Status = (ReservationStatus)requested });
         Assert.Equal(count, report.Summary.TotalCount);
+        Assert.Equal(bookingValue, report.Summary.BookingValue);
         Assert.Equal((ReservationStatus)expected, Assert.Single(report.Statuses).Status);
         Assert.Equal((ReservationStatus)expected, report.Filters.Status);
     }
@@ -136,7 +187,24 @@ public sealed class AdminReportsTests
         Assert.Empty(report.Trend);
         Assert.Empty(report.Properties);
         Assert.Empty(report.Statuses);
+        Assert.Equal(0m, report.Summary.BookingValue);
+        Assert.Null(report.Summary.BookingValueCurrency);
+        Assert.False(report.Summary.BookingValueHasMixedCurrencies);
         Assert.Equal(2, report.ReportableProperties.Count);
+    }
+
+    [Fact]
+    public async Task MixedCurrencies_AreNotCombinedIntoOneBookingValue()
+    {
+        await using var db = await SeedAsync();
+        (await db.Reservations.SingleAsync(item => item.Id == 8)).Currency = "USD";
+        await db.SaveChangesAsync();
+
+        var report = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin, new());
+
+        Assert.Null(report.Summary.BookingValue);
+        Assert.Null(report.Summary.BookingValueCurrency);
+        Assert.True(report.Summary.BookingValueHasMixedCurrencies);
     }
 
     [Fact]
@@ -175,7 +243,8 @@ public sealed class AdminReportsTests
         db.Users.AddRange(new User { Id = 1, Role = UserRole.SuperAdmin, FirstName = "Admin", LastName = "One", PasswordHash = "unused", IsActive = true },
             new User { Id = 10, Role = UserRole.AdminAssistant, FirstName = "Admin", LastName = "Two", PasswordHash = "unused", IsActive = true });
         for (var id = 101; id <= 103; id++)
-            db.Properties.Add(new Property { Id = id, OwnerId = 1, Name = $"Property {id}", Slug = $"property-{id}", Description = "test", Address = "test", City = "Tehran", Country = "Iran", IsDeleted = id == 103 });
+            db.Properties.Add(new Property { Id = id, OwnerId = 1, Name = $"Property {id}", Slug = $"property-{id}", Description = "test", Address = "test", City = "Tehran", Country = "Iran",
+                Type = id == 102 ? PropertyType.BoutiqueHotel : PropertyType.Hotel, IsDeleted = id == 103 });
         db.UserPermissions.Add(new UserPermission { UserId = 10, PermissionKey = PermissionKey.ViewReports, IsAllowed = true });
         foreach (var id in new[] { 101, 102 })
             db.UserPropertyAccesses.Add(new UserPropertyAccess { UserId = 10, PropertyId = id,
@@ -186,8 +255,9 @@ public sealed class AdminReportsTests
         for (var i = 0; i < statuses.Length; i++)
             db.Reservations.Add(new Reservation { Id = i + 1, ClientId = 1, PropertyId = 101, Status = statuses[i],
                 CreatedAtUtc = i == 0 ? Utc(20).AddTicks(-1) : i == 6 ? Utc(21) : i == 5 ? Utc(21).AddTicks(-1) : Utc(20),
-                PaymentExpiresAtUtc = Utc(19) });
-        db.Reservations.AddRange(new Reservation { Id = 8, ClientId = 1, PropertyId = 102, CreatedAtUtc = Utc(20), Status = ReservationStatus.Completed },
+                FinalAmount = (i + 1) * 10m, TotalPrice = 10_000m + i, Currency = "IRR", PaymentExpiresAtUtc = Utc(19) });
+        db.Reservations.AddRange(new Reservation { Id = 8, ClientId = 1, PropertyId = 102, CreatedAtUtc = Utc(20), Status = ReservationStatus.Completed,
+                FinalAmount = 80m, TotalPrice = 20_000m, Currency = "IRR" },
             new Reservation { Id = 9, ClientId = 1, PropertyId = 103, CreatedAtUtc = Utc(20) },
             new Reservation { Id = 10, ClientId = 1, PropertyId = 101, CreatedAtUtc = Utc(20), IsDeleted = true });
         db.Payments.AddRange(new Payment { ReservationId = 2, Amount = 100, Status = PaymentStatus.Successful },

@@ -1,3 +1,42 @@
+import dayjs from "dayjs";
+import jalaliday from "jalaliday/dayjs";
+
+dayjs.extend(jalaliday);
+
+export type CurrentJalaliPeriod = "week" | "month" | "quarter";
+
+export interface LocalIsoDateRange {
+  startDate: string;
+  endDate: string;
+}
+
+export function getCurrentJalaliPeriodRange(
+  period: CurrentJalaliPeriod,
+  today = new Date(),
+): LocalIsoDateRange {
+  const current = dayjs(today);
+  let start = current;
+  let end = current;
+
+  if (period === "week") {
+    start = current.subtract((current.day() + 1) % 7, "day");
+    end = start.add(6, "day");
+  } else {
+    const jalali = current.calendar("jalali");
+    const startMonth =
+      period === "quarter" ? Math.floor(jalali.month() / 3) * 3 : jalali.month();
+    start = jalali.month(startMonth).date(1).startOf("day");
+    end = start
+      .add(period === "quarter" ? 3 : 1, "month")
+      .subtract(1, "day");
+  }
+
+  return {
+    startDate: start.calendar("gregory").format("YYYY-MM-DD"),
+    endDate: end.calendar("gregory").format("YYYY-MM-DD"),
+  };
+}
+
 export function parseLocalIsoDate(value: string): Date {
   const [year, month, day] = value.split("-").map(Number);
   return new Date(year, month - 1, day);
