@@ -814,6 +814,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(reservation => reservation.ManualAdjustment).HasPrecision(18, 2);
             entity.Property(reservation => reservation.FinalAmount).HasPrecision(18, 2);
             entity.Property(reservation => reservation.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(reservation => reservation.CommissionType).HasDefaultValue(CommissionType.Direct);
             entity.Property(reservation => reservation.ReservationNumber).HasMaxLength(32);
             entity.Property(reservation => reservation.GuestNote).HasMaxLength(2000);
             entity.Property(reservation => reservation.CancellationNote).HasMaxLength(2000);

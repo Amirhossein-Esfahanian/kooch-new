@@ -22,6 +22,7 @@ public class Reservation : BaseEntity
     public decimal ManualAdjustment { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = "IRR";
+    public CommissionType CommissionType { get; set; } = CommissionType.Direct;
     public ReservationStatus Status { get; set; }
     public ReservationSource Source { get; set; }
     public string? GuestNote { get; set; }
