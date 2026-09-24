@@ -118,6 +118,8 @@ public enum ReservationCancellationReason
     PaymentExpired
 }
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
+public enum CommissionType { Direct, PropertyReferralLink, PropertyReferralCode }
+public enum CommissionRateSource { Global, PropertyOverride }
 public enum FinancialEntryType { PropertyPayable, Commission, Refund, Adjustment, Settlement, Reversal }
 public enum AmenityScope { Property, RoomType, Both }
 public enum DiscountType { Percentage, FixedAmount }

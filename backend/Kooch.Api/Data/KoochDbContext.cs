@@ -28,6 +28,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<PaymentCallbackReceipt> PaymentCallbackReceipts => Set<PaymentCallbackReceipt>();
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
+    public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -978,6 +979,20 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private static void ConfigureFinancialFoundation(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<PropertyCommissionRate>(entity =>
+        {
+            entity.Property(rate => rate.Rate).HasPrecision(5, 2);
+            entity.Property(rate => rate.IsEnabled).HasDefaultValue(true);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_PropertyCommissionRate_Rate",
+                "[Rate] >= 0 AND [Rate] <= 100"));
+            entity.HasIndex(rate => new { rate.PropertyId, rate.CommissionType }).IsUnique();
+            entity.HasOne(rate => rate.Property)
+                .WithMany(property => property.CommissionRates)
+                .HasForeignKey(rate => rate.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
         modelBuilder.Entity<ReservationFinancialSnapshot>(entity =>
         {
             entity.Property(snapshot => snapshot.GrossAmount).HasPrecision(18, 2);

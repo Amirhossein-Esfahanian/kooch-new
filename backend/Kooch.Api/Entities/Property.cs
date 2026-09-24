@@ -53,6 +53,7 @@ public class Property : BaseEntity
     public ICollection<Review> Reviews { get; set; } = [];
     public ICollection<BookingSession> BookingSessions { get; set; } = [];
     public ICollection<Reservation> Reservations { get; set; } = [];
+    public ICollection<PropertyCommissionRate> CommissionRates { get; set; } = [];
     public ICollection<CancellationPolicy> CancellationPolicies { get; set; } = [];
     public ICollection<StayRule> StayRules { get; set; } = [];
     public ICollection<Promotion> Promotions { get; set; } = [];

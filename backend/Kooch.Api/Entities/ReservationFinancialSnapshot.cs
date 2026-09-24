@@ -8,6 +8,8 @@ public class ReservationFinancialSnapshot : BaseEntity
     public int? PaymentItemId { get; set; }
     public decimal GrossAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
+    public CommissionType CommissionType { get; set; }
+    public CommissionRateSource CommissionRateSource { get; set; }
     public decimal CommissionRate { get; set; }
     public decimal CommissionBase { get; set; }
     public decimal CommissionAmount { get; set; }
