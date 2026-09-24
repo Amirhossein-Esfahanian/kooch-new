@@ -26,6 +26,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentItem> PaymentItems => Set<PaymentItem>();
     public DbSet<PaymentCallbackReceipt> PaymentCallbackReceipts => Set<PaymentCallbackReceipt>();
+    public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
+    public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -92,6 +94,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureReservations(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
+        ConfigureFinancialFoundation(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureAmenities(modelBuilder);
         ConfigureImages(modelBuilder);
@@ -103,6 +106,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
+        EnsureFinancialHistoryIsAppendOnly();
         var now = DateTime.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
@@ -129,6 +133,39 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         }
 
         return await base.SaveChangesAsync(cancellationToken);
+    }
+
+    public override int SaveChanges()
+    {
+        EnsureFinancialHistoryIsAppendOnly();
+        return base.SaveChanges();
+    }
+
+    public override int SaveChanges(bool acceptAllChangesOnSuccess)
+    {
+        EnsureFinancialHistoryIsAppendOnly();
+        return base.SaveChanges(acceptAllChangesOnSuccess);
+    }
+
+    public override Task<int> SaveChangesAsync(
+        bool acceptAllChangesOnSuccess,
+        CancellationToken cancellationToken = default)
+    {
+        EnsureFinancialHistoryIsAppendOnly();
+        return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void EnsureFinancialHistoryIsAppendOnly()
+    {
+        var hasHistoricalMutation = ChangeTracker.Entries()
+            .Any(entry =>
+                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry) &&
+                entry.State is EntityState.Modified or EntityState.Deleted);
+
+        if (hasHistoricalMutation)
+        {
+            throw new InvalidOperationException("Financial history entries are append-only and cannot be modified or deleted.");
+        }
     }
 
     private static void ConfigureUsers(ModelBuilder modelBuilder)
@@ -935,6 +972,76 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(receipt => receipt.Payment)
                 .WithMany(payment => payment.CallbackReceipts)
                 .HasForeignKey(receipt => receipt.PaymentId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureFinancialFoundation(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReservationFinancialSnapshot>(entity =>
+        {
+            entity.Property(snapshot => snapshot.GrossAmount).HasPrecision(18, 2);
+            entity.Property(snapshot => snapshot.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(snapshot => snapshot.CommissionRate).HasPrecision(5, 2);
+            entity.Property(snapshot => snapshot.CommissionBase).HasPrecision(18, 2);
+            entity.Property(snapshot => snapshot.CommissionAmount).HasPrecision(18, 2);
+            entity.Property(snapshot => snapshot.PropertyPayableAmount).HasPrecision(18, 2);
+            entity.Property(snapshot => snapshot.CommissionPolicySource).HasMaxLength(100);
+            entity.Property(snapshot => snapshot.CommissionPolicyVersion).HasMaxLength(100);
+            entity.HasIndex(snapshot => new { snapshot.PaymentId, snapshot.ReservationId }).IsUnique();
+            entity.HasIndex(snapshot => snapshot.PaymentItemId)
+                .IsUnique()
+                .HasFilter("[PaymentItemId] IS NOT NULL");
+            entity.HasIndex(snapshot => new { snapshot.PropertyId, snapshot.CalculatedAtUtc });
+            entity.HasOne(snapshot => snapshot.Reservation)
+                .WithMany()
+                .HasForeignKey(snapshot => snapshot.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(snapshot => snapshot.Property)
+                .WithMany()
+                .HasForeignKey(snapshot => snapshot.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(snapshot => snapshot.Payment)
+                .WithMany()
+                .HasForeignKey(snapshot => snapshot.PaymentId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(snapshot => snapshot.PaymentItem)
+                .WithMany()
+                .HasForeignKey(snapshot => snapshot.PaymentItemId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<FinancialEntry>(entity =>
+        {
+            entity.Property(entry => entry.Amount).HasPrecision(18, 2);
+            entity.Property(entry => entry.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(entry => entry.CorrelationKey).HasMaxLength(200).IsRequired();
+            entity.Property(entry => entry.Reason).HasMaxLength(1000);
+            entity.HasIndex(entry => new { entry.EntryType, entry.CorrelationKey }).IsUnique();
+            entity.HasIndex(entry => new { entry.PropertyId, entry.EffectiveAtUtc });
+            entity.HasIndex(entry => entry.ReservationId);
+            entity.HasIndex(entry => entry.PaymentId);
+            entity.HasIndex(entry => entry.PaymentItemId);
+            entity.HasIndex(entry => entry.ReversesEntryId);
+            entity.HasOne(entry => entry.Property)
+                .WithMany()
+                .HasForeignKey(entry => entry.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(entry => entry.Reservation)
+                .WithMany()
+                .HasForeignKey(entry => entry.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(entry => entry.Payment)
+                .WithMany()
+                .HasForeignKey(entry => entry.PaymentId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(entry => entry.PaymentItem)
+                .WithMany()
+                .HasForeignKey(entry => entry.PaymentItemId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(entry => entry.ReversesEntry)
+                .WithMany(entry => entry.ReversalEntries)
+                .HasForeignKey(entry => entry.ReversesEntryId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
