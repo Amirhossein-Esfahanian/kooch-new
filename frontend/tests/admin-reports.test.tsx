@@ -34,6 +34,9 @@ function response(): AdminReservationReport {
       bookingValue: 12_500_000.75,
       bookingValueCurrency: "IRR",
       bookingValueHasMixedCurrencies: false,
+      collectedAmount: 8_250_000.5,
+      collectedCurrency: "IRR",
+      collectedHasMixedCurrencies: false,
       statusCounts: [{ status: "Confirmed", count: 12 }, { status: "PendingApproval", count: 5 }],
     },
     trend: [{ date: "2026-09-20", count: 17 }],
@@ -60,11 +63,14 @@ describe("Admin reservation count reports", () => {
     expect(within(summary).getByText("۵")).toBeTruthy();
     expect(within(summary).getByRole("heading", { name: "ارزش رزروها" })).toBeTruthy();
     expect(within(summary).getByText("۱۲٬۵۰۰٬۰۰۰٫۷۵ ریال")).toBeTruthy();
+    expect(within(summary).getByRole("heading", { name: "مبلغ وصول‌شده" })).toBeTruthy();
+    expect(within(summary).getByText("۸٬۲۵۰٬۰۰۰٫۵ ریال")).toBeTruthy();
+    expect(within(summary).getByRole("button", { name: "نمایش توضیح" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "نمودار روند ایجاد رزروها" })).toBeTruthy();
     expect(screen.getByRole("img", { name: "نمودار تفکیک اقامتگاه" })).toBeTruthy();
     expect(screen.queryByRole("table", { name: "روند ایجاد رزروها" })).toBeNull();
     expect(screen.queryByRole("table", { name: "تفکیک اقامتگاه" })).toBeNull();
-    expect(screen.queryByText(/درآمد|اشغال|مبلغ/)).toBeNull();
+    expect(screen.queryByText(/درآمد|اشغال/)).toBeNull();
   });
 
   it("switches each report panel independently and keeps existing table data available", async () => {
@@ -113,15 +119,35 @@ describe("Admin reservation count reports", () => {
         bookingValue: 0,
         bookingValueCurrency: null,
         bookingValueHasMixedCurrencies: false,
+        collectedAmount: 0,
+        collectedCurrency: null,
+        collectedHasMixedCurrencies: false,
         statusCounts: [],
       },
       statuses: [], trend: [], properties: [],
     });
     render(<AdminReportsPage />);
     expect(await screen.findByText("رزروی مطابق این فیلترها یافت نشد.")).toBeTruthy();
-    expect(within(screen.getByLabelText("خلاصه گزارش")).getAllByText("۰")).toHaveLength(2);
+    expect(within(screen.getByLabelText("خلاصه گزارش")).getAllByText("۰")).toHaveLength(3);
     expect(screen.queryByRole("table")).toBeNull();
     expect(screen.queryByRole("img", { name: /نمودار/ })).toBeNull();
+  });
+
+  it("shows mixed collected currencies without combining them", async () => {
+    mocks.apiRequest.mockResolvedValue({
+      ...response(),
+      summary: {
+        ...response().summary,
+        collectedAmount: null,
+        collectedCurrency: null,
+        collectedHasMixedCurrencies: true,
+      },
+    });
+
+    render(<AdminReportsPage />);
+
+    const summary = await screen.findByLabelText("خلاصه گزارش");
+    expect(within(summary).getByText("چند ارز")).toBeTruthy();
   });
 
   it("shows a scoped empty state instead of an empty chart canvas", async () => {

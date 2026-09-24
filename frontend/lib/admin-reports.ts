@@ -37,6 +37,9 @@ export interface AdminReservationReport {
     bookingValue: number | null;
     bookingValueCurrency: string | null;
     bookingValueHasMixedCurrencies: boolean;
+    collectedAmount: number | null;
+    collectedCurrency: string | null;
+    collectedHasMixedCurrencies: boolean;
     statusCounts: ReportStatusCount[];
   };
   trend: { date: string; count: number }[];

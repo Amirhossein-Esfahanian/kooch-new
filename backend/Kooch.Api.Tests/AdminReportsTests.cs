@@ -37,6 +37,9 @@ public sealed class AdminReportsTests
         Assert.Equal(360m, report.Summary.BookingValue);
         Assert.Equal("IRR", report.Summary.BookingValueCurrency);
         Assert.False(report.Summary.BookingValueHasMixedCurrencies);
+        Assert.Equal(400m, report.Summary.CollectedAmount);
+        Assert.Equal("IRR", report.Summary.CollectedCurrency);
+        Assert.False(report.Summary.CollectedHasMixedCurrencies);
         Assert.Equal([101, 102], report.ReportableProperties.Select(item => item.Id));
         Assert.DoesNotContain(report.Properties, item => item.PropertyId == 103);
     }
@@ -61,6 +64,7 @@ public sealed class AdminReportsTests
         Assert.Equal(101, Assert.Single(report.ReportableProperties).Id);
         Assert.Equal(7, report.Trend.Sum(item => item.Count));
         Assert.Equal(7, report.Statuses.Sum(item => item.Count));
+        Assert.Equal(100m, report.Summary.CollectedAmount);
     }
 
     [Theory]
@@ -86,6 +90,7 @@ public sealed class AdminReportsTests
         Assert.Equal(1, single.Trend.Sum(item => item.Count));
         Assert.Equal(1, single.Statuses.Sum(item => item.Count));
         Assert.Equal(80m, single.Summary.BookingValue);
+        Assert.Equal(300m, single.Summary.CollectedAmount);
 
         var multiple = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
             new() { PropertyIds = [101, 102, 101] });
@@ -94,6 +99,7 @@ public sealed class AdminReportsTests
         Assert.Equal(2, multiple.Properties.Count);
         Assert.Equal(8, multiple.Trend.Sum(item => item.Count));
         Assert.Equal(8, multiple.Statuses.Sum(item => item.Count));
+        Assert.Equal(400m, multiple.Summary.CollectedAmount);
     }
 
     [Fact]
@@ -105,11 +111,13 @@ public sealed class AdminReportsTests
             new() { PropertyTypes = [PropertyType.BoutiqueHotel] });
         Assert.Equal(1, singleType.Summary.TotalCount);
         Assert.Equal(102, Assert.Single(singleType.Properties).PropertyId);
+        Assert.Equal(300m, singleType.Summary.CollectedAmount);
 
         var multipleTypes = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
             new() { PropertyTypes = [PropertyType.Hotel, PropertyType.BoutiqueHotel, PropertyType.Hotel] });
         Assert.Equal(8, multipleTypes.Summary.TotalCount);
         Assert.Equal([PropertyType.Hotel, PropertyType.BoutiqueHotel], multipleTypes.Filters.PropertyTypes);
+        Assert.Equal(400m, multipleTypes.Summary.CollectedAmount);
 
         var intersection = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
             new() { PropertyIds = [101], PropertyTypes = [PropertyType.BoutiqueHotel] });
@@ -117,6 +125,7 @@ public sealed class AdminReportsTests
         Assert.Empty(intersection.Properties);
         Assert.Empty(intersection.Trend);
         Assert.Empty(intersection.Statuses);
+        Assert.Equal(0m, intersection.Summary.CollectedAmount);
     }
 
     [Fact]
@@ -144,6 +153,23 @@ public sealed class AdminReportsTests
         Assert.Equal(Utc(21), report.Filters.ToUtcExclusive);
         Assert.Equal(new DateOnly(2026, 9, 20), Assert.Single(report.Trend).Date);
         Assert.Equal(200m, report.Summary.BookingValue);
+    }
+
+    [Fact]
+    public async Task CollectedAmount_UsesPaidAtUtcAndDoesNotFollowCurrentReservationStatus()
+    {
+        await using var db = await SeedAsync();
+        var report = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin,
+            new()
+            {
+                From = new(2026, 9, 22),
+                To = new(2026, 9, 22),
+                Status = ReservationStatus.Cancelled
+            });
+
+        Assert.Equal(0, report.Summary.TotalCount);
+        Assert.Equal(100m, report.Summary.CollectedAmount);
+        Assert.Equal("IRR", report.Summary.CollectedCurrency);
     }
 
     [Theory]
@@ -190,6 +216,9 @@ public sealed class AdminReportsTests
         Assert.Equal(0m, report.Summary.BookingValue);
         Assert.Null(report.Summary.BookingValueCurrency);
         Assert.False(report.Summary.BookingValueHasMixedCurrencies);
+        Assert.Equal(0m, report.Summary.CollectedAmount);
+        Assert.Null(report.Summary.CollectedCurrency);
+        Assert.False(report.Summary.CollectedHasMixedCurrencies);
         Assert.Equal(2, report.ReportableProperties.Count);
     }
 
@@ -205,6 +234,23 @@ public sealed class AdminReportsTests
         Assert.Null(report.Summary.BookingValue);
         Assert.Null(report.Summary.BookingValueCurrency);
         Assert.True(report.Summary.BookingValueHasMixedCurrencies);
+    }
+
+    [Fact]
+    public async Task MixedCurrencies_AreNotCombinedIntoOneCollectedAmount()
+    {
+        await using var db = await SeedAsync();
+        var payment = await db.Payments.SingleAsync(item => item.Id == 4);
+        var allocation = await db.PaymentItems.SingleAsync(item => item.PaymentId == 4);
+        payment.Currency = "USD";
+        allocation.Currency = "USD";
+        await db.SaveChangesAsync();
+
+        var report = await Service(db).GetReservationsAsync(1, UserRole.SuperAdmin, new());
+
+        Assert.Null(report.Summary.CollectedAmount);
+        Assert.Null(report.Summary.CollectedCurrency);
+        Assert.True(report.Summary.CollectedHasMixedCurrencies);
     }
 
     [Fact]
@@ -256,12 +302,31 @@ public sealed class AdminReportsTests
             db.Reservations.Add(new Reservation { Id = i + 1, ClientId = 1, PropertyId = 101, Status = statuses[i],
                 CreatedAtUtc = i == 0 ? Utc(20).AddTicks(-1) : i == 6 ? Utc(21) : i == 5 ? Utc(21).AddTicks(-1) : Utc(20),
                 FinalAmount = (i + 1) * 10m, TotalPrice = 10_000m + i, Currency = "IRR", PaymentExpiresAtUtc = Utc(19) });
-        db.Reservations.AddRange(new Reservation { Id = 8, ClientId = 1, PropertyId = 102, CreatedAtUtc = Utc(20), Status = ReservationStatus.Completed,
+        db.BookingSessions.Add(new BookingSession
+        {
+            Id = 201,
+            SessionCode = "REPORT-SESSION-201",
+            ClientId = 1,
+            PropertyId = 102,
+            Currency = "IRR"
+        });
+        db.Reservations.AddRange(new Reservation { Id = 8, ClientId = 1, PropertyId = 102, BookingSessionId = 201, CreatedAtUtc = Utc(20), Status = ReservationStatus.Completed,
                 FinalAmount = 80m, TotalPrice = 20_000m, Currency = "IRR" },
             new Reservation { Id = 9, ClientId = 1, PropertyId = 103, CreatedAtUtc = Utc(20) },
             new Reservation { Id = 10, ClientId = 1, PropertyId = 101, CreatedAtUtc = Utc(20), IsDeleted = true });
-        db.Payments.AddRange(new Payment { ReservationId = 2, Amount = 100, Status = PaymentStatus.Successful },
-            new Payment { ReservationId = 2, Amount = 100, Status = PaymentStatus.Failed });
+        db.Payments.AddRange(
+            new Payment { Id = 1, ReservationId = 2, Amount = 100, Currency = "IRR", Status = PaymentStatus.Successful, PaidAtUtc = Utc(22) },
+            new Payment { Id = 2, ReservationId = 2, Amount = 700, Currency = "IRR", Status = PaymentStatus.Failed, PaidAtUtc = Utc(22) },
+            new Payment { Id = 3, ReservationId = 2, Amount = 800, Currency = "IRR", Status = PaymentStatus.Pending, PaidAtUtc = Utc(22) },
+            new Payment { Id = 4, BookingSessionId = 201, Amount = 300, Currency = "IRR", Status = PaymentStatus.Successful, PaidAtUtc = Utc(20) });
+        db.PaymentItems.Add(new PaymentItem
+        {
+            Id = 1,
+            PaymentId = 4,
+            ReservationId = 8,
+            AllocatedAmount = 300,
+            Currency = "IRR"
+        });
         // Preserve historical fixture timestamps; the async override stamps new production rows.
         db.SaveChanges();
         return db;
@@ -274,6 +339,7 @@ public sealed class AdminReportsTests
             base.OnModelCreating(modelBuilder);
             // SQLite has no SQL Server-generated rowversion; this fixture exercises read-only queries.
             modelBuilder.Entity<Reservation>().Property(item => item.RowVersion).ValueGeneratedNever();
+            modelBuilder.Entity<BookingSession>().Property(item => item.RowVersion).ValueGeneratedNever();
             modelBuilder.Entity<Payment>().Property(item => item.RowVersion).ValueGeneratedNever();
         }
     }

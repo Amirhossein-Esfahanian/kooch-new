@@ -7,6 +7,7 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochAlert } from "@/components/KoochAlert";
+import { KoochInfoHint } from "@/components/KoochInfoHint";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochField, KoochMultiSelect, KoochSelect } from "@/components/KoochFormControls";
 import { KoochTable, KoochTableHeader, KoochTableHead, KoochTableBody, KoochTableRow, KoochTableCell } from "@/components/KoochTable";
@@ -64,7 +65,7 @@ function ReportViewSwitch({
         size="sm"
         variant="ghost"
         aria-pressed={value === "chart"}
-        className={value === "chart" ? "min-w-16 bg-background text-primary shadow-sm ring-1 ring-inset ring-[var(--theme-primary-border)] hover:bg-background" : "min-w-16 text-muted-foreground hover:text-foreground"}
+        className={value === "chart" ? "min-w-16 !bg-card text-primary shadow-sm ring-1 ring-inset ring-border hover:!bg-card" : "min-w-16 text-muted-foreground hover:text-foreground"}
         onClick={() => onChange("chart")}
       >
         نمودار
@@ -73,7 +74,7 @@ function ReportViewSwitch({
         size="sm"
         variant="ghost"
         aria-pressed={value === "table"}
-        className={value === "table" ? "min-w-16 bg-background text-primary shadow-sm ring-1 ring-inset ring-[var(--theme-primary-border)] hover:bg-background" : "min-w-16 text-muted-foreground hover:text-foreground"}
+        className={value === "table" ? "min-w-16 !bg-card text-primary shadow-sm ring-1 ring-inset ring-border hover:!bg-card" : "min-w-16 text-muted-foreground hover:text-foreground"}
         onClick={() => onChange("table")}
       >
         جدول
@@ -148,6 +149,7 @@ function ReservationReport() {
           <div className="grid min-w-0 items-start gap-3 sm:grid-cols-2 xl:grid-cols-5">
             <div className="flex min-w-0 flex-col">
               <KoochDatePicker mode="single" autoConfirmOnSelect
+                controlClassName="grid h-10 w-full min-w-0 max-w-full px-3 py-2 text-right text-sm transition"
                 value={draft.startDate} maxDate={today} label="از تاریخ"
                 placeholder="انتخاب تاریخ شروع" labels={{ title: "انتخاب تاریخ شروع" }}
                 onChange={(startDate) => setDraft((previous) => ({
@@ -167,6 +169,7 @@ function ReservationReport() {
             </div>
             <fieldset className="flex min-w-0 flex-col disabled:opacity-60" disabled={!draft.startDate}>
               <KoochDatePicker mode="single" autoConfirmOnSelect
+                controlClassName="grid h-10 w-full min-w-0 max-w-full px-3 py-2 text-right text-sm transition"
                 value={draft.endDate} minDate={draft.startDate ?? undefined}
                 label="تا تاریخ"
                 placeholder={draft.startDate ? "انتخاب تاریخ پایان" : "ابتدا تاریخ شروع را انتخاب کنید"}
@@ -247,6 +250,17 @@ function ReservationReport() {
                   : <>{amount(report.summary.bookingValue ?? 0)}{currency(report.summary.bookingValueCurrency) ? ` ${currency(report.summary.bookingValueCurrency)}` : ""}</>}
               </p>
             </KoochCard>
+            <KoochCard>
+              <div className="flex items-center gap-1">
+                <h2 className="text-sm text-muted-foreground">مبلغ وصول‌شده</h2>
+                <KoochInfoHint content="مجموع پرداخت‌های موفق در بازه انتخاب‌شده" />
+              </div>
+              <p className="mt-2 text-2xl font-semibold tabular-nums">
+                {report.summary.collectedHasMixedCurrencies
+                  ? "چند ارز"
+                  : <>{amount(report.summary.collectedAmount ?? 0)}{currency(report.summary.collectedCurrency) ? ` ${currency(report.summary.collectedCurrency)}` : ""}</>}
+              </p>
+            </KoochCard>
             {report.summary.statusCounts.map((item) => <KoochCard key={item.status}><h2 className="text-sm text-muted-foreground">{labels[item.status] ?? item.status}</h2><p className="mt-2 text-2xl font-semibold tabular-nums">{number(item.count)}</p></KoochCard>)}
           </div>
           {report.summary.totalCount === 0 ? <KoochCard role="status">رزروی مطابق این فیلترها یافت نشد.</KoochCard> : (
@@ -271,7 +285,7 @@ function ReservationReport() {
                 </section>
               </KoochCard>
               <KoochCard className="min-w-0" padding="md">
-                <section className="min-w-0 space-y-4" aria-labelledby="report-properties-title">
+                <section className="min-w-0 space-y-2" aria-labelledby="report-properties-title">
                   <div className="flex min-h-10 flex-wrap items-center justify-between gap-3">
                     <h2 id="report-properties-title" className="font-semibold">تفکیک اقامتگاه</h2>
                     <ReportViewSwitch value={propertyView} onChange={setPropertyView} label="نوع نمایش تفکیک اقامتگاه" />

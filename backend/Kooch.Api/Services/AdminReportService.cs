@@ -122,9 +122,53 @@ public sealed class AdminReportService(
             ? null
             : bookingValuesByCurrency.SingleOrDefault()?.Currency;
 
+        var directCollectedQuery = dbContext.Payments.AsNoTracking()
+            .Where(payment => payment.Status == PaymentStatus.Successful &&
+                payment.PaidAtUtc.HasValue &&
+                payment.ReservationId.HasValue &&
+                reportablePropertyIds.Contains(payment.Reservation!.PropertyId));
+        var allocatedCollectedQuery = dbContext.PaymentItems.AsNoTracking()
+            .Where(item => item.Payment.Status == PaymentStatus.Successful &&
+                item.Payment.PaidAtUtc.HasValue &&
+                item.Payment.BookingSessionId.HasValue &&
+                reportablePropertyIds.Contains(item.Reservation.PropertyId));
+        if (from.HasValue)
+        {
+            directCollectedQuery = directCollectedQuery.Where(payment => payment.PaidAtUtc >= from.Value);
+            allocatedCollectedQuery = allocatedCollectedQuery.Where(item => item.Payment.PaidAtUtc >= from.Value);
+        }
+        if (to.HasValue)
+        {
+            directCollectedQuery = directCollectedQuery.Where(payment => payment.PaidAtUtc < to.Value);
+            allocatedCollectedQuery = allocatedCollectedQuery.Where(item => item.Payment.PaidAtUtc < to.Value);
+        }
+
+        // Session payments are attributed only through their allocations; never add the parent Payment.Amount.
+        var directCollectedByCurrency = await directCollectedQuery
+            .GroupBy(payment => payment.Currency)
+            .Select(group => new { Currency = group.Key, Amount = group.Sum(payment => payment.Amount) })
+            .ToListAsync(cancellationToken);
+        var allocatedCollectedByCurrency = await allocatedCollectedQuery
+            .GroupBy(item => item.Currency)
+            .Select(group => new { Currency = group.Key, Amount = group.Sum(item => item.AllocatedAmount) })
+            .ToListAsync(cancellationToken);
+        var collectedByCurrency = directCollectedByCurrency
+            .Concat(allocatedCollectedByCurrency)
+            .GroupBy(item => item.Currency)
+            .Select(group => new { Currency = group.Key, Amount = group.Sum(item => item.Amount) })
+            .ToArray();
+        var collectedHasMixedCurrencies = collectedByCurrency.Length > 1;
+        var collectedAmount = collectedHasMixedCurrencies
+            ? (decimal?)null
+            : collectedByCurrency.SingleOrDefault()?.Amount ?? 0m;
+        var collectedCurrency = collectedHasMixedCurrencies
+            ? null
+            : collectedByCurrency.SingleOrDefault()?.Currency;
+
         return new AdminReservationReportResponse(
             new(query.From, query.To, selectedPropertyIds, selectedPropertyTypes, status, "UTC", from, to),
-            new(counts.Sum(item => item.Count), bookingValue, bookingValueCurrency, hasMixedCurrencies, statuses),
+            new(counts.Sum(item => item.Count), bookingValue, bookingValueCurrency, hasMixedCurrencies,
+                collectedAmount, collectedCurrency, collectedHasMixedCurrencies, statuses),
             trend, properties, statuses, options);
     }
 }

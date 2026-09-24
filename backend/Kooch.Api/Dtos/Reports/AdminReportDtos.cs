@@ -22,6 +22,9 @@ public sealed record AdminReportSummary(
     decimal? BookingValue,
     string? BookingValueCurrency,
     bool BookingValueHasMixedCurrencies,
+    decimal? CollectedAmount,
+    string? CollectedCurrency,
+    bool CollectedHasMixedCurrencies,
     IReadOnlyList<AdminReportStatusCount> StatusCounts);
 public sealed record AdminReportTrend(DateOnly Date, int Count);
 public sealed record AdminReportPropertyCount(int PropertyId, string PropertyName, int Count);
