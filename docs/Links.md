@@ -84,3 +84,4 @@ Partial-payment architecture در مقیاس کامل
 سیستم فعلی accumulated successful payments را در بعضی مسیرها لحاظ می‌کند، ولی اگر partial payment به‌عنوان feature رسمی و گسترده بخواهیم، uniqueness و snapshot semantics باید دوباره بررسی شوند.
 درگاه واقعی و Direct Payment API کامل
 Audit نشان داده بود provider واقعی production هنوز کامل نیست و مسیر direct payment خارجی هم کامل به gateway متصل نشده. این هم یک توسعه بعدی است.
+تعیین شرایط کنسلی

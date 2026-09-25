@@ -10,6 +10,7 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
     private readonly KoochDbContext dbContext;
     private readonly IEffectiveAvailabilityService effectiveAvailabilityService;
     private readonly IPaymentFinancializationService paymentFinancializationService;
+    private readonly IReservationVoucherService reservationVoucherService;
 
     public PaymentDomainApplicationHandler(
         KoochDbContext dbContext,
@@ -19,7 +20,8 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
             effectiveAvailabilityService,
             new PaymentFinancializationService(
                 dbContext,
-                new CommissionPolicyResolver(dbContext)))
+                new CommissionPolicyResolver(dbContext)),
+            new ReservationVoucherService(dbContext, new VoucherNumberGenerator(dbContext)))
     {
     }
 
@@ -27,10 +29,24 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
         KoochDbContext dbContext,
         IEffectiveAvailabilityService effectiveAvailabilityService,
         IPaymentFinancializationService paymentFinancializationService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            paymentFinancializationService,
+            new ReservationVoucherService(dbContext, new VoucherNumberGenerator(dbContext)))
+    {
+    }
+
+    public PaymentDomainApplicationHandler(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IPaymentFinancializationService paymentFinancializationService,
+        IReservationVoucherService reservationVoucherService)
     {
         this.dbContext = dbContext;
         this.effectiveAvailabilityService = effectiveAvailabilityService;
         this.paymentFinancializationService = paymentFinancializationService;
+        this.reservationVoucherService = reservationVoucherService;
     }
 
     private static readonly ReservationStatus[] CapacityConsumingStatuses =
@@ -119,6 +135,14 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
         }
 
         ApplySuccessfulPayment(payment, includedReservations, now);
+        foreach (var reservation in includedReservations)
+        {
+            await reservationVoucherService.IssueAsync(
+                reservation,
+                payment,
+                itemsByReservationId[reservation.Id],
+                cancellationToken);
+        }
     }
 
     private async Task ApplyLegacyPaymentAsync(
@@ -162,6 +186,14 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
         }
 
         ApplySuccessfulPayment(payment, [reservation], now, capacityExists);
+        if (capacityExists)
+        {
+            await reservationVoucherService.IssueAsync(
+                reservation,
+                payment,
+                paymentItem: null,
+                cancellationToken);
+        }
     }
 
     private static void ValidatePaymentItems(Payment payment, IReadOnlyList<PaymentItem> items)

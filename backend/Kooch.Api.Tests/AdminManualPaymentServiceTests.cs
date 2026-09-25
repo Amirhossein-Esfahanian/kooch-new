@@ -139,6 +139,7 @@ public sealed class AdminManualPaymentServiceTests
         var reservation = await harness.Context.Reservations.SingleAsync();
         var snapshot = await harness.Context.ReservationFinancialSnapshots.SingleAsync();
         var payable = await harness.Context.FinancialEntries.SingleAsync();
+        var voucher = await harness.Context.ReservationVouchers.SingleAsync();
         Assert.Equal(PaymentStatus.Successful, payment.Status);
         Assert.NotNull(payment.PaidAtUtc);
         Assert.Equal(ManualPaymentVerificationStatus.Approved, payment.ManualDetails!.VerificationStatus);
@@ -151,6 +152,8 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Equal(FinancialEntryType.PropertyPayable, payable.EntryType);
         Assert.Equal(90m, payable.Amount);
         Assert.Equal(payment.Amount, snapshot.CommissionAmount + snapshot.PropertyPayableAmount);
+        Assert.Equal(snapshot.Id, voucher.ReservationFinancialSnapshotId);
+        Assert.Equal(snapshot.GrossAmount, voucher.GrossAmount);
         Assert.True(result.CapacityClaimed);
     }
 
@@ -194,6 +197,7 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Equal(originalStatus, (await harness.Context.Reservations.SingleAsync()).Status);
         Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
         Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
+        Assert.Empty(await harness.Context.ReservationVouchers.ToListAsync());
     }
 
     [Fact]
@@ -230,6 +234,7 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Contains("already finalized", error.Message);
         Assert.Equal(1, await harness.Context.ReservationFinancialSnapshots.CountAsync());
         Assert.Equal(1, await harness.Context.FinancialEntries.CountAsync());
+        Assert.Equal(1, await harness.Context.ReservationVouchers.CountAsync());
     }
 
     [Fact]
@@ -244,6 +249,7 @@ public sealed class AdminManualPaymentServiceTests
 
         Assert.Equal(1, await harness.Context.ReservationFinancialSnapshots.CountAsync());
         Assert.Equal(1, await harness.Context.FinancialEntries.CountAsync());
+        Assert.Equal(1, await harness.Context.ReservationVouchers.CountAsync());
     }
 
     [Fact]
@@ -269,6 +275,7 @@ public sealed class AdminManualPaymentServiceTests
             (await harness.Context.Reservations.SingleAsync()).Status);
         Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
         Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
+        Assert.Empty(await harness.Context.ReservationVouchers.ToListAsync());
     }
 
     [Fact]
@@ -288,6 +295,7 @@ public sealed class AdminManualPaymentServiceTests
         Assert.False(result.CapacityClaimed);
         Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
         Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
+        Assert.Empty(await harness.Context.ReservationVouchers.ToListAsync());
     }
 
     [Fact]
@@ -343,6 +351,7 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Equal(
             ReservationStatus.Pending,
             (await harness.DbContext.Reservations.FindAsync(pending.Id))!.Status);
+        Assert.Empty(await harness.DbContext.ReservationVouchers.ToListAsync());
     }
 
     [Fact]
@@ -406,6 +415,13 @@ public sealed class AdminManualPaymentServiceTests
                 PasswordHash = "not-used",
                 Role = UserRole.SuperAdmin,
                 IsActive = true
+            });
+            context.Properties.Add(new Property
+            {
+                Id = 30,
+                OwnerId = AdminUserId,
+                Name = "Manual payment property",
+                Slug = "manual-payment-property"
             });
             context.RoomTypes.Add(new RoomType
             {

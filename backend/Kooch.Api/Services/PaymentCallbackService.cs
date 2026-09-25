@@ -175,7 +175,7 @@ public sealed class PaymentCallbackService(
             payment.AppliedAtUtc = now;
             payment.FailedAtUtc = null;
             payment.ProcessingError = null;
-            await dbContext.SaveChangesAsync(cancellationToken);
+            await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ToResult(payment, receiptId, isDuplicate);
         }

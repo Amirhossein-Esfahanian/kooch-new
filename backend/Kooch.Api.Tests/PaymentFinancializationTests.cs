@@ -28,6 +28,7 @@ public sealed class PaymentFinancializationTests
         var payment = await harness.Context.Payments.SingleAsync();
         var snapshot = await harness.Context.ReservationFinancialSnapshots.SingleAsync();
         var entry = await harness.Context.FinancialEntries.SingleAsync();
+        var voucher = await harness.Context.ReservationVouchers.SingleAsync();
         Assert.Equal(payment.Amount, snapshot.GrossAmount);
         Assert.Equal(100m, snapshot.CommissionBase);
         Assert.Equal(10m, snapshot.CommissionAmount);
@@ -40,6 +41,10 @@ public sealed class PaymentFinancializationTests
             .Where(candidate => candidate.EntryType == FinancialEntryType.Commission)
             .ToListAsync());
         Assert.Equal(snapshot.GrossAmount, snapshot.CommissionAmount + snapshot.PropertyPayableAmount);
+        Assert.Equal(snapshot.Id, voucher.ReservationFinancialSnapshotId);
+        Assert.Equal(snapshot.GrossAmount, voucher.GrossAmount);
+        Assert.Equal(snapshot.CommissionAmount, voucher.CommissionAmount);
+        Assert.Equal(snapshot.PropertyPayableAmount, voucher.PropertyPayableAmount);
     }
 
     [Fact]
@@ -59,6 +64,7 @@ public sealed class PaymentFinancializationTests
         Assert.Equal(ReservationStatus.CapacityLost, result.ReservationStatus);
         Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
         Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
+        Assert.Empty(await harness.Context.ReservationVouchers.ToListAsync());
     }
 
     [Fact]
@@ -81,6 +87,7 @@ public sealed class PaymentFinancializationTests
             (await harness.Context.Reservations.FindAsync(10))!.Status);
         Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
         Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
+        Assert.Empty(await harness.Context.ReservationVouchers.ToListAsync());
     }
 
     [Fact]
@@ -110,6 +117,13 @@ public sealed class PaymentFinancializationTests
         Assert.Equal(2, entries.Count);
         Assert.All(entries, entry => Assert.Equal(FinancialEntryType.PropertyPayable, entry.EntryType));
         Assert.Equal([90m, 160m], entries.OrderBy(entry => entry.ReservationId).Select(entry => entry.Amount));
+        var vouchers = await harness.Context.ReservationVouchers
+            .OrderBy(voucher => voucher.ReservationId)
+            .ToListAsync();
+        Assert.Equal(2, vouchers.Count);
+        Assert.Equal(
+            snapshots.Select(snapshot => snapshot.Id),
+            vouchers.Select(voucher => voucher.ReservationFinancialSnapshotId));
     }
 
     [Fact]
@@ -289,8 +303,25 @@ public sealed class PaymentFinancializationTests
                 .ConfigureWarnings(warnings =>
                     warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
+            var context = new KoochDbContext(options);
+            context.Users.Add(new User
+            {
+                Id = 1,
+                FirstName = "Payment",
+                LastName = "Guest",
+                PasswordHash = "not-used",
+                Role = UserRole.Client,
+                IsActive = true
+            });
+            context.Properties.Add(new Property
+            {
+                Id = 1,
+                OwnerId = 1,
+                Name = "Payment property",
+                Slug = "payment-property"
+            });
             return new FinancializationHarness(
-                new KoochDbContext(options),
+                context,
                 new StubAvailabilityService(hasCapacity));
         }
 

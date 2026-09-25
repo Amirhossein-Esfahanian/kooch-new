@@ -36,6 +36,16 @@ public sealed class PaymentCallbackServiceTests
                 reservation.Status));
         Assert.Equal(2, await harness.Context.AuditLogs.CountAsync());
         Assert.Equal(2, await harness.Context.NotificationLogs.CountAsync());
+        var snapshots = await harness.Context.ReservationFinancialSnapshots
+            .OrderBy(snapshot => snapshot.ReservationId)
+            .ToListAsync();
+        var vouchers = await harness.Context.ReservationVouchers
+            .OrderBy(voucher => voucher.ReservationId)
+            .ToListAsync();
+        Assert.Equal(2, vouchers.Count);
+        Assert.Equal(
+            snapshots.Select(snapshot => snapshot.Id),
+            vouchers.Select(voucher => voucher.ReservationFinancialSnapshotId));
     }
 
     [Fact]
@@ -509,6 +519,10 @@ public sealed class PaymentCallbackServiceTests
         var first = await harness.Service.ReceiveAsync(
             InternalTestPaymentProvider.ProviderName,
             callback);
+        var originalNumbers = await harness.Context.ReservationVouchers
+            .OrderBy(voucher => voucher.ReservationId)
+            .Select(voucher => voucher.VoucherNumber)
+            .ToListAsync();
 
         var duplicate = await harness.Service.ReceiveAsync(
             InternalTestPaymentProvider.ProviderName,
@@ -519,6 +533,12 @@ public sealed class PaymentCallbackServiceTests
         Assert.Equal(first.ReceiptId, duplicate.ReceiptId);
         Assert.Equal(first.ApplicationState, duplicate.ApplicationState);
         Assert.Single(await harness.Context.PaymentCallbackReceipts.ToListAsync());
+        Assert.Equal(
+            originalNumbers,
+            await harness.Context.ReservationVouchers
+                .OrderBy(voucher => voucher.ReservationId)
+                .Select(voucher => voucher.VoucherNumber)
+                .ToListAsync());
     }
 
     [Fact]
@@ -687,6 +707,11 @@ public sealed class PaymentCallbackServiceTests
         Assert.Equal(
             ReservationStatus.Confirmed,
             (await harness.Context.Reservations.FindAsync(12))!.Status);
+        var voucher = await harness.Context.ReservationVouchers.SingleAsync(
+            item => item.ReservationId == 12);
+        var snapshot = await harness.Context.ReservationFinancialSnapshots.SingleAsync(
+            item => item.ReservationId == 12);
+        Assert.Equal(snapshot.Id, voucher.ReservationFinancialSnapshotId);
     }
 
     [Fact]
@@ -801,6 +826,22 @@ public sealed class PaymentCallbackServiceTests
                 Group = "Reservation",
                 Label = "Direct commission",
                 IsActive = true
+            });
+            context.Users.Add(new User
+            {
+                Id = 1,
+                FirstName = "Callback",
+                LastName = "Guest",
+                PasswordHash = "not-used",
+                Role = UserRole.Client,
+                IsActive = true
+            });
+            context.Properties.Add(new Property
+            {
+                Id = 1,
+                OwnerId = 1,
+                Name = "Callback property",
+                Slug = "callback-property"
             });
             context.BookingSessions.Add(new BookingSession
             {

@@ -20,6 +20,7 @@ public class PaymentService : IPaymentService
     private readonly IEffectiveAvailabilityService effectiveAvailabilityService;
     private readonly IBookingSessionPayableScopeResolver payableScopeResolver;
     private readonly IPaymentFinancializationService paymentFinancializationService;
+    private readonly IReservationVoucherService reservationVoucherService;
 
     public PaymentService(
         KoochDbContext dbContext,
@@ -30,7 +31,8 @@ public class PaymentService : IPaymentService
             new BookingSessionPayableScopeResolver(),
             new PaymentFinancializationService(
                 dbContext,
-                new CommissionPolicyResolver(dbContext)))
+                new CommissionPolicyResolver(dbContext)),
+            new ReservationVoucherService(dbContext, new VoucherNumberGenerator(dbContext)))
     {
     }
 
@@ -42,7 +44,22 @@ public class PaymentService : IPaymentService
             dbContext,
             effectiveAvailabilityService,
             new BookingSessionPayableScopeResolver(),
-            paymentFinancializationService)
+            paymentFinancializationService,
+            new ReservationVoucherService(dbContext, new VoucherNumberGenerator(dbContext)))
+    {
+    }
+
+    public PaymentService(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IPaymentFinancializationService paymentFinancializationService,
+        IReservationVoucherService reservationVoucherService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            new BookingSessionPayableScopeResolver(),
+            paymentFinancializationService,
+            reservationVoucherService)
     {
     }
 
@@ -51,11 +68,27 @@ public class PaymentService : IPaymentService
         IEffectiveAvailabilityService effectiveAvailabilityService,
         IBookingSessionPayableScopeResolver payableScopeResolver,
         IPaymentFinancializationService paymentFinancializationService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            payableScopeResolver,
+            paymentFinancializationService,
+            new ReservationVoucherService(dbContext, new VoucherNumberGenerator(dbContext)))
+    {
+    }
+
+    internal PaymentService(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IBookingSessionPayableScopeResolver payableScopeResolver,
+        IPaymentFinancializationService paymentFinancializationService,
+        IReservationVoucherService reservationVoucherService)
     {
         this.dbContext = dbContext;
         this.effectiveAvailabilityService = effectiveAvailabilityService;
         this.payableScopeResolver = payableScopeResolver;
         this.paymentFinancializationService = paymentFinancializationService;
+        this.reservationVoucherService = reservationVoucherService;
     }
 
     public async Task<BookingSessionPaymentInitiationResult> InitiateBookingSessionPaymentAsync(
@@ -258,6 +291,11 @@ public class PaymentService : IPaymentService
         {
             reservation.Status = ReservationStatus.Confirmed;
             reservation.ConfirmedAtUtc = now;
+            await reservationVoucherService.IssueAsync(
+                reservation,
+                payment,
+                paymentItem: null,
+                cancellationToken);
         }
         else
         {
@@ -272,7 +310,7 @@ public class PaymentService : IPaymentService
             token.UsedAtUtc = now;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new PaymentConfirmationResponse

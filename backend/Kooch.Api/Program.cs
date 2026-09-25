@@ -110,6 +110,8 @@ builder.Services.AddScoped<IReservationPricingService, ReservationPricingService
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
+builder.Services.AddScoped<IVoucherNumberGenerator, VoucherNumberGenerator>();
+builder.Services.AddScoped<IReservationVoucherService, ReservationVoucherService>();
 builder.Services.AddScoped<IAdminManualPaymentService, AdminManualPaymentService>();
 builder.Services.AddHostedService<ReservationExpirationHostedService>();
 builder.Services.AddHostedService<ReservationApprovalReminderHostedService>();

@@ -9,9 +9,22 @@ namespace Kooch.Api.Services;
 public sealed class AdminManualPaymentService(
     KoochDbContext dbContext,
     IEffectiveAvailabilityService effectiveAvailabilityService,
-    IPaymentFinancializationService paymentFinancializationService)
+    IPaymentFinancializationService paymentFinancializationService,
+    IReservationVoucherService reservationVoucherService)
     : IAdminManualPaymentService
 {
+    public AdminManualPaymentService(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IPaymentFinancializationService paymentFinancializationService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            paymentFinancializationService,
+            new ReservationVoucherService(dbContext, new VoucherNumberGenerator(dbContext)))
+    {
+    }
+
     private const int ReferenceNumberMaxLength = 200;
     private const int DestinationBankMaxLength = 100;
     private const int DestinationAccountReferenceMaxLength = 200;
@@ -194,6 +207,11 @@ public sealed class AdminManualPaymentService(
         {
             reservation.Status = ReservationStatus.Confirmed;
             reservation.ConfirmedAtUtc = now;
+            await reservationVoucherService.IssueAsync(
+                reservation,
+                payment,
+                paymentItem: null,
+                cancellationToken);
         }
         else
         {
@@ -209,7 +227,7 @@ public sealed class AdminManualPaymentService(
             token.UpdatedByUserId = actorUserId;
         }
 
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ToResponse(payment, details, reservation, capacityExists);
     }
