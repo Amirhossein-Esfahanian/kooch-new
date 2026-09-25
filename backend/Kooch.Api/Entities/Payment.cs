@@ -4,6 +4,7 @@ public class Payment : BaseEntity
 {
     public int? ReservationId { get; set; }
     public int? BookingSessionId { get; set; }
+    public PaymentChannel Channel { get; set; } = PaymentChannel.Online;
     public decimal Amount { get; set; }
     public string Currency { get; set; } = "IRR";
     public PaymentStatus Status { get; set; }
@@ -22,4 +23,5 @@ public class Payment : BaseEntity
     public BookingSession? BookingSession { get; set; }
     public ICollection<PaymentItem> Items { get; set; } = [];
     public ICollection<PaymentCallbackReceipt> CallbackReceipts { get; set; } = [];
+    public ManualPaymentDetails? ManualDetails { get; set; }
 }

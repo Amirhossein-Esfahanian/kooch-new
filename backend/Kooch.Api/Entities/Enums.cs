@@ -118,6 +118,22 @@ public enum ReservationCancellationReason
     PaymentExpired
 }
 public enum PaymentStatus { Pending, Successful, Failed, Refunded }
+public enum PaymentChannel { Online = 0, Manual = 1 }
+public enum ManualPaymentMethod
+{
+    CardToCard = 0,
+    BankTransfer = 1,
+    Paya = 2,
+    Satna = 3,
+    AccountTransfer = 4,
+    Other = 5
+}
+public enum ManualPaymentVerificationStatus
+{
+    PendingVerification = 0,
+    Approved = 1,
+    Rejected = 2
+}
 public enum CommissionType
 {
     Direct = 0,

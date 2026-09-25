@@ -26,6 +26,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentItem> PaymentItems => Set<PaymentItem>();
     public DbSet<PaymentCallbackReceipt> PaymentCallbackReceipts => Set<PaymentCallbackReceipt>();
+    public DbSet<ManualPaymentDetails> ManualPaymentDetails => Set<ManualPaymentDetails>();
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
@@ -915,6 +916,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<Payment>(entity =>
         {
+            entity.Property(payment => payment.Channel).HasDefaultValue(PaymentChannel.Online);
             entity.Property(payment => payment.Amount).HasPrecision(18, 2);
             entity.Property(payment => payment.Currency).HasMaxLength(3).IsRequired();
             entity.Property(payment => payment.Provider).HasMaxLength(100);
@@ -940,6 +942,38 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(payment => payment.BookingSession)
                 .WithMany(session => session.Payments)
                 .HasForeignKey(payment => payment.BookingSessionId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<ManualPaymentDetails>(entity =>
+        {
+            entity.Property(details => details.VerificationStatus)
+                .HasDefaultValue(ManualPaymentVerificationStatus.PendingVerification);
+            entity.Property(details => details.PaymentDate).HasColumnType("date");
+            entity.Property(details => details.PaymentTime).HasColumnType("time");
+            entity.Property(details => details.ReferenceNumber).HasMaxLength(200);
+            entity.Property(details => details.DestinationBank).HasMaxLength(100);
+            entity.Property(details => details.DestinationAccountReference).HasMaxLength(200);
+            entity.Property(details => details.Notes).HasMaxLength(2000);
+            entity.Property(details => details.EvidenceFilePath).HasMaxLength(2048);
+            entity.Property(details => details.RejectionReason).HasMaxLength(1000);
+            entity.HasIndex(details => details.PaymentId).IsUnique();
+            entity.HasIndex(details => new { details.VerificationStatus, details.SubmittedAtUtc });
+            entity.HasOne(details => details.Payment)
+                .WithOne(payment => payment.ManualDetails)
+                .HasForeignKey<ManualPaymentDetails>(details => details.PaymentId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(details => details.SubmittedByUser)
+                .WithMany()
+                .HasForeignKey(details => details.SubmittedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(details => details.VerifiedByUser)
+                .WithMany()
+                .HasForeignKey(details => details.VerifiedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(details => details.RejectedByUser)
+                .WithMany()
+                .HasForeignKey(details => details.RejectedByUserId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
 
