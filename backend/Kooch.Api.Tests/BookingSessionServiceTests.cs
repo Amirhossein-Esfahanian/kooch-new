@@ -30,7 +30,7 @@ public sealed class BookingSessionServiceTests
         Assert.StartsWith("KCH-S-", result.SessionCode);
         var reservation = Assert.Single(result.Reservations);
         Assert.NotEqual(0, reservation.ReservationId);
-        Assert.StartsWith("KCH-", reservation.ReservationNumber);
+        Assert.Matches("^R-[0-9]{6}$", reservation.ReservationNumber);
         Assert.Equal(ReservationStatus.Pending, reservation.Status);
 
         await using var verification = harness.CreateContext();

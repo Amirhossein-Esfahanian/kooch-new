@@ -298,7 +298,7 @@ public class ReservationService(
             now,
             cancellationToken);
         dbContext.Reservations.Add(reservation);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await reservationNumberGenerator.SaveWithReservationNumberRetryAsync(dbContext, cancellationToken);
 
         if (reservation.Status == ReservationStatus.PendingApproval)
         {

@@ -224,7 +224,7 @@ public sealed class BookingSessionService(
         }
 
         dbContext.BookingSessions.Add(session);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await reservationNumberGenerator.SaveWithReservationNumberRetryAsync(dbContext, cancellationToken);
         var pendingApprovalIds = session.Reservations
             .Where(reservation => reservation.Status == ReservationStatus.PendingApproval)
             .Select(reservation => reservation.Id)
