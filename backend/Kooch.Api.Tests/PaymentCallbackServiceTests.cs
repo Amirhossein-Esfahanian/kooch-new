@@ -211,6 +211,8 @@ public sealed class PaymentCallbackServiceTests
         Assert.True(duplicate.IsDuplicate);
         Assert.Single(await harness.Context.AuditLogs.ToListAsync());
         Assert.Single(await harness.Context.NotificationLogs.ToListAsync());
+        Assert.Single(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
+        Assert.Single(await harness.Context.FinancialEntries.ToListAsync());
         Assert.Equal(ReservationStatus.Rejected, (await harness.Context.Reservations.FindAsync(11))!.Status);
     }
 
@@ -237,6 +239,8 @@ public sealed class PaymentCallbackServiceTests
         Assert.Single(await verification.AuditLogs.ToListAsync());
         Assert.Single(await verification.NotificationLogs.ToListAsync());
         Assert.Single(await verification.PaymentCallbackReceipts.ToListAsync());
+        Assert.Single(await verification.ReservationFinancialSnapshots.ToListAsync());
+        Assert.Single(await verification.FinancialEntries.ToListAsync());
     }
 
     [Fact]
@@ -561,6 +565,52 @@ public sealed class PaymentCallbackServiceTests
     }
 
     [Fact]
+    public async Task CommissionConfigurationFailure_PreservesProviderConfirmationAndRetriesAtomically()
+    {
+        await using var harness = await PaymentCallbackHarness.CreateAsync();
+        var setting = await harness.Context.SiteSettings
+            .SingleAsync(candidate => candidate.Key == CommissionPolicyResolver.DirectSettingKey);
+        harness.Context.SiteSettings.Remove(setting);
+        await harness.Context.SaveChangesAsync();
+
+        var failed = await harness.Service.ReceiveAsync(
+            InternalTestPaymentProvider.ProviderName,
+            harness.Callback());
+
+        Assert.Equal(PaymentCallbackApplicationState.Failed, failed.ApplicationState);
+        var payment = await harness.Context.Payments.SingleAsync(candidate => candidate.Id == 100);
+        Assert.NotNull(payment.ProviderConfirmedAtUtc);
+        Assert.Null(payment.AppliedAtUtc);
+        Assert.All(
+            await harness.Context.Reservations.ToListAsync(),
+            reservation => Assert.Equal(
+                ReservationStatus.ApprovedAwaitingPayment,
+                reservation.Status));
+        Assert.Empty(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
+        Assert.Empty(await harness.Context.FinancialEntries.ToListAsync());
+
+        harness.Context.SiteSettings.Add(new SiteSetting
+        {
+            Key = CommissionPolicyResolver.DirectSettingKey,
+            Value = "10",
+            Type = SiteSettingType.Number,
+            Group = "Reservation",
+            Label = "Direct commission",
+            IsActive = true
+        });
+        await harness.Context.SaveChangesAsync();
+
+        var retried = await harness.Service.RetryApplicationAsync(100);
+
+        Assert.Equal(PaymentCallbackApplicationState.Applied, retried.ApplicationState);
+        Assert.Equal(2, await harness.Context.ReservationFinancialSnapshots.CountAsync());
+        Assert.Equal(2, await harness.Context.FinancialEntries.CountAsync());
+        Assert.Empty(await harness.Context.FinancialEntries
+            .Where(entry => entry.EntryType == FinancialEntryType.Commission)
+            .ToListAsync());
+    }
+
+    [Fact]
     public async Task RetryAfterDomainFailure_AppliesWithoutCreatingAnotherReceipt()
     {
         var handler = new TestDomainApplicationHandler { ThrowAfterFirstReservation = true };
@@ -743,6 +793,15 @@ public sealed class PaymentCallbackServiceTests
                 .Options;
             var context = new KoochDbContext(options);
             var deadline = DateTime.UtcNow.AddHours(1);
+            context.SiteSettings.Add(new SiteSetting
+            {
+                Key = CommissionPolicyResolver.DirectSettingKey,
+                Value = "10",
+                Type = SiteSettingType.Number,
+                Group = "Reservation",
+                Label = "Direct commission",
+                IsActive = true
+            });
             context.BookingSessions.Add(new BookingSession
             {
                 Id = 1,

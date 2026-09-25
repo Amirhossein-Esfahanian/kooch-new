@@ -434,6 +434,15 @@ public sealed class MockBookingSessionPaymentTests
                 .Options;
             var context = new KoochDbContext(options);
             var deadline = DateTime.UtcNow.AddHours(1);
+            context.SiteSettings.Add(new SiteSetting
+            {
+                Key = CommissionPolicyResolver.DirectSettingKey,
+                Value = "10",
+                Type = SiteSettingType.Number,
+                Group = "Reservation",
+                Label = "Direct commission",
+                IsActive = true
+            });
             context.BookingSessions.Add(new BookingSession
             {
                 Id = 1,

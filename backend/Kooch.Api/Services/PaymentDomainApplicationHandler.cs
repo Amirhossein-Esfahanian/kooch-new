@@ -5,10 +5,34 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class PaymentDomainApplicationHandler(
-    KoochDbContext dbContext,
-    IEffectiveAvailabilityService effectiveAvailabilityService) : IPaymentDomainApplicationHandler
+public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationHandler
 {
+    private readonly KoochDbContext dbContext;
+    private readonly IEffectiveAvailabilityService effectiveAvailabilityService;
+    private readonly IPaymentFinancializationService paymentFinancializationService;
+
+    public PaymentDomainApplicationHandler(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            new PaymentFinancializationService(
+                dbContext,
+                new CommissionPolicyResolver(dbContext)))
+    {
+    }
+
+    public PaymentDomainApplicationHandler(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IPaymentFinancializationService paymentFinancializationService)
+    {
+        this.dbContext = dbContext;
+        this.effectiveAvailabilityService = effectiveAvailabilityService;
+        this.paymentFinancializationService = paymentFinancializationService;
+    }
+
     private static readonly ReservationStatus[] CapacityConsumingStatuses =
     [
         ReservationStatus.ApprovedAwaitingPayment,
@@ -81,6 +105,19 @@ public sealed class PaymentDomainApplicationHandler(
             cancellationToken);
         await EnsureSessionCapacityIsStillHeldAsync(includedReservations, cancellationToken);
 
+        var itemsByReservationId = items.ToDictionary(item => item.ReservationId);
+        foreach (var reservation in includedReservations)
+        {
+            var item = itemsByReservationId[reservation.Id];
+            await paymentFinancializationService.ApplyAsync(
+                reservation,
+                payment,
+                item,
+                item.AllocatedAmount,
+                now,
+                cancellationToken);
+        }
+
         ApplySuccessfulPayment(payment, includedReservations, now);
     }
 
@@ -113,6 +150,17 @@ public sealed class PaymentDomainApplicationHandler(
         }
 
         var capacityExists = await HasLegacyCapacityAsync(reservation, cancellationToken);
+        if (capacityExists)
+        {
+            await paymentFinancializationService.ApplyAsync(
+                reservation,
+                payment,
+                paymentItem: null,
+                grossAmount: payment.Amount,
+                calculatedAtUtc: now,
+                cancellationToken);
+        }
+
         ApplySuccessfulPayment(payment, [reservation], now, capacityExists);
     }
 

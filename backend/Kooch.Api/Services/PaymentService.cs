@@ -19,6 +19,7 @@ public class PaymentService : IPaymentService
     private readonly KoochDbContext dbContext;
     private readonly IEffectiveAvailabilityService effectiveAvailabilityService;
     private readonly IBookingSessionPayableScopeResolver payableScopeResolver;
+    private readonly IPaymentFinancializationService paymentFinancializationService;
 
     public PaymentService(
         KoochDbContext dbContext,
@@ -26,18 +27,35 @@ public class PaymentService : IPaymentService
         : this(
             dbContext,
             effectiveAvailabilityService,
-            new BookingSessionPayableScopeResolver())
+            new BookingSessionPayableScopeResolver(),
+            new PaymentFinancializationService(
+                dbContext,
+                new CommissionPolicyResolver(dbContext)))
+    {
+    }
+
+    public PaymentService(
+        KoochDbContext dbContext,
+        IEffectiveAvailabilityService effectiveAvailabilityService,
+        IPaymentFinancializationService paymentFinancializationService)
+        : this(
+            dbContext,
+            effectiveAvailabilityService,
+            new BookingSessionPayableScopeResolver(),
+            paymentFinancializationService)
     {
     }
 
     internal PaymentService(
         KoochDbContext dbContext,
         IEffectiveAvailabilityService effectiveAvailabilityService,
-        IBookingSessionPayableScopeResolver payableScopeResolver)
+        IBookingSessionPayableScopeResolver payableScopeResolver,
+        IPaymentFinancializationService paymentFinancializationService)
     {
         this.dbContext = dbContext;
         this.effectiveAvailabilityService = effectiveAvailabilityService;
         this.payableScopeResolver = payableScopeResolver;
+        this.paymentFinancializationService = paymentFinancializationService;
     }
 
     public async Task<BookingSessionPaymentInitiationResult> InitiateBookingSessionPaymentAsync(
@@ -140,8 +158,11 @@ public class PaymentService : IPaymentService
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
-        var roomType = await dbContext.RoomTypes
-            .FromSqlInterpolated($"SELECT * FROM RoomTypes WITH (UPDLOCK, HOLDLOCK) WHERE Id = {roomTypeId}")
+        var roomTypeQuery = dbContext.Database.IsSqlServer()
+            ? dbContext.RoomTypes.FromSqlInterpolated(
+                $"SELECT * FROM RoomTypes WITH (UPDLOCK, HOLDLOCK) WHERE Id = {roomTypeId}")
+            : dbContext.RoomTypes.Where(item => item.Id == roomTypeId);
+        var roomType = await roomTypeQuery
             .AsNoTracking()
             .SingleAsync(cancellationToken);
 
@@ -207,7 +228,7 @@ public class PaymentService : IPaymentService
                              (!reservation.RoomId.HasValue ||
                               !roomAvailability.ClaimedRoomIds.Contains(reservation.RoomId.Value));
 
-        dbContext.Payments.Add(new Payment
+        var payment = new Payment
         {
             ReservationId = reservation.Id,
             Amount = request.Amount,
@@ -216,7 +237,20 @@ public class PaymentService : IPaymentService
             TransactionReference = normalizedReference,
             Status = PaymentStatus.Successful,
             PaidAtUtc = now
-        });
+        };
+        dbContext.Payments.Add(payment);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        if (capacityExists)
+        {
+            await paymentFinancializationService.ApplyAsync(
+                reservation,
+                payment,
+                paymentItem: null,
+                grossAmount: payment.Amount,
+                calculatedAtUtc: now,
+                cancellationToken);
+        }
 
         reservation.PaidAtUtc = now;
         reservation.ChangedAtUtc = now;
