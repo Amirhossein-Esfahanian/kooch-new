@@ -19,6 +19,62 @@ public sealed class AdminManualPaymentService(
     private const int EvidenceFilePathMaxLength = 2048;
     private const int RejectionReasonMaxLength = 1000;
 
+    public async Task<IReadOnlyList<AdminManualPaymentDetailsResponse>> GetByReservationAsync(
+        int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        if (reservationId <= 0 ||
+            !await dbContext.Reservations.AsNoTracking()
+                .AnyAsync(reservation => reservation.Id == reservationId, cancellationToken))
+        {
+            throw new KeyNotFoundException("Reservation not found.");
+        }
+
+        return await dbContext.Payments.AsNoTracking()
+            .Where(payment =>
+                payment.ReservationId == reservationId &&
+                payment.Channel == PaymentChannel.Manual &&
+                payment.ManualDetails != null)
+            .OrderByDescending(payment => payment.ManualDetails!.SubmittedAtUtc)
+            .ThenByDescending(payment => payment.Id)
+            .Select(payment => new AdminManualPaymentDetailsResponse
+            {
+                PaymentId = payment.Id,
+                ReservationId = reservationId,
+                Amount = payment.Amount,
+                Currency = payment.Currency,
+                Status = payment.Status,
+                Method = payment.ManualDetails!.Method,
+                VerificationStatus = payment.ManualDetails.VerificationStatus,
+                PaymentDate = payment.ManualDetails.PaymentDate,
+                PaymentTime = payment.ManualDetails.PaymentTime,
+                ReferenceNumber = payment.ManualDetails.ReferenceNumber,
+                DestinationBank = payment.ManualDetails.DestinationBank,
+                DestinationAccountReference = payment.ManualDetails.DestinationAccountReference,
+                Notes = payment.ManualDetails.Notes,
+                SubmittedByUserId = payment.ManualDetails.SubmittedByUserId,
+                SubmittedBy = payment.ManualDetails.SubmittedByUser == null
+                    ? null
+                    : (payment.ManualDetails.SubmittedByUser.FirstName + " " +
+                       payment.ManualDetails.SubmittedByUser.LastName).Trim(),
+                SubmittedAtUtc = payment.ManualDetails.SubmittedAtUtc,
+                VerifiedByUserId = payment.ManualDetails.VerifiedByUserId,
+                VerifiedBy = payment.ManualDetails.VerifiedByUser == null
+                    ? null
+                    : (payment.ManualDetails.VerifiedByUser.FirstName + " " +
+                       payment.ManualDetails.VerifiedByUser.LastName).Trim(),
+                VerifiedAtUtc = payment.ManualDetails.VerifiedAtUtc,
+                RejectedByUserId = payment.ManualDetails.RejectedByUserId,
+                RejectedBy = payment.ManualDetails.RejectedByUser == null
+                    ? null
+                    : (payment.ManualDetails.RejectedByUser.FirstName + " " +
+                       payment.ManualDetails.RejectedByUser.LastName).Trim(),
+                RejectedAtUtc = payment.ManualDetails.RejectedAtUtc,
+                RejectionReason = payment.ManualDetails.RejectionReason
+            })
+            .ToListAsync(cancellationToken);
+    }
+
     public async Task<AdminManualPaymentResponse> CreateAsync(
         AdminManualPaymentCreateRequest request,
         int actorUserId,

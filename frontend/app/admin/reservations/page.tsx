@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -18,10 +19,15 @@ import {
   type ReservationTableItem,
   type ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
-import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
+import {
+  ReservationDetailsDialog,
+  type AdminManualPayment,
+  type AdminManualPaymentCreatePayload,
+} from "@/components/reservations/ReservationDetailsDialog";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import {
   apiRequest,
+  ApiRequestError,
   type PropertyResponse,
   type RoomResponse,
   type RoomTypeResponse,
@@ -85,6 +91,11 @@ interface ReservationPaymentLinkResponse {
   paymentLink: string;
   devPaymentLink?: string | null;
   expiresAtUtc: string;
+}
+
+interface AdminManualPaymentMutationResponse {
+  reservationStatus: ReservationTableStatus;
+  capacityClaimed: boolean;
 }
 
 const pageSize = 10;
@@ -172,6 +183,7 @@ const paymentStatusOptions: Array<{
 ];
 
 export default function AdminReservationsPage() {
+  const { platformPermissions, platformRole } = useAuthSession();
   const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
@@ -188,12 +200,15 @@ export default function AdminReservationsPage() {
   const [totalPages, setTotalPages] = useState(0);
   const [loading, setLoading] = useState(true);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [manualPayments, setManualPayments] = useState<AdminManualPayment[]>([]);
   const [statusChangingId, setStatusChangingId] = useState<number | null>(null);
   const [paymentLinkSendingId, setPaymentLinkSendingId] = useState<
     number | null
   >(null);
   const [error, setError] = useState("");
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const canManagePayments =
+    platformRole === "SuperAdmin" || platformPermissions.includes("ManagePayments");
   const propertyOptions = useMemo(
     () =>
       properties.map((property) => ({
@@ -323,6 +338,7 @@ export default function AdminReservationsPage() {
   async function viewReservation(reservation: ReservationTableItem) {
     const reservationId = reservation.reservationId ?? reservation.id;
     setSelectedReservation(reservation);
+    setManualPayments([]);
 
     if (!reservationId) return;
 
@@ -330,16 +346,112 @@ export default function AdminReservationsPage() {
     setError("");
 
     try {
-      const details = await apiRequest<ReservationTableItem>(
-        `/admin/reservations/${reservationId}`,
-      );
+      const [details, payments] = await Promise.all([
+        apiRequest<ReservationTableItem>(`/admin/reservations/${reservationId}`),
+        canManagePayments
+          ? apiRequest<AdminManualPayment[]>(
+              `/admin/manual-payments/reservation/${reservationId}`,
+            )
+          : Promise.resolve([]),
+      ]);
       setSelectedReservation(details);
+      setManualPayments(payments);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "خطا در دریافت جزئیات رزرو.",
       );
     } finally {
       setDetailsLoading(false);
+    }
+  }
+
+  async function refreshReservationAndPayments(reservationId: number) {
+    const [details, payments] = await Promise.all([
+      apiRequest<ReservationTableItem>(`/admin/reservations/${reservationId}`),
+      apiRequest<AdminManualPayment[]>(
+        `/admin/manual-payments/reservation/${reservationId}`,
+      ),
+    ]);
+    setSelectedReservation(details);
+    setManualPayments(payments);
+    await loadReservations();
+  }
+
+  async function createManualPayment(
+    reservation: ReservationTableItem,
+    payment: AdminManualPaymentCreatePayload,
+  ) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+
+    try {
+      await apiRequest<AdminManualPayment>("/admin/manual-payments", {
+        method: "POST",
+        body: JSON.stringify({ reservationId, ...payment }),
+      });
+      await refreshReservationAndPayments(reservationId);
+      toast.success("پرداخت دستی ثبت شد و در انتظار بررسی است.");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "ثبت پرداخت دستی انجام نشد.";
+      toast.error(message);
+      if (caught instanceof ApiRequestError && caught.status === 409) {
+        await refreshReservationAndPayments(reservationId).catch(() => undefined);
+      }
+      throw caught;
+    }
+  }
+
+  async function approveManualPayment(paymentId: number) {
+    const reservationId = selectedReservationState?.reservationId ?? selectedReservationState?.id;
+    if (!reservationId) return;
+
+    try {
+      const result = await apiRequest<AdminManualPaymentMutationResponse>(
+        `/admin/manual-payments/${paymentId}/approve`,
+        { method: "POST" },
+      );
+      await refreshReservationAndPayments(reservationId);
+      toast.success(
+        result.reservationStatus === "CapacityLost"
+          ? "پرداخت تأیید شد؛ اما ظرفیت رزرو دیگر موجود نیست."
+          : "پرداخت تأیید و رزرو نهایی شد.",
+      );
+    } catch (caught) {
+      const isConflict = caught instanceof ApiRequestError && caught.status === 409;
+      const message = isConflict
+        ? "این پرداخت قبلاً توسط مدیر دیگری بررسی شده است. اطلاعات به‌روز شد."
+        : caught instanceof Error ? caught.message : "تأیید پرداخت دستی انجام نشد.";
+      if (isConflict) toast.warning(message);
+      else toast.error(message);
+      if (isConflict) {
+        await refreshReservationAndPayments(reservationId).catch(() => undefined);
+      }
+      throw caught;
+    }
+  }
+
+  async function rejectManualPayment(paymentId: number, reason: string) {
+    const reservationId = selectedReservationState?.reservationId ?? selectedReservationState?.id;
+    if (!reservationId) return;
+
+    try {
+      await apiRequest<AdminManualPayment>(
+        `/admin/manual-payments/${paymentId}/reject`,
+        { method: "POST", body: JSON.stringify({ reason }) },
+      );
+      await refreshReservationAndPayments(reservationId);
+      toast.success("پرداخت دستی رد شد.");
+    } catch (caught) {
+      const isConflict = caught instanceof ApiRequestError && caught.status === 409;
+      const message = isConflict
+        ? "این پرداخت قبلاً توسط مدیر دیگری بررسی شده است. اطلاعات به‌روز شد."
+        : caught instanceof Error ? caught.message : "رد پرداخت دستی انجام نشد.";
+      if (isConflict) toast.warning(message);
+      else toast.error(message);
+      if (isConflict) {
+        await refreshReservationAndPayments(reservationId).catch(() => undefined);
+      }
+      throw caught;
     }
   }
 
@@ -1003,14 +1115,22 @@ export default function AdminReservationsPage() {
 
         <ReservationDetailsDialog
           loading={detailsLoading}
+          manualPayments={manualPayments}
+          manualPaymentsLoading={detailsLoading && canManagePayments}
           onAdjustPrice={adjustReservationPrice}
+          onApproveManualPayment={canManagePayments ? approveManualPayment : undefined}
           onCancel={cancelReservation}
+          onCreateManualPayment={canManagePayments ? createManualPayment : undefined}
           onEdit={editReservation}
+          onRejectManualPayment={canManagePayments ? rejectManualPayment : undefined}
           onRefresh={viewReservation}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {
-            if (!open) setSelectedReservation(null);
+            if (!open) {
+              setSelectedReservation(null);
+              setManualPayments([]);
+            }
           }}
           open={Boolean(selectedReservationState)}
           reservation={selectedReservationState}

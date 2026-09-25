@@ -69,6 +69,62 @@ public sealed class AdminManualPaymentServiceTests
     }
 
     [Fact]
+    public async Task GetByReservation_ReturnsManualPaymentsWithReviewMetadata()
+    {
+        await using var harness = await ManualPaymentHarness.CreateAsync();
+        var created = await harness.CreateManualPaymentAsync();
+        var details = await harness.Context.ManualPaymentDetails.SingleAsync();
+        details.DestinationBank = "Test bank";
+        details.DestinationAccountReference = "ACC-1";
+        details.Notes = "Admin note";
+        harness.Context.Reservations.Add(new Reservation
+        {
+            Id = 11,
+            ReservationNumber = "KCH-MANUAL-11",
+            ClientId = ManualPaymentHarness.AdminUserId,
+            PropertyId = 30,
+            RoomTypeId = 20,
+            CheckInDate = new DateOnly(2036, 2, 1),
+            CheckOutDate = new DateOnly(2036, 2, 2),
+            AdultCount = 1,
+            TotalPrice = 100m,
+            FinalAmount = 100m,
+            Currency = "IRR",
+            CommissionType = CommissionType.Direct,
+            Status = ReservationStatus.ApprovedAwaitingPayment,
+            Source = ReservationSource.Website,
+            PaymentExpiresAtUtc = DateTime.UtcNow.AddHours(1)
+        });
+        harness.Context.Payments.Add(new Payment
+        {
+            ReservationId = 11,
+            Amount = 100m,
+            Currency = "IRR",
+            Channel = PaymentChannel.Manual,
+            Status = PaymentStatus.Pending,
+            ManualDetails = new ManualPaymentDetails
+            {
+                Method = ManualPaymentMethod.CardToCard,
+                PaymentDate = DateOnly.FromDateTime(DateTime.UtcNow),
+                SubmittedByUserId = ManualPaymentHarness.AdminUserId,
+                SubmittedAtUtc = DateTime.UtcNow
+            }
+        });
+        await harness.Context.SaveChangesAsync();
+
+        var results = await harness.Service.GetByReservationAsync(created.ReservationId);
+
+        var payment = Assert.Single(results);
+        Assert.Equal(created.PaymentId, payment.PaymentId);
+        Assert.Equal(PaymentStatus.Pending, payment.Status);
+        Assert.Equal(ManualPaymentVerificationStatus.PendingVerification, payment.VerificationStatus);
+        Assert.Equal("Admin User", payment.SubmittedBy);
+        Assert.Equal("Test bank", payment.DestinationBank);
+        Assert.Equal("ACC-1", payment.DestinationAccountReference);
+        Assert.Equal("Admin note", payment.Notes);
+    }
+
+    [Fact]
     public async Task Approve_AtomicallyConfirmsAndUsesGlobalFinancializationPolicy()
     {
         await using var harness = await ManualPaymentHarness.CreateAsync();

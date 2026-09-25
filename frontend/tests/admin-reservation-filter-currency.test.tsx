@@ -10,6 +10,13 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children }: { children: React.ReactNode }) => children,
 }));
 
+vi.mock("@/components/auth/AuthSessionProvider", () => ({
+  useAuthSession: () => ({
+    platformPermissions: [],
+    platformRole: "SuperAdmin",
+  }),
+}));
+
 vi.mock("@/components/admin/ReservationFollowUpRecipients", () => ({
   ReservationFollowUpRecipients: () => null,
 }));
@@ -82,7 +89,7 @@ describe("Admin reservation filter currency context", () => {
     );
 
     fireEvent.click(
-      screen.getByRole("button", { name: "فیلترهای پیشرفته" }),
+      screen.getByRole("button", { name: "باز کردن فیلترهای پیشرفته" }),
     );
     expect(screen.getByText("واحد مبالغ: ریال آزمایشی")).toBeTruthy();
     expect(screen.getAllByText(/ریال آزمایشی/)).toHaveLength(1);
@@ -118,7 +125,7 @@ describe("Admin reservation filter currency context", () => {
     render(<AdminReservationsPage />);
 
     fireEvent.click(
-      screen.getByRole("button", { name: "فیلترهای پیشرفته" }),
+      screen.getByRole("button", { name: "باز کردن فیلترهای پیشرفته" }),
     );
     expect(screen.getByText("واحد مبالغ: تومان")).toBeTruthy();
   });

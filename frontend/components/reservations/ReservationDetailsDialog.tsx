@@ -7,6 +7,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 import {
   KoochField,
   KoochInput,
@@ -39,6 +40,17 @@ interface ReservationDetailsDialogProps {
     reservation: ReservationTableItem,
   ) => void | Promise<void>;
   onRefresh?: (reservation: ReservationTableItem) => void | Promise<void>;
+  manualPayments?: AdminManualPayment[];
+  manualPaymentsLoading?: boolean;
+  onCreateManualPayment?: (
+    reservation: ReservationTableItem,
+    payment: AdminManualPaymentCreatePayload,
+  ) => void | Promise<void>;
+  onApproveManualPayment?: (paymentId: number) => void | Promise<void>;
+  onRejectManualPayment?: (
+    paymentId: number,
+    reason: string,
+  ) => void | Promise<void>;
   onStatusChange?: (
     reservation: ReservationTableItem,
     status: ReservationTableStatus,
@@ -46,6 +58,81 @@ interface ReservationDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   open: boolean;
   reservation: ReservationTableItem | null;
+}
+
+export type ManualPaymentMethod =
+  | "CardToCard"
+  | "BankTransfer"
+  | "Paya"
+  | "Satna"
+  | "AccountTransfer"
+  | "Other";
+
+export interface AdminManualPaymentCreatePayload {
+  amount: number;
+  currency: string;
+  method: ManualPaymentMethod;
+  paymentDate: string;
+  paymentTime: string | null;
+  referenceNumber: string | null;
+  destinationBank: string | null;
+  destinationAccountReference: string | null;
+  notes: string | null;
+}
+
+export interface AdminManualPayment extends AdminManualPaymentCreatePayload {
+  paymentId: number;
+  reservationId: number;
+  status: "Pending" | "Successful" | "Failed" | "Refunded";
+  verificationStatus: "PendingVerification" | "Approved" | "Rejected";
+  submittedByUserId?: number | null;
+  submittedBy?: string | null;
+  submittedAtUtc: string;
+  verifiedByUserId?: number | null;
+  verifiedBy?: string | null;
+  verifiedAtUtc?: string | null;
+  rejectedByUserId?: number | null;
+  rejectedBy?: string | null;
+  rejectedAtUtc?: string | null;
+  rejectionReason?: string | null;
+}
+
+const manualPaymentMethodOptions: Array<{
+  value: ManualPaymentMethod;
+  label: string;
+}> = [
+  { value: "CardToCard", label: "کارت‌به‌کارت" },
+  { value: "BankTransfer", label: "واریز بانکی" },
+  { value: "Paya", label: "پایا" },
+  { value: "Satna", label: "ساتنا" },
+  { value: "AccountTransfer", label: "انتقال حساب" },
+  { value: "Other", label: "سایر" },
+];
+
+const manualPaymentMethodLabels = Object.fromEntries(
+  manualPaymentMethodOptions.map((option) => [option.value, option.label]),
+) as Record<ManualPaymentMethod, string>;
+
+const manualPaymentVerificationLabels = {
+  PendingVerification: "در انتظار بررسی",
+  Approved: "تأیید شده",
+  Rejected: "رد شده",
+} as const;
+
+const manualPaymentStatusLabels = {
+  Pending: "در انتظار",
+  Successful: "موفق",
+  Failed: "ناموفق",
+  Refunded: "بازگشت داده‌شده",
+} as const;
+
+function localIsoToday() {
+  const now = new Date();
+  return [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+  ].join("-");
 }
 
 const statusLabels: Record<string, string> = {
@@ -584,11 +671,230 @@ function ReservationCancellationAlert({
   );
 }
 
+function ManualPaymentCreateDialog({
+  onOpenChange,
+  onSubmit,
+  open,
+  reservation,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (payload: AdminManualPaymentCreatePayload) => Promise<void>;
+  open: boolean;
+  reservation: ReservationTableItem;
+}) {
+  const initialAmount = reservation.remainingAmount ?? reservation.finalAmount ?? reservation.totalPrice;
+  const [amount, setAmount] = useState(initialAmount?.toString() ?? "");
+  const [method, setMethod] = useState<ManualPaymentMethod>("BankTransfer");
+  const [paymentDate, setPaymentDate] = useState<string | null>(localIsoToday());
+  const [paymentTime, setPaymentTime] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [destinationBank, setDestinationBank] = useState("");
+  const [destinationAccountReference, setDestinationAccountReference] = useState("");
+  const [notes, setNotes] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const currency = reservation.currency?.trim().toUpperCase() ?? "";
+
+  useEffect(() => {
+    if (!open) return;
+    setAmount(initialAmount?.toString() ?? "");
+    setMethod("BankTransfer");
+    setPaymentDate(localIsoToday());
+    setPaymentTime("");
+    setReferenceNumber("");
+    setDestinationBank("");
+    setDestinationAccountReference("");
+    setNotes("");
+    setErrors({});
+  }, [initialAmount, open]);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+
+    const numericAmount = Number(amount);
+    const nextErrors: Record<string, string> = {};
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      nextErrors.amount = "مبلغ پرداخت باید بیشتر از صفر باشد.";
+    }
+    if (!currency) nextErrors.currency = "واحد پول رزرو در دسترس نیست.";
+    if (!paymentDate) nextErrors.paymentDate = "تاریخ پرداخت را انتخاب کنید.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0 || !paymentDate) return;
+
+    setSubmitting(true);
+    try {
+      await onSubmit({
+        amount: numericAmount,
+        currency,
+        method,
+        paymentDate,
+        paymentTime: paymentTime || null,
+        referenceNumber: referenceNumber.trim() || null,
+        destinationBank: destinationBank.trim() || null,
+        destinationAccountReference: destinationAccountReference.trim() || null,
+        notes: notes.trim() || null,
+      });
+      onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <KoochDialog
+      closeDisabled={submitting}
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          <KoochButton disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">
+            انصراف
+          </KoochButton>
+          <KoochButton form="manual-payment-form" loading={submitting} type="submit">
+            ثبت پرداخت
+          </KoochButton>
+        </div>
+      }
+      onOpenChange={onOpenChange}
+      open={open}
+      size="md"
+      title="ثبت پرداخت دستی"
+    >
+      <form className="grid gap-4 md:grid-cols-2" id="manual-payment-form" onSubmit={submit}>
+        <KoochField error={errors.amount} label="مبلغ" required>
+          <KoochInput
+            error={errors.amount}
+            inputMode="decimal"
+            min="0"
+            onChange={(event) => {
+              setAmount(event.target.value);
+              setErrors((current) => ({ ...current, amount: "" }));
+            }}
+            step="0.01"
+            type="number"
+            value={amount}
+          />
+        </KoochField>
+        <KoochField error={errors.currency} label="واحد پول" required>
+          <KoochInput error={errors.currency} readOnly value={currency} />
+        </KoochField>
+        <KoochField label="روش پرداخت" required>
+          <KoochSelect onChange={(event) => setMethod(event.target.value as ManualPaymentMethod)} value={method}>
+            {manualPaymentMethodOptions.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </KoochSelect>
+        </KoochField>
+        <KoochField error={errors.paymentDate} label="تاریخ پرداخت" required>
+          <KoochDatePicker
+            autoConfirmOnSelect
+            label={null}
+            mode="single"
+            onChange={(value) => {
+              setPaymentDate(value);
+              setErrors((current) => ({ ...current, paymentDate: "" }));
+            }}
+            size="compact"
+            value={paymentDate}
+          />
+        </KoochField>
+        <KoochField label="ساعت پرداخت (اختیاری)">
+          <KoochInput onChange={(event) => setPaymentTime(event.target.value)} type="time" value={paymentTime} />
+        </KoochField>
+        <KoochField label="شماره پیگیری">
+          <KoochInput maxLength={200} onChange={(event) => setReferenceNumber(event.target.value)} value={referenceNumber} />
+        </KoochField>
+        <KoochField label="بانک مقصد">
+          <KoochInput maxLength={100} onChange={(event) => setDestinationBank(event.target.value)} value={destinationBank} />
+        </KoochField>
+        <KoochField label="شناسه حساب مقصد">
+          <KoochInput maxLength={200} onChange={(event) => setDestinationAccountReference(event.target.value)} value={destinationAccountReference} />
+        </KoochField>
+        <KoochField className="md:col-span-2" label="یادداشت">
+          <KoochTextarea maxLength={2000} onChange={(event) => setNotes(event.target.value)} value={notes} />
+        </KoochField>
+      </form>
+    </KoochDialog>
+  );
+}
+
+function ManualPaymentRejectDialog({
+  onOpenChange,
+  onSubmit,
+  open,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (reason: string) => Promise<void>;
+  open: boolean;
+}) {
+  const [reason, setReason] = useState("");
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (open) {
+      setReason("");
+      setError("");
+    }
+  }, [open]);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submitting) return;
+    const normalized = reason.trim();
+    if (!normalized) {
+      setError("دلیل رد پرداخت را وارد کنید.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await onSubmit(normalized);
+      onOpenChange(false);
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <KoochDialog
+      closeDisabled={submitting}
+      footer={
+        <div className="flex flex-wrap justify-end gap-2">
+          <KoochButton disabled={submitting} onClick={() => onOpenChange(false)} type="button" variant="outline">انصراف</KoochButton>
+          <KoochButton form="manual-payment-reject-form" loading={submitting} type="submit" variant="destructive">رد پرداخت</KoochButton>
+        </div>
+      }
+      onOpenChange={onOpenChange}
+      open={open}
+      size="sm"
+      title="رد پرداخت دستی"
+    >
+      <form id="manual-payment-reject-form" onSubmit={submit}>
+        <KoochField error={error} label="دلیل رد" required>
+          <KoochTextarea
+            error={error}
+            maxLength={1000}
+            onChange={(event) => {
+              setReason(event.target.value);
+              setError("");
+            }}
+            value={reason}
+          />
+        </KoochField>
+      </form>
+    </KoochDialog>
+  );
+}
+
 export function ReservationDetailsDialog({
   loading = false,
+  manualPayments = [],
+  manualPaymentsLoading = false,
   onAdjustPrice,
+  onApproveManualPayment,
   onCancel,
+  onCreateManualPayment,
   onEdit,
+  onRejectManualPayment,
   onRefresh,
   onSendPaymentLink,
   onStatusChange,
@@ -661,6 +967,10 @@ export function ReservationDetailsDialog({
   const [priceAdjustmentOpen, setPriceAdjustmentOpen] = useState(false);
   const [confirmedEditWarningOpen, setConfirmedEditWarningOpen] =
     useState(false);
+  const [manualPaymentCreateOpen, setManualPaymentCreateOpen] = useState(false);
+  const [approvePaymentId, setApprovePaymentId] = useState<number | null>(null);
+  const [rejectPaymentId, setRejectPaymentId] = useState<number | null>(null);
+  const [manualPaymentMutationId, setManualPaymentMutationId] = useState<number | null>(null);
   const expiryRefreshStartedRef = useRef(false);
   const shouldShowPaymentCountdown =
     open && reservation?.status === "ApprovedAwaitingPayment";
@@ -692,6 +1002,9 @@ export function ReservationDetailsDialog({
     if (!open) {
       setCancellationOpen(false);
       setPriceAdjustmentOpen(false);
+      setManualPaymentCreateOpen(false);
+      setApprovePaymentId(null);
+      setRejectPaymentId(null);
     }
   }, [open]);
 
@@ -1013,6 +1326,99 @@ export function ReservationDetailsDialog({
               <DetailItem label="واحد پول" value={currencyLabel} />
             </DetailSection>
 
+            {(onCreateManualPayment || manualPayments.length > 0 || manualPaymentsLoading) && (
+              <KoochCard className="grid gap-3" padding="sm" variant="elevated">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-foreground">پرداخت‌های دستی</h3>
+                  {onCreateManualPayment &&
+                    reservation.status === "ApprovedAwaitingPayment" &&
+                    !reservation.isPaymentExpired && (
+                      <KoochButton onClick={() => setManualPaymentCreateOpen(true)} size="sm" variant="outline">
+                        ثبت پرداخت دستی
+                      </KoochButton>
+                    )}
+                </div>
+                {manualPaymentsLoading ? (
+                  <p className="text-sm font-semibold text-muted-foreground">در حال دریافت پرداخت‌ها...</p>
+                ) : manualPayments.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">پرداخت دستی برای این رزرو ثبت نشده است.</p>
+                ) : (
+                  <div className="grid gap-3">
+                    {manualPayments.map((payment) => {
+                      const isPending = payment.verificationStatus === "PendingVerification";
+                      const actor = payment.submittedBy ??
+                        (payment.submittedByUserId ? `کاربر ${toPersianDigits(payment.submittedByUserId)}` : "-");
+                      return (
+                        <article className="grid gap-3 rounded-lg border border-border bg-background p-3" key={payment.paymentId}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <strong className="text-sm text-foreground">
+                                {toPersianDigits(formatCurrency(payment.amount, { currencyLabel }))}
+                              </strong>
+                              <span className="text-xs font-semibold text-muted-foreground">{payment.currency}</span>
+                            </div>
+                            <KoochBadge
+                              variant={
+                                payment.verificationStatus === "Approved"
+                                  ? "success"
+                                  : payment.verificationStatus === "Rejected"
+                                    ? "destructive"
+                                    : "warning"
+                              }
+                            >
+                              {manualPaymentVerificationLabels[payment.verificationStatus]}
+                            </KoochBadge>
+                          </div>
+                          <dl className="grid gap-2 text-sm md:grid-cols-2 xl:grid-cols-3">
+                            <DetailItem label="روش پرداخت" value={manualPaymentMethodLabels[payment.method]} />
+                            <DetailItem label="وضعیت پرداخت" value={manualPaymentStatusLabels[payment.status]} />
+                            <DetailItem label="تاریخ پرداخت" value={`${formatDate(payment.paymentDate)}${payment.paymentTime ? ` - ${toPersianDigits(payment.paymentTime.slice(0, 5))}` : ""}`} />
+                            <DetailItem label="شماره پیگیری" value={payment.referenceNumber ?? "-"} />
+                            <DetailItem label="بانک مقصد" value={payment.destinationBank ?? "-"} />
+                            <DetailItem label="شناسه حساب مقصد" value={payment.destinationAccountReference ?? "-"} />
+                            <DetailItem label="ثبت‌کننده" value={`${actor} - ${formatDateTime(payment.submittedAtUtc)}`} />
+                            {payment.verifiedAtUtc && (
+                              <DetailItem label="تأییدکننده" value={`${payment.verifiedBy ?? "-"} - ${formatDateTime(payment.verifiedAtUtc)}`} />
+                            )}
+                            {payment.rejectedAtUtc && (
+                              <DetailItem label="ردکننده" value={`${payment.rejectedBy ?? "-"} - ${formatDateTime(payment.rejectedAtUtc)}`} />
+                            )}
+                            <DetailItem label="یادداشت" value={payment.notes ?? "-"} />
+                            {payment.rejectionReason && (
+                              <DetailItem label="دلیل رد" value={payment.rejectionReason} />
+                            )}
+                          </dl>
+                          {isPending && (onApproveManualPayment || onRejectManualPayment) && (
+                            <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                              {onApproveManualPayment && (
+                                <KoochButton
+                                  disabled={manualPaymentMutationId !== null}
+                                  onClick={() => setApprovePaymentId(payment.paymentId)}
+                                  size="sm"
+                                >
+                                  تأیید پرداخت
+                                </KoochButton>
+                              )}
+                              {onRejectManualPayment && (
+                                <KoochButton
+                                  disabled={manualPaymentMutationId !== null}
+                                  onClick={() => setRejectPaymentId(payment.paymentId)}
+                                  size="sm"
+                                  variant="destructive"
+                                >
+                                  رد پرداخت
+                                </KoochButton>
+                              )}
+                            </div>
+                          )}
+                        </article>
+                      );
+                    })}
+                  </div>
+                )}
+              </KoochCard>
+            )}
+
             <TimelineSection events={timelineEvents} />
 
             <DetailSection title="مهلت پرداخت">
@@ -1070,6 +1476,56 @@ export function ReservationDetailsDialog({
           open={confirmedEditWarningOpen}
           title="ویرایش رزرو تاییدشده"
           variant="warning"
+        />
+      )}
+      {reservation && onCreateManualPayment && (
+        <ManualPaymentCreateDialog
+          onOpenChange={setManualPaymentCreateOpen}
+          onSubmit={async (payload) => {
+            await onCreateManualPayment(reservation, payload);
+          }}
+          open={manualPaymentCreateOpen}
+          reservation={reservation}
+        />
+      )}
+      {approvePaymentId !== null && onApproveManualPayment && (
+        <KoochConfirmDialog
+          cancelText="انصراف"
+          confirmText="تأیید پرداخت"
+          description="با تأیید، پرداخت موفق ثبت می‌شود، شناسایی مالی انجام می‌گیرد و در صورت وجود ظرفیت، رزرو تأیید خواهد شد. اگر ظرفیت دیگر موجود نباشد، وضعیت دقیق رزرو پس از بررسی سامانه نمایش داده می‌شود."
+          loading={manualPaymentMutationId === approvePaymentId}
+          onConfirm={async () => {
+            setManualPaymentMutationId(approvePaymentId);
+            try {
+              await onApproveManualPayment(approvePaymentId);
+              setApprovePaymentId(null);
+            } finally {
+              setManualPaymentMutationId(null);
+            }
+          }}
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen && manualPaymentMutationId === null) setApprovePaymentId(null);
+          }}
+          open
+          title="تأیید پرداخت دستی"
+          variant="warning"
+        />
+      )}
+      {rejectPaymentId !== null && onRejectManualPayment && (
+        <ManualPaymentRejectDialog
+          onOpenChange={(nextOpen) => {
+            if (!nextOpen && manualPaymentMutationId === null) setRejectPaymentId(null);
+          }}
+          onSubmit={async (reason) => {
+            setManualPaymentMutationId(rejectPaymentId);
+            try {
+              await onRejectManualPayment(rejectPaymentId, reason);
+              setRejectPaymentId(null);
+            } finally {
+              setManualPaymentMutationId(null);
+            }
+          }}
+          open
         />
       )}
     </>

@@ -13,6 +13,15 @@ namespace Kooch.Api.Controllers;
 public sealed class AdminManualPaymentsController(IAdminManualPaymentService manualPaymentService)
     : AuthenticatedControllerBase
 {
+    [HttpGet("reservation/{reservationId:int}")]
+    [ProducesResponseType<IReadOnlyList<AdminManualPaymentDetailsResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<AdminManualPaymentDetailsResponse>>> GetByReservation(
+        int reservationId,
+        CancellationToken cancellationToken)
+    {
+        return Ok(await manualPaymentService.GetByReservationAsync(reservationId, cancellationToken));
+    }
+
     [HttpPost]
     [ProducesResponseType<AdminManualPaymentResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<AdminManualPaymentResponse>> Create(

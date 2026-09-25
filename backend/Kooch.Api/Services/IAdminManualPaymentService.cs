@@ -4,6 +4,10 @@ namespace Kooch.Api.Services;
 
 public interface IAdminManualPaymentService
 {
+    Task<IReadOnlyList<AdminManualPaymentDetailsResponse>> GetByReservationAsync(
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
     Task<AdminManualPaymentResponse> CreateAsync(
         AdminManualPaymentCreateRequest request,
         int actorUserId,
