@@ -29,6 +29,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ManualPaymentDetails> ManualPaymentDetails => Set<ManualPaymentDetails>();
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
+    public DbSet<ReservationVoucher> ReservationVouchers => Set<ReservationVoucher>();
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
@@ -161,7 +162,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
-                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry) &&
+                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
@@ -1092,6 +1093,39 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne(entry => entry.ReversesEntry)
                 .WithMany(entry => entry.ReversalEntries)
                 .HasForeignKey(entry => entry.ReversesEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+        });
+
+        modelBuilder.Entity<ReservationVoucher>(entity =>
+        {
+            entity.Property(voucher => voucher.VoucherNumber).HasMaxLength(64).IsRequired();
+            entity.Property(voucher => voucher.ReservationNumberSnapshot).HasMaxLength(32).IsRequired();
+            entity.Property(voucher => voucher.PropertyNameSnapshot).HasMaxLength(200).IsRequired();
+            entity.Property(voucher => voucher.GuestNameSnapshot).HasMaxLength(201).IsRequired();
+            entity.Property(voucher => voucher.GuestMobileSnapshot).HasMaxLength(30);
+            entity.Property(voucher => voucher.GuestEmailSnapshot).HasMaxLength(320);
+            entity.Property(voucher => voucher.RoomTypeNameSnapshot).HasMaxLength(150).IsRequired();
+            entity.Property(voucher => voucher.RoomNameSnapshot).HasMaxLength(100);
+            entity.Property(voucher => voucher.CheckInSnapshot).HasColumnType("date");
+            entity.Property(voucher => voucher.CheckOutSnapshot).HasColumnType("date");
+            entity.Property(voucher => voucher.GrossAmount).HasPrecision(18, 2);
+            entity.Property(voucher => voucher.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(voucher => voucher.CommissionRate).HasPrecision(5, 2);
+            entity.Property(voucher => voucher.CommissionAmount).HasPrecision(18, 2);
+            entity.Property(voucher => voucher.PropertyPayableAmount).HasPrecision(18, 2);
+            entity.HasIndex(voucher => voucher.ReservationId).IsUnique();
+            entity.HasIndex(voucher => voucher.VoucherNumber).IsUnique();
+            entity.HasOne(voucher => voucher.Reservation)
+                .WithMany()
+                .HasForeignKey(voucher => voucher.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(voucher => voucher.ReservationFinancialSnapshot)
+                .WithMany()
+                .HasForeignKey(voucher => voucher.ReservationFinancialSnapshotId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(voucher => voucher.Property)
+                .WithMany()
+                .HasForeignKey(voucher => voucher.PropertyId)
                 .OnDelete(DeleteBehavior.NoAction);
         });
     }
