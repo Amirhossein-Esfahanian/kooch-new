@@ -169,6 +169,12 @@ public class ReservationService(
             "bookings.create",
             cancellationToken);
         ValidateDateRange(request.CheckInDate, request.CheckOutDate);
+        if (request.Status.HasValue &&
+            ReservationStatusNormalizer.Normalize(request.Status.Value) == ReservationStatus.Confirmed)
+        {
+            throw new InvalidOperationException(
+                "A reservation cannot be created as confirmed without a successful payment.");
+        }
 
         var property = await dbContext.Properties.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == request.PropertyId, cancellationToken)
@@ -992,6 +998,21 @@ public class ReservationService(
         }
 
         statusWorkflow.ValidateTransition(reservation.Status, targetStatus);
+
+        if (targetStatus == ReservationStatus.Confirmed)
+        {
+            var hasSuccessfulPayment = await dbContext.Payments.AsNoTracking()
+                .AnyAsync(payment =>
+                        payment.Status == PaymentStatus.Successful &&
+                        (payment.ReservationId == reservation.Id ||
+                         payment.Items.Any(item => item.ReservationId == reservation.Id)),
+                    cancellationToken);
+            if (!hasSuccessfulPayment)
+            {
+                throw new InvalidOperationException(
+                    "A reservation cannot be confirmed without a successful payment.");
+            }
+        }
 
         var now = DateTime.UtcNow;
         if (targetStatus == ReservationStatus.PaymentExpired &&

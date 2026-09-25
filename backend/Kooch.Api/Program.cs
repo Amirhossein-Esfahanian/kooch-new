@@ -110,6 +110,7 @@ builder.Services.AddScoped<IReservationPricingService, ReservationPricingService
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
+builder.Services.AddScoped<IAdminManualPaymentService, AdminManualPaymentService>();
 builder.Services.AddHostedService<ReservationExpirationHostedService>();
 builder.Services.AddHostedService<ReservationApprovalReminderHostedService>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
