@@ -17,7 +17,7 @@ export function FinancialVoucherView({ load }: { load: (signal: AbortSignal) => 
   if (state.status !== "ready") return <VoucherQueryState {...state} retry={retry} />;
   const voucher = state.data;
   return (
-    <VoucherDocument voucher={voucher}>
+    <VoucherDocument voucher={voucher} audience="financial">
       <VoucherField label="مبلغ پرداخت‌شده مهمان">{voucherMoney(voucher.grossAmount, voucher.currency)}</VoucherField>
       <VoucherField label="نرخ کمیسیون Kooch">{formatNumber(voucher.commissionRate)}٪</VoucherField>
       <VoucherField label="کمیسیون Kooch">{voucherMoney(voucher.commissionAmount, voucher.currency)}</VoucherField>

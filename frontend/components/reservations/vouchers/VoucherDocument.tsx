@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
+import { fetchPublicSiteSettings, settingValue } from "@/lib/site-settings";
 import styles from "./VoucherDocument.module.css";
 
 interface VoucherStay {
@@ -32,58 +33,94 @@ export function VoucherField({ label, children, prominent = false }: {
   prominent?: boolean;
 }) {
   return (
-    <div className={`min-w-0 break-words ${prominent ? "col-span-full border-t border-border pt-4" : ""}`}>
-      <dt className="text-sm text-muted-foreground">{label}</dt>
-      <dd className={`mt-1 leading-7 text-foreground ${prominent ? "text-xl font-bold" : "font-semibold"}`}>{children}</dd>
+    <div className={`${styles.field} ${prominent ? styles.prominent : ""}`}>
+      <dt>{label}</dt>
+      <dd>{children}</dd>
     </div>
   );
 }
 
-export function VoucherDocument({ voucher, children }: { voucher: VoucherStay; children: ReactNode }) {
+export function VoucherDocument({ voucher, children, audience = "guest" }: {
+  voucher: VoucherStay;
+  children: ReactNode;
+  audience?: "guest" | "financial";
+}) {
   const [mounted, setMounted] = useState(false);
+  const [logoUrl, setLogoUrl] = useState("");
   useEffect(() => { setMounted(true); }, []);
+  useEffect(() => {
+    let active = true;
+    void fetchPublicSiteSettings().then(settings => {
+      if (active) setLogoUrl(settingValue(settings, "site.logoUrl"));
+    }).catch(() => {});
+    return () => { active = false; };
+  }, []);
+
+  const identifiers = (
+    <p className={styles.identifiers}>
+      <span>ووچر <bdi dir="ltr">{voucher.voucherNumber}</bdi></span>
+      <span>رزرو <bdi dir="ltr">{voucher.reservationNumber}</bdi></span>
+    </p>
+  );
 
   const document = (
-    <article aria-label="سند ووچر رزرو" className={`${styles.document} rounded-lg border border-border bg-card p-5 text-foreground sm:p-8`} dir="rtl">
-      <header className="flex flex-wrap items-start justify-between gap-5 border-b border-border pb-5">
-        <div>
-          <p className="text-lg font-bold">Kooch · کوچ</p>
-          <h2 className="mt-2 text-2xl font-bold">ووچر رزرو</h2>
+    <article aria-label="سند ووچر رزرو" className={`${styles.document} rounded-lg border border-border bg-card text-foreground`} dir="rtl">
+      <header className={styles.header}>
+        <div className={styles.brand}>
+          {logoUrl ? <img src={logoUrl} alt="کوچ" className={styles.logo} onError={() => setLogoUrl("")} /> : <p className={styles.wordmark}>کوچ</p>}
+          <p>سامانه رزرو و مدیریت اقامتگاه</p>
         </div>
-        <dl className="grid gap-3">
-          <VoucherField label="شماره ووچر"><bdi>{voucher.voucherNumber}</bdi></VoucherField>
-          <VoucherField label="شماره رزرو"><bdi>{voucher.reservationNumber}</bdi></VoucherField>
+        <dl className={styles.metadata}>
+          <VoucherField label="شماره ووچر"><bdi dir="ltr">{voucher.voucherNumber}</bdi></VoucherField>
+          <VoucherField label="شماره رزرو"><bdi dir="ltr">{voucher.reservationNumber}</bdi></VoucherField>
+          <VoucherField label="تاریخ صدور"><time dateTime={voucher.issuedAtUtc}>{formatDateTime(voucher.issuedAtUtc)}</time></VoucherField>
         </dl>
       </header>
-      <div className="grid gap-6 py-6 sm:grid-cols-2">
-        <section>
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">اقامتگاه</h3>
-          <p className="break-words text-lg font-bold">{voucher.propertyName}</p>
-        </section>
-        <section>
-          <h3 className="mb-2 text-sm font-semibold text-muted-foreground">اطلاعات مهمان</h3>
-          <p className="break-words text-lg font-semibold">{voucher.guestName}</p>
-        </section>
+      <div className={styles.intro}>
+        <div className={styles.titleRow}>
+          <h2>{audience === "financial" ? "تأییدیه رزرو اقامتگاه" : "ووچر تأیید رزرو"}</h2>
+          <span className={styles.status}>رزرو قطعی</span>
+        </div>
+        <p>{audience === "financial"
+          ? "رزرو زیر پس از تأیید دریافت وجه قطعی شده است. لطفاً پذیرش مهمان را مطابق اطلاعات و بازه اقامت درج‌شده انجام دهید."
+          : `${voucher.guestName} عزیز، رزرو شما در ${voucher.propertyName} با موفقیت قطعی شد. در زمان مراجعه به اقامتگاه، این ووچر را در دسترس داشته باشید.`}</p>
       </div>
-      <section className="border-t border-border py-5">
-        <h3 className="mb-4 font-bold">اطلاعات اقامت</h3>
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-4 sm:grid-cols-3">
-          <VoucherField label="نوع اتاق">{voucher.roomTypeName}</VoucherField>
-          {voucher.roomName && <VoucherField label="اتاق">{voucher.roomName}</VoucherField>}
+      <section className={styles.section}>
+        <h3>اطلاعات اقامتگاه و مهمان</h3>
+        <dl className={styles.identityFields}>
+          <VoucherField label="اقامتگاه">{voucher.propertyName}</VoucherField>
+          <VoucherField label="مهمان اصلی">{voucher.guestName}</VoucherField>
+        </dl>
+      </section>
+      <section className={styles.section}>
+        <h3>اطلاعات اقامت</h3>
+        <dl className={styles.dateFields}>
           <VoucherField label="تاریخ ورود">{formatDate(voucher.checkIn)}</VoucherField>
           <VoucherField label="تاریخ خروج">{formatDate(voucher.checkOut)}</VoucherField>
-          <VoucherField label="تعداد شب">{formatNumber(voucher.nights)}</VoucherField>
+          <VoucherField label="تعداد شب">{formatNumber(voucher.nights)} شب</VoucherField>
+        </dl>
+        <dl className={styles.roomFields}>
+          <VoucherField label="نوع اتاق">{voucher.roomTypeName}</VoucherField>
+          {voucher.roomName && <VoucherField label="اتاق">{voucher.roomName}</VoucherField>}
           <VoucherField label="بزرگسال">{formatNumber(voucher.adultCount)}</VoucherField>
           <VoucherField label="کودک">{formatNumber(voucher.childCount)}</VoucherField>
         </dl>
       </section>
-      <section className="border-t border-border py-5">
-        <h3 className="mb-4 font-bold">اطلاعات مالی</h3>
-        <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">{children}</dl>
+      <section className={styles.section}>
+        <h3>{audience === "financial" ? "خلاصه مالی رزرو" : "اطلاعات مالی"}</h3>
+        <dl className={styles.financialFields}>{children}</dl>
       </section>
-      <footer className="grid gap-2 border-t border-border pt-4 text-sm leading-6 text-muted-foreground">
-        <p>این سند، اطلاعات رزرو در زمان صدور ووچر را نمایش می‌دهد.</p>
-        <p>تاریخ صدور: <time dateTime={voucher.issuedAtUtc}>{formatDateTime(voucher.issuedAtUtc)}</time></p>
+      {audience === "guest" && <section className={styles.section}>
+        <h3>یادآوری</h3>
+        <ul className={styles.reminders}>
+          <li>این ووچر تأییدکننده رزرو قطعی شماست؛ تاریخ ورود، خروج و مشخصات اتاق را پیش از مراجعه بررسی کنید.</li>
+          <li>در صورت تغییر یا لغو رزرو، وضعیت جدید رزرو در حساب کاربری شما ملاک خواهد بود.</li>
+        </ul>
+      </section>}
+      <footer className={styles.footer}>
+        <p className="font-semibold text-foreground">کوچ · سامانه رزرو و مدیریت اقامتگاه</p>
+        {audience === "financial" && <p>مبلغ قابل تسویه، بیانگر سهم اقامتگاه از این رزرو است و به معنی انجام یا تأیید انتقال بانکی نیست.</p>}
+        {identifiers}
       </footer>
     </article>
   );

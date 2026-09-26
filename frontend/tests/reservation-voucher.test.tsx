@@ -11,6 +11,11 @@ vi.mock("@/lib/owner-api", async (original) => ({
   ...await original<typeof import("@/lib/owner-api")>(), apiRequest: vi.fn(),
 }));
 
+vi.mock("@/lib/site-settings", async (original) => ({
+  ...await original<typeof import("@/lib/site-settings")>(),
+  fetchPublicSiteSettings: vi.fn().mockResolvedValue({ "site.logoUrl": "" }),
+}));
+
 const request = vi.mocked(apiRequest);
 const voucher: OwnerVoucher = {
   voucherNumber: "V-583214", reservationNumber: "R-271946",
@@ -27,6 +32,33 @@ beforeEach(() => { request.mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("read-only reservation vouchers", () => {
+  it.each(["guest", "owner", "admin"])("renders the approved %s layout without repeated rooms, fake phone or QR", async (mode) => {
+    request.mockResolvedValue(voucher);
+    render(mode === "guest" ? <GuestVoucherView reservationNumber="R-271946" />
+      : mode === "owner" ? <OwnerVoucherView propertyId={7} reservationId={23} />
+      : <AdminVoucherView reservationId={23} />);
+    await screen.findByRole("article", { name: "سند ووچر رزرو" });
+    const view = within(doc());
+    expect(view.getByText("رزرو قطعی")).toBeTruthy();
+    expect(view.getAllByText(voucher.roomTypeName)).toHaveLength(1);
+    expect(view.getAllByText(voucher.roomName!)).toHaveLength(1);
+    expect(view.queryByText(/شماره تماس|0912|xxx|QR|شناسه کنترل/)).toBeNull();
+    const codes = doc().querySelectorAll("bdi");
+    expect(codes).toHaveLength(4);
+    for (const code of codes) expect(code.getAttribute("dir")).toBe("ltr");
+    if (mode === "guest") {
+      expect(view.getByText(`${voucher.guestName} عزیز، رزرو شما در ${voucher.propertyName} با موفقیت قطعی شد. در زمان مراجعه به اقامتگاه، این ووچر را در دسترس داشته باشید.`)).toBeTruthy();
+      expect(view.getByText("این ووچر تأییدکننده رزرو قطعی شماست؛ تاریخ ورود، خروج و مشخصات اتاق را پیش از مراجعه بررسی کنید.")).toBeTruthy();
+      expect(view.getByText("در صورت تغییر یا لغو رزرو، وضعیت جدید رزرو در حساب کاربری شما ملاک خواهد بود.")).toBeTruthy();
+      expect(view.getAllByText("مبلغ پرداخت‌شده")).toHaveLength(1);
+      expect(doc().textContent).not.toContain("کمیسیون");
+    } else {
+      expect(view.getByText("رزرو زیر پس از تأیید دریافت وجه قطعی شده است. لطفاً پذیرش مهمان را مطابق اطلاعات و بازه اقامت درج‌شده انجام دهید.")).toBeTruthy();
+      expect(view.getByText("مبلغ قابل تسویه، بیانگر سهم اقامتگاه از این رزرو است و به معنی انجام یا تأیید انتقال بانکی نیست.")).toBeTruthy();
+      expect(view.getByText("مبلغ قابل تسویه به اقامتگاه")).toBeTruthy();
+    }
+  });
+
   it("fetches the Admin endpoint and reuses the financial document and print behavior", async () => {
     request.mockResolvedValue(voucher);
     render(<AdminVoucherView reservationId={23} />);
@@ -48,7 +80,9 @@ describe("read-only reservation vouchers", () => {
     await screen.findByRole("article", { name: "سند ووچر رزرو" });
     expect(request).toHaveBeenCalledWith("/account/reservations/R-271946/voucher", { signal: expect.any(AbortSignal) });
     for (const text of [voucher.voucherNumber, voucher.reservationNumber, voucher.propertyName, voucher.guestName, voucher.roomTypeName, voucher.roomName!, money(voucher.grossAmount)]) {
-      expect(within(doc()).getByText(text)).toBeTruthy();
+      const scope = text === voucher.voucherNumber || text === voucher.reservationNumber
+        ? within(doc().querySelector("header")!) : within(doc());
+      expect(scope.getByText(text)).toBeTruthy();
     }
     for (const label of ["تاریخ ورود", "تاریخ خروج", "تعداد شب", "بزرگسال", "کودک", "مبلغ پرداخت‌شده"]) {
       expect(within(doc()).getByText(label)).toBeTruthy();
