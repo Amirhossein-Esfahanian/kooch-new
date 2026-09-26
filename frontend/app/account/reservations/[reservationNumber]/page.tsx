@@ -213,6 +213,9 @@ export default function AccountReservationDetailsPage() {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                <KoochButton variant="outline" onClick={() => router.push(`/account/reservations/${encodeURIComponent(reservation.reservationNumber)}/voucher`)}>
+                  مشاهده ووچر
+                </KoochButton>
                 {eligible ? (
                   paymentHref ? (
                     <Link

@@ -1,0 +1,58 @@
+.document {
+  overflow-wrap: anywhere;
+}
+
+.printCopy {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+
+  /* The print portal is a direct body child, outside Account/Owner navigation. */
+  :global(body):has(> .printCopy) > :not(.printCopy) {
+    display: none !important;
+  }
+
+  :global(body):has(> .printCopy) {
+    background: white !important;
+    color: black !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+  }
+
+  .printCopy {
+    display: block;
+    width: 100%;
+  }
+
+  .document {
+    background: white !important;
+    color: black !important;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+    box-shadow: none;
+    font-size: 11pt;
+  }
+
+  .document * {
+    color: black !important;
+    border-color: #999 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  .document header,
+  .document footer,
+  .document dl > div {
+    break-inside: avoid;
+  }
+
+  .document h3 {
+    break-after: avoid;
+  }
+}

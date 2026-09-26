@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { FormEvent, useCallback, useEffect, useState } from "react";
 import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
@@ -21,6 +21,7 @@ import {
 import { ReservationDetailsDialog } from "@/components/reservations/ReservationDetailsDialog";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import { apiRequest } from "@/lib/owner-api";
+import { canViewOwnerMenuItem } from "@/lib/property-menu-permissions";
 import { toast } from "sonner";
 
 type ReservationStatusFilter = "" | ReservationTableStatus;
@@ -94,7 +95,8 @@ function buildReservationsPath(
 export default function OwnerReservationsPage() {
   const propertyId = Number(useParams<{ id: string }>().id);
   const { authenticated, loading: sessionLoading, workspaces } = useAuthSession();
-  const { propertyName } = useOwnerProperty();
+  const { propertyName, effectivePermissions } = useOwnerProperty();
+  const router = useRouter();
   const [reservations, setReservations] = useState<ReservationTableItem[]>([]);
   const [selectedReservationState, setSelectedReservation] =
     useState<ReservationTableItem | null>(null);
@@ -356,6 +358,12 @@ export default function OwnerReservationsPage() {
         />
 
         <ReservationDetailsDialog
+          onViewVoucher={canViewOwnerMenuItem(effectivePermissions, "Financial")
+            ? (reservation) => {
+                const reservationId = reservation.reservationId ?? reservation.id;
+                if (reservationId) router.push(`/owner/properties/${propertyId}/reservations/${reservationId}/voucher`);
+              }
+            : undefined}
           loading={detailsLoading}
           onRefresh={viewReservation}
           onSendPaymentLink={sendPaymentLink}

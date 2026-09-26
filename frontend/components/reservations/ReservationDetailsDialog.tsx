@@ -36,6 +36,7 @@ interface ReservationDetailsDialogProps {
     cancellation: ReservationCancellationPayload,
   ) => void | Promise<void>;
   onEdit?: (reservation: ReservationTableItem) => void;
+  onViewVoucher?: (reservation: ReservationTableItem) => void;
   onSendPaymentLink?: (
     reservation: ReservationTableItem,
   ) => void | Promise<void>;
@@ -894,6 +895,7 @@ export function ReservationDetailsDialog({
   onCancel,
   onCreateManualPayment,
   onEdit,
+  onViewVoucher,
   onRejectManualPayment,
   onRefresh,
   onSendPaymentLink,
@@ -1033,6 +1035,11 @@ export function ReservationDetailsDialog({
         description={reservation?.reservationNumber ?? undefined}
         footer={
           <>
+            {reservation && onViewVoucher && (
+              <KoochButton variant="outline" onClick={() => onViewVoucher(reservation)}>
+                مشاهده ووچر
+              </KoochButton>
+            )}
             {reservation && !isReadOnly && onEdit && (
               <KoochButton
                 onClick={() => {
