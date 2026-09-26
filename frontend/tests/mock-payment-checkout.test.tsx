@@ -6,6 +6,7 @@ const navigation = vi.hoisted(() => ({
 }));
 const api = vi.hoisted(() => ({
   fetch: vi.fn(),
+  fetchProviders: vi.fn(),
   initiate: vi.fn(),
   simulate: vi.fn(),
 }));
@@ -19,6 +20,7 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   return {
     ...actual,
     fetchAccountBookingSession: api.fetch,
+    fetchAccountPaymentProviders: api.fetchProviders,
     initiateAccountBookingSessionPayment: api.initiate,
     simulateMockBookingSessionPayment: api.simulate,
   };
@@ -70,7 +72,9 @@ function session(paymentStatus = "Pending") {
 
 describe("mock booking session payment", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     api.fetch.mockResolvedValue(session());
+    api.fetchProviders.mockResolvedValue([{ value: "internal-test", label: "درگاه آزمایشی" }]);
     api.simulate.mockResolvedValue({ state: "failed", redirectDestination: "/booking/sessions/BS-PAY-1/payment-failure" });
     api.initiate.mockResolvedValue({ checkoutDestination: "/booking/sessions/BS-PAY-1/mock-payment" });
   });
@@ -84,6 +88,48 @@ describe("mock booking session payment", () => {
     await vi.waitFor(() => expect(api.simulate).toHaveBeenCalledWith("BS-PAY-1", false));
     expect(document.body.textContent).not.toContain("secret");
     expect(document.body.textContent).not.toContain("callback");
+  });
+
+  it("completes test success through the existing server simulation and success route", async () => {
+    api.simulate.mockResolvedValue({ state: "applied", redirectDestination: "/booking/sessions/BS-PAY-1/success" });
+    render(<MockPaymentCheckout sessionCode="BS-PAY-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "پرداخت موفق آزمایشی" }));
+    await vi.waitFor(() => expect(navigation.router.push).toHaveBeenCalledWith("/booking/sessions/BS-PAY-1/success"));
+    expect(api.simulate).toHaveBeenCalledWith("BS-PAY-1", true);
+    expect(api.initiate).not.toHaveBeenCalled();
+  });
+
+  it("does not expose test controls when the server catalog omits the test provider", async () => {
+    api.fetchProviders.mockResolvedValue([]);
+    render(<MockPaymentCheckout sessionCode="BS-PAY-1" />);
+    expect(await screen.findByText(/روش پرداخت فعالی در دسترس نیست/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /پرداخت.*آزمایشی/ })).toBeNull();
+    expect(api.simulate).not.toHaveBeenCalled();
+  });
+
+  it("prevents duplicate and opposite-result submissions while processing", async () => {
+    api.simulate.mockImplementation(() => new Promise(() => {}));
+    render(<MockPaymentCheckout sessionCode="BS-PAY-1" />);
+    const success = await screen.findByRole("button", { name: "پرداخت موفق آزمایشی" });
+    const failure = screen.getByRole("button", { name: "شکست پرداخت آزمایشی" });
+    fireEvent.click(success);
+    fireEvent.click(success);
+    fireEvent.click(failure);
+    expect(api.simulate).toHaveBeenCalledOnce();
+    expect((success as HTMLButtonElement).disabled).toBe(true);
+    expect((failure as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("shows the server error while retaining retry controls and session data", async () => {
+    api.simulate.mockRejectedValueOnce(new Error("پرداخت آزمایشی قابل اعمال نیست"));
+    render(<MockPaymentCheckout sessionCode="BS-PAY-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "پرداخت موفق آزمایشی" }));
+    expect(await screen.findByText("پرداخت آزمایشی قابل اعمال نیست")).toBeTruthy();
+    expect(screen.getByText("BS-PAY-1")).toBeTruthy();
+    const retry = screen.getByRole("button", { name: "پرداخت موفق آزمایشی" });
+    expect((retry as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(retry);
+    await vi.waitFor(() => expect(api.simulate).toHaveBeenCalledTimes(2));
   });
 
   it("success page displays every reservation and successful payment state", async () => {

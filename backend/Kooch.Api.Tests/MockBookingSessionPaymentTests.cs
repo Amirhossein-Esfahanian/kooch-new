@@ -258,6 +258,16 @@ public sealed class MockBookingSessionPaymentTests
             reservation => Assert.Equal(ReservationStatus.Confirmed, reservation.Status));
         Assert.Equal(PaymentStatus.Successful, (await harness.Context.Payments.SingleAsync()).Status);
         Assert.Single(await harness.Context.PaymentCallbackReceipts.ToListAsync());
+        var snapshots = await harness.Context.ReservationFinancialSnapshots.ToListAsync();
+        var entries = await harness.Context.FinancialEntries.ToListAsync();
+        var vouchers = await harness.Context.ReservationVouchers.ToListAsync();
+        Assert.Equal(2, snapshots.Count);
+        Assert.Equal(2, entries.Count);
+        Assert.Equal(2, vouchers.Count);
+        Assert.All(entries, entry => Assert.Equal(FinancialEntryType.PropertyPayable, entry.EntryType));
+        Assert.All(snapshots, snapshot => Assert.Equal(first.PaymentId, snapshot.PaymentId));
+        Assert.Equal(new[] { 100, 101 }, vouchers.Select(voucher => voucher.ReservationId).Order());
+        Assert.Equal($"/booking/sessions/{Harness.SessionCode}/success", first.RedirectDestination);
     }
 
     [Fact]
@@ -318,7 +328,11 @@ public sealed class MockBookingSessionPaymentTests
     [InlineData("Development", true, true)]
     [InlineData("Testing", true, true)]
     [InlineData("Production", true, false)]
+    [InlineData("Production", false, false)]
+    [InlineData("production", true, false)]
+    [InlineData("Staging", true, false)]
     [InlineData("Development", false, false)]
+    [InlineData("Testing", false, false)]
     public void InternalProviderRegistration_IsEnvironmentAndFlagGated(
         string environment,
         bool flag,
@@ -433,6 +447,22 @@ public sealed class MockBookingSessionPaymentTests
                     warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
                 .Options;
             var context = new KoochDbContext(options);
+            context.Users.Add(new User
+            {
+                Id = 1,
+                FirstName = "Mock",
+                LastName = "Guest",
+                PasswordHash = "not-used",
+                Role = UserRole.Client,
+                IsActive = true
+            });
+            context.Properties.Add(new Property
+            {
+                Id = 1,
+                OwnerId = 1,
+                Name = "Mock payment property",
+                Slug = "mock-payment-property"
+            });
             var deadline = DateTime.UtcNow.AddHours(1);
             context.SiteSettings.Add(new SiteSetting
             {

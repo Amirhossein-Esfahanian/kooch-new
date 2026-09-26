@@ -10,6 +10,7 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 import {
   fetchAccountPaymentProviders,
   initiateAccountBookingSessionPayment,
+  simulateMockBookingSessionPayment,
 } from "@/lib/booking-sessions";
 
 describe("booking-session payment API contract", () => {
@@ -49,5 +50,22 @@ describe("booking-session payment API contract", () => {
         }),
       },
     );
+  });
+
+  it("uses only existing initiation and server simulation endpoints for a test payment", async () => {
+    ownerApi.apiRequest.mockResolvedValue({ paymentId: 42 });
+    await initiateAccountBookingSessionPayment("BS/1405-001", "test-payment-key", "internal-test");
+    await simulateMockBookingSessionPayment("BS/1405-001", true);
+
+    expect(ownerApi.apiRequest.mock.calls).toEqual([
+      ["/account/booking-sessions/BS%2F1405-001/payments", {
+        method: "POST",
+        body: JSON.stringify({ providerKey: "internal-test", idempotencyKey: "test-payment-key" }),
+      }],
+      ["/dev/booking-sessions/BS%2F1405-001/mock-payment", {
+        method: "POST",
+        body: JSON.stringify({ succeeded: true }),
+      }],
+    ]);
   });
 });

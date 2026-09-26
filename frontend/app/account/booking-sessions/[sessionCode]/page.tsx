@@ -89,7 +89,9 @@ export default function AccountBookingSessionPage() {
     ? (session?.summary.payableAmount ?? 0)
     : (session?.totalAmount ?? 0);
   const paymentActionLabel =
-    session?.payment?.status === "Failed"
+    selectedProviderKey === "internal-test"
+      ? "پرداخت آزمایشی"
+      : session?.payment?.status === "Failed"
       ? "تلاش مجدد برای پرداخت"
       : isContinuationAvailable
         ? "ادامه با رزروهای تأییدشده"
@@ -942,8 +944,13 @@ function PaymentProviderSelector({
                 type="radio"
                 value={provider.value}
               />
-              <span className="min-w-0 flex-1 break-words">
-                {provider.label}
+              <span className="grid min-w-0 flex-1 gap-1 break-words">
+                <span>{provider.value === "internal-test" ? "پرداخت آزمایشی" : provider.label}</span>
+                {provider.value === "internal-test" && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    فقط برای محیط توسعه؛ هیچ تراکنش بانکی واقعی انجام نمی‌شود.
+                  </span>
+                )}
               </span>
               {selected && (
                 <span className="shrink-0 text-xs text-primary">

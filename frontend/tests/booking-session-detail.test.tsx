@@ -136,10 +136,9 @@ describe("account booking session detail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
-    vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "true");
     bookingApi.fetch.mockResolvedValue(response());
     bookingApi.fetchProviders.mockResolvedValue([
-      { value: "internal-test", label: "درگاه آزمایشی" },
+      { value: "saman", label: "درگاه سامان" },
     ]);
     bookingApi.initiate.mockResolvedValue({
       paymentId: 10,
@@ -203,11 +202,12 @@ describe("account booking session detail", () => {
   });
 
   it("shows payment only when ready and initiates server-side checkout", async () => {
+    bookingApi.fetchProviders.mockResolvedValue([{ value: "internal-test", label: "درگاه آزمایشی" }]);
     const ready = instantReadyResponse();
     bookingApi.fetch.mockResolvedValue(ready);
     render(<AccountBookingSessionPage />);
 
-    const buttons = await screen.findAllByRole("button", { name: "پرداخت" });
+    const buttons = await screen.findAllByRole("button", { name: "پرداخت آزمایشی" });
     expect(screen.getByText("رزرو ثبت شد؛ پرداخت را تکمیل کنید")).toBeTruthy();
     expect(screen.queryByText("رزرو قطعی شد")).toBeNull();
     expect(
@@ -262,11 +262,14 @@ describe("account booking session detail", () => {
   });
 
   it("automatically selects a single backend provider", async () => {
+    bookingApi.fetchProviders.mockResolvedValue([{ value: "internal-test", label: "درگاه آزمایشی" }]);
     bookingApi.fetch.mockResolvedValue(instantReadyResponse());
     render(<AccountBookingSessionPage />);
 
-    const provider = await screen.findByRole("radio", { name: /درگاه آزمایشی/ });
+    const provider = await screen.findByRole("radio", { name: /پرداخت آزمایشی/ });
     expect((provider as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText("فقط برای محیط توسعه؛ هیچ تراکنش بانکی واقعی انجام نمی‌شود.")).toBeTruthy();
+    expect(screen.queryByText(/روش پرداخت فعالی در دسترس نیست/)).toBeNull();
   });
 
   it("shows a compact error and prevents payment when the catalog fails", async () => {
@@ -492,16 +495,46 @@ describe("account booking session detail", () => {
   });
 
   it("uses the existing session payment initiation without sending reservation ids", async () => {
+    bookingApi.fetchProviders.mockResolvedValue([{ value: "internal-test", label: "درگاه آزمایشی" }]);
     bookingApi.fetch.mockResolvedValue(mixedResponse());
     render(<AccountBookingSessionPage />);
 
-    const buttons = await screen.findAllByRole("button", { name: "ادامه با رزروهای تأییدشده" });
+    const buttons = await screen.findAllByRole("button", { name: "پرداخت آزمایشی" });
     buttons[0].click();
 
     await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledOnce());
     expect(bookingApi.initiate.mock.calls[0]).toHaveLength(3);
     expect(bookingApi.initiate.mock.calls[0][0]).toBe("BS-1405-001");
     expect(bookingApi.initiate.mock.calls[0][2]).toBe("internal-test");
+  });
+
+  it("prevents duplicate test-payment initiation across desktop and mobile controls", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockResolvedValue([{ value: "internal-test", label: "درگاه آزمایشی" }]);
+    bookingApi.initiate.mockImplementation(() => new Promise(() => {}));
+    render(<AccountBookingSessionPage />);
+
+    const buttons = await screen.findAllByRole("button", { name: "پرداخت آزمایشی" });
+    fireEvent.click(buttons[0]);
+    fireEvent.click(buttons[1]);
+    expect(bookingApi.initiate).toHaveBeenCalledOnce();
+    expect(buttons.every((button) => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(navigation.router.push).not.toHaveBeenCalled();
+  });
+
+  it("preserves a recoverable test-payment initiation error", async () => {
+    bookingApi.fetch.mockResolvedValue(instantReadyResponse());
+    bookingApi.fetchProviders.mockResolvedValue([{ value: "internal-test", label: "درگاه آزمایشی" }]);
+    bookingApi.initiate.mockRejectedValueOnce(new Error("شروع پرداخت آزمایشی ناموفق بود"));
+    render(<AccountBookingSessionPage />);
+
+    fireEvent.click((await screen.findAllByRole("button", { name: "پرداخت آزمایشی" }))[0]);
+    expect(await screen.findByText("شروع پرداخت آزمایشی ناموفق بود")).toBeTruthy();
+    const buttons = screen.getAllByRole("button", { name: "پرداخت آزمایشی" });
+    expect(buttons.every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(buttons[0]);
+    await vi.waitFor(() => expect(bookingApi.initiate).toHaveBeenCalledTimes(2));
+    expect(bookingApi.initiate.mock.calls[1]).toEqual(bookingApi.initiate.mock.calls[0]);
   });
 
   it("offers one session-level continuation scope for two approved children", async () => {

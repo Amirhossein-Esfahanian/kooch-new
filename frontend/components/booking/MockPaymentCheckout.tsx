@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
@@ -9,6 +9,7 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   fetchAccountBookingSession,
+  fetchAccountPaymentProviders,
   simulateMockBookingSessionPayment,
   type AccountBookingSession,
 } from "@/lib/booking-sessions";
@@ -24,6 +25,8 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
     null,
   );
   const [error, setError] = useState("");
+  const [testProviderAvailable, setTestProviderAvailable] = useState(false);
+  const submissionPending = useRef(false);
 
   useEffect(() => {
     if (auth.loading) return;
@@ -34,8 +37,15 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
       return;
     }
     let active = true;
-    fetchAccountBookingSession(sessionCode)
-      .then((value) => active && setSession(value))
+    Promise.all([
+      fetchAccountBookingSession(sessionCode),
+      fetchAccountPaymentProviders(),
+    ])
+      .then(([value, providers]) => {
+        if (!active) return;
+        setSession(value);
+        setTestProviderAvailable(providers.some((provider) => provider.value === "internal-test"));
+      })
       .catch((caught: Error) => active && setError(caught.message))
       .finally(() => active && setLoading(false));
     return () => {
@@ -61,6 +71,8 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
   }, [router, session?.payment, sessionCode]);
 
   async function simulate(succeeded: boolean) {
+    if (submissionPending.current || !testProviderAvailable) return;
+    submissionPending.current = true;
     setSubmitting(succeeded ? "success" : "failure");
     setError("");
     try {
@@ -74,14 +86,17 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
         caught instanceof Error ? caught.message : "پرداخت آزمایشی انجام نشد.",
       );
     } finally {
+      submissionPending.current = false;
       setSubmitting(null);
     }
   }
 
   if (auth.loading || loading)
     return <PageState>در حال آماده‌سازی پرداخت آزمایشی...</PageState>;
-  if (error || !session)
+  if (!session)
     return <PageState error>{error || "سفارش رزرو پیدا نشد."}</PageState>;
+  if (!testProviderAvailable)
+    return <PageState>در حال حاضر روش پرداخت فعالی در دسترس نیست. وضعیت سفارش محفوظ می‌ماند.</PageState>;
 
   return (
     <main className="mx-auto grid max-w-3xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
@@ -94,6 +109,7 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
         هیچ اطلاعات بانکی وارد نکنید. این صفحه فقط نتیجهٔ آزمایشی را از طریق
         سرور ثبت می‌کند.
       </KoochAlert>
+      {error && <KoochAlert variant="destructive">{error}</KoochAlert>}
       <KoochCard className="grid gap-4">
         <Detail label="کد سفارش" value={session.sessionCode} ltr />
         <Detail
@@ -119,12 +135,14 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
       </KoochCard>
       <div className="grid gap-3 sm:grid-cols-2">
         <KoochButton
+          disabled={submitting !== null}
           loading={submitting === "success"}
           onClick={() => simulate(true)}
         >
           پرداخت موفق آزمایشی
         </KoochButton>
         <KoochButton
+          disabled={submitting !== null}
           loading={submitting === "failure"}
           onClick={() => simulate(false)}
           variant="outline"
