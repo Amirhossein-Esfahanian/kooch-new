@@ -99,7 +99,7 @@ builder.Services.AddScoped<IReservationApprovalReminderService, ReservationAppro
 builder.Services.AddScoped<ISmsSender, NoOpSmsSender>();
 builder.Services.AddScoped<IEmailSender, NoOpEmailSender>();
 builder.Services.AddScoped<IReservationNumberGenerator, ReservationNumberGenerator>();
-builder.Services.AddSingleton<IBookingSessionCodeGenerator, BookingSessionCodeGenerator>();
+builder.Services.AddScoped<IBookingSessionCodeGenerator, BookingSessionCodeGenerator>();
 builder.Services.AddScoped<IBookingSessionService, BookingSessionService>();
 builder.Services.AddScoped<IBookingSessionQueryService, BookingSessionQueryService>();
 builder.Services.AddScoped<IPublicBookingOptionsService, PublicBookingOptionsService>();

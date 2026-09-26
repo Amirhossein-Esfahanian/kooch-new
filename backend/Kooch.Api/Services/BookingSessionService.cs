@@ -177,7 +177,7 @@ public sealed class BookingSessionService(
             : (DateTime?)null;
         var session = new BookingSession
         {
-            SessionCode = sessionCodeGenerator.Generate(),
+            SessionCode = await sessionCodeGenerator.GenerateAsync(cancellationToken),
             ClientId = request.ClientId,
             GuestId = primaryGuest.GuestId,
             Guest = primaryGuest.NewGuest,
@@ -224,7 +224,7 @@ public sealed class BookingSessionService(
         }
 
         dbContext.BookingSessions.Add(session);
-        await reservationNumberGenerator.SaveWithReservationNumberRetryAsync(dbContext, cancellationToken);
+        await sessionCodeGenerator.SaveWithSessionCodeRetryAsync(dbContext, reservationNumberGenerator, cancellationToken);
         var pendingApprovalIds = session.Reservations
             .Where(reservation => reservation.Status == ReservationStatus.PendingApproval)
             .Select(reservation => reservation.Id)

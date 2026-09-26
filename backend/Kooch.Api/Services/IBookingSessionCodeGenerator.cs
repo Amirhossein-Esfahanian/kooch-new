@@ -2,5 +2,5 @@ namespace Kooch.Api.Services;
 
 public interface IBookingSessionCodeGenerator
 {
-    string Generate();
+    Task<string> GenerateAsync(CancellationToken cancellationToken = default);
 }

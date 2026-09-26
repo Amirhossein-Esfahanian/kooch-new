@@ -27,7 +27,7 @@ public sealed class BookingSessionServiceTests
         var result = await scope.Service.CreateAsync(request);
 
         Assert.NotEqual(0, result.BookingSessionId);
-        Assert.StartsWith("KCH-S-", result.SessionCode);
+        Assert.Matches("^O-[0-9]{6}$", result.SessionCode);
         var reservation = Assert.Single(result.Reservations);
         Assert.NotEqual(0, reservation.ReservationId);
         Assert.Matches("^R-[0-9]{6}$", reservation.ReservationNumber);
@@ -268,6 +268,9 @@ public sealed class BookingSessionServiceTests
 
         var first = await scope.Service.CreateForAccountAsync(1, request);
         var replay = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Matches("^O-[0-9]{6}$", first.SessionCode);
+        Assert.Equal(first.SessionCode, replay.SessionCode);
 
         Assert.Equal(first.BookingSessionId, replay.BookingSessionId);
         Assert.Equal(
@@ -1397,7 +1400,7 @@ public sealed class BookingSessionServiceTests
                 pricing ?? new TestReservationPricingService(),
                 new ReservationStatusWorkflow(),
                 new ReservationNumberGenerator(context),
-                new BookingSessionCodeGenerator(),
+                new BookingSessionCodeGenerator(context),
                 notificationDispatcher);
             return new ServiceScope(context, service, notificationDispatcher);
         }

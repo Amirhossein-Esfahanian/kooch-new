@@ -181,13 +181,124 @@ public sealed class BookingNumberGenerationTests
     }
 
     [Fact]
-    public void SessionCodes_ConcurrentGenerationProducesUniqueFixedLengthCodes()
+    public async Task SessionCodes_GenerateOpaqueSixDigitCodesAndReserveTrackedCandidates()
     {
-        var generator = new BookingSessionCodeGenerator();
-        var codes = new string[2_000];
-        Parallel.For(0, codes.Length, index => codes[index] = generator.Generate());
-        Assert.Equal(codes.Length, codes.Distinct(StringComparer.Ordinal).Count());
-        Assert.All(codes, code => Assert.Matches("^KCH-S-[0-9A-F]{26}$", code));
+        await using var context = new KoochDbContext(CreateInMemoryOptions());
+        var generator = new BookingSessionCodeGenerator(context);
+        for (var index = 0; index < 200; index++)
+        {
+            var code = await generator.GenerateAsync();
+            Assert.Matches("^O-[0-9]{6}$", code);
+            Assert.InRange(int.Parse(code[2..], CultureInfo.InvariantCulture), 100000, 999999);
+            Assert.DoesNotContain("KCH", code);
+            Assert.DoesNotContain(context.ChangeTracker.Entries<BookingSession>(), entry => entry.Entity.SessionCode == code);
+            context.BookingSessions.Add(new BookingSession { SessionCode = code });
+        }
+    }
+
+    [Fact]
+    public async Task SessionCodes_RetryPersistedDeletedAndTrackedCodesWithoutUsingIdentity()
+    {
+        var options = CreateInMemoryOptions();
+        await using (var setup = new KoochDbContext(options))
+        {
+            setup.BookingSessions.AddRange(
+                new BookingSession { SessionCode = "O-100000" },
+                new BookingSession { SessionCode = "O-200000", IsDeleted = true },
+                new BookingSession { Id = 876543, SessionCode = "KCH-S-LEGACY" });
+            await setup.SaveChangesAsync();
+        }
+        await using var context = new KoochDbContext(options);
+        context.BookingSessions.Add(new BookingSession { SessionCode = "O-300000" });
+        var generator = new SessionCandidateGenerator(context, 100000, 200000, 300000, 999999);
+        Assert.Equal("O-999999", await generator.GenerateAsync());
+        Assert.Equal(4, generator.Calls);
+        Assert.Equal("KCH-S-LEGACY", (await context.BookingSessions.SingleAsync(session => session.Id == 876543)).SessionCode);
+    }
+
+    [Fact]
+    public async Task SessionCodes_CandidateExhaustionIsExplicit()
+    {
+        await using var context = new KoochDbContext(CreateInMemoryOptions());
+        context.BookingSessions.Add(new BookingSession { SessionCode = "O-123456" });
+        var generator = new SessionCandidateGenerator(context, 123456);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => generator.GenerateAsync());
+        Assert.Contains("100 attempts", error.Message);
+        Assert.Equal(100, generator.Calls);
+    }
+
+    [Theory]
+    [InlineData(2601)]
+    [InlineData(2627)]
+    public async Task SessionSave_RetriesOnlySessionCodeCollisionAndRollsBackPartialWrites(int number)
+    {
+        await using var context = await CreateSaveContextAsync(number, "IX_BookingSessions_SessionCode", 1);
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        var session = new BookingSession { SessionCode = "O-111111" };
+        context.BookingSessions.Add(session);
+        var generator = new SessionCandidateGenerator(context, 583214);
+        await generator.SaveWithSessionCodeRetryAsync(context, new CandidateGenerator(context, 123456));
+        Assert.Equal(2, context.Attempts);
+        Assert.Equal("O-583214", session.SessionCode);
+        Assert.Equal(1, await context.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM AttemptWrites").SingleAsync());
+    }
+
+    [Fact]
+    public async Task SessionSave_FailsExplicitlyAfterFiveCollisions()
+    {
+        await using var context = await CreateSaveContextAsync(2601, "IX_BookingSessions_SessionCode", 10);
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        context.BookingSessions.Add(new BookingSession { SessionCode = "O-111111" });
+        var generator = new SessionCandidateGenerator(context, 200000, 300000, 400000, 500000);
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            generator.SaveWithSessionCodeRetryAsync(context, new CandidateGenerator(context, 123456)));
+        Assert.Contains("5 attempts", error.Message);
+        Assert.Equal(5, context.Attempts);
+        Assert.Equal(0, await context.Database.SqlQueryRaw<int>("SELECT COUNT(*) AS Value FROM AttemptWrites").SingleAsync());
+    }
+
+    [Theory]
+    [InlineData(2601, "IX_BookingSessions_ClientId_IdempotencyKey")]
+    [InlineData(2601, "IX_BookingSessions_SessionCode_Other")]
+    [InlineData(547, "IX_BookingSessions_SessionCode")]
+    [InlineData(1205, "IX_BookingSessions_SessionCode")]
+    public async Task SessionSave_PropagatesUnrelatedErrors(int number, string index)
+    {
+        await using var context = await CreateSaveContextAsync(number, index, 1);
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        context.BookingSessions.Add(new BookingSession { SessionCode = "O-111111" });
+        var generator = new SessionCandidateGenerator(context, 583214);
+        await Assert.ThrowsAsync<DbUpdateException>(() =>
+            generator.SaveWithSessionCodeRetryAsync(context, new CandidateGenerator(context, 123456)));
+        Assert.Equal(1, context.Attempts);
+        Assert.Equal(0, generator.Calls);
+    }
+
+    [Fact]
+    public async Task SessionCodeUniqueIndex_RejectsConcurrentCandidates()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var first = new ReservationConstraintContext(options);
+        await first.Database.EnsureCreatedAsync();
+        await first.Database.ExecuteSqlRawAsync("PRAGMA foreign_keys = OFF");
+        await using var second = new ReservationConstraintContext(options);
+        var firstCode = await new SessionCandidateGenerator(first, 583214).GenerateAsync();
+        var secondCode = await new SessionCandidateGenerator(second, 583214).GenerateAsync();
+        first.BookingSessions.Add(new BookingSession { SessionCode = firstCode });
+        second.BookingSessions.Add(new BookingSession { SessionCode = secondCode });
+        await first.SaveChangesAsync();
+        var error = await Assert.ThrowsAsync<DbUpdateException>(() => second.SaveChangesAsync());
+        Assert.Contains("BookingSessions.SessionCode", error.InnerException!.Message);
+        Assert.Equal(1, await first.BookingSessions.CountAsync());
+    }
+
+    private sealed class SessionCandidateGenerator(KoochDbContext context, params int[] candidates)
+        : BookingSessionCodeGenerator(context)
+    {
+        public int Calls { get; private set; }
+        protected override int NextNumber() => candidates[Math.Min(Calls++, candidates.Length - 1)];
     }
 
     private static DbContextOptions<KoochDbContext> CreateInMemoryOptions() =>
@@ -209,6 +320,7 @@ public sealed class BookingNumberGenerationTests
             base.OnModelCreating(modelBuilder);
             // SQLite does not generate SQL Server rowversion values.
             modelBuilder.Entity<Reservation>().Property(reservation => reservation.RowVersion).ValueGeneratedNever();
+            modelBuilder.Entity<BookingSession>().Property(session => session.RowVersion).ValueGeneratedNever();
         }
     }
 
