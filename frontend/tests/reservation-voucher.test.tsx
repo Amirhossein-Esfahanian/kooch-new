@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { GuestVoucherView } from "@/components/reservations/vouchers/GuestVoucherView";
 import { OwnerVoucherView } from "@/components/reservations/vouchers/OwnerVoucherView";
+import { AdminVoucherView } from "@/components/reservations/vouchers/AdminVoucherView";
 import { ApiRequestError, apiRequest } from "@/lib/owner-api";
 import type { OwnerVoucher } from "@/lib/owner-voucher";
 
@@ -26,6 +27,21 @@ beforeEach(() => { request.mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("read-only reservation vouchers", () => {
+  it("fetches the Admin endpoint and reuses the financial document and print behavior", async () => {
+    request.mockResolvedValue(voucher);
+    render(<AdminVoucherView reservationId={23} />);
+    await screen.findByRole("article", { name: "سند ووچر رزرو" });
+    expect(request).toHaveBeenCalledWith("/admin/reservations/23/voucher", { signal: expect.any(AbortSignal) });
+    for (const amount of [voucher.grossAmount, voucher.commissionAmount, voucher.propertyPayableAmount]) {
+      expect(within(doc()).getByText(money(amount))).toBeTruthy();
+    }
+    expect(within(doc()).getByText("مبلغ قابل تسویه به اقامتگاه")).toBeTruthy();
+    const print = vi.spyOn(window, "print").mockImplementation(() => {});
+    fireEvent.click(screen.getByRole("button", { name: "چاپ ووچر" }));
+    expect(print).toHaveBeenCalledOnce();
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
   it("fetches the Guest projection and displays identity, stay and gross only, including in print", async () => {
     request.mockResolvedValue(voucher);
     render(<GuestVoucherView reservationNumber="R-271946" />);

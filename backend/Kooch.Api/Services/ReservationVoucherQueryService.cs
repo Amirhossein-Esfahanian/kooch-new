@@ -1,5 +1,6 @@
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Reservations;
+using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
@@ -60,11 +61,25 @@ public sealed class ReservationVoucherQueryService(
             throw new UnauthorizedAccessException("You cannot view this property's financial vouchers.");
         }
 
-        return await dbContext.ReservationVouchers.AsNoTracking()
+        return await FinancialProjection(dbContext.ReservationVouchers.AsNoTracking()
             .Where(voucher =>
                 voucher.ReservationId == reservationId &&
-                voucher.PropertyId == propertyId)
-            .Select(voucher => new OwnerReservationVoucherResponse
+                voucher.PropertyId == propertyId))
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Voucher not found.");
+    }
+
+    public async Task<OwnerReservationVoucherResponse> GetForAdminAsync(
+        int reservationId,
+        CancellationToken cancellationToken = default) =>
+        await FinancialProjection(dbContext.ReservationVouchers.AsNoTracking()
+                .Where(voucher => voucher.ReservationId == reservationId))
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Voucher not found.");
+
+    private static IQueryable<OwnerReservationVoucherResponse> FinancialProjection(
+        IQueryable<ReservationVoucher> vouchers) =>
+        vouchers.Select(voucher => new OwnerReservationVoucherResponse
             {
                 VoucherNumber = voucher.VoucherNumber,
                 ReservationNumber = voucher.ReservationNumberSnapshot,
@@ -83,8 +98,5 @@ public sealed class ReservationVoucherQueryService(
                 CommissionRate = voucher.CommissionRate,
                 CommissionAmount = voucher.CommissionAmount,
                 PropertyPayableAmount = voucher.PropertyPayableAmount
-            })
-            .SingleOrDefaultAsync(cancellationToken)
-            ?? throw new KeyNotFoundException("Voucher not found.");
-    }
+            });
 }

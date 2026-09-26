@@ -8,7 +8,10 @@ const mocks = vi.hoisted(() => ({
   permissions: ["ManagePayments"],
   role: "AdminAssistant" as "AdminAssistant" | "SuperAdmin",
   toastWarning: vi.fn(),
+  push: vi.fn(),
 }));
+
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({
@@ -143,6 +146,10 @@ describe("Admin manual payment page integration", () => {
 
     await screen.findByText("پرداخت‌ها: 1");
     expect(mocks.apiRequest).toHaveBeenCalledWith("/admin/manual-payments/reservation/12");
+    const viewVoucher = mocks.dialogProps?.onViewVoucher as (reservation: { id: number }) => void;
+    expect(viewVoucher).toBeTypeOf("function");
+    viewVoucher({ id: 12 });
+    expect(mocks.push).toHaveBeenCalledWith("/admin/reservations/12/voucher");
   });
 
   it("posts the create payload without evidence and refreshes the current reservation", async () => {
@@ -185,6 +192,7 @@ describe("Admin manual payment page integration", () => {
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith("/admin/reservations/12"));
 
     expect(mocks.apiRequest).not.toHaveBeenCalledWith("/admin/manual-payments/reservation/12");
+    expect(mocks.dialogProps?.onViewVoucher).toBeUndefined();
     expect(screen.queryByRole("button", { name: "ثبت آزمایشی" })).toBeNull();
     expect(screen.queryByRole("button", { name: "تأیید آزمایشی" })).toBeNull();
   });

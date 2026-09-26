@@ -18,6 +18,67 @@ namespace Kooch.Api.Tests;
 
 public sealed class ReservationVoucherProjectionTests
 {
+    [Theory]
+    [InlineData(UserRole.SuperAdmin, false, true)]
+    [InlineData(UserRole.AdminAssistant, true, true)]
+    [InlineData(UserRole.AdminAssistant, false, false)]
+    public async Task AdminFinancialPermission_IsPlatformScoped(UserRole role, bool allowed, bool expected)
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+        harness.Context.Users.Add(new User { Id = 90, Role = role, IsActive = true });
+        if (allowed) harness.Context.UserPermissions.Add(new UserPermission
+        {
+            UserId = 90, PermissionKey = PermissionKey.ManagePayments, IsAllowed = true
+        });
+        await harness.Context.SaveChangesAsync();
+        var requirement = new PermissionRequirement(PermissionKey.ManagePayments);
+        var authorization = new AuthorizationHandlerContext([requirement],
+            ControllerContext(90, role).HttpContext.User, new DefaultHttpContext());
+        await new PermissionAuthorizationHandler(new PermissionService(harness.Context,
+            new PropertyAccessService(harness.Context))).HandleAsync(authorization);
+        Assert.Equal(expected, authorization.HasSucceeded);
+        if (expected)
+        {
+            var controller = new AdminReservationVouchersController(harness.Service);
+            Assert.IsType<OkObjectResult>((await controller.Get(40, CancellationToken.None)).Result);
+        }
+    }
+
+    [Fact]
+    public async Task AdminProjection_ReusesPersistedOwnerSnapshotWithoutWrites()
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+        harness.Reservation.FinalAmount = 1m;
+        await harness.Context.SaveChangesAsync();
+        var expected = await harness.Service.GetForPropertyAsync(3, 10, 40);
+        harness.Context.ChangeTracker.Clear();
+        var controller = new AdminReservationVouchersController(harness.Service);
+        var action = await controller.Get(40, CancellationToken.None);
+        var actual = Assert.IsType<OwnerReservationVoucherResponse>(Assert.IsType<OkObjectResult>(action.Result).Value);
+        Assert.Equal(JsonSerializer.Serialize(expected), JsonSerializer.Serialize(actual));
+        Assert.Equal(750m, actual.GrossAmount);
+        Assert.Empty(harness.Context.ChangeTracker.Entries());
+        var count = await harness.Context.ReservationVouchers.CountAsync();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => controller.Get(41, CancellationToken.None));
+        Assert.Equal(count, await harness.Context.ReservationVouchers.CountAsync());
+        Assert.Empty(harness.Context.ChangeTracker.Entries());
+    }
+
+    [Fact]
+    public void AdminVoucherEndpoint_UsesExistingAdminPaymentPolicyAndGetOnly()
+    {
+        var type = typeof(AdminReservationVouchersController);
+        Assert.Single(type.GetCustomAttributes(typeof(AdminAuthorizeAttribute), true));
+        var permission = Assert.Single(type.GetCustomAttributes(typeof(PermissionAuthorizeAttribute), true)
+            .Cast<PermissionAuthorizeAttribute>());
+        Assert.Equal(new PermissionAuthorizeAttribute(PermissionKey.ManagePayments).Policy, permission.Policy);
+        Assert.Empty(type.GetCustomAttributes(typeof(OwnerAuthorizeAttribute), true));
+        Assert.Equal("api/admin/reservations/{reservationId:int}/voucher",
+            Assert.Single(type.GetCustomAttributes(typeof(RouteAttribute), true).Cast<RouteAttribute>()).Template);
+        Assert.IsType<HttpGetAttribute>(Assert.Single(type.GetMethod("Get")!
+            .GetCustomAttributes(typeof(HttpMethodAttribute), true)));
+    }
+
     [Fact]
     public async Task GuestOwner_CanRetrieveVoucherThroughAccountController()
     {

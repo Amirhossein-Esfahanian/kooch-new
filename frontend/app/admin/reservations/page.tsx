@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochButton } from "@/components/KoochButton";
@@ -184,6 +185,7 @@ const paymentStatusOptions: Array<{
 
 export default function AdminReservationsPage() {
   const { platformPermissions, platformRole } = useAuthSession();
+  const router = useRouter();
   const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
@@ -1114,6 +1116,10 @@ export default function AdminReservationsPage() {
         />
 
         <ReservationDetailsDialog
+          onViewVoucher={canManagePayments ? (reservation) => {
+            const id = reservation.reservationId ?? reservation.id;
+            if (id) router.push(`/admin/reservations/${id}/voucher`);
+          } : undefined}
           loading={detailsLoading}
           manualPayments={manualPayments}
           manualPaymentsLoading={detailsLoading && canManagePayments}
