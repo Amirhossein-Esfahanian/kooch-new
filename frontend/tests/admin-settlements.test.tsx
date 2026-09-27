@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/owner-api", () => ({ apiRequest: api }));
+vi.mock("@/lib/currency", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/currency")>(),
+  useSiteCurrencyLabel: () => "واحد آزمایشی",
+}));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children, requiredPlatformPermission }: { children: ReactNode; requiredPlatformPermission: string }) =>
     <div data-permission={requiredPlatformPermission}>{children}</div>,
@@ -43,6 +47,8 @@ describe("Admin settlements", () => {
     fireEvent.click(await screen.findByRole("checkbox", { name: "انتخاب R-100001" }));
     fireEvent.click(check(2));
     expect(check(3).disabled).toBe(true);
+    expect(screen.getByText("۲ قلم انتخاب‌شده • Property 1")).not.toBeNull();
+    expect(screen.getByText("مجموع: ۲۴۶٫۹ واحد آزمایشی")).not.toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "ایجاد تسویه" }));
     await waitFor(() => expect(mutations()).toHaveLength(1));
     expect(mutations()[0][0]).toBe("/admin/settlements");
@@ -80,10 +86,10 @@ describe("Admin settlements", () => {
 
   it("confirms Paid before posting and refreshes the current lists", async () => {
     render(<Page />);
-    fireEvent.click(await screen.findByRole("button", { name: "ثبت پرداخت" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "ثبت پرداخت تسویه" });
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت تسویه" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "ثبت تسویه" });
     expect(mutations()).toHaveLength(0);
-    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید و ثبت پرداخت" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید و ثبت تسویه" }));
     await waitFor(() => expect(mutations()).toHaveLength(1));
     expect(mutations()[0]).toEqual(["/admin/settlements/10/paid", { method: "POST" }]);
     await waitFor(() => expect(api.mock.calls.filter(([path]) => path === "/admin/settlements?page=1&pageSize=20").length).toBe(2));
@@ -95,6 +101,51 @@ describe("Admin settlements", () => {
     const dialog = await screen.findByRole("dialog", { name: "جزئیات تسویه" });
     await within(dialog).findByText("R-100001");
     expect(within(dialog).getByText("سررسید اصلی")).not.toBeNull();
+    expect(within(dialog).getByText("زمان ایجاد")).not.toBeNull();
+    expect(within(dialog).getByText("زمان پرداخت")).not.toBeNull();
+    expect(dialog.querySelector('time[datetime="2026-09-27T00:00:00Z"]')?.children.length).toBe(2);
     expect(api).toHaveBeenCalledWith("/admin/settlements/10");
+  });
+
+  it("uses compact responsive sections and configured currency without currency columns", async () => {
+    render(<Page />);
+    await screen.findByRole("checkbox", { name: "انتخاب R-100001" });
+    const payableTable = screen.getByRole("table", { name: "تعهدات تسویه‌نشده" });
+    const settlementTable = screen.getByRole("table", { name: "تسویه‌ها" });
+    expect(within(payableTable).getAllByRole("columnheader")).toHaveLength(6);
+    expect(within(settlementTable).getAllByRole("columnheader")).toHaveLength(6);
+    expect(screen.queryByRole("columnheader", { name: "واحد پول" })).toBeNull();
+    expect(within(payableTable).getAllByText("۱۲۳٫۴۵")).toHaveLength(5);
+    expect(within(settlementTable).getByText("۲۴۶٫۹")).not.toBeNull();
+    expect(within(payableTable).queryByText(/واحد آزمایشی/)).toBeNull();
+    expect(within(settlementTable).queryByText(/واحد آزمایشی/)).toBeNull();
+    expect(screen.getAllByText("واحد مبالغ: واحد آزمایشی")).toHaveLength(2);
+    const payableSection = screen.getByRole("region", { name: "تعهدات تسویه‌نشده" });
+    const settlementSection = screen.getByRole("region", { name: "تسویه‌ها" });
+    expect(payableSection.parentElement).toBe(settlementSection.parentElement);
+    expect(payableSection.parentElement?.classList.contains("lg:grid-cols-2")).toBe(true);
+    expect(screen.queryByRole("button", { name: "پاک کردن فیلتر" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "همه اقامتگاه‌ها" })).toBeNull();
+  });
+
+  it("offers reset only after selecting a property and preserves the filter requests", async () => {
+    render(<Page />);
+    await screen.findByRole("checkbox", { name: "انتخاب R-100001" });
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Property 1" }));
+    const reset = await screen.findByRole("button", { name: "پاک کردن فیلتر" });
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements/payables?page=1&pageSize=20&propertyId=1"));
+    fireEvent.click(reset);
+    expect(screen.queryByRole("button", { name: "پاک کردن فیلتر" })).toBeNull();
+  });
+
+  it("uses distinct normal and early empty wording", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path.includes("/payables?")
+      ? Promise.resolve(paged([])) : original(path, options));
+    render(<Page />);
+    await screen.findByText("در حال حاضر تعهد سررسیدشده یا معوقی برای تسویه وجود ندارد.");
+    fireEvent.click(screen.getByRole("checkbox", { name: "اجازه تسویه زودهنگام اقلام آینده" }));
+    expect(screen.getByText("تعهد تسویه‌نشده‌ای یافت نشد.")).not.toBeNull();
   });
 });
