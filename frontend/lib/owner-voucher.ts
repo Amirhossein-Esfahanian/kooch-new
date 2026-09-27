@@ -6,6 +6,7 @@ export interface OwnerVoucher {
   issuedAtUtc: string;
   propertyName: string;
   guestName: string;
+  guestMobile?: string | null;
   roomTypeName: string;
   roomName: string | null;
   checkIn: string;

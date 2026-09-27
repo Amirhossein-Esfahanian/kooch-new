@@ -64,7 +64,7 @@ public sealed class ReservationVoucherQueryService(
         return await FinancialProjection(dbContext.ReservationVouchers.AsNoTracking()
             .Where(voucher =>
                 voucher.ReservationId == reservationId &&
-                voucher.PropertyId == propertyId))
+                voucher.PropertyId == propertyId), propertyFacing: true)
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Voucher not found.");
     }
@@ -78,7 +78,7 @@ public sealed class ReservationVoucherQueryService(
             ?? throw new KeyNotFoundException("Voucher not found.");
 
     private static IQueryable<OwnerReservationVoucherResponse> FinancialProjection(
-        IQueryable<ReservationVoucher> vouchers) =>
+        IQueryable<ReservationVoucher> vouchers, bool propertyFacing = false) =>
         vouchers.Select(voucher => new OwnerReservationVoucherResponse
             {
                 VoucherNumber = voucher.VoucherNumber,
@@ -86,6 +86,9 @@ public sealed class ReservationVoucherQueryService(
                 IssuedAtUtc = voucher.IssuedAtUtc,
                 PropertyName = voucher.PropertyNameSnapshot,
                 GuestName = voucher.GuestNameSnapshot,
+                GuestMobile = !propertyFacing || voucher.Property.ShowGuestPhoneToPropertyUsers
+                    ? voucher.GuestMobileSnapshot
+                    : null,
                 RoomTypeName = voucher.RoomTypeNameSnapshot,
                 RoomName = voucher.RoomNameSnapshot,
                 CheckIn = voucher.CheckInSnapshot,

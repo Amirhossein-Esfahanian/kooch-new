@@ -299,6 +299,34 @@ let deferStatusUpdate = false;
 let resolveStatusUpdate: (() => void) | null = null;
 
 describe("PropertyWizard media and common areas", () => {
+  it("saves the Admin-only guest phone toggle through the existing rules section", async () => {
+    window.history.replaceState({}, "", "?step=7");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+    const toggle = await screen.findByRole("checkbox", { name: "نمایش شماره تماس مهمان به اقامتگاه" });
+    expect((toggle as HTMLInputElement).checked).toBe(false);
+    expect(toggle.getAttribute("aria-describedby")).toBe("guest-phone-visibility-help");
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(([path, init]) =>
+        path === "/admin/properties/17/sections/rules" && init?.method === "PUT");
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ showGuestPhoneToPropertyUsers: true });
+    });
+  });
+
+  it("does not expose or send the guest phone setting in the Owner rules form", async () => {
+    loadedProperty = { ...property, showGuestPhoneToPropertyUsers: true };
+    window.history.replaceState({}, "", "?step=7");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+    await screen.findByRole("heading", { name: "قوانین و زمان‌ها" });
+    expect(screen.queryByRole("checkbox", { name: "نمایش شماره تماس مهمان به اقامتگاه" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(([path, init]) =>
+        path === "/owner/properties/17/sections/rules" && init?.method === "PUT");
+      expect(JSON.parse(String(call?.[1]?.body))).not.toHaveProperty("showGuestPhoneToPropertyUsers");
+    });
+  });
   beforeEach(() => {
     loadedProperty = property;
     loadedAmenityCategories = [];

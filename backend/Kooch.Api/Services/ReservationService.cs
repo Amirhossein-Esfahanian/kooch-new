@@ -26,6 +26,18 @@ public class ReservationService(
 {
     private const decimal MaximumStoredAmount = 9999999999999999.99m;
 
+    public async Task ApplyPropertyGuestPhoneVisibilityAsync(
+        int propertyId,
+        ReservationResponse response,
+        CancellationToken cancellationToken = default)
+    {
+        var showPhone = await dbContext.Properties.AsNoTracking()
+            .Where(property => property.Id == propertyId)
+            .Select(property => property.ShowGuestPhoneToPropertyUsers)
+            .SingleOrDefaultAsync(cancellationToken);
+        if (!showPhone) response.GuestMobile = null;
+    }
+
     public async Task<PagedResult<ReservationListItemResponse>> SearchAsync(
         ReservationListQuery query,
         (int UserId, UserRole Role) currentUser,
@@ -72,6 +84,10 @@ public class ReservationService(
 
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        if (propertyId.HasValue && !reservation.Property.ShowGuestPhoneToPropertyUsers)
+        {
+            response.GuestMobile = null;
+        }
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
             .Where(usage => usage.ReservationId == reservationId)
@@ -1846,7 +1862,9 @@ public class ReservationService(
                 GuestId = reservation.GuestId,
                 GuestFirstName = reservation.Guest == null ? null : reservation.Guest.FirstName,
                 GuestLastName = reservation.Guest == null ? null : reservation.Guest.LastName,
-                GuestMobile = reservation.Guest == null ? null : reservation.Guest.Mobile,
+                GuestMobile = reservation.Guest == null ||
+                    (scopedPropertyId.HasValue && !reservation.Property.ShowGuestPhoneToPropertyUsers)
+                    ? null : reservation.Guest.Mobile,
                 CheckInDate = reservation.CheckInDate,
                 CheckOutDate = reservation.CheckOutDate,
                 Adults = reservation.AdultCount,

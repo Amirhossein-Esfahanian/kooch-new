@@ -38,6 +38,17 @@ function reservation(
 }
 
 describe("reservation hardening", () => {
+  it.each([null, "09123456789"])("shows guest phone only when returned by the API: %s", async (guestMobile) => {
+    render(<ReservationDetailsDialog onOpenChange={vi.fn()} open
+      reservation={reservation({ guestMobile })} />);
+    await screen.findByText("نام کامل");
+    if (guestMobile) {
+      expect(screen.getByText("شماره تماس")).toBeTruthy();
+      expect(screen.getByText("۰۹۱۲۳۴۵۶۷۸۹")).toBeTruthy();
+    } else {
+      expect(screen.queryByText("شماره تماس")).toBeNull();
+    }
+  });
   it.each(["create", "update"])(
     "includes the selected allowed status in the %s mutation payload",
     () => {

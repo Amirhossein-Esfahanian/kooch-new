@@ -1196,10 +1196,12 @@ export function ReservationDetailsDialog({
 
             <DetailSection title="مهمان">
               <DetailItem label="نام کامل" value={guestName} />
-              <DetailItem
-                label="موبایل"
-                value={toPersianDigits(reservation.guestMobile ?? "-")}
-              />
+              {reservation.guestMobile && (
+                <DetailItem
+                  label="شماره تماس"
+                  value={toPersianDigits(reservation.guestMobile)}
+                />
+              )}
               <DetailItem label="ایمیل" value={guestEmail} />
               <DetailItem
                 label="کد ملی / شماره پاسپورت"

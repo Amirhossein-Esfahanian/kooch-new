@@ -20,6 +20,8 @@ public sealed class GuestReservationVoucherResponse
 
 public sealed class OwnerReservationVoucherResponse
 {
+    [System.Text.Json.Serialization.JsonIgnore(Condition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull)]
+    public string? GuestMobile { get; set; }
     public string VoucherNumber { get; set; } = string.Empty;
     public string ReservationNumber { get; set; } = string.Empty;
     public DateTime IssuedAtUtc { get; set; }

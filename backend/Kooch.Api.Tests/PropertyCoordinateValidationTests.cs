@@ -11,6 +11,48 @@ namespace Kooch.Api.Tests;
 
 public sealed class PropertyCoordinateValidationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AdminUpdate_PersistsGuestPhoneVisibility(bool showPhone)
+    {
+        await using var context = CreateContext();
+        await SeedBaseAsync(context);
+        await SeedPropertyAsync(context);
+        var service = CreateService(context);
+        var request = AdminUpdateRequest(null, null);
+        request.ShowGuestPhoneToPropertyUsers = showPhone;
+        var response = await service.UpdatePropertyForAdminAsync(
+            AdminUserId, UserRole.SuperAdmin, PropertyId, request);
+        Assert.Equal(showPhone, response.ShowGuestPhoneToPropertyUsers);
+        context.ChangeTracker.Clear();
+        Assert.Equal(showPhone, (await context.Properties.SingleAsync()).ShowGuestPhoneToPropertyUsers);
+
+        var rules = new Kooch.Api.Dtos.Admin.AdminUpdatePropertyRulesSectionRequest
+        {
+            ShowGuestPhoneToPropertyUsers = !showPhone
+        };
+        response = await service.UpdateRulesSectionAsync(AdminUserId, UserRole.SuperAdmin, PropertyId, rules);
+        Assert.Equal(!showPhone, response.ShowGuestPhoneToPropertyUsers);
+        context.ChangeTracker.Clear();
+        Assert.Equal(!showPhone, (await context.Properties.SingleAsync()).ShowGuestPhoneToPropertyUsers);
+
+        var ownerRequest = System.Text.Json.JsonSerializer.Deserialize<UpdatePropertyRulesSectionRequest>(
+            "{\"showGuestPhoneToPropertyUsers\":true}",
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web))!;
+        context.UserPropertyAccesses.Add(new UserPropertyAccess
+        {
+            UserId = OwnerUserId,
+            PropertyId = PropertyId,
+            PropertyRole = PropertyUserRole.PropertyOwner,
+            Status = PropertyUserStatus.Active,
+            IsActive = true,
+            PermissionMatrixJson = System.Text.Json.JsonSerializer.Serialize(PropertyPermissionMatrixDefaults.CreateOwner())
+        });
+        await context.SaveChangesAsync();
+        await service.UpdateRulesSectionAsync(OwnerUserId, UserRole.Client, PropertyId, ownerRequest);
+        Assert.Equal(!showPhone, (await context.Properties.SingleAsync()).ShowGuestPhoneToPropertyUsers);
+    }
     public static TheoryData<decimal?, decimal?> ValidCoordinates => new()
     {
         { null, null },

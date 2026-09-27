@@ -5,6 +5,11 @@ namespace Kooch.Api.Services;
 
 public interface IReservationService
 {
+    Task ApplyPropertyGuestPhoneVisibilityAsync(
+        int propertyId,
+        ReservationResponse response,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResult<ReservationListItemResponse>> SearchAsync(
         ReservationListQuery query,
         (int UserId, UserRole Role) currentUser,

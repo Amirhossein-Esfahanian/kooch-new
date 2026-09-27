@@ -94,7 +94,7 @@ public class AdminPropertiesController(
         UpdateSection((userId, role) => propertyService.UpdateBuildingSectionAsync(userId, role, id, request, cancellationToken));
 
     [HttpPut("{id:int}/sections/rules")]
-    public Task<ActionResult<PropertyResponse>> UpdateRules(int id, UpdatePropertyRulesSectionRequest request, CancellationToken cancellationToken) =>
+    public Task<ActionResult<PropertyResponse>> UpdateRules(int id, AdminUpdatePropertyRulesSectionRequest request, CancellationToken cancellationToken) =>
         UpdateSection((userId, role) => propertyService.UpdateRulesSectionAsync(userId, role, id, request, cancellationToken));
 
     [HttpPut("{id:int}/sections/financial")]

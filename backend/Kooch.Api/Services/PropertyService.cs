@@ -253,7 +253,15 @@ public class PropertyService(
         UpdatePropertyRulesSectionRequest request,
         CancellationToken cancellationToken = default)
     {
+        if (request is AdminUpdatePropertyRulesSectionRequest)
+        {
+            await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
+        }
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        if (request is AdminUpdatePropertyRulesSectionRequest { ShowGuestPhoneToPropertyUsers: { } showGuestPhone })
+        {
+            property.ShowGuestPhoneToPropertyUsers = showGuestPhone;
+        }
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
         property.BreakfastOption = request.BreakfastOption;
@@ -375,6 +383,10 @@ public class PropertyService(
         property.IsWheelchairAccessible = request.IsWheelchairAccessible;
         property.HasGroundFloorRoom = request.HasGroundFloorRoom;
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        if (request.ShowGuestPhoneToPropertyUsers.HasValue)
+        {
+            property.ShowGuestPhoneToPropertyUsers = request.ShowGuestPhoneToPropertyUsers.Value;
+        }
         if (request.HasSeparateForeignPricing.HasValue)
         {
             property.HasSeparateForeignPricing = request.HasSeparateForeignPricing.Value;
@@ -1307,6 +1319,7 @@ public class PropertyService(
             ChildPrice = property.ChildPrice,
             ExtraGuestPrice = property.ExtraGuestPrice,
             HasSeparateForeignPricing = property.HasSeparateForeignPricing,
+            ShowGuestPhoneToPropertyUsers = property.ShowGuestPhoneToPropertyUsers,
         });
 
     private static IQueryable<PublicPropertyResponse> ProjectPublic(

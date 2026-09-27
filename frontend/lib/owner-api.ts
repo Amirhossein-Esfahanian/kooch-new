@@ -91,6 +91,7 @@ export interface PropertyResponse {
   childPrice: number | null;
   extraGuestPrice: number | null;
   hasSeparateForeignPricing: boolean;
+  showGuestPhoneToPropertyUsers?: boolean;
 }
 
 export type PropertyStatus =

@@ -35,6 +35,7 @@ public class Property : BaseEntity
     public decimal? ChildPrice { get; set; }
     public decimal? ExtraGuestPrice { get; set; }
     public bool HasSeparateForeignPricing { get; set; }
+    public bool ShowGuestPhoneToPropertyUsers { get; set; }
     
 
     public User Owner { get; set; } = null!;

@@ -32,6 +32,22 @@ beforeEach(() => { request.mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("read-only reservation vouchers", () => {
+  it.each(["owner", "admin"])("shows the full API phone in the %s financial document", async (mode) => {
+    request.mockResolvedValue({ ...voucher, guestMobile: "09123456789" });
+    render(mode === "owner" ? <OwnerVoucherView propertyId={7} reservationId={23} />
+      : <AdminVoucherView reservationId={23} />);
+    await screen.findByRole("article", { name: "سند ووچر رزرو" });
+    expect(within(doc()).getByText("شماره تماس")).toBeTruthy();
+    expect(within(doc()).getByText("09123456789").getAttribute("dir")).toBe("ltr");
+  });
+
+  it("keeps the Guest document unchanged even if extra phone data is supplied", async () => {
+    request.mockResolvedValue({ ...voucher, guestMobile: "09123456789" });
+    render(<GuestVoucherView reservationNumber="R-271946" />);
+    await screen.findByRole("article", { name: "سند ووچر رزرو" });
+    expect(within(doc()).queryByText("شماره تماس")).toBeNull();
+    expect(within(doc()).queryByText("09123456789")).toBeNull();
+  });
   it.each(["guest", "owner", "admin"])("renders the approved %s layout without repeated rooms, fake phone or QR", async (mode) => {
     request.mockResolvedValue(voucher);
     render(mode === "guest" ? <GuestVoucherView reservationNumber="R-271946" />

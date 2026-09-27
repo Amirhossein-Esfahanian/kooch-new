@@ -48,6 +48,7 @@ public sealed class ReservationVoucherProjectionTests
     public async Task AdminProjection_ReusesPersistedOwnerSnapshotWithoutWrites()
     {
         await using var harness = await VoucherProjectionHarness.CreateAsync();
+        harness.Property.ShowGuestPhoneToPropertyUsers = true;
         harness.Reservation.FinalAmount = 1m;
         await harness.Context.SaveChangesAsync();
         var expected = await harness.Service.GetForPropertyAsync(3, 10, 40);
@@ -62,6 +63,43 @@ public sealed class ReservationVoucherProjectionTests
         await Assert.ThrowsAsync<KeyNotFoundException>(() => controller.Get(41, CancellationToken.None));
         Assert.Equal(count, await harness.Context.ReservationVouchers.CountAsync());
         Assert.Empty(harness.Context.ChangeTracker.Entries());
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PropertyPhoneVisibility_UsesSnapshotWithoutChangingVoucher(bool showPhone)
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+        var original = JsonSerializer.Serialize(await harness.Context.ReservationVouchers.AsNoTracking().SingleAsync());
+        harness.Property.ShowGuestPhoneToPropertyUsers = showPhone;
+        harness.Guest.Mobile = "09121111111";
+        await harness.Context.SaveChangesAsync();
+        harness.Context.ChangeTracker.Clear();
+
+        var owner = await harness.Service.GetForPropertyAsync(3, 10, 40);
+        var admin = await harness.Service.GetForAdminAsync(40);
+        Assert.Equal(showPhone ? "09129999999" : null, owner.GuestMobile);
+        Assert.Equal("09129999999", admin.GuestMobile);
+        var json = JsonSerializer.Serialize(owner, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.Equal(showPhone, json.Contains("guestMobile"));
+        Assert.Empty(harness.Context.ChangeTracker.Entries());
+        Assert.Equal(original, JsonSerializer.Serialize(await harness.Context.ReservationVouchers.AsNoTracking().SingleAsync()));
+    }
+
+    [Fact]
+    public async Task ChangingPhoneVisibility_AffectsExistingOwnerProjectionOnly()
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+        Assert.Null((await harness.Service.GetForPropertyAsync(3, 10, 40)).GuestMobile);
+        harness.Property.ShowGuestPhoneToPropertyUsers = true;
+        await harness.Context.SaveChangesAsync();
+        Assert.Equal("09129999999", (await harness.Service.GetForPropertyAsync(3, 10, 40)).GuestMobile);
+        harness.Property.ShowGuestPhoneToPropertyUsers = false;
+        await harness.Context.SaveChangesAsync();
+        Assert.Null((await harness.Service.GetForPropertyAsync(3, 10, 40)).GuestMobile);
+        Assert.Single(await harness.Context.ReservationVouchers.ToListAsync());
+        Assert.Equal("09129999999", (await harness.Context.ReservationVouchers.SingleAsync()).GuestMobileSnapshot);
     }
 
     [Fact]

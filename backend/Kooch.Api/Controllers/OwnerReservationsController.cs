@@ -114,6 +114,7 @@ public class OwnerReservationsController(
         ReservationResponse response,
         CancellationToken cancellationToken)
     {
+        await reservationService.ApplyPropertyGuestPhoneVisibilityAsync(propertyId, response, cancellationToken);
         var canEdit = await CanChangeStatusAsync(propertyId, cancellationToken);
         response.AllowedStatusTransitions = canEdit
             ? response.AllowedStatusTransitions

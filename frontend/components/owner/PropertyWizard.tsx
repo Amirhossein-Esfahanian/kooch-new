@@ -141,6 +141,7 @@ interface WizardData {
   childPrice: string;
   extraGuestPrice: string;
   hasSeparateForeignPricing: boolean;
+  showGuestPhoneToPropertyUsers: boolean;
   seoTitle: string;
   seoDescription: string;
 }
@@ -177,6 +178,7 @@ const initialData: WizardData = {
   childPrice: "",
   extraGuestPrice: "",
   hasSeparateForeignPricing: false,
+  showGuestPhoneToPropertyUsers: false,
   seoTitle: "",
   seoDescription: "",
 };
@@ -485,6 +487,8 @@ export function PropertyWizard({
                 : String(propertyResult.extraGuestPrice),
             hasSeparateForeignPricing:
               propertyResult.hasSeparateForeignPricing ?? false,
+            showGuestPhoneToPropertyUsers:
+              propertyResult.showGuestPhoneToPropertyUsers ?? false,
             seoTitle: propertyResult.seoTitle ?? "",
             seoDescription: propertyResult.seoDescription ?? "",
           });
@@ -708,6 +712,7 @@ export function PropertyWizard({
       extraGuestPrice:
         data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
       hasSeparateForeignPricing: data.hasSeparateForeignPricing,
+      ...(isAdmin ? { showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers } : {}),
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       landAreaM2: data.landArea === "" ? null : Number(data.landArea),
       floorsCount: data.floors === "" ? null : Number(data.floors),
@@ -951,6 +956,7 @@ export function PropertyWizard({
     if (step === 6) await saveNearbyPlaces(saved.id);
     if (step === 7)
       saved = await updatePropertySection("rules", {
+        ...(isAdmin ? { showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers } : {}),
         checkInTime: data.checkInTime || null,
         checkOutTime: data.checkOutTime || null,
         breakfastOption: data.breakfastOption,
@@ -1651,6 +1657,23 @@ export function PropertyWizard({
         {step === 7 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-bold">قوانین و زمان‌ها</h2>
+            {isAdmin && (
+              <div className="grid gap-2">
+                <label className={choiceClass}>
+                  <input
+                    aria-describedby="guest-phone-visibility-help"
+                    checked={data.showGuestPhoneToPropertyUsers}
+                    className="h-4 w-4 accent-[var(--theme-primary)]"
+                    onChange={(event) => update("showGuestPhoneToPropertyUsers", event.target.checked)}
+                    type="checkbox"
+                  />
+                  نمایش شماره تماس مهمان به اقامتگاه
+                </label>
+                <p className="text-sm text-muted-foreground" id="guest-phone-visibility-help">
+                  در صورت فعال بودن، شماره تماس مهمان در اطلاعات رزرو و ووچر اقامتگاه نمایش داده می‌شود.
+                </p>
+              </div>
+            )}
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-bold">
                 ساعت ورود

@@ -14,6 +14,7 @@ interface VoucherStay {
   issuedAtUtc: string;
   propertyName: string;
   guestName: string;
+  guestMobile?: string | null;
   roomTypeName: string;
   roomName: string | null;
   checkIn: string;
@@ -90,6 +91,9 @@ export function VoucherDocument({ voucher, children, audience = "guest" }: {
         <dl className={styles.identityFields}>
           <VoucherField label="اقامتگاه">{voucher.propertyName}</VoucherField>
           <VoucherField label="مهمان اصلی">{voucher.guestName}</VoucherField>
+          {audience === "financial" && voucher.guestMobile && (
+            <VoucherField label="شماره تماس"><bdi dir="ltr">{voucher.guestMobile}</bdi></VoucherField>
+          )}
         </dl>
       </section>
       <section className={styles.section}>

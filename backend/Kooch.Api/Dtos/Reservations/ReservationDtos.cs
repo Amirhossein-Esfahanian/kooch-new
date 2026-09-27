@@ -18,6 +18,7 @@ public class ReservationListItemResponse
     public string? RoomName { get; set; }
     public int? GuestId { get; set; }
     public string GuestFullName { get; set; } = string.Empty;
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public string? GuestMobile { get; set; }
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }

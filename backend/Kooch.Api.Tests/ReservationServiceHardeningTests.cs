@@ -17,6 +17,29 @@ namespace Kooch.Api.Tests;
 
 public sealed class ReservationServiceHardeningTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PropertyGuestPhoneVisibility_AppliesToDetailsListAndMutationResponses(bool showPhone)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        (await harness.DbContext.Properties.SingleAsync()).ShowGuestPhoneToPropertyUsers = showPhone;
+        (await harness.DbContext.Guests.SingleAsync()).Mobile = "09123456789";
+        await harness.DbContext.SaveChangesAsync();
+        var reservation = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+
+        var owner = await harness.Service.GetByIdAsync(reservation.Id, 10);
+        Assert.Equal(showPhone ? "09123456789" : null, owner.GuestMobile);
+        var list = await harness.Service.SearchByPropertyAsync(10, new ReservationListQuery());
+        Assert.Equal(showPhone ? "09123456789" : null, Assert.Single(list.Items).GuestMobile);
+        var admin = await harness.Service.GetByIdAsync(reservation.Id);
+        Assert.Equal("09123456789", admin.GuestMobile);
+        await harness.Service.ApplyPropertyGuestPhoneVisibilityAsync(10, admin);
+        Assert.Equal(showPhone ? "09123456789" : null, admin.GuestMobile);
+        var json = System.Text.Json.JsonSerializer.Serialize(owner,
+            new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web));
+        Assert.Equal(showPhone, json.Contains("guestMobile"));
+    }
     [Fact]
     public async Task GenericTransitionApplication_RejectsApprovedAwaitingPayment()
     {
