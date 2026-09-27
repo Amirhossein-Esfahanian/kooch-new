@@ -42,6 +42,75 @@ beforeEach(() => {
 });
 
 describe("Admin settlements", () => {
+  it.each(["Pending", "Due", "Overdue"])("offers cancellation for %s settlements", async status => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path.startsWith("/admin/settlements?")
+      ? Promise.resolve(paged([{ ...batch, status }])) : original(path, options));
+    render(<Page />);
+    await screen.findByRole("button", { name: "لغو تسویه" });
+    expect(screen.getByRole("button", { name: "ثبت تسویه" })).not.toBeNull();
+  });
+
+  it.each(["Paid", "Cancelled"])("keeps details but no transition actions for %s", async status => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path.startsWith("/admin/settlements?")
+      ? Promise.resolve(paged([{ ...batch, status }])) : original(path, options));
+    render(<Page />);
+    await screen.findByRole("button", { name: "جزئیات" });
+    expect(screen.queryByRole("button", { name: "لغو تسویه" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "ثبت تسویه" })).toBeNull();
+    if (status === "Cancelled") expect(screen.getByText("لغوشده")).not.toBeNull();
+  });
+
+  it("requires a reason, cancels through the Admin endpoint, and refreshes both lists", async () => {
+    const original = api.getMockImplementation()!;
+    let cancelled = false;
+    api.mockImplementation((path: string, options?: RequestInit) => {
+      if (path === "/admin/settlements/10/cancel" && options?.method === "POST") {
+        cancelled = true;
+        return Promise.resolve({ ...batch, status: "Cancelled", cancelledAtUtc: "2026-09-27T12:00:00Z",
+          cancellationReason: "اصلاح انتخاب اقلام", items: [] });
+      }
+      if (path.startsWith("/admin/settlements?")) return Promise.resolve(paged([{ ...batch, status: cancelled ? "Cancelled" : "Due" }]));
+      return original(path, options);
+    });
+    render(<Page />);
+    fireEvent.click(await screen.findByRole("button", { name: "لغو تسویه" }));
+    const dialog = await screen.findByRole("dialog", { name: "لغو تسویه" });
+    const reason = within(dialog).getByRole("textbox", { name: /دلیل لغو/ });
+    fireEvent.change(reason, { target: { value: "  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید لغو تسویه" }));
+    expect(within(dialog).getByText("دلیل لغو تسویه را وارد کنید.")).not.toBeNull();
+    expect(reason.getAttribute("aria-invalid")).toBe("true");
+    expect(mutations()).toHaveLength(0);
+    fireEvent.change(reason, { target: { value: "  اصلاح انتخاب اقلام  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید لغو تسویه" }));
+    await screen.findByText("لغوشده");
+    expect(mutations()).toEqual([["/admin/settlements/10/cancel", {
+      method: "POST", body: JSON.stringify({ reason: "اصلاح انتخاب اقلام" }),
+    }]]);
+    expect(api.mock.calls.filter(([path]) => path === "/admin/settlements?page=1&pageSize=20")).toHaveLength(2);
+    expect(api.mock.calls.filter(([path]) => path === "/admin/settlements/payables?page=1&pageSize=20")).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: "ثبت تسویه" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "لغو تسویه" })).toBeNull();
+    expect(screen.getByRole("button", { name: "جزئیات" })).not.toBeNull();
+  });
+
+  it("retains the reason and active row when cancellation fails", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path.endsWith("/cancel")
+      ? Promise.reject(new Error("Settlement changed concurrently")) : original(path, options));
+    render(<Page />);
+    fireEvent.click(await screen.findByRole("button", { name: "لغو تسویه" }));
+    const dialog = await screen.findByRole("dialog", { name: "لغو تسویه" });
+    const reason = within(dialog).getByRole<HTMLTextAreaElement>("textbox", { name: /دلیل لغو/ });
+    fireEvent.change(reason, { target: { value: "اصلاح انتخاب" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید لغو تسویه" }));
+    await within(dialog).findByText("Settlement changed concurrently");
+    expect(reason.value).toBe("اصلاح انتخاب");
+    expect(screen.queryByText("لغوشده")).toBeNull();
+  });
+
   it("selects due/overdue entries and creates a normal batch with the existing contract", async () => {
     render(<Page />);
     fireEvent.click(await screen.findByRole("checkbox", { name: "انتخاب R-100001" }));

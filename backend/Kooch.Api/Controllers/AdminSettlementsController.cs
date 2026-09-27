@@ -44,11 +44,15 @@ public sealed class AdminSettlementsController(SettlementService service) : Auth
     public async Task<ActionResult<SettlementResponse>> MarkPaid(int id, CancellationToken cancellationToken) =>
         Ok(Project(await service.MarkPaidAsync(id, cancellationToken)));
 
+    [HttpPost("{id:int}/cancel")]
+    public async Task<ActionResult<SettlementResponse>> Cancel(int id, CancelSettlementRequest request, CancellationToken cancellationToken) =>
+        Ok(Project(await service.CancelAsync(id, request.Reason, GetCurrentUser().UserId, cancellationToken)));
+
     private SettlementResponse Project(Settlement settlement) => new(settlement.Id, settlement.PropertyId,
         settlement.TotalAmount, settlement.Currency, settlement.CreatedAtUtc, settlement.PaidAtUtc,
         settlement.IsEarlySettlement, settlement.GetStatus(service.BusinessDate),
         settlement.Items.OrderBy(item => item.FinancialEntryId)
             .Select(item => new SettlementItemResponse(item.FinancialEntryId, item.FinancialEntry.Amount,
                 item.FinancialEntry.PayableDueDate!.Value, item.FinancialEntry.Reservation?.ReservationNumber)).ToList(),
-        settlement.Property.Name);
+        settlement.Property.Name, settlement.CancelledAtUtc, settlement.CancelledByUserId, settlement.CancellationReason);
 }

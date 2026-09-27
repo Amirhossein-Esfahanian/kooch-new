@@ -10,9 +10,15 @@ public sealed class CreateSettlementRequest
     public bool AllowEarlySettlement { get; set; }
 }
 
+public sealed class CancelSettlementRequest
+{
+    [Required, MaxLength(2000)] public string Reason { get; set; } = string.Empty;
+}
+
 public sealed record SettlementResponse(int Id, int PropertyId, decimal TotalAmount, string Currency,
     DateTime CreatedAtUtc, DateTime? PaidAtUtc, bool IsEarlySettlement, SettlementStatus Status,
-    IReadOnlyList<SettlementItemResponse> Items, string PropertyName = "");
+    IReadOnlyList<SettlementItemResponse> Items, string PropertyName = "",
+    DateTime? CancelledAtUtc = null, int? CancelledByUserId = null, string? CancellationReason = null);
 public sealed record SettlementItemResponse(int FinancialEntryId, decimal Amount, DateOnly PayableDueDate,
     string? ReservationNumber = null);
 

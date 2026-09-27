@@ -164,7 +164,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
-                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or SettlementItem) &&
+                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
@@ -175,13 +175,40 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
                 (entry.OriginalValues.GetValue<DateTime?>(nameof(Settlement.PaidAtUtc)).HasValue ||
+                 entry.OriginalValues.GetValue<DateTime?>(nameof(Settlement.CancelledAtUtc)).HasValue ||
                  entry.Properties.Any(property => property.IsModified && property.Metadata.Name != nameof(Settlement.PaidAtUtc)
+                     && property.Metadata.Name != nameof(Settlement.CancelledAtUtc)
+                     && property.Metadata.Name != nameof(Settlement.CancelledByUserId)
+                     && property.Metadata.Name != nameof(Settlement.CancellationReason)
                      && property.Metadata.Name != nameof(Settlement.UpdatedAtUtc)))))
-                throw new InvalidOperationException("Settlement history cannot be changed except to record payment.");
+                throw new InvalidOperationException("Settlement history can only transition once to paid or cancelled.");
+            if (entry.State == EntityState.Modified)
+            {
+                var cancelling = entry.Entity.CancelledAtUtc.HasValue;
+                if (cancelling ? entry.Entity.PaidAtUtc.HasValue || string.IsNullOrWhiteSpace(entry.Entity.CancellationReason)
+                        || !entry.Collection(settlement => settlement.Items).IsLoaded
+                        || entry.Entity.Items.Any(item => item.ReleasedAtUtc != entry.Entity.CancelledAtUtc)
+                    : !entry.Entity.PaidAtUtc.HasValue || entry.Entity.CancellationReason != null || entry.Entity.CancelledByUserId.HasValue)
+                    throw new InvalidOperationException("Settlement transition metadata is incomplete or inconsistent.");
+            }
         }
-        if (ChangeTracker.Entries<SettlementItem>().Any(entry => entry.State == EntityState.Added &&
-            (entry.Entity.Settlement is null || Entry(entry.Entity.Settlement).State != EntityState.Added)))
-            throw new InvalidOperationException("Settlement items can only be added with a new settlement.");
+        foreach (var entry in ChangeTracker.Entries<SettlementItem>())
+        {
+            if (entry.State == EntityState.Added && (entry.Entity.ReleasedAtUtc.HasValue ||
+                entry.Entity.Settlement is null || Entry(entry.Entity.Settlement).State != EntityState.Added))
+                throw new InvalidOperationException("Active settlement items can only be added with a new settlement.");
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Settlement item history cannot be deleted.");
+            if (entry.State != EntityState.Modified) continue;
+            var settlement = entry.Entity.Settlement;
+            if (entry.OriginalValues.GetValue<DateTime?>(nameof(SettlementItem.ReleasedAtUtc)).HasValue ||
+                !entry.Entity.ReleasedAtUtc.HasValue || settlement is null || Entry(settlement).State != EntityState.Modified ||
+                settlement.PaidAtUtc.HasValue || settlement.CancelledAtUtc != entry.Entity.ReleasedAtUtc ||
+                Entry(settlement).OriginalValues.GetValue<DateTime?>(nameof(Settlement.CancelledAtUtc)).HasValue ||
+                entry.Properties.Any(property => property.IsModified && property.Metadata.Name != nameof(SettlementItem.ReleasedAtUtc)
+                    && property.Metadata.Name != nameof(SettlementItem.UpdatedAtUtc)))
+                throw new InvalidOperationException("Settlement items can only be released during cancellation; their history is immutable.");
+        }
     }
 
     private static void ConfigureUsers(ModelBuilder modelBuilder)
@@ -1034,12 +1061,14 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(settlement => settlement.TotalAmount).HasPrecision(18, 2);
             entity.Property(settlement => settlement.Currency).HasMaxLength(3).IsRequired();
             entity.Property(settlement => settlement.PaidAtUtc).IsConcurrencyToken();
+            entity.Property(settlement => settlement.CancelledAtUtc).IsConcurrencyToken();
+            entity.Property(settlement => settlement.CancellationReason).HasMaxLength(2000);
             entity.HasOne(settlement => settlement.Property).WithMany()
                 .HasForeignKey(settlement => settlement.PropertyId).OnDelete(DeleteBehavior.NoAction);
         });
         modelBuilder.Entity<SettlementItem>(entity =>
         {
-            entity.HasIndex(item => item.FinancialEntryId).IsUnique();
+            entity.HasIndex(item => item.FinancialEntryId).IsUnique().HasFilter("[ReleasedAtUtc] IS NULL");
             entity.HasOne(item => item.Settlement).WithMany(settlement => settlement.Items)
                 .HasForeignKey(item => item.SettlementId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(item => item.FinancialEntry).WithMany()

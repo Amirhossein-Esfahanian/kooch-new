@@ -199,6 +199,110 @@ public sealed class SettlementTests
         Assert.Throws<ArgumentException>(() => SettlementPolicy.ValidateSetting(key, value));
 
     [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    [InlineData(3)]
+    public async Task Cancellation_PreservesHistoryReleasesAllItemsAndAllowsNewBatch(int dueDays)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new KoochDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.FinancialEntries.AddRange(Payable(1, days: dueDays), Payable(2, days: dueDays));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var batch = await service.CreateAsync(1, [1, 2], allowEarlySettlement: dueDays > 0);
+        var cancelled = await service.CancelAsync(batch.Id, "  Correction requested  ", actorId: 7);
+        Assert.Equal(SettlementStatus.Cancelled, cancelled.GetStatus(Today));
+        Assert.Equal("Correction requested", cancelled.CancellationReason);
+        Assert.Equal(7, cancelled.CancelledByUserId);
+        Assert.Equal(new Clock().GetUtcNow().UtcDateTime, cancelled.CancelledAtUtc);
+        Assert.Null(cancelled.PaidAtUtc);
+        Assert.All(cancelled.Items, item => Assert.Equal(cancelled.CancelledAtUtc, item.ReleasedAtUtc));
+        Assert.Equal(2, (await service.ListPayablesAsync(new SettlementListQuery())).TotalCount);
+        Assert.Equal(SettlementStatus.Cancelled, Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).Status);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelAsync(batch.Id, "Again"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(batch.Id));
+
+        var replacement = await service.CreateAsync(1, [1, 2], allowEarlySettlement: dueDays > 0);
+        Assert.NotEqual(cancelled.Id, replacement.Id);
+        Assert.Equal(cancelled.TotalAmount, replacement.TotalAmount);
+        Assert.Equal(cancelled.Currency, replacement.Currency);
+        Assert.Equal(cancelled.PropertyId, replacement.PropertyId);
+        Assert.Equal(4, await context.SettlementItems.CountAsync());
+        Assert.Equal(2, await context.Settlements.CountAsync());
+        Assert.Equal(2, await context.FinancialEntries.CountAsync());
+        Assert.All(await context.FinancialEntries.ToListAsync(), entry =>
+        {
+            Assert.Equal(123.45m, entry.Amount);
+            Assert.Equal(Today.AddDays(dueDays), entry.PayableDueDate);
+        });
+        await using var competing = new KoochDbContext(options);
+        competing.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
+            Items = [new SettlementItem { FinancialEntryId = 1 }] });
+        await Assert.ThrowsAsync<DbUpdateException>(() => competing.SaveChangesAsync());
+        cancelled.Items.First().ReleasedAtUtc = null;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task Cancellation_RejectsBlankReasonAndPaidSettlement()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var batch = await service.CreateAsync(1, [1]);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CancelAsync(batch.Id, "  "));
+        Assert.Null(batch.CancelledAtUtc);
+        Assert.Null(batch.Items.Single().ReleasedAtUtc);
+        await service.MarkPaidAsync(batch.Id);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelAsync(batch.Id, "Correction"));
+        Assert.Null(batch.CancelledAtUtc);
+        Assert.Null(batch.Items.Single().ReleasedAtUtc);
+        Assert.Empty((await service.ListPayablesAsync(new SettlementListQuery())).Items);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task CancellationAndPayment_FromConcurrentSnapshots_OnlyOneWins(bool cancellationWins)
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var first = new KoochDbContext(options);
+        await first.Database.EnsureCreatedAsync();
+        first.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        first.FinancialEntries.AddRange(Payable(1), Payable(2));
+        await first.SaveChangesAsync();
+        var firstService = new SettlementService(first, new Clock());
+        var batch = await firstService.CreateAsync(1, [1, 2]);
+        await using var second = new KoochDbContext(options);
+        var secondService = new SettlementService(second, new Clock());
+        await secondService.GetAsync(batch.Id);
+        if (cancellationWins)
+        {
+            await firstService.CancelAsync(batch.Id, "Correction", 7);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => secondService.MarkPaidAsync(batch.Id));
+        }
+        else
+        {
+            await firstService.MarkPaidAsync(batch.Id);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => secondService.CancelAsync(batch.Id, "Correction", 7));
+        }
+        await using var verify = new KoochDbContext(options);
+        var saved = await new SettlementService(verify, new Clock()).GetAsync(batch.Id);
+        Assert.Equal(cancellationWins, saved.CancelledAtUtc.HasValue);
+        Assert.Equal(!cancellationWins, saved.PaidAtUtc.HasValue);
+        Assert.All(saved.Items, item => Assert.Equal(cancellationWins, item.ReleasedAtUtc.HasValue));
+        Assert.Equal(cancellationWins ? "Correction" : null, saved.CancellationReason);
+        Assert.Equal(2, await verify.FinancialEntries.CountAsync());
+    }
+
+    [Theory]
     [InlineData(FinancialEntryType.Commission, true)]
     [InlineData(FinancialEntryType.PropertyPayable, false)]
     public async Task NonPayableOrMissingDate_IsRejected(FinancialEntryType type, bool hasDueDate)

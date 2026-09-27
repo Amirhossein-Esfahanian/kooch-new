@@ -18,7 +18,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         var query = context.FinancialEntries.AsNoTracking().Where(entry =>
             entry.EntryType == FinancialEntryType.PropertyPayable && entry.PayableDueDate.HasValue &&
             entry.Amount >= 0 && entry.ReversesEntryId == null &&
-            !context.SettlementItems.IgnoreQueryFilters().Any(item => item.FinancialEntryId == entry.Id) &&
+            !context.SettlementItems.IgnoreQueryFilters().Any(item => item.FinancialEntryId == entry.Id && item.ReleasedAtUtc == null) &&
             !context.FinancialEntries.IgnoreQueryFilters().Any(reversal => reversal.ReversesEntryId == entry.Id));
         if (request.PropertyId.HasValue) query = query.Where(entry => entry.PropertyId == request.PropertyId);
         return await PageAsync(query.OrderBy(entry => entry.PayableDueDate).ThenBy(entry => entry.Id)
@@ -39,6 +39,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
             .Select(settlement => new SettlementListItemResponse(settlement.Id, settlement.PropertyId,
                 settlement.Property.Name, settlement.TotalAmount, settlement.Currency, settlement.Items.Count,
                 settlement.PaidAtUtc.HasValue ? SettlementStatus.Paid
+                    : settlement.CancelledAtUtc.HasValue ? SettlementStatus.Cancelled
                     : settlement.Items.Min(item => item.FinancialEntry.PayableDueDate) > today ? SettlementStatus.Pending
                     : settlement.Items.Min(item => item.FinancialEntry.PayableDueDate) == today ? SettlementStatus.Due
                     : SettlementStatus.Overdue,
@@ -85,7 +86,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         if (!allowEarlySettlement && entries.Any(entry => entry.PayableDueDate > BusinessDate))
             throw new InvalidOperationException("Future payables require explicit early settlement intent.");
         if (await context.SettlementItems.IgnoreQueryFilters().AnyAsync(
-                item => payableIds.Contains(item.FinancialEntryId), cancellationToken) ||
+                item => payableIds.Contains(item.FinancialEntryId) && item.ReleasedAtUtc == null, cancellationToken) ||
             await context.FinancialEntries.IgnoreQueryFilters().AnyAsync(
                 entry => entry.ReversesEntryId.HasValue && payableIds.Contains(entry.ReversesEntryId.Value), cancellationToken))
             throw new InvalidOperationException("A selected payable is already settled, allocated, or reversed.");
@@ -118,6 +119,8 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
     public async Task<Settlement> MarkPaidAsync(int id, CancellationToken cancellationToken = default)
     {
         var settlement = await LoadAsync(id, cancellationToken);
+        if (settlement.CancelledAtUtc.HasValue)
+            throw new InvalidOperationException("Cancelled settlements cannot be marked paid.");
         if (settlement.PaidAtUtc.HasValue) return settlement;
         settlement.PaidAtUtc = clock.GetUtcNow().UtcDateTime;
         try
@@ -127,7 +130,38 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         catch (DbUpdateConcurrencyException)
         {
             await context.Entry(settlement).ReloadAsync(cancellationToken);
+            if (settlement.CancelledAtUtc.HasValue)
+                throw new InvalidOperationException("Cancelled settlements cannot be marked paid.");
             if (!settlement.PaidAtUtc.HasValue) throw;
+        }
+        return settlement;
+    }
+
+    public async Task<Settlement> CancelAsync(int id, string reason, int? actorId = null,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason) || reason.Trim().Length > 2000)
+            throw new ArgumentException("A cancellation reason of up to 2000 characters is required.");
+        var settlement = await LoadAsync(id, cancellationToken);
+        if (settlement.PaidAtUtc.HasValue || settlement.CancelledAtUtc.HasValue)
+            throw new InvalidOperationException("Only an active unpaid settlement can be cancelled.");
+
+        var now = clock.GetUtcNow().UtcDateTime;
+        settlement.CancelledAtUtc = now;
+        settlement.CancelledByUserId = actorId;
+        settlement.CancellationReason = reason.Trim();
+        foreach (var item in settlement.Items) item.ReleasedAtUtc = now;
+        try
+        {
+            // The default SaveChanges transaction makes cancellation and all releases atomic.
+            // Both terminal timestamps are concurrency tokens, so Paid and Cancel cannot both win.
+            await context.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            await context.Entry(settlement).ReloadAsync(cancellationToken);
+            foreach (var item in settlement.Items) await context.Entry(item).ReloadAsync(cancellationToken);
+            throw new InvalidOperationException("Settlement changed concurrently. Refresh before trying again.");
         }
         return settlement;
     }
