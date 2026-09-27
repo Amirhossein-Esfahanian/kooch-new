@@ -1,0 +1,177 @@
+using Kooch.Api.Data;
+using Kooch.Api.Entities;
+using Kooch.Api.Services;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
+using Xunit;
+
+namespace Kooch.Api.Tests;
+
+public sealed class SettlementTests
+{
+    private static readonly DateOnly Today = new(2026, 9, 27);
+    private sealed class Clock : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(2026, 9, 27, 0, 0, 0, TimeSpan.Zero);
+    }
+
+    private static KoochDbContext Context() => new(new DbContextOptionsBuilder<KoochDbContext>()
+        .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+
+    private static FinancialEntry Payable(int id, int property = 1, string currency = "IRR", int days = 0) => new()
+    {
+        Id = id, PropertyId = property, ReservationId = id, EntryType = FinancialEntryType.PropertyPayable,
+        Amount = 123.45m, Currency = currency, PayableDueDate = Today.AddDays(days),
+        EffectiveAtUtc = DateTime.UtcNow, CorrelationKey = $"payable:{id}"
+    };
+
+    [Theory]
+    [InlineData("CheckIn", -2, 8)]
+    [InlineData("CheckIn", 0, 10)]
+    [InlineData("CheckIn", 3, 13)]
+    [InlineData("CheckOut", -2, 12)]
+    [InlineData("CheckOut", 0, 14)]
+    [InlineData("CheckOut", 3, 17)]
+    public async Task GlobalPolicy_UsesBaseAndSignedOffsetForEveryProperty(string basis, int offset, int day)
+    {
+        await using var context = Context();
+        context.SiteSettings.AddRange(new SiteSetting { Key = SettlementPolicy.BaseDateKey, Value = basis },
+            new SiteSetting { Key = SettlementPolicy.OffsetDaysKey, Value = offset.ToString() });
+        await context.SaveChangesAsync();
+        foreach (var property in new[] { 1, 2 })
+        {
+            var reservation = new Reservation { PropertyId = property,
+                CheckInDate = new(2026, 9, 10), CheckOutDate = new(2026, 9, 14) };
+            Assert.Equal(new DateOnly(2026, 9, day), await SettlementPolicy.CalculateDueDateAsync(context, reservation));
+        }
+    }
+
+    [Fact]
+    public async Task PayableDate_IsSnapshottedAndPolicyChangesOnlyAffectNewEntries()
+    {
+        await using var context = Context();
+        context.SiteSettings.Add(new SiteSetting { Key = CommissionPolicyResolver.DirectSettingKey, Value = "10" });
+        await context.SaveChangesAsync();
+        var service = new PaymentFinancializationService(context, new CommissionPolicyResolver(context));
+        var reservation = new Reservation { Id = 1, PropertyId = 1, CheckInDate = Today, CheckOutDate = Today.AddDays(4) };
+        var payment = new Payment { Id = 1, ReservationId = 1, Currency = "IRR", Amount = 100m };
+        await service.ApplyAsync(reservation, payment, null, 100m, DateTime.UtcNow);
+        await context.SaveChangesAsync();
+        var original = await context.FinancialEntries.SingleAsync();
+        Assert.Equal(reservation.CheckOutDate, original.PayableDueDate);
+        context.SiteSettings.AddRange(new SiteSetting { Key = SettlementPolicy.BaseDateKey, Value = "CheckIn" },
+            new SiteSetting { Key = SettlementPolicy.OffsetDaysKey, Value = "-2" });
+        await context.SaveChangesAsync();
+        await service.ApplyAsync(reservation, payment, null, 100m, DateTime.UtcNow);
+        await context.SaveChangesAsync();
+        Assert.Equal(Today.AddDays(4), (await context.FinancialEntries.SingleAsync()).PayableDueDate);
+        reservation = new Reservation { Id = 2, PropertyId = 1, CheckInDate = Today, CheckOutDate = Today.AddDays(4) };
+        payment = new Payment { Id = 2, ReservationId = 2, Currency = "IRR", Amount = 100m };
+        await service.ApplyAsync(reservation, payment, null, 100m, DateTime.UtcNow);
+        await context.SaveChangesAsync();
+        Assert.Equal(Today.AddDays(-2), (await context.FinancialEntries.SingleAsync(entry => entry.ReservationId == 2)).PayableDueDate);
+    }
+
+    [Fact]
+    public async Task Settlement_GroupsDuePayablesPreservingAmountsDatesAndHistory()
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1, days: -3), Payable(2));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1, 2]);
+        Assert.Equal(246.90m, settlement.TotalAmount);
+        Assert.Equal("IRR", settlement.Currency);
+        Assert.Equal(2, settlement.Items.Count);
+        Assert.Equal(SettlementStatus.Overdue, settlement.GetStatus(Today));
+        Assert.Equal(Today.AddDays(-3), settlement.Items.Single(item => item.FinancialEntryId == 1).FinancialEntry.PayableDueDate);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, [1]));
+        var paid = await service.MarkPaidAsync(settlement.Id);
+        Assert.Equal(new Clock().GetUtcNow().UtcDateTime, paid.PaidAtUtc);
+        Assert.Equal(SettlementStatus.Paid, paid.GetStatus(Today));
+        Assert.Equal(paid.PaidAtUtc, (await service.MarkPaidAsync(paid.Id)).PaidAtUtc);
+        Assert.Equal(2, await context.FinancialEntries.CountAsync());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, [2]));
+    }
+
+    [Theory]
+    [InlineData(2, "IRR")]
+    [InlineData(1, "USD")]
+    public async Task MixedPropertyOrCurrency_IsRejected(int property, string currency)
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1), Payable(2, property, currency));
+        await context.SaveChangesAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => new SettlementService(context, new Clock()).CreateAsync(1, [1, 2]));
+        Assert.Empty(context.Settlements);
+    }
+
+    [Fact]
+    public async Task FuturePayable_RequiresExplicitEarlyIntentAndKeepsDueDateWhenPaid()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1, days: 3));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, [1]));
+        var settlement = await service.CreateAsync(1, [1], allowEarlySettlement: true);
+        Assert.True(settlement.IsEarlySettlement);
+        Assert.Equal(SettlementStatus.Pending, settlement.GetStatus(Today));
+        Assert.Equal(SettlementStatus.Due, settlement.GetStatus(Today.AddDays(3)));
+        Assert.Equal(SettlementStatus.Overdue, settlement.GetStatus(Today.AddDays(4)));
+        await service.MarkPaidAsync(settlement.Id);
+        Assert.Equal(Today.AddDays(3), settlement.Items.Single().FinancialEntry.PayableDueDate);
+        Assert.True(DateOnly.FromDateTime(settlement.PaidAtUtc!.Value) < Today.AddDays(3));
+    }
+
+    [Fact]
+    public async Task UniqueIndex_RejectsDuplicateAcrossContexts_AndLinksAreImmutable()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new KoochDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
+        await using (var competing = new KoochDbContext(options))
+        {
+            competing.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
+                Items = [new SettlementItem { FinancialEntryId = 1 }] });
+            await Assert.ThrowsAsync<DbUpdateException>(() => competing.SaveChangesAsync());
+        }
+        Assert.Single(await context.Settlements.ToListAsync());
+        await using (var competing = new KoochDbContext(options))
+        {
+            var service = new SettlementService(competing, new Clock());
+            await service.GetAsync(settlement.Id);
+            var paid = await new SettlementService(context, new Clock()).MarkPaidAsync(settlement.Id);
+            var concurrentPaid = await service.MarkPaidAsync(settlement.Id);
+            Assert.Equal(paid.PaidAtUtc, concurrentPaid.PaidAtUtc);
+        }
+        context.SettlementItems.Remove(settlement.Items.Single());
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Theory]
+    [InlineData("settlement.baseDate", "Invalid")]
+    [InlineData("settlement.offsetDays", "1.5")]
+    [InlineData("settlement.offsetDays", "2147483648")]
+    public void InvalidPolicy_IsRejected(string key, string value) =>
+        Assert.Throws<ArgumentException>(() => SettlementPolicy.ValidateSetting(key, value));
+
+    [Theory]
+    [InlineData(FinancialEntryType.Commission, true)]
+    [InlineData(FinancialEntryType.PropertyPayable, false)]
+    public async Task NonPayableOrMissingDate_IsRejected(FinancialEntryType type, bool hasDueDate)
+    {
+        await using var context = Context();
+        var entry = Payable(1);
+        entry.EntryType = type;
+        if (!hasDueDate) entry.PayableDueDate = null;
+        context.FinancialEntries.Add(entry);
+        await context.SaveChangesAsync();
+        await Assert.ThrowsAsync<ArgumentException>(() => new SettlementService(context, new Clock()).CreateAsync(1, [1]));
+    }
+}

@@ -112,6 +112,12 @@ const siteSettingsSections = [
       "CommissionType3Percent",
     ],
   },
+  {
+    id: "settlement",
+    title: "زمان تسویه با اقامتگاه‌ها",
+    description: "سیاست سراسری برای تعهدات جدید؛ سررسید تعهدات قبلی تغییر نمی‌کند.",
+    settingKeys: ["settlement.baseDate", "settlement.offsetDays"],
+  },
 ] as const;
 
 const knownSiteSettingKeys = new Set<string>(
@@ -163,6 +169,11 @@ function validateGenericSetting(setting: SiteSettingResponse, value: string) {
   }
 
   const numberValue = Number(value);
+  if (setting.key === "settlement.offsetDays") {
+    return !/^[+-]?\d+$/.test(value.trim()) || numberValue < -2147483648 || numberValue > 2147483647
+      ? "تعداد روز باید یک عدد صحیح معتبر باشد"
+      : undefined;
+  }
   if (
     commissionSettingKeys.includes(
       setting.key as (typeof commissionSettingKeys)[number],
@@ -773,6 +784,20 @@ export default function AdminSiteSettingsPage() {
     accessibility?: GenericFieldAccessibility,
   ) {
     const value = drafts[setting.key] ?? "";
+    if (setting.key === "settlement.baseDate") {
+      return (
+        <KoochSelect
+          aria-describedby={accessibility?.describedBy}
+          error={accessibility?.error}
+          id={accessibility?.controlId}
+          onChange={(event) => setDrafts((current) => ({ ...current, [setting.key]: event.target.value }))}
+          value={value}
+        >
+          <option value="CheckIn">روز ورود</option>
+          <option value="CheckOut">روز خروج</option>
+        </KoochSelect>
+      );
+    }
 
     if (setting.type === "ImageUrl") {
       const isLogo = setting.key === "site.logoUrl";
@@ -935,7 +960,7 @@ export default function AdminSiteSettingsPage() {
               : undefined
         }
         min={
-          setting.type === "Number"
+          setting.key === "settlement.offsetDays" ? undefined : setting.type === "Number"
             ? commissionSettingKeys.includes(
                 setting.key as (typeof commissionSettingKeys)[number],
               )

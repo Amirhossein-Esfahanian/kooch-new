@@ -86,6 +86,8 @@ public static class SeedData
     {
         var defaults = new[]
         {
+            SiteSettingSeed("settlement.baseDate", "CheckOut", SiteSettingType.Text, "Settlement", "مبنای زمان تسویه", "سررسید تعهدات جدید بر اساس روز ورود یا خروج ثبت می‌شود.", 10),
+            SiteSettingSeed("settlement.offsetDays", "0", SiteSettingType.Number, "Settlement", "تعداد روز نسبت به تاریخ مبنا", "-2 = دو روز قبل، 0 = همان روز، +3 = سه روز بعد. تغییر سیاست فقط روی تعهدات جدید اثر دارد.", 20),
             SiteSettingSeed("site.name", "کوچ", SiteSettingType.Text, "Brand", "نام سایت", null, 10),
             SiteSettingSeed("site.logoUrl", "", SiteSettingType.ImageUrl, "Brand", "آدرس لوگو", "اگر خالی باشد نام سایت نمایش داده می‌شود.", 20),
             SiteSettingSeed("site.footerText", "اقامتگاه‌های سنتی و میزبانی محلی در کاشان", SiteSettingType.Text, "Footer", "متن فوتر", null, 10),

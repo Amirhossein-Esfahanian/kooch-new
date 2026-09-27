@@ -10,6 +10,7 @@ public class FinancialEntry : BaseEntity
     public decimal Amount { get; set; }
     public string Currency { get; set; } = string.Empty;
     public DateTime EffectiveAtUtc { get; set; }
+    public DateOnly? PayableDueDate { get; set; }
     public string CorrelationKey { get; set; } = string.Empty;
     public int? ReversesEntryId { get; set; }
     public string? Reason { get; set; }

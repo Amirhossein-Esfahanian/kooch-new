@@ -29,6 +29,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ManualPaymentDetails> ManualPaymentDetails => Set<ManualPaymentDetails>();
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
+    public DbSet<Settlement> Settlements => Set<Settlement>();
+    public DbSet<SettlementItem> SettlementItems => Set<SettlementItem>();
     public DbSet<ReservationVoucher> ReservationVouchers => Set<ReservationVoucher>();
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
     public DbSet<Review> Reviews => Set<Review>();
@@ -162,13 +164,24 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
-                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher) &&
+                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or SettlementItem) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
         {
             throw new InvalidOperationException("Financial history entries are append-only and cannot be modified or deleted.");
         }
+        foreach (var entry in ChangeTracker.Entries<Settlement>())
+        {
+            if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
+                (entry.OriginalValues.GetValue<DateTime?>(nameof(Settlement.PaidAtUtc)).HasValue ||
+                 entry.Properties.Any(property => property.IsModified && property.Metadata.Name != nameof(Settlement.PaidAtUtc)
+                     && property.Metadata.Name != nameof(Settlement.UpdatedAtUtc)))))
+                throw new InvalidOperationException("Settlement history cannot be changed except to record payment.");
+        }
+        if (ChangeTracker.Entries<SettlementItem>().Any(entry => entry.State == EntityState.Added &&
+            (entry.Entity.Settlement is null || Entry(entry.Entity.Settlement).State != EntityState.Added)))
+            throw new InvalidOperationException("Settlement items can only be added with a new settlement.");
     }
 
     private static void ConfigureUsers(ModelBuilder modelBuilder)
@@ -1016,6 +1029,22 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private static void ConfigureFinancialFoundation(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<Settlement>(entity =>
+        {
+            entity.Property(settlement => settlement.TotalAmount).HasPrecision(18, 2);
+            entity.Property(settlement => settlement.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(settlement => settlement.PaidAtUtc).IsConcurrencyToken();
+            entity.HasOne(settlement => settlement.Property).WithMany()
+                .HasForeignKey(settlement => settlement.PropertyId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<SettlementItem>(entity =>
+        {
+            entity.HasIndex(item => item.FinancialEntryId).IsUnique();
+            entity.HasOne(item => item.Settlement).WithMany(settlement => settlement.Items)
+                .HasForeignKey(item => item.SettlementId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(item => item.FinancialEntry).WithMany()
+                .HasForeignKey(item => item.FinancialEntryId).OnDelete(DeleteBehavior.NoAction);
+        });
         modelBuilder.Entity<PropertyCommissionRate>(entity =>
         {
             entity.Property(rate => rate.Rate).HasPrecision(5, 2);

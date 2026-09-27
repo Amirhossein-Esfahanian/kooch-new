@@ -79,6 +79,7 @@ public sealed class PaymentFinancializationService(
             Amount = calculation.PropertyPayableAmount,
             Currency = currency,
             EffectiveAtUtc = calculatedAtUtc,
+            PayableDueDate = await SettlementPolicy.CalculateDueDateAsync(dbContext, reservation, cancellationToken),
             CorrelationKey = correlationKey,
             Reason = "Initial property payable recognition for confirmed reservation."
         };
