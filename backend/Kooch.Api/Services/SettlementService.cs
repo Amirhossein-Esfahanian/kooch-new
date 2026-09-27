@@ -15,13 +15,39 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         SettlementListQuery request, CancellationToken cancellationToken = default)
     {
         var today = BusinessDate;
+        PayableStatus? status = request.Status?.Trim() switch
+        {
+            null or "" => null,
+            "Future" => PayableStatus.Future,
+            "Due" => PayableStatus.Due,
+            "Overdue" => PayableStatus.Overdue,
+            _ => throw new ArgumentException("Invalid payable status.")
+        };
+        var descending = IsDescending(request.SortDirection, defaultDescending: false);
         var query = context.FinancialEntries.AsNoTracking().Where(entry =>
             entry.EntryType == FinancialEntryType.PropertyPayable && entry.PayableDueDate.HasValue &&
             entry.Amount >= 0 && entry.ReversesEntryId == null &&
             !context.SettlementItems.IgnoreQueryFilters().Any(item => item.FinancialEntryId == entry.Id && item.ReleasedAtUtc == null) &&
             !context.FinancialEntries.IgnoreQueryFilters().Any(reversal => reversal.ReversesEntryId == entry.Id));
         if (request.PropertyId.HasValue) query = query.Where(entry => entry.PropertyId == request.PropertyId);
-        return await PageAsync(query.OrderBy(entry => entry.PayableDueDate).ThenBy(entry => entry.Id)
+        if (status.HasValue) query = status.Value switch
+        {
+            PayableStatus.Future => query.Where(entry => entry.PayableDueDate > today),
+            PayableStatus.Due => query.Where(entry => entry.PayableDueDate == today),
+            _ => query.Where(entry => entry.PayableDueDate < today)
+        };
+        var search = request.Search?.Trim();
+        if (!string.IsNullOrEmpty(search)) query = query.Where(entry => entry.Reservation != null && entry.Reservation.ReservationNumber != null &&
+            entry.Reservation.ReservationNumber.Contains(search));
+        var ordered = request.SortBy?.Trim() switch
+        {
+            null or "" or "PayableDueDate" => descending
+                ? query.OrderByDescending(entry => entry.PayableDueDate)
+                : query.OrderBy(entry => entry.PayableDueDate),
+            "Amount" => descending ? query.OrderByDescending(entry => entry.Amount) : query.OrderBy(entry => entry.Amount),
+            _ => throw new ArgumentException("Invalid payable sort field.")
+        };
+        return await PageAsync((descending ? ordered.ThenByDescending(entry => entry.Id) : ordered.ThenBy(entry => entry.Id))
             .Select(entry => new PropertyPayableResponse(entry.Id, entry.PropertyId, entry.Property.Name,
                 entry.Reservation == null ? null : entry.Reservation.ReservationNumber,
                 entry.Amount, entry.Currency, entry.PayableDueDate!.Value,
@@ -33,18 +59,53 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         SettlementListQuery request, CancellationToken cancellationToken = default)
     {
         var today = BusinessDate;
+        SettlementStatus? status = request.Status?.Trim() switch
+        {
+            null or "" => null,
+            "Pending" => SettlementStatus.Pending,
+            "Due" => SettlementStatus.Due,
+            "Overdue" => SettlementStatus.Overdue,
+            "Paid" => SettlementStatus.Paid,
+            "Cancelled" => SettlementStatus.Cancelled,
+            _ => throw new ArgumentException("Invalid settlement status.")
+        };
+        var descending = IsDescending(request.SortDirection, defaultDescending: true);
         var query = context.Settlements.AsNoTracking();
         if (request.PropertyId.HasValue) query = query.Where(settlement => settlement.PropertyId == request.PropertyId);
-        return await PageAsync(query.OrderByDescending(settlement => settlement.CreatedAtUtc).ThenByDescending(settlement => settlement.Id)
-            .Select(settlement => new SettlementListItemResponse(settlement.Id, settlement.PropertyId,
-                settlement.Property.Name, settlement.TotalAmount, settlement.Currency, settlement.Items.Count,
-                settlement.PaidAtUtc.HasValue ? SettlementStatus.Paid
+        var items = query.Select(settlement => new
+        {
+            settlement.Id, settlement.PropertyId, PropertyName = settlement.Property.Name,
+            settlement.TotalAmount, settlement.Currency, ItemCount = settlement.Items.Count,
+            Status = settlement.PaidAtUtc.HasValue ? SettlementStatus.Paid
                     : settlement.CancelledAtUtc.HasValue ? SettlementStatus.Cancelled
                     : settlement.Items.Min(item => item.FinancialEntry.PayableDueDate) > today ? SettlementStatus.Pending
                     : settlement.Items.Min(item => item.FinancialEntry.PayableDueDate) == today ? SettlementStatus.Due
                     : SettlementStatus.Overdue,
-                settlement.CreatedAtUtc, settlement.PaidAtUtc, settlement.IsEarlySettlement)), request, cancellationToken);
+                settlement.CreatedAtUtc, settlement.PaidAtUtc, settlement.IsEarlySettlement
+        });
+        if (status.HasValue) items = items.Where(item => item.Status == status.Value);
+        var ordered = request.SortBy?.Trim() switch
+        {
+            null or "" or "CreatedAt" => descending
+                ? items.OrderByDescending(item => item.CreatedAtUtc)
+                : items.OrderBy(item => item.CreatedAtUtc),
+            "TotalAmount" => descending ? items.OrderByDescending(item => item.TotalAmount) : items.OrderBy(item => item.TotalAmount),
+            "ItemCount" => descending ? items.OrderByDescending(item => item.ItemCount) : items.OrderBy(item => item.ItemCount),
+            _ => throw new ArgumentException("Invalid settlement sort field.")
+        };
+        return await PageAsync((descending ? ordered.ThenByDescending(item => item.Id) : ordered.ThenBy(item => item.Id))
+            .Select(item => new SettlementListItemResponse(item.Id, item.PropertyId, item.PropertyName,
+                item.TotalAmount, item.Currency, item.ItemCount, item.Status, item.CreatedAtUtc,
+                item.PaidAtUtc, item.IsEarlySettlement)), request, cancellationToken);
     }
+
+    private static bool IsDescending(string? direction, bool defaultDescending) => direction?.Trim() switch
+    {
+        null or "" => defaultDescending,
+        "Asc" => false,
+        "Desc" => true,
+        _ => throw new ArgumentException("Invalid sort direction. Use Asc or Desc.")
+    };
 
     public Task<PagedResult<SettlementPropertyOption>> ListPropertiesAsync(
         SettlementListQuery request, CancellationToken cancellationToken = default)

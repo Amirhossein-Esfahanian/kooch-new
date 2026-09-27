@@ -42,6 +42,112 @@ beforeEach(() => {
 });
 
 describe("Admin settlements", () => {
+  it("applies independent server filters/sorts while the Property selector remains shared", async () => {
+    render(<Page />);
+    await screen.findByRole("checkbox", { name: "انتخاب R-100001" });
+    fireEvent.click(screen.getByRole("button", { name: "اقامتگاه" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Property 1" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements?page=1&pageSize=20&propertyId=1"));
+    expect(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تعهدات" }).textContent).toBe("");
+    expect(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تسویه‌ها" }).textContent).toBe("");
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تعهدات" }));
+    let dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تعهدات" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Future" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "شماره رزرو" }), { target: { value: " R-100003 " } });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "مرتب‌سازی بر اساس" }), { target: { value: "Amount" } });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "ترتیب" }), { target: { value: "Desc" } });
+    expect(api.mock.calls.some(([path]) => path.includes("status=Future"))).toBe(false);
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements/payables?page=1&pageSize=20&propertyId=1&status=Future&search=R-100003&sortBy=Amount&sortDirection=Desc"));
+    expect(screen.getByRole("button", { name: /فیلتر و مرتب‌سازی تعهدات، ۳/ })).not.toBeNull();
+    expect(check(3).disabled).toBe(true);
+    expect(api.mock.calls.filter(([path]) => path.startsWith("/admin/settlements?")).length).toBe(2);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تسویه‌ها" }));
+    dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تسویه‌ها" });
+    expect(within(dialog).getByRole("option", { name: "لغوشده" }).getAttribute("value")).toBe("Cancelled");
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Cancelled" } });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "مرتب‌سازی بر اساس" }), { target: { value: "ItemCount" } });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "ترتیب" }), { target: { value: "Asc" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements?page=1&pageSize=20&propertyId=1&status=Cancelled&sortBy=ItemCount&sortDirection=Asc"));
+    expect(screen.getByRole("button", { name: /فیلتر و مرتب‌سازی تسویه‌ها، ۲/ })).not.toBeNull();
+    expect(api.mock.calls.filter(([path]) => path.includes("/payables?")).length).toBe(3);
+  });
+
+  it("discards unapplied changes and resets only the selected table to its defaults", async () => {
+    render(<Page />);
+    await screen.findByRole("button", { name: "جزئیات" });
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تعهدات" }));
+    let dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تعهدات" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Due" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(api.mock.calls.filter(([path]) => path.includes("/payables?")).length).toBe(1);
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تعهدات" }));
+    dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تعهدات" });
+    expect(within(dialog).getByRole<HTMLSelectElement>("combobox", { name: "وضعیت" }).value).toBe("");
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Overdue" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements/payables?page=1&pageSize=20&status=Overdue"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: /فیلتر و مرتب‌سازی تعهدات، ۱/ }));
+    dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تعهدات" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "پاک کردن" }));
+    expect(api.mock.calls.filter(([path]) => path === "/admin/settlements/payables?page=1&pageSize=20")).toHaveLength(1);
+    expect(within(dialog).getByRole<HTMLSelectElement>("combobox", { name: "وضعیت" }).value).toBe("");
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(api.mock.calls.filter(([path]) => path === "/admin/settlements/payables?page=1&pageSize=20")).toHaveLength(2));
+    expect(api.mock.calls.filter(([path]) => path.startsWith("/admin/settlements?")).length).toBe(1);
+    expect(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تعهدات" }).textContent).toBe("");
+  });
+
+  it("shows a matching-results empty state rather than claiming no settlements exist", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path.startsWith("/admin/settlements?") && path.includes("status=Paid")
+      ? Promise.resolve(paged([])) : original(path, options));
+    render(<Page />);
+    await screen.findByRole("button", { name: "جزئیات" });
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تسویه‌ها" }));
+    const dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تسویه‌ها" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Paid" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await screen.findByText("نتیجه‌ای با این فیلترها یافت نشد.");
+    expect(screen.queryByText("تسویه‌ای ثبت نشده است.")).toBeNull();
+  });
+
+  it("resets each table's page on Apply and retains its filters on later pages", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation(async (path: string, options?: RequestInit) => {
+      const result = await original(path, options);
+      return path.includes("/payables?") || path.startsWith("/admin/settlements?")
+        ? { ...result, totalCount: 40, totalPages: 2 } : result;
+    });
+    render(<Page />);
+    let navigation = await screen.findByRole("navigation", { name: "صفحات تعهدات" });
+    fireEvent.click(within(navigation).getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements/payables?page=2&pageSize=20"));
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تعهدات" }));
+    let dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تعهدات" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Due" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements/payables?page=1&pageSize=20&status=Due"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(within(navigation).getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements/payables?page=2&pageSize=20&status=Due"));
+    navigation = screen.getByRole("navigation", { name: "صفحات تسویه‌ها" });
+    fireEvent.click(within(navigation).getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements?page=2&pageSize=20"));
+    fireEvent.click(screen.getByRole("button", { name: "فیلتر و مرتب‌سازی تسویه‌ها" }));
+    dialog = await screen.findByRole("dialog", { name: "فیلتر و مرتب‌سازی تسویه‌ها" });
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "وضعیت" }), { target: { value: "Paid" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements?page=1&pageSize=20&status=Paid"));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(within(navigation).getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/settlements?page=2&pageSize=20&status=Paid"));
+  });
+
   it.each(["Pending", "Due", "Overdue"])("offers cancellation for %s settlements", async status => {
     const original = api.getMockImplementation()!;
     api.mockImplementation((path: string, options?: RequestInit) => path.startsWith("/admin/settlements?")

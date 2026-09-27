@@ -6,6 +6,9 @@ import type {
   ThHTMLAttributes,
 } from "react";
 
+export { KoochTableFilterDialog } from "./KoochTableFilterDialog";
+export type { KoochTableFilterDialogProps } from "./KoochTableFilterDialog";
+
 function joinClasses(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");
 }

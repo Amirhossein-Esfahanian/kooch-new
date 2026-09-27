@@ -16,6 +16,16 @@ public sealed class SettlementTests
         public override DateTimeOffset GetUtcNow() => new(2026, 9, 27, 0, 0, 0, TimeSpan.Zero);
     }
 
+    private sealed class ReadQueryContext(DbContextOptions<KoochDbContext> options) : KoochDbContext(options)
+    {
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            // SQLite cannot generate the SQL Server rowversion used by Reservation.
+            modelBuilder.Entity<Reservation>().Property(item => item.RowVersion).ValueGeneratedNever();
+        }
+    }
+
     private static KoochDbContext Context()
     {
         var context = new KoochDbContext(new DbContextOptionsBuilder<KoochDbContext>()
@@ -197,6 +207,153 @@ public sealed class SettlementTests
     [InlineData("settlement.offsetDays", "2147483648")]
     public void InvalidPolicy_IsRejected(string key, string value) =>
         Assert.Throws<ArgumentException>(() => SettlementPolicy.ValidateSetting(key, value));
+
+    [Theory]
+    [InlineData("Overdue", 1)]
+    [InlineData("Due", 2)]
+    [InlineData("Future", 3)]
+    public async Task PayableStatus_FiltersBeforePaginationAndKeepsPropertyScope(string status, int expectedId)
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1, days: -1), Payable(2), Payable(3, days: 1),
+            Payable(4, property: 2));
+        await context.SaveChangesAsync();
+        var page = await new SettlementService(context, new Clock()).ListPayablesAsync(
+            new SettlementListQuery { PropertyId = 1, Status = status, PageSize = 1 });
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(1, page.TotalPages);
+        Assert.Equal(expectedId, Assert.Single(page.Items).Id);
+    }
+
+    [Fact]
+    public async Task PayableSearch_UsesTrimmedPublicReservationReferenceAndPropertyScope()
+    {
+        await using var context = Context();
+        context.Reservations.AddRange(new Reservation { Id = 1, PropertyId = 1, ReservationNumber = "R-583214" },
+            new Reservation { Id = 2, PropertyId = 1, ReservationNumber = "R-271946" },
+            new Reservation { Id = 3, PropertyId = 2, ReservationNumber = "R-583215" });
+        context.FinancialEntries.AddRange(Payable(1), Payable(2), Payable(3, property: 2));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var page = await service.ListPayablesAsync(new SettlementListQuery { PropertyId = 1, Search = " R-58321 " });
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal("R-583214", Assert.Single(page.Items).ReservationNumber);
+        Assert.Empty((await service.ListPayablesAsync(new SettlementListQuery { Search = "R-999999" })).Items);
+    }
+
+    [Theory]
+    [InlineData("PayableDueDate", "Asc", 1, 3, 2)]
+    [InlineData("PayableDueDate", "Desc", 2, 3, 1)]
+    [InlineData("Amount", "Asc", 2, 3, 1)]
+    [InlineData("Amount", "Desc", 1, 3, 2)]
+    public async Task PayableSort_IsDeterministicAndAppliedBeforePaging(string field, string direction, int first, int second, int third)
+    {
+        await using var context = Context();
+        var entries = new[] { Payable(1, days: -1), Payable(2, days: 1), Payable(3) };
+        entries[0].Amount = 300m;
+        entries[1].Amount = entries[2].Amount = 100m;
+        context.FinancialEntries.AddRange(entries);
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var query = new SettlementListQuery { SortBy = field, SortDirection = direction };
+        Assert.Equal(new[] { first, second, third }, (await service.ListPayablesAsync(query)).Items.Select(item => item.Id));
+        query.Page = 2; query.PageSize = 1;
+        var page = await service.ListPayablesAsync(query);
+        Assert.Equal(second, Assert.Single(page.Items).Id);
+        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(3, page.TotalPages);
+    }
+
+    [Theory]
+    [InlineData("Pending", 1)]
+    [InlineData("Due", 2)]
+    [InlineData("Overdue", 3)]
+    [InlineData("Paid", 4)]
+    [InlineData("Cancelled", 5)]
+    public async Task SettlementStatus_UsesExistingLifecycleAndFiltersBeforePaging(string status, int expectedId)
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1, days: 1), Payable(2), Payable(3, days: -1), Payable(4), Payable(5), Payable(6, property: 2));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        foreach (var id in Enumerable.Range(1, 5)) await service.CreateAsync(1, [id], allowEarlySettlement: id == 1);
+        await service.MarkPaidAsync(4);
+        await service.CancelAsync(5, "Correction");
+        await service.CreateAsync(2, [6]);
+        var page = await service.ListAsync(new SettlementListQuery { Status = status, PropertyId = 1, PageSize = 1 });
+        Assert.Equal(1, page.TotalCount);
+        Assert.Equal(1, page.TotalPages);
+        Assert.Equal(expectedId, Assert.Single(page.Items).Id);
+    }
+
+    [Theory]
+    [InlineData("CreatedAt", "Asc", 1, 2, 3)]
+    [InlineData("CreatedAt", "Desc", 3, 2, 1)]
+    [InlineData("TotalAmount", "Asc", 2, 3, 1)]
+    [InlineData("TotalAmount", "Desc", 1, 3, 2)]
+    [InlineData("ItemCount", "Asc", 2, 3, 1)]
+    [InlineData("ItemCount", "Desc", 1, 3, 2)]
+    public async Task SettlementSort_IsDeterministicAndAppliedBeforePaging(string field, string direction, int first, int second, int third)
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Enumerable.Range(1, 4).Select(id => Payable(id)));
+        context.Settlements.AddRange(new Settlement { Id = 1, PropertyId = 1, Currency = "IRR", TotalAmount = 246.9m,
+                Items = [new SettlementItem { FinancialEntryId = 1 }, new SettlementItem { FinancialEntryId = 2 }] },
+            new Settlement { Id = 2, PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
+                Items = [new SettlementItem { FinancialEntryId = 3 }] },
+            new Settlement { Id = 3, PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
+                Items = [new SettlementItem { FinancialEntryId = 4 }] });
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var query = new SettlementListQuery { SortBy = field, SortDirection = direction };
+        Assert.Equal(new[] { first, second, third }, (await service.ListAsync(query)).Items.Select(item => item.Id));
+        query.Page = 2; query.PageSize = 1;
+        var page = await service.ListAsync(query);
+        Assert.Equal(second, Assert.Single(page.Items).Id);
+        Assert.Equal(3, page.TotalCount);
+        Assert.Equal(3, page.TotalPages);
+    }
+
+    [Theory]
+    [InlineData(true, "TotalAmount", "Asc", null)]
+    [InlineData(true, "Amount", "DROP TABLE", null)]
+    [InlineData(true, null, null, "Paid")]
+    [InlineData(false, "Amount", "Desc", null)]
+    [InlineData(false, "CreatedAt", "random", null)]
+    [InlineData(false, null, null, "Future")]
+    public async Task ListQueries_RejectUnsupportedFieldsDirectionsAndStatuses(bool payables, string? sortBy, string? direction, string? status)
+    {
+        await using var context = Context();
+        var service = new SettlementService(context, new Clock());
+        var query = new SettlementListQuery { SortBy = sortBy, SortDirection = direction, Status = status };
+        if (payables) await Assert.ThrowsAsync<ArgumentException>(() => service.ListPayablesAsync(query));
+        else await Assert.ThrowsAsync<ArgumentException>(() => service.ListAsync(query));
+    }
+
+    [Fact]
+    public async Task RelationalLists_TranslateStatusSearchAndSortWithoutLoadingAllRows()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        await using var context = new ReadQueryContext(new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.Add(new Reservation { Id = 1, PropertyId = 1, ReservationNumber = "R-583214" });
+        context.FinancialEntries.AddRange(Payable(1), Payable(2, days: -1), Payable(3, days: 1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var payable = await service.ListPayablesAsync(new SettlementListQuery { Status = "Due", Search = " R-583214 ", SortDirection = "Desc", PageSize = 1 });
+        Assert.Equal(1, payable.TotalCount);
+        Assert.Equal(1, Assert.Single(payable.Items).Id);
+        var batch = await service.CreateAsync(1, [1, 2]);
+        await service.CreateAsync(1, [3], allowEarlySettlement: true);
+        var overdue = await service.ListAsync(new SettlementListQuery { Status = "Overdue", SortBy = "ItemCount", SortDirection = "Asc", PageSize = 1 });
+        Assert.Equal(batch.Id, Assert.Single(overdue.Items).Id);
+        Assert.Equal(1, overdue.TotalCount);
+        await service.CancelAsync(batch.Id, "Correction");
+        var cancelled = await service.ListAsync(new SettlementListQuery { Status = "Cancelled", SortBy = "CreatedAt", SortDirection = "Asc" });
+        Assert.Equal(batch.Id, Assert.Single(cancelled.Items).Id);
+    }
 
     [Theory]
     [InlineData(-1)]

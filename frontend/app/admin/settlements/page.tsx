@@ -8,11 +8,11 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { KoochField, KoochSearchableSelect, KoochTextarea } from "@/components/KoochFormControls";
+import { KoochField, KoochInput, KoochSelect, KoochSearchableSelect, KoochTextarea } from "@/components/KoochFormControls";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty,
-  KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
+  KoochTableHead, KoochTableHeader, KoochTableRow, KoochTableFilterDialog } from "@/components/KoochTable";
 import { apiRequest } from "@/lib/owner-api";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
@@ -27,6 +27,11 @@ type Detail = Omit<Settlement, "itemCount"> & { cancelledAtUtc: string | null; c
   items: Array<{ financialEntryId: number;
   reservationNumber: string | null; amount: number; payableDueDate: string }> };
 type Page<T> = { items: T[]; totalCount: number; page: number; pageSize: number; totalPages: number };
+type SortDirection = "Asc" | "Desc";
+type PayableFilters = { status: PayableStatus | ""; search: string; sortBy: "PayableDueDate" | "Amount"; sortDirection: SortDirection };
+type SettlementFilters = { status: SettlementStatus | ""; sortBy: "CreatedAt" | "TotalAmount" | "ItemCount"; sortDirection: SortDirection };
+const defaultPayableFilters: PayableFilters = { status: "", search: "", sortBy: "PayableDueDate", sortDirection: "Asc" };
+const defaultSettlementFilters: SettlementFilters = { status: "", sortBy: "CreatedAt", sortDirection: "Desc" };
 const labels = { Future: "آینده", Pending: "در انتظار سررسید", Due: "سررسید", Overdue: "معوق", Paid: "پرداخت‌شده", Cancelled: "لغوشده" };
 const isUnpaidActive = (status: SettlementStatus) => status === "Pending" || status === "Due" || status === "Overdue";
 const errorText = (error: unknown) => error instanceof Error ? error.message : "عملیات انجام نشد؛ دوباره تلاش کنید.";
@@ -66,6 +71,10 @@ function SettlementManagement() {
   const [propertyLoading, setPropertyLoading] = useState(false);
   const [payablePage, setPayablePage] = useState(1);
   const [settlementPage, setSettlementPage] = useState(1);
+  const [payableFilters, setPayableFilters] = useState(defaultPayableFilters);
+  const [payableDraft, setPayableDraft] = useState(defaultPayableFilters);
+  const [settlementFilters, setSettlementFilters] = useState(defaultSettlementFilters);
+  const [settlementDraft, setSettlementDraft] = useState(defaultSettlementFilters);
   const [payables, setPayables] = useState<Page<Payable> | null>(null);
   const [settlements, setSettlements] = useState<Page<Settlement> | null>(null);
   const [payableLoading, setPayableLoading] = useState(true);
@@ -111,12 +120,17 @@ function SettlementManagement() {
     setPayableError("");
     const query = new URLSearchParams({ page: String(payablePage), pageSize: "20" });
     if (propertyId) query.set("propertyId", propertyId);
+    if (payableFilters.status) query.set("status", payableFilters.status);
+    if (payableFilters.search) query.set("search", payableFilters.search);
+    if (payableFilters.sortBy !== defaultPayableFilters.sortBy || payableFilters.sortDirection !== defaultPayableFilters.sortDirection) {
+      query.set("sortBy", payableFilters.sortBy); query.set("sortDirection", payableFilters.sortDirection);
+    }
     void apiRequest<Page<Payable>>(`/admin/settlements/payables?${query}`)
       .then(result => { if (active) setPayables(result); })
       .catch(error => { if (active) setPayableError(errorText(error)); })
       .finally(() => { if (active) setPayableLoading(false); });
     return () => { active = false; };
-  }, [propertyId, payablePage, refresh]);
+  }, [propertyId, payablePage, payableFilters, refresh]);
 
   useEffect(() => {
     let active = true;
@@ -124,12 +138,16 @@ function SettlementManagement() {
     setSettlementError("");
     const query = new URLSearchParams({ page: String(settlementPage), pageSize: "20" });
     if (propertyId) query.set("propertyId", propertyId);
+    if (settlementFilters.status) query.set("status", settlementFilters.status);
+    if (settlementFilters.sortBy !== defaultSettlementFilters.sortBy || settlementFilters.sortDirection !== defaultSettlementFilters.sortDirection) {
+      query.set("sortBy", settlementFilters.sortBy); query.set("sortDirection", settlementFilters.sortDirection);
+    }
     void apiRequest<Page<Settlement>>(`/admin/settlements?${query}`)
       .then(result => { if (active) setSettlements(result); })
       .catch(error => { if (active) setSettlementError(errorText(error)); })
       .finally(() => { if (active) setSettlementLoading(false); });
     return () => { active = false; };
-  }, [propertyId, settlementPage, refresh]);
+  }, [propertyId, settlementPage, settlementFilters, refresh]);
 
   function changeProperty(value: string) {
     setPropertyId(value); setPayablePage(1); setSettlementPage(1); setSelected([]);
@@ -195,6 +213,11 @@ function SettlementManagement() {
     finally { cancellingRef.current = false; setCancelling(false); }
   }
 
+  const payableFilterCount = Number(Boolean(payableFilters.status)) + Number(Boolean(payableFilters.search)) +
+    Number(payableFilters.sortBy !== defaultPayableFilters.sortBy || payableFilters.sortDirection !== defaultPayableFilters.sortDirection);
+  const settlementFilterCount = Number(Boolean(settlementFilters.status)) +
+    Number(settlementFilters.sortBy !== defaultSettlementFilters.sortBy || settlementFilters.sortDirection !== defaultSettlementFilters.sortDirection);
+
   return <main className="mx-auto grid w-full max-w-[1480px] min-w-0 gap-4 p-4 lg:p-6" dir="rtl">
     <KoochPageHeader eyebrow="" title="تسویه با اقامتگاه‌ها"
       description="بررسی تعهدات مالی اقامتگاه و ثبت پرداخت تسویه‌ها"
@@ -213,7 +236,38 @@ function SettlementManagement() {
 
     <div className="grid min-w-0 items-start gap-4 lg:grid-cols-2">
     <KoochCard padding="sm" className="grid min-w-0 gap-3" aria-labelledby="unsettled-heading">
-      <h2 id="unsettled-heading" className="text-base font-bold">تعهدات تسویه‌نشده</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="unsettled-heading" className="text-base font-bold">تعهدات تسویه‌نشده</h2>
+        <KoochTableFilterDialog triggerLabel="فیلتر و مرتب‌سازی تعهدات" title="فیلتر و مرتب‌سازی تعهدات"
+          disabled={creating} activeCount={payableFilterCount}
+          onOpenChange={open => { if (open) setPayableDraft(payableFilters); }}
+          onApply={() => { setPayableFilters({ ...payableDraft, search: payableDraft.search.trim() }); setPayablePage(1); }}
+          onReset={() => setPayableDraft(defaultPayableFilters)}>
+          <KoochField label="وضعیت">
+            <KoochSelect value={payableDraft.status} onChange={event => setPayableDraft(current => ({ ...current, status: event.target.value as PayableFilters["status"] }))}>
+              <option value="">همه وضعیت‌ها</option>
+              {(["Due", "Overdue", "Future"] as const).map(status => <option key={status} value={status}>{labels[status]}</option>)}
+            </KoochSelect>
+          </KoochField>
+          <KoochField label="شماره رزرو">
+            <KoochInput value={payableDraft.search} dir="ltr" placeholder="R-XXXXXX"
+              onChange={event => setPayableDraft(current => ({ ...current, search: event.target.value }))} />
+          </KoochField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <KoochField label="مرتب‌سازی بر اساس">
+              <KoochSelect value={payableDraft.sortBy} onChange={event => setPayableDraft(current => ({ ...current, sortBy: event.target.value as PayableFilters["sortBy"] }))}>
+                <option value="PayableDueDate">تاریخ سررسید</option><option value="Amount">مبلغ</option>
+              </KoochSelect>
+            </KoochField>
+            <KoochField label="ترتیب">
+              <KoochSelect value={payableDraft.sortDirection} onChange={event => setPayableDraft(current => ({ ...current, sortDirection: event.target.value as SortDirection }))}>
+                <option value="Asc">{payableDraft.sortBy === "Amount" ? "کمترین مبلغ نخست" : "نزدیک‌ترین سررسید نخست"}</option>
+                <option value="Desc">{payableDraft.sortBy === "Amount" ? "بیشترین مبلغ نخست" : "دیرترین سررسید نخست"}</option>
+              </KoochSelect>
+            </KoochField>
+          </div>
+        </KoochTableFilterDialog>
+      </div>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={early} disabled={creating} className="h-4 w-4 accent-[var(--theme-primary)]"
           onChange={event => { setEarly(event.target.checked); if (!event.target.checked) setSelected(current => current.filter(item => item.status !== "Future")); }} />
@@ -225,7 +279,7 @@ function SettlementManagement() {
         <KoochTableBody>
           {payableLoading ? <KoochTableEmpty colSpan={6}>در حال بارگذاری…</KoochTableEmpty>
             : payableError ? <KoochTableEmpty colSpan={6}><span role="alert">{payableError}</span><KoochButton variant="outline" size="sm" onClick={() => setRefresh(value => value + 1)}>تلاش مجدد</KoochButton></KoochTableEmpty>
-            : !payables?.items.length ? <KoochTableEmpty colSpan={6}>{early ? "تعهد تسویه‌نشده‌ای یافت نشد." : "در حال حاضر تعهد سررسیدشده یا معوقی برای تسویه وجود ندارد."}</KoochTableEmpty>
+            : !payables?.items.length ? <KoochTableEmpty colSpan={6}>{payableFilterCount > 0 ? "نتیجه‌ای با این فیلترها یافت نشد." : early ? "تعهد تسویه‌نشده‌ای یافت نشد." : "در حال حاضر تعهد سررسیدشده یا معوقی برای تسویه وجود ندارد."}</KoochTableEmpty>
             : payables.items.map(item => <KoochTableRow key={item.id}>
               <KoochTableCell><input type="checkbox" aria-label={`انتخاب ${item.reservationNumber ?? item.id}`}
                 className="h-4 w-4 accent-[var(--theme-primary)]" checked={selected.some(value => value.id === item.id)}
@@ -250,14 +304,41 @@ function SettlementManagement() {
     </KoochCard>
 
     <KoochCard padding="sm" className="grid min-w-0 gap-3" aria-labelledby="settlements-heading">
-      <h2 id="settlements-heading" className="text-base font-bold">تسویه‌ها</h2>
+      <div className="flex items-center justify-between gap-3">
+        <h2 id="settlements-heading" className="text-base font-bold">تسویه‌ها</h2>
+        <KoochTableFilterDialog triggerLabel="فیلتر و مرتب‌سازی تسویه‌ها" title="فیلتر و مرتب‌سازی تسویه‌ها"
+          activeCount={settlementFilterCount}
+          onOpenChange={open => { if (open) setSettlementDraft(settlementFilters); }}
+          onApply={() => { setSettlementFilters({ ...settlementDraft }); setSettlementPage(1); }}
+          onReset={() => setSettlementDraft(defaultSettlementFilters)}>
+          <KoochField label="وضعیت">
+            <KoochSelect value={settlementDraft.status} onChange={event => setSettlementDraft(current => ({ ...current, status: event.target.value as SettlementFilters["status"] }))}>
+              <option value="">همه وضعیت‌ها</option>
+              {(["Pending", "Due", "Overdue", "Paid", "Cancelled"] as const).map(status => <option key={status} value={status}>{labels[status]}</option>)}
+            </KoochSelect>
+          </KoochField>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <KoochField label="مرتب‌سازی بر اساس">
+              <KoochSelect value={settlementDraft.sortBy} onChange={event => setSettlementDraft(current => ({ ...current, sortBy: event.target.value as SettlementFilters["sortBy"] }))}>
+                <option value="CreatedAt">زمان ایجاد</option><option value="TotalAmount">مبلغ کل</option><option value="ItemCount">تعداد اقلام</option>
+              </KoochSelect>
+            </KoochField>
+            <KoochField label="ترتیب">
+              <KoochSelect value={settlementDraft.sortDirection} onChange={event => setSettlementDraft(current => ({ ...current, sortDirection: event.target.value as SortDirection }))}>
+                <option value="Asc">{settlementDraft.sortBy === "CreatedAt" ? "قدیمی‌ترین نخست" : settlementDraft.sortBy === "TotalAmount" ? "کمترین مبلغ نخست" : "کمترین تعداد نخست"}</option>
+                <option value="Desc">{settlementDraft.sortBy === "CreatedAt" ? "جدیدترین نخست" : settlementDraft.sortBy === "TotalAmount" ? "بیشترین مبلغ نخست" : "بیشترین تعداد نخست"}</option>
+              </KoochSelect>
+            </KoochField>
+          </div>
+        </KoochTableFilterDialog>
+      </div>
       <p className="text-xs leading-5 text-muted-foreground">اقلام و زمان ایجاد یا پرداخت هر تسویه در جزئیات آن قابل مشاهده است.</p>
       <KoochTable aria-label="تسویه‌ها" className="!min-w-0 [&_th]:px-3 [&_td]:px-3">
         <KoochTableHeader><KoochTableRow>{["شناسه", "اقامتگاه", "مبلغ کل", "تعداد اقلام", "وضعیت", "عملیات"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
         <KoochTableBody>
           {settlementLoading ? <KoochTableEmpty colSpan={6}>در حال بارگذاری…</KoochTableEmpty>
             : settlementError ? <KoochTableEmpty colSpan={6}><span role="alert">{settlementError}</span><KoochButton size="sm" variant="outline" onClick={() => setRefresh(value => value + 1)}>تلاش مجدد</KoochButton></KoochTableEmpty>
-            : !settlements?.items.length ? <KoochTableEmpty colSpan={6}>تسویه‌ای ثبت نشده است.</KoochTableEmpty>
+            : !settlements?.items.length ? <KoochTableEmpty colSpan={6}>{settlementFilterCount > 0 ? "نتیجه‌ای با این فیلترها یافت نشد." : "تسویه‌ای ثبت نشده است."}</KoochTableEmpty>
             : settlements.items.map(item => <KoochTableRow key={item.id}>
               <KoochTableCell>{formatNumber(item.id)}</KoochTableCell><KoochTableCell>{item.propertyName}</KoochTableCell>
               <KoochTableCell className="whitespace-nowrap tabular-nums">{amountOnly(item.totalAmount)}</KoochTableCell>
