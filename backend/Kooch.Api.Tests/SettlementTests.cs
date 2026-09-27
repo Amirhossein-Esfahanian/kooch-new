@@ -1,6 +1,7 @@
 using Kooch.Api.Data;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
+using Kooch.Api.Dtos.Settlements;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Xunit;
@@ -15,8 +16,15 @@ public sealed class SettlementTests
         public override DateTimeOffset GetUtcNow() => new(2026, 9, 27, 0, 0, 0, TimeSpan.Zero);
     }
 
-    private static KoochDbContext Context() => new(new DbContextOptionsBuilder<KoochDbContext>()
-        .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+    private static KoochDbContext Context()
+    {
+        var context = new KoochDbContext(new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
+        context.Properties.AddRange(new Property { Id = 1, Name = "First", Slug = "first" },
+            new Property { Id = 2, Name = "Second", Slug = "second" });
+        context.SaveChanges();
+        return context;
+    }
 
     private static FinancialEntry Payable(int id, int property = 1, string currency = "IRR", int days = 0) => new()
     {
@@ -132,9 +140,13 @@ public sealed class SettlementTests
         var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
         await using var context = new KoochDbContext(options);
         await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
         context.FinancialEntries.Add(Payable(1));
         await context.SaveChangesAsync();
         var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
+        var listed = await new SettlementService(context, new Clock()).ListAsync(new SettlementListQuery());
+        Assert.Equal(SettlementStatus.Due, Assert.Single(listed.Items).Status);
+        Assert.Empty((await new SettlementService(context, new Clock()).ListPayablesAsync(new SettlementListQuery())).Items);
         await using (var competing = new KoochDbContext(options))
         {
             competing.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
@@ -152,6 +164,31 @@ public sealed class SettlementTests
         }
         context.SettlementItems.Remove(settlement.Items.Single());
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task AdminLists_PageUnsettledEntriesAndPreserveServerStatuses()
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1, days: -1), Payable(2), Payable(3, days: 1), Payable(4, property: 2));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var first = await service.ListPayablesAsync(new SettlementListQuery { PropertyId = 1, PageSize = 2 });
+        Assert.Equal(3, first.TotalCount);
+        Assert.Equal(2, first.TotalPages);
+        Assert.Equal(new[] { PayableStatus.Overdue, PayableStatus.Due }, first.Items.Select(item => item.Status));
+        var second = await service.ListPayablesAsync(new SettlementListQuery { PropertyId = 1, PageSize = 2, Page = 2 });
+        Assert.Equal(PayableStatus.Future, Assert.Single(second.Items).Status);
+        var batch = await service.CreateAsync(1, [1, 2]);
+        await service.MarkPaidAsync(batch.Id);
+        var remaining = await service.ListPayablesAsync(new SettlementListQuery { PropertyId = 1 });
+        Assert.Equal(3, Assert.Single(remaining.Items).Id);
+        var list = Assert.Single((await service.ListAsync(new SettlementListQuery { PropertyId = 1 })).Items);
+        Assert.Equal("First", list.PropertyName);
+        Assert.Equal(2, list.ItemCount);
+        Assert.Equal(SettlementStatus.Paid, list.Status);
+        Assert.Equal(246.90m, list.TotalAmount);
+        Assert.Equal("Second", Assert.Single((await service.ListPropertiesAsync(new SettlementListQuery { Search = " Second " })).Items).Name);
     }
 
     [Theory]

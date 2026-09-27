@@ -1,0 +1,248 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { toast } from "sonner";
+import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { KoochField, KoochSearchableSelect } from "@/components/KoochFormControls";
+import { KoochDialog } from "@/components/KoochDialog";
+import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
+import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty,
+  KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
+import { apiRequest } from "@/lib/owner-api";
+import { formatDate, formatDateTime, formatNumber } from "@/lib/account-reservations";
+import { formatCurrency } from "@/lib/currency";
+
+type PayableStatus = "Future" | "Due" | "Overdue";
+type SettlementStatus = "Pending" | "Due" | "Overdue" | "Paid";
+type Payable = { id: number; propertyId: number; propertyName: string; reservationNumber: string | null;
+  amount: number; currency: string; payableDueDate: string; status: PayableStatus };
+type Settlement = { id: number; propertyId: number; propertyName: string; totalAmount: number; currency: string;
+  itemCount: number; status: SettlementStatus; createdAtUtc: string; paidAtUtc: string | null; isEarlySettlement: boolean };
+type Detail = Omit<Settlement, "itemCount"> & { items: Array<{ financialEntryId: number;
+  reservationNumber: string | null; amount: number; payableDueDate: string }> };
+type Page<T> = { items: T[]; totalCount: number; page: number; pageSize: number; totalPages: number };
+const labels = { Future: "آینده", Pending: "در انتظار سررسید", Due: "سررسید", Overdue: "معوق", Paid: "پرداخت‌شده" };
+const money = (amount: number, currency: string) => formatCurrency(amount, { currencyLabel: currency });
+const errorText = (error: unknown) => error instanceof Error ? error.message : "عملیات انجام نشد؛ دوباره تلاش کنید.";
+
+function Pagination({ page, totalPages, loading, onChange, name }: {
+  page: number; totalPages: number; loading: boolean; onChange: (page: number) => void; name: string;
+}) {
+  if (totalPages < 2) return null;
+  return <nav aria-label={name} className="flex flex-wrap items-center justify-end gap-2">
+    <KoochButton size="sm" variant="outline" disabled={loading || page <= 1} onClick={() => onChange(page - 1)}>قبلی</KoochButton>
+    <span className="text-sm text-muted-foreground">صفحه {formatNumber(page)} از {formatNumber(totalPages)}</span>
+    <KoochButton size="sm" variant="outline" disabled={loading || page >= totalPages} onClick={() => onChange(page + 1)}>بعدی</KoochButton>
+  </nav>;
+}
+
+function SettlementManagement() {
+  const [propertyId, setPropertyId] = useState("");
+  const [propertySearch, setPropertySearch] = useState("");
+  const [properties, setProperties] = useState<Array<{ id: number; name: string }>>([]);
+  const [propertyLoading, setPropertyLoading] = useState(false);
+  const [payablePage, setPayablePage] = useState(1);
+  const [settlementPage, setSettlementPage] = useState(1);
+  const [payables, setPayables] = useState<Page<Payable> | null>(null);
+  const [settlements, setSettlements] = useState<Page<Settlement> | null>(null);
+  const [payableLoading, setPayableLoading] = useState(true);
+  const [settlementLoading, setSettlementLoading] = useState(true);
+  const [payableError, setPayableError] = useState("");
+  const [settlementError, setSettlementError] = useState("");
+  const [early, setEarly] = useState(false);
+  const [selected, setSelected] = useState<Payable[]>([]);
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  const [refresh, setRefresh] = useState(0);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detail, setDetail] = useState<Detail | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState("");
+  const detailRequest = useRef(0);
+  const [confirmPaid, setConfirmPaid] = useState<Settlement | Detail | null>(null);
+  const [paying, setPaying] = useState(false);
+  const payingRef = useRef(false);
+
+  useEffect(() => {
+    let active = true;
+    setPropertyLoading(true);
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({ search: propertySearch, page: "1", pageSize: "20" });
+      void apiRequest<Page<{ id: number; name: string }>>(`/admin/settlements/properties?${query}`)
+        .then(result => { if (active) setProperties(result.items); })
+        .catch(error => { if (active) toast.error(errorText(error)); })
+        .finally(() => { if (active) setPropertyLoading(false); });
+    }, propertySearch ? 300 : 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [propertySearch]);
+
+  useEffect(() => {
+    let active = true;
+    setPayableLoading(true);
+    setPayableError("");
+    const query = new URLSearchParams({ page: String(payablePage), pageSize: "20" });
+    if (propertyId) query.set("propertyId", propertyId);
+    void apiRequest<Page<Payable>>(`/admin/settlements/payables?${query}`)
+      .then(result => { if (active) setPayables(result); })
+      .catch(error => { if (active) setPayableError(errorText(error)); })
+      .finally(() => { if (active) setPayableLoading(false); });
+    return () => { active = false; };
+  }, [propertyId, payablePage, refresh]);
+
+  useEffect(() => {
+    let active = true;
+    setSettlementLoading(true);
+    setSettlementError("");
+    const query = new URLSearchParams({ page: String(settlementPage), pageSize: "20" });
+    if (propertyId) query.set("propertyId", propertyId);
+    void apiRequest<Page<Settlement>>(`/admin/settlements?${query}`)
+      .then(result => { if (active) setSettlements(result); })
+      .catch(error => { if (active) setSettlementError(errorText(error)); })
+      .finally(() => { if (active) setSettlementLoading(false); });
+    return () => { active = false; };
+  }, [propertyId, settlementPage, refresh]);
+
+  function changeProperty(value: string) {
+    setPropertyId(value); setPayablePage(1); setSettlementPage(1); setSelected([]);
+  }
+
+  const selection = selected[0];
+  const incompatible = (item: Payable) => Boolean(selection && (selection.propertyId !== item.propertyId ||
+    selection.currency.toUpperCase() !== item.currency.toUpperCase()));
+
+  function select(item: Payable, checked: boolean) {
+    if (creatingRef.current || (!early && item.status === "Future") || incompatible(item)) return;
+    setSelected(current => checked ? [...current.filter(value => value.id !== item.id), item]
+      : current.filter(value => value.id !== item.id));
+  }
+
+  async function create() {
+    if (creatingRef.current || !selection) return;
+    creatingRef.current = true; setCreating(true);
+    try {
+      await apiRequest<Detail>("/admin/settlements", { method: "POST", body: JSON.stringify({
+        propertyId: selection.propertyId, payableEntryIds: selected.map(item => item.id), allowEarlySettlement: early,
+      }) });
+      setSelected([]); setRefresh(value => value + 1);
+      toast.success("تسویه ایجاد شد");
+    } catch (error) { toast.error(errorText(error)); }
+    finally { creatingRef.current = false; setCreating(false); }
+  }
+
+  async function openDetail(id: number) {
+    const request = ++detailRequest.current;
+    setDetailOpen(true); setDetail(null); setDetailError(""); setDetailLoading(true);
+    try {
+      const response = await apiRequest<Detail>(`/admin/settlements/${id}`);
+      if (request === detailRequest.current) setDetail(response);
+    } catch (error) { if (request === detailRequest.current) setDetailError(errorText(error)); }
+    finally { if (request === detailRequest.current) setDetailLoading(false); }
+  }
+
+  async function markPaid() {
+    if (!confirmPaid || payingRef.current) return;
+    payingRef.current = true; setPaying(true);
+    try {
+      const response = await apiRequest<Detail>(`/admin/settlements/${confirmPaid.id}/paid`, { method: "POST" });
+      setDetail(current => current?.id === response.id ? response : current);
+      setConfirmPaid(null); setRefresh(value => value + 1);
+      toast.success("پرداخت تسویه ثبت شد");
+    } catch (error) { toast.error(errorText(error)); }
+    finally { payingRef.current = false; setPaying(false); }
+  }
+
+  return <div className="grid min-w-0 gap-5" dir="rtl">
+    <KoochPageHeader eyebrow="" title="تسویه با اقامتگاه‌ها"
+      description="بررسی تعهدات مالی اقامتگاه و ثبت پرداخت تسویه‌ها"
+      breadcrumb={<><Link href="/admin">پنل مدیریت</Link><span aria-current="page">تسویه‌ها</span></>} />
+    <KoochCard className="grid gap-3">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <KoochField label="اقامتگاه">
+          <KoochSearchableSelect aria-label="اقامتگاه" value={propertyId} onChange={changeProperty}
+            onSearchChange={setPropertySearch} placeholder="همه اقامتگاه‌ها" disabled={creating}
+            options={properties.map(property => ({ value: String(property.id), label: property.name }))} />
+        </KoochField>
+        <div className="flex flex-wrap items-end gap-3">
+          <KoochButton variant="outline" size="sm" disabled={!propertyId || creating} onClick={() => changeProperty("")}>همه اقامتگاه‌ها</KoochButton>
+          {propertyLoading && <span role="status" className="text-sm text-muted-foreground">بارگذاری اقامتگاه‌ها…</span>}
+        </div>
+      </div>
+    </KoochCard>
+
+    <KoochCard className="grid gap-4">
+      <h2 className="text-lg font-bold">تعهدات تسویه‌نشده</h2>
+      <label className="flex items-center gap-2 text-sm">
+        <input type="checkbox" checked={early} disabled={creating} className="h-4 w-4 accent-[var(--theme-primary)]"
+          onChange={event => { setEarly(event.target.checked); if (!event.target.checked) setSelected(current => current.filter(item => item.status !== "Future")); }} />
+        اجازه تسویه زودهنگام اقلام آینده
+      </label>
+      <p className="text-sm text-muted-foreground">در حالت عادی فقط اقلام سررسید و معوق انتخاب می‌شوند. هر تسویه مربوط به یک اقامتگاه و یک واحد پول است.</p>
+      <KoochTable aria-label="تعهدات تسویه‌نشده">
+        <KoochTableHeader><KoochTableRow>{["انتخاب", "شماره رزرو", "اقامتگاه", "مبلغ", "واحد پول", "تاریخ سررسید", "وضعیت"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
+        <KoochTableBody>
+          {payableLoading ? <KoochTableEmpty colSpan={7}>در حال بارگذاری…</KoochTableEmpty>
+            : payableError ? <KoochTableEmpty colSpan={7}><span role="alert">{payableError}</span><KoochButton variant="outline" size="sm" onClick={() => setRefresh(value => value + 1)}>تلاش مجدد</KoochButton></KoochTableEmpty>
+            : !payables?.items.length ? <KoochTableEmpty colSpan={7}>تعهد تسویه‌نشده‌ای یافت نشد.</KoochTableEmpty>
+            : payables.items.map(item => <KoochTableRow key={item.id}>
+              <KoochTableCell><input type="checkbox" aria-label={`انتخاب ${item.reservationNumber ?? item.id}`}
+                className="h-4 w-4 accent-[var(--theme-primary)]" checked={selected.some(value => value.id === item.id)}
+                disabled={creating || (!early && item.status === "Future") || incompatible(item)} onChange={event => select(item, event.target.checked)} /></KoochTableCell>
+              <KoochTableCell><bdi dir="ltr">{item.reservationNumber ?? "—"}</bdi></KoochTableCell>
+              <KoochTableCell>{item.propertyName}</KoochTableCell>
+              <KoochTableCell className="whitespace-nowrap">{formatNumber(item.amount)}</KoochTableCell>
+              <KoochTableCell><bdi dir="ltr">{item.currency}</bdi></KoochTableCell>
+              <KoochTableCell>{formatDate(item.payableDueDate)}</KoochTableCell>
+              <KoochTableCell><span className="rounded-lg bg-muted px-2 py-1 text-xs font-medium">{labels[item.status]}</span></KoochTableCell>
+            </KoochTableRow>)}
+        </KoochTableBody>
+      </KoochTable>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <span className="text-sm text-muted-foreground">{formatNumber(selected.length)} قلم انتخاب‌شده{selection ? ` · ${selection.propertyName} · ${selection.currency}` : ""}</span>
+        <KoochButton disabled={!selected.length || payableLoading || Boolean(payableError)} loading={creating} onClick={() => void create()}>ایجاد تسویه</KoochButton>
+      </div>
+      <Pagination name="صفحات تعهدات" page={payablePage} totalPages={payables?.totalPages ?? 0} loading={payableLoading} onChange={setPayablePage} />
+    </KoochCard>
+
+    <KoochCard className="grid gap-4">
+      <h2 className="text-lg font-bold">تسویه‌ها</h2>
+      <KoochTable aria-label="تسویه‌ها">
+        <KoochTableHeader><KoochTableRow>{["شناسه", "اقامتگاه", "مبلغ کل", "واحد پول", "تعداد اقلام", "وضعیت", "زمان ایجاد", "زمان پرداخت", "عملیات"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
+        <KoochTableBody>
+          {settlementLoading ? <KoochTableEmpty colSpan={9}>در حال بارگذاری…</KoochTableEmpty>
+            : settlementError ? <KoochTableEmpty colSpan={9}><span role="alert">{settlementError}</span><KoochButton size="sm" variant="outline" onClick={() => setRefresh(value => value + 1)}>تلاش مجدد</KoochButton></KoochTableEmpty>
+            : !settlements?.items.length ? <KoochTableEmpty colSpan={9}>تسویه‌ای ثبت نشده است.</KoochTableEmpty>
+            : settlements.items.map(item => <KoochTableRow key={item.id}>
+              <KoochTableCell>{formatNumber(item.id)}</KoochTableCell><KoochTableCell>{item.propertyName}</KoochTableCell>
+              <KoochTableCell>{formatNumber(item.totalAmount)}</KoochTableCell><KoochTableCell><bdi dir="ltr">{item.currency}</bdi></KoochTableCell>
+              <KoochTableCell>{formatNumber(item.itemCount)}</KoochTableCell><KoochTableCell>{labels[item.status]}</KoochTableCell>
+              <KoochTableCell>{formatDateTime(item.createdAtUtc)}</KoochTableCell><KoochTableCell>{formatDateTime(item.paidAtUtc)}</KoochTableCell>
+              <KoochTableCell><div className="flex gap-2 whitespace-nowrap"><KoochButton size="sm" variant="outline" onClick={() => void openDetail(item.id)}>جزئیات</KoochButton>
+                {item.status !== "Paid" && <KoochButton size="sm" variant="outline" disabled={paying && confirmPaid?.id === item.id} onClick={() => setConfirmPaid(item)}>ثبت پرداخت</KoochButton>}</div></KoochTableCell>
+            </KoochTableRow>)}
+        </KoochTableBody>
+      </KoochTable>
+      <Pagination name="صفحات تسویه‌ها" page={settlementPage} totalPages={settlements?.totalPages ?? 0} loading={settlementLoading} onChange={setSettlementPage} />
+    </KoochCard>
+    <KoochDialog open={detailOpen} onOpenChange={open => { setDetailOpen(open); if (!open) detailRequest.current++; }} title="جزئیات تسویه" size="lg">
+      {detailLoading ? <p role="status">در حال بارگذاری…</p> : detailError ? <p role="alert">{detailError}</p> : detail && <div className="grid gap-4" dir="rtl">
+        <p>{detail.propertyName} · تسویه {formatNumber(detail.id)} · {labels[detail.status]}</p>
+        <p className="font-bold">مبلغ کل: {money(detail.totalAmount, detail.currency)}</p>
+        {detail.isEarlySettlement && <p className="text-sm text-muted-foreground">تسویه زودهنگام با حفظ سررسید اصلی اقلام</p>}
+        <KoochTable aria-label="اقلام تسویه"><KoochTableHeader><KoochTableRow>{["شماره رزرو", "سررسید اصلی", "مبلغ"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
+          <KoochTableBody>{detail.items.map(item => <KoochTableRow key={item.financialEntryId}><KoochTableCell><bdi dir="ltr">{item.reservationNumber ?? "—"}</bdi></KoochTableCell>
+            <KoochTableCell>{formatDate(item.payableDueDate)}</KoochTableCell><KoochTableCell>{money(item.amount, detail.currency)}</KoochTableCell></KoochTableRow>)}</KoochTableBody></KoochTable>
+      </div>}
+    </KoochDialog>
+    <KoochConfirmDialog open={Boolean(confirmPaid)} onOpenChange={open => { if (!open && !paying) setConfirmPaid(null); }}
+      title="ثبت پرداخت تسویه" description={confirmPaid ? `آیا پرداخت تسویه ${formatNumber(confirmPaid.id)} برای ${confirmPaid.propertyName} به مبلغ ${money(confirmPaid.totalAmount, confirmPaid.currency)} انجام شده است؟ این عمل فقط پرداخت انجام‌شده را ثبت می‌کند و انتقال بانکی انجام نمی‌دهد.` : ""}
+      confirmText="تأیید و ثبت پرداخت" cancelText="انصراف" loading={paying} variant="question" onConfirm={markPaid} />
+  </div>;
+}
+
+export default function AdminSettlementsPage() {
+  return <AdminLayout requiredPlatformPermission="ManagePayments"><SettlementManagement /></AdminLayout>;
+}

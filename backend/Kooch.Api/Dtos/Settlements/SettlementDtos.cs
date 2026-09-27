@@ -12,5 +12,22 @@ public sealed class CreateSettlementRequest
 
 public sealed record SettlementResponse(int Id, int PropertyId, decimal TotalAmount, string Currency,
     DateTime CreatedAtUtc, DateTime? PaidAtUtc, bool IsEarlySettlement, SettlementStatus Status,
-    IReadOnlyList<SettlementItemResponse> Items);
-public sealed record SettlementItemResponse(int FinancialEntryId, decimal Amount, DateOnly PayableDueDate);
+    IReadOnlyList<SettlementItemResponse> Items, string PropertyName = "");
+public sealed record SettlementItemResponse(int FinancialEntryId, decimal Amount, DateOnly PayableDueDate,
+    string? ReservationNumber = null);
+
+public sealed class SettlementListQuery
+{
+    public int? PropertyId { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Search { get; set; }
+}
+
+public enum PayableStatus { Future = 0, Due = 1, Overdue = 2 }
+public sealed record PropertyPayableResponse(int Id, int PropertyId, string PropertyName,
+    string? ReservationNumber, decimal Amount, string Currency, DateOnly PayableDueDate, PayableStatus Status);
+public sealed record SettlementListItemResponse(int Id, int PropertyId, string PropertyName,
+    decimal TotalAmount, string Currency, int ItemCount, SettlementStatus Status, DateTime CreatedAtUtc,
+    DateTime? PaidAtUtc, bool IsEarlySettlement);
+public sealed record SettlementPropertyOption(int Id, string Name);

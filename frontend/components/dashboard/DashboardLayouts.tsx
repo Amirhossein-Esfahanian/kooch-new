@@ -92,6 +92,7 @@ const adminMenuItems: DashboardMenuItem[] = [
   },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
   { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports", platformPermission: "ViewReports" },
+  { label: "تسویه‌ها", icon: "/svgs/list.svg", href: "/admin/settlements", platformPermission: "ManagePayments" },
   { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },
 ];
 
