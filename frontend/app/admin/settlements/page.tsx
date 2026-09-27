@@ -276,22 +276,30 @@ function SettlementManagement() {
       <Pagination name="صفحات تسویه‌ها" page={settlementPage} totalPages={settlements?.totalPages ?? 0} loading={settlementLoading} onChange={setSettlementPage} />
     </KoochCard>
     </div>
-    <KoochDialog open={detailOpen} onOpenChange={open => { setDetailOpen(open); if (!open) detailRequest.current++; }} title="جزئیات تسویه" size="lg">
-      {detailLoading ? <p role="status">در حال بارگذاری…</p> : detailError ? <p role="alert">{detailError}</p> : detail && <div className="grid gap-4" dir="rtl">
-        <p>{detail.propertyName} · تسویه {formatNumber(detail.id)} · {labels[detail.status]}</p>
+    <KoochDialog open={detailOpen} onOpenChange={open => { setDetailOpen(open); if (!open) detailRequest.current++; }} title="جزئیات تسویه" size="lg"
+      className="!h-auto !max-h-[90vh] !max-w-[800px]" bodyClassName="!overflow-hidden">
+      {detailLoading ? <p role="status">در حال بارگذاری…</p> : detailError ? <p role="alert">{detailError}</p> : detail && <div className="grid gap-3" dir="rtl">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
+          <span className="font-semibold">{detail.propertyName}</span>
+          <span className="text-muted-foreground">·</span>
+          <span>تسویه {formatNumber(detail.id)}</span>
+          <StatusBadge status={detail.status} />
+        </div>
         <p className="font-bold">مبلغ کل: {money(detail.totalAmount)}</p>
-        <dl className="grid grid-cols-2 gap-3 text-sm">
+        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <div><dt className="mb-1 text-muted-foreground">زمان ایجاد</dt><dd><Timestamp value={detail.createdAtUtc} /></dd></div>
-          <div><dt className="mb-1 text-muted-foreground">زمان پرداخت</dt><dd><Timestamp value={detail.paidAtUtc} /></dd></div>
+          {detail.paidAtUtc && <div><dt className="mb-1 text-muted-foreground">زمان پرداخت</dt><dd><Timestamp value={detail.paidAtUtc} /></dd></div>}
         </dl>
         {detail.cancelledAtUtc && <div className="grid gap-2 text-sm">
           <p className="text-muted-foreground">زمان لغو: <Timestamp value={detail.cancelledAtUtc} /></p>
           <p className="whitespace-pre-wrap break-words">دلیل لغو: {detail.cancellationReason}</p>
         </div>}
         {detail.isEarlySettlement && <p className="text-sm text-muted-foreground">تسویه زودهنگام با حفظ سررسید اصلی اقلام</p>}
-        <KoochTable aria-label="اقلام تسویه"><KoochTableHeader><KoochTableRow>{["شماره رزرو", "سررسید اصلی", "مبلغ"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
-          <KoochTableBody>{detail.items.map(item => <KoochTableRow key={item.financialEntryId}><KoochTableCell><bdi dir="ltr">{item.reservationNumber ?? "—"}</bdi></KoochTableCell>
-            <KoochTableCell>{formatDate(item.payableDueDate)}</KoochTableCell><KoochTableCell>{money(item.amount)}</KoochTableCell></KoochTableRow>)}</KoochTableBody></KoochTable>
+        <div className="max-h-[min(52vh,30rem)] overflow-y-auto overscroll-contain">
+          <KoochTable aria-label="اقلام تسویه"><KoochTableHeader><KoochTableRow>{["شماره رزرو", "سررسید اصلی", "مبلغ"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
+            <KoochTableBody>{detail.items.map(item => <KoochTableRow key={item.financialEntryId}><KoochTableCell><bdi dir="ltr">{item.reservationNumber ?? "—"}</bdi></KoochTableCell>
+              <KoochTableCell>{formatDate(item.payableDueDate)}</KoochTableCell><KoochTableCell>{money(item.amount)}</KoochTableCell></KoochTableRow>)}</KoochTableBody></KoochTable>
+        </div>
       </div>}
     </KoochDialog>
     <KoochDialog open={Boolean(cancelTarget)} onOpenChange={open => { if (!open && !cancellingRef.current) setCancelTarget(null); }}

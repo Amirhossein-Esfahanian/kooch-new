@@ -171,9 +171,26 @@ describe("Admin settlements", () => {
     await within(dialog).findByText("R-100001");
     expect(within(dialog).getByText("سررسید اصلی")).not.toBeNull();
     expect(within(dialog).getByText("زمان ایجاد")).not.toBeNull();
-    expect(within(dialog).getByText("زمان پرداخت")).not.toBeNull();
+    expect(within(dialog).queryByText("زمان پرداخت")).toBeNull();
     expect(dialog.querySelector('time[datetime="2026-09-27T00:00:00Z"]')?.children.length).toBe(2);
+    expect(dialog.classList.contains("!h-auto")).toBe(true);
+    expect(dialog.classList.contains("!max-w-[800px]")).toBe(true);
+    const itemsTable = within(dialog).getByRole("table", { name: "اقلام تسویه" });
+    expect(itemsTable.parentElement?.parentElement?.classList.contains("overflow-y-auto")).toBe(true);
+    expect(itemsTable.parentElement?.parentElement?.classList.contains("max-h-[min(52vh,30rem)]")).toBe(true);
     expect(api).toHaveBeenCalledWith("/admin/settlements/10");
+  });
+
+  it("shows the paid timestamp when the persisted settlement is paid", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path === "/admin/settlements/10"
+      ? Promise.resolve({ ...batch, status: "Paid", paidAtUtc: "2026-09-28T12:30:00Z", items: [] })
+      : original(path, options));
+    render(<Page />);
+    fireEvent.click(await screen.findByRole("button", { name: "جزئیات" }));
+    const dialog = await screen.findByRole("dialog", { name: "جزئیات تسویه" });
+    expect(within(dialog).getByText("زمان پرداخت")).not.toBeNull();
+    expect(dialog.querySelector('time[datetime="2026-09-28T12:30:00Z"]')).not.toBeNull();
   });
 
   it("uses compact responsive sections and configured currency without currency columns", async () => {
