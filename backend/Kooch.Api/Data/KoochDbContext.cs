@@ -222,7 +222,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         foreach (var entry in ChangeTracker.Entries<SettlementItem>())
         {
             if (entry.State == EntityState.Added && (entry.Entity.ReleasedAtUtc.HasValue ||
-                entry.Entity.Settlement is null || Entry(entry.Entity.Settlement).State != EntityState.Added))
+                entry.Entity.Settlement is null || Entry(entry.Entity.Settlement).State != EntityState.Added ||
+                string.IsNullOrWhiteSpace(entry.Entity.ReservationNumberSnapshot) ||
+                entry.Entity.ReservationNumberSnapshot != entry.Entity.ReservationNumberSnapshot.Trim() ||
+                entry.Entity.ReservationNumberSnapshot.Length > 32))
                 throw new InvalidOperationException("Active settlement items can only be added with a new settlement.");
             if (entry.State == EntityState.Deleted)
                 throw new InvalidOperationException("Settlement item history cannot be deleted.");
@@ -1097,6 +1100,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         });
         modelBuilder.Entity<SettlementItem>(entity =>
         {
+            entity.Property(item => item.ReservationNumberSnapshot).HasMaxLength(32);
             entity.HasIndex(item => item.FinancialEntryId).IsUnique().HasFilter("[ReleasedAtUtc] IS NULL");
             entity.HasOne(item => item.Settlement).WithMany(settlement => settlement.Items)
                 .HasForeignKey(item => item.SettlementId).OnDelete(DeleteBehavior.NoAction);

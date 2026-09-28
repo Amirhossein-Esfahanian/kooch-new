@@ -39,6 +39,79 @@ public sealed class SettlementTests
     }
 
     [Fact]
+    public async Task NewSettlementItem_SnapshotsTrimmedReservationNumber_AndIgnoresLaterRename()
+    {
+        await using var context = Context();
+        var reservation = await context.Reservations.SingleAsync(item => item.Id == 1);
+        reservation.ReservationNumber = "  R-583214  ";
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+
+        Assert.Null(typeof(CreateSettlementRequest).GetProperty(nameof(SettlementItem.ReservationNumberSnapshot)));
+        var settlement = await service.CreateAsync(1, [1]);
+        Assert.Equal("R-583214", Assert.Single(settlement.Items).ReservationNumberSnapshot);
+
+        reservation.ReservationNumber = "R-271946";
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var loaded = await service.GetAsync(settlement.Id);
+        Assert.Equal("R-583214", Assert.Single(loaded.Items).ReservationNumberSnapshot);
+        var result = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(settlement.Id, default)).Result);
+        Assert.Equal("R-583214", Assert.Single(Assert.IsType<SettlementResponse>(result.Value).Items).ReservationNumber);
+    }
+
+    [Fact]
+    public async Task MissingReservationNumber_RejectsSettlementWithoutAllocatingPayable()
+    {
+        await using var context = Context();
+        (await context.Reservations.SingleAsync(item => item.Id == 1)).ReservationNumber = null;
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => new SettlementService(context, new Clock()).CreateAsync(1, [1]));
+        Assert.Empty(await context.Settlements.ToListAsync());
+        Assert.Empty(await context.SettlementItems.ToListAsync());
+        Assert.Single((await new SettlementService(context, new Clock()).ListPayablesAsync(new SettlementListQuery())).Items);
+    }
+
+    [Fact]
+    public async Task SettlementItemSnapshot_CannotBeChangedAfterCreation()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
+
+        Assert.Single(settlement.Items).ReservationNumberSnapshot = "R-999999";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task LegacySettlementItemWithoutSnapshot_RemainsReadableWithoutLiveFallback()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new ReadQueryContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.Add(ReservationFor(1));
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE SettlementItems SET ReservationNumberSnapshot = NULL WHERE SettlementId = {0}", settlement.Id);
+        context.ChangeTracker.Clear();
+
+        var loaded = await service.GetAsync(settlement.Id);
+        Assert.Null(Assert.Single(loaded.Items).ReservationNumberSnapshot);
+        var result = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(settlement.Id, default)).Result);
+        Assert.Null(Assert.Single(Assert.IsType<SettlementResponse>(result.Value).Items).ReservationNumber);
+    }
+
+    [Fact]
     public async Task InvalidPaymentFacts_DoNotChangeSettlementOrCreateRecord()
     {
         await using var context = Context();
@@ -73,9 +146,10 @@ public sealed class SettlementTests
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
-        await using var context = new KoochDbContext(options);
+        await using var context = new ReadQueryContext(options);
         await context.Database.EnsureCreatedAsync();
         context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.Add(ReservationFor(1));
         context.FinancialEntries.Add(Payable(1));
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
@@ -152,9 +226,10 @@ public sealed class SettlementTests
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
-        await using var context = new KoochDbContext(options);
+        await using var context = new ReadQueryContext(options);
         await context.Database.EnsureCreatedAsync();
         context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.Add(ReservationFor(1));
         context.FinancialEntries.Add(Payable(1));
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
@@ -293,9 +368,15 @@ public sealed class SettlementTests
             .UseInMemoryDatabase(Guid.NewGuid().ToString()).Options);
         context.Properties.AddRange(new Property { Id = 1, Name = "First", Slug = "first" },
             new Property { Id = 2, Name = "Second", Slug = "second" });
+        context.Reservations.AddRange(Enumerable.Range(1, 6).Select(id => ReservationFor(id)));
         context.SaveChanges();
         return context;
     }
+
+    private static Reservation ReservationFor(int id, int property = 1) => new()
+    {
+        Id = id, PropertyId = property, ReservationNumber = $"R-{100000 + id}"
+    };
 
     private static FinancialEntry Payable(int id, int property = 1, string currency = "IRR", int days = 0) => new()
     {
@@ -417,9 +498,10 @@ public sealed class SettlementTests
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
-        await using var context = new KoochDbContext(options);
+        await using var context = new ReadQueryContext(options);
         await context.Database.EnsureCreatedAsync();
         context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.Add(ReservationFor(1));
         context.FinancialEntries.Add(Payable(1));
         await context.SaveChangesAsync();
         var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
@@ -429,7 +511,7 @@ public sealed class SettlementTests
         await using (var competing = new KoochDbContext(options))
         {
             competing.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
-                Items = [new SettlementItem { FinancialEntryId = 1 }] });
+                Items = [new SettlementItem { FinancialEntryId = 1, ReservationNumberSnapshot = "R-100001" }] });
             await Assert.ThrowsAsync<DbUpdateException>(() => competing.SaveChangesAsync());
         }
         Assert.Single(await context.Settlements.ToListAsync());
@@ -499,9 +581,9 @@ public sealed class SettlementTests
     public async Task PayableSearch_UsesTrimmedPublicReservationReferenceAndPropertyScope()
     {
         await using var context = Context();
-        context.Reservations.AddRange(new Reservation { Id = 1, PropertyId = 1, ReservationNumber = "R-583214" },
-            new Reservation { Id = 2, PropertyId = 1, ReservationNumber = "R-271946" },
-            new Reservation { Id = 3, PropertyId = 2, ReservationNumber = "R-583215" });
+        (await context.Reservations.SingleAsync(item => item.Id == 1)).ReservationNumber = "R-583214";
+        (await context.Reservations.SingleAsync(item => item.Id == 2)).ReservationNumber = "R-271946";
+        (await context.Reservations.SingleAsync(item => item.Id == 3)).ReservationNumber = "R-583215";
         context.FinancialEntries.AddRange(Payable(1), Payable(2), Payable(3, property: 2));
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
@@ -568,11 +650,12 @@ public sealed class SettlementTests
         await using var context = Context();
         context.FinancialEntries.AddRange(Enumerable.Range(1, 4).Select(id => Payable(id)));
         context.Settlements.AddRange(new Settlement { Id = 1, PropertyId = 1, Currency = "IRR", TotalAmount = 246.9m,
-                Items = [new SettlementItem { FinancialEntryId = 1 }, new SettlementItem { FinancialEntryId = 2 }] },
+                Items = [new SettlementItem { FinancialEntryId = 1, ReservationNumberSnapshot = "R-100001" },
+                    new SettlementItem { FinancialEntryId = 2, ReservationNumberSnapshot = "R-100002" }] },
             new Settlement { Id = 2, PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
-                Items = [new SettlementItem { FinancialEntryId = 3 }] },
+                Items = [new SettlementItem { FinancialEntryId = 3, ReservationNumberSnapshot = "R-100003" }] },
             new Settlement { Id = 3, PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
-                Items = [new SettlementItem { FinancialEntryId = 4 }] });
+                Items = [new SettlementItem { FinancialEntryId = 4, ReservationNumberSnapshot = "R-100004" }] });
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
         var query = new SettlementListQuery { SortBy = field, SortDirection = direction };
@@ -608,7 +691,9 @@ public sealed class SettlementTests
         await using var context = new ReadQueryContext(new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options);
         await context.Database.EnsureCreatedAsync();
         context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
-        context.Reservations.Add(new Reservation { Id = 1, PropertyId = 1, ReservationNumber = "R-583214" });
+        var firstReservation = ReservationFor(1);
+        firstReservation.ReservationNumber = "R-583214";
+        context.Reservations.AddRange(firstReservation, ReservationFor(2), ReservationFor(3));
         context.FinancialEntries.AddRange(Payable(1), Payable(2, days: -1), Payable(3, days: 1));
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
@@ -634,9 +719,10 @@ public sealed class SettlementTests
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
-        await using var context = new KoochDbContext(options);
+        await using var context = new ReadQueryContext(options);
         await context.Database.EnsureCreatedAsync();
         context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.AddRange(ReservationFor(1), ReservationFor(2));
         context.FinancialEntries.AddRange(Payable(1, days: dueDays), Payable(2, days: dueDays));
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
@@ -648,12 +734,17 @@ public sealed class SettlementTests
         Assert.Equal(new Clock().GetUtcNow().UtcDateTime, cancelled.CancelledAtUtc);
         Assert.Null(cancelled.PaidAtUtc);
         Assert.All(cancelled.Items, item => Assert.Equal(cancelled.CancelledAtUtc, item.ReleasedAtUtc));
+        Assert.Equal("R-100001", cancelled.Items.Single(item => item.FinancialEntryId == 1).ReservationNumberSnapshot);
         Assert.Equal(2, (await service.ListPayablesAsync(new SettlementListQuery())).TotalCount);
         Assert.Equal(SettlementStatus.Cancelled, Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).Status);
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelAsync(batch.Id, "Again"));
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(batch.Id, PaymentRequest(), 77));
 
+        (await context.Reservations.SingleAsync(item => item.Id == 1)).ReservationNumber = "R-654321";
+        await context.SaveChangesAsync();
         var replacement = await service.CreateAsync(1, [1, 2], allowEarlySettlement: dueDays > 0);
+        Assert.Equal("R-100001", cancelled.Items.Single(item => item.FinancialEntryId == 1).ReservationNumberSnapshot);
+        Assert.Equal("R-654321", replacement.Items.Single(item => item.FinancialEntryId == 1).ReservationNumberSnapshot);
         Assert.NotEqual(cancelled.Id, replacement.Id);
         Assert.Equal(cancelled.TotalAmount, replacement.TotalAmount);
         Assert.Equal(cancelled.Currency, replacement.Currency);
@@ -668,7 +759,7 @@ public sealed class SettlementTests
         });
         await using var competing = new KoochDbContext(options);
         competing.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", TotalAmount = 123.45m,
-            Items = [new SettlementItem { FinancialEntryId = 1 }] });
+            Items = [new SettlementItem { FinancialEntryId = 1, ReservationNumberSnapshot = "R-100001" }] });
         await Assert.ThrowsAsync<DbUpdateException>(() => competing.SaveChangesAsync());
         cancelled.Items.First().ReleasedAtUtc = null;
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
@@ -700,9 +791,10 @@ public sealed class SettlementTests
         await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
         await connection.OpenAsync();
         var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
-        await using var first = new KoochDbContext(options);
+        await using var first = new ReadQueryContext(options);
         await first.Database.EnsureCreatedAsync();
         first.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        first.Reservations.AddRange(ReservationFor(1), ReservationFor(2));
         first.FinancialEntries.AddRange(Payable(1), Payable(2));
         await first.SaveChangesAsync();
         var firstService = new SettlementService(first, new Clock());

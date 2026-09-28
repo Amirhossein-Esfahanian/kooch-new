@@ -33,6 +33,7 @@ public class SettlementItem : BaseEntity
 {
     public int SettlementId { get; set; }
     public int FinancialEntryId { get; set; }
+    public string? ReservationNumberSnapshot { get; set; }
     public DateTime? ReleasedAtUtc { get; set; }
     public Settlement Settlement { get; set; } = null!;
     public FinancialEntry FinancialEntry { get; set; } = null!;

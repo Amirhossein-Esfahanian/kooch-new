@@ -136,6 +136,8 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
     {
         if (payableIds.Count == 0 || payableIds.Distinct().Count() != payableIds.Count)
             throw new ArgumentException("Select one or more distinct payable entries.");
+        await using var ownedTransaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
+            ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
         var entries = await context.FinancialEntries.AsNoTracking()
             .Where(entry => payableIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         if (entries.Count != payableIds.Count || entries.Any(entry =>
@@ -145,6 +147,17 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         if (entries.Any(entry => string.IsNullOrWhiteSpace(entry.Currency) || entry.Currency.Length != 3) ||
             entries.Select(entry => entry.Currency).Distinct(StringComparer.OrdinalIgnoreCase).Count() != 1)
             throw new ArgumentException("Settlement entries must have one currency.");
+        if (entries.Any(entry => !entry.ReservationId.HasValue))
+            throw new InvalidOperationException("A reservation is required for every settlement item.");
+        var reservationIds = entries.Select(entry => entry.ReservationId!.Value).Distinct().ToArray();
+        var reservationReferences = await context.Reservations.IgnoreQueryFilters().AsNoTracking()
+            .Where(reservation => reservationIds.Contains(reservation.Id))
+            .Select(reservation => new { reservation.Id, reservation.ReservationNumber })
+            .ToDictionaryAsync(reservation => reservation.Id, reservation => reservation.ReservationNumber, cancellationToken);
+        var reservationNumbers = entries.ToDictionary(entry => entry.Id,
+            entry => reservationReferences.GetValueOrDefault(entry.ReservationId!.Value)?.Trim());
+        if (reservationNumbers.Values.Any(number => string.IsNullOrWhiteSpace(number) || number.Length > 32))
+            throw new InvalidOperationException("A valid reservation number is required for every settlement item.");
         if (!allowEarlySettlement && entries.Any(entry => entry.PayableDueDate > BusinessDate))
             throw new InvalidOperationException("Future payables require explicit early settlement intent.");
         if (await context.SettlementItems.IgnoreQueryFilters().AnyAsync(
@@ -160,11 +173,13 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         {
             PropertyId = propertyId, TotalAmount = total, Currency = entries[0].Currency,
             IsEarlySettlement = allowEarlySettlement, CreatedByUserId = actorId,
-            Items = entries.Select(entry => new SettlementItem { FinancialEntryId = entry.Id }).ToList()
+            Items = entries.Select(entry => new SettlementItem
+            {
+                FinancialEntryId = entry.Id,
+                ReservationNumberSnapshot = reservationNumbers[entry.Id]
+            }).ToList()
         };
         var generator = numberGenerator ?? new SettlementNumberGenerator(context);
-        await using var ownedTransaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
-            ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
         settlement.SettlementNumber = await generator.GenerateAsync(cancellationToken);
         context.Settlements.Add(settlement);
         var transaction = context.Database.CurrentTransaction;
@@ -204,7 +219,6 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         await context.Settlements.Include(settlement => settlement.Property).Include(settlement => settlement.PaymentRecord)
             .Include(settlement => settlement.Items)
             .ThenInclude(item => item.FinancialEntry)
-            .ThenInclude(entry => entry.Reservation)
             .SingleOrDefaultAsync(settlement => settlement.Id == id, cancellationToken)
         ?? throw new KeyNotFoundException("Settlement not found.");
 

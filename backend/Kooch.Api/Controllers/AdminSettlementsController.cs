@@ -54,7 +54,7 @@ public sealed class AdminSettlementsController(SettlementService service) : Auth
         settlement.IsEarlySettlement, settlement.GetStatus(service.BusinessDate),
         settlement.Items.OrderBy(item => item.FinancialEntryId)
             .Select(item => new SettlementItemResponse(item.FinancialEntryId, item.FinancialEntry.Amount,
-                item.FinancialEntry.PayableDueDate!.Value, item.FinancialEntry.Reservation?.ReservationNumber)).ToList(),
+                item.FinancialEntry.PayableDueDate!.Value, item.ReservationNumberSnapshot)).ToList(),
         settlement.Property.Name, settlement.CancelledAtUtc, settlement.CancelledByUserId, settlement.CancellationReason,
         settlement.PaymentRecord is null ? null : new SettlementPaymentRecordResponse(
             settlement.PaymentRecord.PaymentMethod, settlement.PaymentRecord.ReferenceNumber,
