@@ -9,6 +9,7 @@ public class RefundRecord : BaseEntity
     public int PropertyId { get; set; }
     public int? ReservationFinancialSnapshotId { get; set; }
     public int? OriginalPropertyPayableEntryId { get; set; }
+    public int? CancellationFinancialResolutionId { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = string.Empty;
     public DateTime RefundedAtUtc { get; set; }

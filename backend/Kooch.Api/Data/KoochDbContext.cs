@@ -30,6 +30,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
     public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
+    public DbSet<CancellationFinancialResolution> CancellationFinancialResolutions => Set<CancellationFinancialResolution>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<SettlementItem> SettlementItems => Set<SettlementItem>();
     public DbSet<SettlementPaymentRecord> SettlementPaymentRecords => Set<SettlementPaymentRecord>();
@@ -166,12 +167,24 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
-                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or RefundRecord) &&
+                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or RefundRecord
+                    or CancellationFinancialResolution) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
         {
             throw new InvalidOperationException("Financial history entries are append-only and cannot be modified or deleted.");
+        }
+        foreach (var entry in ChangeTracker.Entries<CancellationFinancialResolution>().Where(e => e.State == EntityState.Added))
+        {
+            var resolution = entry.Entity;
+            decimal[] amounts = [resolution.GrossPaidAmount, resolution.GuestRefundAmount,
+                resolution.FinalPropertyShare, resolution.FinalKoochShare];
+            // Reject excess precision before SQL Server can round values independently on insert.
+            if (amounts.Any(amount => amount < 0 || amount > 9999999999999999.99m ||
+                    amount != decimal.Truncate(amount * 100m) / 100m) ||
+                resolution.GuestRefundAmount + resolution.FinalPropertyShare + resolution.FinalKoochShare != resolution.GrossPaidAmount)
+                throw new InvalidOperationException("Cancellation allocation must contain nonnegative decimal(18,2) amounts whose sum equals gross paid.");
         }
         EnsureSuccessfulPaymentFactsAreImmutable();
         foreach (var entry in ChangeTracker.Entries<Settlement>())
@@ -1119,6 +1132,44 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private static void ConfigureFinancialFoundation(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<CancellationFinancialResolution>(entity =>
+        {
+            entity.Property(r => r.GrossPaidAmount).HasPrecision(18, 2);
+            entity.Property(r => r.GuestRefundAmount).HasPrecision(18, 2);
+            entity.Property(r => r.FinalPropertyShare).HasPrecision(18, 2);
+            entity.Property(r => r.FinalKoochShare).HasPrecision(18, 2);
+            entity.Property(r => r.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(r => r.Mode).HasConversion<int>();
+            entity.Property(r => r.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(r => r.Note).HasMaxLength(2000);
+            entity.Property(r => r.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(r => r.RequestFingerprint).HasMaxLength(64).IsRequired();
+            entity.HasIndex(r => new { r.PaymentId, r.ReservationId }).IsUnique();
+            entity.HasIndex(r => r.IdempotencyKey).IsUnique();
+            entity.HasIndex(r => r.PaymentItemId).IsUnique().HasFilter("[PaymentItemId] IS NOT NULL");
+            entity.HasIndex(r => r.OriginalPropertyPayableEntryId).IsUnique();
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_CancellationFinancialResolutions_NonnegativeAmounts",
+                    "[GrossPaidAmount] >= 0 AND [GuestRefundAmount] >= 0 AND [FinalPropertyShare] >= 0 AND [FinalKoochShare] >= 0");
+                table.HasCheckConstraint("CK_CancellationFinancialResolutions_AllocationSum",
+                    "[GuestRefundAmount] + [FinalPropertyShare] + [FinalKoochShare] = [GrossPaidAmount]");
+            });
+            entity.HasOne<Reservation>().WithMany().HasForeignKey(r => r.ReservationId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Payment>().WithMany().HasForeignKey(r => r.PaymentId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<PaymentItem>().WithMany().HasForeignKey(r => r.PaymentItemId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Property>().WithMany().HasForeignKey(r => r.PropertyId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ReservationFinancialSnapshot>().WithMany().HasForeignKey(r => r.ReservationFinancialSnapshotId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<FinancialEntry>().WithMany().HasForeignKey(r => r.OriginalPropertyPayableEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<FinancialEntry>().WithMany().HasForeignKey(r => r.ReversalFinancialEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<FinancialEntry>().WithMany().HasForeignKey(r => r.ReplacementPropertyPayableEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Settlement>().WithMany().HasForeignKey(r => r.ReleasedSettlementId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(r => r.ResolvedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
         modelBuilder.Entity<RefundRecord>(entity =>
         {
             entity.Property(r => r.Amount).HasPrecision(18, 2);
@@ -1133,6 +1184,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasIndex(r => r.PaymentItemId).IsUnique().HasFilter("[PaymentItemId] IS NOT NULL");
             entity.HasIndex(r => r.OriginalPropertyPayableEntryId).IsUnique()
                 .HasFilter("[OriginalPropertyPayableEntryId] IS NOT NULL");
+            entity.HasIndex(r => r.CancellationFinancialResolutionId).IsUnique()
+                .HasFilter("[CancellationFinancialResolutionId] IS NOT NULL");
             entity.ToTable(table => table.HasCheckConstraint("CK_RefundRecords_PositiveAmount", "[Amount] > 0"));
             entity.HasOne<Payment>().WithMany().HasForeignKey(r => r.PaymentId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<PaymentItem>().WithMany().HasForeignKey(r => r.PaymentItemId).OnDelete(DeleteBehavior.NoAction);
@@ -1143,6 +1196,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasOne<FinancialEntry>().WithMany().HasForeignKey(r => r.OriginalPropertyPayableEntryId)
                 .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<User>().WithMany().HasForeignKey(r => r.RecordedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<CancellationFinancialResolution>().WithMany()
+                .HasForeignKey(r => r.CancellationFinancialResolutionId).OnDelete(DeleteBehavior.NoAction);
         });
         modelBuilder.Entity<Settlement>(entity =>
         {
