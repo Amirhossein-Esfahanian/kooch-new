@@ -1,128 +1,228 @@
-# Kooch Database Draft
+# Kooch Database Model — Current Working Draft
 
-This model supports traditional stays with individually named rooms and hotels that sell pooled room-type inventory. It also establishes extension points for daily pricing, rate plans, promotions, stay restrictions, SEO, auditing, and soft deletion.
+Last reviewed: 2026-09-28
+Status: Living technical summary; EF Core model/migrations remain authoritative
 
-## Shared entity fields
+> This document is a high-level model summary. Exact columns, constraints, enums, and indexes must be verified against the current EF Core entities/configuration and model snapshot before schema work.
 
-Every business entity inherits `BaseEntity` and therefore has:
+## Shared persistence principles
 
-`Id`, `CreatedAtUtc`, `CreatedByUserId`, `UpdatedAtUtc`, `UpdatedByUserId`, `DeletedAtUtc`, `DeletedByUserId`, `IsDeleted`.
+- SQL Server + Entity Framework Core.
+- Monetary values use `decimal(18,2)` unless a narrower type is explicitly configured.
+- Historical business/financial records should not be cascade-deleted.
+- Important financial/reservation state changes are transactional.
+- Mutable live configuration must not silently rewrite historical snapshots/documents.
+- EF migrations, not this document, are the schema source of truth.
 
-`CreatedAtUtc` and `UpdatedAtUtc` are populated by `KoochDbContext.SaveChangesAsync`. User attribution is intentionally left unset until a current-user service exists. A global query filter excludes rows where `IsDeleted` is true.
+## Identity / access
 
-## Inventory model
+### User
 
-- `Property.InventoryMode = NamedRooms`: each physical unit is a `Room` with a unique name inside its room type. A reservation may point to that room.
-- `Property.InventoryMode = TypeBasedInventory`: `RoomType.TotalInventory` represents the physical pool and reservations leave `RoomId` null.
-- `Availability` stores the sellable count and price for each room type and calendar date. Its daily `Price` is authoritative; nullable `OriginalPrice` supports strike-through pricing and `RoomType.BasePrice` is only an optional fallback.
+One canonical identity for every person.
 
-## Core entities
+A User may participate in multiple workspaces and Properties.
 
-| Entity | Purpose and key fields |
-| --- | --- |
-| `User` | Guest, owner, or administrator; includes `Role`, name, email, and phone. |
-| `Property` | Owner-managed stay assigned to a destination, with slug, status, type, inventory mode, location, check-in/out times, highlights, warnings, and SEO fields. |
-| `RoomType` | Property accommodation category with slug, occupancy limits, bed configuration, total inventory, optional base price, and SEO fields. |
-| `Room` | One named physical unit belonging to a room type. |
-| `Availability` | Daily room-type price, available count, closure flag, and optional minimum-night override. |
-| `Reservation` | Client booking for a property and room type, optionally assigned to a named room; includes dates, guest counts, currency, status, source, and immutable pricing snapshots. |
-| `Payment` | Reservation payment attempt or refund record with amount, currency, provider, reference, status, and paid timestamp. |
-| `Review` | Property review by a client, optionally linked to the reservation that enabled it. |
+### UserPropertyAccess / Membership
 
-## Discovery and classification
+Property authorization is membership-based and stores/evaluates Property role + effective Permission Matrix.
 
-- `Amenity` declares an amenity and its `Property`, `RoomType`, or `Both` scope.
-- `PropertyAmenity` and `RoomTypeAmenity` are explicit join entities.
-- `TravelPurpose` classifies stays, joined through `PropertyTravelPurpose`.
-- `PropertyImage` and `RoomTypeImage` store ordered images, alt text, and cover selection.
-- `NearbyPlace` stores a named point of interest, category, and distance from a property.
-- `PropertyHighlight` stores ordered badges and selling points, uniquely identified by slug within a property.
-- `PropertyWarning` stores ordered guest-facing limitations classified by `WarningType`.
-- `Destination` provides a unique-slug location hierarchy for cities and future geographic expansion. Every property belongs to a destination.
-- `SeoMetadata` targets exactly one property, destination, or named landing-page key and stores title, description, keywords, canonical URL, and Open Graph image.
-- `BedType` is reusable bed reference data; `RoomTypeBed` records the quantity of each bed type in a room type.
+Platform roles are global only and must not replace Property membership authorization.
 
-## Pricing and stay policy
+## Property / inventory
 
-- `CancellationPolicy` belongs to a property and can be referenced by rate plans.
-- `MealPlan` defines reusable breakfast and meal options that rate plans may reference.
-- `RatePlan` belongs to a room type and applies a percentage or fixed price modifier, optional minimum nights, cancellation policy, and meal plan.
-- `Promotion` has an explicit global, property, or room-type scope, start/end dates, and a percentage or fixed discount. Scope and nullable target IDs are protected by a check constraint.
-- `StayRule` targets exactly one property or room type, has start/end dates, minimum/maximum nights, and `ClosedToArrival` / `ClosedToDeparture` flags.
+The system supports both:
 
-Reservation price history is retained in `BaseAmount`, `DiscountAmount`, `ExtraGuestAmount`, `ServiceFeeAmount`, and `FinalAmount`. These values are snapshots and must not be recalculated from later pricing-rule changes.
+- `NamedRooms` — physical named rooms
+- `TypeBasedInventory` — pooled room-type inventory
 
-Date ranges describe when a promotion or stay rule applies. They do not replace the per-date `Availability` price rows.
+Core concepts include:
 
-## Relationships
+- Property
+- RoomType
+- Room
+- Availability / calendar rows
+- property/room images
+- amenities
+- destinations and related discovery metadata
+
+Daily Availability/Calendar values are authoritative for day-specific sellable inventory and pricing; base prices are fallback/reference values where the current pricing model allows it.
+
+## Reservation
+
+Reservation is attached to the canonical User and Property/room inventory context.
+
+Historical reservation values include immutable pricing/payment-facing snapshots where required so later pricing-rule changes do not rewrite the booking that was actually made.
+
+Public reservation reference:
 
 ```text
-User 1 -------- * Property (Owner)
-User 1 -------- * Reservation (Client)
-User 1 -------- * Review (Client)
-
-Property 1 ---- * RoomType
-Destination 1 - * Property
-Destination 1 - * Destination (optional parent)
-Property 1 ---- * Reservation
-Property 1 ---- * Review
-Property 1 ---- * PropertyImage / NearbyPlace / CancellationPolicy / PropertyHighlight / PropertyWarning
-Property * ---- * Amenity (PropertyAmenity)
-Property * ---- * TravelPurpose (PropertyTravelPurpose)
-Property 1 ---- 0..1 SeoMetadata
-Destination 1 - 0..1 SeoMetadata
-
-RoomType 1 ---- * Room / Availability / RoomTypeImage / RatePlan
-RoomType 1 ---- * Reservation
-RoomType * ---- * Amenity (RoomTypeAmenity)
-RoomType * ---- * BedType (RoomTypeBed with Quantity)
-
-Reservation 1 - * Payment
-Reservation 1 - * Review (optional from Review)
-Reservation * - 0..1 Room
-RatePlan * ----- 0..1 CancellationPolicy
-RatePlan * ----- 0..1 MealPlan
+R-XXXXXX
 ```
 
-`Reservation`, `Payment`, and `Review` relationships use `NoAction` to protect historical business records from cascading deletion.
+Booking/order reference:
 
-## Unique indexes
+```text
+O-XXXXXX
+```
 
-- `Property.Slug`
-- `RoomType (PropertyId, Slug)`
-- `Room (RoomTypeId, Name)`
-- `Availability (RoomTypeId, Date)`
-- `PropertyAmenity (PropertyId, AmenityId)`
-- `RoomTypeAmenity (RoomTypeId, AmenityId)`
-- `PropertyTravelPurpose (PropertyId, TravelPurposeId)`
-- `PropertyHighlight (PropertyId, Slug)`
-- `RoomTypeBed (RoomTypeId, BedTypeId)`
-- `BedType.Slug`
-- `MealPlan.Slug`
-- `Destination.Slug`
-- `User.Email`
+## Payment
 
-All monetary values use `decimal(18,2)`, except percentages and geographic coordinates where narrower precision is configured.
+Payment supports at least the current Online / Manual channel distinction.
 
-## Enums
+Manual payment evidence/metadata is stored separately and verified by authorized Admin workflow.
 
-- `UserRole`: Admin, Owner, Client
-- `PropertyStatus`: Draft, PendingReview, Approved, Rejected, Suspended
-- `PropertyType`: TraditionalHouse, BoutiqueHotel, EcoLodge, Hotel, Villa, Apartment
-- `InventoryMode`: NamedRooms, TypeBasedInventory
-- `ReservationStatus`: Pending, Confirmed, Rejected, Cancelled, Paid, Completed
-- `ReservationSource`: Website, OwnerManual, PhoneReferral, AdminCreated, ExternalChannel
-- `PaymentStatus`: Pending, Successful, Failed, Refunded
-- `AmenityScope`: Property, RoomType, Both
-- `DiscountType`: Percentage, FixedAmount
-- `PriceModifierType`: Percentage, FixedAmount
-- `WarningType`: Accessibility, Noise, Stairs, NoElevator, NoWindow, SharedBathroom, Parking, Other
-- `PromotionScope`: Global, Property, RoomType
+A reservation is Confirmed only after verified successful payment.
 
-## Deferred implementation
+A successful payment is also the trigger for financial recognition and voucher issuance.
 
-- Authentication and current-user audit attribution
-- Booking concurrency and inventory decrement transactions
-- Taxes, service fees, commissions, and exchange rates
-- External channel synchronization
-- Database migrations
+## Reservation Voucher
+
+`ReservationVoucher` is a persisted immutable reservation document/projection source.
+
+Public voucher reference:
+
+```text
+V-XXXXXX
+```
+
+Voucher is not a settlement receipt.
+
+## Commission
+
+Current concepts include:
+
+- Commission type/classification on Reservation
+- global commission policy
+- Property commission-rate override
+- resolver/calculator
+
+Property override for the same commission type wins when enabled; otherwise global policy applies.
+
+Commission base is the actually paid amount. Current financial rounding uses midpoint rounding AwayFromZero.
+
+## Reservation financialization
+
+### ReservationFinancialSnapshot
+
+Immutable recognition snapshot for a successful payment/reservation allocation.
+
+### FinancialEntry
+
+Append-only ledger/history entry.
+
+Current entry concepts include:
+
+- PropertyPayable
+- Commission (type reserved/available in the ledger model even where recognition policy avoids duplicate booking)
+- Refund
+- Adjustment
+- Settlement
+- Reversal
+
+`PayableDueDate` is persisted/snapshotted on the payable entry and must not be recalculated from later settlement-policy changes.
+
+## Settlement
+
+Settlement is a Property-specific batch of payable obligations in one currency.
+
+Public reference:
+
+```text
+S-XXXXXX
+```
+
+Key behavior:
+
+- status lifecycle includes unpaid/due/overdue/paid/cancelled semantics
+- default selection targets due/overdue obligations
+- early settlement requires explicit intent
+- cancellation preserves historical batch/items while releasing active allocations
+- Paid settlements cannot be cancelled
+
+### SettlementItem
+
+Links one payable FinancialEntry to a Settlement.
+
+Important historical snapshot:
+
+- `ReservationNumberSnapshot`
+
+This snapshot is captured when the item is allocated to the Settlement. Legacy null snapshots must not be reconstructed from live Reservation data for historical receipts.
+
+### SettlementPaymentRecord
+
+Zero/one immutable payment record per Settlement.
+
+Current fields/semantics include:
+
+- payment method
+- reference/tracking number
+- actual payment timestamp
+- optional Admin note
+- recorded-by / recorded-at system metadata
+- `PropertyNameSnapshot`
+
+`PropertyNameSnapshot` is captured at payment registration time. Legacy null values must not be fabricated from the current Property name.
+
+## Settlement Receipt
+
+No separate SettlementReceipt table is required in the current design.
+
+The receipt is a read-only projection from persisted historical sources:
+
+- `Settlement.SettlementNumber`
+- `Settlement.TotalAmount`
+- `Settlement.Currency`
+- `SettlementPaymentRecord`
+- `SettlementPaymentRecord.PropertyNameSnapshot`
+- `SettlementItem.ReservationNumberSnapshot`
+- persisted item amount
+- persisted `FinancialEntry.PayableDueDate`
+
+Receipt is available only when the required persisted historical data exists.
+
+## Settlement Policy
+
+One global settlement policy for all Properties:
+
+- `SettlementBaseDate = CheckIn | CheckOut`
+- `SettlementOffsetDays = signed integer`
+
+```text
+PayableDueDate = selected reservation base date + offset days
+```
+
+The result is snapshotted when PropertyPayable is created; policy changes are non-retroactive.
+
+## Public reference family
+
+| Domain | Public reference |
+|---|---|
+| Booking / Order | `O-XXXXXX` |
+| Reservation | `R-XXXXXX` |
+| Voucher | `V-XXXXXX` |
+| Settlement | `S-XXXXXX` |
+
+## Pricing / promotion extensions
+
+Existing/legacy planning includes concepts such as:
+
+- RatePlan
+- Promotion
+- StayRule
+- CancellationPolicy
+- MealPlan
+- daily Availability pricing
+
+Exact current implementation status should be checked in code before extending these areas.
+
+## Deferred / next financial model work
+
+Not yet treated as complete in this document:
+
+- full Refund workflow
+- Reversal / Adjustment correction flows for Paid history
+- cancellation-linked financial effects
+- notification delivery records
+
+These should extend financial history append-only rather than overwrite original successful-payment or settlement records.

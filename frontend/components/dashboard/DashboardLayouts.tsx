@@ -57,13 +57,13 @@ const adminMenuItems: DashboardMenuItem[] = [
   },
   {
     label: "کاربران مدیریتی سامانه",
-    icon: "/svgs/users.svg",
+    icon: "/svgs/user-beard-bolt.svg",
     href: "/admin/users",
     platformPermission: "ManageUsers",
   },
   {
     label: "اعضای اقامتگاه‌ها",
-    icon: "/svgs/users.svg",
+    icon: "/svgs/building-user.svg",
     href: "/admin/property-members",
     platformPermission: "ManageUsers",
   },
@@ -91,8 +91,18 @@ const adminMenuItems: DashboardMenuItem[] = [
     href: "/admin/reservations",
   },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
-  { label: "گزارش‌ها", icon: "/svgs/list.svg", href: "/admin/reports", platformPermission: "ViewReports" },
-  { label: "تسویه‌ها", icon: "/svgs/list.svg", href: "/admin/settlements", platformPermission: "ManagePayments" },
+  {
+    label: "گزارش‌ها",
+    icon: "/svgs/list.svg",
+    href: "/admin/reports",
+    platformPermission: "ViewReports",
+  },
+  {
+    label: "تسویه‌ها",
+    icon: "/svgs/receipt.svg",
+    href: "/admin/settlements",
+    platformPermission: "ManagePayments",
+  },
   { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },
 ];
 
@@ -179,7 +189,7 @@ function getOwnerMenuItems(
     },
     {
       label: "تسویه‌ها",
-      icon: "/svgs/list.svg",
+      icon: "/svgs/receipt.svg",
       href: propertyId ? `${base}/settlements` : fallbackHref,
       permission: "Financial",
     },
@@ -197,7 +207,7 @@ function getOwnerMenuItems(
     },
     {
       label: "سوابق عملیات",
-      icon: "/svgs/list.svg",
+      icon: "/svgs/history.svg",
       href: propertyId ? `${base}/change-logs` : fallbackHref,
       permission: "Reports",
     },
