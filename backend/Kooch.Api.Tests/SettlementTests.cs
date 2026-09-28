@@ -7,6 +7,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Kooch.Api.Migrations;
 using Kooch.Api.Controllers;
+using Kooch.Api.Authentication;
 using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
@@ -14,6 +15,147 @@ namespace Kooch.Api.Tests;
 
 public sealed class SettlementTests
 {
+    private sealed class ReceiptPermission(bool allowed) : IPermissionService
+    {
+        public Task<bool> CanAsync(int userId, int propertyId, string permissionKey,
+            CancellationToken cancellationToken = default) => Task.FromResult(allowed && permissionKey == "financial.view");
+        public Task<bool> HasPermissionAsync(int userId, PermissionKey permissionKey, int? propertyId = null,
+            CancellationToken cancellationToken = default) => Task.FromResult(false);
+    }
+
+    [Fact]
+    public async Task PaidReceipt_UsesOnlyHistoricalFacts_AndDistinctAudienceContracts()
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1), Payable(2));
+        context.UserPropertyAccesses.Add(new UserPropertyAccess { UserId = 20, PropertyId = 1, IsActive = true,
+            Status = PropertyUserStatus.Active });
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1, 2]);
+        await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+        var originalNumber = settlement.SettlementNumber;
+        (await context.Properties.SingleAsync(item => item.Id == 1)).Name = "Renamed property";
+        (await context.Reservations.SingleAsync(item => item.Id == 1)).ReservationNumber = "R-999999";
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var receipts = new SettlementReceiptQueryService(context, new ReceiptPermission(true));
+        var action = await new AdminSettlementReceiptsController(receipts).Get(originalNumber, default);
+        var admin = Assert.IsType<AdminSettlementReceiptResponse>(Assert.IsType<OkObjectResult>(action.Result).Value);
+        var owner = await receipts.GetForPropertyAsync(20, 1, originalNumber);
+        Assert.Matches("^S-[1-9][0-9]{5}$", admin.SettlementNumber);
+        Assert.Equal("First", admin.PropertyName);
+        Assert.Equal("First", owner.PropertyName);
+        Assert.Equal("IRR", admin.Currency);
+        Assert.Equal("IRR", owner.Currency);
+        Assert.Equal(246.90m, admin.TotalAmount);
+        Assert.Equal(PaymentRequest().PaidAtUtc!.Value.UtcDateTime, admin.PaidAtUtc);
+        Assert.Equal("0087453219", admin.ReferenceNumber);
+        Assert.Equal("manual settlement", admin.Note);
+        Assert.Equal(new Clock().GetUtcNow().UtcDateTime, admin.RecordedAtUtc);
+        Assert.Equal(2, admin.ItemCount);
+        Assert.All(admin.Items, item =>
+        {
+            Assert.Matches("^R-[0-9]{6}$", item.ReservationNumber);
+            Assert.Equal(Today, item.PayableDueDate);
+            Assert.Equal(123.45m, item.Amount);
+        });
+        Assert.Contains(admin.Items, item => item.ReservationNumber == "R-100001");
+        Assert.DoesNotContain(admin.Items, item => item.ReservationNumber == "R-999999");
+        Assert.Equal(admin.Items, owner.Items);
+        Assert.Null(typeof(PropertySettlementReceiptResponse).GetProperty(nameof(AdminSettlementReceiptResponse.Note)));
+        Assert.Null(typeof(PropertySettlementReceiptResponse).GetProperty(nameof(AdminSettlementReceiptResponse.RecordedAtUtc)));
+        Assert.Null(typeof(PropertySettlementReceiptResponse).GetProperty("RecordedByUserId"));
+        Assert.Null(typeof(PropertySettlementReceiptResponse).GetProperty("SettlementId"));
+        Assert.Null(typeof(PropertySettlementReceiptResponse).GetProperty("FinancialEntryId"));
+        Assert.NotNull(Attribute.GetCustomAttribute(typeof(AdminSettlementReceiptsController), typeof(AdminAuthorizeAttribute)));
+        Assert.NotNull(Attribute.GetCustomAttribute(typeof(AdminSettlementReceiptsController), typeof(PermissionAuthorizeAttribute)));
+        Assert.NotNull(Attribute.GetCustomAttribute(typeof(OwnerSettlementReceiptsController), typeof(OwnerAuthorizeAttribute)));
+    }
+
+    [Fact]
+    public async Task PropertyReceipt_RequiresOwnActiveMembershipAndFinancialView()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        context.UserPropertyAccesses.AddRange(
+            new UserPropertyAccess { UserId = 20, PropertyId = 1, IsActive = true, Status = PropertyUserStatus.Active },
+            new UserPropertyAccess { UserId = 21, PropertyId = 2, IsActive = true, Status = PropertyUserStatus.Active },
+            new UserPropertyAccess { UserId = 22, PropertyId = 1, IsActive = false, Status = PropertyUserStatus.Active });
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+        var allowed = new SettlementReceiptQueryService(context, new ReceiptPermission(true));
+        Assert.Equal(settlement.SettlementNumber,
+            (await allowed.GetForPropertyAsync(20, 1, settlement.SettlementNumber)).SettlementNumber);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            allowed.GetForPropertyAsync(21, 1, settlement.SettlementNumber));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            allowed.GetForPropertyAsync(22, 1, settlement.SettlementNumber));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            new SettlementReceiptQueryService(context, new ReceiptPermission(false))
+                .GetForPropertyAsync(20, 1, settlement.SettlementNumber));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            allowed.GetForPropertyAsync(21, 2, settlement.SettlementNumber));
+    }
+
+    [Fact]
+    public async Task ReceiptIsUnavailableUntilPaidAndWhenHistoricalFieldsAreMissing()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new ReadQueryContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Reservations.Add(ReservationFor(1));
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        var receipts = new SettlementReceiptQueryService(context, new ReceiptPermission(true));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => receipts.GetForAdminAsync(settlement.SettlementNumber));
+        Assert.False(Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).CanViewReceipt);
+        await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+        Assert.True(Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).CanViewReceipt);
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE SettlementPaymentRecords SET PropertyNameSnapshot = NULL WHERE SettlementId = {0}", settlement.Id);
+        context.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => receipts.GetForAdminAsync(settlement.SettlementNumber));
+        Assert.False(Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).CanViewReceipt);
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE SettlementPaymentRecords SET PropertyNameSnapshot = 'First' WHERE SettlementId = {0}", settlement.Id);
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE SettlementItems SET ReservationNumberSnapshot = NULL WHERE SettlementId = {0}", settlement.Id);
+        context.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => receipts.GetForAdminAsync(settlement.SettlementNumber));
+        Assert.False(Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).CanViewReceipt);
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE SettlementItems SET ReservationNumberSnapshot = 'R-100001' WHERE SettlementId = {0}", settlement.Id);
+        await context.Database.ExecuteSqlRawAsync(
+            "DELETE FROM SettlementPaymentRecords WHERE SettlementId = {0}", settlement.Id);
+        context.ChangeTracker.Clear();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => receipts.GetForAdminAsync(settlement.SettlementNumber));
+        Assert.False(Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).CanViewReceipt);
+    }
+
+    [Fact]
+    public async Task CancelledSettlementCannotHaveReceipt()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        await service.CancelAsync(settlement.Id, "test", 77);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            new SettlementReceiptQueryService(context, new ReceiptPermission(true))
+                .GetForAdminAsync(settlement.SettlementNumber));
+        Assert.False(Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).CanViewReceipt);
+    }
+
     private static MarkSettlementPaidRequest PaymentRequest(DateTimeOffset? paidAtUtc = null) => new()
     {
         PaymentMethod = SettlementPaymentMethod.BankTransfer,

@@ -82,7 +82,12 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
                     : settlement.Items.Min(item => item.FinancialEntry.PayableDueDate) > today ? SettlementStatus.Pending
                     : settlement.Items.Min(item => item.FinancialEntry.PayableDueDate) == today ? SettlementStatus.Due
                     : SettlementStatus.Overdue,
-                settlement.CreatedAtUtc, settlement.PaidAtUtc, settlement.IsEarlySettlement
+                settlement.CreatedAtUtc, settlement.PaidAtUtc, settlement.IsEarlySettlement,
+                CanViewReceipt = settlement.PaidAtUtc.HasValue && settlement.CancelledAtUtc == null &&
+                    settlement.PaymentRecord != null && settlement.PaymentRecord.PropertyNameSnapshot != null &&
+                    settlement.PaymentRecord.PropertyNameSnapshot.Trim() != "" && settlement.Items.Any() &&
+                    settlement.Items.All(item => item.ReservationNumberSnapshot != null &&
+                        item.ReservationNumberSnapshot.Trim() != "" && item.FinancialEntry.PayableDueDate.HasValue)
         });
         if (status.HasValue) items = items.Where(item => item.Status == status.Value);
         var ordered = request.SortBy?.Trim() switch
@@ -97,7 +102,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         return await PageAsync((descending ? ordered.ThenByDescending(item => item.Id) : ordered.ThenBy(item => item.Id))
             .Select(item => new SettlementListItemResponse(item.Id, item.SettlementNumber, item.PropertyId, item.PropertyName,
                 item.TotalAmount, item.Currency, item.ItemCount, item.Status, item.CreatedAtUtc,
-                item.PaidAtUtc, item.IsEarlySettlement)), request, cancellationToken);
+                item.PaidAtUtc, item.IsEarlySettlement, item.CanViewReceipt)), request, cancellationToken);
     }
 
     private static bool IsDescending(string? direction, bool defaultDescending) => direction?.Trim() switch

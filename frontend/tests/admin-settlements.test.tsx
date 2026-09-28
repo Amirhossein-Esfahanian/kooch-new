@@ -44,6 +44,20 @@ beforeEach(() => {
 });
 
 describe("Admin settlements", () => {
+  it("offers a receipt only when the server marks a paid settlement as historically complete", async () => {
+    api.mockImplementation(async (path: string) => {
+      if (path.includes("/properties?")) return paged([]);
+      if (path.includes("/payables?")) return paged([]);
+      return paged([{ ...batch, status: "Paid", canViewReceipt: true },
+        { ...batch, id: 11, settlementNumber: "S-271946", status: "Paid", canViewReceipt: false }]);
+    });
+    render(<Page />);
+    const link = await screen.findByRole("link", { name: "مشاهده رسید" });
+    expect(link.getAttribute("href")).toBe("/admin/settlements/S-583214/receipt");
+    expect(screen.getAllByText("S-271946")).toHaveLength(1);
+    expect(screen.getAllByRole("link", { name: "مشاهده رسید" })).toHaveLength(1);
+  });
+
   it("uses the public settlement reference while keeping reservation references on items", async () => {
     render(<Page />);
     await screen.findByText("S-583214");

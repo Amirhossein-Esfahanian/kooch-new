@@ -214,6 +214,25 @@
   display: none;
 }
 
+.receiptTable {
+  width: 100%;
+  min-width: 26rem;
+  border-collapse: collapse;
+  text-align: right;
+  font-size: 0.875rem;
+}
+
+.receiptTable th,
+.receiptTable td {
+  padding: 0.625rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.receiptTable th {
+  background: var(--theme-surface-muted);
+  font-weight: 600;
+}
+
 @media print {
   @page {
     size: A4;
@@ -269,6 +288,11 @@
   .document h3 {
     break-after: avoid;
   }
+
+  .document .receiptItems { break-inside: auto; }
+  .receiptItems > div { overflow: visible !important; }
+  .receiptTable { min-width: 0; }
+  .receiptTable tr { break-inside: avoid; }
 
   .header { padding-bottom: 3mm; }
   .intro { padding-block: 3mm; }

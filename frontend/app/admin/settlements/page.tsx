@@ -24,8 +24,8 @@ type SettlementPaymentRecord = { paymentMethod: SettlementPaymentMethod; referen
 type Payable = { id: number; propertyId: number; propertyName: string; reservationNumber: string | null;
   amount: number; currency: string; payableDueDate: string; status: PayableStatus };
 type Settlement = { id: number; settlementNumber: string; propertyId: number; propertyName: string; totalAmount: number; currency: string;
-  itemCount: number; status: SettlementStatus; createdAtUtc: string; paidAtUtc: string | null; isEarlySettlement: boolean };
-type Detail = Omit<Settlement, "itemCount"> & { cancelledAtUtc: string | null; cancellationReason: string | null;
+  itemCount: number; status: SettlementStatus; createdAtUtc: string; paidAtUtc: string | null; isEarlySettlement: boolean; canViewReceipt: boolean };
+type Detail = Omit<Settlement, "itemCount" | "canViewReceipt"> & { cancelledAtUtc: string | null; cancellationReason: string | null;
   paymentRecord: SettlementPaymentRecord | null;
   items: Array<{ financialEntryId: number;
   reservationNumber: string | null; amount: number; payableDueDate: string }> };
@@ -380,6 +380,8 @@ function SettlementManagement() {
               <KoochTableCell className="whitespace-nowrap tabular-nums">{amountOnly(item.totalAmount)}</KoochTableCell>
               <KoochTableCell>{formatNumber(item.itemCount)}</KoochTableCell><KoochTableCell><StatusBadge status={item.status} /></KoochTableCell>
               <KoochTableCell><div className="flex flex-wrap gap-2"><KoochButton size="sm" variant="outline" onClick={() => void openDetail(item.id)}>جزئیات</KoochButton>
+                {item.canViewReceipt && <Link href={`/admin/settlements/${encodeURIComponent(item.settlementNumber)}/receipt`}
+                  className="inline-flex min-h-9 items-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">مشاهده رسید</Link>}
                 {isUnpaidActive(item.status) && <>
                   <KoochButton size="sm" variant="outline" disabled={paying && confirmPaid?.id === item.id} onClick={() => openPaymentForm(item)}>ثبت تسویه</KoochButton>
                   <KoochButton size="sm" variant="outline" onClick={() => {

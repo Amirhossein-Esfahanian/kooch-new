@@ -56,5 +56,16 @@ public sealed record PropertyPayableResponse(int Id, int PropertyId, string Prop
     string? ReservationNumber, decimal Amount, string Currency, DateOnly PayableDueDate, PayableStatus Status);
 public sealed record SettlementListItemResponse(int Id, string SettlementNumber, int PropertyId, string PropertyName,
     decimal TotalAmount, string Currency, int ItemCount, SettlementStatus Status, DateTime CreatedAtUtc,
-    DateTime? PaidAtUtc, bool IsEarlySettlement);
+    DateTime? PaidAtUtc, bool IsEarlySettlement, bool CanViewReceipt);
 public sealed record SettlementPropertyOption(int Id, string Name);
+
+public sealed record SettlementReceiptItemResponse(string ReservationNumber, DateOnly PayableDueDate, decimal Amount);
+public sealed record PropertySettlementReceiptResponse(string SettlementNumber, string PropertyName, decimal TotalAmount,
+    string Currency, [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime PaidAtUtc,
+    SettlementPaymentMethod PaymentMethod, string ReferenceNumber,
+    int ItemCount, IReadOnlyList<SettlementReceiptItemResponse> Items);
+public sealed record AdminSettlementReceiptResponse(string SettlementNumber, string PropertyName, decimal TotalAmount,
+    string Currency, [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime PaidAtUtc,
+    SettlementPaymentMethod PaymentMethod, string ReferenceNumber,
+    [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime RecordedAtUtc,
+    string? Note, int ItemCount, IReadOnlyList<SettlementReceiptItemResponse> Items);
