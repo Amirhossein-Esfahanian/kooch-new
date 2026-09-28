@@ -22,7 +22,7 @@ const payables = [
   { id: 5, status: "Due", propertyId: 1, currency: "USD" },
 ].map(item => ({ ...item, propertyName: `Property ${item.propertyId}`, reservationNumber: `R-10000${item.id}`,
   amount: 123.45, payableDueDate: "2026-09-27" }));
-const batch = { id: 10, propertyId: 1, propertyName: "Property 1", totalAmount: 246.9, currency: "IRR",
+const batch = { id: 10, settlementNumber: "S-583214", propertyId: 1, propertyName: "Property 1", totalAmount: 246.9, currency: "IRR",
   itemCount: 2, status: "Due", createdAtUtc: "2026-09-27T00:00:00Z", paidAtUtc: null, isEarlySettlement: false };
 const paged = (items: unknown[]) => ({ items, totalCount: items.length, page: 1, pageSize: 20, totalPages: 1 });
 const mutations = () => api.mock.calls.filter(([, options]) => options?.method === "POST");
@@ -42,6 +42,16 @@ beforeEach(() => {
 });
 
 describe("Admin settlements", () => {
+  it("uses the public settlement reference while keeping reservation references on items", async () => {
+    render(<Page />);
+    await screen.findByText("S-583214");
+    expect(screen.queryByText("۱۰")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "جزئیات" }));
+    const dialog = await screen.findByRole("dialog");
+    expect(within(dialog).getByText("S-583214")).not.toBeNull();
+    expect(within(dialog).getByText("R-100001")).not.toBeNull();
+    expect(api).toHaveBeenCalledWith("/admin/settlements/10");
+  });
   it("applies independent server filters/sorts while the Property selector remains shared", async () => {
     render(<Page />);
     await screen.findByRole("checkbox", { name: "انتخاب R-100001" });

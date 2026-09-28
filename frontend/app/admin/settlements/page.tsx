@@ -21,7 +21,7 @@ type PayableStatus = "Future" | "Due" | "Overdue";
 type SettlementStatus = "Pending" | "Due" | "Overdue" | "Paid" | "Cancelled";
 type Payable = { id: number; propertyId: number; propertyName: string; reservationNumber: string | null;
   amount: number; currency: string; payableDueDate: string; status: PayableStatus };
-type Settlement = { id: number; propertyId: number; propertyName: string; totalAmount: number; currency: string;
+type Settlement = { id: number; settlementNumber: string; propertyId: number; propertyName: string; totalAmount: number; currency: string;
   itemCount: number; status: SettlementStatus; createdAtUtc: string; paidAtUtc: string | null; isEarlySettlement: boolean };
 type Detail = Omit<Settlement, "itemCount"> & { cancelledAtUtc: string | null; cancellationReason: string | null;
   items: Array<{ financialEntryId: number;
@@ -334,13 +334,13 @@ function SettlementManagement() {
       </div>
       <p className="text-xs leading-5 text-muted-foreground">اقلام و زمان ایجاد یا پرداخت هر تسویه در جزئیات آن قابل مشاهده است.</p>
       <KoochTable aria-label="تسویه‌ها" className="!min-w-0 [&_th]:px-3 [&_td]:px-3">
-        <KoochTableHeader><KoochTableRow>{["شناسه", "اقامتگاه", "مبلغ کل", "تعداد اقلام", "وضعیت", "عملیات"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
+        <KoochTableHeader><KoochTableRow>{["شماره تسویه", "اقامتگاه", "مبلغ کل", "تعداد اقلام", "وضعیت", "عملیات"].map(label => <KoochTableHead key={label}>{label}</KoochTableHead>)}</KoochTableRow></KoochTableHeader>
         <KoochTableBody>
           {settlementLoading ? <KoochTableEmpty colSpan={6}>در حال بارگذاری…</KoochTableEmpty>
             : settlementError ? <KoochTableEmpty colSpan={6}><span role="alert">{settlementError}</span><KoochButton size="sm" variant="outline" onClick={() => setRefresh(value => value + 1)}>تلاش مجدد</KoochButton></KoochTableEmpty>
             : !settlements?.items.length ? <KoochTableEmpty colSpan={6}>{settlementFilterCount > 0 ? "نتیجه‌ای با این فیلترها یافت نشد." : "تسویه‌ای ثبت نشده است."}</KoochTableEmpty>
             : settlements.items.map(item => <KoochTableRow key={item.id}>
-              <KoochTableCell>{formatNumber(item.id)}</KoochTableCell><KoochTableCell>{item.propertyName}</KoochTableCell>
+              <KoochTableCell><bdi dir="ltr">{item.settlementNumber}</bdi></KoochTableCell><KoochTableCell>{item.propertyName}</KoochTableCell>
               <KoochTableCell className="whitespace-nowrap tabular-nums">{amountOnly(item.totalAmount)}</KoochTableCell>
               <KoochTableCell>{formatNumber(item.itemCount)}</KoochTableCell><KoochTableCell><StatusBadge status={item.status} /></KoochTableCell>
               <KoochTableCell><div className="flex flex-wrap gap-2"><KoochButton size="sm" variant="outline" onClick={() => void openDetail(item.id)}>جزئیات</KoochButton>
@@ -363,7 +363,7 @@ function SettlementManagement() {
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
           <span className="font-semibold">{detail.propertyName}</span>
           <span className="text-muted-foreground">·</span>
-          <span>تسویه {formatNumber(detail.id)}</span>
+          <span>تسویه <bdi dir="ltr">{detail.settlementNumber}</bdi></span>
           <StatusBadge status={detail.status} />
         </div>
         <p className="font-bold">مبلغ کل: {money(detail.totalAmount)}</p>
@@ -391,7 +391,7 @@ function SettlementManagement() {
         <KoochButton type="submit" form="cancel-settlement-form" loading={cancelling}>تأیید لغو تسویه</KoochButton>
       </>}>
       <form id="cancel-settlement-form" noValidate className="grid gap-3" onSubmit={event => { event.preventDefault(); void cancelSettlement(); }}>
-        <p className="text-sm">تسویه {formatNumber(cancelTarget?.id)} · {cancelTarget?.propertyName}</p>
+        <p className="text-sm">تسویه <bdi dir="ltr">{cancelTarget?.settlementNumber}</bdi> · {cancelTarget?.propertyName}</p>
         <KoochField label="دلیل لغو" required error={cancelReasonError}>
           <KoochTextarea value={cancelReason} required maxLength={2000} rows={4} disabled={cancelling}
             onChange={event => { setCancelReason(event.target.value); setCancelReasonError(""); }} />
@@ -400,7 +400,7 @@ function SettlementManagement() {
       </form>
     </KoochDialog>
     <KoochConfirmDialog open={Boolean(confirmPaid)} onOpenChange={open => { if (!open && !paying) setConfirmPaid(null); }}
-      title="ثبت تسویه" description={confirmPaid ? `آیا پرداخت تسویه ${formatNumber(confirmPaid.id)} برای ${confirmPaid.propertyName} به مبلغ ${money(confirmPaid.totalAmount)} انجام شده است؟ این عمل فقط پرداخت انجام‌شده را ثبت می‌کند و انتقال بانکی انجام نمی‌دهد.` : ""}
+      title="ثبت تسویه" description={confirmPaid ? `آیا پرداخت تسویه ${confirmPaid.settlementNumber} برای ${confirmPaid.propertyName} به مبلغ ${money(confirmPaid.totalAmount)} انجام شده است؟ این عمل فقط پرداخت انجام‌شده را ثبت می‌کند و انتقال بانکی انجام نمی‌دهد.` : ""}
       confirmText="تأیید و ثبت تسویه" cancelText="انصراف" loading={paying} variant="question" onConfirm={markPaid} />
   </main>;
 }

@@ -4,12 +4,108 @@ using Kooch.Api.Services;
 using Kooch.Api.Dtos.Settlements;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Kooch.Api.Migrations;
+using Kooch.Api.Controllers;
+using Microsoft.AspNetCore.Mvc;
 using Xunit;
 
 namespace Kooch.Api.Tests;
 
 public sealed class SettlementTests
 {
+    private sealed class NumberSequence(KoochDbContext context, params int[] numbers) : SettlementNumberGenerator(context)
+    {
+        private readonly Queue<int> values = new(numbers);
+        protected override int NextNumber() => values.Dequeue();
+    }
+
+    [Fact]
+    public async Task NewSettlement_UsesSixDigitPublicReferenceFromProductionGenerator()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
+        Assert.Matches("^S-[1-9][0-9]{5}$", settlement.SettlementNumber);
+        Assert.InRange(int.Parse(settlement.SettlementNumber[2..]), 100000, 999999);
+    }
+
+    [Fact]
+    public async Task PublicReference_IsOpaqueUniqueAndRetriesExistingCandidate()
+    {
+        await using var context = Context();
+        context.FinancialEntries.AddRange(Payable(1), Payable(2));
+        await context.SaveChangesAsync();
+        var generator = new NumberSequence(context, 583214, 583214, 271946);
+        var service = new SettlementService(context, new Clock(), generator);
+        var first = await service.CreateAsync(1, [1]);
+        var second = await service.CreateAsync(1, [2]);
+        Assert.Equal("S-583214", first.SettlementNumber);
+        Assert.Equal("S-271946", second.SettlementNumber);
+        Assert.Matches("^S-[1-9][0-9]{5}$", second.SettlementNumber);
+        Assert.NotEqual(first.Id, int.Parse(first.SettlementNumber[2..]));
+        var listed = (await service.ListAsync(new SettlementListQuery())).Items;
+        Assert.Contains(listed, item => item.Id == first.Id && item.SettlementNumber == first.SettlementNumber);
+        var response = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(first.Id, default)).Result);
+        Assert.Equal(first.SettlementNumber, Assert.IsType<SettlementResponse>(response.Value).SettlementNumber);
+        var paid = await service.MarkPaidAsync(first.Id);
+        Assert.Equal("S-583214", paid.SettlementNumber);
+        var cancelled = await service.CancelAsync(second.Id, "test");
+        Assert.Equal("S-271946", cancelled.SettlementNumber);
+    }
+
+    [Fact]
+    public async Task PublicReference_ExhaustedCandidatesFailExplicitly()
+    {
+        await using var context = Context();
+        context.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", SettlementNumber = "S-583214" });
+        await context.SaveChangesAsync();
+        var generator = new NumberSequence(context, Enumerable.Repeat(583214, 100).ToArray());
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => generator.GenerateAsync());
+        Assert.Contains("100 attempts", error.Message);
+    }
+
+    [Fact]
+    public async Task PublicReference_DatabaseIndexRejectsDuplicateAndTrackedChangesAreForbidden()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new KoochDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", SettlementNumber = "S-583214" });
+        await context.SaveChangesAsync();
+        await using (var competing = new KoochDbContext(options))
+        {
+            competing.Settlements.Add(new Settlement { PropertyId = 1, Currency = "IRR", SettlementNumber = "S-583214" });
+            await Assert.ThrowsAsync<DbUpdateException>(() => competing.SaveChangesAsync());
+        }
+        var original = await context.Settlements.SingleAsync();
+        original.SettlementNumber = "S-271946";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public void PublicReferenceMigration_BackfillsBeforeRequiredUniqueIndex()
+    {
+        var operations = new AddSettlementPublicReference().UpOperations;
+        Assert.Collection(operations,
+            item => Assert.True(Assert.IsType<AddColumnOperation>(item).IsNullable),
+            item => Assert.Contains("IS NOT NULL", Assert.IsType<CreateIndexOperation>(item).Filter),
+            item => {
+                var sql = Assert.IsType<SqlOperation>(item).Sql;
+                Assert.Contains("CRYPT_GEN_RANDOM", sql);
+                Assert.Contains("TABLOCKX, HOLDLOCK", sql);
+                Assert.Contains("COUNT_BIG(*)", sql);
+                Assert.Contains("THROW 51004", sql);
+                Assert.Contains("THROW 51005", sql);
+            },
+            item => Assert.IsType<DropIndexOperation>(item),
+            item => Assert.False(Assert.IsType<AlterColumnOperation>(item).IsNullable),
+            item => Assert.Null(Assert.IsType<CreateIndexOperation>(item).Filter));
+    }
     private static readonly DateOnly Today = new(2026, 9, 27);
     private sealed class Clock : TimeProvider
     {

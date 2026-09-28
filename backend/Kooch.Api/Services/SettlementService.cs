@@ -3,10 +3,11 @@ using Kooch.Api.Entities;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Dtos.Settlements;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.SqlClient;
 
 namespace Kooch.Api.Services;
 
-public sealed class SettlementService(KoochDbContext context, TimeProvider clock)
+public sealed class SettlementService(KoochDbContext context, TimeProvider clock, SettlementNumberGenerator? numberGenerator = null)
 {
     public DateOnly BusinessDate => DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
         clock.GetUtcNow(), TimeZoneInfo.FindSystemTimeZoneById("Asia/Tehran")).DateTime);
@@ -74,7 +75,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         if (request.PropertyId.HasValue) query = query.Where(settlement => settlement.PropertyId == request.PropertyId);
         var items = query.Select(settlement => new
         {
-            settlement.Id, settlement.PropertyId, PropertyName = settlement.Property.Name,
+            settlement.Id, settlement.SettlementNumber, settlement.PropertyId, PropertyName = settlement.Property.Name,
             settlement.TotalAmount, settlement.Currency, ItemCount = settlement.Items.Count,
             Status = settlement.PaidAtUtc.HasValue ? SettlementStatus.Paid
                     : settlement.CancelledAtUtc.HasValue ? SettlementStatus.Cancelled
@@ -94,7 +95,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
             _ => throw new ArgumentException("Invalid settlement sort field.")
         };
         return await PageAsync((descending ? ordered.ThenByDescending(item => item.Id) : ordered.ThenBy(item => item.Id))
-            .Select(item => new SettlementListItemResponse(item.Id, item.PropertyId, item.PropertyName,
+            .Select(item => new SettlementListItemResponse(item.Id, item.SettlementNumber, item.PropertyId, item.PropertyName,
                 item.TotalAmount, item.Currency, item.ItemCount, item.Status, item.CreatedAtUtc,
                 item.PaidAtUtc, item.IsEarlySettlement)), request, cancellationToken);
     }
@@ -161,11 +162,40 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
             IsEarlySettlement = allowEarlySettlement, CreatedByUserId = actorId,
             Items = entries.Select(entry => new SettlementItem { FinancialEntryId = entry.Id }).ToList()
         };
+        var generator = numberGenerator ?? new SettlementNumberGenerator(context);
+        await using var ownedTransaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
+            ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
+        settlement.SettlementNumber = await generator.GenerateAsync(cancellationToken);
         context.Settlements.Add(settlement);
-        // One SaveChanges transaction; the unique payable index arbitrates concurrent creation.
-        await context.SaveChangesAsync(cancellationToken);
+        var transaction = context.Database.CurrentTransaction;
+        const string savepoint = "SettlementNumberAllocation";
+        var canRetry = transaction?.SupportsSavepoints == true;
+        if (canRetry) await transaction!.CreateSavepointAsync(savepoint, cancellationToken);
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await context.SaveChangesAsync(cancellationToken);
+                if (canRetry) await transaction!.ReleaseSavepointAsync(savepoint, cancellationToken);
+                break;
+            }
+            catch (DbUpdateException error) when (IsSettlementNumberCollision(error))
+            {
+                if (!canRetry) throw;
+                await transaction!.RollbackToSavepointAsync(savepoint, cancellationToken);
+                if (attempt == 4)
+                    throw new InvalidOperationException("Unable to persist a unique settlement reference after 5 attempts.", error);
+                settlement.SettlementNumber = await generator.GenerateAsync(cancellationToken);
+            }
+        }
+        if (ownedTransaction is not null) await ownedTransaction.CommitAsync(cancellationToken);
         return await GetAsync(settlement.Id, cancellationToken);
     }
+
+    private static bool IsSettlementNumberCollision(DbUpdateException error) =>
+        error.InnerException is SqlException sql && sql.Errors.Cast<SqlError>().Any(item =>
+            item.Number is 2601 or 2627 &&
+            item.Message.Contains("IX_Settlements_SettlementNumber", StringComparison.Ordinal));
 
     public Task<Settlement> GetAsync(int id, CancellationToken cancellationToken = default) =>
         LoadAsync(id, cancellationToken);

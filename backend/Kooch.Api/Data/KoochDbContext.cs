@@ -173,6 +173,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         }
         foreach (var entry in ChangeTracker.Entries<Settlement>())
         {
+            if (entry.State == EntityState.Modified && entry.Property(settlement => settlement.SettlementNumber).IsModified)
+                throw new InvalidOperationException("Settlement reference is immutable.");
             if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
                 (entry.OriginalValues.GetValue<DateTime?>(nameof(Settlement.PaidAtUtc)).HasValue ||
                  entry.OriginalValues.GetValue<DateTime?>(nameof(Settlement.CancelledAtUtc)).HasValue ||
@@ -1058,6 +1060,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<Settlement>(entity =>
         {
+            entity.Property(settlement => settlement.SettlementNumber).HasMaxLength(8).IsRequired();
+            entity.HasIndex(settlement => settlement.SettlementNumber).IsUnique();
             entity.Property(settlement => settlement.TotalAmount).HasPrecision(18, 2);
             entity.Property(settlement => settlement.Currency).HasMaxLength(3).IsRequired();
             entity.Property(settlement => settlement.PaidAtUtc).IsConcurrencyToken();

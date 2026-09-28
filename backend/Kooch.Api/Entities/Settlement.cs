@@ -4,6 +4,7 @@ public enum SettlementStatus { Pending = 0, Due = 1, Overdue = 2, Paid = 3, Canc
 
 public class Settlement : BaseEntity
 {
+    public string SettlementNumber { get; set; } = string.Empty;
     public int PropertyId { get; set; }
     public decimal TotalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
