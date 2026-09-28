@@ -211,6 +211,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 !settlement.PaidAtUtc.HasValue || settlement.PaidAtUtc.Value != entry.Entity.PaidAtUtc ||
                 Entry(settlement).OriginalValues.GetValue<DateTime?>(nameof(Settlement.PaidAtUtc)).HasValue ||
                 settlement.CancelledAtUtc.HasValue ||
+                string.IsNullOrWhiteSpace(entry.Entity.PropertyNameSnapshot) ||
+                entry.Entity.PropertyNameSnapshot != entry.Entity.PropertyNameSnapshot.Trim() ||
+                entry.Entity.PropertyNameSnapshot.Length > 200 ||
+                entry.Entity.PropertyNameSnapshot != settlement.Property?.Name?.Trim() ||
                 !Enum.IsDefined(entry.Entity.PaymentMethod) || string.IsNullOrWhiteSpace(entry.Entity.ReferenceNumber) ||
                 entry.Entity.RecordedByUserId <= 0 || entry.Entity.RecordedAtUtc == default)
                 throw new InvalidOperationException("Settlement payment records can only be created with a valid Paid transition.");
@@ -1101,6 +1105,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         });
         modelBuilder.Entity<SettlementPaymentRecord>(entity =>
         {
+            entity.Property(record => record.PropertyNameSnapshot).HasMaxLength(200);
             entity.Property(record => record.PaymentMethod).HasConversion<int>();
             entity.Property(record => record.ReferenceNumber).HasMaxLength(200).IsRequired();
             entity.Property(record => record.Note).HasMaxLength(2000);

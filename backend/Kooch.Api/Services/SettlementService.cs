@@ -227,11 +227,15 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
             throw new InvalidOperationException("Cancelled settlements cannot be marked paid.");
         if (settlement.PaidAtUtc.HasValue || settlement.PaymentRecord is not null)
             throw new InvalidOperationException("Settlement is already paid or has a payment record.");
+        var propertyNameSnapshot = settlement.Property?.Name?.Trim();
+        if (string.IsNullOrWhiteSpace(propertyNameSnapshot) || propertyNameSnapshot.Length > 200)
+            throw new InvalidOperationException("A valid property name is required to record settlement payment.");
         var paidAtUtc = request.PaidAtUtc.Value.UtcDateTime;
         settlement.PaidAtUtc = paidAtUtc;
         var paymentRecord = new SettlementPaymentRecord
         {
             Settlement = settlement,
+            PropertyNameSnapshot = propertyNameSnapshot,
             PaymentMethod = request.PaymentMethod.Value,
             ReferenceNumber = referenceNumber,
             PaidAtUtc = paidAtUtc,

@@ -92,6 +92,86 @@ public sealed class SettlementTests
     }
 
     [Fact]
+    public async Task MarkPaid_CapturesPropertyNameWithoutClientInput_AndRenameDoesNotChangeSnapshot()
+    {
+        await using var context = Context();
+        var property = await context.Properties.SingleAsync(item => item.Id == 1);
+        property.Name = "  Original property  ";
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+
+        Assert.Null(typeof(MarkSettlementPaidRequest).GetProperty(nameof(SettlementPaymentRecord.PropertyNameSnapshot)));
+        var paid = await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+        Assert.Equal("Original property", paid.PaymentRecord!.PropertyNameSnapshot);
+        Assert.Equal(paid.PaidAtUtc, paid.PaymentRecord.PaidAtUtc);
+
+        property.Name = "Renamed property";
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var loaded = await service.GetAsync(settlement.Id);
+        Assert.Equal("Renamed property", loaded.Property.Name);
+        Assert.Equal("Original property", loaded.PaymentRecord!.PropertyNameSnapshot);
+        var result = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(settlement.Id, default)).Result);
+        Assert.Equal("Original property", Assert.IsType<SettlementResponse>(result.Value).PaymentRecord!.PropertyNameSnapshot);
+    }
+
+    [Fact]
+    public async Task MarkPaid_RejectsBlankPropertyNameWithoutChangingSettlement()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        settlement.Property.Name = "   ";
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77));
+        Assert.Null(settlement.PaidAtUtc);
+        Assert.Empty(await context.SettlementPaymentRecords.ToListAsync());
+    }
+
+    [Fact]
+    public async Task PropertyNameSnapshot_IsImmutableAfterPayment()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        var paid = await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+
+        paid.PaymentRecord!.PropertyNameSnapshot = "Changed";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task LegacyPaymentRecordWithoutPropertyNameSnapshot_RemainsReadable()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new KoochDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+        await context.Database.ExecuteSqlRawAsync(
+            "UPDATE SettlementPaymentRecords SET PropertyNameSnapshot = NULL WHERE SettlementId = {0}", settlement.Id);
+        context.ChangeTracker.Clear();
+
+        var loaded = await service.GetAsync(settlement.Id);
+        Assert.NotNull(loaded.PaymentRecord);
+        Assert.Null(loaded.PaymentRecord.PropertyNameSnapshot);
+        var result = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(settlement.Id, default)).Result);
+        Assert.Null(Assert.IsType<SettlementResponse>(result.Value).PaymentRecord!.PropertyNameSnapshot);
+    }
+
+    [Fact]
     public async Task HistoricalPaidSettlementWithoutRecord_IsReadableAndOneToOneIndexExists()
     {
         await using var context = Context();
@@ -647,6 +727,8 @@ public sealed class SettlementTests
         Assert.All(saved.Items, item => Assert.Equal(cancellationWins, item.ReleasedAtUtc.HasValue));
         Assert.Equal(cancellationWins ? "Correction" : null, saved.CancellationReason);
         Assert.Equal(cancellationWins ? 0 : 1, await verify.SettlementPaymentRecords.CountAsync());
+        if (!cancellationWins)
+            Assert.Equal("First", saved.PaymentRecord!.PropertyNameSnapshot);
         Assert.Equal(2, await verify.FinancialEntries.CountAsync());
     }
 

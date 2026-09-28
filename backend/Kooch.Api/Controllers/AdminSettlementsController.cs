@@ -58,5 +58,6 @@ public sealed class AdminSettlementsController(SettlementService service) : Auth
         settlement.Property.Name, settlement.CancelledAtUtc, settlement.CancelledByUserId, settlement.CancellationReason,
         settlement.PaymentRecord is null ? null : new SettlementPaymentRecordResponse(
             settlement.PaymentRecord.PaymentMethod, settlement.PaymentRecord.ReferenceNumber,
-            settlement.PaymentRecord.PaidAtUtc, settlement.PaymentRecord.Note, settlement.PaymentRecord.RecordedAtUtc));
+            settlement.PaymentRecord.PaidAtUtc, settlement.PaymentRecord.Note, settlement.PaymentRecord.RecordedAtUtc,
+            settlement.PaymentRecord.PropertyNameSnapshot));
 }

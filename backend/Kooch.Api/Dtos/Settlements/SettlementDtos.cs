@@ -29,7 +29,8 @@ public sealed record SettlementPaymentRecordResponse(SettlementPaymentMethod Pay
     string ReferenceNumber,
     [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime PaidAtUtc,
     string? Note,
-    [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime RecordedAtUtc);
+    [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime RecordedAtUtc,
+    string? PropertyNameSnapshot);
 
 public sealed record SettlementResponse(int Id, string SettlementNumber, int PropertyId, decimal TotalAmount, string Currency,
     DateTime CreatedAtUtc, DateTime? PaidAtUtc, bool IsEarlySettlement, SettlementStatus Status,

@@ -10,6 +10,7 @@ public enum SettlementPaymentMethod
 public class SettlementPaymentRecord : BaseEntity
 {
     public int SettlementId { get; set; }
+    public string? PropertyNameSnapshot { get; set; }
     public SettlementPaymentMethod PaymentMethod { get; set; }
     public string ReferenceNumber { get; set; } = string.Empty;
     public DateTime PaidAtUtc { get; set; }
