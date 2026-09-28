@@ -29,6 +29,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ManualPaymentDetails> ManualPaymentDetails => Set<ManualPaymentDetails>();
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
+    public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<SettlementItem> SettlementItems => Set<SettlementItem>();
     public DbSet<SettlementPaymentRecord> SettlementPaymentRecords => Set<SettlementPaymentRecord>();
@@ -165,13 +166,14 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
-                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher) &&
+                (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or RefundRecord) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
         {
             throw new InvalidOperationException("Financial history entries are append-only and cannot be modified or deleted.");
         }
+        EnsureSuccessfulPaymentFactsAreImmutable();
         foreach (var entry in ChangeTracker.Entries<Settlement>())
         {
             if (entry.State == EntityState.Modified && entry.Property(settlement => settlement.SettlementNumber).IsModified)
@@ -238,6 +240,37 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 entry.Properties.Any(property => property.IsModified && property.Metadata.Name != nameof(SettlementItem.ReleasedAtUtc)
                     && property.Metadata.Name != nameof(SettlementItem.UpdatedAtUtc)))
                 throw new InvalidOperationException("Settlement items can only be released during cancellation; their history is immutable.");
+        }
+    }
+
+    private void EnsureSuccessfulPaymentFactsAreImmutable()
+    {
+        foreach (var entry in ChangeTracker.Entries<Payment>().Where(e =>
+                     e.State is EntityState.Modified or EntityState.Deleted))
+        {
+            if (entry.OriginalValues.GetValue<PaymentStatus>(nameof(Payment.Status)) != PaymentStatus.Successful) continue;
+            if (entry.State == EntityState.Deleted || entry.Properties.Any(p => p.IsModified && p.Metadata.Name is
+                    nameof(Payment.Amount) or nameof(Payment.Currency) or nameof(Payment.ReservationId) or
+                    nameof(Payment.BookingSessionId) or nameof(Payment.Status) or nameof(Payment.IsDeleted)))
+                throw new InvalidOperationException("Successful payment monetary facts are immutable.");
+        }
+        var changedItems = ChangeTracker.Entries<PaymentItem>().Where(e =>
+            e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted).ToArray();
+        if (changedItems.Length == 0) return;
+        var paymentIds = changedItems.SelectMany(e => new[] { e.Entity.PaymentId,
+            e.OriginalValues.GetValue<int>(nameof(PaymentItem.PaymentId)) }).Distinct().ToArray();
+        // A single lookup also covers unloaded parents; callback/processing metadata stays editable.
+        var successfulIds = Payments.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => paymentIds.Contains(p.Id) && p.Status == PaymentStatus.Successful)
+            .Select(p => p.Id).ToHashSet();
+        foreach (var entry in changedItems)
+        {
+            if (!successfulIds.Contains(entry.Entity.PaymentId) &&
+                !successfulIds.Contains(entry.OriginalValues.GetValue<int>(nameof(PaymentItem.PaymentId)))) continue;
+            if (entry.State is EntityState.Added or EntityState.Deleted || entry.Properties.Any(p => p.IsModified &&
+                    p.Metadata.Name is nameof(PaymentItem.AllocatedAmount) or nameof(PaymentItem.Currency) or
+                        nameof(PaymentItem.PaymentId) or nameof(PaymentItem.ReservationId) or nameof(PaymentItem.IsDeleted)))
+                throw new InvalidOperationException("Successful payment allocations are immutable.");
         }
     }
 
@@ -1086,6 +1119,31 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private static void ConfigureFinancialFoundation(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<RefundRecord>(entity =>
+        {
+            entity.Property(r => r.Amount).HasPrecision(18, 2);
+            entity.Property(r => r.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(r => r.ReferenceNumber).HasMaxLength(200).IsRequired();
+            entity.Property(r => r.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(r => r.Note).HasMaxLength(2000);
+            entity.Property(r => r.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(r => r.RequestFingerprint).HasMaxLength(64).IsRequired();
+            entity.HasIndex(r => r.IdempotencyKey).IsUnique();
+            entity.HasIndex(r => new { r.PaymentId, r.ReservationId }).IsUnique();
+            entity.HasIndex(r => r.PaymentItemId).IsUnique().HasFilter("[PaymentItemId] IS NOT NULL");
+            entity.HasIndex(r => r.OriginalPropertyPayableEntryId).IsUnique()
+                .HasFilter("[OriginalPropertyPayableEntryId] IS NOT NULL");
+            entity.ToTable(table => table.HasCheckConstraint("CK_RefundRecords_PositiveAmount", "[Amount] > 0"));
+            entity.HasOne<Payment>().WithMany().HasForeignKey(r => r.PaymentId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<PaymentItem>().WithMany().HasForeignKey(r => r.PaymentItemId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Reservation>().WithMany().HasForeignKey(r => r.ReservationId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Property>().WithMany().HasForeignKey(r => r.PropertyId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ReservationFinancialSnapshot>().WithMany().HasForeignKey(r => r.ReservationFinancialSnapshotId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<FinancialEntry>().WithMany().HasForeignKey(r => r.OriginalPropertyPayableEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(r => r.RecordedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
         modelBuilder.Entity<Settlement>(entity =>
         {
             entity.Property(settlement => settlement.SettlementNumber).HasMaxLength(8).IsRequired();
@@ -1179,7 +1237,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasIndex(entry => entry.ReservationId);
             entity.HasIndex(entry => entry.PaymentId);
             entity.HasIndex(entry => entry.PaymentItemId);
-            entity.HasIndex(entry => entry.ReversesEntryId);
+            entity.HasIndex(entry => entry.ReversesEntryId).IsUnique()
+                .HasFilter("[EntryType] = 5 AND [ReversesEntryId] IS NOT NULL");
             entity.HasOne(entry => entry.Property)
                 .WithMany()
                 .HasForeignKey(entry => entry.PropertyId)

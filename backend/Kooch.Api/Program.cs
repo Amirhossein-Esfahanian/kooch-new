@@ -111,6 +111,7 @@ builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
 builder.Services.AddScoped<SettlementService>();
+builder.Services.AddScoped<ReservationRefundService>();
 builder.Services.AddScoped<SettlementReceiptQueryService>();
 builder.Services.AddScoped<PropertySettlementHistoryService>();
 builder.Services.AddScoped<IVoucherNumberGenerator, VoucherNumberGenerator>();

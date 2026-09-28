@@ -143,6 +143,7 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
             throw new ArgumentException("Select one or more distinct payable entries.");
         await using var ownedTransaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
             ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
+        await PropertyFinanceLock.AcquireAsync(context, propertyId, cancellationToken);
         var entries = await context.FinancialEntries.AsNoTracking()
             .Where(entry => payableIds.Contains(entry.Id)).ToListAsync(cancellationToken);
         if (entries.Count != payableIds.Count || entries.Any(entry =>
@@ -241,11 +242,21 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
         if (note?.Length > 2000) throw new ArgumentException("Payment note cannot exceed 2000 characters.");
 
+        await using var ownedTransaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
+            ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
+        var propertyId = await context.Settlements.AsNoTracking().Where(s => s.Id == id)
+            .Select(s => (int?)s.PropertyId).SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Settlement not found.");
+        await PropertyFinanceLock.AcquireAsync(context, propertyId, cancellationToken);
         var settlement = await LoadAsync(id, cancellationToken);
         if (settlement.CancelledAtUtc.HasValue)
             throw new InvalidOperationException("Cancelled settlements cannot be marked paid.");
         if (settlement.PaidAtUtc.HasValue || settlement.PaymentRecord is not null)
             throw new InvalidOperationException("Settlement is already paid or has a payment record.");
+        var payableIds = settlement.Items.Select(item => item.FinancialEntryId).ToArray();
+        if (await context.FinancialEntries.IgnoreQueryFilters().AnyAsync(entry =>
+                entry.ReversesEntryId.HasValue && payableIds.Contains(entry.ReversesEntryId.Value), cancellationToken))
+            throw new InvalidOperationException("A settlement containing reversed payables cannot be marked paid.");
         var propertyNameSnapshot = settlement.Property?.Name?.Trim();
         if (string.IsNullOrWhiteSpace(propertyNameSnapshot) || propertyNameSnapshot.Length > 200)
             throw new InvalidOperationException("A valid property name is required to record settlement payment.");
@@ -266,8 +277,9 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         context.SettlementPaymentRecords.Add(paymentRecord);
         try
         {
-            // EF Core wraps the record insert and Paid transition in one transaction.
+            // The eligibility lock, record insert and Paid transition share one transaction.
             await context.SaveChangesAsync(cancellationToken);
+            if (ownedTransaction is not null) await ownedTransaction.CommitAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
         {
