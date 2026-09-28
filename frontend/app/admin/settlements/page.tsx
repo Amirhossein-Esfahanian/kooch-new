@@ -10,7 +10,6 @@ import { KoochBadge } from "@/components/KoochBadge";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochField, KoochInput, KoochSelect, KoochSearchableSelect, KoochTextarea } from "@/components/KoochFormControls";
 import { KoochDialog } from "@/components/KoochDialog";
-import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty,
   KoochTableHead, KoochTableHeader, KoochTableRow, KoochTableFilterDialog } from "@/components/KoochTable";
 import { apiRequest } from "@/lib/owner-api";
@@ -19,11 +18,15 @@ import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 
 type PayableStatus = "Future" | "Due" | "Overdue";
 type SettlementStatus = "Pending" | "Due" | "Overdue" | "Paid" | "Cancelled";
+type SettlementPaymentMethod = "BankTransfer" | "CardToCard" | "Other";
+type SettlementPaymentRecord = { paymentMethod: SettlementPaymentMethod; referenceNumber: string; paidAtUtc: string;
+  note: string | null; recordedAtUtc: string };
 type Payable = { id: number; propertyId: number; propertyName: string; reservationNumber: string | null;
   amount: number; currency: string; payableDueDate: string; status: PayableStatus };
 type Settlement = { id: number; settlementNumber: string; propertyId: number; propertyName: string; totalAmount: number; currency: string;
   itemCount: number; status: SettlementStatus; createdAtUtc: string; paidAtUtc: string | null; isEarlySettlement: boolean };
 type Detail = Omit<Settlement, "itemCount"> & { cancelledAtUtc: string | null; cancellationReason: string | null;
+  paymentRecord: SettlementPaymentRecord | null;
   items: Array<{ financialEntryId: number;
   reservationNumber: string | null; amount: number; payableDueDate: string }> };
 type Page<T> = { items: T[]; totalCount: number; page: number; pageSize: number; totalPages: number };
@@ -34,6 +37,13 @@ const defaultPayableFilters: PayableFilters = { status: "", search: "", sortBy: 
 const defaultSettlementFilters: SettlementFilters = { status: "", sortBy: "CreatedAt", sortDirection: "Desc" };
 const labels = { Future: "آینده", Pending: "در انتظار سررسید", Due: "سررسید", Overdue: "معوق", Paid: "پرداخت‌شده", Cancelled: "لغوشده" };
 const isUnpaidActive = (status: SettlementStatus) => status === "Pending" || status === "Due" || status === "Overdue";
+const paymentMethodLabels: Record<SettlementPaymentMethod, string> = {
+  BankTransfer: "انتقال بانکی", CardToCard: "کارت به کارت", Other: "سایر",
+};
+const localDateTimeValue = (date: Date) => {
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
 const errorText = (error: unknown) => error instanceof Error ? error.message : "عملیات انجام نشد؛ دوباره تلاش کنید.";
 
 function StatusBadge({ status }: { status: PayableStatus | SettlementStatus }) {
@@ -92,6 +102,11 @@ function SettlementManagement() {
   const [detailError, setDetailError] = useState("");
   const detailRequest = useRef(0);
   const [confirmPaid, setConfirmPaid] = useState<Settlement | Detail | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<SettlementPaymentMethod | "">("BankTransfer");
+  const [paymentReference, setPaymentReference] = useState("");
+  const [paymentPaidAt, setPaymentPaidAt] = useState(() => localDateTimeValue(new Date()));
+  const [paymentNote, setPaymentNote] = useState("");
+  const [paymentErrors, setPaymentErrors] = useState<{ method?: string; reference?: string; paidAt?: string }>({});
   const [paying, setPaying] = useState(false);
   const payingRef = useRef(false);
   const [cancelTarget, setCancelTarget] = useState<Settlement | null>(null);
@@ -186,11 +201,32 @@ function SettlementManagement() {
     finally { if (request === detailRequest.current) setDetailLoading(false); }
   }
 
+  function openPaymentForm(settlement: Settlement) {
+    setConfirmPaid(settlement);
+    setPaymentMethod("BankTransfer");
+    setPaymentReference("");
+    setPaymentPaidAt(localDateTimeValue(new Date()));
+    setPaymentNote("");
+    setPaymentErrors({});
+  }
+
   async function markPaid() {
     if (!confirmPaid || payingRef.current) return;
+    const referenceNumber = paymentReference.trim();
+    const paidAt = new Date(paymentPaidAt);
+    const errors = {
+      ...(!paymentMethod ? { method: "روش پرداخت را انتخاب کنید." } : {}),
+      ...(!referenceNumber || referenceNumber.length > 200 ? { reference: "شماره پیگیری معتبر را وارد کنید." } : {}),
+      ...(!paymentPaidAt || Number.isNaN(paidAt.getTime()) ? { paidAt: "زمان پرداخت معتبر را وارد کنید." } : {}),
+    };
+    setPaymentErrors(errors);
+    if (Object.keys(errors).length) return;
     payingRef.current = true; setPaying(true);
     try {
-      const response = await apiRequest<Detail>(`/admin/settlements/${confirmPaid.id}/paid`, { method: "POST" });
+      const response = await apiRequest<Detail>(`/admin/settlements/${confirmPaid.id}/paid`, {
+        method: "POST",
+        body: JSON.stringify({ paymentMethod, referenceNumber, paidAtUtc: paidAt.toISOString(), note: paymentNote.trim() || null }),
+      });
       setDetail(current => current?.id === response.id ? response : current);
       setConfirmPaid(null); setRefresh(value => value + 1);
       toast.success("پرداخت تسویه ثبت شد");
@@ -345,7 +381,7 @@ function SettlementManagement() {
               <KoochTableCell>{formatNumber(item.itemCount)}</KoochTableCell><KoochTableCell><StatusBadge status={item.status} /></KoochTableCell>
               <KoochTableCell><div className="flex flex-wrap gap-2"><KoochButton size="sm" variant="outline" onClick={() => void openDetail(item.id)}>جزئیات</KoochButton>
                 {isUnpaidActive(item.status) && <>
-                  <KoochButton size="sm" variant="outline" disabled={paying && confirmPaid?.id === item.id} onClick={() => setConfirmPaid(item)}>ثبت تسویه</KoochButton>
+                  <KoochButton size="sm" variant="outline" disabled={paying && confirmPaid?.id === item.id} onClick={() => openPaymentForm(item)}>ثبت تسویه</KoochButton>
                   <KoochButton size="sm" variant="outline" onClick={() => {
                     setCancelTarget(item); setCancelReason(""); setCancelReasonError(""); setCancelError("");
                   }}>لغو تسویه</KoochButton>
@@ -369,8 +405,21 @@ function SettlementManagement() {
         <p className="font-bold">مبلغ کل: {money(detail.totalAmount)}</p>
         <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2">
           <div><dt className="mb-1 text-muted-foreground">زمان ایجاد</dt><dd><Timestamp value={detail.createdAtUtc} /></dd></div>
-          {detail.paidAtUtc && <div><dt className="mb-1 text-muted-foreground">زمان پرداخت</dt><dd><Timestamp value={detail.paidAtUtc} /></dd></div>}
         </dl>
+        {detail.paidAtUtc && detail.paymentRecord && <section aria-label="اطلاعات پرداخت" className="grid gap-2 rounded-lg border border-border p-3 text-sm">
+          <h3 className="font-semibold">اطلاعات پرداخت</h3>
+          <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div><dt className="mb-1 text-muted-foreground">روش پرداخت</dt><dd>{paymentMethodLabels[detail.paymentRecord.paymentMethod]}</dd></div>
+            <div><dt className="mb-1 text-muted-foreground">شماره پیگیری / مرجع</dt><dd><bdi dir="ltr" className="break-all">{detail.paymentRecord.referenceNumber}</bdi></dd></div>
+            <div><dt className="mb-1 text-muted-foreground">زمان پرداخت</dt><dd><Timestamp value={detail.paymentRecord.paidAtUtc} /></dd></div>
+            <div><dt className="mb-1 text-muted-foreground">زمان ثبت در سیستم</dt><dd><Timestamp value={detail.paymentRecord.recordedAtUtc} /></dd></div>
+          </dl>
+          {detail.paymentRecord.note && <p className="whitespace-pre-wrap break-words"><span className="text-muted-foreground">توضیحات: </span>{detail.paymentRecord.note}</p>}
+        </section>}
+        {detail.paidAtUtc && !detail.paymentRecord && <div className="grid gap-2 rounded-lg border border-border p-3 text-sm">
+          <p>اطلاعات پرداخت برای این تسویه ثبت نشده است.</p>
+          <p className="text-muted-foreground">زمان پرداخت: <Timestamp value={detail.paidAtUtc} /></p>
+        </div>}
         {detail.cancelledAtUtc && <div className="grid gap-2 text-sm">
           <p className="text-muted-foreground">زمان لغو: <Timestamp value={detail.cancelledAtUtc} /></p>
           <p className="whitespace-pre-wrap break-words">دلیل لغو: {detail.cancellationReason}</p>
@@ -399,9 +448,35 @@ function SettlementManagement() {
         {cancelError && <p role="alert" className="text-sm text-destructive">{cancelError}</p>}
       </form>
     </KoochDialog>
-    <KoochConfirmDialog open={Boolean(confirmPaid)} onOpenChange={open => { if (!open && !paying) setConfirmPaid(null); }}
-      title="ثبت تسویه" description={confirmPaid ? `آیا پرداخت تسویه ${confirmPaid.settlementNumber} برای ${confirmPaid.propertyName} به مبلغ ${money(confirmPaid.totalAmount)} انجام شده است؟ این عمل فقط پرداخت انجام‌شده را ثبت می‌کند و انتقال بانکی انجام نمی‌دهد.` : ""}
-      confirmText="تأیید و ثبت تسویه" cancelText="انصراف" loading={paying} variant="question" onConfirm={markPaid} />
+    <KoochDialog open={Boolean(confirmPaid)} onOpenChange={open => { if (!open && !paying) setConfirmPaid(null); }}
+      title="ثبت پرداخت تسویه" size="sm" closeDisabled={paying}
+      footer={<>
+        <KoochButton variant="outline" disabled={paying} onClick={() => setConfirmPaid(null)}>انصراف</KoochButton>
+        <KoochButton type="submit" form="settlement-payment-form" loading={paying}>ثبت تسویه</KoochButton>
+      </>}>
+      <form id="settlement-payment-form" noValidate className="grid gap-3" onSubmit={event => { event.preventDefault(); void markPaid(); }}>
+        <p className="text-sm">{confirmPaid?.propertyName} · <bdi dir="ltr">{confirmPaid?.settlementNumber}</bdi></p>
+        <p className="text-sm font-semibold">مبلغ پرداختی: {confirmPaid ? money(confirmPaid.totalAmount) : ""}</p>
+        <KoochField label="روش پرداخت" required error={paymentErrors.method}>
+          <KoochSelect value={paymentMethod} disabled={paying} onChange={event => setPaymentMethod(event.target.value as SettlementPaymentMethod | "")}>
+            <option value="">انتخاب روش پرداخت</option>
+            {Object.entries(paymentMethodLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </KoochSelect>
+        </KoochField>
+        <KoochField label="شماره پیگیری / مرجع پرداخت" required error={paymentErrors.reference}>
+          <KoochInput value={paymentReference} dir="ltr" maxLength={200} disabled={paying}
+            onChange={event => setPaymentReference(event.target.value)} />
+        </KoochField>
+        <KoochField label="زمان پرداخت" required error={paymentErrors.paidAt}>
+          <KoochInput type="datetime-local" value={paymentPaidAt} disabled={paying}
+            onChange={event => setPaymentPaidAt(event.target.value)} />
+        </KoochField>
+        <KoochField label="توضیحات">
+          <KoochTextarea value={paymentNote} rows={3} maxLength={2000} disabled={paying}
+            onChange={event => setPaymentNote(event.target.value)} />
+        </KoochField>
+      </form>
+    </KoochDialog>
   </main>;
 }
 

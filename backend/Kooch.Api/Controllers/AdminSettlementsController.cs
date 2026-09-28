@@ -41,8 +41,9 @@ public sealed class AdminSettlementsController(SettlementService service) : Auth
         Ok(Project(await service.GetAsync(id, cancellationToken)));
 
     [HttpPost("{id:int}/paid")]
-    public async Task<ActionResult<SettlementResponse>> MarkPaid(int id, CancellationToken cancellationToken) =>
-        Ok(Project(await service.MarkPaidAsync(id, cancellationToken)));
+    public async Task<ActionResult<SettlementResponse>> MarkPaid(int id, MarkSettlementPaidRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(Project(await service.MarkPaidAsync(id, request, GetCurrentUser().UserId, cancellationToken)));
 
     [HttpPost("{id:int}/cancel")]
     public async Task<ActionResult<SettlementResponse>> Cancel(int id, CancelSettlementRequest request, CancellationToken cancellationToken) =>
@@ -54,5 +55,8 @@ public sealed class AdminSettlementsController(SettlementService service) : Auth
         settlement.Items.OrderBy(item => item.FinancialEntryId)
             .Select(item => new SettlementItemResponse(item.FinancialEntryId, item.FinancialEntry.Amount,
                 item.FinancialEntry.PayableDueDate!.Value, item.FinancialEntry.Reservation?.ReservationNumber)).ToList(),
-        settlement.Property.Name, settlement.CancelledAtUtc, settlement.CancelledByUserId, settlement.CancellationReason);
+        settlement.Property.Name, settlement.CancelledAtUtc, settlement.CancelledByUserId, settlement.CancellationReason,
+        settlement.PaymentRecord is null ? null : new SettlementPaymentRecordResponse(
+            settlement.PaymentRecord.PaymentMethod, settlement.PaymentRecord.ReferenceNumber,
+            settlement.PaymentRecord.PaidAtUtc, settlement.PaymentRecord.Note, settlement.PaymentRecord.RecordedAtUtc));
 }

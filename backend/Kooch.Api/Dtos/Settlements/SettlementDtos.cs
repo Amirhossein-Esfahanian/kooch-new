@@ -1,5 +1,7 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Kooch.Api.Entities;
+using Kooch.Api.Serialization;
 
 namespace Kooch.Api.Dtos.Settlements;
 
@@ -15,10 +17,25 @@ public sealed class CancelSettlementRequest
     [Required, MaxLength(2000)] public string Reason { get; set; } = string.Empty;
 }
 
+public sealed class MarkSettlementPaidRequest
+{
+    [Required] public SettlementPaymentMethod? PaymentMethod { get; set; }
+    [Required, StringLength(200, MinimumLength = 1)] public string? ReferenceNumber { get; set; }
+    [Required] public DateTimeOffset? PaidAtUtc { get; set; }
+    [StringLength(2000)] public string? Note { get; set; }
+}
+
+public sealed record SettlementPaymentRecordResponse(SettlementPaymentMethod PaymentMethod,
+    string ReferenceNumber,
+    [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime PaidAtUtc,
+    string? Note,
+    [property: JsonConverter(typeof(UtcDateTimeJsonConverter))] DateTime RecordedAtUtc);
+
 public sealed record SettlementResponse(int Id, string SettlementNumber, int PropertyId, decimal TotalAmount, string Currency,
     DateTime CreatedAtUtc, DateTime? PaidAtUtc, bool IsEarlySettlement, SettlementStatus Status,
     IReadOnlyList<SettlementItemResponse> Items, string PropertyName = "",
-    DateTime? CancelledAtUtc = null, int? CancelledByUserId = null, string? CancellationReason = null);
+    DateTime? CancelledAtUtc = null, int? CancelledByUserId = null, string? CancellationReason = null,
+    SettlementPaymentRecordResponse? PaymentRecord = null);
 public sealed record SettlementItemResponse(int FinancialEntryId, decimal Amount, DateOnly PayableDueDate,
     string? ReservationNumber = null);
 

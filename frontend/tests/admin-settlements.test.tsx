@@ -31,7 +31,9 @@ const check = (id: number) => screen.getByRole<HTMLInputElement>("checkbox", { n
 beforeEach(() => {
   api.mockReset();
   api.mockImplementation(async (path: string, options?: RequestInit) => {
-    if (options?.method === "POST") return { ...batch, status: "Paid", items: [] };
+    if (options?.method === "POST") return { ...batch, status: "Paid", paidAtUtc: "2026-09-27T11:15:00Z",
+      paymentRecord: { paymentMethod: "BankTransfer", referenceNumber: "87453219", paidAtUtc: "2026-09-27T11:15:00Z",
+        note: null, recordedAtUtc: "2026-09-27T11:20:00Z" }, items: [] };
     if (path.includes("/properties?")) return paged([{ id: 1, name: "Property 1" }]);
     if (path.includes("/payables?")) return paged(payables);
     if (path === "/admin/settlements/10") return { ...batch, items: [
@@ -269,15 +271,53 @@ describe("Admin settlements", () => {
     expect(check(4).disabled).toBe(false); expect(check(5).disabled).toBe(false);
   });
 
-  it("confirms Paid before posting and refreshes the current lists", async () => {
+  it("requires payment details, posts them to the existing Paid endpoint, and refreshes current lists", async () => {
     render(<Page />);
     fireEvent.click(await screen.findByRole("button", { name: "ثبت تسویه" }));
-    const dialog = await screen.findByRole("alertdialog", { name: "ثبت تسویه" });
+    const dialog = await screen.findByRole("dialog", { name: "ثبت پرداخت تسویه" });
     expect(mutations()).toHaveLength(0);
-    fireEvent.click(within(dialog).getByRole("button", { name: "تأیید و ثبت تسویه" }));
+    const reference = within(dialog).getByRole("textbox", { name: /شماره پیگیری \/ مرجع پرداخت/ });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت تسویه" }));
+    expect(within(dialog).getByText("شماره پیگیری معتبر را وارد کنید.")).not.toBeNull();
+    expect(reference.getAttribute("aria-invalid")).toBe("true");
+    expect(mutations()).toHaveLength(0);
+    fireEvent.change(within(dialog).getByRole("combobox", { name: /روش پرداخت/ }), { target: { value: "CardToCard" } });
+    fireEvent.change(reference, { target: { value: "  0087453219  " } });
+    fireEvent.change(within(dialog).getByLabelText(/زمان پرداخت/), { target: { value: "2026-09-27T14:35" } });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "توضیحات" }), { target: { value: "  تأیید انتقال  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت تسویه" }));
     await waitFor(() => expect(mutations()).toHaveLength(1));
-    expect(mutations()[0]).toEqual(["/admin/settlements/10/paid", { method: "POST" }]);
+    expect(mutations()[0]).toEqual(["/admin/settlements/10/paid", { method: "POST", body: JSON.stringify({
+      paymentMethod: "CardToCard", referenceNumber: "0087453219", paidAtUtc: new Date("2026-09-27T14:35").toISOString(), note: "تأیید انتقال",
+    }) }]);
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "ثبت پرداخت تسویه" })).toBeNull());
     await waitFor(() => expect(api.mock.calls.filter(([path]) => path === "/admin/settlements?page=1&pageSize=20").length).toBe(2));
+  });
+
+  it("shows persisted payment details and safely renders historical Paid records without metadata", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation((path: string, options?: RequestInit) => path === "/admin/settlements/10"
+      ? Promise.resolve({ ...batch, status: "Paid", paidAtUtc: "2026-09-27T11:15:00Z", paymentRecord: {
+        paymentMethod: "BankTransfer", referenceNumber: "87453219", paidAtUtc: "2026-09-27T11:15:00Z",
+        note: "اصلاح بانکی", recordedAtUtc: "2026-09-27T11:20:00Z",
+      }, items: [{ financialEntryId: 1, reservationNumber: "R-100001", amount: 123.45, payableDueDate: "2026-09-27" }] })
+      : original(path, options));
+    render(<Page />);
+    fireEvent.click(await screen.findByRole("button", { name: "جزئیات" }));
+    let dialog = await screen.findByRole("dialog", { name: "جزئیات تسویه" });
+    expect(within(dialog).getByRole("region", { name: "اطلاعات پرداخت" })).not.toBeNull();
+    expect(within(dialog).getByText("انتقال بانکی")).not.toBeNull();
+    expect(within(dialog).getByText("87453219")).not.toBeNull();
+    expect(within(dialog).getByText("اصلاح بانکی")).not.toBeNull();
+
+    api.mockImplementation((path: string, options?: RequestInit) => path === "/admin/settlements/10"
+      ? Promise.resolve({ ...batch, status: "Paid", paidAtUtc: "2026-09-28T12:30:00Z", paymentRecord: null, items: [] })
+      : original(path, options));
+    fireEvent.click(within(dialog).getByRole("button", { name: "بستن" }));
+    fireEvent.click(await screen.findByRole("button", { name: "جزئیات" }));
+    dialog = await screen.findByRole("dialog", { name: "جزئیات تسویه" });
+    expect(within(dialog).getByText("اطلاعات پرداخت برای این تسویه ثبت نشده است.")).not.toBeNull();
+    expect(dialog.querySelector('time[datetime="2026-09-28T12:30:00Z"]')).not.toBeNull();
   });
 
   it("loads persisted batch details including original due dates and reservation references", async () => {
@@ -305,7 +345,7 @@ describe("Admin settlements", () => {
     render(<Page />);
     fireEvent.click(await screen.findByRole("button", { name: "جزئیات" }));
     const dialog = await screen.findByRole("dialog", { name: "جزئیات تسویه" });
-    expect(within(dialog).getByText("زمان پرداخت")).not.toBeNull();
+    expect(within(dialog).getByText(/زمان پرداخت/)).not.toBeNull();
     expect(dialog.querySelector('time[datetime="2026-09-28T12:30:00Z"]')).not.toBeNull();
   });
 

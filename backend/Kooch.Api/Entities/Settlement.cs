@@ -14,6 +14,7 @@ public class Settlement : BaseEntity
     public int? CancelledByUserId { get; set; }
     public string? CancellationReason { get; set; }
     public Property Property { get; set; } = null!;
+    public SettlementPaymentRecord? PaymentRecord { get; set; }
     public ICollection<SettlementItem> Items { get; set; } = [];
 
     // Due/overdue are calendar states, so they must not depend on a background job.

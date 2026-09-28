@@ -31,6 +31,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<SettlementItem> SettlementItems => Set<SettlementItem>();
+    public DbSet<SettlementPaymentRecord> SettlementPaymentRecords => Set<SettlementPaymentRecord>();
     public DbSet<ReservationVoucher> ReservationVouchers => Set<ReservationVoucher>();
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
     public DbSet<Review> Reviews => Set<Review>();
@@ -184,6 +185,12 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                      && property.Metadata.Name != nameof(Settlement.CancellationReason)
                      && property.Metadata.Name != nameof(Settlement.UpdatedAtUtc)))))
                 throw new InvalidOperationException("Settlement history can only transition once to paid or cancelled.");
+            if (entry.State == EntityState.Modified &&
+                !entry.OriginalValues.GetValue<DateTime?>(nameof(Settlement.PaidAtUtc)).HasValue &&
+                entry.Entity.PaidAtUtc.HasValue &&
+                !ChangeTracker.Entries<SettlementPaymentRecord>().Any(payment =>
+                    payment.State == EntityState.Added && ReferenceEquals(payment.Entity.Settlement, entry.Entity)))
+                throw new InvalidOperationException("A settlement can only become Paid with a payment record.");
             if (entry.State == EntityState.Modified)
             {
                 var cancelling = entry.Entity.CancelledAtUtc.HasValue;
@@ -193,6 +200,20 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                     : !entry.Entity.PaidAtUtc.HasValue || entry.Entity.CancellationReason != null || entry.Entity.CancelledByUserId.HasValue)
                     throw new InvalidOperationException("Settlement transition metadata is incomplete or inconsistent.");
             }
+        }
+        foreach (var entry in ChangeTracker.Entries<SettlementPaymentRecord>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Settlement payment records are immutable.");
+            if (entry.State != EntityState.Added) continue;
+            var settlement = entry.Entity.Settlement;
+            if (settlement is null || Entry(settlement).State != EntityState.Modified ||
+                !settlement.PaidAtUtc.HasValue || settlement.PaidAtUtc.Value != entry.Entity.PaidAtUtc ||
+                Entry(settlement).OriginalValues.GetValue<DateTime?>(nameof(Settlement.PaidAtUtc)).HasValue ||
+                settlement.CancelledAtUtc.HasValue ||
+                !Enum.IsDefined(entry.Entity.PaymentMethod) || string.IsNullOrWhiteSpace(entry.Entity.ReferenceNumber) ||
+                entry.Entity.RecordedByUserId <= 0 || entry.Entity.RecordedAtUtc == default)
+                throw new InvalidOperationException("Settlement payment records can only be created with a valid Paid transition.");
         }
         foreach (var entry in ChangeTracker.Entries<SettlementItem>())
         {
@@ -1077,6 +1098,19 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasForeignKey(item => item.SettlementId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne(item => item.FinancialEntry).WithMany()
                 .HasForeignKey(item => item.FinancialEntryId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<SettlementPaymentRecord>(entity =>
+        {
+            entity.Property(record => record.PaymentMethod).HasConversion<int>();
+            entity.Property(record => record.ReferenceNumber).HasMaxLength(200).IsRequired();
+            entity.Property(record => record.Note).HasMaxLength(2000);
+            entity.Property(record => record.PaidAtUtc).IsRequired();
+            entity.Property(record => record.RecordedAtUtc).IsRequired();
+            entity.HasIndex(record => record.SettlementId).IsUnique();
+            entity.HasOne(record => record.Settlement).WithOne(settlement => settlement.PaymentRecord)
+                .HasForeignKey<SettlementPaymentRecord>(record => record.SettlementId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(record => record.RecordedByUser).WithMany()
+                .HasForeignKey(record => record.RecordedByUserId).OnDelete(DeleteBehavior.NoAction);
         });
         modelBuilder.Entity<PropertyCommissionRate>(entity =>
         {

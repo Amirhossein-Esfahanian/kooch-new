@@ -14,6 +14,13 @@ namespace Kooch.Api.Tests;
 
 public sealed class SettlementTests
 {
+    private static MarkSettlementPaidRequest PaymentRequest(DateTimeOffset? paidAtUtc = null) => new()
+    {
+        PaymentMethod = SettlementPaymentMethod.BankTransfer,
+        ReferenceNumber = "  0087453219  ",
+        PaidAtUtc = paidAtUtc ?? new DateTimeOffset(2026, 9, 27, 15, 45, 0, TimeSpan.FromHours(3.5)),
+        Note = "  manual settlement  "
+    };
     private sealed class NumberSequence(KoochDbContext context, params int[] numbers) : SettlementNumberGenerator(context)
     {
         private readonly Queue<int> values = new(numbers);
@@ -29,6 +36,79 @@ public sealed class SettlementTests
         var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
         Assert.Matches("^S-[1-9][0-9]{5}$", settlement.SettlementNumber);
         Assert.InRange(int.Parse(settlement.SettlementNumber[2..]), 100000, 999999);
+    }
+
+    [Fact]
+    public async Task InvalidPaymentFacts_DoNotChangeSettlementOrCreateRecord()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        var longReference = PaymentRequest();
+        longReference.ReferenceNumber = new string('x', 201);
+        var longNote = PaymentRequest();
+        longNote.Note = new string('x', 2001);
+        var invalidRequests = new[]
+        {
+            new MarkSettlementPaidRequest { ReferenceNumber = "ref", PaidAtUtc = PaymentRequest().PaidAtUtc },
+            new MarkSettlementPaidRequest { PaymentMethod = SettlementPaymentMethod.BankTransfer, ReferenceNumber = "  ", PaidAtUtc = PaymentRequest().PaidAtUtc },
+            new MarkSettlementPaidRequest { PaymentMethod = SettlementPaymentMethod.BankTransfer, ReferenceNumber = "ref", PaidAtUtc = default },
+            new MarkSettlementPaidRequest { PaymentMethod = (SettlementPaymentMethod)99, ReferenceNumber = "ref", PaidAtUtc = PaymentRequest().PaidAtUtc },
+            longReference,
+            longNote,
+        };
+        foreach (var request in invalidRequests)
+            await Assert.ThrowsAsync<ArgumentException>(() => service.MarkPaidAsync(settlement.Id, request, 77));
+        Assert.Null(settlement.PaidAtUtc);
+        Assert.Empty(await context.SettlementPaymentRecords.ToListAsync());
+        settlement.PaidAtUtc = PaymentRequest().PaidAtUtc!.Value.UtcDateTime;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
+    }
+
+    [Fact]
+    public async Task PaymentRecordInsertFailure_RollsBackPaidTransition()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new KoochDbContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.Add(new Property { Id = 1, Name = "First", Slug = "first" });
+        context.FinancialEntries.Add(Payable(1));
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var settlement = await service.CreateAsync(1, [1]);
+        await context.Database.ExecuteSqlRawAsync("""
+            CREATE TRIGGER RejectSettlementPaymentRecord BEFORE INSERT ON SettlementPaymentRecords
+            BEGIN SELECT RAISE(ABORT, 'test payment record failure'); END;
+            """);
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77));
+        await context.Entry(settlement).ReloadAsync();
+        Assert.Null(settlement.PaidAtUtc);
+        Assert.Equal(0, await context.SettlementPaymentRecords.AsNoTracking().CountAsync());
+    }
+
+    [Fact]
+    public async Task HistoricalPaidSettlementWithoutRecord_IsReadableAndOneToOneIndexExists()
+    {
+        await using var context = Context();
+        var settlement = new Settlement
+        {
+            Id = 50, PropertyId = 1, SettlementNumber = "S-583214", Currency = "IRR", TotalAmount = 1m,
+            PaidAtUtc = new DateTime(2026, 9, 27, 10, 0, 0, DateTimeKind.Utc)
+        };
+        context.Settlements.Add(settlement);
+        await context.SaveChangesAsync();
+        var service = new SettlementService(context, new Clock());
+        var result = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(50, default)).Result);
+        var response = Assert.IsType<SettlementResponse>(result.Value);
+        Assert.Null(response.PaymentRecord);
+        var index = context.Model.FindEntityType(typeof(SettlementPaymentRecord))!.GetIndexes()
+            .Single(item => item.Properties.Single().Name == nameof(SettlementPaymentRecord.SettlementId));
+        Assert.True(index.IsUnique);
     }
 
     [Fact]
@@ -49,8 +129,13 @@ public sealed class SettlementTests
         Assert.Contains(listed, item => item.Id == first.Id && item.SettlementNumber == first.SettlementNumber);
         var response = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(first.Id, default)).Result);
         Assert.Equal(first.SettlementNumber, Assert.IsType<SettlementResponse>(response.Value).SettlementNumber);
-        var paid = await service.MarkPaidAsync(first.Id);
+        var paid = await service.MarkPaidAsync(first.Id, PaymentRequest(), 77);
         Assert.Equal("S-583214", paid.SettlementNumber);
+        var paidResponseResult = Assert.IsType<OkObjectResult>((await new AdminSettlementsController(service).Get(first.Id, default)).Result);
+        var paidResponse = Assert.IsType<SettlementResponse>(paidResponseResult.Value);
+        Assert.Equal(SettlementPaymentMethod.BankTransfer, paidResponse.PaymentRecord!.PaymentMethod);
+        Assert.Equal("0087453219", paidResponse.PaymentRecord.ReferenceNumber);
+        Assert.Equal("manual settlement", paidResponse.PaymentRecord.Note);
         var cancelled = await service.CancelAsync(second.Id, "test");
         Assert.Equal("S-271946", cancelled.SettlementNumber);
     }
@@ -200,12 +285,20 @@ public sealed class SettlementTests
         Assert.Equal(SettlementStatus.Overdue, settlement.GetStatus(Today));
         Assert.Equal(Today.AddDays(-3), settlement.Items.Single(item => item.FinancialEntryId == 1).FinancialEntry.PayableDueDate);
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, [1]));
-        var paid = await service.MarkPaidAsync(settlement.Id);
-        Assert.Equal(new Clock().GetUtcNow().UtcDateTime, paid.PaidAtUtc);
+        var paid = await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+        Assert.Equal(PaymentRequest().PaidAtUtc!.Value.UtcDateTime, paid.PaidAtUtc);
+        Assert.Equal(paid.PaidAtUtc, paid.PaymentRecord!.PaidAtUtc);
+        Assert.Equal("0087453219", paid.PaymentRecord.ReferenceNumber);
+        Assert.Equal("manual settlement", paid.PaymentRecord.Note);
+        Assert.Equal(77, paid.PaymentRecord.RecordedByUserId);
+        Assert.Equal(new Clock().GetUtcNow().UtcDateTime, paid.PaymentRecord.RecordedAtUtc);
         Assert.Equal(SettlementStatus.Paid, paid.GetStatus(Today));
-        Assert.Equal(paid.PaidAtUtc, (await service.MarkPaidAsync(paid.Id)).PaidAtUtc);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(paid.Id, PaymentRequest(), 77));
+        Assert.Single(await context.SettlementPaymentRecords.ToListAsync());
         Assert.Equal(2, await context.FinancialEntries.CountAsync());
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, [2]));
+        paid.PaymentRecord.Note = "changed";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
     }
 
     [Theory]
@@ -233,7 +326,7 @@ public sealed class SettlementTests
         Assert.Equal(SettlementStatus.Pending, settlement.GetStatus(Today));
         Assert.Equal(SettlementStatus.Due, settlement.GetStatus(Today.AddDays(3)));
         Assert.Equal(SettlementStatus.Overdue, settlement.GetStatus(Today.AddDays(4)));
-        await service.MarkPaidAsync(settlement.Id);
+        await service.MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
         Assert.Equal(Today.AddDays(3), settlement.Items.Single().FinancialEntry.PayableDueDate);
         Assert.True(DateOnly.FromDateTime(settlement.PaidAtUtc!.Value) < Today.AddDays(3));
     }
@@ -264,10 +357,11 @@ public sealed class SettlementTests
         {
             var service = new SettlementService(competing, new Clock());
             await service.GetAsync(settlement.Id);
-            var paid = await new SettlementService(context, new Clock()).MarkPaidAsync(settlement.Id);
-            var concurrentPaid = await service.MarkPaidAsync(settlement.Id);
-            Assert.Equal(paid.PaidAtUtc, concurrentPaid.PaidAtUtc);
+            var paid = await new SettlementService(context, new Clock()).MarkPaidAsync(settlement.Id, PaymentRequest(), 77);
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(settlement.Id, PaymentRequest(), 88));
+            Assert.Equal(paid.PaidAtUtc, paid.PaymentRecord!.PaidAtUtc);
         }
+        Assert.Single(await context.SettlementPaymentRecords.ToListAsync());
         context.SettlementItems.Remove(settlement.Items.Single());
         await Assert.ThrowsAsync<InvalidOperationException>(() => context.SaveChangesAsync());
     }
@@ -286,7 +380,7 @@ public sealed class SettlementTests
         var second = await service.ListPayablesAsync(new SettlementListQuery { PropertyId = 1, PageSize = 2, Page = 2 });
         Assert.Equal(PayableStatus.Future, Assert.Single(second.Items).Status);
         var batch = await service.CreateAsync(1, [1, 2]);
-        await service.MarkPaidAsync(batch.Id);
+        await service.MarkPaidAsync(batch.Id, PaymentRequest(), 77);
         var remaining = await service.ListPayablesAsync(new SettlementListQuery { PropertyId = 1 });
         Assert.Equal(3, Assert.Single(remaining.Items).Id);
         var list = Assert.Single((await service.ListAsync(new SettlementListQuery { PropertyId = 1 })).Items);
@@ -373,7 +467,7 @@ public sealed class SettlementTests
         await context.SaveChangesAsync();
         var service = new SettlementService(context, new Clock());
         foreach (var id in Enumerable.Range(1, 5)) await service.CreateAsync(1, [id], allowEarlySettlement: id == 1);
-        await service.MarkPaidAsync(4);
+        await service.MarkPaidAsync(4, PaymentRequest(), 77);
         await service.CancelAsync(5, "Correction");
         await service.CreateAsync(2, [6]);
         var page = await service.ListAsync(new SettlementListQuery { Status = status, PropertyId = 1, PageSize = 1 });
@@ -477,7 +571,7 @@ public sealed class SettlementTests
         Assert.Equal(2, (await service.ListPayablesAsync(new SettlementListQuery())).TotalCount);
         Assert.Equal(SettlementStatus.Cancelled, Assert.Single((await service.ListAsync(new SettlementListQuery())).Items).Status);
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelAsync(batch.Id, "Again"));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(batch.Id));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.MarkPaidAsync(batch.Id, PaymentRequest(), 77));
 
         var replacement = await service.CreateAsync(1, [1, 2], allowEarlySettlement: dueDays > 0);
         Assert.NotEqual(cancelled.Id, replacement.Id);
@@ -511,7 +605,7 @@ public sealed class SettlementTests
         await Assert.ThrowsAsync<ArgumentException>(() => service.CancelAsync(batch.Id, "  "));
         Assert.Null(batch.CancelledAtUtc);
         Assert.Null(batch.Items.Single().ReleasedAtUtc);
-        await service.MarkPaidAsync(batch.Id);
+        await service.MarkPaidAsync(batch.Id, PaymentRequest(), 77);
         await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelAsync(batch.Id, "Correction"));
         Assert.Null(batch.CancelledAtUtc);
         Assert.Null(batch.Items.Single().ReleasedAtUtc);
@@ -539,11 +633,11 @@ public sealed class SettlementTests
         if (cancellationWins)
         {
             await firstService.CancelAsync(batch.Id, "Correction", 7);
-            await Assert.ThrowsAsync<InvalidOperationException>(() => secondService.MarkPaidAsync(batch.Id));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => secondService.MarkPaidAsync(batch.Id, PaymentRequest(), 77));
         }
         else
         {
-            await firstService.MarkPaidAsync(batch.Id);
+            await firstService.MarkPaidAsync(batch.Id, PaymentRequest(), 77);
             await Assert.ThrowsAsync<InvalidOperationException>(() => secondService.CancelAsync(batch.Id, "Correction", 7));
         }
         await using var verify = new KoochDbContext(options);
@@ -552,6 +646,7 @@ public sealed class SettlementTests
         Assert.Equal(!cancellationWins, saved.PaidAtUtc.HasValue);
         Assert.All(saved.Items, item => Assert.Equal(cancellationWins, item.ReleasedAtUtc.HasValue));
         Assert.Equal(cancellationWins ? "Correction" : null, saved.CancellationReason);
+        Assert.Equal(cancellationWins ? 0 : 1, await verify.SettlementPaymentRecords.CountAsync());
         Assert.Equal(2, await verify.FinancialEntries.CountAsync());
     }
 

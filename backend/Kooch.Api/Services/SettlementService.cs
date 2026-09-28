@@ -201,21 +201,49 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
         LoadAsync(id, cancellationToken);
 
     private async Task<Settlement> LoadAsync(int id, CancellationToken cancellationToken) =>
-        await context.Settlements.Include(settlement => settlement.Property).Include(settlement => settlement.Items)
+        await context.Settlements.Include(settlement => settlement.Property).Include(settlement => settlement.PaymentRecord)
+            .Include(settlement => settlement.Items)
             .ThenInclude(item => item.FinancialEntry)
             .ThenInclude(entry => entry.Reservation)
             .SingleOrDefaultAsync(settlement => settlement.Id == id, cancellationToken)
         ?? throw new KeyNotFoundException("Settlement not found.");
 
-    public async Task<Settlement> MarkPaidAsync(int id, CancellationToken cancellationToken = default)
+    public async Task<Settlement> MarkPaidAsync(int id, MarkSettlementPaidRequest request, int actorId,
+        CancellationToken cancellationToken = default)
     {
+        if (!request.PaymentMethod.HasValue || !Enum.IsDefined(request.PaymentMethod.Value))
+            throw new ArgumentException("A valid settlement payment method is required.");
+        var referenceNumber = request.ReferenceNumber?.Trim();
+        if (string.IsNullOrEmpty(referenceNumber) || referenceNumber.Length > 200)
+            throw new ArgumentException("A payment reference of up to 200 characters is required.");
+        if (!request.PaidAtUtc.HasValue || request.PaidAtUtc.Value == default)
+            throw new ArgumentException("The actual payment timestamp is required.");
+        if (actorId <= 0) throw new ArgumentException("A valid Admin actor is required.");
+        var note = string.IsNullOrWhiteSpace(request.Note) ? null : request.Note.Trim();
+        if (note?.Length > 2000) throw new ArgumentException("Payment note cannot exceed 2000 characters.");
+
         var settlement = await LoadAsync(id, cancellationToken);
         if (settlement.CancelledAtUtc.HasValue)
             throw new InvalidOperationException("Cancelled settlements cannot be marked paid.");
-        if (settlement.PaidAtUtc.HasValue) return settlement;
-        settlement.PaidAtUtc = clock.GetUtcNow().UtcDateTime;
+        if (settlement.PaidAtUtc.HasValue || settlement.PaymentRecord is not null)
+            throw new InvalidOperationException("Settlement is already paid or has a payment record.");
+        var paidAtUtc = request.PaidAtUtc.Value.UtcDateTime;
+        settlement.PaidAtUtc = paidAtUtc;
+        var paymentRecord = new SettlementPaymentRecord
+        {
+            Settlement = settlement,
+            PaymentMethod = request.PaymentMethod.Value,
+            ReferenceNumber = referenceNumber,
+            PaidAtUtc = paidAtUtc,
+            Note = note,
+            RecordedByUserId = actorId,
+            RecordedAtUtc = clock.GetUtcNow().UtcDateTime
+        };
+        settlement.PaymentRecord = paymentRecord;
+        context.SettlementPaymentRecords.Add(paymentRecord);
         try
         {
+            // EF Core wraps the record insert and Paid transition in one transaction.
             await context.SaveChangesAsync(cancellationToken);
         }
         catch (DbUpdateConcurrencyException)
@@ -223,10 +251,21 @@ public sealed class SettlementService(KoochDbContext context, TimeProvider clock
             await context.Entry(settlement).ReloadAsync(cancellationToken);
             if (settlement.CancelledAtUtc.HasValue)
                 throw new InvalidOperationException("Cancelled settlements cannot be marked paid.");
-            if (!settlement.PaidAtUtc.HasValue) throw;
+            if (settlement.PaidAtUtc.HasValue)
+                throw new InvalidOperationException("Settlement was marked paid by another request.");
+            throw;
+        }
+        catch (DbUpdateException error) when (IsPaymentRecordCollision(error))
+        {
+            throw new InvalidOperationException("Settlement payment was recorded by another request.", error);
         }
         return settlement;
     }
+
+    private static bool IsPaymentRecordCollision(DbUpdateException error) =>
+        error.InnerException is SqlException sql && sql.Errors.Cast<SqlError>().Any(item =>
+            item.Number is 2601 or 2627 &&
+            item.Message.Contains("IX_SettlementPaymentRecords_SettlementId", StringComparison.Ordinal));
 
     public async Task<Settlement> CancelAsync(int id, string reason, int? actorId = null,
         CancellationToken cancellationToken = default)
