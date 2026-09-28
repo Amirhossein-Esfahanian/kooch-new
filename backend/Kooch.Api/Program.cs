@@ -112,6 +112,7 @@ builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>(
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
 builder.Services.AddScoped<SettlementService>();
 builder.Services.AddScoped<SettlementReceiptQueryService>();
+builder.Services.AddScoped<PropertySettlementHistoryService>();
 builder.Services.AddScoped<IVoucherNumberGenerator, VoucherNumberGenerator>();
 builder.Services.AddScoped<IReservationVoucherService, ReservationVoucherService>();
 builder.Services.AddScoped<IReservationVoucherQueryService, ReservationVoucherQueryService>();

@@ -178,6 +178,12 @@ function getOwnerMenuItems(
       permission: "Bookings",
     },
     {
+      label: "تسویه‌ها",
+      icon: "/svgs/list.svg",
+      href: propertyId ? `${base}/settlements` : fallbackHref,
+      permission: "Financial",
+    },
+    {
       label: "نظرات",
       icon: "/svgs/comment.svg",
       href: propertyId ? `${base}/reviews` : fallbackHref,

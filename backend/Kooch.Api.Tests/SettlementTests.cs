@@ -15,6 +15,107 @@ namespace Kooch.Api.Tests;
 
 public sealed class SettlementTests
 {
+    [Fact]
+    public async Task OwnerHistory_IsPropertyScoped_ReadOnlyAndUsesPersistedReferences()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        var options = new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection).Options;
+        await using var context = new ReadQueryContext(options);
+        await context.Database.EnsureCreatedAsync();
+        context.Properties.AddRange(new Property { Id = 1, Name = "First", Slug = "first" },
+            new Property { Id = 2, Name = "Second", Slug = "second" });
+        context.Reservations.AddRange(Enumerable.Range(1, 6).Select(id => ReservationFor(id, id == 6 ? 2 : 1)));
+        context.FinancialEntries.AddRange(Payable(1, days: 1), Payable(2), Payable(3, days: -1),
+            Payable(4), Payable(5), Payable(6, property: 2));
+        context.UserPropertyAccesses.Add(new UserPropertyAccess { UserId = 20, PropertyId = 1,
+            IsActive = true, Status = PropertyUserStatus.Active });
+        await context.SaveChangesAsync();
+        var mutations = new SettlementService(context, new Clock());
+        var future = await mutations.CreateAsync(1, [1], allowEarlySettlement: true);
+        var due = await mutations.CreateAsync(1, [2]);
+        var overdue = await mutations.CreateAsync(1, [3]);
+        var paid = await mutations.CreateAsync(1, [4]);
+        await mutations.MarkPaidAsync(paid.Id, PaymentRequest(), 77);
+        var cancelled = await mutations.CreateAsync(1, [5]);
+        await mutations.CancelAsync(cancelled.Id, "test", 77);
+        var other = await mutations.CreateAsync(2, [6]);
+        var history = new PropertySettlementHistoryService(context, new ReceiptPermission(true), new Clock());
+
+        var all = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery());
+        Assert.Equal(5, all.TotalCount);
+        Assert.Equal(5, all.Items.Count);
+        Assert.Equal([SettlementStatus.Pending, SettlementStatus.Due, SettlementStatus.Overdue,
+            SettlementStatus.Paid, SettlementStatus.Cancelled], all.Items.Select(item => item.Status).Order().ToArray());
+        Assert.DoesNotContain(all.Items, item => item.SettlementNumber == other.SettlementNumber);
+        Assert.Single(all.Items, item => item.SettlementNumber == paid.SettlementNumber && item.CanViewReceipt);
+        Assert.All(all.Items.Where(item => item.Status != SettlementStatus.Paid), item => Assert.False(item.CanViewReceipt));
+        Assert.Equal("IRR", all.Items.Single(item => item.SettlementNumber == paid.SettlementNumber).Currency);
+        Assert.Equal(Today.AddDays(1), all.Items.Single(item => item.SettlementNumber == future.SettlementNumber).OldestPayableDueDate);
+
+        var byBatch = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery { Search = $"  {paid.SettlementNumber}  " });
+        Assert.Equal(paid.SettlementNumber, Assert.Single(byBatch.Items).SettlementNumber);
+        var byReservation = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery { Search = "R-100004" });
+        Assert.Equal(paid.SettlementNumber, Assert.Single(byReservation.Items).SettlementNumber);
+        var paidOnly = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery { Status = "Paid" });
+        Assert.Equal(paid.SettlementNumber, Assert.Single(paidOnly.Items).SettlementNumber);
+        var firstPage = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery
+            { SortBy = "ItemCount", SortDirection = "Asc", Page = 1, PageSize = 2 });
+        var secondPage = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery
+            { SortBy = "ItemCount", SortDirection = "Asc", Page = 2, PageSize = 2 });
+        Assert.Equal(5, firstPage.TotalCount);
+        Assert.Equal(3, firstPage.TotalPages);
+        Assert.Equal([future.SettlementNumber, due.SettlementNumber], firstPage.Items.Select(item => item.SettlementNumber));
+        Assert.Equal([overdue.SettlementNumber, paid.SettlementNumber], secondPage.Items.Select(item => item.SettlementNumber));
+        var byDueDate = await history.ListAsync(20, 1, new PropertySettlementHistoryQuery
+            { SortBy = "DueDate", SortDirection = "Asc" });
+        Assert.Equal(overdue.SettlementNumber, byDueDate.Items[0].SettlementNumber);
+
+        (await context.Reservations.SingleAsync(item => item.Id == 4)).ReservationNumber = "R-999999";
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var detail = await history.GetAsync(20, 1, paid.SettlementNumber);
+        Assert.Equal("R-100004", Assert.Single(detail.Items).ReservationNumber);
+        Assert.Equal("0087453219", detail.Payment?.ReferenceNumber);
+        Assert.True(detail.CanViewReceipt);
+        Assert.Null(typeof(PropertySettlementHistoryItemResponse).GetProperty("Id"));
+        Assert.Null(typeof(PropertySettlementHistoryItemResponse).GetProperty("PropertyId"));
+        Assert.Null(typeof(PropertySettlementHistoryDetailResponse).GetProperty("Id"));
+        Assert.Null(typeof(PropertySettlementHistoryDetailResponse).GetProperty("Note"));
+        Assert.Null(typeof(PropertySettlementHistoryDetailItemResponse).GetProperty("FinancialEntryId"));
+        Assert.Null(typeof(PropertySettlementHistoryDetailResponse).GetProperty("CancelledByUserId"));
+        Assert.Equal(SettlementStatus.Cancelled, (await history.GetAsync(20, 1, cancelled.SettlementNumber)).Status);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => history.GetAsync(20, 1, other.SettlementNumber));
+    }
+
+    [Fact]
+    public async Task OwnerHistory_RequiresMembershipAndFinancialViewEvenForPlatformActor()
+    {
+        await using var context = Context();
+        context.FinancialEntries.Add(Payable(1));
+        context.UserPropertyAccesses.Add(new UserPropertyAccess { UserId = 20, PropertyId = 1,
+            IsActive = true, Status = PropertyUserStatus.Active });
+        await context.SaveChangesAsync();
+        var settlement = await new SettlementService(context, new Clock()).CreateAsync(1, [1]);
+        var allowed = new PropertySettlementHistoryService(context, new ReceiptPermission(true), new Clock());
+        var denied = new PropertySettlementHistoryService(context, new ReceiptPermission(false), new Clock());
+        Assert.Single((await allowed.ListAsync(20, 1, new PropertySettlementHistoryQuery())).Items);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            denied.ListAsync(20, 1, new PropertySettlementHistoryQuery()));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            allowed.ListAsync(21, 1, new PropertySettlementHistoryQuery()));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            allowed.GetAsync(21, 1, settlement.SettlementNumber));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            allowed.ListAsync(20, 2, new PropertySettlementHistoryQuery()));
+        await Assert.ThrowsAsync<ArgumentException>(() => allowed.ListAsync(20, 1,
+            new PropertySettlementHistoryQuery { Status = "Unknown" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => allowed.ListAsync(20, 1,
+            new PropertySettlementHistoryQuery { SortBy = "PropertyId" }));
+        await Assert.ThrowsAsync<ArgumentException>(() => allowed.ListAsync(20, 1,
+            new PropertySettlementHistoryQuery { SortDirection = "Random" }));
+    }
+
     private sealed class ReceiptPermission(bool allowed) : IPermissionService
     {
         public Task<bool> CanAsync(int userId, int propertyId, string permissionKey,
