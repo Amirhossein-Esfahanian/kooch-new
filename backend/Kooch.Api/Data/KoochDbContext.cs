@@ -165,6 +165,29 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private void EnsureFinancialHistoryIsAppendOnly()
     {
+        foreach (var entry in ChangeTracker.Entries<Reservation>()
+                     .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
+        {
+            var key = entry.Entity.CancellationIdempotencyKey;
+            var fingerprint = entry.Entity.CancellationRequestFingerprint;
+            if ((key is null) != (fingerprint is null) ||
+                (key is not null && (string.IsNullOrWhiteSpace(key) || fingerprint?.Length != 64)))
+                throw new InvalidOperationException("Reservation cancellation idempotency key and fingerprint must be a valid pair.");
+
+            if (entry.State != EntityState.Modified) continue;
+            var originalKey = entry.OriginalValues.GetValue<string?>(nameof(Reservation.CancellationIdempotencyKey));
+            var originalFingerprint = entry.OriginalValues.GetValue<string?>(nameof(Reservation.CancellationRequestFingerprint));
+            if (originalKey is not null || originalFingerprint is not null)
+            {
+                if (key != originalKey || fingerprint != originalFingerprint)
+                    throw new InvalidOperationException("Reservation cancellation idempotency metadata is immutable.");
+            }
+            else if (key is not null &&
+                     (entry.OriginalValues.GetValue<ReservationStatus>(nameof(Reservation.Status)) == ReservationStatus.Cancelled ||
+                      entry.Entity.Status != ReservationStatus.Cancelled))
+                throw new InvalidOperationException("Cancellation idempotency metadata must be set with the cancellation transition.");
+        }
+
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
                 (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or RefundRecord
@@ -937,6 +960,11 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(reservation => reservation.ReservationNumber).HasMaxLength(32);
             entity.Property(reservation => reservation.GuestNote).HasMaxLength(2000);
             entity.Property(reservation => reservation.CancellationNote).HasMaxLength(2000);
+            entity.Property(reservation => reservation.CancellationIdempotencyKey).HasMaxLength(200);
+            entity.Property(reservation => reservation.CancellationRequestFingerprint).HasMaxLength(64);
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_Reservations_CancellationIdempotencyPair",
+                "([CancellationIdempotencyKey] IS NULL AND [CancellationRequestFingerprint] IS NULL) OR ([CancellationIdempotencyKey] IS NOT NULL AND [CancellationRequestFingerprint] IS NOT NULL)"));
             entity.Property(reservation => reservation.RowVersion).IsRowVersion();
             entity.HasIndex(reservation => reservation.BookingSessionId);
             entity.HasIndex(reservation => new
@@ -957,6 +985,9 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.HasIndex(reservation => reservation.ReservationNumber)
                 .IsUnique()
                 .HasFilter("[ReservationNumber] IS NOT NULL AND [ReservationNumber] <> ''");
+            entity.HasIndex(reservation => reservation.CancellationIdempotencyKey)
+                .IsUnique()
+                .HasFilter("[CancellationIdempotencyKey] IS NOT NULL");
             entity.HasIndex(reservation => reservation.Status);
             entity.HasIndex(reservation => new { reservation.Status, reservation.HoldUntilUtc });
             entity.HasIndex(reservation => new { reservation.Status, reservation.ApprovalExpiresAtUtc });

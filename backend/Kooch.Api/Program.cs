@@ -11,6 +11,7 @@ using Kooch.Api.Services;
 using Kooch.Api.Services.Amenities;
 using Kooch.Api.Services.Holidays;
 using Kooch.Api.Services.MediaStorage;
+using Kooch.Api.Services.ProfileAvatar;
 using Kooch.Api.Services.SiteSettings;
 using Kooch.Api.Services.Svg;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -38,6 +39,8 @@ builder.Services.Configure<HolidayCalendarSynchronizationOptions>(
 builder.Services.Configure<MediaStorageOptions>(
     builder.Configuration.GetSection(MediaStorageOptions.SectionName));
 builder.Services.AddSingleton<IMediaStorage, FileSystemMediaStorage>();
+builder.Services.AddSingleton<IProfileAvatarStorage, FileSystemProfileAvatarStorage>();
+builder.Services.AddScoped<ProfileAvatarService>();
 builder.Services.AddSingleton<ISvgSanitizer, SvgSanitizer>();
 builder.Services.AddScoped<IAmenityCategoryIconMigration, AmenityCategoryIconMigration>();
 builder.Services.AddScoped<IAmenityIconMigration, AmenityIconMigration>();

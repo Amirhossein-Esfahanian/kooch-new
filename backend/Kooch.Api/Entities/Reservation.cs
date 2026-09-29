@@ -37,6 +37,8 @@ public class Reservation : BaseEntity
     public int? CancelledByUserId { get; set; }
     public ReservationCancellationReason? CancellationReason { get; set; }
     public string? CancellationNote { get; set; }
+    public string? CancellationIdempotencyKey { get; set; }
+    public string? CancellationRequestFingerprint { get; set; }
     public DateTime? ExpiredAtUtc { get; set; }
     public int? ChangedByUserId { get; set; }
     public DateTime? ChangedAtUtc { get; set; }
