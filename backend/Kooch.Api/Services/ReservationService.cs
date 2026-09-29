@@ -99,6 +99,88 @@ public class ReservationService(
         return response;
     }
 
+    public async Task<ReservationCancellationFinancialStateResponse> GetCancellationFinancialStateAsync(
+        int reservationId, CancellationToken cancellationToken = default)
+    {
+        var reservation = await dbContext.Reservations.AsNoTracking()
+            .Where(r => r.Id == reservationId)
+            .Select(r => new { r.PropertyId, r.BookingSessionId, r.Status })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+
+        // Match the successful direct-payment or booking-session allocation used by cancellation resolution.
+        var paymentIds = await dbContext.Payments.IgnoreQueryFilters().AsNoTracking()
+            .Where(p => p.Status == PaymentStatus.Successful &&
+                (p.ReservationId == reservationId || dbContext.PaymentItems.IgnoreQueryFilters()
+                    .Any(i => i.PaymentId == p.Id && i.ReservationId == reservationId)))
+            .Select(p => p.Id).Take(2).ToListAsync(cancellationToken);
+        if (paymentIds.Count > 1)
+            throw new InvalidOperationException("Multiple successful payment allocations exist for this reservation.");
+
+        var resolution = await dbContext.CancellationFinancialResolutions.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(r => r.ReservationId == reservationId, cancellationToken);
+        var refund = await dbContext.RefundRecords.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(r => r.ReservationId == reservationId, cancellationToken);
+        if (paymentIds.Count == 0)
+        {
+            if (resolution is not null || refund is not null)
+                throw new InvalidOperationException("Cancellation financial history has no successful payment allocation.");
+            return new ReservationCancellationFinancialStateResponse { PaidCancellation = false };
+        }
+
+        var payment = await dbContext.Payments.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(p => p.Id == paymentIds[0], cancellationToken);
+        var item = await dbContext.PaymentItems.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(i => i.PaymentId == payment.Id && i.ReservationId == reservationId, cancellationToken);
+        if (payment.ReservationId.HasValue
+            ? payment.ReservationId != reservationId || payment.BookingSessionId.HasValue || item is not null
+            : !payment.BookingSessionId.HasValue || item is null || payment.BookingSessionId != reservation.BookingSessionId)
+            throw new InvalidOperationException("Payment allocation linkage is inconsistent.");
+        var gross = item?.AllocatedAmount ?? payment.Amount;
+        var currency = item?.Currency ?? payment.Currency;
+        if (gross <= 0 || decimal.Round(gross, 2) != gross || gross > payment.Amount ||
+            string.IsNullOrWhiteSpace(currency) || currency.Length != 3 || currency != payment.Currency)
+            throw new InvalidOperationException("Payment allocation amount or currency is inconsistent.");
+
+        var state = new ReservationCancellationFinancialStateResponse
+        {
+            PaidCancellation = true, GrossPaidAmount = gross, Currency = currency
+        };
+        if (resolution is not null)
+        {
+            if (reservation.Status != ReservationStatus.Cancelled || resolution.PaymentId != payment.Id ||
+                resolution.PaymentItemId != item?.Id || resolution.PropertyId != reservation.PropertyId ||
+                resolution.GrossPaidAmount != gross || resolution.Currency != currency ||
+                resolution.GuestRefundAmount < 0 || resolution.FinalPropertyShare < 0 ||
+                resolution.FinalKoochShare < 0 ||
+                resolution.GuestRefundAmount + resolution.FinalPropertyShare + resolution.FinalKoochShare != gross ||
+                refund is not null && (refund.CancellationFinancialResolutionId != resolution.Id ||
+                    refund.PaymentId != payment.Id || refund.PaymentItemId != item?.Id ||
+                    refund.Amount != resolution.GuestRefundAmount || refund.Currency != currency))
+                throw new InvalidOperationException("Cancellation financial resolution and refund history are inconsistent.");
+
+            state.Mode = resolution.Mode;
+            state.GrossPaidAmount = resolution.GrossPaidAmount;
+            state.Currency = resolution.Currency;
+            state.GuestRefundAmount = resolution.GuestRefundAmount;
+            state.FinalPropertyShare = resolution.FinalPropertyShare;
+            state.FinalKoochShare = resolution.FinalKoochShare;
+            state.RefundPending = resolution.GuestRefundAmount > 0 && refund is null;
+        }
+        else if (refund is not null)
+        {
+            if (refund.CancellationFinancialResolutionId.HasValue || refund.PaymentId != payment.Id ||
+                refund.PaymentItemId != item?.Id || refund.PropertyId != reservation.PropertyId ||
+                refund.Amount != gross || refund.Currency != currency)
+                throw new InvalidOperationException("Legacy refund and payment allocation history are inconsistent.");
+            state.AlreadyHandledByLegacyRefundV1 = true;
+        }
+        else if (reservation.Status == ReservationStatus.Cancelled)
+            throw new InvalidOperationException("Paid cancelled reservation has no financial resolution or legacy refund.");
+
+        return state;
+    }
+
     public async Task<PagedResult<ReservationListItemResponse>> SearchByGuestUserAsync(
         int userId,
         ReservationListQuery query,

@@ -330,7 +330,8 @@ public sealed partial class ReservationCancellationOrchestrationTests
         public KoochDbContext Open() => new TestContext(new DbContextOptionsBuilder<KoochDbContext>()
             .UseSqlite($"Data Source={path};Foreign Keys=False;Pooling=False").Options);
 
-        public static async Task<Store> CreateAsync(bool paid = true, bool secondReservation = false)
+        public static async Task<Store> CreateAsync(bool paid = true, bool secondReservation = false,
+            decimal finalAmount = 100, bool session = false)
         {
             var store = new Store(Path.Combine(Path.GetTempPath(), $"kooch-cancel-{Guid.NewGuid():N}.db"));
             await using var db = store.Open();
@@ -340,12 +341,18 @@ public sealed partial class ReservationCancellationOrchestrationTests
             db.Properties.Add(new Property { Id = 1, OwnerId = 1, Name = "Property", Slug = "property" });
             db.RoomTypes.Add(new RoomType { Id = 1, PropertyId = 1, Name = "Room", Slug = "room" });
             db.Guests.Add(new Guest { Id = 1, UserId = 2, FirstName = "Guest" });
+            if (session) db.BookingSessions.Add(new BookingSession
+            {
+                Id = 1, ClientId = 2, GuestId = 1, PropertyId = 1,
+                Currency = "IRR", SessionCode = "O-100001"
+            });
             db.Reservations.Add(new Reservation
             {
                 Id = 1, PropertyId = 1, ClientId = 2, GuestId = 1, RoomTypeId = 1,
                 ReservationNumber = "R-100001", Status = ReservationStatus.Confirmed,
+                BookingSessionId = session ? 1 : null,
                 CheckInDate = new DateOnly(2026, 9, 25), CheckOutDate = new DateOnly(2026, 9, 27),
-                FinalAmount = 100, PaidAtUtc = paid ? Now.UtcDateTime : null
+                FinalAmount = finalAmount, PaidAtUtc = paid ? Now.UtcDateTime : null
             });
             if (secondReservation) db.Reservations.Add(new Reservation
             {
@@ -356,17 +363,25 @@ public sealed partial class ReservationCancellationOrchestrationTests
             if (paid)
             {
                 db.SiteSettings.Add(new SiteSetting { Key = SettlementPolicy.OffsetDaysKey, Value = "999" });
-                db.Payments.Add(new Payment { Id = 1, ReservationId = 1, Amount = 100,
+                db.Payments.Add(new Payment { Id = 1, ReservationId = session ? null : 1,
+                    BookingSessionId = session ? 1 : null, Amount = session ? 200 : 100,
                     Currency = "IRR", Status = PaymentStatus.Successful });
+                if (session) db.PaymentItems.Add(new PaymentItem
+                {
+                    Id = 1, PaymentId = 1, ReservationId = 1,
+                    AllocatedAmount = 100, Currency = "IRR"
+                });
                 db.ReservationFinancialSnapshots.Add(new ReservationFinancialSnapshot
                 {
                     Id = 1, ReservationId = 1, PropertyId = 1, PaymentId = 1,
+                    PaymentItemId = session ? 1 : null,
                     Currency = "IRR", GrossAmount = 100, CommissionBase = 100,
                     CommissionAmount = 12, PropertyPayableAmount = 88
                 });
                 db.FinancialEntries.Add(new FinancialEntry
                 {
                     Id = 1, PropertyId = 1, ReservationId = 1, PaymentId = 1,
+                    PaymentItemId = session ? 1 : null,
                     EntryType = FinancialEntryType.PropertyPayable, Amount = 88, Currency = "IRR",
                     PayableDueDate = new DateOnly(2026, 9, 27),
                     CorrelationKey = "payment:1:reservation:1"
@@ -386,6 +401,7 @@ public sealed partial class ReservationCancellationOrchestrationTests
             base.OnModelCreating(builder);
             builder.Entity<Reservation>().Property(item => item.RowVersion).ValueGeneratedNever();
             builder.Entity<Payment>().Property(item => item.RowVersion).ValueGeneratedNever();
+            builder.Entity<BookingSession>().Property(item => item.RowVersion).ValueGeneratedNever();
         }
     }
 }

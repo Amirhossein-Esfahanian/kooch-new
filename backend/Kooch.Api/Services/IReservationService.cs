@@ -25,6 +25,10 @@ public interface IReservationService
         int? propertyId = null,
         CancellationToken cancellationToken = default);
 
+    Task<ReservationCancellationFinancialStateResponse> GetCancellationFinancialStateAsync(
+        int reservationId,
+        CancellationToken cancellationToken = default);
+
     Task<PagedResult<ReservationListItemResponse>> SearchByGuestUserAsync(
         int userId,
         ReservationListQuery query,

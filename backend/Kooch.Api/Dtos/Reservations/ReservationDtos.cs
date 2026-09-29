@@ -55,6 +55,8 @@ public class ReservationResponse : ReservationListItemResponse
 {
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ReservationCancellationOutcomeResponse? CancellationOutcome { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReservationCancellationFinancialStateResponse? CancellationFinancial { get; set; }
     public int? RatePlanId { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
     public string? GuestEmail { get; set; }
@@ -318,6 +320,19 @@ public sealed class ReservationCancellationOutcomeResponse
     public bool RefundPending { get; set; }
     public bool AlreadyHandledByLegacyRefundV1 { get; set; }
     public bool IdempotentReplay { get; set; }
+}
+
+public sealed class ReservationCancellationFinancialStateResponse
+{
+    public bool PaidCancellation { get; set; }
+    public decimal? GrossPaidAmount { get; set; }
+    public string? Currency { get; set; }
+    public CancellationFinancialResolutionMode? Mode { get; set; }
+    public decimal? GuestRefundAmount { get; set; }
+    public decimal? FinalPropertyShare { get; set; }
+    public decimal? FinalKoochShare { get; set; }
+    public bool RefundPending { get; set; }
+    public bool AlreadyHandledByLegacyRefundV1 { get; set; }
 }
 
 public class ReservationPriceAdjustmentRequest : IValidatableObject
