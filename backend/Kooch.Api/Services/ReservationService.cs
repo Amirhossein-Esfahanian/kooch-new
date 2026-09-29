@@ -1,4 +1,5 @@
 using System.Data;
+using System.Data.Common;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
@@ -6,6 +7,7 @@ using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
@@ -22,7 +24,8 @@ public class ReservationService(
     IPropertyAuthorizationService propertyAuthorizationService,
     IReservationStatusWorkflow statusWorkflow,
     IEffectiveAvailabilityService effectiveAvailabilityService,
-    IHostEnvironment hostEnvironment) : IReservationService
+    IHostEnvironment hostEnvironment,
+    CancellationFinancialResolutionService? financialResolutionService = null) : IReservationService
 {
     private const decimal MaximumStoredAmount = 9999999999999999.99m;
 
@@ -640,6 +643,19 @@ public class ReservationService(
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
     {
+        try { return await CancelCoreAsync(reservationId, request, currentUser, cancellationToken); }
+        catch (DbUpdateException error) when (IsCancellationKeyCollision(error))
+        {
+            throw new InvalidOperationException("Cancellation idempotency key belongs to another reservation.", error);
+        }
+    }
+
+    private async Task<ReservationResponse> CancelCoreAsync(
+        int reservationId,
+        ReservationCancellationRequest request,
+        (int UserId, UserRole Role) currentUser,
+        CancellationToken cancellationToken)
+    {
         if (!request.Reason.HasValue)
         {
             throw new ArgumentException("Cancellation reason is required.");
@@ -650,10 +666,32 @@ public class ReservationService(
         }
 
         var explanation = request.Explanation?.Trim();
-        if (string.IsNullOrWhiteSpace(explanation))
+        if (string.IsNullOrWhiteSpace(explanation) || explanation.Length > 2000)
         {
             throw new ArgumentException("Cancellation explanation is required.");
         }
+
+        var financial = request.FinancialResolution;
+        var mode = financial?.Mode ?? CancellationFinancialResolutionMode.AutomaticFullRefundV1;
+        if (!Enum.IsDefined(mode)) throw new ArgumentException("Cancellation financial mode is invalid.");
+        if (mode == CancellationFinancialResolutionMode.AutomaticFullRefundV1 &&
+            (financial?.GuestRefundAmount is not null || financial?.FinalPropertyShare is not null ||
+             financial?.FinalKoochShare is not null))
+            throw new ArgumentException("Automatic cancellation does not accept manual amounts.");
+        var note = string.IsNullOrWhiteSpace(financial?.Note) ? null : financial.Note.Trim();
+        if (note?.Length > 2000) throw new ArgumentException("Financial note cannot exceed 2000 characters.");
+        var suppliedKey = request.IdempotencyKey?.Trim();
+        if (suppliedKey is { Length: > 200 }) throw new ArgumentException("Cancellation idempotency key is too long.");
+        if (suppliedKey is { Length: 0 }) suppliedKey = null;
+        var fingerprint = CancellationFingerprint(request.Reason.Value, explanation, mode, financial, note);
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
+        // Serialize competing cancellations before loading state or invoking the finance resolver.
+        if (dbContext.Database.IsSqlServer())
+            _ = await dbContext.Reservations.FromSqlInterpolated(
+                    $"SELECT * FROM [Reservations] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {reservationId}")
+                .IgnoreQueryFilters().AsNoTracking().Select(item => item.Id)
+                .SingleOrDefaultAsync(cancellationToken);
 
         var reservation = await dbContext.Reservations
             .Include(item => item.Property)
@@ -669,29 +707,136 @@ public class ReservationService(
             "bookings.cancel",
             cancellationToken);
 
+        if (suppliedKey is not null)
+        {
+            var keyOwner = await dbContext.Reservations.IgnoreQueryFilters().AsNoTracking()
+                .Where(item => item.CancellationIdempotencyKey == suppliedKey)
+                .Select(item => (int?)item.Id).SingleOrDefaultAsync(cancellationToken);
+            if (keyOwner.HasValue && keyOwner.Value != reservationId)
+                throw new InvalidOperationException("Cancellation idempotency key belongs to another reservation.");
+        }
+        var paid = await dbContext.Payments.IgnoreQueryFilters().AsNoTracking().AnyAsync(payment =>
+            payment.Status == PaymentStatus.Successful &&
+            (payment.ReservationId == reservationId || dbContext.PaymentItems.IgnoreQueryFilters()
+                .Any(item => item.PaymentId == payment.Id && item.ReservationId == reservationId)), cancellationToken);
+        if (paid && !await permissionService.HasPermissionAsync(currentUser.UserId,
+                PermissionKey.ManagePayments, null, cancellationToken))
+            throw new UnauthorizedAccessException("Paid cancellation requires ManagePayments.");
+
+        if (reservation.Status == ReservationStatus.Cancelled)
+        {
+            if (suppliedKey is not null && reservation.CancellationIdempotencyKey == suppliedKey &&
+                reservation.CancellationRequestFingerprint == fingerprint)
+            {
+                var replay = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+                replay.CancellationOutcome = await CancellationOutcomeAsync(reservationId, true, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return replay;
+            }
+            throw new InvalidOperationException(reservation.CancellationIdempotencyKey == suppliedKey && suppliedKey is not null
+                ? "Cancellation idempotency key was used with a different request."
+                : "Reservation is already cancelled.");
+        }
+
+        if (paid)
+        {
+            if (suppliedKey is null) throw new ArgumentException("Paid cancellation requires an idempotency key.");
+        }
+        else if (financial is not null)
+            throw new ArgumentException("Unpaid cancellation does not accept a financial resolution.");
+
+        var key = suppliedKey ?? $"legacy-unpaid:{Guid.NewGuid():N}";
+
         statusWorkflow.ValidateTransition(reservation.Status, ReservationStatus.Cancelled);
+
+        if (paid)
+        {
+            var resolver = financialResolutionService ??
+                throw new InvalidOperationException("Cancellation financial resolution service is not configured.");
+            await resolver.ResolveAsync(new CancellationFinancialResolutionRequest
+            {
+                ReservationId = reservationId, Mode = mode, GuestRefundAmount = financial?.GuestRefundAmount,
+                FinalPropertyShare = financial?.FinalPropertyShare, FinalKoochShare = financial?.FinalKoochShare,
+                Reason = request.Reason.Value.ToString(), Note = note, IdempotencyKey = key
+            }, currentUser.UserId, cancellationToken);
+        }
 
         var now = DateTime.UtcNow;
         reservation.Status = ReservationStatus.Cancelled;
         reservation.CancellationReason = request.Reason.Value;
         reservation.CancellationNote = explanation;
+        reservation.CancellationIdempotencyKey = key;
+        reservation.CancellationRequestFingerprint = fingerprint;
         reservation.CancelledAtUtc = now;
         reservation.CancelledByUserId = currentUser.UserId;
         reservation.ChangedAtUtc = now;
         reservation.ChangedByUserId = currentUser.UserId;
 
-        await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        response.CancellationOutcome = await CancellationOutcomeAsync(reservationId, false, cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
         await notificationService.SendAsync(
             CreateReservationNotificationRequest(
                 reservation,
                 NotificationEventType.ReservationCancelled,
                 $"Reservation {reservation.ReservationNumber} was cancelled."),
             cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-
-        return ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        return response;
     }
+
+    private static string CancellationFingerprint(ReservationCancellationReason reason, string explanation,
+        CancellationFinancialResolutionMode mode, ReservationCancellationFinancialRequest? financial, string? note)
+    {
+        var payload = JsonSerializer.Serialize(new
+        {
+            Reason = (int)reason, Explanation = explanation, Mode = (int)mode,
+            Guest = mode == CancellationFinancialResolutionMode.ManualOverride ?
+                financial?.GuestRefundAmount?.ToString("F2", CultureInfo.InvariantCulture) : null,
+            Property = mode == CancellationFinancialResolutionMode.ManualOverride ?
+                financial?.FinalPropertyShare?.ToString("F2", CultureInfo.InvariantCulture) : null,
+            Kooch = mode == CancellationFinancialResolutionMode.ManualOverride ?
+                financial?.FinalKoochShare?.ToString("F2", CultureInfo.InvariantCulture) : null,
+            Note = note
+        });
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
+    }
+
+    private async Task<ReservationCancellationOutcomeResponse> CancellationOutcomeAsync(
+        int reservationId, bool replay, CancellationToken cancellationToken)
+    {
+        var resolution = await dbContext.CancellationFinancialResolutions.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ReservationId == reservationId, cancellationToken);
+        if (resolution is not null)
+        {
+            var refunded = await dbContext.RefundRecords.IgnoreQueryFilters().AsNoTracking()
+                .AnyAsync(item => item.ReservationId == reservationId, cancellationToken);
+            return new ReservationCancellationOutcomeResponse
+            {
+                PaidCancellation = true, FinancialMode = resolution.Mode,
+                GrossPaidAmount = resolution.GrossPaidAmount, GuestRefundAmount = resolution.GuestRefundAmount,
+                FinalPropertyShare = resolution.FinalPropertyShare, FinalKoochShare = resolution.FinalKoochShare,
+                RefundPending = resolution.GuestRefundAmount > 0 && !refunded, IdempotentReplay = replay
+            };
+        }
+        var legacy = await dbContext.RefundRecords.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(item => item.ReservationId == reservationId, cancellationToken);
+        if (legacy is not null)
+            return new ReservationCancellationOutcomeResponse
+            {
+                PaidCancellation = true, FinancialMode = CancellationFinancialResolutionMode.AutomaticFullRefundV1,
+                GrossPaidAmount = legacy.Amount, GuestRefundAmount = legacy.Amount,
+                FinalPropertyShare = 0, FinalKoochShare = 0,
+                AlreadyHandledByLegacyRefundV1 = true, IdempotentReplay = replay
+            };
+        return new ReservationCancellationOutcomeResponse { IdempotentReplay = replay };
+    }
+
+    private static bool IsCancellationKeyCollision(DbUpdateException error) =>
+        error.InnerException is SqlException sql && sql.Errors.Cast<SqlError>().Any(item =>
+            item.Number is 2601 or 2627 && item.Message.Contains("IX_Reservations_CancellationIdempotencyKey", StringComparison.Ordinal)) ||
+        error.InnerException is DbException providerError &&
+            providerError.Message.Contains("Reservations.CancellationIdempotencyKey", StringComparison.Ordinal);
 
     public async Task<ReservationResponse> AdjustPriceAsync(
         int reservationId,

@@ -53,6 +53,8 @@ public class ReservationListItemResponse
 
 public class ReservationResponse : ReservationListItemResponse
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReservationCancellationOutcomeResponse? CancellationOutcome { get; set; }
     public int? RatePlanId { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
     public string? GuestEmail { get; set; }
@@ -279,6 +281,11 @@ public class ReservationCancellationRequest : IValidatableObject
     [MaxLength(2000)]
     public string? Explanation { get; set; }
 
+    [MaxLength(200)]
+    public string? IdempotencyKey { get; set; }
+
+    public ReservationCancellationFinancialRequest? FinancialResolution { get; set; }
+
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         if (string.IsNullOrWhiteSpace(Explanation))
@@ -288,6 +295,29 @@ public class ReservationCancellationRequest : IValidatableObject
                 [nameof(Explanation)]);
         }
     }
+}
+
+public sealed class ReservationCancellationFinancialRequest
+{
+    public CancellationFinancialResolutionMode Mode { get; set; }
+    public decimal? GuestRefundAmount { get; set; }
+    public decimal? FinalPropertyShare { get; set; }
+    public decimal? FinalKoochShare { get; set; }
+    [MaxLength(2000)]
+    public string? Note { get; set; }
+}
+
+public sealed class ReservationCancellationOutcomeResponse
+{
+    public bool PaidCancellation { get; set; }
+    public CancellationFinancialResolutionMode? FinancialMode { get; set; }
+    public decimal? GrossPaidAmount { get; set; }
+    public decimal? GuestRefundAmount { get; set; }
+    public decimal? FinalPropertyShare { get; set; }
+    public decimal? FinalKoochShare { get; set; }
+    public bool RefundPending { get; set; }
+    public bool AlreadyHandledByLegacyRefundV1 { get; set; }
+    public bool IdempotentReplay { get; set; }
 }
 
 public class ReservationPriceAdjustmentRequest : IValidatableObject

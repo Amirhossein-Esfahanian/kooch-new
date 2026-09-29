@@ -113,8 +113,15 @@ public class AdminReservationsController(
         ReservationCancellationRequest request,
         CancellationToken cancellationToken)
     {
-        var response = await reservationService.CancelAsync(id, request, GetCurrentUser(), cancellationToken);
-        return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
+        try
+        {
+            var response = await reservationService.CancelAsync(id, request, GetCurrentUser(), cancellationToken);
+            return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("PostSettlementNettingRequired:", StringComparison.Ordinal))
+        {
+            return Conflict(new { code = "PostSettlementNettingRequired", message = error.Message });
+        }
     }
 
     [HttpPut("{id:int}/price-adjustment")]
