@@ -13,7 +13,7 @@ using Xunit;
 
 namespace Kooch.Api.Tests;
 
-public sealed class ReservationCancellationOrchestrationTests
+public sealed partial class ReservationCancellationOrchestrationTests
 {
     private static readonly DateTimeOffset Now = new(2026, 9, 28, 12, 0, 0, TimeSpan.Zero);
     private static readonly (int UserId, UserRole Role) Actor = (1, UserRole.SuperAdmin);

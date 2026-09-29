@@ -47,6 +47,16 @@ public sealed class ReservationRefundService(KoochDbContext context, SettlementS
         if (payment.Status != PaymentStatus.Successful)
             throw new InvalidOperationException("Only successful payments can be refunded.");
 
+        var resolution = await context.CancellationFinancialResolutions.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(r => r.ReservationId == reservationId, cancellationToken);
+        if (resolution is not null)
+        {
+            var resolvedRefund = await RecordResolvedAsync(reservationId, payment, resolution,
+                reference, reason, key, note, refundedAt, fingerprint, actorId, cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return resolvedRefund;
+        }
+
         var existing = await context.RefundRecords.IgnoreQueryFilters().AsNoTracking()
             .SingleOrDefaultAsync(record => record.IdempotencyKey == key, cancellationToken);
         if (existing is not null)
@@ -135,6 +145,95 @@ public sealed class ReservationRefundService(KoochDbContext context, SettlementS
         }
         return ToResponse(refund);
     }
+
+    private async Task<ReservationRefundResponse> RecordResolvedAsync(int reservationId, Payment payment,
+        CancellationFinancialResolution resolution, string reference,
+        string reason, string key, string? note, DateTime refundedAt, string fingerprint, int actorId,
+        CancellationToken cancellationToken)
+    {
+        await PropertyFinanceLock.AcquireAsync(context, resolution.PropertyId, cancellationToken);
+        var persisted = await context.CancellationFinancialResolutions.IgnoreQueryFilters().AsNoTracking()
+            .SingleAsync(r => r.Id == resolution.Id, cancellationToken);
+        var reservation = await context.Reservations.IgnoreQueryFilters().AsNoTracking()
+            .Where(r => r.Id == reservationId)
+            .Select(r => new { r.Id, r.PropertyId, r.BookingSessionId, r.Status, r.ReservationNumber })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+        if (reservation.Status != ReservationStatus.Cancelled)
+            throw new InvalidOperationException("A finalized cancellation refund requires a cancelled reservation.");
+        var item = await context.PaymentItems.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(i => i.PaymentId == payment.Id && i.ReservationId == reservationId, cancellationToken);
+        if (payment.ReservationId.HasValue
+            ? payment.ReservationId != reservationId || payment.BookingSessionId.HasValue || item is not null
+            : !payment.BookingSessionId.HasValue || item is null || payment.BookingSessionId != reservation.BookingSessionId)
+            throw new InvalidOperationException("Payment allocation linkage is inconsistent.");
+        var allocatedAmount = item?.AllocatedAmount ?? payment.Amount;
+        var allocatedCurrency = item?.Currency ?? payment.Currency;
+        var snapshot = await context.ReservationFinancialSnapshots.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(s => s.Id == persisted.ReservationFinancialSnapshotId, cancellationToken);
+        var original = await context.FinancialEntries.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(e => e.Id == persisted.OriginalPropertyPayableEntryId, cancellationToken);
+        if (persisted.ReservationId != reservationId || persisted.PaymentId != payment.Id ||
+            persisted.PaymentItemId != item?.Id || persisted.PropertyId != reservation.PropertyId ||
+            persisted.GrossPaidAmount != allocatedAmount || persisted.Currency != allocatedCurrency ||
+            allocatedCurrency != payment.Currency || allocatedAmount <= 0 || allocatedAmount > payment.Amount ||
+            snapshot is null || snapshot.ReservationId != reservationId || snapshot.PaymentId != payment.Id ||
+            snapshot.PaymentItemId != item?.Id || snapshot.PropertyId != persisted.PropertyId ||
+            snapshot.GrossAmount != persisted.GrossPaidAmount || snapshot.Currency != persisted.Currency ||
+            original is null || original.EntryType != FinancialEntryType.PropertyPayable ||
+            original.PaymentId != payment.Id || original.PaymentItemId != item?.Id ||
+            original.ReservationId != reservationId || original.PropertyId != persisted.PropertyId ||
+            original.Currency != persisted.Currency)
+            throw new InvalidOperationException("Finalized cancellation allocation history is inconsistent.");
+        if (persisted.GuestRefundAmount == 0)
+            throw new InvalidOperationException("NoGuestRefundRequired: cancellation allocation has no guest refund.");
+        if (persisted.GuestRefundAmount < 0 || persisted.GuestRefundAmount > persisted.GrossPaidAmount)
+            throw new InvalidOperationException("Finalized guest refund amount is inconsistent.");
+
+        var existingForKey = await context.RefundRecords.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(r => r.IdempotencyKey == key, cancellationToken);
+        if (existingForKey is not null)
+        {
+            if (existingForKey.RequestFingerprint != fingerprint ||
+                existingForKey.CancellationFinancialResolutionId != persisted.Id ||
+                existingForKey.Amount != persisted.GuestRefundAmount || existingForKey.Currency != persisted.Currency)
+                throw new InvalidOperationException("RefundIdempotencyConflict: key was used with different execution facts.");
+            return ToResolutionResponse(existingForKey, reservation.ReservationNumber, replay: true);
+        }
+        var prior = await context.RefundRecords.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(r => r.PaymentId == payment.Id && r.ReservationId == reservationId, cancellationToken);
+        if (prior is not null)
+            throw new InvalidOperationException(prior.CancellationFinancialResolutionId == persisted.Id
+                ? "RefundAlreadyRecorded: this cancellation allocation was already refunded."
+                : "Inconsistent mixed refund history: unrelated legacy refund exists for this allocation.");
+
+        var refund = new RefundRecord
+        {
+            PaymentId = payment.Id, PaymentItemId = item?.Id, ReservationId = reservationId,
+            PropertyId = persisted.PropertyId, ReservationFinancialSnapshotId = snapshot.Id,
+            OriginalPropertyPayableEntryId = original.Id, CancellationFinancialResolutionId = persisted.Id,
+            Amount = persisted.GuestRefundAmount, Currency = persisted.Currency,
+            RefundedAtUtc = refundedAt, ReferenceNumber = reference, Reason = reason, Note = note,
+            RecordedByUserId = actorId, RecordedAtUtc = clock.GetUtcNow().UtcDateTime,
+            IdempotencyKey = key, RequestFingerprint = fingerprint, CreatedByUserId = actorId
+        };
+        context.RefundRecords.Add(refund);
+        try { await context.SaveChangesAsync(cancellationToken); }
+        catch (DbUpdateException error) when (error.InnerException is SqlException sql &&
+            sql.Errors.Cast<SqlError>().Any(e => e.Number is 2601 or 2627 &&
+                e.Message.Contains("IX_RefundRecords_", StringComparison.Ordinal)))
+        {
+            throw new InvalidOperationException("RefundAlreadyRecorded: this cancellation allocation was already refunded.", error);
+        }
+        return ToResolutionResponse(refund, reservation.ReservationNumber, replay: false);
+    }
+
+    private static ReservationRefundResponse ToResolutionResponse(RefundRecord record, string? reservationNumber, bool replay) =>
+        ToResponse(record) with
+        {
+            Id = null, PaymentId = null, PaymentItemId = null,
+            ReservationNumber = reservationNumber, IdempotentReplay = replay
+        };
 
     private static string Required(string? value, int length, string field) =>
         !string.IsNullOrWhiteSpace(value) && value.Trim().Length <= length ? value.Trim()

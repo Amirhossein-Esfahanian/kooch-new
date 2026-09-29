@@ -13,6 +13,15 @@ public sealed class ReservationRefundRequest
     [Required, MaxLength(200)] public string IdempotencyKey { get; set; } = string.Empty;
 }
 
-public sealed record ReservationRefundResponse(int Id, int ReservationId, int PaymentId, int? PaymentItemId,
+public sealed record ReservationRefundResponse(
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? Id,
+    int ReservationId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? PaymentId,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? PaymentItemId,
     decimal Amount, string Currency, DateTime RefundedAtUtc, string ReferenceNumber, string Reason,
-    string? Note, DateTime RecordedAtUtc);
+    string? Note, DateTime RecordedAtUtc)
+{
+    public string? ReservationNumber { get; init; }
+    public bool RefundRecorded { get; init; } = true;
+    public bool IdempotentReplay { get; init; }
+}

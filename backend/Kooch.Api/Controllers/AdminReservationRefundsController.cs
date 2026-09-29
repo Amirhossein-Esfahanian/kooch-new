@@ -14,6 +14,23 @@ public sealed class AdminReservationRefundsController(ReservationRefundService s
 {
     [HttpPost]
     public async Task<ActionResult<ReservationRefundResponse>> Record(int reservationId,
-        ReservationRefundRequest request, CancellationToken cancellationToken) =>
-        Ok(await service.RecordAsync(reservationId, request, GetCurrentUser().UserId, cancellationToken));
+        ReservationRefundRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await service.RecordAsync(reservationId, request, GetCurrentUser().UserId, cancellationToken));
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("NoGuestRefundRequired:", StringComparison.Ordinal))
+        {
+            return Conflict(new { code = "NoGuestRefundRequired", message = error.Message });
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("RefundAlreadyRecorded:", StringComparison.Ordinal))
+        {
+            return Conflict(new { code = "RefundAlreadyRecorded", message = error.Message });
+        }
+        catch (InvalidOperationException error) when (error.Message.StartsWith("RefundIdempotencyConflict:", StringComparison.Ordinal))
+        {
+            return Conflict(new { code = "RefundIdempotencyConflict", message = error.Message });
+        }
+    }
 }
