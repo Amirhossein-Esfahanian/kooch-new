@@ -6,27 +6,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services.Wallet;
 
-public sealed class WalletService(KoochDbContext context, TimeProvider timeProvider)
+public sealed partial class WalletService(KoochDbContext context, TimeProvider timeProvider)
 {
     public async Task<WalletBalanceResponse> GetBalanceAsync(int userId, string currency,
         CancellationToken cancellationToken = default)
     {
         currency = NormalizeCurrency(currency);
         var now = timeProvider.GetUtcNow().UtcDateTime;
-        var lots = await context.WalletEntries.AsNoTracking()
-            .Where(entry => entry.WalletAccount.UserId == userId && entry.WalletAccount.Currency == currency &&
-                (!entry.WalletLot.ExpiresAtUtc.HasValue || entry.WalletLot.ExpiresAtUtc > now))
-            .GroupBy(entry => new { entry.WalletLotId, entry.WalletLot.IsWithdrawable })
-            .Select(group => new
-            {
-                group.Key.IsWithdrawable,
-                Balance = group.Sum(entry => entry.Direction == WalletEntryDirection.Credit ? entry.Amount : -entry.Amount)
-            })
-            .ToListAsync(cancellationToken);
+        var lots = await AvailableLots(userId, currency, now).ToListAsync(cancellationToken);
         decimal withdrawable = 0m, nonWithdrawable = 0m;
         foreach (var lot in lots)
         {
-            var available = Math.Max(0m, lot.Balance);
+            var available = Math.Max(0m, lot.Available);
             if (lot.IsWithdrawable) withdrawable += available;
             else nonWithdrawable += available;
         }
@@ -65,12 +56,7 @@ public sealed class WalletService(KoochDbContext context, TimeProvider timeProvi
             if (!await context.Users.AnyAsync(user => user.Id == command.UserId, cancellationToken))
                 throw new KeyNotFoundException("Wallet owner was not found.");
 
-            // The unique index range is locked even before the account exists. Concurrent first
-            // funding is serialized by SQL Server; later operations lock this same account boundary.
-            var accounts = context.Database.IsSqlServer()
-                ? context.WalletAccounts.FromSqlInterpolated(
-                    $"SELECT * FROM [WalletAccounts] WITH (UPDLOCK, HOLDLOCK, INDEX(IX_WalletAccounts_UserId_Currency)) WHERE [UserId] = {command.UserId} AND [Currency] = {currency}")
-                : context.WalletAccounts;
+            var accounts = WalletAccountLock.Query(context, command.UserId, currency);
             var account = await accounts.SingleOrDefaultAsync(
                 item => item.UserId == command.UserId && item.Currency == currency, cancellationToken);
             if (account is null)

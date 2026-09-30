@@ -32,6 +32,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<WalletAccount> WalletAccounts => Set<WalletAccount>();
     public DbSet<WalletLot> WalletLots => Set<WalletLot>();
     public DbSet<WalletEntry> WalletEntries => Set<WalletEntry>();
+    public DbSet<WalletHold> WalletHolds => Set<WalletHold>();
+    public DbSet<WalletHoldAllocation> WalletHoldAllocations => Set<WalletHoldAllocation>();
     public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
     public DbSet<CancellationFinancialResolution> CancellationFinancialResolutions => Set<CancellationFinancialResolution>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
@@ -107,6 +109,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigurePayments(modelBuilder);
         ConfigureFinancialFoundation(modelBuilder);
         ConfigureWalletFoundation(modelBuilder);
+        ConfigureWalletHolds(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureAmenities(modelBuilder);
         ConfigureImages(modelBuilder);
@@ -286,6 +289,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private void EnsureWalletHistoryIsImmutable()
     {
+        EnsureWalletHoldsAreValid();
         foreach (var entry in ChangeTracker.Entries<WalletAccount>())
         {
             if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
@@ -317,6 +321,112 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 entry.Entity.Amount != decimal.Round(entry.Entity.Amount, 2)))
                 throw new InvalidOperationException("Wallet ledger amounts must be positive decimal(18,2) values.");
         }
+    }
+
+    private void EnsureWalletHoldsAreValid()
+    {
+        foreach (var entry in ChangeTracker.Entries<WalletHoldAllocation>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Wallet hold allocations are immutable.");
+            if (entry.State != EntityState.Added) continue;
+            var allocation = entry.Entity;
+            if (!ValidWalletAmount(allocation.Amount) || allocation.IsDeleted || allocation.DeletedAtUtc.HasValue ||
+                allocation.WalletHold is null || Entry(allocation.WalletHold).State != EntityState.Added ||
+                allocation.WalletAccountId != allocation.WalletHold.WalletAccountId)
+                throw new InvalidOperationException("Allocations must be created with their new hold and wallet account.");
+        }
+        var consumed = new List<WalletHold>();
+        foreach (var entry in ChangeTracker.Entries<WalletHold>())
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Wallet hold history cannot be deleted.");
+            if (entry.State is not (EntityState.Added or EntityState.Modified)) continue;
+            var hold = entry.Entity;
+            var validState = hold.Status switch
+            {
+                WalletHoldStatus.Active => hold.ConsumedAtUtc is null && hold.ReleasedAtUtc is null && hold.ExpiredAtUtc is null,
+                WalletHoldStatus.Consumed => hold.ConsumedAtUtc.HasValue && hold.ConsumedAtUtc < hold.ExpiresAtUtc &&
+                    hold.ReleasedAtUtc is null && hold.ExpiredAtUtc is null,
+                WalletHoldStatus.Released => hold.ReleasedAtUtc.HasValue && hold.ReleasedAtUtc < hold.ExpiresAtUtc &&
+                    hold.ConsumedAtUtc is null && hold.ExpiredAtUtc is null,
+                WalletHoldStatus.Expired => hold.ExpiredAtUtc.HasValue && hold.ExpiredAtUtc >= hold.ExpiresAtUtc &&
+                    hold.ConsumedAtUtc is null && hold.ReleasedAtUtc is null,
+                _ => false
+            };
+            if (!ValidWalletAmount(hold.Amount) || hold.IsDeleted || hold.DeletedAtUtc.HasValue || !validState)
+                throw new InvalidOperationException("Wallet hold amount and lifecycle metadata are invalid.");
+            if (entry.State == EntityState.Added)
+            {
+                if (hold.Status != WalletHoldStatus.Active || hold.Allocations.Count == 0 ||
+                    hold.Allocations.Sum(allocation => allocation.Amount) != hold.Amount ||
+                    hold.Allocations.Select(allocation => allocation.WalletLotId).Distinct().Count() != hold.Allocations.Count)
+                    throw new InvalidOperationException("A new active hold requires exact, distinct lot allocations.");
+                continue;
+            }
+            if (entry.OriginalValues.GetValue<WalletHoldStatus>(nameof(WalletHold.Status)) != WalletHoldStatus.Active ||
+                hold.Status == WalletHoldStatus.Active || entry.Properties.Any(property => property.IsModified &&
+                    property.Metadata.Name is not (nameof(WalletHold.Status) or nameof(WalletHold.ConsumedAtUtc) or
+                    nameof(WalletHold.ReleasedAtUtc) or nameof(WalletHold.ExpiredAtUtc) or nameof(WalletHold.UpdatedAtUtc))))
+                throw new InvalidOperationException("Only an active wallet hold can transition once; its identity and allocation cannot change.");
+            if (hold.Status == WalletHoldStatus.Consumed)
+            {
+                if (!entry.Collection(item => item.Allocations).IsLoaded ||
+                    hold.Allocations.Sum(allocation => allocation.Amount) != hold.Amount)
+                    throw new InvalidOperationException("Consuming a hold requires all persisted allocations.");
+                consumed.Add(hold);
+            }
+        }
+        if (consumed.Count == 0) return;
+        var expected = consumed.SelectMany(hold => hold.Allocations)
+            .GroupBy(a => (a.WalletAccountId, a.WalletLotId, a.Amount)).ToDictionary(group => group.Key, group => group.Count());
+        var actual = ChangeTracker.Entries<WalletEntry>().Where(entry => entry.State == EntityState.Added &&
+                entry.Entity.Direction == WalletEntryDirection.Debit)
+            .GroupBy(entry => (entry.Entity.WalletAccountId, entry.Entity.WalletLotId, entry.Entity.Amount))
+            .ToDictionary(group => group.Key, group => group.Count());
+        if (expected.Count != actual.Count || expected.Any(pair => actual.GetValueOrDefault(pair.Key) != pair.Value))
+            throw new InvalidOperationException("Hold consumption requires exactly one matching debit per allocation.");
+    }
+
+    private static bool ValidWalletAmount(decimal amount) => amount > 0 && amount <= 9999999999999999.99m &&
+        amount == decimal.Round(amount, 2);
+
+    private static void ConfigureWalletHolds(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WalletHold>(entity =>
+        {
+            entity.Property(hold => hold.Amount).HasPrecision(18, 2);
+            entity.Property(hold => hold.Status).IsConcurrencyToken();
+            entity.HasAlternateKey(hold => new { hold.Id, hold.WalletAccountId });
+            entity.HasIndex(hold => new { hold.WalletAccountId, hold.Status, hold.ExpiresAtUtc });
+            entity.HasOne(hold => hold.WalletAccount).WithMany().HasForeignKey(hold => hold.WalletAccountId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletHolds", table =>
+            {
+                table.HasCheckConstraint("CK_WalletHolds_Amount", "[Amount] > 0");
+                table.HasCheckConstraint("CK_WalletHolds_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+                table.HasCheckConstraint("CK_WalletHolds_State", "([Status] = 0 AND [ConsumedAtUtc] IS NULL AND [ReleasedAtUtc] IS NULL AND [ExpiredAtUtc] IS NULL) OR " +
+                    "([Status] = 1 AND [ConsumedAtUtc] IS NOT NULL AND [ConsumedAtUtc] < [ExpiresAtUtc] AND [ReleasedAtUtc] IS NULL AND [ExpiredAtUtc] IS NULL) OR " +
+                    "([Status] = 2 AND [ReleasedAtUtc] IS NOT NULL AND [ReleasedAtUtc] < [ExpiresAtUtc] AND [ConsumedAtUtc] IS NULL AND [ExpiredAtUtc] IS NULL) OR " +
+                    "([Status] = 3 AND [ExpiredAtUtc] IS NOT NULL AND [ExpiredAtUtc] >= [ExpiresAtUtc] AND [ConsumedAtUtc] IS NULL AND [ReleasedAtUtc] IS NULL)");
+            });
+        });
+        modelBuilder.Entity<WalletHoldAllocation>(entity =>
+        {
+            entity.Property(allocation => allocation.Amount).HasPrecision(18, 2);
+            entity.HasIndex(allocation => new { allocation.WalletHoldId, allocation.WalletLotId }).IsUnique();
+            entity.HasOne(allocation => allocation.WalletHold).WithMany(hold => hold.Allocations)
+                .HasForeignKey(allocation => new { allocation.WalletHoldId, allocation.WalletAccountId })
+                .HasPrincipalKey(hold => new { hold.Id, hold.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(allocation => allocation.WalletLot).WithMany()
+                .HasForeignKey(allocation => new { allocation.WalletLotId, allocation.WalletAccountId })
+                .HasPrincipalKey(lot => new { lot.Id, lot.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletHoldAllocations", table =>
+            {
+                table.HasCheckConstraint("CK_WalletHoldAllocations_Amount", "[Amount] > 0");
+                table.HasCheckConstraint("CK_WalletHoldAllocations_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
     }
 
     private static void ConfigureWalletFoundation(ModelBuilder modelBuilder)
