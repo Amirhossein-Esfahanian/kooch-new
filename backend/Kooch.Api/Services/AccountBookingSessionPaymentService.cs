@@ -32,12 +32,16 @@ public sealed class AccountBookingSessionPaymentService : IAccountBookingSession
             })
             .ToArray();
 
-    public async Task<AccountBookingSessionPaymentInitiationResponse> InitiateAsync(
+    public Task<AccountBookingSessionPaymentInitiationResponse> InitiateAsync(
         int userId,
         string sessionCode,
         string providerKey,
         string idempotencyKey,
         CancellationToken cancellationToken = default)
+        => InitiateAsync(userId, sessionCode, providerKey, idempotencyKey, 0, cancellationToken);
+
+    public async Task<AccountBookingSessionPaymentInitiationResponse> InitiateAsync(int userId, string sessionCode,
+        string providerKey, string idempotencyKey, decimal walletAmount, CancellationToken cancellationToken = default)
     {
         if (userId <= 0)
         {
@@ -50,7 +54,7 @@ public sealed class AccountBookingSessionPaymentService : IAccountBookingSession
             throw new ArgumentException("Session code is required.", nameof(sessionCode));
         }
 
-        var provider = ResolveSelectableProvider(providerKey);
+        var provider = walletAmount > 0 && string.IsNullOrWhiteSpace(providerKey) ? null : ResolveSelectableProvider(providerKey);
         var sessionId = await dbContext.BookingSessions.AsNoTracking()
             .Where(session =>
                 session.ClientId == userId &&
@@ -62,8 +66,9 @@ public sealed class AccountBookingSessionPaymentService : IAccountBookingSession
             new BookingSessionPaymentInitiationRequest
             {
                 BookingSessionId = sessionId,
-                Provider = provider.ProviderKey,
-                IdempotencyKey = idempotencyKey
+                Provider = provider?.ProviderKey ?? string.Empty,
+                IdempotencyKey = idempotencyKey,
+                WalletAmount = walletAmount
             },
             cancellationToken);
 
@@ -71,9 +76,13 @@ public sealed class AccountBookingSessionPaymentService : IAccountBookingSession
         {
             PaymentId = result.PaymentId,
             Status = result.Status,
+            WalletAmount = result.WalletAmount,
+            FundingCompleted = result.FundingCompleted,
             Amount = result.Amount,
             Currency = result.Currency,
-            CheckoutDestination = provider.ProviderKey == InternalTestPaymentProvider.ProviderName
+            CheckoutDestination = result.FundingCompleted
+                ? $"/booking/sessions/{Uri.EscapeDataString(normalizedSessionCode)}"
+                : provider?.ProviderKey == InternalTestPaymentProvider.ProviderName
                 ? $"/booking/sessions/{Uri.EscapeDataString(normalizedSessionCode)}/mock-payment"
                 : string.Empty,
             IsReplay = result.IsReplay

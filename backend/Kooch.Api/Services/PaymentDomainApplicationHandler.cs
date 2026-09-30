@@ -79,22 +79,43 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
     private async Task ApplySessionPaymentAsync(
         Payment payment,
         CancellationToken cancellationToken)
+        => await ApplySessionFundingAsync(payment.BookingSessionId!.Value, payment, null, cancellationToken);
+
+    internal Task ApplyWalletOnlyAsync(BookingFundingAttempt attempt, CancellationToken cancellationToken) =>
+        ApplySessionFundingAsync(attempt.BookingSessionId, null, attempt, cancellationToken);
+
+    internal async Task LockSessionCapacityAsync(int sessionId, CancellationToken ct)
     {
-        if (payment.ReservationId.HasValue)
+        var ids = await dbContext.Reservations.AsNoTracking().Where(r => r.BookingSessionId == sessionId)
+            .Select(r => r.Id).ToArrayAsync(ct);
+        await LockCapacityResourcesAsync(await GetReservationLockTargetsAsync(ids, ct), ct);
+    }
+
+    private async Task ApplySessionFundingAsync(int sessionId, Payment? payment,
+        BookingFundingAttempt? funding, CancellationToken cancellationToken)
+    {
+        if (payment?.ReservationId.HasValue == true)
         {
             throw new InvalidOperationException("A session payment cannot target a legacy reservation.");
         }
 
-        var session = await LockBookingSessionAsync(payment.BookingSessionId!.Value, cancellationToken);
-        var items = await LockPaymentItemsAsync(payment.Id, cancellationToken);
-        ValidatePaymentItems(payment, items);
+        var session = await LockBookingSessionAsync(sessionId, cancellationToken);
+        IReadOnlyList<PaymentItem> items = payment is null ? [] : await LockPaymentItemsAsync(payment.Id, cancellationToken);
+        if (payment is not null)
+        {
+            ValidatePaymentItems(payment, items);
+            funding = await dbContext.BookingFundingAttempts.Include(a => a.Items)
+                .SingleOrDefaultAsync(a => a.PaymentId == payment.Id, cancellationToken);
+        }
+        var grossByReservation = funding?.Items.ToDictionary(i => i.ReservationId, i => i.GuestPayable)
+            ?? items.ToDictionary(i => i.ReservationId, i => i.AllocatedAmount);
 
         var sessionReservationIds = await dbContext.Reservations.AsNoTracking()
             .Where(reservation => reservation.BookingSessionId == session.Id)
             .OrderBy(reservation => reservation.Id)
             .Select(reservation => reservation.Id)
             .ToListAsync(cancellationToken);
-        var itemReservationIds = items.Select(item => item.ReservationId).Order().ToArray();
+        var itemReservationIds = grossByReservation.Keys.Order().ToArray();
         if (sessionReservationIds.Count == 0 ||
             itemReservationIds.Except(sessionReservationIds).Any())
         {
@@ -108,31 +129,40 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
         var now = DateTime.UtcNow;
         var includedReservations = ValidateAndResolveSessionApplicationScope(
             session,
-            payment,
-            items,
+            payment?.Currency ?? funding!.Currency,
+            grossByReservation,
             allReservations,
             now);
         var includedReservationIds = includedReservations
             .Select(reservation => reservation.Id)
             .ToArray();
         await EnsureNoPreviousSuccessfulPaymentAsync(
-            payment.Id,
+            payment?.Id ?? 0,
             includedReservationIds,
             cancellationToken);
         await EnsureSessionCapacityIsStillHeldAsync(includedReservations, cancellationToken);
 
+        if (funding is not null)
+            await BookingWalletFunding.ConsumeAsync(dbContext, funding, session, payment, items, cancellationToken);
+
         var itemsByReservationId = items.ToDictionary(item => item.ReservationId);
         foreach (var reservation in includedReservations)
         {
-            var item = itemsByReservationId[reservation.Id];
-            await paymentFinancializationService.ApplyAsync(
+            var item = itemsByReservationId.GetValueOrDefault(reservation.Id);
+            if (funding is not null)
+                await paymentFinancializationService.ApplyFundingAsync(reservation, payment, item,
+                    grossByReservation[reservation.Id], funding.Items.Single(i => i.ReservationId == reservation.Id).WalletAmount,
+                    funding.Id, now, cancellationToken);
+            else await paymentFinancializationService.ApplyAsync(
                 reservation,
-                payment,
-                item,
-                item.AllocatedAmount,
+                payment!,
+                item!,
+                item!.AllocatedAmount,
                 now,
                 cancellationToken);
         }
+
+        if (funding is not null) await BookingWalletFunding.AddProvenanceAsync(dbContext, funding, cancellationToken);
 
         ApplySuccessfulPayment(payment, includedReservations, now);
         foreach (var reservation in includedReservations)
@@ -140,7 +170,7 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
             await reservationVoucherService.IssueAsync(
                 reservation,
                 payment,
-                itemsByReservationId[reservation.Id],
+                itemsByReservationId.GetValueOrDefault(reservation.Id),
                 cancellationToken);
         }
     }
@@ -223,18 +253,17 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
 
     private static IReadOnlyList<Reservation> ValidateAndResolveSessionApplicationScope(
         BookingSession session,
-        Payment payment,
-        IReadOnlyList<PaymentItem> items,
+        string currency,
+        IReadOnlyDictionary<int, decimal> grossByReservation,
         IReadOnlyList<Reservation> allReservations,
         DateTime now)
     {
-        if (!CurrencyEquals(session.Currency, payment.Currency))
+        if (!CurrencyEquals(session.Currency, currency))
         {
             throw new InvalidOperationException("Payment currency does not match the booking session.");
         }
 
-        var itemsByReservationId = items.ToDictionary(item => item.ReservationId);
-        var includedReservations = new List<Reservation>(items.Count);
+        var includedReservations = new List<Reservation>(grossByReservation.Count);
         foreach (var reservation in allReservations)
         {
             if (reservation.BookingSessionId != session.Id)
@@ -242,10 +271,10 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
                 throw new InvalidOperationException("A payment item targets a reservation outside the booking session.");
             }
 
-            if (itemsByReservationId.TryGetValue(reservation.Id, out var item))
+            if (grossByReservation.TryGetValue(reservation.Id, out var gross))
             {
-                ValidatePayableReservation(reservation, payment.Currency, now);
-                if (item.AllocatedAmount != reservation.FinalAmount)
+                ValidatePayableReservation(reservation, currency, now);
+                if (gross != reservation.FinalAmount)
                 {
                     throw new InvalidOperationException(
                         "Payment allocation does not match the reservation payable amount.");
@@ -262,7 +291,7 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
             }
         }
 
-        if (includedReservations.Count != items.Count)
+        if (includedReservations.Count != grossByReservation.Count)
         {
             throw new InvalidOperationException(
                 "A payment item targets a reservation outside the booking session.");
@@ -406,7 +435,7 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
     }
 
     private void ApplySuccessfulPayment(
-        Payment payment,
+        Payment? payment,
         IReadOnlyList<Reservation> reservations,
         DateTime now,
         bool capacityExists = true)
@@ -433,7 +462,7 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
     }
 
     private void AddAuditAndNotification(
-        Payment payment,
+        Payment? payment,
         Reservation reservation,
         DateTime now,
         bool capacityExists)
@@ -447,8 +476,8 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
             EntityId = reservation.Id,
             EntityName = reservation.ReservationNumber,
             Description = capacityExists
-                ? $"Payment {payment.Id} confirmed reservation {reservation.ReservationNumber}."
-                : $"Payment {payment.Id} was received after reservation capacity was lost.",
+                ? $"{(payment is null ? "Wallet funding" : $"Payment {payment.Id}")} confirmed reservation {reservation.ReservationNumber}."
+                : $"Payment {payment?.Id} was received after reservation capacity was lost.",
             OccurredAtUtc = now
         });
         dbContext.NotificationLogs.Add(new NotificationLog
@@ -466,7 +495,7 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
                 : $"Payment succeeded but reservation {reservation.ReservationNumber} lost capacity.",
             DataJson = JsonSerializer.Serialize(new
             {
-                paymentId = payment.Id,
+                paymentId = payment?.Id,
                 reservationId = reservation.Id,
                 reservationNumber = reservation.ReservationNumber,
                 reservation.PropertyId
@@ -566,7 +595,9 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
         var reservations = new List<Reservation>(reservationIds.Count);
         foreach (var id in reservationIds.Order())
         {
-            reservations.Add(await GetReservationLockQuery(id).SingleAsync(cancellationToken));
+            var reservation = await GetReservationLockQuery(id).SingleAsync(cancellationToken);
+            await dbContext.Entry(reservation).ReloadAsync(cancellationToken);
+            reservations.Add(reservation);
         }
 
         var ids = reservations.Select(reservation => reservation.Id).ToArray();

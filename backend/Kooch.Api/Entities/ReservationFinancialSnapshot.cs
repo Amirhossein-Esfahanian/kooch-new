@@ -4,7 +4,10 @@ public class ReservationFinancialSnapshot : BaseEntity
 {
     public int ReservationId { get; set; }
     public int PropertyId { get; set; }
-    public int PaymentId { get; set; }
+    public int? PaymentId { get; set; }
+    public int? BookingFundingAttemptId { get; set; }
+    public decimal WalletFundingAmount { get; set; }
+    public decimal ExternalPaymentAmount { get; private set; }
     public int? PaymentItemId { get; set; }
     public decimal GrossAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
@@ -20,6 +23,6 @@ public class ReservationFinancialSnapshot : BaseEntity
 
     public Reservation Reservation { get; set; } = null!;
     public Property Property { get; set; } = null!;
-    public Payment Payment { get; set; } = null!;
+    public Payment? Payment { get; set; }
     public PaymentItem? PaymentItem { get; set; }
 }

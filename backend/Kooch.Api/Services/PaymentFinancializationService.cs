@@ -8,23 +8,50 @@ public sealed class PaymentFinancializationService(
     KoochDbContext dbContext,
     ICommissionPolicyResolver commissionPolicyResolver) : IPaymentFinancializationService
 {
-    public async Task ApplyAsync(
+    public Task ApplyAsync(
         Reservation reservation,
         Payment payment,
         PaymentItem? paymentItem,
         decimal grossAmount,
         DateTime calculatedAtUtc,
         CancellationToken cancellationToken = default)
+        => ApplyCoreAsync(reservation, payment, paymentItem, grossAmount, 0, null, calculatedAtUtc, cancellationToken);
+
+    public Task ApplyFundingAsync(Reservation reservation, Payment? payment, PaymentItem? paymentItem,
+        decimal grossAmount, decimal walletAmount, int fundingAttemptId, DateTime calculatedAtUtc,
+        CancellationToken cancellationToken = default) =>
+        ApplyCoreAsync(reservation, payment, paymentItem, grossAmount, walletAmount, fundingAttemptId, calculatedAtUtc, cancellationToken);
+
+    private async Task ApplyCoreAsync(Reservation reservation, Payment? payment, PaymentItem? paymentItem,
+        decimal grossAmount, decimal walletAmount, int? fundingAttemptId, DateTime calculatedAtUtc, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(reservation);
-        ArgumentNullException.ThrowIfNull(payment);
-        ValidateSource(reservation, payment, paymentItem, grossAmount);
+        if (!fundingAttemptId.HasValue)
+        {
+            ArgumentNullException.ThrowIfNull(payment);
+            ValidateSource(reservation, payment, paymentItem, grossAmount);
+        }
+        else
+        {
+            var plan = await dbContext.BookingFundingItems.AsNoTracking()
+                .Include(i => i.BookingFundingAttempt).ThenInclude(a => a.WalletHold)
+                .SingleAsync(i => i.BookingFundingAttemptId == fundingAttemptId && i.ReservationId == reservation.Id, cancellationToken);
+            if (plan.GuestPayable != grossAmount || plan.WalletAmount != walletAmount ||
+                plan.BookingFundingAttempt.PaymentId != payment?.Id ||
+                plan.BookingFundingAttempt.WalletHold.Status != WalletHoldStatus.Consumed ||
+                grossAmount != reservation.FinalAmount ||
+                grossAmount - walletAmount != (paymentItem?.AllocatedAmount ?? 0) ||
+                (paymentItem is not null && (paymentItem.PaymentId != payment?.Id || paymentItem.ReservationId != reservation.Id)))
+                throw new InvalidOperationException("Financial recognition must match the consumed checkout funding plan.");
+        }
 
-        var currency = (paymentItem?.Currency ?? payment.Currency).Trim();
-        var correlationKey = $"payment:{payment.Id}:reservation:{reservation.Id}";
+        var currency = (paymentItem?.Currency ?? payment?.Currency ?? reservation.Currency).Trim();
+        var correlationKey = payment is not null ? $"payment:{payment.Id}:reservation:{reservation.Id}"
+            : $"wallet-funding:{fundingAttemptId}:reservation:{reservation.Id}";
+        var paymentId = payment?.Id;
         var existingSnapshot = await dbContext.ReservationFinancialSnapshots
             .SingleOrDefaultAsync(snapshot =>
-                    snapshot.PaymentId == payment.Id &&
+                    snapshot.PaymentId == paymentId &&
                     snapshot.ReservationId == reservation.Id,
                 cancellationToken);
         var existingEntry = await dbContext.FinancialEntries
@@ -43,6 +70,8 @@ public sealed class PaymentFinancializationService(
                 paymentItem,
                 grossAmount,
                 currency);
+            if (existingSnapshot!.WalletFundingAmount != walletAmount || existingSnapshot.BookingFundingAttemptId != fundingAttemptId)
+                throw new InvalidOperationException("Existing reservation funding differs from the checkout plan.");
             return;
         }
 
@@ -55,7 +84,9 @@ public sealed class PaymentFinancializationService(
         {
             ReservationId = reservation.Id,
             PropertyId = reservation.PropertyId,
-            PaymentId = payment.Id,
+            PaymentId = paymentId,
+            BookingFundingAttemptId = fundingAttemptId,
+            WalletFundingAmount = walletAmount,
             PaymentItemId = paymentItem?.Id,
             GrossAmount = calculation.GrossAmount,
             Currency = currency,
@@ -73,7 +104,7 @@ public sealed class PaymentFinancializationService(
         {
             PropertyId = reservation.PropertyId,
             ReservationId = reservation.Id,
-            PaymentId = payment.Id,
+            PaymentId = paymentId,
             PaymentItemId = paymentItem?.Id,
             EntryType = FinancialEntryType.PropertyPayable,
             Amount = calculation.PropertyPayableAmount,
@@ -90,11 +121,11 @@ public sealed class PaymentFinancializationService(
 
     private static void ValidateSource(
         Reservation reservation,
-        Payment payment,
+        Payment? payment,
         PaymentItem? paymentItem,
         decimal grossAmount)
     {
-        if (payment.Id <= 0)
+        if (payment is null || payment.Id <= 0)
         {
             throw new InvalidOperationException("Payment must be persisted before financial recognition.");
         }
@@ -143,7 +174,7 @@ public sealed class PaymentFinancializationService(
         ReservationFinancialSnapshot? snapshot,
         FinancialEntry? entry,
         Reservation reservation,
-        Payment payment,
+        Payment? payment,
         PaymentItem? paymentItem,
         decimal grossAmount,
         string currency)
@@ -158,7 +189,7 @@ public sealed class PaymentFinancializationService(
             !CurrencyEquals(snapshot.Currency, currency) ||
             entry.PropertyId != reservation.PropertyId ||
             entry.ReservationId != reservation.Id ||
-            entry.PaymentId != payment.Id ||
+            entry.PaymentId != payment?.Id ||
             entry.PaymentItemId != paymentItem?.Id ||
             entry.Amount != snapshot.PropertyPayableAmount ||
             !CurrencyEquals(entry.Currency, currency))

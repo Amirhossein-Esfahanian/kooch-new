@@ -6,7 +6,7 @@ public interface IReservationVoucherService
 {
     Task<ReservationVoucher> IssueAsync(
         Reservation reservation,
-        Payment payment,
+        Payment? payment,
         PaymentItem? paymentItem,
         CancellationToken cancellationToken = default);
 }

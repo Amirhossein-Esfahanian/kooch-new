@@ -91,6 +91,7 @@ public sealed class AccountBookingSessionsController(
             sessionCode,
             request.ProviderKey,
             request.IdempotencyKey,
+            request.WalletAmount,
             cancellationToken));
     }
 }

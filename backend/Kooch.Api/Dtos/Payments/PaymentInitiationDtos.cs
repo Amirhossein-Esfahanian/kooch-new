@@ -9,15 +9,18 @@ public sealed class BookingSessionPaymentInitiationRequest
     public int BookingSessionId { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string IdempotencyKey { get; set; } = string.Empty;
+    public decimal WalletAmount { get; set; }
 }
 
 public sealed class BookingSessionPaymentInitiationResult
 {
-    public int PaymentId { get; set; }
+    public int? PaymentId { get; set; }
+    public decimal WalletAmount { get; set; }
+    public bool FundingCompleted { get; set; }
     public int BookingSessionId { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = string.Empty;
-    public PaymentStatus Status { get; set; }
+    public PaymentStatus? Status { get; set; }
     public string Provider { get; set; } = string.Empty;
     public string? TransactionReference { get; set; }
     [JsonConverter(typeof(UtcDateTimeJsonConverter))]

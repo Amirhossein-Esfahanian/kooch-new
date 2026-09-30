@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class PaymentService : IPaymentService
+public partial class PaymentService : IPaymentService
 {
     private const int MaximumIdempotencyKeyLength = 200;
     private const int MaximumProviderLength = 100;
@@ -118,9 +118,20 @@ public class PaymentService : IPaymentService
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
-        var result = await CreateOrReplayPendingPaymentAsync(request, cancellationToken);
-        await transaction.CommitAsync(cancellationToken);
-        return result;
+        try
+        {
+            var result = request.WalletAmount > 0
+                ? await CreateOrReplayWalletFundingAsync(request, cancellationToken)
+                : await CreateOrReplayPendingPaymentAsync(request, cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     private async Task<BookingSessionPaymentInitiationResult> CreateOrReplayPendingPaymentAsync(
@@ -128,6 +139,8 @@ public class PaymentService : IPaymentService
         CancellationToken cancellationToken)
     {
         var session = await LockBookingSessionAsync(request.BookingSessionId, cancellationToken);
+        if (await dbContext.BookingFundingAttempts.AnyAsync(a => a.BookingSessionId == session.Id && a.IdempotencyKey == request.IdempotencyKey, cancellationToken))
+            throw new InvalidOperationException("This checkout key already belongs to a wallet funding attempt.");
         var reservations = await LockSessionReservationsAsync(session.Id, cancellationToken);
         var now = DateTime.UtcNow;
         var candidate = BuildInitiationCandidate(
@@ -555,8 +568,12 @@ public class PaymentService : IPaymentService
         return reservations;
     }
 
-    private async Task<Reservation> LockReservationAsync(int id, CancellationToken token) =>
-        await GetReservationLockQuery(id).SingleAsync(token);
+    private async Task<Reservation> LockReservationAsync(int id, CancellationToken token)
+    {
+        var reservation = await GetReservationLockQuery(id).SingleAsync(token);
+        await dbContext.Entry(reservation).ReloadAsync(token);
+        return reservation;
+    }
 
     private IQueryable<Reservation> GetReservationLockQuery(int id) =>
         dbContext.Database.IsSqlServer()
@@ -807,7 +824,9 @@ public class PaymentService : IPaymentService
         }
 
         var provider = request.Provider?.Trim();
-        if (string.IsNullOrEmpty(provider) || provider.Length > MaximumProviderLength)
+        if (request.WalletAmount < 0 || request.WalletAmount != decimal.Round(request.WalletAmount, 2) || request.WalletAmount > 9999999999999999.99m)
+            throw new ArgumentException("Wallet funding must be a nonnegative decimal(18,2) amount.");
+        if ((string.IsNullOrEmpty(provider) && request.WalletAmount == 0) || provider?.Length > MaximumProviderLength)
         {
             throw new ArgumentException("A valid payment provider is required.", nameof(request));
         }
@@ -818,7 +837,7 @@ public class PaymentService : IPaymentService
             throw new ArgumentException("A valid idempotency key is required.", nameof(request));
         }
 
-        return new NormalizedPaymentInitiationRequest(request.BookingSessionId, provider, key);
+        return new NormalizedPaymentInitiationRequest(request.BookingSessionId, provider ?? string.Empty, key, request.WalletAmount);
     }
 
     private static string NormalizeCurrency(string currency)
@@ -866,7 +885,8 @@ public class PaymentService : IPaymentService
     private sealed record NormalizedPaymentInitiationRequest(
         int BookingSessionId,
         string Provider,
-        string IdempotencyKey);
+        string IdempotencyKey,
+        decimal WalletAmount);
 
     private sealed record PaymentInitiationCandidate(
         string Provider,

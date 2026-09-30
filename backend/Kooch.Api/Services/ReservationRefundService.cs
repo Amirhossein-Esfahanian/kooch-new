@@ -31,6 +31,7 @@ public sealed class ReservationRefundService(KoochDbContext context, SettlementS
             ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
 
         // Resolve only a successful allocation. Ambiguous legacy data must not pick an arbitrary payment.
+        await BookingWalletFunding.EnsureCashCancellationSupportedAsync(context, reservationId, cancellationToken);
         var candidates = await context.Payments.IgnoreQueryFilters().AsNoTracking()
             .Where(payment => payment.Status == PaymentStatus.Successful &&
                 (payment.ReservationId == reservationId || context.PaymentItems.IgnoreQueryFilters()

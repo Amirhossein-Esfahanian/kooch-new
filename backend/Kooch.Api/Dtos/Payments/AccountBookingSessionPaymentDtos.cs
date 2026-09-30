@@ -6,6 +6,7 @@ public sealed class AccountBookingSessionPaymentRequest
 {
     public string ProviderKey { get; set; } = string.Empty;
     public string IdempotencyKey { get; set; } = string.Empty;
+    public decimal WalletAmount { get; set; }
 }
 
 public sealed class AccountPaymentProviderOptionResponse
@@ -16,8 +17,10 @@ public sealed class AccountPaymentProviderOptionResponse
 
 public sealed class AccountBookingSessionPaymentInitiationResponse
 {
-    public int PaymentId { get; set; }
-    public PaymentStatus Status { get; set; }
+    public int? PaymentId { get; set; }
+    public PaymentStatus? Status { get; set; }
+    public decimal WalletAmount { get; set; }
+    public bool FundingCompleted { get; set; }
     public decimal Amount { get; set; }
     public string Currency { get; set; } = string.Empty;
     public string CheckoutDestination { get; set; } = string.Empty;

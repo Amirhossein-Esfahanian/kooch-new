@@ -60,6 +60,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 ReservationCount = session.Reservations.Count,
                 TotalAmount = session.Reservations.Sum(reservation => reservation.FinalAmount),
                 Currency = session.Currency,
+                WalletOnlyFundingApplied = dbContext.BookingFundingAttempts.Any(attempt =>
+                    attempt.BookingSessionId == session.Id && attempt.PaymentId == null && attempt.AppliedAtUtc.HasValue),
                 PaymentStatus = session.Payments
                     .OrderByDescending(payment => payment.CreatedAtUtc)
                     .ThenByDescending(payment => payment.Id)
@@ -462,7 +464,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
         var isPaymentReady = projection.AllAwaitingPayment &&
             !projection.HasMissingPaymentDeadline &&
             hasConsistentFutureDeadline;
-        var derivedStatus = projection.PaymentStatus switch
+        var derivedStatus = projection.WalletOnlyFundingApplied ? "PaymentSuccessful" : projection.PaymentStatus switch
         {
             PaymentStatus.Successful => "PaymentSuccessful",
             PaymentStatus.Failed => "PaymentFailed",
@@ -509,6 +511,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
         public decimal TotalAmount { get; set; }
         public string Currency { get; set; } = string.Empty;
         public PaymentStatus? PaymentStatus { get; set; }
+        public bool WalletOnlyFundingApplied { get; set; }
         public DateTime? PaymentDeadlineUtc { get; set; }
         public bool HasPendingApproval { get; set; }
         public bool AllPendingApproval { get; set; }

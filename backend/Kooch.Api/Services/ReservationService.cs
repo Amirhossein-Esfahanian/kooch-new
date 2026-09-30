@@ -769,6 +769,7 @@ public class ReservationService(
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         // Serialize competing cancellations before loading state or invoking the finance resolver.
+        await BookingFundingLock.ForReservationAsync(dbContext, reservationId, cancellationToken);
         if (dbContext.Database.IsSqlServer())
             _ = await dbContext.Reservations.FromSqlInterpolated(
                     $"SELECT * FROM [Reservations] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {reservationId}")
@@ -797,6 +798,7 @@ public class ReservationService(
             if (keyOwner.HasValue && keyOwner.Value != reservationId)
                 throw new InvalidOperationException("Cancellation idempotency key belongs to another reservation.");
         }
+        await BookingWalletFunding.EnsureCashCancellationSupportedAsync(dbContext, reservationId, cancellationToken);
         var paid = await dbContext.Payments.IgnoreQueryFilters().AsNoTracking().AnyAsync(payment =>
             payment.Status == PaymentStatus.Successful &&
             (payment.ReservationId == reservationId || dbContext.PaymentItems.IgnoreQueryFilters()
@@ -1094,6 +1096,7 @@ public class ReservationService(
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
+        await BookingFundingLock.ForReservationAsync(dbContext, reservationId, cancellationToken);
         var hasSuccessfulPayment = await LockPaymentsAsync(
             relatedPaymentIds,
             cancellationToken);

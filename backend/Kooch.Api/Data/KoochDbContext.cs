@@ -34,6 +34,9 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<WalletEntry> WalletEntries => Set<WalletEntry>();
     public DbSet<WalletHold> WalletHolds => Set<WalletHold>();
     public DbSet<WalletHoldAllocation> WalletHoldAllocations => Set<WalletHoldAllocation>();
+    public DbSet<BookingFundingAttempt> BookingFundingAttempts => Set<BookingFundingAttempt>();
+    public DbSet<BookingFundingItem> BookingFundingItems => Set<BookingFundingItem>();
+    public DbSet<ReservationWalletFundingAllocation> ReservationWalletFundingAllocations => Set<ReservationWalletFundingAllocation>();
     public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
     public DbSet<CancellationFinancialResolution> CancellationFinancialResolutions => Set<CancellationFinancialResolution>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
@@ -110,6 +113,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureFinancialFoundation(modelBuilder);
         ConfigureWalletFoundation(modelBuilder);
         ConfigureWalletHolds(modelBuilder);
+        ConfigureReservationFunding(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureAmenities(modelBuilder);
         ConfigureImages(modelBuilder);
@@ -173,6 +177,35 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     private void EnsureFinancialHistoryIsAppendOnly()
     {
         EnsureWalletHistoryIsImmutable();
+        foreach (var entry in ChangeTracker.Entries<BookingFundingItem>().Where(e => e.State == EntityState.Added))
+        {
+            var item = entry.Entity;
+            if (item.BookingFundingAttempt is null || Entry(item.BookingFundingAttempt).State != EntityState.Added ||
+                !ValidWalletAmount(item.GuestPayable) || item.WalletAmount < 0 || item.WalletAmount > item.GuestPayable ||
+                item.WalletAmount != decimal.Round(item.WalletAmount, 2) || item.IsDeleted || item.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Funding items must be created with their immutable checkout plan.");
+        }
+        foreach (var entry in ChangeTracker.Entries<ReservationWalletFundingAllocation>().Where(e => e.State == EntityState.Added))
+        {
+            var row = entry.Entity;
+            var snapshot = row.ReservationFinancialSnapshot;
+            var source = WalletHoldAllocations.Local.SingleOrDefault(a => a.Id == row.WalletHoldAllocationId);
+            var attempt = BookingFundingAttempts.Local.SingleOrDefault(a => a.Id == snapshot?.BookingFundingAttemptId);
+            var reservation = Reservations.Local.SingleOrDefault(r => r.Id == snapshot?.ReservationId);
+            if (snapshot is null || Entry(snapshot).State != EntityState.Added || !ValidWalletAmount(row.Amount) ||
+                row.IsDeleted || row.DeletedAtUtc.HasValue || source is null || attempt is null || reservation is null ||
+                source.WalletHoldId != attempt.WalletHoldId || source.WalletLotId != row.WalletLotId ||
+                source.WalletAccountId != row.WalletAccountId || reservation.BookingSessionId != attempt.BookingSessionId)
+                throw new InvalidOperationException("Wallet provenance must be finalized with its original reservation snapshot and consumed hold.");
+        }
+        foreach (var entry in ChangeTracker.Entries<BookingFundingAttempt>())
+        {
+            if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
+                (entry.OriginalValues.GetValue<DateTime?>(nameof(BookingFundingAttempt.AppliedAtUtc)).HasValue ||
+                 !entry.Entity.AppliedAtUtc.HasValue || entry.Properties.Any(p => p.IsModified &&
+                     p.Metadata.Name is not (nameof(BookingFundingAttempt.AppliedAtUtc) or nameof(BookingFundingAttempt.UpdatedAtUtc))))))
+                throw new InvalidOperationException("Checkout funding plans are immutable and may only be applied once.");
+        }
         foreach (var entry in ChangeTracker.Entries<Reservation>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {
@@ -199,7 +232,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
                 (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or RefundRecord
-                    or CancellationFinancialResolution) &&
+                    or CancellationFinancialResolution or BookingFundingItem or ReservationWalletFundingAllocation) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
@@ -425,6 +458,52 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             {
                 table.HasCheckConstraint("CK_WalletHoldAllocations_Amount", "[Amount] > 0");
                 table.HasCheckConstraint("CK_WalletHoldAllocations_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+    }
+
+    private static void ConfigureReservationFunding(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<BookingFundingAttempt>(entity =>
+        {
+            entity.Property(a => a.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(a => a.RequestHash).HasMaxLength(64).IsRequired();
+            entity.Property(a => a.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(a => a.AppliedAtUtc).IsConcurrencyToken();
+            entity.HasIndex(a => new { a.BookingSessionId, a.IdempotencyKey }).IsUnique();
+            entity.HasIndex(a => a.WalletHoldId).IsUnique();
+            entity.HasIndex(a => a.PaymentId).IsUnique().HasFilter("[PaymentId] IS NOT NULL");
+            entity.HasOne<BookingSession>().WithMany().HasForeignKey(a => a.BookingSessionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(a => a.WalletHold).WithMany().HasForeignKey(a => a.WalletHoldId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(a => a.Payment).WithMany().HasForeignKey(a => a.PaymentId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("BookingFundingAttempts", t => t.HasCheckConstraint("CK_BookingFundingAttempts_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL"));
+        });
+        modelBuilder.Entity<BookingFundingItem>(entity =>
+        {
+            entity.Property(i => i.GuestPayable).HasPrecision(18, 2);
+            entity.Property(i => i.WalletAmount).HasPrecision(18, 2);
+            entity.HasIndex(i => new { i.BookingFundingAttemptId, i.ReservationId }).IsUnique();
+            entity.HasOne(i => i.BookingFundingAttempt).WithMany(a => a.Items).HasForeignKey(i => i.BookingFundingAttemptId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Reservation>().WithMany().HasForeignKey(i => i.ReservationId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("BookingFundingItems", t =>
+            {
+                t.HasCheckConstraint("CK_BookingFundingItems_Amounts", "CAST([GuestPayable] AS decimal(18,2)) > 0 AND CAST([WalletAmount] AS decimal(18,2)) >= 0 AND CAST([WalletAmount] AS decimal(18,2)) <= CAST([GuestPayable] AS decimal(18,2))");
+                t.HasCheckConstraint("CK_BookingFundingItems_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+        modelBuilder.Entity<WalletHoldAllocation>().HasAlternateKey(a => new { a.Id, a.WalletLotId, a.WalletAccountId });
+        modelBuilder.Entity<ReservationWalletFundingAllocation>(entity =>
+        {
+            entity.Property(a => a.Amount).HasPrecision(18, 2);
+            entity.HasIndex(a => new { a.ReservationFinancialSnapshotId, a.WalletHoldAllocationId }).IsUnique();
+            entity.HasOne(a => a.ReservationFinancialSnapshot).WithMany().HasForeignKey(a => a.ReservationFinancialSnapshotId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(a => a.WalletHoldAllocation).WithMany()
+                .HasForeignKey(a => new { a.WalletHoldAllocationId, a.WalletLotId, a.WalletAccountId })
+                .HasPrincipalKey(a => new { a.Id, a.WalletLotId, a.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("ReservationWalletFundingAllocations", t =>
+            {
+                t.HasCheckConstraint("CK_ReservationWalletFundingAllocations_Amount", "CAST([Amount] AS decimal(18,2)) > 0");
+                t.HasCheckConstraint("CK_ReservationWalletFundingAllocations_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
             });
         });
     }
@@ -1481,6 +1560,17 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<ReservationFinancialSnapshot>(entity =>
         {
             entity.Property(snapshot => snapshot.GrossAmount).HasPrecision(18, 2);
+            entity.Property(snapshot => snapshot.WalletFundingAmount).HasPrecision(18, 2).HasDefaultValue(0m);
+            entity.Property(snapshot => snapshot.ExternalPaymentAmount).HasPrecision(18, 2)
+                .HasComputedColumnSql("CAST([GrossAmount] - [WalletFundingAmount] AS decimal(18,2))", stored: true);
+            entity.HasOne<BookingFundingAttempt>().WithMany().HasForeignKey(s => s.BookingFundingAttemptId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasIndex(s => s.ReservationId).IsUnique().HasFilter("[PaymentId] IS NULL");
+            entity.ToTable("ReservationFinancialSnapshots", table => table.HasCheckConstraint(
+                "CK_ReservationFinancialSnapshots_Funding",
+                "CAST([WalletFundingAmount] AS decimal(18,2)) >= 0 AND CAST([GrossAmount] AS decimal(18,2)) >= CAST([WalletFundingAmount] AS decimal(18,2)) AND " +
+                "(CAST([WalletFundingAmount] AS decimal(18,2)) = 0 OR [BookingFundingAttemptId] IS NOT NULL) AND " +
+                "([PaymentId] IS NOT NULL OR (CAST([WalletFundingAmount] AS decimal(18,2)) = CAST([GrossAmount] AS decimal(18,2)) AND CAST([WalletFundingAmount] AS decimal(18,2)) > 0 AND [PaymentItemId] IS NULL))"));
             entity.Property(snapshot => snapshot.Currency).HasMaxLength(3).IsRequired();
             entity.Property(snapshot => snapshot.CommissionRate).HasPrecision(5, 2);
             entity.Property(snapshot => snapshot.CommissionBase).HasPrecision(18, 2);

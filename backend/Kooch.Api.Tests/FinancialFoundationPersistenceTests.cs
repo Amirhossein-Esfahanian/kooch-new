@@ -102,7 +102,7 @@ public sealed class FinancialFoundationPersistenceTests
 
         AssertForeignKey(snapshotType, nameof(ReservationFinancialSnapshot.ReservationId), typeof(Reservation), true);
         AssertForeignKey(snapshotType, nameof(ReservationFinancialSnapshot.PropertyId), typeof(Property), true);
-        AssertForeignKey(snapshotType, nameof(ReservationFinancialSnapshot.PaymentId), typeof(Payment), true);
+        AssertForeignKey(snapshotType, nameof(ReservationFinancialSnapshot.PaymentId), typeof(Payment), false);
         AssertForeignKey(snapshotType, nameof(ReservationFinancialSnapshot.PaymentItemId), typeof(PaymentItem), false);
 
         AssertForeignKey(entryType, nameof(FinancialEntry.PropertyId), typeof(Property), true);

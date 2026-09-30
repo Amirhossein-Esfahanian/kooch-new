@@ -44,6 +44,7 @@ public sealed class CancellationFinancialResolutionService(
         CancellationFinancialResolutionRequest request, int actorId, string fingerprint, CancellationToken ct)
     {
         var reservationId = request.ReservationId;
+        await BookingWalletFunding.EnsureCashCancellationSupportedAsync(context, reservationId, ct);
         var candidates = await context.Payments.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.Status == PaymentStatus.Successful && (p.ReservationId == reservationId ||
                 context.PaymentItems.IgnoreQueryFilters().Any(i => i.PaymentId == p.Id && i.ReservationId == reservationId)))

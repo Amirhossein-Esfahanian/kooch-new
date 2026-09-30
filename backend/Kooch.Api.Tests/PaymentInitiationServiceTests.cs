@@ -206,6 +206,10 @@ public sealed class PaymentInitiationServiceTests
         await using var harness = await PaymentInitiationHarness.CreateAsync(
             Reservation(deadline, 100),
             Reservation(deadline, 200, ReservationStatus.Rejected));
+        // Confirmation also issues the real voucher; provide its existing required sources.
+        harness.Context.Users.Add(new User { Id = 1, FirstName = "Booking", LastName = "Guest" });
+        harness.Context.Properties.Add(new Property { Id = 1, OwnerId = 1, Name = "Property", Slug = "property" });
+        await harness.Context.SaveChangesAsync();
         await harness.Service.InitiateBookingSessionPaymentAsync(Request());
         var payment = await harness.Context.Payments.Include(item => item.Items).SingleAsync();
         var handler = new PaymentDomainApplicationHandler(

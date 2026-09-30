@@ -134,6 +134,8 @@ public sealed class PaymentCallbackService(
 
         dbContext.PaymentCallbackReceipts.Add(receipt);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (!callback.IsSuccessful && !payment.AppliedAtUtc.HasValue)
+            await BookingWalletFunding.ReleaseFailedPaymentAsync(dbContext, payment, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ToResult(
             payment,
@@ -309,9 +311,23 @@ public sealed class PaymentCallbackService(
             : PaymentCallbackApplicationState.Received;
     }
 
-    private async Task<Payment> LockPaymentAsync(int paymentId, CancellationToken token) =>
-        await GetPaymentLockQuery(paymentId).SingleOrDefaultAsync(token)
-        ?? throw new KeyNotFoundException("Payment not found.");
+    private async Task<Payment> LockPaymentAsync(int paymentId, CancellationToken token)
+    {
+        // Match checkout's lock order: session, payment, capacity/reservations, wallet, finance.
+        var sessionId = await dbContext.Payments.AsNoTracking().Where(p => p.Id == paymentId)
+            .Select(p => p.BookingSessionId).SingleOrDefaultAsync(token);
+        if (sessionId.HasValue)
+        {
+            var sessions = dbContext.Database.IsSqlServer()
+                ? dbContext.BookingSessions.FromSqlInterpolated($"SELECT * FROM BookingSessions WITH (UPDLOCK, HOLDLOCK) WHERE Id = {sessionId.Value}")
+                : dbContext.BookingSessions.Where(s => s.Id == sessionId.Value);
+            await sessions.AsNoTracking().SingleAsync(token);
+        }
+        var payment = await GetPaymentLockQuery(paymentId).SingleOrDefaultAsync(token)
+            ?? throw new KeyNotFoundException("Payment not found.");
+        await dbContext.Entry(payment).ReloadAsync(token);
+        return payment;
+    }
 
     private IQueryable<Payment> GetPaymentLockQuery(int paymentId) =>
         dbContext.Database.IsSqlServer()

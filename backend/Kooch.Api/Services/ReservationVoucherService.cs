@@ -10,12 +10,11 @@ public sealed class ReservationVoucherService(
 {
     public async Task<ReservationVoucher> IssueAsync(
         Reservation reservation,
-        Payment payment,
+        Payment? payment,
         PaymentItem? paymentItem,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(reservation);
-        ArgumentNullException.ThrowIfNull(payment);
         if (reservation.Status != ReservationStatus.Confirmed)
         {
             throw new InvalidOperationException("A voucher can only be issued for a confirmed reservation.");
@@ -94,17 +93,18 @@ public sealed class ReservationVoucherService(
 
     private async Task<ReservationFinancialSnapshot> ResolveFinancialSnapshotAsync(
         Reservation reservation,
-        Payment payment,
+        Payment? payment,
         PaymentItem? paymentItem,
         CancellationToken cancellationToken)
     {
+        var paymentId = payment?.Id;
         var local = dbContext.ReservationFinancialSnapshots.Local
-            .Where(snapshot => snapshot.ReservationId == reservation.Id && snapshot.PaymentId == payment.Id)
+            .Where(snapshot => snapshot.ReservationId == reservation.Id && snapshot.PaymentId == paymentId)
             .ToArray();
         var candidates = local.Length > 0
             ? local
             : await dbContext.ReservationFinancialSnapshots.IgnoreQueryFilters()
-                .Where(snapshot => snapshot.ReservationId == reservation.Id && snapshot.PaymentId == payment.Id)
+                .Where(snapshot => snapshot.ReservationId == reservation.Id && snapshot.PaymentId == paymentId)
                 .ToArrayAsync(cancellationToken);
         var snapshot = candidates.Length switch
         {

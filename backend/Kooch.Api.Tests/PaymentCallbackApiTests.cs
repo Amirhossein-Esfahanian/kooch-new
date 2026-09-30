@@ -300,6 +300,8 @@ public sealed class PaymentCallbackApiTests
                 .Options;
             var context = new KoochDbContext(options);
             var deadline = DateTime.UtcNow.AddHours(1);
+            context.Users.Add(new User { Id = 1, FirstName = "Callback", LastName = "Guest" });
+            context.Properties.Add(new Property { Id = 1, OwnerId = 1, Name = "Property", Slug = "property" });
             context.SiteSettings.Add(new SiteSetting
             {
                 Key = CommissionPolicyResolver.DirectSettingKey,
