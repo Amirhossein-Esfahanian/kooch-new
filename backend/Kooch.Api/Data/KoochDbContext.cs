@@ -29,6 +29,9 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ManualPaymentDetails> ManualPaymentDetails => Set<ManualPaymentDetails>();
     public DbSet<ReservationFinancialSnapshot> ReservationFinancialSnapshots => Set<ReservationFinancialSnapshot>();
     public DbSet<FinancialEntry> FinancialEntries => Set<FinancialEntry>();
+    public DbSet<WalletAccount> WalletAccounts => Set<WalletAccount>();
+    public DbSet<WalletLot> WalletLots => Set<WalletLot>();
+    public DbSet<WalletEntry> WalletEntries => Set<WalletEntry>();
     public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
     public DbSet<CancellationFinancialResolution> CancellationFinancialResolutions => Set<CancellationFinancialResolution>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
@@ -103,6 +106,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
         ConfigureFinancialFoundation(modelBuilder);
+        ConfigureWalletFoundation(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureAmenities(modelBuilder);
         ConfigureImages(modelBuilder);
@@ -165,6 +169,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private void EnsureFinancialHistoryIsAppendOnly()
     {
+        EnsureWalletHistoryIsImmutable();
         foreach (var entry in ChangeTracker.Entries<Reservation>()
                      .Where(entry => entry.State is EntityState.Added or EntityState.Modified))
         {
@@ -277,6 +282,90 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                     && property.Metadata.Name != nameof(SettlementItem.UpdatedAtUtc)))
                 throw new InvalidOperationException("Settlement items can only be released during cancellation; their history is immutable.");
         }
+    }
+
+    private void EnsureWalletHistoryIsImmutable()
+    {
+        foreach (var entry in ChangeTracker.Entries<WalletAccount>())
+        {
+            if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
+                (entry.Property(account => account.UserId).IsModified ||
+                 entry.Property(account => account.Currency).IsModified ||
+                 entry.Property(account => account.IsDeleted).IsModified ||
+                 entry.Property(account => account.DeletedAtUtc).IsModified)))
+                throw new InvalidOperationException("Wallet ownership and currency are immutable; accounts cannot be deleted.");
+            if (entry.State == EntityState.Added && (entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue ||
+                entry.Entity.Currency.Length != 3 || entry.Entity.Currency.Any(c => c is < 'A' or > 'Z')))
+                throw new InvalidOperationException("Wallet account requires a canonical three-letter currency and cannot be deleted.");
+        }
+        foreach (var entry in ChangeTracker.Entries<WalletLot>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Wallet lot provenance is immutable.");
+            if (entry.State == EntityState.Added && (entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue ||
+                !Enum.IsDefined(entry.Entity.SourceType) ||
+                entry.Entity.IsWithdrawable != (entry.Entity.SourceType == WalletSourceType.CashReceived)))
+                throw new InvalidOperationException("Wallet lot must have valid server-defined funding provenance.");
+        }
+        foreach (var entry in ChangeTracker.Entries<WalletEntry>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Wallet ledger entries are append-only.");
+            if (entry.State == EntityState.Added && (entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue ||
+                !Enum.IsDefined(entry.Entity.Direction) || entry.Entity.Amount <= 0 ||
+                entry.Entity.Amount > 9999999999999999.99m ||
+                entry.Entity.Amount != decimal.Round(entry.Entity.Amount, 2)))
+                throw new InvalidOperationException("Wallet ledger amounts must be positive decimal(18,2) values.");
+        }
+    }
+
+    private static void ConfigureWalletFoundation(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WalletAccount>(entity =>
+        {
+            entity.Property(account => account.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(account => account.RowVersion).IsRowVersion();
+            entity.HasIndex(account => new { account.UserId, account.Currency }).IsUnique();
+            entity.HasOne(account => account.User).WithMany().HasForeignKey(account => account.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletAccounts", table =>
+            {
+                table.HasCheckConstraint("CK_WalletAccounts_CurrencyLength", "[Currency] LIKE '___'");
+                table.HasCheckConstraint("CK_WalletAccounts_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+        modelBuilder.Entity<WalletLot>(entity =>
+        {
+            entity.Property(lot => lot.SourceReference).HasMaxLength(200);
+            entity.Property(lot => lot.Reason).HasMaxLength(1000);
+            entity.HasAlternateKey(lot => new { lot.Id, lot.WalletAccountId });
+            entity.HasIndex(lot => new { lot.WalletAccountId, lot.ExpiresAtUtc });
+            entity.HasOne(lot => lot.WalletAccount).WithMany().HasForeignKey(lot => lot.WalletAccountId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(lot => lot.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletLots", table =>
+            {
+                table.HasCheckConstraint("CK_WalletLots_Source", "([SourceType] = 0 AND [IsWithdrawable] = 1) OR ([SourceType] = 1 AND [IsWithdrawable] = 0)");
+                table.HasCheckConstraint("CK_WalletLots_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+        modelBuilder.Entity<WalletEntry>(entity =>
+        {
+            entity.Property(entry => entry.Amount).HasPrecision(18, 2);
+            entity.HasOne(entry => entry.WalletAccount).WithMany().HasForeignKey(entry => entry.WalletAccountId)
+                .OnDelete(DeleteBehavior.NoAction);
+            // Prevent an entry from referring to a lot belonging to a different wallet/currency.
+            entity.HasOne(entry => entry.WalletLot).WithMany()
+                .HasForeignKey(entry => new { entry.WalletLotId, entry.WalletAccountId })
+                .HasPrincipalKey(lot => new { lot.Id, lot.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(entry => entry.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletEntries", table =>
+            {
+                table.HasCheckConstraint("CK_WalletEntries_Amount", "[Amount] > 0");
+                table.HasCheckConstraint("CK_WalletEntries_Direction", "[Direction] IN (0, 1)");
+                table.HasCheckConstraint("CK_WalletEntries_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
     }
 
     private void EnsureSuccessfulPaymentFactsAreImmutable()

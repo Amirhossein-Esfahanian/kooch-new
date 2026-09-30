@@ -46,6 +46,7 @@ builder.Services.AddScoped<IAmenityCategoryIconMigration, AmenityCategoryIconMig
 builder.Services.AddScoped<IAmenityIconMigration, AmenityIconMigration>();
 builder.Services.AddHttpClient<IHolidayProvider, PnlDevHolidayProvider>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<Kooch.Api.Services.Wallet.WalletService>();
 builder.Services.AddScoped<IHolidayCalendarSynchronizationService, HolidayCalendarSynchronizationService>();
 builder.Services.AddScoped<IHolidayCalendarQueryService, HolidayCalendarQueryService>();
 builder.Services.AddSingleton<HolidayCalendarSolarYearResolver>();
