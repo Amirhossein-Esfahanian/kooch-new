@@ -24,6 +24,7 @@ import {
   ReservationDetailsDialog,
   type AdminManualPayment,
   type AdminManualPaymentCreatePayload,
+  type ReservationRefundPayload,
 } from "@/components/reservations/ReservationDetailsDialog";
 import { ManualReservationDialog } from "@/components/reservations/ManualReservationDialog";
 import {
@@ -100,6 +101,12 @@ interface AdminManualPaymentMutationResponse {
 }
 
 const pageSize = 10;
+
+function apiErrorCode(error: unknown) {
+  if (!(error instanceof ApiRequestError) || !error.body || typeof error.body !== "object") return null;
+  const code = (error.body as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
+}
 
 const statusOptions: Array<{ value: ReservationStatusFilter; label: string }> =
   [
@@ -540,23 +547,55 @@ export default function AdminReservationsPage() {
         `/admin/reservations/${reservationId}/cancel`,
         {
           method: "PUT",
-          body: JSON.stringify({
-            reason: cancellation.reason,
-            explanation: cancellation.explanation,
-          }),
+          body: JSON.stringify(cancellation),
         },
       );
-      setSelectedReservation(updated);
+      await viewReservation(updated);
       await loadReservations();
-      toast.success("رزرو لغو شد.");
+      toast.success(updated.cancellationOutcome?.paidCancellation
+        ? "لغو و تعیین تکلیف مالی رزرو با موفقیت انجام شد."
+        : "رزرو با موفقیت لغو شد.");
     } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
+      const code = apiErrorCode(caught);
+      const message = code === "PostSettlementNettingRequired"
+        ? "این رزرو قبلاً در یک تسویه پرداخت‌شده قرار گرفته است و لغو مالی آن نیاز به فرآیند اصلاح تسویه دارد."
+        : code && caught instanceof ApiRequestError && caught.status === 409
+          ? "اطلاعات لغو با وضعیت فعلی رزرو تعارض دارد. جزئیات رزرو به‌روز شد؛ پیش از اقدام دوباره آن را بررسی کنید."
+          : caught instanceof Error ? caught.message : "خطا در لغو رزرو.";
       setError(message);
       toast.error(message);
+      if (caught instanceof ApiRequestError && (caught.status === 409 || caught.status === 403))
+        await viewReservation(reservation);
       throw caught;
     } finally {
       setStatusChangingId(null);
+    }
+  }
+
+  async function refundReservation(reservation: ReservationTableItem, refund: ReservationRefundPayload) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+    try {
+      await apiRequest(`/admin/reservations/${reservationId}/refund`, {
+        method: "POST", body: JSON.stringify(refund),
+      });
+      await viewReservation(reservation);
+      await loadReservations();
+      toast.success("بازپرداخت مهمان با موفقیت ثبت شد.");
+    } catch (caught) {
+      const code = apiErrorCode(caught);
+      const message = code === "NoGuestRefundRequired"
+        ? "برای این رزرو مبلغی جهت بازپرداخت به مهمان باقی نمانده است."
+        : code === "RefundAlreadyRecorded"
+          ? "بازپرداخت این رزرو قبلاً ثبت شده است."
+          : code === "RefundIdempotencyConflict"
+            ? "اطلاعات این تلاش بازپرداخت با درخواست قبلی متفاوت است. وضعیت رزرو به‌روز شد؛ دوباره بررسی کنید."
+            : caught instanceof Error ? caught.message : "ثبت بازپرداخت انجام نشد.";
+      setError(message);
+      toast.error(message);
+      if (caught instanceof ApiRequestError && caught.status === 409)
+        await viewReservation(reservation);
+      throw caught;
     }
   }
 
@@ -1126,6 +1165,7 @@ export default function AdminReservationsPage() {
           onAdjustPrice={adjustReservationPrice}
           onApproveManualPayment={canManagePayments ? approveManualPayment : undefined}
           onCancel={cancelReservation}
+          onRefund={canManagePayments ? refundReservation : undefined}
           onCreateManualPayment={canManagePayments ? createManualPayment : undefined}
           onEdit={editReservation}
           onRejectManualPayment={canManagePayments ? rejectManualPayment : undefined}

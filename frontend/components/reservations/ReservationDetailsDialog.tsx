@@ -9,6 +9,7 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import {
+  KoochCheckbox,
   KoochField,
   KoochInput,
   KoochSelect,
@@ -16,6 +17,7 @@ import {
 } from "@/components/KoochFormControls";
 import type {
   ReservationCancellationPayload,
+  ReservationCancellationFinancialState,
   ReservationCancellationReason,
   ReservationTimelineEvent,
   ReservationTableItem,
@@ -34,6 +36,10 @@ interface ReservationDetailsDialogProps {
   onCancel?: (
     reservation: ReservationTableItem,
     cancellation: ReservationCancellationPayload,
+  ) => void | Promise<void>;
+  onRefund?: (
+    reservation: ReservationTableItem,
+    refund: ReservationRefundPayload,
   ) => void | Promise<void>;
   onEdit?: (reservation: ReservationTableItem) => void;
   onViewVoucher?: (reservation: ReservationTableItem) => void;
@@ -59,6 +65,14 @@ interface ReservationDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   open: boolean;
   reservation: ReservationTableItem | null;
+}
+
+export interface ReservationRefundPayload {
+  referenceNumber: string;
+  refundedAt: string;
+  reason: string;
+  note: string | null;
+  idempotencyKey: string;
 }
 
 export type ManualPaymentMethod =
@@ -134,6 +148,13 @@ function localIsoToday() {
     String(now.getMonth() + 1).padStart(2, "0"),
     String(now.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+function moneyCents(value: string): number | null {
+  if (!/^\d+(?:\.\d{1,2})?$/.test(value.trim())) return null;
+  const [whole, fraction = ""] = value.trim().split(".");
+  const cents = Number(whole) * 100 + Number(fraction.padEnd(2, "0"));
+  return Number.isSafeInteger(cents) ? cents : null;
 }
 
 const statusLabels: Record<string, string> = {
@@ -550,17 +571,40 @@ function ReservationCancellationAlert({
   onClose,
   onConfirm,
   reservationNumber,
+  financial,
 }: {
   onClose: () => void;
   onConfirm: (cancellation: ReservationCancellationPayload) => Promise<void>;
   reservationNumber: string;
+  financial?: ReservationCancellationFinancialState | null;
 }) {
+  const currencyLabel = useSiteCurrencyLabel();
   const [reason, setReason] = useState<ReservationCancellationReason | "">("");
   const [explanation, setExplanation] = useState("");
   const [reasonError, setReasonError] = useState("");
   const [explanationError, setExplanationError] = useState("");
+  const [manual, setManual] = useState(false);
+  const [guestRefund, setGuestRefund] = useState("");
+  const [propertyShare, setPropertyShare] = useState("");
+  const [koochShare, setKoochShare] = useState("");
+  const [financialNote, setFinancialNote] = useState("");
+  const [validationAttempted, setValidationAttempted] = useState(false);
   const [confirmationReady, setConfirmationReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const operationKeyRef = useRef<string | null>(null);
+  const paid = financial?.paidCancellation === true;
+  const grossCents = paid && financial.grossPaidAmount !== null
+    ? moneyCents(String(financial.grossPaidAmount)) : null;
+  const guestCents = moneyCents(guestRefund);
+  const propertyCents = moneyCents(propertyShare);
+  const koochCents = moneyCents(koochShare);
+  const splitCents = guestCents !== null && propertyCents !== null && koochCents !== null
+    ? guestCents + propertyCents + koochCents : null;
+  const validSplit = grossCents !== null && splitCents === grossCents;
+  const displayMoney = (amount: number | null) =>
+    toPersianDigits(formatCurrency(amount, { currencyLabel }));
+  const invalidateOperation = () => { operationKeyRef.current = null; };
 
   function continueCancellation() {
     const trimmedExplanation = explanation.trim();
@@ -571,18 +615,40 @@ function ReservationCancellationAlert({
 
     setReasonError(nextReasonError);
     setExplanationError(nextExplanationError);
-    if (nextReasonError || nextExplanationError || !reason) return;
+    setValidationAttempted(true);
+    if (nextReasonError || nextExplanationError || !reason || paid && manual && !validSplit ||
+        paid && grossCents === null) return;
 
     setConfirmationReady(true);
   }
 
   async function confirmCancellation() {
-    if (!reason || !explanation.trim()) return;
+    if (!reason || !explanation.trim() || submittingRef.current ||
+        paid && (grossCents === null || manual && !validSplit)) return;
+    submittingRef.current = true;
     setSubmitting(true);
     try {
-      await onConfirm({ reason, explanation: explanation.trim() });
+      operationKeyRef.current ??= crypto.randomUUID();
+      const financialResolution = paid ? manual ? {
+        mode: "ManualOverride" as const,
+        guestRefundAmount: guestCents! / 100,
+        finalPropertyShare: propertyCents! / 100,
+        finalKoochShare: koochCents! / 100,
+        ...(financialNote.trim() ? { note: financialNote.trim() } : {}),
+      } : {
+        mode: "AutomaticFullRefundV1" as const,
+        ...(financialNote.trim() ? { note: financialNote.trim() } : {}),
+      } : undefined;
+      await onConfirm({
+        reason, explanation: explanation.trim(), idempotencyKey: operationKeyRef.current,
+        ...(financialResolution ? { financialResolution } : {}),
+      });
+      operationKeyRef.current = null;
       onClose();
+    } catch {
+      // The page reports the API error; retain this form and key for an exact retry.
     } finally {
+      submittingRef.current = false;
       setSubmitting(false);
     }
   }
@@ -605,8 +671,15 @@ function ReservationCancellationAlert({
             <br />
             یادداشت: {explanation.trim() || "-"}
           </p>
+          {paid && (
+            <p className="text-sm text-foreground">
+              مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}<br />
+              حالت مالی: {manual ? "تعیین دستی مبالغ" : "بازپرداخت کامل پیش‌فرض"}
+            </p>
+          )}
           <div className="flex flex-wrap gap-2">
             <KoochButton
+              disabled={paid && (grossCents === null || manual && !validSplit)}
               loading={submitting}
               onClick={confirmCancellation}
               variant="destructive"
@@ -628,6 +701,7 @@ function ReservationCancellationAlert({
             <KoochSelect
               error={reasonError}
               onChange={(event) => {
+                invalidateOperation();
                 const nextReason = event.target.value as
                   | ReservationCancellationReason
                   | "";
@@ -650,6 +724,7 @@ function ReservationCancellationAlert({
               error={explanationError}
               maxLength={2000}
               onChange={(event) => {
+                invalidateOperation();
                 setExplanation(event.target.value);
                 setExplanationError("");
               }}
@@ -657,6 +732,49 @@ function ReservationCancellationAlert({
               value={explanation}
             />
           </KoochField>
+
+          {paid && (
+            <section className="grid gap-3 rounded-lg border border-border bg-muted p-3" aria-label="تسویه مالی لغو رزرو">
+              <h3 className="font-semibold text-foreground">تسویه مالی لغو رزرو</h3>
+              <p className="text-sm text-foreground">مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}</p>
+              <p className="text-sm text-muted-foreground">
+                در حالت پیش‌فرض، کل مبلغ پرداخت‌شده به مهمان بازپرداخت می‌شود و سهم نهایی اقامتگاه و کوچ صفر خواهد بود.
+              </p>
+              <KoochCheckbox checked={manual} label="می‌خواهم مبالغ را دستی تعیین کنم"
+                onChange={(event) => { invalidateOperation(); setManual(event.target.checked); }} />
+              {manual && (
+                <>
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      ["مبلغ بازپرداخت به مهمان", guestRefund, setGuestRefund, guestCents],
+                      ["سهم نهایی اقامتگاه", propertyShare, setPropertyShare, propertyCents],
+                      ["سهم نهایی کوچ", koochShare, setKoochShare, koochCents],
+                    ] as const).map(([label, value, setValue, cents]) => (
+                      <KoochField key={label} label={label} required
+                        error={validationAttempted && cents === null ? "مبلغ معتبر و نامنفی با حداکثر دو رقم اعشار وارد کنید." : undefined}>
+                        <KoochInput type="number" inputMode="decimal" min="0" step="0.01" value={value}
+                          onChange={(event) => { invalidateOperation(); setValue(event.target.value); }} />
+                      </KoochField>
+                    ))}
+                  </div>
+                  <div className="grid gap-1 text-sm text-foreground" aria-live="polite">
+                    <p>مبلغ پرداخت‌شده: {displayMoney(financial?.grossPaidAmount ?? null)}</p>
+                    <p>بازپرداخت مهمان: {displayMoney(guestCents === null ? null : guestCents / 100)}</p>
+                    <p>سهم نهایی اقامتگاه: {displayMoney(propertyCents === null ? null : propertyCents / 100)}</p>
+                    <p>سهم نهایی کوچ: {displayMoney(koochCents === null ? null : koochCents / 100)}</p>
+                    <p>جمع تخصیص: {displayMoney(splitCents === null ? null : splitCents / 100)}</p>
+                    {validationAttempted && splitCents !== null && !validSplit && (
+                      <p className="text-destructive">جمع مبالغ باید دقیقاً برابر مبلغ پرداخت‌شده باشد.</p>
+                    )}
+                  </div>
+                </>
+              )}
+              <KoochField label="یادداشت تصمیم مالی (اختیاری)">
+                <KoochTextarea maxLength={2000} value={financialNote}
+                  onChange={(event) => { invalidateOperation(); setFinancialNote(event.target.value); }} />
+              </KoochField>
+            </section>
+          )}
 
           <div className="flex flex-wrap gap-2">
             <KoochButton onClick={continueCancellation} variant="destructive">
@@ -669,6 +787,105 @@ function ReservationCancellationAlert({
         </div>
       )}
     </KoochAlert>
+  );
+}
+
+function ReservationRefundDialog({
+  onOpenChange,
+  onSubmit,
+  open,
+  reservation,
+}: {
+  onOpenChange: (open: boolean) => void;
+  onSubmit: (refund: ReservationRefundPayload) => Promise<void>;
+  open: boolean;
+  reservation: ReservationTableItem;
+}) {
+  const currencyLabel = useSiteCurrencyLabel();
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [refundDate, setRefundDate] = useState<string | null>(localIsoToday());
+  const [refundTime, setRefundTime] = useState(() => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
+  });
+  const [reason, setReason] = useState("");
+  const [note, setNote] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const operationKeyRef = useRef<string | null>(null);
+  const financial = reservation.cancellationFinancial;
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (submittingRef.current) return;
+    const actualTime = refundDate && refundTime ? new Date(`${refundDate}T${refundTime}:00`) : null;
+    const nextErrors: Record<string, string> = {};
+    if (!referenceNumber.trim()) nextErrors.referenceNumber = "مرجع انتقال را وارد کنید.";
+    if (!reason.trim()) nextErrors.reason = "دلیل بازپرداخت را وارد کنید.";
+    if (!actualTime || Number.isNaN(actualTime.getTime()) || actualTime.getTime() > Date.now())
+      nextErrors.refundedAt = "تاریخ و زمان واقعی بازپرداخت را وارد کنید؛ زمان آینده مجاز نیست.";
+    setErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0 || !actualTime) return;
+
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      operationKeyRef.current ??= crypto.randomUUID();
+      await onSubmit({
+        referenceNumber: referenceNumber.trim(), refundedAt: actualTime.toISOString(),
+        reason: reason.trim(), note: note.trim() || null,
+        idempotencyKey: operationKeyRef.current,
+      });
+      operationKeyRef.current = null;
+      onOpenChange(false);
+    } catch {
+      // The page reports the API error; preserve execution facts and key for an exact retry.
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <KoochDialog open={open} onOpenChange={(next) => { if (!submitting) onOpenChange(next); }}
+      closeDisabled={submitting} size="sm" title="ثبت بازپرداخت">
+      <form id="reservation-refund-form" className="grid gap-4" onSubmit={submit}>
+        <p className="rounded-lg border border-border bg-muted p-3 text-sm text-foreground">
+          مبلغ بازپرداخت: {toPersianDigits(formatCurrency(financial?.guestRefundAmount, { currencyLabel }))}
+        </p>
+        <KoochField label="مرجع انتقال" error={errors.referenceNumber} required>
+          <KoochInput value={referenceNumber} maxLength={200} dir="ltr" error={errors.referenceNumber}
+            onChange={(event) => { operationKeyRef.current = null; setReferenceNumber(event.target.value); }} />
+        </KoochField>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <KoochField label="تاریخ بازپرداخت" error={errors.refundedAt} required>
+            <KoochDatePicker mode="single" size="compact" label={null} autoConfirmOnSelect
+              value={refundDate} onChange={(value) => {
+                operationKeyRef.current = null; setRefundDate(value);
+                setErrors((current) => ({ ...current, refundedAt: "" }));
+              }} />
+          </KoochField>
+          <KoochField label="زمان بازپرداخت" error={errors.refundedAt} required>
+            <KoochInput type="time" value={refundTime} error={errors.refundedAt}
+              onChange={(event) => { operationKeyRef.current = null; setRefundTime(event.target.value); }} />
+          </KoochField>
+        </div>
+        <KoochField label="دلیل بازپرداخت" error={errors.reason} required>
+          <KoochTextarea value={reason} maxLength={1000} error={errors.reason}
+            onChange={(event) => { operationKeyRef.current = null; setReason(event.target.value); }} />
+        </KoochField>
+        <KoochField label="یادداشت (اختیاری)">
+          <KoochTextarea value={note} maxLength={2000}
+            onChange={(event) => { operationKeyRef.current = null; setNote(event.target.value); }} />
+        </KoochField>
+        <div className="flex flex-wrap justify-end gap-2">
+          <KoochButton type="button" variant="outline" disabled={submitting}
+            onClick={() => onOpenChange(false)}>انصراف</KoochButton>
+          <KoochButton type="submit" loading={submitting}>ثبت بازپرداخت</KoochButton>
+        </div>
+      </form>
+    </KoochDialog>
   );
 }
 
@@ -893,6 +1110,7 @@ export function ReservationDetailsDialog({
   onAdjustPrice,
   onApproveManualPayment,
   onCancel,
+  onRefund,
   onCreateManualPayment,
   onEdit,
   onViewVoucher,
@@ -941,6 +1159,8 @@ export function ReservationDetailsDialog({
   const canAdjustPrice = !isReadOnly && Boolean(onAdjustPrice);
   const canCancel =
     !isReadOnly && Boolean(onCancel) && statusActions.includes("Cancelled");
+  const canRefund = reservation?.status === "Cancelled" &&
+    reservation.cancellationFinancial?.refundPending === true && Boolean(onRefund);
   const timelineEvents: ReservationTimelineEvent[] =
     reservation?.timeline && reservation.timeline.length > 0
       ? reservation.timeline
@@ -966,6 +1186,7 @@ export function ReservationDetailsDialog({
             : []),
         ];
   const [cancellationOpen, setCancellationOpen] = useState(false);
+  const [refundOpen, setRefundOpen] = useState(false);
   const [priceAdjustmentOpen, setPriceAdjustmentOpen] = useState(false);
   const [confirmedEditWarningOpen, setConfirmedEditWarningOpen] =
     useState(false);
@@ -1003,12 +1224,17 @@ export function ReservationDetailsDialog({
   useEffect(() => {
     if (!open) {
       setCancellationOpen(false);
+      setRefundOpen(false);
       setPriceAdjustmentOpen(false);
       setManualPaymentCreateOpen(false);
       setApprovePaymentId(null);
       setRejectPaymentId(null);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (reservation?.cancellationFinancial?.refundPending === false) setRefundOpen(false);
+  }, [reservation?.cancellationFinancial?.refundPending]);
 
   useEffect(() => {
     if (!shouldShowPaymentCountdown || remainingPaymentSeconds === null) {
@@ -1115,6 +1341,11 @@ export function ReservationDetailsDialog({
                 لغو رزرو
               </KoochButton>
             )}
+            {reservation && canRefund && (
+              <KoochButton onClick={() => setRefundOpen(true)} variant="outline">
+                ثبت بازپرداخت
+              </KoochButton>
+            )}
             <KoochButton
               onClick={() => {
                 setCancellationOpen(false);
@@ -1153,6 +1384,7 @@ export function ReservationDetailsDialog({
             {cancellationOpen && canCancel && (
               <ReservationCancellationAlert
                 key={reservation.reservationNumber}
+                financial={reservation.cancellationFinancial}
                 onClose={() => setCancellationOpen(false)}
                 onConfirm={async (cancellation) => {
                   if (onCancel) await onCancel(reservation, cancellation);
@@ -1174,6 +1406,40 @@ export function ReservationDetailsDialog({
                 {statusLabels[reservation.status] ?? reservation.status}
               </KoochBadge>
             </div>
+
+            {reservation.status === "Cancelled" && reservation.cancellationFinancial?.paidCancellation && (
+              <DetailSection title="تسویه مالی لغو رزرو">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <DetailItem label="مبلغ پرداخت‌شده"
+                    value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.grossPaidAmount, { currencyLabel }))} />
+                  {reservation.cancellationFinancial.mode !== null && (
+                    <DetailItem label="حالت مالی" value={reservation.cancellationFinancial.mode === "ManualOverride"
+                      ? "تعیین دستی مبالغ" : "بازپرداخت کامل پیش‌فرض"} />
+                  )}
+                  {reservation.cancellationFinancial.guestRefundAmount !== null && (
+                    <DetailItem label="مبلغ بازپرداخت به مهمان"
+                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.guestRefundAmount, { currencyLabel }))} />
+                  )}
+                  {reservation.cancellationFinancial.finalPropertyShare !== null && (
+                    <DetailItem label="سهم نهایی اقامتگاه"
+                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalPropertyShare, { currencyLabel }))} />
+                  )}
+                  {reservation.cancellationFinancial.finalKoochShare !== null && (
+                    <DetailItem label="سهم نهایی کوچ"
+                      value={toPersianDigits(formatCurrency(reservation.cancellationFinancial.finalKoochShare, { currencyLabel }))} />
+                  )}
+                  <DetailItem label="وضعیت بازپرداخت" value={
+                    reservation.cancellationFinancial.refundPending
+                      ? "بازپرداخت مهمان هنوز ثبت نشده است."
+                      : reservation.cancellationFinancial.alreadyHandledByLegacyRefundV1
+                        ? "بازپرداخت قبلاً ثبت شده است."
+                        : reservation.cancellationFinancial.guestRefundAmount === 0
+                          ? "بازپرداختی لازم نیست."
+                          : "بازپرداخت ثبت شده است."
+                  } />
+                </div>
+              </DetailSection>
+            )}
 
             <DetailSection title="رزرو">
               <DetailItem
@@ -1474,6 +1740,11 @@ export function ReservationDetailsDialog({
           </p>
         )}
       </KoochDialog>
+
+      {reservation && onRefund && refundOpen && canRefund && (
+        <ReservationRefundDialog open={refundOpen} onOpenChange={setRefundOpen}
+          reservation={reservation} onSubmit={async (refund) => onRefund(reservation, refund)} />
+      )}
 
       {reservation && onEdit && (
         <KoochConfirmDialog

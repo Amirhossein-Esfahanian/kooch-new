@@ -45,6 +45,38 @@ export type ReservationCancellationReason =
 export interface ReservationCancellationPayload {
   reason: ReservationCancellationReason;
   explanation: string;
+  idempotencyKey: string;
+  financialResolution?: {
+    mode: "AutomaticFullRefundV1" | "ManualOverride";
+    guestRefundAmount?: number;
+    finalPropertyShare?: number;
+    finalKoochShare?: number;
+    note?: string;
+  };
+}
+
+export interface ReservationCancellationFinancialState {
+  paidCancellation: boolean;
+  grossPaidAmount: number | null;
+  currency: string | null;
+  mode: "AutomaticFullRefundV1" | "ManualOverride" | null;
+  guestRefundAmount: number | null;
+  finalPropertyShare: number | null;
+  finalKoochShare: number | null;
+  refundPending: boolean;
+  alreadyHandledByLegacyRefundV1: boolean;
+}
+
+export interface ReservationCancellationOutcome {
+  paidCancellation: boolean;
+  financialMode: "AutomaticFullRefundV1" | "ManualOverride" | null;
+  grossPaidAmount: number | null;
+  guestRefundAmount: number | null;
+  finalPropertyShare: number | null;
+  finalKoochShare: number | null;
+  refundPending: boolean;
+  alreadyHandledByLegacyRefundV1: boolean;
+  idempotentReplay: boolean;
 }
 
 export type ReservationTimelineEventType =
@@ -114,6 +146,8 @@ export interface ReservationTableItem {
   cancelledByUserId?: number | null;
   cancellationReason?: ReservationCancellationReason | null;
   cancellationNote?: string | null;
+  cancellationFinancial?: ReservationCancellationFinancialState | null;
+  cancellationOutcome?: ReservationCancellationOutcome | null;
   expiredAtUtc?: string | null;
   allowedStatusTransitions?: ReservationTableStatus[];
   baseAmount?: number | null;
