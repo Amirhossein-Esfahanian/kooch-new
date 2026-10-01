@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -215,6 +215,7 @@ export default function AdminReservationsPage() {
     number | null
   >(null);
   const [error, setError] = useState("");
+  const rejectingCancellationRequestRef = useRef(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const canManagePayments =
     platformRole === "SuperAdmin" || platformPermissions.includes("ManagePayments");
@@ -569,6 +570,29 @@ export default function AdminReservationsPage() {
       throw caught;
     } finally {
       setStatusChangingId(null);
+    }
+  }
+
+  async function rejectCancellationRequest(reservation: ReservationTableItem, note: string | null) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId || rejectingCancellationRequestRef.current) return;
+    rejectingCancellationRequestRef.current = true;
+    setError("");
+    try {
+      await apiRequest(`/admin/reservations/${reservationId}/cancellation-request/reject`, {
+        method: "PUT",
+        body: JSON.stringify({ note }),
+      });
+      const details = await apiRequest<ReservationTableItem>(`/admin/reservations/${reservationId}`);
+      setSelectedReservation(details);
+      toast.success("درخواست لغو مهمان رد شد؛ وضعیت رزرو تغییر نکرد.");
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "رد درخواست لغو انجام نشد.";
+      setError(message);
+      toast.error(message);
+      throw caught;
+    } finally {
+      rejectingCancellationRequestRef.current = false;
     }
   }
 
@@ -1165,6 +1189,7 @@ export default function AdminReservationsPage() {
           onAdjustPrice={adjustReservationPrice}
           onApproveManualPayment={canManagePayments ? approveManualPayment : undefined}
           onCancel={cancelReservation}
+          onRejectCancellationRequest={rejectCancellationRequest}
           onRefund={canManagePayments ? refundReservation : undefined}
           onCreateManualPayment={canManagePayments ? createManualPayment : undefined}
           onEdit={editReservation}

@@ -402,3 +402,109 @@ describe("Admin reservation refund execution UI", () => {
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "ثبت بازپرداخت" })).toBeNull());
   });
 });
+
+describe("Admin guest cancellation request in reservation details", () => {
+  const pendingRequest = {
+    status: "Pending" as const,
+    reason: "GuestRequest" as const,
+    guestMessage: "لطفاً رزرو را لغو کنید.",
+    requestedAtUtc: "2026-09-29T10:00:00Z",
+    resolvedAtUtc: null,
+    resolutionNote: null,
+  };
+
+  it("omits the request section when the detail has no request", () => {
+    renderDialog({ reservation: reservation({ cancellationRequest: null }) });
+    expect(screen.queryByRole("region", { name: "درخواست لغو مهمان" })).toBeNull();
+  });
+
+  it("shows Pending context, reason, message, date, and both request actions", async () => {
+    renderDialog({ reservation: reservation({ cancellationRequest: pendingRequest }),
+      onCancel: vi.fn(), onRejectCancellationRequest: vi.fn() });
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    const section = screen.getByRole("region", { name: "درخواست لغو مهمان" });
+    expect(within(section).getByText("درخواست لغو در انتظار بررسی")).toBeTruthy();
+    expect(within(section).getByText("درخواست مهمان")).toBeTruthy();
+    expect(within(section).getByText("لطفاً رزرو را لغو کنید.")).toBeTruthy();
+    expect(within(section).getByText("زمان درخواست")).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "رد درخواست" })).toBeTruthy();
+    expect(within(section).getByRole("button", { name: "بررسی و انجام لغو" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "لغو رزرو" })).toBeNull();
+  });
+
+  it("confirms rejection with an optional note and does not submit on cancel", async () => {
+    const onRejectCancellationRequest = vi.fn().mockResolvedValue(undefined);
+    renderDialog({ reservation: reservation({ cancellationRequest: pendingRequest }),
+      onCancel: vi.fn(), onRejectCancellationRequest });
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    fireEvent.click(screen.getByRole("button", { name: "رد درخواست" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "رد درخواست لغو" });
+    expect(onRejectCancellationRequest).not.toHaveBeenCalled();
+    fireEvent.change(within(confirm).getByLabelText("یادداشت رد (اختیاری)"),
+      { target: { value: "  اطلاعات کافی نیست  " } });
+    fireEvent.click(within(confirm).getByRole("button", { name: "انصراف" }));
+    expect(onRejectCancellationRequest).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "رد درخواست" }));
+    fireEvent.change(screen.getByLabelText("یادداشت رد (اختیاری)"),
+      { target: { value: "  اطلاعات کافی نیست  " } });
+    fireEvent.click(within(screen.getByRole("alertdialog", { name: "رد درخواست لغو" }))
+      .getByRole("button", { name: "رد درخواست" }));
+    await waitFor(() => expect(onRejectCancellationRequest).toHaveBeenCalledTimes(1));
+    expect(onRejectCancellationRequest).toHaveBeenCalledWith(expect.objectContaining({ id: 12 }), "اطلاعات کافی نیست");
+  });
+
+  it("prevents duplicate rejection and keeps failed confirmation open", async () => {
+    let finish!: (error?: Error) => void;
+    const onRejectCancellationRequest = vi.fn().mockImplementation(() => new Promise<void>((resolve, reject) => {
+      finish = (error) => error ? reject(error) : resolve();
+    }));
+    renderDialog({ reservation: reservation({ cancellationRequest: pendingRequest }), onRejectCancellationRequest });
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    fireEvent.click(screen.getByRole("button", { name: "رد درخواست" }));
+    const confirm = await screen.findByRole("alertdialog", { name: "رد درخواست لغو" });
+    const submit = within(confirm).getByRole("button", { name: "رد درخواست" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    expect(onRejectCancellationRequest).toHaveBeenCalledTimes(1);
+    finish(new Error("Conflict"));
+    expect(await screen.findByRole("alertdialog", { name: "رد درخواست لغو" })).toBeTruthy();
+  });
+
+  it("opens the existing financial cancellation form without preselecting a decision", async () => {
+    renderDialog({ reservation: reservation({ cancellationRequest: pendingRequest }), onCancel: vi.fn() });
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    fireEvent.click(screen.getByRole("button", { name: "بررسی و انجام لغو" }));
+    expect(screen.getByLabelText(/دلیل لغو/)).toHaveProperty("value", "");
+    expect(screen.getByLabelText(/توضیحات لغو/)).toHaveProperty("value", "");
+    expect(screen.getByRole("region", { name: "تسویه مالی لغو رزرو" })).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "می‌خواهم مبالغ را دستی تعیین کنم" })).toHaveProperty("checked", false);
+  });
+
+  it.each(["Rejected", "Resolved"] as const)("keeps %s request details read-only", async (status) => {
+    renderDialog({ reservation: reservation({
+      status: status === "Resolved" ? "Cancelled" : "Confirmed",
+      cancellationRequest: { ...pendingRequest, status, resolvedAtUtc: "2026-09-30T10:00:00Z",
+        resolutionNote: "بررسی شد" },
+    }), onCancel: vi.fn(), onRejectCancellationRequest: vi.fn() });
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    const section = screen.getByRole("region", { name: "درخواست لغو مهمان" });
+    expect(within(section).getByText("زمان بررسی")).toBeTruthy();
+    expect(within(section).getByText("بررسی شد")).toBeTruthy();
+    expect(within(section).queryByRole("button", { name: "رد درخواست" })).toBeNull();
+    expect(within(section).queryByRole("button", { name: "بررسی و انجام لغو" })).toBeNull();
+  });
+
+  it("renders the authoritative Resolved request after cancellation succeeds", async () => {
+    const initial = reservation({ cancellationRequest: pendingRequest });
+    const { rerender } = renderDialog({ reservation: initial, onCancel: vi.fn(),
+      onRejectCancellationRequest: vi.fn() });
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    rerender(<ReservationDetailsDialog open onOpenChange={vi.fn()} onCancel={vi.fn()}
+      onRejectCancellationRequest={vi.fn()} reservation={{ ...initial, status: "Cancelled",
+        cancellationRequest: { ...pendingRequest, status: "Resolved", resolvedAtUtc: "2026-09-30T10:00:00Z" } }} />);
+    const section = screen.getByRole("region", { name: "درخواست لغو مهمان" });
+    expect(within(section).getByText("درخواست بررسی‌شده")).toBeTruthy();
+    expect(within(section).queryByRole("button")).toBeNull();
+    expect(screen.getByText("تسویه مالی لغو رزرو")).toBeTruthy();
+  });
+});

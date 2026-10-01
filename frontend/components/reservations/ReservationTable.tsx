@@ -42,6 +42,15 @@ export type ReservationCancellationReason =
   | "AdministrativeCorrection"
   | "Other";
 
+export interface AdminReservationCancellationRequest {
+  status: "Pending" | "Resolved" | "Rejected";
+  reason: ReservationCancellationReason | "PaymentExpired";
+  guestMessage: string | null;
+  requestedAtUtc: string;
+  resolvedAtUtc: string | null;
+  resolutionNote: string | null;
+}
+
 export interface ReservationCancellationPayload {
   reason: ReservationCancellationReason;
   explanation: string;
@@ -163,6 +172,7 @@ export interface ReservationTableItem {
   cancellationReason?: ReservationCancellationReason | null;
   cancellationNote?: string | null;
   cancellationFinancial?: ReservationCancellationFinancialState | null;
+  cancellationRequest?: AdminReservationCancellationRequest | null;
   cancellationOutcome?: ReservationCancellationOutcome | null;
   expiredAtUtc?: string | null;
   allowedStatusTransitions?: ReservationTableStatus[];

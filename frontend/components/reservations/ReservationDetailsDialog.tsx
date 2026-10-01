@@ -37,6 +37,10 @@ interface ReservationDetailsDialogProps {
     reservation: ReservationTableItem,
     cancellation: ReservationCancellationPayload,
   ) => void | Promise<void>;
+  onRejectCancellationRequest?: (
+    reservation: ReservationTableItem,
+    note: string | null,
+  ) => Promise<void>;
   onRefund?: (
     reservation: ReservationTableItem,
     refund: ReservationRefundPayload,
@@ -1248,6 +1252,7 @@ export function ReservationDetailsDialog({
   onAdjustPrice,
   onApproveManualPayment,
   onCancel,
+  onRejectCancellationRequest,
   onRefund,
   onCreateManualPayment,
   onEdit,
@@ -1297,6 +1302,8 @@ export function ReservationDetailsDialog({
   const canAdjustPrice = !isReadOnly && Boolean(onAdjustPrice);
   const canCancel =
     !isReadOnly && Boolean(onCancel) && statusActions.includes("Cancelled");
+  const pendingCancellationRequest =
+    reservation?.cancellationRequest?.status === "Pending";
   const canRefund = reservation?.status === "Cancelled" &&
     reservation.cancellationFinancial?.refundPending === true && Boolean(onRefund);
   const timelineEvents: ReservationTimelineEvent[] =
@@ -1324,6 +1331,8 @@ export function ReservationDetailsDialog({
             : []),
         ];
   const [cancellationOpen, setCancellationOpen] = useState(false);
+  const [rejectRequestOpen, setRejectRequestOpen] = useState(false);
+  const [rejectRequestNote, setRejectRequestNote] = useState("");
   const [refundOpen, setRefundOpen] = useState(false);
   const [priceAdjustmentOpen, setPriceAdjustmentOpen] = useState(false);
   const [confirmedEditWarningOpen, setConfirmedEditWarningOpen] =
@@ -1362,6 +1371,8 @@ export function ReservationDetailsDialog({
   useEffect(() => {
     if (!open) {
       setCancellationOpen(false);
+      setRejectRequestOpen(false);
+      setRejectRequestNote("");
       setRefundOpen(false);
       setPriceAdjustmentOpen(false);
       setManualPaymentCreateOpen(false);
@@ -1369,6 +1380,13 @@ export function ReservationDetailsDialog({
       setRejectPaymentId(null);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!pendingCancellationRequest) {
+      setRejectRequestOpen(false);
+      setRejectRequestNote("");
+    }
+  }, [pendingCancellationRequest, reservation?.reservationNumber]);
 
   useEffect(() => {
     if (reservation?.cancellationFinancial?.refundPending === false) setRefundOpen(false);
@@ -1471,7 +1489,7 @@ export function ReservationDetailsDialog({
                     />
                   );
                 })}
-            {reservation && canCancel && !cancellationOpen && (
+            {reservation && canCancel && !pendingCancellationRequest && !cancellationOpen && (
               <KoochButton
                 onClick={() => setCancellationOpen(true)}
                 variant="destructive"
@@ -1544,6 +1562,56 @@ export function ReservationDetailsDialog({
                 {statusLabels[reservation.status] ?? reservation.status}
               </KoochBadge>
             </div>
+
+            {reservation.cancellationRequest && (
+              <KoochCard className="grid gap-3" padding="sm" variant="muted" aria-label="درخواست لغو مهمان">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-foreground">درخواست لغو مهمان</h3>
+                  <KoochBadge variant={pendingCancellationRequest ? "default" : "muted"}>
+                    {pendingCancellationRequest
+                      ? "درخواست لغو در انتظار بررسی"
+                      : reservation.cancellationRequest.status === "Rejected" ? "درخواست رد شده" : "درخواست بررسی‌شده"}
+                  </KoochBadge>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  ثبت این درخواست به‌معنی لغو رزرو نیست؛ وضعیت رزرو جداگانه در بالا نمایش داده می‌شود.
+                </p>
+                <dl className="grid gap-x-5 gap-y-3 text-sm sm:grid-cols-2">
+                  <div><dt className="text-xs text-muted-foreground">دلیل درخواست</dt>
+                    <dd className="mt-1 text-foreground">{reservation.cancellationRequest.reason === "PaymentExpired"
+                      ? "پایان مهلت پرداخت"
+                      : cancellationReasonLabels[reservation.cancellationRequest.reason] ?? reservation.cancellationRequest.reason}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">زمان درخواست</dt>
+                    <dd className="mt-1 text-foreground">{formatDateTime(reservation.cancellationRequest.requestedAtUtc)}</dd></div>
+                  {reservation.cancellationRequest.guestMessage && (
+                    <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">پیام مهمان</dt>
+                      <dd className="mt-1 whitespace-pre-wrap text-foreground">{reservation.cancellationRequest.guestMessage}</dd></div>
+                  )}
+                  {reservation.cancellationRequest.resolvedAtUtc && (
+                    <div><dt className="text-xs text-muted-foreground">زمان بررسی</dt>
+                      <dd className="mt-1 text-foreground">{formatDateTime(reservation.cancellationRequest.resolvedAtUtc)}</dd></div>
+                  )}
+                  {reservation.cancellationRequest.resolutionNote && (
+                    <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">یادداشت بررسی</dt>
+                      <dd className="mt-1 whitespace-pre-wrap text-foreground">{reservation.cancellationRequest.resolutionNote}</dd></div>
+                  )}
+                </dl>
+                {pendingCancellationRequest && (
+                  <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                    {onRejectCancellationRequest && (
+                      <KoochButton onClick={() => setRejectRequestOpen(true)} variant="outline">
+                        رد درخواست
+                      </KoochButton>
+                    )}
+                    {canCancel && (
+                      <KoochButton onClick={() => setCancellationOpen(true)} variant="destructive">
+                        بررسی و انجام لغو
+                      </KoochButton>
+                    )}
+                  </div>
+                )}
+              </KoochCard>
+            )}
 
             {reservation.status === "Cancelled" && reservation.cancellationFinancial?.paidCancellation && (
               <DetailSection title="تسویه مالی لغو رزرو">
@@ -1900,6 +1968,34 @@ export function ReservationDetailsDialog({
           </p>
         )}
       </KoochDialog>
+
+      {reservation && pendingCancellationRequest && onRejectCancellationRequest && (
+        <KoochConfirmDialog
+          cancelText="انصراف"
+          confirmText="رد درخواست"
+          description="فقط درخواست مهمان رد می‌شود؛ وضعیت رزرو و تصمیم مالی تغییر نمی‌کند."
+          onConfirm={async () => {
+            await onRejectCancellationRequest(reservation, rejectRequestNote.trim() || null);
+            setRejectRequestNote("");
+          }}
+          onOpenChange={(nextOpen) => {
+            setRejectRequestOpen(nextOpen);
+            if (!nextOpen) setRejectRequestNote("");
+          }}
+          open={rejectRequestOpen}
+          title="رد درخواست لغو"
+          variant="warning"
+        >
+          <KoochField label="یادداشت رد (اختیاری)">
+            <KoochTextarea
+              maxLength={2000}
+              onChange={(event) => setRejectRequestNote(event.target.value)}
+              rows={3}
+              value={rejectRequestNote}
+            />
+          </KoochField>
+        </KoochConfirmDialog>
+      )}
 
       {reservation && onRefund && refundOpen && canRefund && (
         <ReservationRefundDialog open={refundOpen} onOpenChange={setRefundOpen}

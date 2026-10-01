@@ -27,10 +27,15 @@ vi.mock("@/components/reservations/ReservationTable", () => ({
 vi.mock("@/components/reservations/ReservationDetailsDialog", () => ({
   ReservationDetailsDialog: (props: Record<string, unknown>) => {
     mocks.detail = props;
-    const item = props.reservation as { status?: string; cancellationFinancial?: { refundPending?: boolean } } | null;
+    const item = props.reservation as { status?: string; cancellationFinancial?: { refundPending?: boolean };
+      cancellationRequest?: { status?: string } | null } | null;
     const cancel = props.onCancel as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
     const refund = props.onRefund as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
+    const rejectRequest = props.onRejectCancellationRequest as ((item: unknown, note: string | null) => Promise<void>) | undefined;
     return <div>
+      <span>Cancellation request: {item?.cancellationRequest?.status ?? "-"}</span>
+      {item?.cancellationRequest?.status === "Pending" && rejectRequest &&
+        <button onClick={() => void rejectRequest(item, "نیاز به بررسی").catch(() => undefined)}>Reject guest request</button>}
       <span>وضعیت جزئیات: {item?.status ?? "-"}</span>
       <span>بازپرداخت در انتظار: {String(item?.cancellationFinancial?.refundPending ?? false)}</span>
       {item && cancel && <button onClick={() => void cancel(item, {
@@ -71,6 +76,7 @@ const initial = { id: 12, reservationNumber: "R-123456", status: "Confirmed",
 let current: typeof initial | Record<string, unknown>;
 let mutationFailure: ApiRequestError | null;
 let detailReads: number;
+let rejectRequestPromise: Promise<unknown> | null;
 
 function installApi() {
   mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
@@ -79,6 +85,15 @@ function installApi() {
       return Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 10, totalPages: 0 });
     if (path === "/admin/manual-payments/reservation/12") return Promise.resolve([]);
     if (path === "/admin/reservations/12") { detailReads += 1; return Promise.resolve(current); }
+    if (path === "/admin/reservations/12/cancellation-request/reject" && init?.method === "PUT") {
+      if (mutationFailure) return Promise.reject(mutationFailure);
+      if (rejectRequestPromise) return rejectRequestPromise;
+      current = { ...current, cancellationRequest: {
+        ...(current as { cancellationRequest?: Record<string, unknown> }).cancellationRequest,
+        status: "Rejected", resolutionNote: "نیاز به بررسی",
+      } };
+      return Promise.resolve(current);
+    }
     if (path === "/admin/reservations/12/cancel" && init?.method === "PUT") {
       if (mutationFailure) return Promise.reject(mutationFailure);
       current = { ...current, status: "Cancelled", cancellationFinancial: { ...financial } };
@@ -107,7 +122,44 @@ describe("Admin cancellation and refund API integration", () => {
     current = { ...initial };
     mutationFailure = null;
     detailReads = 0;
+    rejectRequestPromise = null;
     installApi();
+  });
+
+  it("rejects a pending guest request, then reads its authoritative status without cancelling the reservation", async () => {
+    current = { ...initial, cancellationRequest: { status: "Pending", reason: "GuestRequest" } };
+    await openPage();
+    fireEvent.click(screen.getByRole("button", { name: "Reject guest request" }));
+    await waitFor(() => expect(detailReads).toBe(2));
+    const calls = mocks.apiRequest.mock.calls.filter(([path]) => path === "/admin/reservations/12/cancellation-request/reject");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[1]?.method).toBe("PUT");
+    expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual({ note: "نیاز به بررسی" });
+    expect(screen.getByText("Cancellation request: Rejected")).toBeTruthy();
+    expect((current as { status: string }).status).toBe("Confirmed");
+  });
+
+  it("keeps a pending request visible when rejection fails", async () => {
+    current = { ...initial, cancellationRequest: { status: "Pending", reason: "GuestRequest" } };
+    mutationFailure = new ApiRequestError("Request conflict", 409);
+    await openPage();
+    fireEvent.click(screen.getByRole("button", { name: "Reject guest request" }));
+    await waitFor(() => expect(mocks.toastError).toHaveBeenCalledWith("Request conflict"));
+    expect(detailReads).toBe(1);
+    expect(screen.getByText("Cancellation request: Pending")).toBeTruthy();
+  });
+
+  it("does not issue a second rejection while the first is pending", async () => {
+    current = { ...initial, cancellationRequest: { status: "Pending", reason: "GuestRequest" } };
+    let finish!: (value: unknown) => void;
+    rejectRequestPromise = new Promise((resolve) => { finish = resolve; });
+    await openPage();
+    const button = screen.getByRole("button", { name: "Reject guest request" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(mocks.apiRequest.mock.calls.filter(([path]) => path === "/admin/reservations/12/cancellation-request/reject")).toHaveLength(1);
+    finish({});
+    await waitFor(() => expect(detailReads).toBe(2));
   });
 
   it("sends the paid cancellation payload and refreshes authoritative detail after success", async () => {
