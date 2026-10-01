@@ -6,8 +6,63 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class ReservationCancellationRequestService(KoochDbContext context)
+public sealed class ReservationCancellationRequestService(KoochDbContext context, IPermissionService permissionService)
 {
+    public async Task<AdminReservationCancellationRequestResponse?> GetLatestForAdminAsync(
+        int reservationId, CancellationToken cancellationToken = default)
+    {
+        var row = await context.ReservationCancellationRequests.AsNoTracking()
+            .Where(item => item.ReservationId == reservationId)
+            .OrderByDescending(item => item.RequestedAtUtc).ThenByDescending(item => item.Id)
+            .FirstOrDefaultAsync(cancellationToken);
+        return row is null ? null : ToAdminResponse(row);
+    }
+
+    public async Task<AdminReservationCancellationRequestResponse> RejectAsync(
+        int reservationId, int actorId, UserRole actorRole, string? note,
+        CancellationToken cancellationToken = default)
+    {
+        note = string.IsNullOrWhiteSpace(note) ? null : note.Trim();
+        if (note?.Length > 2000)
+            throw new ArgumentException("Resolution note exceeds 2000 characters.");
+
+        await using var transaction = context.Database.IsRelational()
+            ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
+        await BookingFundingLock.ForReservationAsync(context, reservationId, cancellationToken);
+        var reservations = context.Database.IsSqlServer()
+            ? context.Reservations.FromSqlInterpolated(
+                $"SELECT * FROM [Reservations] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {reservationId}")
+            : context.Reservations.AsQueryable();
+        var reservation = await reservations.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+        if (actorRole is not (UserRole.SuperAdmin or UserRole.AdminAssistant) ||
+            !await permissionService.HasPermissionAsync(actorId, PermissionKey.ManageReservations,
+                cancellationToken: cancellationToken) ||
+            !await permissionService.CanAsync(actorId, reservation.PropertyId, "bookings.cancel", cancellationToken))
+            throw new UnauthorizedAccessException("You cannot manage this reservation's cancellation request.");
+        if (reservation.Status == ReservationStatus.Cancelled)
+            throw new InvalidOperationException("A cancelled reservation's request cannot be rejected.");
+
+        var pending = await context.ReservationCancellationRequests
+            .SingleOrDefaultAsync(item => item.ReservationId == reservationId &&
+                item.Status == ReservationCancellationRequestStatus.Pending, cancellationToken);
+        if (pending is null)
+        {
+            if (await context.ReservationCancellationRequests.AnyAsync(item => item.ReservationId == reservationId, cancellationToken))
+                throw new InvalidOperationException("No pending cancellation request remains.");
+            throw new KeyNotFoundException("Cancellation request not found.");
+        }
+
+        pending.Status = ReservationCancellationRequestStatus.Rejected;
+        pending.ResolvedAtUtc = DateTime.UtcNow;
+        pending.ResolvedByUserId = actorId;
+        pending.ResolutionNote = note;
+        await context.SaveChangesAsync(cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+        return ToAdminResponse(pending);
+    }
+
     public async Task<ReservationCancellationRequestResponse> CreateAsync(
         int userId, string reservationNumber, CreateReservationCancellationRequest request,
         CancellationToken cancellationToken = default)
@@ -90,5 +145,15 @@ public sealed class ReservationCancellationRequestService(KoochDbContext context
         Message = row.GuestMessage,
         RequestedAtUtc = row.RequestedAtUtc,
         ResolvedAtUtc = row.ResolvedAtUtc
+    };
+
+    private static AdminReservationCancellationRequestResponse ToAdminResponse(ReservationCancellationRequestRecord row) => new()
+    {
+        Status = row.Status,
+        Reason = row.Reason,
+        GuestMessage = row.GuestMessage,
+        RequestedAtUtc = row.RequestedAtUtc,
+        ResolvedAtUtc = row.ResolvedAtUtc,
+        ResolutionNote = row.ResolutionNote
     };
 }

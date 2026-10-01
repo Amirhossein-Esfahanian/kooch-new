@@ -238,7 +238,7 @@ public sealed partial class ReservationCancellationOrchestrationTests
         {
             ReferenceNumber = "bank-1", PaidAtUtc = Now, PaymentMethod = SettlementPaymentMethod.BankTransfer
         }, 1);
-        var controller = new AdminReservationsController(Service(db), null!, null!, null!, null!)
+        var controller = new AdminReservationsController(Service(db), null!, null!, null!, null!, null!)
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
@@ -327,8 +327,8 @@ public sealed partial class ReservationCancellationOrchestrationTests
 
     private sealed class Store(string path) : IAsyncDisposable
     {
-        public KoochDbContext Open() => new TestContext(new DbContextOptionsBuilder<KoochDbContext>()
-            .UseSqlite($"Data Source={path};Foreign Keys=False;Pooling=False").Options);
+        public KoochDbContext Open(bool failOnRequestResolution = false) => new TestContext(new DbContextOptionsBuilder<KoochDbContext>()
+            .UseSqlite($"Data Source={path};Foreign Keys=False;Pooling=False").Options, failOnRequestResolution);
 
         public static async Task<Store> CreateAsync(bool paid = true, bool secondReservation = false,
             decimal finalAmount = 100, bool session = false)
@@ -394,8 +394,16 @@ public sealed partial class ReservationCancellationOrchestrationTests
         public ValueTask DisposeAsync() { File.Delete(path); return ValueTask.CompletedTask; }
     }
 
-    private sealed class TestContext(DbContextOptions<KoochDbContext> options) : KoochDbContext(options)
+    private sealed class TestContext(DbContextOptions<KoochDbContext> options, bool failOnRequestResolution = false) : KoochDbContext(options)
     {
+        public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            if (failOnRequestResolution && ChangeTracker.Entries<ReservationCancellationRequestRecord>()
+                .Any(entry => entry.Entity.Status == ReservationCancellationRequestStatus.Resolved))
+                throw new InvalidOperationException("Injected final-save failure.");
+            return base.SaveChangesAsync(cancellationToken);
+        }
+
         protected override void OnModelCreating(ModelBuilder builder)
         {
             base.OnModelCreating(builder);

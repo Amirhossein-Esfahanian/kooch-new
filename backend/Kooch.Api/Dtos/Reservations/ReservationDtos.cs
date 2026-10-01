@@ -53,6 +53,7 @@ public class ReservationListItemResponse
 
 public class ReservationResponse : ReservationListItemResponse
 {
+    public AdminReservationCancellationRequestResponse? CancellationRequest { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ReservationCancellationOutcomeResponse? CancellationOutcome { get; set; }
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]

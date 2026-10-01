@@ -205,7 +205,7 @@ public sealed class ReservationCancellationRequestTests
         Reason = ReservationCancellationReason.GuestRequest, Message = " Please cancel "
     };
 
-    private static ReservationCancellationRequestService Service(KoochDbContext context) => new(context);
+    private static ReservationCancellationRequestService Service(KoochDbContext context) => new(context, null!);
 
     private static KoochDbContext NewContext() => new(new DbContextOptionsBuilder<KoochDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);

@@ -195,6 +195,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 entry.Property(row => row.GuestMessage).IsModified ||
                 entry.Property(row => row.RequestedAtUtc).IsModified)
                 throw new InvalidOperationException("Submitted cancellation request details cannot be changed.");
+            if (entry.Properties.Any(property => property.IsModified && property.Metadata.Name is not (
+                nameof(ReservationCancellationRequestRecord.Status) or
+                nameof(ReservationCancellationRequestRecord.ResolvedAtUtc) or
+                nameof(ReservationCancellationRequestRecord.ResolvedByUserId) or
+                nameof(ReservationCancellationRequestRecord.ResolutionNote) or
+                nameof(BaseEntity.UpdatedAtUtc) or
+                nameof(BaseEntity.UpdatedByUserId))))
+                throw new InvalidOperationException("Only cancellation request resolution fields may change.");
+            var previousStatus = entry.OriginalValues.GetValue<ReservationCancellationRequestStatus>(
+                nameof(ReservationCancellationRequestRecord.Status));
+            if (previousStatus != ReservationCancellationRequestStatus.Pending ||
+                entry.Entity.Status is not (ReservationCancellationRequestStatus.Resolved or ReservationCancellationRequestStatus.Rejected) ||
+                !entry.Entity.ResolvedAtUtc.HasValue || !entry.Entity.ResolvedByUserId.HasValue ||
+                entry.Entity.ResolvedAtUtc < entry.Entity.RequestedAtUtc)
+                throw new InvalidOperationException("Cancellation request status transition is invalid.");
         }
     }
 

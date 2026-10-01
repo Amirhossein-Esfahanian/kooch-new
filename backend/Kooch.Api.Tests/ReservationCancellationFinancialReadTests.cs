@@ -184,7 +184,7 @@ public sealed partial class ReservationCancellationOrchestrationTests
     {
         var permissions = new Permissions(bookingsAllowed, paymentsAllowed);
         var controller = new AdminReservationsController(
-            Service(db), null!, null!, null!, permissions)
+            Service(db), null!, null!, null!, permissions, new ReservationCancellationRequestService(db, permissions))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };

@@ -16,3 +16,18 @@ public sealed class ReservationCancellationRequestResponse
     public DateTime RequestedAtUtc { get; set; }
     public DateTime? ResolvedAtUtc { get; set; }
 }
+
+public sealed class AdminReservationCancellationRequestResponse
+{
+    public ReservationCancellationRequestStatus Status { get; set; }
+    public ReservationCancellationReason Reason { get; set; }
+    public string? GuestMessage { get; set; }
+    public DateTime RequestedAtUtc { get; set; }
+    public DateTime? ResolvedAtUtc { get; set; }
+    public string? ResolutionNote { get; set; }
+}
+
+public sealed class RejectReservationCancellationRequest
+{
+    public string? Note { get; set; }
+}

@@ -853,6 +853,16 @@ public class ReservationService(
         reservation.ChangedAtUtc = now;
         reservation.ChangedByUserId = currentUser.UserId;
 
+        var pendingCancellationRequest = await dbContext.ReservationCancellationRequests
+            .SingleOrDefaultAsync(item => item.ReservationId == reservationId &&
+                item.Status == ReservationCancellationRequestStatus.Pending, cancellationToken);
+        if (pendingCancellationRequest is not null)
+        {
+            pendingCancellationRequest.Status = ReservationCancellationRequestStatus.Resolved;
+            pendingCancellationRequest.ResolvedAtUtc = now;
+            pendingCancellationRequest.ResolvedByUserId = currentUser.UserId;
+        }
+
         await dbContext.SaveChangesAsync(cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.CancellationOutcome = await CancellationOutcomeAsync(reservationId, false, cancellationToken);

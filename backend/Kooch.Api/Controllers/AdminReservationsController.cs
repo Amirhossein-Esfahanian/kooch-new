@@ -14,7 +14,8 @@ public class AdminReservationsController(
     IReservationPricingService reservationPricingService,
     IReservationAvailabilityService reservationAvailabilityService,
     IReservationRulesResolver reservationRulesResolver,
-    IPermissionService permissionService) : AuthenticatedControllerBase
+    IPermissionService permissionService,
+    ReservationCancellationRequestService cancellationRequestService) : AuthenticatedControllerBase
 {
     [HttpGet("effective-rules")]
     [ProducesResponseType<EffectiveReservationRules>(StatusCodes.Status200OK)]
@@ -62,10 +63,22 @@ public class AdminReservationsController(
     {
         var response = await reservationService.GetByIdAsync(id, cancellationToken: cancellationToken);
         await EnsurePropertyPermissionAsync(response.PropertyId, "bookings.view", cancellationToken);
+        response.CancellationRequest = await cancellationRequestService.GetLatestForAdminAsync(id, cancellationToken);
         if (await permissionService.HasPermissionAsync(
                 GetCurrentUser().UserId, PermissionKey.ManagePayments, cancellationToken: cancellationToken))
             response.CancellationFinancial = await reservationService.GetCancellationFinancialStateAsync(id, cancellationToken);
         return Ok(await FilterStatusTransitionsAsync(response, cancellationToken));
+    }
+
+    [HttpPut("{id:int}/cancellation-request/reject")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
+    [ProducesResponseType<AdminReservationCancellationRequestResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<AdminReservationCancellationRequestResponse>> RejectCancellationRequest(
+        int id, RejectReservationCancellationRequest request, CancellationToken cancellationToken)
+    {
+        var actor = GetCurrentUser();
+        return Ok(await cancellationRequestService.RejectAsync(
+            id, actor.UserId, actor.Role, request.Note, cancellationToken));
     }
 
     [HttpPost]
