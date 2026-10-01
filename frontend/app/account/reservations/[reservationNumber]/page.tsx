@@ -9,6 +9,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { Controller, useForm } from "react-hook-form";
+import { z } from "zod";
 import { KoochBadge } from "@/components/KoochBadge";
 import {
   resolveSessionDestination,
@@ -16,8 +19,12 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochDialog } from "@/components/KoochDialog";
+import { KoochField, KoochSelect, KoochTextarea } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import {
+  type AccountCancellationReason,
+  type AccountCancellationRequest,
   type AccountReservation,
   formatDate,
   formatDateTime,
@@ -29,7 +36,31 @@ import {
   usePaymentCountdown,
 } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { apiRequest } from "@/lib/owner-api";
+import { apiRequest, ApiRequestError } from "@/lib/owner-api";
+
+const cancellationReasons = [
+  ["GuestRequest", "درخواست مهمان"],
+  ["NonPayment", "عدم پرداخت"],
+  ["NoAvailability", "نبود ظرفیت"],
+  ["PropertyRuleConflict", "تعارض با قوانین اقامتگاه"],
+  ["DuplicateReservation", "رزرو تکراری"],
+  ["InvalidGuestInformation", "اطلاعات نامعتبر مهمان"],
+  ["PropertyMaintenanceOrForceMajeure", "تعمیرات اقامتگاه / شرایط اضطراری"],
+  ["AdministrativeCorrection", "اصلاح اداری"],
+  ["Other", "سایر"],
+  ["PaymentExpired", "پایان مهلت پرداخت"],
+] as const satisfies readonly (readonly [AccountCancellationReason, string])[];
+
+const cancellationReasonLabels = Object.fromEntries(cancellationReasons);
+const cancellationRequestSchema = z.object({
+  reason: z.string().min(1, "دلیل درخواست را انتخاب کنید.").refine(
+    (value) => cancellationReasons.some(([reason]) => reason === value),
+    "دلیل درخواست معتبر نیست.",
+  ),
+  message: z.string().max(2000, "پیام نمی‌تواند بیش از ۲۰۰۰ نویسه باشد."),
+});
+
+type CancellationRequestForm = z.infer<typeof cancellationRequestSchema>;
 
 type DetailItemProps = {
   label: string;
@@ -74,6 +105,16 @@ export default function AccountReservationDetailsPage() {
   );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [cancellationRequest, setCancellationRequest] = useState<AccountCancellationRequest | null>(null);
+  const [requestLoading, setRequestLoading] = useState(true);
+  const [requestError, setRequestError] = useState("");
+  const [requestDialogOpen, setRequestDialogOpen] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const submittingRef = useRef(false);
+  const requestForm = useForm<CancellationRequestForm>({
+    resolver: zodResolver(cancellationRequestSchema),
+    defaultValues: { reason: "", message: "" },
+  });
   const expiryRefreshStartedRef = useRef(false);
   const remainingSeconds = usePaymentCountdown(reservation);
   const paymentToken = searchParams.get("token");
@@ -101,6 +142,61 @@ export default function AccountReservationDetailsPage() {
     }
   }, [reservationNumber]);
 
+  const loadCancellationRequest = useCallback(async () => {
+    setRequestLoading(true);
+    setRequestError("");
+    try {
+      const response = await apiRequest<AccountCancellationRequest>(
+        `/account/reservations/${encodeURIComponent(reservationNumber)}/cancellation-request`,
+      );
+      setCancellationRequest(response);
+      return response;
+    } catch (caught) {
+      if (caught instanceof ApiRequestError && caught.status === 404) {
+        setCancellationRequest(null);
+        return null;
+      }
+      setRequestError(caught instanceof Error ? caught.message : "خطا در دریافت وضعیت درخواست لغو.");
+      return null;
+    } finally {
+      setRequestLoading(false);
+    }
+  }, [reservationNumber]);
+
+  function openRequestDialog() {
+    requestForm.reset({ reason: "", message: "" });
+    setSubmitError("");
+    setRequestDialogOpen(true);
+  }
+
+  const submitCancellationRequest = requestForm.handleSubmit(async (values) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitError("");
+    try {
+      await apiRequest<AccountCancellationRequest>(
+        `/account/reservations/${encodeURIComponent(reservationNumber)}/cancellation-request`,
+        { method: "POST", body: JSON.stringify({
+          reason: values.reason,
+          message: values.message.trim() || null,
+        }) },
+      );
+      setRequestDialogOpen(false);
+      await Promise.all([loadReservation(), loadCancellationRequest()]);
+    } catch (caught) {
+      if (caught instanceof ApiRequestError && caught.status === 409) {
+        const latest = await loadCancellationRequest();
+        if (latest?.status === "Pending") {
+          setRequestDialogOpen(false);
+          return;
+        }
+      }
+      setSubmitError(caught instanceof Error ? caught.message : "ثبت درخواست لغو انجام نشد.");
+    } finally {
+      submittingRef.current = false;
+    }
+  });
+
   useEffect(() => {
     if (sessionLoading) return;
 
@@ -115,9 +211,11 @@ export default function AccountReservationDetailsPage() {
     }
 
     void loadReservation();
+    void loadCancellationRequest();
   }, [
     authenticated,
     loadReservation,
+    loadCancellationRequest,
     router,
     session,
     sessionLoading,
@@ -235,6 +333,63 @@ export default function AccountReservationDetailsPage() {
                   </KoochButton>
                 )}
               </div>
+            </KoochCard>
+
+            <KoochCard className="grid gap-3" padding="sm" variant="muted">
+              <h2 className="text-sm font-bold text-foreground">درخواست لغو رزرو</h2>
+              {requestLoading ? (
+                <p className="text-sm text-muted-foreground">در حال دریافت وضعیت درخواست...</p>
+              ) : requestError ? (
+                <div className="flex flex-wrap items-center gap-3">
+                  <p className="text-sm text-destructive" role="alert">{requestError}</p>
+                  <KoochButton onClick={() => void loadCancellationRequest()} size="sm" variant="outline">
+                    تلاش دوباره
+                  </KoochButton>
+                </div>
+              ) : cancellationRequest ? (
+                <div className="grid gap-3 text-sm">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <KoochBadge variant={cancellationRequest.status === "Pending" ? "warning" : "muted"}>
+                      {cancellationRequest.status === "Pending"
+                        ? "درخواست لغو در حال بررسی است"
+                        : cancellationRequest.status === "Rejected"
+                          ? "درخواست لغو رد شد"
+                          : "درخواست لغو انجام شد"}
+                    </KoochBadge>
+                    <span className="text-muted-foreground">
+                      وضعیت رزرو: {statusLabels[reservation.status] ?? reservation.status}
+                    </span>
+                  </div>
+                  {cancellationRequest.status === "Pending" && (
+                    <p className="text-muted-foreground">درخواست لغو ثبت شده است، اما رزرو هنوز لغو نشده است.</p>
+                  )}
+                  <dl className="grid gap-x-5 gap-y-2 sm:grid-cols-2">
+                    <div><dt className="text-xs text-muted-foreground">دلیل درخواست</dt>
+                      <dd className="text-foreground">{cancellationReasonLabels[cancellationRequest.reason] ?? cancellationRequest.reason}</dd></div>
+                    <div><dt className="text-xs text-muted-foreground">زمان درخواست</dt>
+                      <dd className="text-foreground">{formatDateTime(cancellationRequest.requestedAtUtc)}</dd></div>
+                    {cancellationRequest.message && (
+                      <div className="sm:col-span-2"><dt className="text-xs text-muted-foreground">پیام شما</dt>
+                        <dd className="whitespace-pre-wrap text-foreground">{cancellationRequest.message}</dd></div>
+                    )}
+                    {cancellationRequest.resolvedAtUtc && (
+                      <div><dt className="text-xs text-muted-foreground">زمان بررسی</dt>
+                        <dd className="text-foreground">{formatDateTime(cancellationRequest.resolvedAtUtc)}</dd></div>
+                    )}
+                  </dl>
+                  {cancellationRequest.status === "Rejected" && reservation.status !== "Cancelled" && (
+                    <KoochButton className="justify-self-start" onClick={openRequestDialog} size="sm" variant="outline">
+                      درخواست لغو رزرو
+                    </KoochButton>
+                  )}
+                </div>
+              ) : reservation.status !== "Cancelled" ? (
+                <KoochButton className="justify-self-start" onClick={openRequestDialog} size="sm" variant="outline">
+                  درخواست لغو رزرو
+                </KoochButton>
+              ) : (
+                <p className="text-sm text-muted-foreground">این رزرو لغو شده است.</p>
+              )}
             </KoochCard>
 
             <DetailSection title="رزرو">
@@ -356,6 +511,43 @@ export default function AccountReservationDetailsPage() {
           </KoochCard>
         )}
       </div>
+
+      <KoochDialog
+        closeDisabled={requestForm.formState.isSubmitting}
+        description="ثبت این درخواست به معنی لغو شدن رزرو نیست. درخواست شما توسط پشتیبانی بررسی خواهد شد."
+        footer={<>
+          <KoochButton disabled={requestForm.formState.isSubmitting} onClick={() => setRequestDialogOpen(false)} variant="outline">
+            انصراف
+          </KoochButton>
+          <KoochButton form="guest-cancellation-request-form" loading={requestForm.formState.isSubmitting} type="submit">
+            ثبت درخواست
+          </KoochButton>
+        </>}
+        onOpenChange={(nextOpen) => {
+          if (!requestForm.formState.isSubmitting) setRequestDialogOpen(nextOpen);
+        }}
+        open={requestDialogOpen}
+        size="sm"
+        title="درخواست لغو رزرو"
+      >
+        <form className="grid gap-4" id="guest-cancellation-request-form" onSubmit={submitCancellationRequest}>
+          <Controller control={requestForm.control} name="reason" render={({ field }) => (
+            <KoochField error={requestForm.formState.errors.reason?.message} label="دلیل درخواست" required>
+              <KoochSelect name={field.name} onBlur={field.onBlur} onChange={field.onChange} value={field.value}>
+                <option value="">انتخاب دلیل</option>
+                {cancellationReasons.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              </KoochSelect>
+            </KoochField>
+          )} />
+          <Controller control={requestForm.control} name="message" render={({ field }) => (
+            <KoochField error={requestForm.formState.errors.message?.message} label="پیام (اختیاری)">
+              <KoochTextarea maxLength={2000} name={field.name} onBlur={field.onBlur}
+                onChange={field.onChange} rows={3} value={field.value} />
+            </KoochField>
+          )} />
+          {submitError && <p className="text-sm text-destructive" role="alert">{submitError}</p>}
+        </form>
+      </KoochDialog>
     </main>
   );
 }

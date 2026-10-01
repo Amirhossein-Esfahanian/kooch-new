@@ -42,6 +42,28 @@ export interface AccountReservation {
   remainingPaymentSeconds?: number | null;
 }
 
+export type AccountCancellationRequestStatus = "Pending" | "Resolved" | "Rejected";
+
+export type AccountCancellationReason =
+  | "GuestRequest"
+  | "NonPayment"
+  | "NoAvailability"
+  | "PropertyRuleConflict"
+  | "DuplicateReservation"
+  | "InvalidGuestInformation"
+  | "PropertyMaintenanceOrForceMajeure"
+  | "AdministrativeCorrection"
+  | "Other"
+  | "PaymentExpired";
+
+export interface AccountCancellationRequest {
+  status: AccountCancellationRequestStatus;
+  reason: AccountCancellationReason;
+  message: string | null;
+  requestedAtUtc: string;
+  resolvedAtUtc: string | null;
+}
+
 export interface PagedResult<T> {
   items: T[];
   totalCount: number;
