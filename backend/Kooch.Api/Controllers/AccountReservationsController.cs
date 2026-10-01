@@ -9,7 +9,9 @@ namespace Kooch.Api.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/account/reservations")]
-public class AccountReservationsController(IReservationService reservationService) : AuthenticatedControllerBase
+public class AccountReservationsController(
+    IReservationService reservationService,
+    ReservationCancellationRequestService cancellationRequestService) : AuthenticatedControllerBase
 {
     [HttpGet]
     [ProducesResponseType<PagedResult<ReservationListItemResponse>>(StatusCodes.Status200OK)]
@@ -29,5 +31,24 @@ public class AccountReservationsController(IReservationService reservationServic
     {
         var user = GetCurrentUser();
         return Ok(await reservationService.GetByNumberForGuestUserAsync(user.UserId, reservationNumber, cancellationToken));
+    }
+
+    [HttpPost("{reservationNumber}/cancellation-request")]
+    [ProducesResponseType<ReservationCancellationRequestResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationCancellationRequestResponse>> CreateCancellationRequest(
+        string reservationNumber, [FromBody] CreateReservationCancellationRequest request,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await cancellationRequestService.CreateAsync(user.UserId, reservationNumber, request, cancellationToken));
+    }
+
+    [HttpGet("{reservationNumber}/cancellation-request")]
+    [ProducesResponseType<ReservationCancellationRequestResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<ReservationCancellationRequestResponse>> GetCancellationRequest(
+        string reservationNumber, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await cancellationRequestService.GetLatestAsync(user.UserId, reservationNumber, cancellationToken));
     }
 }

@@ -112,6 +112,7 @@ builder.Services.AddScoped<IEffectiveAvailabilityService, EffectiveAvailabilityS
 builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabilityService>();
 builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
+builder.Services.AddScoped<ReservationCancellationRequestService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
 builder.Services.AddScoped<SettlementService>();

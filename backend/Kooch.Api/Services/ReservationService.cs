@@ -212,12 +212,8 @@ public class ReservationService(
         int reservationId,
         CancellationToken cancellationToken = default)
     {
-        var reservation = await ReservationQuery()
-            .SingleOrDefaultAsync(item =>
-                    item.Id == reservationId &&
-                    item.Guest != null &&
-                    item.Guest.UserId == userId,
-                cancellationToken)
+        var reservation = await ReservationQuery().ForGuestUser(userId)
+            .SingleOrDefaultAsync(item => item.Id == reservationId, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
@@ -242,12 +238,8 @@ public class ReservationService(
         }
 
         var normalizedReservationNumber = reservationNumber.Trim();
-        var reservation = await ReservationQuery()
-            .SingleOrDefaultAsync(item =>
-                    item.ReservationNumber == normalizedReservationNumber &&
-                    item.Guest != null &&
-                    item.Guest.UserId == userId,
-                cancellationToken)
+        var reservation = await ReservationQuery().ForGuestUser(userId)
+            .SingleOrDefaultAsync(item => item.ReservationNumber == normalizedReservationNumber, cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
 
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);

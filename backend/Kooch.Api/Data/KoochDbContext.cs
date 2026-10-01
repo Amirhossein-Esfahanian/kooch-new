@@ -22,6 +22,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Guest> Guests => Set<Guest>();
     public DbSet<BookingSession> BookingSessions => Set<BookingSession>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
+    public DbSet<ReservationCancellationRequestRecord> ReservationCancellationRequests => Set<ReservationCancellationRequestRecord>();
     public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
     public DbSet<PaymentItem> PaymentItems => Set<PaymentItem>();
@@ -110,6 +111,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureGuests(modelBuilder);
         ConfigureBookingSessions(modelBuilder);
         ConfigureReservations(modelBuilder);
+        ConfigureReservationCancellationRequests(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
         ConfigureFinancialFoundation(modelBuilder);
@@ -128,6 +130,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureCancellationRequestHistory();
         var now = DateTime.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
@@ -159,12 +162,14 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public override int SaveChanges()
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureCancellationRequestHistory();
         return base.SaveChanges();
     }
 
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureCancellationRequestHistory();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -173,7 +178,49 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         CancellationToken cancellationToken = default)
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureCancellationRequestHistory();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void EnsureCancellationRequestHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<ReservationCancellationRequestRecord>())
+        {
+            if (entry.State == EntityState.Deleted || entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Cancellation request history cannot be deleted.");
+            if (entry.State != EntityState.Modified) continue;
+            if (entry.Property(row => row.ReservationId).IsModified ||
+                entry.Property(row => row.RequestedByUserId).IsModified ||
+                entry.Property(row => row.Reason).IsModified ||
+                entry.Property(row => row.GuestMessage).IsModified ||
+                entry.Property(row => row.RequestedAtUtc).IsModified)
+                throw new InvalidOperationException("Submitted cancellation request details cannot be changed.");
+        }
+    }
+
+    private static void ConfigureReservationCancellationRequests(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReservationCancellationRequestRecord>(entity =>
+        {
+            entity.ToTable("ReservationCancellationRequests");
+            entity.Property(row => row.Status).IsRequired();
+            entity.Property(row => row.Reason).IsRequired();
+            entity.Property(row => row.GuestMessage).HasMaxLength(2000);
+            entity.Property(row => row.ResolutionNote).HasMaxLength(2000);
+            entity.Property(row => row.RequestedAtUtc).IsRequired();
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_ReservationCancellationRequests_Status", "[Status] IN (0, 1, 2)"));
+            entity.HasIndex(row => row.ReservationId)
+                .IsUnique()
+                .HasFilter("[Status] = 0");
+            entity.HasIndex(row => new { row.ReservationId, row.RequestedAtUtc, row.Id });
+            entity.HasOne(row => row.Reservation).WithMany()
+                .HasForeignKey(row => row.ReservationId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.RequestedByUser).WithMany()
+                .HasForeignKey(row => row.RequestedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.ResolvedByUser).WithMany()
+                .HasForeignKey(row => row.ResolvedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
     }
 
     private void EnsureFinancialHistoryIsAppendOnly()
