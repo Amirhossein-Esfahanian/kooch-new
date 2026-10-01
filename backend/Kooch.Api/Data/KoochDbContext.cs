@@ -39,6 +39,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ReservationWalletFundingAllocation> ReservationWalletFundingAllocations => Set<ReservationWalletFundingAllocation>();
     public DbSet<RefundRecord> RefundRecords => Set<RefundRecord>();
     public DbSet<CancellationFinancialResolution> CancellationFinancialResolutions => Set<CancellationFinancialResolution>();
+    public DbSet<CancellationSourceDisposition> CancellationSourceDispositions => Set<CancellationSourceDisposition>();
+    public DbSet<CancellationCashRefundExecution> CancellationCashRefundExecutions => Set<CancellationCashRefundExecution>();
     public DbSet<Settlement> Settlements => Set<Settlement>();
     public DbSet<SettlementItem> SettlementItems => Set<SettlementItem>();
     public DbSet<SettlementPaymentRecord> SettlementPaymentRecords => Set<SettlementPaymentRecord>();
@@ -232,7 +234,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         var hasHistoricalMutation = ChangeTracker.Entries()
             .Any(entry =>
                 (entry.Entity is ReservationFinancialSnapshot or FinancialEntry or ReservationVoucher or RefundRecord
-                    or CancellationFinancialResolution or BookingFundingItem or ReservationWalletFundingAllocation) &&
+                    or CancellationFinancialResolution or CancellationSourceDisposition or CancellationCashRefundExecution
+                    or BookingFundingItem or ReservationWalletFundingAllocation) &&
                 entry.State is EntityState.Modified or EntityState.Deleted);
 
         if (hasHistoricalMutation)
@@ -243,13 +246,37 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             var resolution = entry.Entity;
             decimal[] amounts = [resolution.GrossPaidAmount, resolution.GuestRefundAmount,
-                resolution.FinalPropertyShare, resolution.FinalKoochShare];
+                resolution.FinalPropertyShare, resolution.FinalKoochShare, resolution.GuestWalletRestoreAmount, resolution.ForfeitedAmount];
             // Reject excess precision before SQL Server can round values independently on insert.
             if (amounts.Any(amount => amount < 0 || amount > 9999999999999999.99m ||
                     amount != decimal.Truncate(amount * 100m) / 100m) ||
-                resolution.GuestRefundAmount + resolution.FinalPropertyShare + resolution.FinalKoochShare != resolution.GrossPaidAmount)
+                resolution.GuestRefundAmount + resolution.GuestWalletRestoreAmount + resolution.ForfeitedAmount +
+                resolution.FinalPropertyShare + resolution.FinalKoochShare != resolution.GrossPaidAmount)
                 throw new InvalidOperationException("Cancellation allocation must contain nonnegative decimal(18,2) amounts whose sum equals gross paid.");
         }
+        foreach (var entry in ChangeTracker.Entries<CancellationSourceDisposition>().Where(e => e.State == EntityState.Added))
+        {
+            var source = entry.Entity;
+            var newResolution = ChangeTracker.Entries<CancellationFinancialResolution>().SingleOrDefault(r =>
+                r.State == EntityState.Added && ReferenceEquals(r.Entity, source.Resolution));
+            if (newResolution is null || newResolution.Entity.Mode != CancellationFinancialResolutionMode.ManualFundingV2)
+                throw new InvalidOperationException("Source history can only be attached to a new V2 resolution.");
+            decimal[] values = [source.FundedAmount, source.CashRefundAmount, source.WalletRestoreAmount, source.NotReturnedAmount];
+            if (source.IsDeleted || values.Any(v => v < 0 || v > 9999999999999999.99m || decimal.Round(v, 2) != v) ||
+                source.FundedAmount <= 0 || source.CashRefundAmount + source.WalletRestoreAmount + source.NotReturnedAmount != source.FundedAmount ||
+                source.PaymentId.HasValue == source.ReservationWalletFundingAllocationId.HasValue ||
+                (source.PaymentId.HasValue && source.WalletRestoreAmount != 0))
+                throw new InvalidOperationException("Cancellation source disposition is inconsistent.");
+            if (source.WalletRestoreAmount > 0 && (source.RestoreWalletEntry is null ||
+                Entry(source.RestoreWalletEntry).State != EntityState.Added ||
+                source.RestoreWalletEntry.Direction != WalletEntryDirection.Credit ||
+                source.RestoreWalletEntry.Amount != source.WalletRestoreAmount))
+                throw new InvalidOperationException("Wallet restore must insert its matching credit atomically.");
+        }
+        foreach (var entry in ChangeTracker.Entries<CancellationCashRefundExecution>().Where(e => e.State == EntityState.Added))
+            if (entry.Entity.IsDeleted || entry.Entity.Amount <= 0 || entry.Entity.Amount > 9999999999999999.99m ||
+                decimal.Round(entry.Entity.Amount, 2) != entry.Entity.Amount)
+                throw new InvalidOperationException("Cancellation cash execution must contain a positive decimal(18,2) amount.");
         EnsureSuccessfulPaymentFactsAreImmutable();
         foreach (var entry in ChangeTracker.Entries<Settlement>())
         {
@@ -1445,6 +1472,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(r => r.GrossPaidAmount).HasPrecision(18, 2);
             entity.Property(r => r.GuestRefundAmount).HasPrecision(18, 2);
+            entity.Property(r => r.GuestWalletRestoreAmount).HasPrecision(18, 2);
+            entity.Property(r => r.ForfeitedAmount).HasPrecision(18, 2);
             entity.Property(r => r.FinalPropertyShare).HasPrecision(18, 2);
             entity.Property(r => r.FinalKoochShare).HasPrecision(18, 2);
             entity.Property(r => r.Currency).HasMaxLength(3).IsRequired();
@@ -1454,15 +1483,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(r => r.IdempotencyKey).HasMaxLength(200).IsRequired();
             entity.Property(r => r.RequestFingerprint).HasMaxLength(64).IsRequired();
             entity.HasIndex(r => new { r.PaymentId, r.ReservationId }).IsUnique();
+            entity.HasIndex(r => r.ReservationId).IsUnique();
             entity.HasIndex(r => r.IdempotencyKey).IsUnique();
             entity.HasIndex(r => r.PaymentItemId).IsUnique().HasFilter("[PaymentItemId] IS NOT NULL");
             entity.HasIndex(r => r.OriginalPropertyPayableEntryId).IsUnique();
             entity.ToTable(table =>
             {
                 table.HasCheckConstraint("CK_CancellationFinancialResolutions_NonnegativeAmounts",
-                    "[GrossPaidAmount] >= 0 AND [GuestRefundAmount] >= 0 AND [FinalPropertyShare] >= 0 AND [FinalKoochShare] >= 0");
+                    "[GrossPaidAmount] >= 0 AND [GuestRefundAmount] >= 0 AND [GuestWalletRestoreAmount] >= 0 AND [ForfeitedAmount] >= 0 AND [FinalPropertyShare] >= 0 AND [FinalKoochShare] >= 0");
                 table.HasCheckConstraint("CK_CancellationFinancialResolutions_AllocationSum",
-                    "[GuestRefundAmount] + [FinalPropertyShare] + [FinalKoochShare] = [GrossPaidAmount]");
+                    "[GuestRefundAmount] + [GuestWalletRestoreAmount] + [ForfeitedAmount] + [FinalPropertyShare] + [FinalKoochShare] = [GrossPaidAmount]");
             });
             entity.HasOne<Reservation>().WithMany().HasForeignKey(r => r.ReservationId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<Payment>().WithMany().HasForeignKey(r => r.PaymentId).OnDelete(DeleteBehavior.NoAction);
@@ -1478,6 +1508,43 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<Settlement>().WithMany().HasForeignKey(r => r.ReleasedSettlementId).OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<User>().WithMany().HasForeignKey(r => r.ResolvedByUserId).OnDelete(DeleteBehavior.NoAction);
+        });
+        modelBuilder.Entity<CancellationSourceDisposition>(entity =>
+        {
+            entity.Property(r => r.FundedAmount).HasPrecision(18, 2);
+            entity.Property(r => r.CashRefundAmount).HasPrecision(18, 2);
+            entity.Property(r => r.WalletRestoreAmount).HasPrecision(18, 2);
+            entity.Property(r => r.NotReturnedAmount).HasPrecision(18, 2);
+            entity.HasIndex(r => r.ReservationWalletFundingAllocationId).IsUnique()
+                .HasFilter("[ReservationWalletFundingAllocationId] IS NOT NULL");
+            entity.HasIndex(r => new { r.CancellationFinancialResolutionId, r.PaymentId }).IsUnique()
+                .HasFilter("[PaymentId] IS NOT NULL");
+            entity.HasIndex(r => r.RestoreWalletEntryId).IsUnique().HasFilter("[RestoreWalletEntryId] IS NOT NULL");
+            entity.HasOne(r => r.Resolution).WithMany().HasForeignKey(r => r.CancellationFinancialResolutionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<Payment>().WithMany().HasForeignKey(r => r.PaymentId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<PaymentItem>().WithMany().HasForeignKey(r => r.PaymentItemId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<ReservationWalletFundingAllocation>().WithMany().HasForeignKey(r => r.ReservationWalletFundingAllocationId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(r => r.RestoreWalletEntry).WithMany().HasForeignKey(r => r.RestoreWalletEntryId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(t =>
+            {
+                t.HasCheckConstraint("CK_CancellationSourceDispositions_Amounts", "[FundedAmount] > 0 AND [CashRefundAmount] >= 0 AND [WalletRestoreAmount] >= 0 AND [NotReturnedAmount] >= 0 AND [CashRefundAmount] + [WalletRestoreAmount] + [NotReturnedAmount] = [FundedAmount]");
+                t.HasCheckConstraint("CK_CancellationSourceDispositions_Source", "([PaymentId] IS NOT NULL AND [ReservationWalletFundingAllocationId] IS NULL AND [WalletRestoreAmount] = 0) OR ([PaymentId] IS NULL AND [PaymentItemId] IS NULL AND [ReservationWalletFundingAllocationId] IS NOT NULL)");
+            });
+        });
+        modelBuilder.Entity<CancellationCashRefundExecution>(entity =>
+        {
+            entity.Property(r => r.Amount).HasPrecision(18, 2);
+            entity.Property(r => r.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(r => r.ReferenceNumber).HasMaxLength(200).IsRequired();
+            entity.Property(r => r.Reason).HasMaxLength(1000).IsRequired();
+            entity.Property(r => r.Note).HasMaxLength(2000);
+            entity.Property(r => r.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(r => r.RequestFingerprint).HasMaxLength(64).IsRequired();
+            entity.HasIndex(r => r.IdempotencyKey).IsUnique();
+            entity.HasIndex(r => r.CancellationFinancialResolutionId).IsUnique();
+            entity.HasOne<CancellationFinancialResolution>().WithMany().HasForeignKey(r => r.CancellationFinancialResolutionId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(r => r.RecordedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(t => t.HasCheckConstraint("CK_CancellationCashRefundExecutions_Amount", "[Amount] > 0"));
         });
         modelBuilder.Entity<RefundRecord>(entity =>
         {

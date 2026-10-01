@@ -27,6 +27,142 @@ const financial = {
   alreadyHandledByLegacyRefundV1: false,
 } as const;
 
+const funding = {
+  externalAmount: 400, walletAmount: 600, withdrawableWalletAmount: 300, nonWithdrawableWalletAmount: 300,
+  sources: [
+    { sourceToken: "external-handle", sourceType: "ExternalPayment", fundedAmount: 400, withdrawable: true,
+      maxCashRefundAmount: 400, maxWalletRestoreAmount: 0, expiresAtUtc: null, expired: false },
+    { sourceToken: "cash-handle", sourceType: "CashReceived", fundedAmount: 300, withdrawable: true,
+      maxCashRefundAmount: 300, maxWalletRestoreAmount: 300, expiresAtUtc: null, expired: false },
+    { sourceToken: "promo-handle", sourceType: "PromotionalCredit", fundedAmount: 300, withdrawable: false,
+      maxCashRefundAmount: 0, maxWalletRestoreAmount: 300, expiresAtUtc: "2020-01-01T00:00:00Z", expired: true },
+  ].map((s) => ({ ...s, remainingDispositionAmount: s.fundedAmount, reference: null, reason: null,
+    paymentStatus: null, paymentMethod: null, cashRefundAmount: 0, walletRestoreAmount: 0,
+    notReturnedAmount: 0, cashRefundExecutedAmount: 0 })),
+};
+
+function fillFundingSplit() {
+  const groups = screen.getAllByRole("group");
+  const change = (root: HTMLElement, label: string, value: string) => fireEvent.change(within(root).getByLabelText(label, { exact: false }), { target: { value } });
+  change(groups[0], "بازپرداخت نقدی", "300");
+  change(groups[0], "بازگردانده نمی‌شود", "100");
+  change(groups[1], "بازپرداخت نقدی", "100");
+  change(groups[1], "بازگشت به کیف پول", "100");
+  change(groups[1], "بازگردانده نمی‌شود", "100");
+  change(groups[2], "بازگشت به کیف پول", "200");
+  change(groups[2], "بازگردانده نمی‌شود", "100");
+  change(document.body, "سهم نهایی اقامتگاه", "100");
+  change(document.body, "سهم نهایی کوچ", "100");
+  change(document.body, "اعتبار/مبلغ سوخت‌شده", "100");
+}
+
+describe("Admin funding-aware cancellation V2", () => {
+  it("shows reservation and external-only funding without forcing manual allocation", async () => {
+    const externalFunding = { externalAmount: 1000, walletAmount: 0,
+      withdrawableWalletAmount: 0, nonWithdrawableWalletAmount: 0,
+      sources: [{ ...funding.sources[0], fundedAmount: 1000, remainingDispositionAmount: 1000,
+        maxCashRefundAmount: 1000 }] };
+    renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: {
+      ...financial, funding: externalFunding } }) });
+    await openCancellation();
+    const summary = screen.getByRole("region", { name: "خلاصه رزرو" });
+    expect(within(summary).getByText("اقامتگاه آزمون")).toBeTruthy();
+    expect(within(summary).getByText("مهمان آزمون")).toBeTruthy();
+    expect(within(summary).getByText("تایید شده")).toBeTruthy();
+    expect(within(summary).getByText("IRR")).toBeTruthy();
+    expect(within(summary).getByText("۱۰۰۰ واحد")).toBeTruthy();
+    const sources = screen.getByRole("region", { name: "منابع پرداخت" });
+    expect(within(sources).getByText("پرداخت خارجی")).toBeTruthy();
+    expect(within(sources).getByText(/بازپرداخت نقدی، بازگردانده نمی‌شود/)).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: "می‌خواهم مبالغ را دستی تعیین کنم" })).toBeTruthy();
+  });
+
+  it("shows wallet-only funding and requires source decisions", async () => {
+    const walletFunding = { externalAmount: 0, walletAmount: 1000,
+      withdrawableWalletAmount: 500, nonWithdrawableWalletAmount: 500,
+      sources: [{ ...funding.sources[1], fundedAmount: 500, remainingDispositionAmount: 500,
+        maxCashRefundAmount: 500, maxWalletRestoreAmount: 500 },
+      { ...funding.sources[2], fundedAmount: 500, remainingDispositionAmount: 500,
+        maxWalletRestoreAmount: 500 }] };
+    renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: {
+      ...financial, funding: walletFunding } }) });
+    await openCancellation();
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(2);
+    expect(within(groups[0]).getByLabelText(/بازپرداخت نقدی/)).toBeTruthy();
+    expect(within(groups[0]).getByLabelText(/بازگشت به کیف پول/)).toBeTruthy();
+    expect(within(groups[1]).queryByLabelText(/بازپرداخت نقدی/)).toBeNull();
+    expect((screen.getByRole("button", { name: "ادامه لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("renders authoritative funding capabilities and expiry without an automatic wallet decision", async () => {
+    renderDialog({ onCancel: vi.fn(), reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
+    await openCancellation();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(3);
+    expect(within(groups[0]).queryByLabelText(/بازگشت به کیف پول/)).toBeNull();
+    expect(within(groups[1]).getByLabelText(/بازپرداخت نقدی/)).toBeTruthy();
+    expect(within(groups[1]).getByLabelText(/بازگشت به کیف پول/)).toBeTruthy();
+    expect(within(groups[2]).queryByLabelText(/بازپرداخت نقدی/)).toBeNull();
+    expect(within(groups[2]).getByText(/منقضی شده و قابل استفاده نخواهد بود/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "ادامه لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("reconciles live, confirms exact totals and sends only opaque source decisions", async () => {
+    const onCancel = vi.fn().mockResolvedValue(undefined);
+    renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
+    await openCancellation(); fillCancellation(); fillFundingSplit();
+    fireEvent.click(screen.getByRole("button", { name: "ادامه لغو رزرو" }));
+    const confirmation = screen.getByRole("alert");
+    expect(within(confirmation).getByText(/لغو رزرو نهایی شود/)).toBeTruthy();
+    expect(within(confirmation).getAllByText("۴۰۰ واحد").length).toBeGreaterThan(0);
+    expect(within(confirmation).getAllByText("۳۰۰ واحد").length).toBeGreaterThan(0);
+    expect(within(confirmation).getByText("بازگردانده نمی‌شود")).toBeTruthy();
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.click(within(confirmation).getByRole("button", { name: "تایید و لغو رزرو" }));
+    await waitFor(() => expect(onCancel).toHaveBeenCalledOnce());
+    expect(onCancel.mock.calls[0][1].financialResolution).toEqual({
+      mode: "ManualFundingV2", finalPropertyShare: 100, finalKoochShare: 100, forfeitedAmount: 100,
+      sourceDispositions: [
+        { sourceToken: "external-handle", cashRefundAmount: 300, walletRestoreAmount: 0, notReturnedAmount: 100 },
+        { sourceToken: "cash-handle", cashRefundAmount: 100, walletRestoreAmount: 100, notReturnedAmount: 100 },
+        { sourceToken: "promo-handle", cashRefundAmount: 0, walletRestoreAmount: 200, notReturnedAmount: 100 },
+      ],
+    });
+  });
+
+  it.each(["sum", "source", "negative", "precision"])("blocks an invalid %s decision", async (kind) => {
+    const onCancel = vi.fn();
+    renderDialog({ onCancel, reservation: reservation({ cancellationFinancial: { ...financial, funding } }) });
+    await openCancellation(); fillCancellation(); fillFundingSplit();
+    if (kind === "sum") fireEvent.change(screen.getByLabelText(/سهم نهایی کوچ/), { target: { value: "101" } });
+    else fireEvent.change(within(screen.getAllByRole("group")[0]).getByLabelText(/بازپرداخت نقدی/),
+      { target: { value: kind === "source" ? "299" : kind === "negative" ? "-1" : "299.999" } });
+    expect((screen.getByRole("button", { name: "ادامه لغو رزرو" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
+  it("shows finalized V2 cash status read-only and retains pending refund action", async () => {
+    const finalizedFunding = { ...funding, sources: funding.sources.map((source, index) => ({
+      ...source, cashRefundAmount: index === 0 ? 300 : index === 1 ? 100 : 0,
+      walletRestoreAmount: index === 1 ? 100 : index === 2 ? 200 : 0,
+      notReturnedAmount: 100,
+    })) };
+    renderDialog({ onCancel: vi.fn(), onRefund: vi.fn(), reservation: reservation({ status: "Cancelled",
+      cancellationFinancial: { ...financial, funding: finalizedFunding, mode: "ManualFundingV2", guestRefundAmount: 400,
+        guestWalletRestoreAmount: 300, forfeitedAmount: 100, finalPropertyShare: 100, finalKoochShare: 100,
+        cashRefundExecutedAmount: 0, cashRefundPendingAmount: 400, refundPending: true } }) });
+    expect(await screen.findByRole("button", { name: "ثبت بازپرداخت" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "لغو رزرو" })).toBeNull();
+    expect(screen.getByText("نیازمند بازپرداخت")).toBeTruthy();
+    const decisions = screen.getByRole("region", { name: "تصمیم نهایی منابع پرداخت" });
+    expect(within(decisions).getAllByText(/بازپرداخت نقدی:/)).toHaveLength(3);
+    expect(within(decisions).getAllByText(/بازگشت به کیف پول:/)).toHaveLength(3);
+    expect(within(decisions).queryByRole("textbox")).toBeNull();
+  });
+});
+
 function reservation(overrides: Partial<ReservationTableItem> = {}): ReservationTableItem {
   return {
     id: 12,

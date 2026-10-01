@@ -102,6 +102,8 @@ public class ReservationService(
     public async Task<ReservationCancellationFinancialStateResponse> GetCancellationFinancialStateAsync(
         int reservationId, CancellationToken cancellationToken = default)
     {
+        if (await dbContext.ReservationFinancialSnapshots.AsNoTracking().AnyAsync(s => s.ReservationId == reservationId, cancellationToken))
+            return await CancellationFunding.ReadAsync(dbContext, reservationId, DateTime.UtcNow, cancellationToken);
         var reservation = await dbContext.Reservations.AsNoTracking()
             .Where(r => r.Id == reservationId)
             .Select(r => new { r.PropertyId, r.BookingSessionId, r.Status })
@@ -798,8 +800,8 @@ public class ReservationService(
             if (keyOwner.HasValue && keyOwner.Value != reservationId)
                 throw new InvalidOperationException("Cancellation idempotency key belongs to another reservation.");
         }
-        await BookingWalletFunding.EnsureCashCancellationSupportedAsync(dbContext, reservationId, cancellationToken);
-        var paid = await dbContext.Payments.IgnoreQueryFilters().AsNoTracking().AnyAsync(payment =>
+        var paid = await dbContext.ReservationFinancialSnapshots.IgnoreQueryFilters().AnyAsync(s => s.ReservationId == reservationId, cancellationToken) ||
+            await dbContext.Payments.IgnoreQueryFilters().AsNoTracking().AnyAsync(payment =>
             payment.Status == PaymentStatus.Successful &&
             (payment.ReservationId == reservationId || dbContext.PaymentItems.IgnoreQueryFilters()
                 .Any(item => item.PaymentId == payment.Id && item.ReservationId == reservationId)), cancellationToken);
@@ -835,12 +837,15 @@ public class ReservationService(
 
         if (paid)
         {
+            if (mode != CancellationFinancialResolutionMode.ManualFundingV2)
+                await BookingWalletFunding.EnsureCashCancellationSupportedAsync(dbContext, reservationId, cancellationToken);
             var resolver = financialResolutionService ??
                 throw new InvalidOperationException("Cancellation financial resolution service is not configured.");
             await resolver.ResolveAsync(new CancellationFinancialResolutionRequest
             {
                 ReservationId = reservationId, Mode = mode, GuestRefundAmount = financial?.GuestRefundAmount,
                 FinalPropertyShare = financial?.FinalPropertyShare, FinalKoochShare = financial?.FinalKoochShare,
+                ForfeitedAmount = financial?.ForfeitedAmount, SourceDispositions = financial?.SourceDispositions,
                 Reason = request.Reason.Value.ToString(), Note = note, IdempotencyKey = key
             }, currentUser.UserId, cancellationToken);
         }
@@ -872,16 +877,36 @@ public class ReservationService(
     private static string CancellationFingerprint(ReservationCancellationReason reason, string explanation,
         CancellationFinancialResolutionMode mode, ReservationCancellationFinancialRequest? financial, string? note)
     {
+        if (mode != CancellationFinancialResolutionMode.ManualFundingV2 &&
+            (financial?.SourceDispositions is not null || financial?.ForfeitedAmount is not null))
+            throw new ArgumentException("Source decisions require ManualFundingV2.");
+        // Preserve the exact historical V1 fingerprint bytes for replay of existing cancellations.
+        if (mode != CancellationFinancialResolutionMode.ManualFundingV2)
+        {
+            var legacy = JsonSerializer.Serialize(new
+            {
+                Reason = (int)reason, Explanation = explanation, Mode = (int)mode,
+                Guest = mode == CancellationFinancialResolutionMode.ManualOverride ? financial?.GuestRefundAmount?.ToString("F2", CultureInfo.InvariantCulture) : null,
+                Property = mode == CancellationFinancialResolutionMode.ManualOverride ? financial?.FinalPropertyShare?.ToString("F2", CultureInfo.InvariantCulture) : null,
+                Kooch = mode == CancellationFinancialResolutionMode.ManualOverride ? financial?.FinalKoochShare?.ToString("F2", CultureInfo.InvariantCulture) : null,
+                Note = note
+            });
+            return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(legacy)));
+        }
         var payload = JsonSerializer.Serialize(new
         {
             Reason = (int)reason, Explanation = explanation, Mode = (int)mode,
             Guest = mode == CancellationFinancialResolutionMode.ManualOverride ?
                 financial?.GuestRefundAmount?.ToString("F2", CultureInfo.InvariantCulture) : null,
-            Property = mode == CancellationFinancialResolutionMode.ManualOverride ?
+            Property = mode != CancellationFinancialResolutionMode.AutomaticFullRefundV1 ?
                 financial?.FinalPropertyShare?.ToString("F2", CultureInfo.InvariantCulture) : null,
-            Kooch = mode == CancellationFinancialResolutionMode.ManualOverride ?
+            Kooch = mode != CancellationFinancialResolutionMode.AutomaticFullRefundV1 ?
                 financial?.FinalKoochShare?.ToString("F2", CultureInfo.InvariantCulture) : null,
-            Note = note
+            Note = note, Forfeit = financial?.ForfeitedAmount?.ToString("G29", CultureInfo.InvariantCulture),
+            V2Property = mode == CancellationFinancialResolutionMode.ManualFundingV2 ? financial?.FinalPropertyShare?.ToString("G29", CultureInfo.InvariantCulture) : null,
+            V2Kooch = mode == CancellationFinancialResolutionMode.ManualFundingV2 ? financial?.FinalKoochShare?.ToString("G29", CultureInfo.InvariantCulture) : null,
+            V2Guest = mode == CancellationFinancialResolutionMode.ManualFundingV2 ? financial?.GuestRefundAmount?.ToString("G29", CultureInfo.InvariantCulture) : null,
+            Sources = CancellationFunding.FingerprintSources(financial?.SourceDispositions)
         });
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(payload)));
     }
@@ -894,7 +919,8 @@ public class ReservationService(
         if (resolution is not null)
         {
             var refunded = await dbContext.RefundRecords.IgnoreQueryFilters().AsNoTracking()
-                .AnyAsync(item => item.ReservationId == reservationId, cancellationToken);
+                .AnyAsync(item => item.ReservationId == reservationId, cancellationToken) ||
+                await dbContext.CancellationCashRefundExecutions.AnyAsync(e => e.CancellationFinancialResolutionId == resolution.Id, cancellationToken);
             return new ReservationCancellationOutcomeResponse
             {
                 PaidCancellation = true, FinancialMode = resolution.Mode,

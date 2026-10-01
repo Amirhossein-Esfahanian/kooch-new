@@ -255,7 +255,7 @@ public sealed class CancellationFinancialResolutionPersistenceTests
         Assert.Equal(3, entity.FindProperty("Currency")!.GetMaxLength());
         var expectedLinks = new (string Name, Type Type, bool Required)[]
         {
-            ("ReservationId", typeof(Reservation), true), ("PaymentId", typeof(Payment), true),
+            ("ReservationId", typeof(Reservation), true), ("PaymentId", typeof(Payment), false),
             ("PaymentItemId", typeof(PaymentItem), false), ("PropertyId", typeof(Property), true),
             ("ReservationFinancialSnapshotId", typeof(ReservationFinancialSnapshot), true),
             ("OriginalPropertyPayableEntryId", typeof(FinancialEntry), true),

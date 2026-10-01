@@ -15,7 +15,7 @@ using Xunit;
 
 namespace Kooch.Api.Tests;
 
-public sealed class ReservationWalletFundingTests
+public sealed partial class ReservationWalletFundingTests
 {
     [Theory]
     [InlineData(0)]
@@ -517,9 +517,11 @@ public sealed class ReservationWalletFundingTests
     private sealed class FailAfterFinalSave : SaveChangesInterceptor
     {
         public bool Enabled { get; set; }
+        public bool WaitForCancellationSources { get; set; }
         public override ValueTask<int> SavedChangesAsync(SaveChangesCompletedEventData eventData, int result, CancellationToken cancellationToken = default)
         {
-            if (Enabled && eventData.Context!.Set<ReservationWalletFundingAllocation>().Local.Count > 0)
+            if (Enabled && eventData.Context!.Set<ReservationWalletFundingAllocation>().Local.Count > 0 &&
+                (!WaitForCancellationSources || eventData.Context.Set<CancellationSourceDisposition>().Local.Count > 0))
                 throw new InvalidOperationException("Injected failure after final funding persistence");
             return ValueTask.FromResult(result);
         }
@@ -585,7 +587,8 @@ public sealed class ReservationWalletFundingTests
                 builder.Entity(type).Property("RowVersion").ValueGeneratedNever();
             // SQLite maps decimal to TEXT by default, making SQL CHECK column comparisons
             // lexical. Use numeric affinity here; SQL Server keeps the real decimal(18,2) model.
-            foreach (var type in new[] { typeof(BookingFundingItem), typeof(ReservationFinancialSnapshot) })
+            foreach (var type in new[] { typeof(BookingFundingItem), typeof(ReservationFinancialSnapshot),
+                typeof(CancellationFinancialResolution), typeof(CancellationSourceDisposition) })
                 foreach (var property in builder.Model.FindEntityType(type)!.GetProperties().Where(p => p.ClrType == typeof(decimal)))
                     builder.Entity(type).Property(property.Name).HasColumnType("decimal(18,2)");
             builder.Entity<ReservationFinancialSnapshot>().Property(s => s.ExternalPaymentAmount)

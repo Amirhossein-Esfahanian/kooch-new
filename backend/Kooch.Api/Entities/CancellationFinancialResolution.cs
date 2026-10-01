@@ -4,7 +4,7 @@ namespace Kooch.Api.Entities;
 public class CancellationFinancialResolution : BaseEntity
 {
     public int ReservationId { get; set; }
-    public int PaymentId { get; set; }
+    public int? PaymentId { get; set; }
     public int? PaymentItemId { get; set; }
     public int PropertyId { get; set; }
     public int ReservationFinancialSnapshotId { get; set; }
@@ -12,6 +12,9 @@ public class CancellationFinancialResolution : BaseEntity
     public decimal GrossPaidAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
     public decimal GuestRefundAmount { get; set; }
+    // GuestRefundAmount remains the cash entitlement, including for ManualFundingV2.
+    public decimal GuestWalletRestoreAmount { get; set; }
+    public decimal ForfeitedAmount { get; set; }
     public decimal FinalPropertyShare { get; set; }
     public decimal FinalKoochShare { get; set; }
     public CancellationFinancialResolutionMode Mode { get; set; }

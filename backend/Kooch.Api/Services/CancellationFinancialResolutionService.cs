@@ -18,14 +18,25 @@ public sealed class CancellationFinancialResolutionService(
         CancellationFinancialResolutionRequest request, int actorId, CancellationToken cancellationToken = default)
     {
         var normalized = Normalize(request, actorId);
-        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+        var fingerprintPayload = normalized.Mode != CancellationFinancialResolutionMode.ManualFundingV2
+            ? JsonSerializer.Serialize(new
+            {
+                normalized.ReservationId, normalized.Mode,
+                Guest = normalized.GuestRefundAmount?.ToString("F2", CultureInfo.InvariantCulture),
+                Property = normalized.FinalPropertyShare?.ToString("F2", CultureInfo.InvariantCulture),
+                Kooch = normalized.FinalKoochShare?.ToString("F2", CultureInfo.InvariantCulture),
+                normalized.Reason, normalized.Note
+            }) : JsonSerializer.Serialize(new
         {
             normalized.ReservationId, normalized.Mode,
             Guest = normalized.GuestRefundAmount?.ToString("F2", CultureInfo.InvariantCulture),
             Property = normalized.FinalPropertyShare?.ToString("F2", CultureInfo.InvariantCulture),
             Kooch = normalized.FinalKoochShare?.ToString("F2", CultureInfo.InvariantCulture),
-            normalized.Reason, normalized.Note
-        }))));
+            normalized.Reason, normalized.Note,
+            Forfeit = normalized.ForfeitedAmount?.ToString("G29", CultureInfo.InvariantCulture),
+            Sources = CancellationFunding.FingerprintSources(normalized.SourceDispositions)
+        });
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(fingerprintPayload)));
         await using var transaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
             ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
         try
@@ -44,6 +55,35 @@ public sealed class CancellationFinancialResolutionService(
         CancellationFinancialResolutionRequest request, int actorId, string fingerprint, CancellationToken ct)
     {
         var reservationId = request.ReservationId;
+        var v2 = request.Mode == CancellationFinancialResolutionMode.ManualFundingV2;
+        CancellationFunding.Facts? funding = null;
+        int? paymentId;
+        PaymentItem? item;
+        decimal gross;
+        string currency;
+        ReservationFinancialSnapshot snapshot;
+        FinancialEntry original;
+        if (v2)
+        {
+            await BookingFundingLock.ForReservationAsync(context, reservationId, ct);
+            if (context.Database.IsSqlServer())
+                await context.Reservations.FromSqlInterpolated(
+                    $"SELECT * FROM [Reservations] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {reservationId}")
+                    .IgnoreQueryFilters().AsNoTracking().SingleAsync(ct);
+            funding = await CancellationFunding.LoadAsync(context, reservationId, ct);
+            if (await context.Reservations.AnyAsync(r => r.Id == reservationId && r.Status == ReservationStatus.CapacityLost, ct))
+                throw new InvalidOperationException("CapacityLost is outside cancellation financial resolution.");
+            CancellationFunding.Validate(funding, request);
+            await CancellationFunding.LockWalletsAsync(context, funding, ct);
+            snapshot = funding.Snapshot;
+            original = funding.Payable;
+            paymentId = snapshot.PaymentId;
+            item = funding.Sources.FirstOrDefault(s => s.Payment is not null)?.Item;
+            gross = snapshot.GrossAmount;
+            currency = snapshot.Currency;
+        }
+        else
+        {
         await BookingWalletFunding.EnsureCashCancellationSupportedAsync(context, reservationId, ct);
         var candidates = await context.Payments.IgnoreQueryFilters().AsNoTracking()
             .Where(p => p.Status == PaymentStatus.Successful && (p.ReservationId == reservationId ||
@@ -51,7 +91,7 @@ public sealed class CancellationFinancialResolutionService(
             .Select(p => p.Id).Take(2).ToListAsync(ct);
         if (candidates.Count != 1)
             throw new InvalidOperationException("Exactly one successful payment allocation is required.");
-        var paymentId = candidates[0];
+        paymentId = candidates[0];
         var payment = context.Database.IsSqlServer()
             ? await context.Payments.FromSqlInterpolated(
                     $"SELECT * FROM [Payments] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {paymentId}")
@@ -63,24 +103,24 @@ public sealed class CancellationFinancialResolutionService(
             .Where(r => r.Id == reservationId).Select(r => new { r.PropertyId, r.BookingSessionId, r.Status }).SingleAsync(ct);
         if (reservation.Status == ReservationStatus.CapacityLost)
             throw new InvalidOperationException("CapacityLost is outside cancellation financial resolution; use standalone Refund V1.");
-        var item = await context.PaymentItems.IgnoreQueryFilters().AsNoTracking()
+        item = await context.PaymentItems.IgnoreQueryFilters().AsNoTracking()
             .SingleOrDefaultAsync(i => i.PaymentId == paymentId && i.ReservationId == reservationId, ct);
         if (payment.ReservationId.HasValue
             ? payment.ReservationId != reservationId || payment.BookingSessionId.HasValue || item is not null
             : !payment.BookingSessionId.HasValue || item is null || payment.BookingSessionId != reservation.BookingSessionId)
             throw new InvalidOperationException("Payment allocation linkage is inconsistent.");
-        var gross = item?.AllocatedAmount ?? payment.Amount;
-        var currency = item?.Currency ?? payment.Currency;
+        gross = item?.AllocatedAmount ?? payment.Amount;
+        currency = item?.Currency ?? payment.Currency;
         if (!IsMoney(gross) || !IsMoney(payment.Amount) || gross > payment.Amount ||
             string.IsNullOrWhiteSpace(currency) || currency.Length != 3 || currency != payment.Currency)
             throw new InvalidOperationException("Payment allocation amount or currency is inconsistent.");
 
-        var snapshot = await context.ReservationFinancialSnapshots.IgnoreQueryFilters().AsNoTracking()
-            .SingleOrDefaultAsync(s => s.PaymentId == paymentId && s.ReservationId == reservationId, ct);
+        snapshot = (await context.ReservationFinancialSnapshots.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(s => s.PaymentId == paymentId && s.ReservationId == reservationId, ct))!;
         // Matches PaymentFinancializationService.ApplyAsync; never select the only payable of an allocation.
         var originalCorrelation = $"payment:{paymentId}:reservation:{reservationId}";
-        var original = await context.FinancialEntries.IgnoreQueryFilters().AsNoTracking()
-            .SingleOrDefaultAsync(e => e.EntryType == FinancialEntryType.PropertyPayable && e.CorrelationKey == originalCorrelation, ct);
+        original = (await context.FinancialEntries.IgnoreQueryFilters().AsNoTracking()
+            .SingleOrDefaultAsync(e => e.EntryType == FinancialEntryType.PropertyPayable && e.CorrelationKey == originalCorrelation, ct))!;
         if (snapshot is null || original is null)
             throw new InvalidOperationException("Original snapshot and recognized PropertyPayable are required; standalone no-payable refunds are separate.");
         if (snapshot.PropertyId != reservation.PropertyId || snapshot.PaymentItemId != item?.Id ||
@@ -92,6 +132,7 @@ public sealed class CancellationFinancialResolutionService(
             original.Amount != snapshot.PropertyPayableAmount || original.ReversesEntryId.HasValue || !original.PayableDueDate.HasValue)
             throw new InvalidOperationException("Original payment, snapshot and payable facts are inconsistent.");
 
+        }
         await PropertyFinanceLock.AcquireAsync(context, snapshot.PropertyId, ct);
         var existing = await context.CancellationFinancialResolutions.IgnoreQueryFilters().AsNoTracking()
             .SingleOrDefaultAsync(r => r.IdempotencyKey == request.IdempotencyKey, ct);
@@ -102,13 +143,15 @@ public sealed class CancellationFinancialResolutionService(
             return new(CancellationFinancialResolutionOutcome.Finalized, existing, null, original.Amount, snapshot.CommissionAmount);
         }
         if (await context.CancellationFinancialResolutions.IgnoreQueryFilters().AnyAsync(
-                r => r.PaymentId == paymentId && r.ReservationId == reservationId, ct))
+                r => r.ReservationId == reservationId, ct))
             throw new InvalidOperationException("This allocation already has a finalized cancellation resolution.");
 
-        var guest = request.Mode == CancellationFinancialResolutionMode.AutomaticFullRefundV1 ? gross : request.GuestRefundAmount!.Value;
+        var guest = v2 ? request.SourceDispositions!.Sum(s => s.CashRefundAmount) : request.Mode == CancellationFinancialResolutionMode.AutomaticFullRefundV1 ? gross : request.GuestRefundAmount!.Value;
+        var restore = v2 ? request.SourceDispositions!.Sum(s => s.WalletRestoreAmount) : 0m;
+        var forfeit = v2 ? request.ForfeitedAmount!.Value : 0m;
         var property = request.Mode == CancellationFinancialResolutionMode.AutomaticFullRefundV1 ? 0m : request.FinalPropertyShare!.Value;
         var kooch = request.Mode == CancellationFinancialResolutionMode.AutomaticFullRefundV1 ? 0m : request.FinalKoochShare!.Value;
-        if (guest + property + kooch != gross)
+        if (guest + restore + forfeit + property + kooch != gross)
             throw new ArgumentException("Guest refund + final Property share + final Kooch share must equal gross paid.");
 
         var priorRefund = await context.RefundRecords.IgnoreQueryFilters().AsNoTracking()
@@ -121,6 +164,7 @@ public sealed class CancellationFinancialResolutionService(
             .SingleOrDefaultAsync(ct);
         if (priorRefund is not null || priorCorrections.Count > 0)
         {
+            if (v2) throw new InvalidOperationException("Existing refund/correction history cannot be overwritten by V2.");
             var reversal = priorCorrections.Count == 1 ? priorCorrections[0] : null;
             if (priorRefund is null || priorRefund.CancellationFinancialResolutionId.HasValue ||
                 priorRefund.Amount != gross || priorRefund.Currency != currency || priorRefund.PropertyId != snapshot.PropertyId ||
@@ -152,7 +196,7 @@ public sealed class CancellationFinancialResolutionService(
                 await settlements.CancelAsync(activeBatch.SettlementId, $"Cancellation financial resolution: {request.Reason}", actorId, ct);
                 releasedSettlementId = activeBatch.SettlementId;
             }
-            var correlation = $"cancellation:payment:{paymentId}:reservation:{reservationId}";
+            var correlation = v2 ? $"cancellation:funding:{snapshot.Id}:reservation:{reservationId}" : $"cancellation:payment:{paymentId}:reservation:{reservationId}";
             reversalEntry = new FinancialEntry
             {
                 PropertyId = original.PropertyId, ReservationId = reservationId, PaymentId = paymentId,
@@ -181,6 +225,7 @@ public sealed class CancellationFinancialResolutionService(
             ReservationId = reservationId, PaymentId = paymentId, PaymentItemId = item?.Id, PropertyId = snapshot.PropertyId,
             ReservationFinancialSnapshotId = snapshot.Id, OriginalPropertyPayableEntryId = original.Id,
             GrossPaidAmount = gross, Currency = currency, GuestRefundAmount = guest, FinalPropertyShare = property,
+            GuestWalletRestoreAmount = restore, ForfeitedAmount = forfeit,
             FinalKoochShare = kooch, Mode = request.Mode, Reason = request.Reason, Note = request.Note,
             ResolvedByUserId = actorId, ResolvedAtUtc = now, IdempotencyKey = request.IdempotencyKey,
             RequestFingerprint = fingerprint, ReversalFinancialEntryId = reversalEntry?.Id,
@@ -188,6 +233,7 @@ public sealed class CancellationFinancialResolutionService(
             CreatedByUserId = actorId
         };
         context.CancellationFinancialResolutions.Add(resolution);
+        if (v2) CancellationFunding.AddDispositions(context, funding!, resolution, request.SourceDispositions!, actorId);
         await context.SaveChangesAsync(ct);
         return new(CancellationFinancialResolutionOutcome.Finalized, resolution, null, original.Amount, snapshot.CommissionAmount);
     }
@@ -196,7 +242,16 @@ public sealed class CancellationFinancialResolutionService(
     {
         if (request.ReservationId <= 0 || actorId <= 0 || !Enum.IsDefined(request.Mode))
             throw new ArgumentException("A valid reservation, actor and resolution mode are required.");
-        if (request.Mode == CancellationFinancialResolutionMode.ManualOverride)
+        if (request.Mode == CancellationFinancialResolutionMode.ManualFundingV2)
+        {
+            if (request.GuestRefundAmount.HasValue || request.SourceDispositions is null ||
+                !request.FinalPropertyShare.HasValue || !request.FinalKoochShare.HasValue || !request.ForfeitedAmount.HasValue ||
+                !IsMoney(request.FinalPropertyShare.Value) || !IsMoney(request.FinalKoochShare.Value) || !IsMoney(request.ForfeitedAmount.Value))
+                throw new ArgumentException("Manual funding mode requires explicit sources, final shares and forfeiture; cash is derived from sources.");
+        }
+        else if (request.SourceDispositions is not null || request.ForfeitedAmount.HasValue)
+            throw new ArgumentException("Source dispositions require ManualFundingV2.");
+        else if (request.Mode == CancellationFinancialResolutionMode.ManualOverride)
         {
             if (!request.GuestRefundAmount.HasValue || !request.FinalPropertyShare.HasValue || !request.FinalKoochShare.HasValue ||
                 !IsMoney(request.GuestRefundAmount.Value) || !IsMoney(request.FinalPropertyShare.Value) || !IsMoney(request.FinalKoochShare.Value))

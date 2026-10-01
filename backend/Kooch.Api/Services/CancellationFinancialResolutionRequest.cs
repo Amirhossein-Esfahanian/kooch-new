@@ -10,10 +10,15 @@ public sealed record CancellationFinancialResolutionRequest
     public decimal? GuestRefundAmount { get; init; }
     public decimal? FinalPropertyShare { get; init; }
     public decimal? FinalKoochShare { get; init; }
+    public decimal? ForfeitedAmount { get; init; }
+    public IReadOnlyList<CancellationSourceDecision>? SourceDispositions { get; init; }
     public string Reason { get; init; } = string.Empty;
     public string? Note { get; init; }
     public string IdempotencyKey { get; init; } = string.Empty;
 }
+
+public sealed record CancellationSourceDecision(string SourceToken, decimal CashRefundAmount,
+    decimal WalletRestoreAmount, decimal NotReturnedAmount);
 
 public enum CancellationFinancialResolutionOutcome { Finalized, AlreadyHandledByLegacyRefundV1 }
 

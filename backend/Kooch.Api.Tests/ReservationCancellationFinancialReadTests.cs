@@ -172,8 +172,9 @@ public sealed partial class ReservationCancellationOrchestrationTests
     {
         Assert.Equal(new[]
         {
-            "AlreadyHandledByLegacyRefundV1", "Currency", "FinalKoochShare", "FinalPropertyShare",
-            "GrossPaidAmount", "GuestRefundAmount", "Mode", "PaidCancellation", "RefundPending"
+            "AlreadyHandledByLegacyRefundV1", "CashRefundExecutedAmount", "CashRefundPendingAmount", "Currency",
+            "FinalKoochShare", "FinalPropertyShare", "ForfeitedAmount", "Funding", "GrossPaidAmount", "GuestRefundAmount",
+            "GuestWalletRestoreAmount", "Mode", "PaidCancellation", "RefundPending"
         }, typeof(ReservationCancellationFinancialStateResponse).GetProperties()
             .Select(property => property.Name).Order());
     }

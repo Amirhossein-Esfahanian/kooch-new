@@ -47,19 +47,35 @@ export interface ReservationCancellationPayload {
   explanation: string;
   idempotencyKey: string;
   financialResolution?: {
-    mode: "AutomaticFullRefundV1" | "ManualOverride";
+    mode: "AutomaticFullRefundV1" | "ManualOverride" | "ManualFundingV2";
     guestRefundAmount?: number;
     finalPropertyShare?: number;
     finalKoochShare?: number;
+    forfeitedAmount?: number;
+    sourceDispositions?: Array<{ sourceToken: string; cashRefundAmount: number; walletRestoreAmount: number; notReturnedAmount: number }>;
     note?: string;
   };
 }
 
 export interface ReservationCancellationFinancialState {
+  funding?: {
+    externalAmount: number; walletAmount: number; withdrawableWalletAmount: number; nonWithdrawableWalletAmount: number;
+    sources: Array<{
+      sourceToken: string; sourceType: string; fundedAmount: number; withdrawable: boolean;
+      expiresAtUtc: string | null; expired: boolean; maxCashRefundAmount: number; maxWalletRestoreAmount: number;
+      remainingDispositionAmount: number; reference: string | null; reason: string | null;
+      paymentStatus: string | null; paymentMethod: string | null;
+      cashRefundAmount: number; walletRestoreAmount: number; notReturnedAmount: number; cashRefundExecutedAmount: number;
+    }>;
+  } | null;
+  guestWalletRestoreAmount?: number;
+  forfeitedAmount?: number;
+  cashRefundExecutedAmount?: number;
+  cashRefundPendingAmount?: number;
   paidCancellation: boolean;
   grossPaidAmount: number | null;
   currency: string | null;
-  mode: "AutomaticFullRefundV1" | "ManualOverride" | null;
+  mode: "AutomaticFullRefundV1" | "ManualOverride" | "ManualFundingV2" | null;
   guestRefundAmount: number | null;
   finalPropertyShare: number | null;
   finalKoochShare: number | null;
@@ -69,7 +85,7 @@ export interface ReservationCancellationFinancialState {
 
 export interface ReservationCancellationOutcome {
   paidCancellation: boolean;
-  financialMode: "AutomaticFullRefundV1" | "ManualOverride" | null;
+  financialMode: "AutomaticFullRefundV1" | "ManualOverride" | "ManualFundingV2" | null;
   grossPaidAmount: number | null;
   guestRefundAmount: number | null;
   finalPropertyShare: number | null;

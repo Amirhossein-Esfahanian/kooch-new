@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class ReservationRefundService(KoochDbContext context, SettlementService settlements, TimeProvider clock)
+public sealed partial class ReservationRefundService(KoochDbContext context, SettlementService settlements, TimeProvider clock)
 {
     public async Task<ReservationRefundResponse> RecordAsync(int reservationId, ReservationRefundRequest request,
         int actorId, CancellationToken cancellationToken = default)
@@ -30,7 +30,29 @@ public sealed class ReservationRefundService(KoochDbContext context, SettlementS
         await using var transaction = context.Database.IsRelational() && context.Database.CurrentTransaction is null
             ? await context.Database.BeginTransactionAsync(cancellationToken) : null;
 
+        // Share the existing operation-key namespace across legacy and funding-aware executions.
+        // Lock both unique-index ranges in the same order before acquiring any funding locks.
+        if (context.Database.IsSqlServer())
+        {
+            await context.RefundRecords.FromSqlInterpolated(
+                $"SELECT * FROM [RefundRecords] WITH (UPDLOCK, HOLDLOCK, INDEX(IX_RefundRecords_IdempotencyKey)) WHERE [IdempotencyKey] = {key}")
+                .IgnoreQueryFilters().AsNoTracking().ToListAsync(cancellationToken);
+            await context.CancellationCashRefundExecutions.FromSqlInterpolated(
+                $"SELECT * FROM [CancellationCashRefundExecutions] WITH (UPDLOCK, HOLDLOCK, INDEX(IX_CancellationCashRefundExecutions_IdempotencyKey)) WHERE [IdempotencyKey] = {key}")
+                .IgnoreQueryFilters().AsNoTracking().ToListAsync(cancellationToken);
+        }
+
         // Resolve only a successful allocation. Ambiguous legacy data must not pick an arbitrary payment.
+        if (await context.CancellationFinancialResolutions.AnyAsync(r => r.ReservationId == reservationId &&
+                r.Mode == CancellationFinancialResolutionMode.ManualFundingV2, cancellationToken))
+        {
+            var result = await RecordFundingRefundAsync(reservationId, reference, reason, key, note, refundedAt,
+                fingerprint, actorId, cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return result;
+        }
+        if (await context.CancellationCashRefundExecutions.IgnoreQueryFilters().AnyAsync(r => r.IdempotencyKey == key, cancellationToken))
+            throw new InvalidOperationException("RefundIdempotencyConflict: key belongs to a funding-aware refund.");
         await BookingWalletFunding.EnsureCashCancellationSupportedAsync(context, reservationId, cancellationToken);
         var candidates = await context.Payments.IgnoreQueryFilters().AsNoTracking()
             .Where(payment => payment.Status == PaymentStatus.Successful &&

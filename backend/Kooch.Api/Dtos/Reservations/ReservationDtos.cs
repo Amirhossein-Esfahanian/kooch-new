@@ -305,6 +305,8 @@ public sealed class ReservationCancellationFinancialRequest
     public decimal? GuestRefundAmount { get; set; }
     public decimal? FinalPropertyShare { get; set; }
     public decimal? FinalKoochShare { get; set; }
+    public decimal? ForfeitedAmount { get; set; }
+    public IReadOnlyList<Kooch.Api.Services.CancellationSourceDecision>? SourceDispositions { get; set; }
     [MaxLength(2000)]
     public string? Note { get; set; }
 }
@@ -324,6 +326,11 @@ public sealed class ReservationCancellationOutcomeResponse
 
 public sealed class ReservationCancellationFinancialStateResponse
 {
+    public CancellationFundingResponse? Funding { get; set; }
+    public decimal GuestWalletRestoreAmount { get; set; }
+    public decimal ForfeitedAmount { get; set; }
+    public decimal CashRefundExecutedAmount { get; set; }
+    public decimal CashRefundPendingAmount { get; set; }
     public bool PaidCancellation { get; set; }
     public decimal? GrossPaidAmount { get; set; }
     public string? Currency { get; set; }
@@ -334,6 +341,17 @@ public sealed class ReservationCancellationFinancialStateResponse
     public bool RefundPending { get; set; }
     public bool AlreadyHandledByLegacyRefundV1 { get; set; }
 }
+
+public sealed record CancellationFundingResponse(decimal ExternalAmount, decimal WalletAmount,
+    decimal WithdrawableWalletAmount, decimal NonWithdrawableWalletAmount,
+    IReadOnlyList<CancellationFundingSourceResponse> Sources);
+
+public sealed record CancellationFundingSourceResponse(string SourceToken, string SourceType,
+    decimal FundedAmount, bool Withdrawable, DateTime? ExpiresAtUtc, bool Expired,
+    decimal MaxCashRefundAmount, decimal MaxWalletRestoreAmount, decimal RemainingDispositionAmount,
+    string? Reference, string? Reason, string? PaymentStatus, string? PaymentMethod,
+    decimal CashRefundAmount, decimal WalletRestoreAmount, decimal NotReturnedAmount,
+    decimal CashRefundExecutedAmount);
 
 public class ReservationPriceAdjustmentRequest : IValidatableObject
 {

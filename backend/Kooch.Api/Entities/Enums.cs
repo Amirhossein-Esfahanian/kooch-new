@@ -144,7 +144,8 @@ public enum CommissionRateSource { Global, PropertyOverride }
 public enum CancellationFinancialResolutionMode
 {
     AutomaticFullRefundV1 = 0,
-    ManualOverride = 1
+    ManualOverride = 1,
+    ManualFundingV2 = 2
 }
 public enum FinancialEntryType { PropertyPayable, Commission, Refund, Adjustment, Settlement, Reversal }
 public enum AmenityScope { Property, RoomType, Both }
