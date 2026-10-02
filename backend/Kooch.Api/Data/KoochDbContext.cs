@@ -131,6 +131,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
+        EnsureNotificationInboxHistory();
         var now = DateTime.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
@@ -163,6 +164,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
+        EnsureNotificationInboxHistory();
         return base.SaveChanges();
     }
 
@@ -170,6 +172,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
+        EnsureNotificationInboxHistory();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -179,7 +182,24 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
+        EnsureNotificationInboxHistory();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+    }
+
+    private void EnsureNotificationInboxHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<NotificationLog>())
+        {
+            if (entry.State == EntityState.Deleted || entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Notification history cannot be deleted.");
+            if (entry.State != EntityState.Modified) continue;
+            if (entry.Properties.Any(property => property.IsModified && property.Metadata.Name is not (
+                nameof(NotificationLog.ReadAtUtc) or nameof(BaseEntity.UpdatedAtUtc))))
+                throw new InvalidOperationException("Notification content is immutable.");
+            if (entry.OriginalValues.GetValue<DateTime?>(nameof(NotificationLog.ReadAtUtc)).HasValue ||
+                !entry.Entity.ReadAtUtc.HasValue)
+                throw new InvalidOperationException("Notification read state may only change from unread to read.");
+        }
     }
 
     private void EnsureCancellationRequestHistory()
@@ -801,6 +821,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasFilter("[DedupeKey] IS NOT NULL");
             entity.HasIndex(log => log.Status);
             entity.HasIndex(log => log.SentAtUtc);
+            entity.HasIndex(log => new { log.RecipientUserId, log.CreatedAtUtc, log.Id })
+                .IsDescending(false, true, true);
             entity.HasOne(log => log.RecipientUser)
                 .WithMany(user => user.NotificationLogs)
                 .HasForeignKey(log => log.RecipientUserId)

@@ -17,6 +17,7 @@ public class NotificationLog : BaseEntity
     public string? DedupeKey { get; set; }
     public NotificationStatus Status { get; set; }
     public DateTime? SentAtUtc { get; set; }
+    public DateTime? ReadAtUtc { get; set; }
     public string? Error { get; set; }
 
     public User? RecipientUser { get; set; }
