@@ -428,7 +428,7 @@ export function AdminLayout({
   }
 
   return (
-    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems}>
+    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems} enableAdminReservationLinks>
       {children}
     </DashboardShell>
   );
@@ -580,6 +580,7 @@ export function DashboardHomeContent({
 function DashboardShell({
   children,
   currentWorkspaceId,
+  enableAdminReservationLinks = false,
   integratedHeader = false,
   menuItems,
   onWorkspaceChange,
@@ -588,12 +589,14 @@ function DashboardShell({
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
   currentWorkspaceId?: string;
+  enableAdminReservationLinks?: boolean;
   integratedHeader?: boolean;
   menuItems: DashboardMenuItem[];
   onWorkspaceChange?: (workspaceId: string) => void;
   workspaceLabel?: string;
   workspaceOptions?: { id: string; name: string }[];
 }) {
+  const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -659,13 +662,20 @@ function DashboardShell({
     try {
       await markNotificationRead(id);
       setInboxReload((value) => value + 1);
-      await refreshUnreadCount();
+      void refreshUnreadCount();
     } catch {
       setActionError("ثبت وضعیت اعلان انجام نشد. دوباره تلاش کنید.");
     } finally {
       mutationInFlightRef.current = false;
       setMarkingId(null);
     }
+  };
+
+  const handleOpenReservation = async (item: AccountNotification) => {
+    if (!item.reservationNumber) return;
+    if (!item.isRead) await handleMarkRead(item.id);
+    setDrawerType(null);
+    router.push(`/admin/reservations?reservationNumber=${encodeURIComponent(item.reservationNumber)}`);
   };
 
   const handleMarkAllRead = async () => {
@@ -769,6 +779,7 @@ function DashboardShell({
         markingId={markingId}
         markingAll={markingAll}
         onMarkRead={handleMarkRead}
+        onOpenReservation={enableAdminReservationLinks ? handleOpenReservation : undefined}
         onMarkAllRead={handleMarkAllRead}
         onRetry={() => { void refreshUnreadCount(); setInboxReload((value) => value + 1); }}
         onClose={() => setDrawerType(null)}
@@ -1280,6 +1291,7 @@ function DashboardSideDrawer({
   markingId,
   markingAll,
   onMarkRead,
+  onOpenReservation,
   onMarkAllRead,
   onRetry,
 }: {
@@ -1295,6 +1307,7 @@ function DashboardSideDrawer({
   markingId: number | null;
   markingAll: boolean;
   onMarkRead: (id: number) => void;
+  onOpenReservation?: (item: AccountNotification) => void;
   onMarkAllRead: () => void;
   onRetry: () => void;
 }) {
@@ -1356,6 +1369,7 @@ function DashboardSideDrawer({
                 markingId={markingId}
                 markingAll={markingAll}
                 onMarkRead={onMarkRead}
+                onOpenReservation={onOpenReservation}
                 onMarkAllRead={onMarkAllRead}
                 onRetry={onRetry}
               />
@@ -1491,6 +1505,7 @@ function NotificationInbox({
   markingId,
   markingAll,
   onMarkRead,
+  onOpenReservation,
   onMarkAllRead,
   onRetry,
 }: {
@@ -1503,6 +1518,7 @@ function NotificationInbox({
   markingId: number | null;
   markingAll: boolean;
   onMarkRead: (id: number) => void;
+  onOpenReservation?: (item: AccountNotification) => void;
   onMarkAllRead: () => void;
   onRetry: () => void;
 }) {
@@ -1540,6 +1556,11 @@ function NotificationInbox({
       ) : (
         <ul className="space-y-2">
           {items.map((item) => {
+            const navigable = Boolean(
+              onOpenReservation &&
+              item.eventType === "ReservationCancellationRequested" &&
+              item.reservationNumber,
+            );
             const content = (
               <>
                 <span className="flex items-start justify-between gap-2">
@@ -1555,15 +1576,17 @@ function NotificationInbox({
             );
             return (
               <li key={item.id}>
-                {item.isRead ? (
+                {item.isRead && !navigable ? (
                   <div className="rounded-lg border border-border bg-card p-3">{content}</div>
                 ) : (
                   <button
                     type="button"
-                    className="w-full rounded-lg border border-border bg-[var(--theme-primary-soft)] p-3 text-start transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    className={`w-full rounded-lg border border-border p-3 text-start transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${item.isRead ? "bg-card" : "bg-[var(--theme-primary-soft)]"}`}
                     disabled={actionPending}
-                    aria-label={`علامت‌گذاری اعلان ${item.subject || item.message} به‌عنوان خوانده‌شده`}
-                    onClick={() => onMarkRead(item.id)}
+                    aria-label={navigable
+                      ? `مشاهده رزرو ${item.reservationNumber}`
+                      : `علامت‌گذاری اعلان ${item.subject || item.message} به‌عنوان خوانده‌شده`}
+                    onClick={() => navigable ? onOpenReservation?.(item) : onMarkRead(item.id)}
                   >
                     {content}
                     {markingId === item.id && <span className="mt-2 block text-xs text-muted-foreground">در حال ثبت...</span>}

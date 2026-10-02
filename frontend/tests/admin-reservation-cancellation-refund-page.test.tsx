@@ -9,9 +9,14 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   permissions: ["ManagePayments", "ManageReservations"],
   role: "AdminAssistant" as "AdminAssistant" | "SuperAdmin",
+  routeQuery: "",
+  router: { push: vi.fn(), replace: vi.fn() },
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => mocks.router,
+  useSearchParams: () => new URLSearchParams(mocks.routeQuery),
+}));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({ platformPermissions: mocks.permissions, platformRole: mocks.role }),
 }));
@@ -132,12 +137,73 @@ describe("Admin cancellation and refund API integration", () => {
     vi.clearAllMocks();
     mocks.detail = null;
     mocks.permissions = ["ManagePayments", "ManageReservations"];
+    mocks.routeQuery = "";
     current = { ...initial };
     mutationFailure = null;
     detailReads = 0;
     rejectRequestPromise = null;
     createRequestFailure = null;
     installApi();
+  });
+
+  it("opens a direct reservation-number link through the server search and existing details dialog", async () => {
+    mocks.routeQuery = "reservationNumber=R-123456&pendingCancellationRequest=true&status=Confirmed";
+    const baseRequest = mocks.apiRequest.getMockImplementation();
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith("/admin/reservations?") && new URL(path, "http://test.local").searchParams.has("reservationNumber")) {
+        return Promise.resolve({ items: [initial], totalCount: 1, page: 1, pageSize: 10, totalPages: 1 });
+      }
+      return baseRequest?.(path, init);
+    });
+
+    render(<AdminReservationsPage />);
+    await waitFor(() => expect(mocks.detail?.open).toBe(true));
+    expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const url = new URL(String(path), "http://test.local");
+      return url.pathname === "/admin/reservations" &&
+        url.searchParams.get("reservationNumber") === "R-123456" &&
+        url.searchParams.get("page") === "1" && !url.searchParams.has("status");
+    })).toBe(true);
+    expect(detailReads).toBe(1);
+    expect((mocks.detail?.reservation as { reservationNumber?: string })?.reservationNumber).toBe("R-123456");
+    expect(mocks.router.replace).toHaveBeenCalledWith(
+      "/admin/reservations?pendingCancellationRequest=true&status=Confirmed",
+      { scroll: false },
+    );
+    expect(mocks.apiRequest.mock.calls.filter(([path]) => new URL(String(path), "http://test.local").searchParams.has("reservationNumber"))).toHaveLength(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "صفحه دوم آزمون" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const url = new URL(String(path), "http://test.local");
+      return url.pathname === "/admin/reservations" && url.searchParams.get("page") === "2" && !url.searchParams.has("reservationNumber");
+    })).toBe(true));
+  });
+
+  it("reports a missing or inaccessible deep link without exposing its existence or retrying indefinitely", async () => {
+    mocks.routeQuery = "reservationNumber=R-000000&status=Confirmed";
+    render(<AdminReservationsPage />);
+    await screen.findByText("رزرو موردنظر یافت نشد.");
+    expect(mocks.detail?.open).toBe(false);
+    expect(mocks.router.replace).toHaveBeenCalledWith("/admin/reservations?status=Confirmed", { scroll: false });
+    expect(mocks.apiRequest.mock.calls.filter(([path]) => new URL(String(path), "http://test.local").searchParams.has("reservationNumber"))).toHaveLength(1);
+  });
+
+  it("does not open a dialog or reveal details when the target detail read is denied", async () => {
+    mocks.routeQuery = "reservationNumber=R-123456";
+    const baseRequest = mocks.apiRequest.getMockImplementation();
+    mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith("/admin/reservations?") && new URL(path, "http://test.local").searchParams.has("reservationNumber")) {
+        return Promise.resolve({ items: [initial], totalCount: 1, page: 1, pageSize: 10, totalPages: 1 });
+      }
+      if (path === "/admin/reservations/12") return Promise.reject(new ApiRequestError("private detail", 403));
+      return baseRequest?.(path, init);
+    });
+
+    render(<AdminReservationsPage />);
+    await screen.findByText("دریافت رزرو موردنظر انجام نشد.");
+    expect(screen.queryByText("private detail")).toBeNull();
+    expect(mocks.detail?.open).toBe(false);
+    expect(mocks.router.replace).toHaveBeenCalledWith("/admin/reservations", { scroll: false });
   });
 
   it("applies the Pending request filter with existing status, preserves it on paging, and clears only its query parameter", async () => {
@@ -161,7 +227,9 @@ describe("Admin cancellation and refund API integration", () => {
       return url.pathname === "/admin/reservations" && url.searchParams.get("page") === "2" &&
         url.searchParams.get("pendingCancellationRequest") === "true" && url.searchParams.get("status") === "Confirmed";
     })).toBe(true));
+    await waitFor(() => expect(screen.getByRole("button", { name: "اعمال" }).hasAttribute("disabled")).toBe(false));
     fireEvent.change(screen.getByLabelText("درخواست لغو"), { target: { value: "" } });
+    await waitFor(() => expect((screen.getByLabelText("درخواست لغو") as HTMLSelectElement).value).toBe(""));
     fireEvent.click(screen.getByRole("button", { name: "اعمال" }));
     await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
       const url = new URL(String(path), "http://test.local");

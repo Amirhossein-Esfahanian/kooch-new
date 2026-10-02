@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { FormEvent, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochButton } from "@/components/KoochButton";
@@ -194,8 +194,16 @@ const paymentStatusOptions: Array<{
 ];
 
 export default function AdminReservationsPage() {
+  return <Suspense fallback={null}><AdminReservationsContent /></Suspense>;
+}
+
+function AdminReservationsContent() {
   const { platformPermissions, platformRole } = useAuthSession();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const deepLinkQuery = searchParams.toString();
+  const deepLinkReservationNumber = searchParams.get("reservationNumber")?.trim() ?? "";
+  const deepLinkAttemptRef = useRef<string | null>(null);
   const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
@@ -348,9 +356,12 @@ export default function AdminReservationsPage() {
     setCurrentPage(1);
   }
 
-  async function viewReservation(reservation: ReservationTableItem) {
+  const viewReservation = useCallback(async (
+    reservation: ReservationTableItem,
+    openAfterFetch = false,
+  ) => {
     const reservationId = reservation.reservationId ?? reservation.id;
-    setSelectedReservation(reservation);
+    if (!openAfterFetch) setSelectedReservation(reservation);
     setManualPayments([]);
 
     if (!reservationId) return;
@@ -371,12 +382,49 @@ export default function AdminReservationsPage() {
       setManualPayments(payments);
     } catch (caught) {
       setError(
-        caught instanceof Error ? caught.message : "خطا در دریافت جزئیات رزرو.",
+        openAfterFetch
+          ? "دریافت رزرو موردنظر انجام نشد."
+          : caught instanceof Error ? caught.message : "خطا در دریافت جزئیات رزرو.",
       );
     } finally {
       setDetailsLoading(false);
     }
-  }
+  }, [canManagePayments]);
+
+  useEffect(() => {
+    if (!deepLinkReservationNumber) {
+      deepLinkAttemptRef.current = null;
+      return;
+    }
+    if (deepLinkAttemptRef.current === deepLinkQuery) return;
+    deepLinkAttemptRef.current = deepLinkQuery;
+
+    let active = true;
+    const cleanParams = new URLSearchParams(deepLinkQuery);
+    cleanParams.delete("reservationNumber");
+    const cleanUrl = `/admin/reservations${cleanParams.size ? `?${cleanParams.toString()}` : ""}`;
+
+    const openTarget = async () => {
+      try {
+        const lookup = await apiRequest<PagedResult<ReservationTableItem>>(
+          buildReservationsPath({ ...initialFilters, reservationNumber: deepLinkReservationNumber }, 1),
+        );
+        if (!active) return;
+        const target = lookup.items.find((item) => item.reservationNumber === deepLinkReservationNumber);
+        if (target) {
+          await viewReservation(target, true);
+        } else {
+          setError("رزرو موردنظر یافت نشد.");
+        }
+      } catch {
+        if (active) setError("دریافت رزرو موردنظر انجام نشد.");
+      } finally {
+        if (active) router.replace(cleanUrl, { scroll: false });
+      }
+    };
+    void openTarget();
+    return () => { active = false; };
+  }, [deepLinkQuery, deepLinkReservationNumber, router, viewReservation]);
 
   async function refreshReservationAndPayments(reservationId: number) {
     const [details, payments] = await Promise.all([

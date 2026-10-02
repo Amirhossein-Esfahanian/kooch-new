@@ -2,9 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 
+const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
-  useRouter: () => ({ replace: vi.fn() }),
+  useRouter: () => navigation,
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   resolveSessionDestination: () => "/",
@@ -22,7 +23,7 @@ vi.mock("@/components/KoochUserMenu", () => ({
 
 const unread = {
   id: 17,
-  eventType: "ReservationCancellationRequested",
+  eventType: "ReservationCreated",
   subject: "درخواست لغو جدید",
   message: "درخواست لغو رزرو دریافت شد.",
   createdAtUtc: "2026-10-02T09:00:00Z",
@@ -39,6 +40,7 @@ const read = {
   isRead: true,
   readAtUtc: "2026-10-02T10:00:00Z",
 };
+const cancellation = { ...unread, eventType: "ReservationCancellationRequested" };
 
 function response(body: unknown, status = 200) {
   return {
@@ -226,5 +228,62 @@ describe("Dashboard notification inbox", () => {
     await screen.findByText("درخواست لغو جدید");
     expect(screen.getByText("شمار اعلان‌های خوانده‌نشده در دسترس نیست.")).toBeTruthy();
     expect(screen.getByRole("button", { name: "اعلان‌ها" })).toBeTruthy();
+  });
+
+  it("opens an Admin cancellation reservation after attempting mark-read, with an encoded URL and closed drawer", async () => {
+    const linked = { ...cancellation, reservationNumber: "R-123 456" };
+    let finishRead!: (value: Response) => void;
+    const fetchMock = vi.fn((input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith("/unread-count")) return Promise.resolve(response({ unreadCount: 1 }));
+      if (path.endsWith("/17/read")) return new Promise<Response>((resolve) => { finishRead = resolve; });
+      return Promise.resolve(response({ items: [linked], totalCount: 1, page: 1, pageSize: 20, totalPages: 1 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    renderShell();
+    openInbox();
+    const open = await screen.findByRole("button", { name: "مشاهده رزرو R-123 456" });
+    expect(open.tagName).toBe("BUTTON");
+    open.focus();
+    expect(document.activeElement).toBe(open);
+    fireEvent.click(open);
+    expect(fetchMock).toHaveBeenCalledWith("/api/backend/account/notifications/17/read", expect.objectContaining({ method: "PUT" }));
+    expect(navigation.push).not.toHaveBeenCalled();
+    finishRead(response(null, 204));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/admin/reservations?reservationNumber=R-123%20456"));
+    expect(screen.queryByRole("region", { name: "صندوق اعلان‌ها" })).toBeNull();
+  });
+
+  it("navigates despite mark-read failure, and read notifications skip the PUT", async () => {
+    let readRequests = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      const path = String(input);
+      if (path.endsWith("/unread-count")) return response({ unreadCount: 1 });
+      if (path.endsWith("/17/read")) { readRequests += 1; return response({ message: "failure" }, 500); }
+      return response({ items: [cancellation, { ...cancellation, id: 18, isRead: true, readAtUtc: "2026-10-02T10:00:00Z", reservationNumber: "R-804351" }], totalCount: 2, page: 1, pageSize: 20, totalPages: 1 });
+    }));
+    renderShell();
+    openInbox();
+    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو R-583214" }));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/admin/reservations?reservationNumber=R-583214"));
+    expect(readRequests).toBe(1);
+    expect(screen.getByRole("button", { name: /اعلان‌ها، ۱ خوانده‌نشده/ })).toBeTruthy();
+    openInbox();
+    fireEvent.click(await screen.findByRole("button", { name: "مشاهده رزرو R-804351" }));
+    expect(navigation.push).toHaveBeenCalledWith("/admin/reservations?reservationNumber=R-804351");
+    expect(readRequests).toBe(1);
+  });
+
+  it("does not navigate for cancellation without a reservation number or unrelated events", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith("/unread-count")) return response({ unreadCount: 2 });
+      return response({ items: [{ ...cancellation, reservationNumber: null }, { ...unread, id: 19 }], totalCount: 2, page: 1, pageSize: 20, totalPages: 1 });
+    }));
+    renderShell();
+    openInbox();
+    const markButtons = await screen.findAllByRole("button", { name: /علامت‌گذاری اعلان درخواست لغو جدید/ });
+    expect(markButtons).toHaveLength(2);
+    expect(screen.queryByRole("button", { name: /مشاهده رزرو/ })).toBeNull();
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 });
