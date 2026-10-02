@@ -2,19 +2,28 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import {
   resolveSessionDestination,
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochButton } from "@/components/KoochButton";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochUserMenu } from "@/components/KoochUserMenu";
 import type { PropertyPermissionMatrix } from "@/components/auth/AuthSessionProvider";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import type { PermissionGroup } from "@/lib/owner-api";
 import { canViewOwnerMenuItem } from "@/lib/property-menu-permissions";
+import { formatDateTime } from "@/lib/account-reservations";
+import {
+  getNotifications,
+  getNotificationUnreadCount,
+  markAllNotificationsRead,
+  markNotificationRead,
+  type AccountNotification,
+} from "@/lib/account-notifications";
 import { KoochIcon } from "../KoochIcon";
 
 type DashboardMenuItem = {
@@ -333,24 +342,6 @@ const messages = [
   },
 ];
 
-const notifications = [
-  {
-    title: "رزرو جدید ثبت شد",
-    text: "اقامتگاه خانه حیاط‌دار کاشان یک رزرو تازه دارد.",
-    unread: true,
-  },
-  {
-    title: "نیاز به تایید تصویر",
-    text: "۴ تصویر جدید در صف بررسی قرار گرفته است.",
-    unread: true,
-  },
-  {
-    title: "هشدار ظرفیت",
-    text: "ظرفیت برخی اتاق‌ها برای آخر هفته کامل شده است.",
-    unread: false,
-  },
-];
-
 const drawerEvents = [
   { time: "۱۰:۳۰", title: "بررسی رزروهای امروز" },
   { time: "۱۲:۰۰", title: "تماس با مالک اقامتگاه باغ فین" },
@@ -610,6 +601,89 @@ function DashboardShell({
     "messages" | "notifications" | null
   >(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
+  const [unreadCount, setUnreadCount] = useState<number | null>(null);
+  const [countError, setCountError] = useState(false);
+  const [notificationItems, setNotificationItems] = useState<AccountNotification[]>([]);
+  const [inboxLoading, setInboxLoading] = useState(false);
+  const [inboxError, setInboxError] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [markingId, setMarkingId] = useState<number | null>(null);
+  const [markingAll, setMarkingAll] = useState(false);
+  const [inboxReload, setInboxReload] = useState(0);
+  const countRequestRef = useRef(0);
+  const mutationInFlightRef = useRef(false);
+
+  const refreshUnreadCount = useCallback(async () => {
+    const requestId = ++countRequestRef.current;
+    try {
+      const result = await getNotificationUnreadCount();
+      if (requestId === countRequestRef.current) {
+        setUnreadCount(result.unreadCount);
+        setCountError(false);
+      }
+    } catch {
+      if (requestId === countRequestRef.current) setCountError(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshUnreadCount();
+    return () => { countRequestRef.current += 1; };
+  }, [refreshUnreadCount]);
+
+  useEffect(() => {
+    if (drawerType !== "notifications") return;
+    const controller = new AbortController();
+    let active = true;
+    setInboxLoading(true);
+    setInboxError(false);
+    setActionError(null);
+    getNotifications(controller.signal)
+      .then((result) => {
+        if (active) setNotificationItems(result.items);
+      })
+      .catch(() => {
+        if (active) setInboxError(true);
+      })
+      .finally(() => {
+        if (active) setInboxLoading(false);
+      });
+    return () => { active = false; controller.abort(); };
+  }, [drawerType, inboxReload]);
+
+  const handleMarkRead = async (id: number) => {
+    if (mutationInFlightRef.current) return;
+    mutationInFlightRef.current = true;
+    setMarkingId(id);
+    setActionError(null);
+    try {
+      await markNotificationRead(id);
+      setInboxReload((value) => value + 1);
+      await refreshUnreadCount();
+    } catch {
+      setActionError("ثبت وضعیت اعلان انجام نشد. دوباره تلاش کنید.");
+    } finally {
+      mutationInFlightRef.current = false;
+      setMarkingId(null);
+    }
+  };
+
+  const handleMarkAllRead = async () => {
+    if (mutationInFlightRef.current) return;
+    mutationInFlightRef.current = true;
+    setMarkingAll(true);
+    setActionError(null);
+    try {
+      await markAllNotificationsRead();
+      setInboxReload((value) => value + 1);
+      await refreshUnreadCount();
+    } catch {
+      setActionError("ثبت وضعیت اعلان‌ها انجام نشد. دوباره تلاش کنید.");
+    } finally {
+      mutationInFlightRef.current = false;
+      setMarkingAll(false);
+    }
+  };
 
   useEffect(() => {
     if (!drawerType && !profileMenuOpen) {
@@ -662,6 +736,7 @@ function DashboardShell({
         <div className="flex min-w-0 flex-1 flex-col">
           <DashboardHeader
             activeDrawer={drawerType}
+            notificationUnreadCount={unreadCount}
             darkMode={darkMode}
             integrated={integratedHeader}
             profileMenuOpen={profileMenuOpen}
@@ -685,6 +760,17 @@ function DashboardShell({
       <DashboardSideDrawer
         darkMode={darkMode}
         type={drawerType}
+        notificationItems={notificationItems}
+        unreadCount={unreadCount}
+        countError={countError}
+        inboxLoading={inboxLoading}
+        inboxError={inboxError}
+        actionError={actionError}
+        markingId={markingId}
+        markingAll={markingAll}
+        onMarkRead={handleMarkRead}
+        onMarkAllRead={handleMarkAllRead}
+        onRetry={() => { void refreshUnreadCount(); setInboxReload((value) => value + 1); }}
         onClose={() => setDrawerType(null)}
       />
     </div>
@@ -846,6 +932,7 @@ function DashboardSidebar({
 
 function DashboardHeader({
   activeDrawer,
+  notificationUnreadCount,
   darkMode,
   integrated,
   onDrawerToggle,
@@ -856,6 +943,7 @@ function DashboardHeader({
   profileMenuOpen,
 }: {
   activeDrawer: "messages" | "notifications" | null;
+  notificationUnreadCount: number | null;
   darkMode: boolean;
   integrated: boolean;
   onDrawerToggle: (type: "messages" | "notifications") => void;
@@ -914,6 +1002,7 @@ function DashboardHeader({
             active={activeDrawer === "messages"}
             darkMode={darkMode}
             label="پیام‌ها"
+            showDot
             onClick={() => onDrawerToggle("messages")}
           >
             <MenuIcon icon={menuIcons.messages} />
@@ -923,6 +1012,7 @@ function DashboardHeader({
             active={activeDrawer === "notifications"}
             darkMode={darkMode}
             label="اعلان‌ها"
+            unreadCount={notificationUnreadCount}
             onClick={() => onDrawerToggle("notifications")}
           >
             <MenuIcon icon={menuIcons.notification} />
@@ -1181,10 +1271,32 @@ function DashboardSideDrawer({
   darkMode,
   onClose,
   type,
+  notificationItems,
+  unreadCount,
+  countError,
+  inboxLoading,
+  inboxError,
+  actionError,
+  markingId,
+  markingAll,
+  onMarkRead,
+  onMarkAllRead,
+  onRetry,
 }: {
   darkMode: boolean;
   onClose: () => void;
   type: "messages" | "notifications" | null;
+  notificationItems: AccountNotification[];
+  unreadCount: number | null;
+  countError: boolean;
+  inboxLoading: boolean;
+  inboxError: boolean;
+  actionError: string | null;
+  markingId: number | null;
+  markingAll: boolean;
+  onMarkRead: (id: number) => void;
+  onMarkAllRead: () => void;
+  onRetry: () => void;
 }) {
   const open = Boolean(type);
   const title = type === "messages" ? "پیام‌ها" : "اعلان‌ها";
@@ -1233,6 +1345,22 @@ function DashboardSideDrawer({
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            {type === "notifications" ? (
+              <NotificationInbox
+                items={notificationItems}
+                unreadCount={unreadCount}
+                countError={countError}
+                loading={inboxLoading}
+                error={inboxError}
+                actionError={actionError}
+                markingId={markingId}
+                markingAll={markingAll}
+                onMarkRead={onMarkRead}
+                onMarkAllRead={onMarkAllRead}
+                onRetry={onRetry}
+              />
+            ) : (
+            <>
             <section
               className={`rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
             >
@@ -1278,11 +1406,10 @@ function DashboardSideDrawer({
 
             <DrawerSection
               darkMode={darkMode}
-              title={type === "messages" ? "پیام‌های اخیر" : "اعلان‌های اخیر"}
+              title="پیام‌های اخیر"
             >
               <div className="space-y-2">
-                {type === "messages"
-                  ? messages.map((message) => (
+                {messages.map((message) => (
                       <div
                         className={`rounded-xl border p-3 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
                         key={message.name}
@@ -1297,26 +1424,6 @@ function DashboardSideDrawer({
                           className={`mt-2 text-xs leading-5 ${mutedText(darkMode)}`}
                         >
                           {message.text}
-                        </p>
-                      </div>
-                    ))
-                  : notifications.map((notification) => (
-                      <div
-                        className={`rounded-xl border p-3 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-slate-50"}`}
-                        key={notification.title}
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-bold">
-                            {notification.title}
-                          </p>
-                          {notification.unread && (
-                            <span className="h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />
-                          )}
-                        </div>
-                        <p
-                          className={`mt-2 text-xs leading-5 ${mutedText(darkMode)}`}
-                        >
-                          {notification.text}
                         </p>
                       </div>
                     ))}
@@ -1346,6 +1453,8 @@ function DashboardSideDrawer({
                 ))}
               </div>
             </DrawerSection>
+            </>
+            )}
           </div>
         </div>
       </aside>
@@ -1372,19 +1481,123 @@ function DrawerSection({
   );
 }
 
+function NotificationInbox({
+  items,
+  unreadCount,
+  countError,
+  loading,
+  error,
+  actionError,
+  markingId,
+  markingAll,
+  onMarkRead,
+  onMarkAllRead,
+  onRetry,
+}: {
+  items: AccountNotification[];
+  unreadCount: number | null;
+  countError: boolean;
+  loading: boolean;
+  error: boolean;
+  actionError: string | null;
+  markingId: number | null;
+  markingAll: boolean;
+  onMarkRead: (id: number) => void;
+  onMarkAllRead: () => void;
+  onRetry: () => void;
+}) {
+  const actionPending = markingId !== null || markingAll;
+  return (
+    <section aria-label="صندوق اعلان‌ها" className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium text-muted-foreground">آخرین اعلان‌ها</p>
+        <KoochButton
+          type="button"
+          size="sm"
+          variant="ghost"
+          disabled={loading || error || actionPending || !unreadCount}
+          loading={markingAll}
+          onClick={onMarkAllRead}
+        >
+          همه را خوانده‌شده علامت بزن
+        </KoochButton>
+      </div>
+      {countError && (
+        <p className="text-xs text-muted-foreground" role="status">
+          شمار اعلان‌های خوانده‌نشده در دسترس نیست.
+        </p>
+      )}
+      {actionError && <p className="text-sm text-destructive" role="alert">{actionError}</p>}
+      {loading ? (
+        <p className="py-8 text-center text-sm text-muted-foreground" role="status">در حال دریافت اعلان‌ها...</p>
+      ) : error ? (
+        <div className="space-y-3 py-8 text-center" role="alert">
+          <p className="text-sm text-muted-foreground">دریافت اعلان‌ها انجام نشد.</p>
+          <KoochButton type="button" size="sm" variant="outline" onClick={onRetry}>تلاش دوباره</KoochButton>
+        </div>
+      ) : items.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">اعلانی برای نمایش وجود ندارد.</p>
+      ) : (
+        <ul className="space-y-2">
+          {items.map((item) => {
+            const content = (
+              <>
+                <span className="flex items-start justify-between gap-2">
+                  <span className="text-sm font-medium">{item.subject || "اعلان"}</span>
+                  {!item.isRead && <span aria-label="خوانده‌نشده" className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />}
+                </span>
+                <span className="mt-1 block text-sm leading-6 text-muted-foreground">{item.message}</span>
+                <span className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <time dateTime={item.createdAtUtc}>{formatDateTime(item.createdAtUtc)}</time>
+                  {item.reservationNumber && <span dir="ltr">{item.reservationNumber}</span>}
+                </span>
+              </>
+            );
+            return (
+              <li key={item.id}>
+                {item.isRead ? (
+                  <div className="rounded-lg border border-border bg-card p-3">{content}</div>
+                ) : (
+                  <button
+                    type="button"
+                    className="w-full rounded-lg border border-border bg-[var(--theme-primary-soft)] p-3 text-start transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+                    disabled={actionPending}
+                    aria-label={`علامت‌گذاری اعلان ${item.subject || item.message} به‌عنوان خوانده‌شده`}
+                    onClick={() => onMarkRead(item.id)}
+                  >
+                    {content}
+                    {markingId === item.id && <span className="mt-2 block text-xs text-muted-foreground">در حال ثبت...</span>}
+                  </button>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </section>
+  );
+}
+
 function HeaderIcon({
   active,
   children,
   label,
   darkMode,
   onClick,
+  showDot = false,
+  unreadCount,
 }: {
   active?: boolean;
   children: ReactNode;
   label: string;
   darkMode: boolean;
   onClick?: () => void;
+  showDot?: boolean;
+  unreadCount?: number | null;
 }) {
+  const countLabel = unreadCount && unreadCount > 0
+    ? new Intl.NumberFormat("fa-IR").format(unreadCount)
+    : null;
   return (
     <button
       className={`relative grid h-10 w-10 place-items-center rounded-xl border transition hover:border-[var(--theme-primary)] ${
@@ -1396,11 +1609,16 @@ function HeaderIcon({
       }`}
       onClick={onClick}
       type="button"
-      aria-label={label}
+      aria-label={countLabel ? `${label}، ${countLabel} خوانده‌نشده` : label}
       aria-pressed={active}
     >
       {children}
-      <span className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />
+      {showDot && <span className="absolute -left-1 -top-1 h-2.5 w-2.5 rounded-full bg-[var(--theme-primary)]" />}
+      {countLabel && (
+        <span className="absolute -left-2 -top-2 min-w-5 rounded-full bg-primary px-1 text-center text-xs leading-5 text-primary-foreground" aria-hidden="true">
+          {countLabel}
+        </span>
+      )}
     </button>
   );
 }
