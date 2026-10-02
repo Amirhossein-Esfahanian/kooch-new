@@ -413,6 +413,83 @@ describe("Admin guest cancellation request in reservation details", () => {
     resolutionNote: null,
   };
 
+  it("opens a support request form only for eligible reservations without Pending/Resolved requests", async () => {
+    const onCreateCancellationRequest = vi.fn();
+    const { rerender } = renderDialog({ onCancel: vi.fn(), onCreateCancellationRequest,
+      reservation: reservation({ cancellationRequest: null }) });
+    const create = await screen.findByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" });
+    fireEvent.click(create);
+    const dialog = await screen.findByRole("dialog", { name: "ثبت درخواست لغو از طرف مهمان" });
+    expect(within(dialog).getByText("این درخواست به نمایندگی از مهمان ثبت می‌شود و به معنی لغو فوری رزرو نیست.")).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "انصراف" }));
+    expect(onCreateCancellationRequest).not.toHaveBeenCalled();
+    rerender(<ReservationDetailsDialog onOpenChange={vi.fn()} open onCancel={vi.fn()}
+      onCreateCancellationRequest={onCreateCancellationRequest}
+      reservation={reservation({ cancellationRequest: pendingRequest })} />);
+    expect(screen.queryByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" })).toBeNull();
+    rerender(<ReservationDetailsDialog onOpenChange={vi.fn()} open onCancel={vi.fn()}
+      onCreateCancellationRequest={onCreateCancellationRequest}
+      reservation={reservation({ status: "Cancelled", allowedStatusTransitions: [], cancellationRequest: null })} />);
+    expect(screen.queryByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" })).toBeNull();
+  });
+
+  it("requires a reason, offers the Guest reason set, and submits only reason/message", async () => {
+    const onCreateCancellationRequest = vi.fn().mockResolvedValue(undefined);
+    renderDialog({ onCancel: vi.fn(), onCreateCancellationRequest });
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" }));
+    const dialog = await screen.findByRole("dialog", { name: "ثبت درخواست لغو از طرف مهمان" });
+    const reason = within(dialog).getByLabelText(/دلیل درخواست/);
+    expect(Array.from((reason as HTMLSelectElement).options).map((option) => option.value)).toEqual([
+      "", "GuestRequest", "NonPayment", "NoAvailability", "PropertyRuleConflict",
+      "DuplicateReservation", "InvalidGuestInformation", "PropertyMaintenanceOrForceMajeure",
+      "AdministrativeCorrection", "Other", "PaymentExpired",
+    ]);
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست" }));
+    expect(await within(dialog).findByText("دلیل درخواست را انتخاب کنید.")).toBeTruthy();
+    expect(onCreateCancellationRequest).not.toHaveBeenCalled();
+    fireEvent.change(reason, { target: { value: "GuestRequest" } });
+    fireEvent.change(within(dialog).getByLabelText("پیام (اختیاری)"), { target: { value: "  تماس تلفنی  " } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست" }));
+    await waitFor(() => expect(onCreateCancellationRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 12 }), { reason: "GuestRequest", message: "تماس تلفنی" },
+    ));
+  });
+
+  it("prevents duplicate submission and preserves form values on an API error", async () => {
+    let reject!: (error: Error) => void;
+    const onCreateCancellationRequest = vi.fn().mockImplementation(() => new Promise<void>((_, fail) => { reject = fail; }));
+    renderDialog({ onCancel: vi.fn(), onCreateCancellationRequest });
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" }));
+    const dialog = await screen.findByRole("dialog", { name: "ثبت درخواست لغو از طرف مهمان" });
+    fireEvent.change(within(dialog).getByLabelText(/دلیل درخواست/), { target: { value: "Other" } });
+    fireEvent.change(within(dialog).getByLabelText("پیام (اختیاری)"), { target: { value: "متن درخواست" } });
+    const submit = within(dialog).getByRole("button", { name: "ثبت درخواست" });
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await waitFor(() => expect(onCreateCancellationRequest).toHaveBeenCalledTimes(1));
+    reject(new Error("خطای سرور"));
+    expect(await within(dialog).findByRole("alert")).toHaveProperty("textContent", "خطای سرور");
+    expect(within(dialog).getByLabelText(/دلیل درخواست/)).toHaveProperty("value", "Other");
+    expect(within(dialog).getByLabelText("پیام (اختیاری)")).toHaveProperty("value", "متن درخواست");
+  });
+
+  it("shows source labels without exposing internal actor IDs and allows a new request after rejection", async () => {
+    const onCreateCancellationRequest = vi.fn();
+    const { rerender } = renderDialog({ onCancel: vi.fn(), onCreateCancellationRequest,
+      reservation: reservation({ cancellationRequest: { ...pendingRequest, requestSource: "GuestOnline" } }) });
+    expect(await screen.findByText("ثبت‌شده توسط مهمان")).toBeTruthy();
+    expect(screen.queryByText("CreatedByUserId")).toBeNull();
+    rerender(<ReservationDetailsDialog onOpenChange={vi.fn()} open onCancel={vi.fn()}
+      onCreateCancellationRequest={onCreateCancellationRequest}
+      reservation={reservation({ cancellationRequest: { ...pendingRequest, status: "Rejected", requestSource: "Support" } })} />);
+    expect(screen.getByText("ثبت‌شده توسط پشتیبانی")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" })).toBeTruthy();
+    rerender(<ReservationDetailsDialog onOpenChange={vi.fn()} open onCancel={vi.fn()}
+      onCreateCancellationRequest={onCreateCancellationRequest}
+      reservation={reservation({ cancellationRequest: { ...pendingRequest, status: "Resolved" } })} />);
+    expect(screen.queryByRole("button", { name: "ثبت درخواست لغو از طرف مهمان" })).toBeNull();
+  });
+
   it("omits the request section when the detail has no request", () => {
     renderDialog({ reservation: reservation({ cancellationRequest: null }) });
     expect(screen.queryByRole("region", { name: "درخواست لغو مهمان" })).toBeNull();

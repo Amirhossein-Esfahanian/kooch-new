@@ -17,6 +17,7 @@ import { KoochDatePicker } from "@/components/KoochDatePicker";
 import {
   ReservationTable,
   type ReservationCancellationPayload,
+  type ReservationCancellationReason,
   type ReservationTableItem,
   type ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
@@ -593,6 +594,36 @@ export default function AdminReservationsPage() {
       throw caught;
     } finally {
       rejectingCancellationRequestRef.current = false;
+    }
+  }
+
+  async function createCancellationRequest(
+    reservation: ReservationTableItem,
+    request: { reason: ReservationCancellationReason | "PaymentExpired"; message: string | null },
+  ) {
+    const reservationId = reservation.reservationId ?? reservation.id;
+    if (!reservationId) return;
+    setError("");
+    try {
+      await apiRequest(`/admin/reservations/${reservationId}/cancellation-request`, {
+        method: "POST",
+        body: JSON.stringify({ reason: request.reason, message: request.message }),
+      });
+      const details = await apiRequest<ReservationTableItem>(`/admin/reservations/${reservationId}`);
+      setSelectedReservation(details);
+      await loadReservations();
+      toast.success("درخواست لغو مهمان ثبت شد؛ وضعیت رزرو تغییر نکرد.");
+    } catch (caught) {
+      if (caught instanceof ApiRequestError && caught.status === 409) {
+        const details = await apiRequest<ReservationTableItem>(`/admin/reservations/${reservationId}`);
+        setSelectedReservation(details);
+        await loadReservations();
+        if (details.cancellationRequest?.status === "Pending") return;
+      }
+      const message = caught instanceof Error ? caught.message : "ثبت درخواست لغو انجام نشد.";
+      setError(message);
+      toast.error(message);
+      throw caught;
     }
   }
 
@@ -1189,6 +1220,7 @@ export default function AdminReservationsPage() {
           onAdjustPrice={adjustReservationPrice}
           onApproveManualPayment={canManagePayments ? approveManualPayment : undefined}
           onCancel={cancelReservation}
+          onCreateCancellationRequest={createCancellationRequest}
           onRejectCancellationRequest={rejectCancellationRequest}
           onRefund={canManagePayments ? refundReservation : undefined}
           onCreateManualPayment={canManagePayments ? createManualPayment : undefined}

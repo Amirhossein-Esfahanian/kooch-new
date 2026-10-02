@@ -32,10 +32,13 @@ vi.mock("@/components/reservations/ReservationDetailsDialog", () => ({
     const cancel = props.onCancel as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
     const refund = props.onRefund as ((item: unknown, payload: unknown) => Promise<void>) | undefined;
     const rejectRequest = props.onRejectCancellationRequest as ((item: unknown, note: string | null) => Promise<void>) | undefined;
+    const createRequest = props.onCreateCancellationRequest as ((item: unknown, request: unknown) => Promise<void>) | undefined;
     return <div>
       <span>Cancellation request: {item?.cancellationRequest?.status ?? "-"}</span>
       {item?.cancellationRequest?.status === "Pending" && rejectRequest &&
         <button onClick={() => void rejectRequest(item, "نیاز به بررسی").catch(() => undefined)}>Reject guest request</button>}
+      {item && createRequest && <button onClick={() => void createRequest(item,
+        { reason: "GuestRequest", message: "تماس تلفنی" }).catch(() => undefined)}>Create support request</button>}
       <span>وضعیت جزئیات: {item?.status ?? "-"}</span>
       <span>بازپرداخت در انتظار: {String(item?.cancellationFinancial?.refundPending ?? false)}</span>
       {item && cancel && <button onClick={() => void cancel(item, {
@@ -77,6 +80,7 @@ let current: typeof initial | Record<string, unknown>;
 let mutationFailure: ApiRequestError | null;
 let detailReads: number;
 let rejectRequestPromise: Promise<unknown> | null;
+let createRequestFailure: ApiRequestError | null;
 
 function installApi() {
   mocks.apiRequest.mockImplementation((path: string, init?: RequestInit) => {
@@ -93,6 +97,11 @@ function installApi() {
         status: "Rejected", resolutionNote: "نیاز به بررسی",
       } };
       return Promise.resolve(current);
+    }
+    if (path === "/admin/reservations/12/cancellation-request" && init?.method === "POST") {
+      if (createRequestFailure) return Promise.reject(createRequestFailure);
+      current = { ...current, cancellationRequest: { status: "Pending", reason: "GuestRequest", requestSource: "Support" } };
+      return Promise.resolve({ status: "Pending", requestSource: "Support" });
     }
     if (path === "/admin/reservations/12/cancel" && init?.method === "PUT") {
       if (mutationFailure) return Promise.reject(mutationFailure);
@@ -123,6 +132,7 @@ describe("Admin cancellation and refund API integration", () => {
     mutationFailure = null;
     detailReads = 0;
     rejectRequestPromise = null;
+    createRequestFailure = null;
     installApi();
   });
 
@@ -137,6 +147,28 @@ describe("Admin cancellation and refund API integration", () => {
     expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual({ note: "نیاز به بررسی" });
     expect(screen.getByText("Cancellation request: Rejected")).toBeTruthy();
     expect((current as { status: string }).status).toBe("Confirmed");
+  });
+
+  it("posts only reason/message, then refetches authoritative Pending detail without cancelling", async () => {
+    await openPage();
+    fireEvent.click(screen.getByRole("button", { name: "Create support request" }));
+    await waitFor(() => expect(detailReads).toBe(2));
+    const calls = mocks.apiRequest.mock.calls.filter(([path]) => path === "/admin/reservations/12/cancellation-request");
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.[1]?.method).toBe("POST");
+    expect(JSON.parse(String(calls[0]?.[1]?.body))).toEqual({ reason: "GuestRequest", message: "تماس تلفنی" });
+    expect(screen.getByText("Cancellation request: Pending")).toBeTruthy();
+    expect(screen.getByText("وضعیت جزئیات: Confirmed")).toBeTruthy();
+  });
+
+  it("refetches the existing Pending request after a 409 conflict", async () => {
+    createRequestFailure = new ApiRequestError("Pending already exists", 409);
+    await openPage();
+    current = { ...current, cancellationRequest: { status: "Pending", reason: "GuestRequest", requestSource: "GuestOnline" } };
+    fireEvent.click(screen.getByRole("button", { name: "Create support request" }));
+    await waitFor(() => expect(detailReads).toBe(2));
+    expect(screen.getByText("Cancellation request: Pending")).toBeTruthy();
+    expect(mocks.toastError).not.toHaveBeenCalled();
   });
 
   it("keeps a pending request visible when rejection fails", async () => {

@@ -44,6 +44,7 @@ export type ReservationCancellationReason =
 
 export interface AdminReservationCancellationRequest {
   status: "Pending" | "Resolved" | "Rejected";
+  requestSource?: "GuestOnline" | "Support";
   reason: ReservationCancellationReason | "PaymentExpired";
   guestMessage: string | null;
   requestedAtUtc: string;
