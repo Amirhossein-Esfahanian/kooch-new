@@ -34,6 +34,7 @@ public class ReservationListItemResponse
     public decimal RemainingAmount { get; set; }
     public string Currency { get; set; } = "IRR";
     public ReservationStatus Status { get; set; }
+    public bool HasPendingCancellationRequest { get; set; }
     public ReservationSource Source { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     [JsonConverter(typeof(UtcDateTimeJsonConverter))]

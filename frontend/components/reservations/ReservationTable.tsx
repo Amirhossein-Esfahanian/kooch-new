@@ -154,6 +154,7 @@ export interface ReservationTableItem {
   children?: number | null;
   roomCount?: number | null;
   status: ReservationTableStatus;
+  hasPendingCancellationRequest?: boolean;
   source?: string | null;
   guestType?: "Iranian" | "Foreign" | string | null;
   notes?: string | null;
@@ -353,6 +354,11 @@ export function ReservationTable({
                     <KoochBadge variant={statusVariant(reservation.status)}>
                       {statusLabels[reservation.status] ?? reservation.status}
                     </KoochBadge>
+                    {showProperty && reservation.hasPendingCancellationRequest === true && (
+                      <div className="mt-1">
+                        <KoochBadge variant="default">درخواست لغو</KoochBadge>
+                      </div>
+                    )}
                     {reservation.paymentExpiresAtUtc && (
                       <div className="mt-1 text-xs  text-muted-foreground">
                         {formatDate(reservation.paymentExpiresAtUtc)}

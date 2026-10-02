@@ -62,7 +62,8 @@ public class ReservationService(
             }
         }
 
-        return await SearchInternalAsync(query, null, null, allowedPropertyIds, cancellationToken);
+        return await SearchInternalAsync(query, null, null, allowedPropertyIds, cancellationToken,
+            includePendingCancellationRequest: true);
     }
 
     public async Task<PagedResult<ReservationListItemResponse>> SearchByPropertyAsync(
@@ -2092,7 +2093,8 @@ public class ReservationService(
         int? scopedPropertyId,
         int? scopedGuestId,
         IReadOnlyCollection<int>? allowedPropertyIds,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includePendingCancellationRequest = false)
     {
         await ExpireApprovedUnpaidReservationsAsync(100, cancellationToken);
         var page = Math.Max(1, query.Page);
@@ -2135,6 +2137,10 @@ public class ReservationService(
                     .Sum(payment => (decimal?)payment.Amount) ?? 0,
                 Currency = reservation.Currency,
                 Status = reservation.Status,
+                HasPendingCancellationRequest = includePendingCancellationRequest &&
+                    dbContext.ReservationCancellationRequests.Any(request =>
+                        request.ReservationId == reservation.Id &&
+                        request.Status == ReservationCancellationRequestStatus.Pending),
                 Source = reservation.Source,
                 CreatedAtUtc = reservation.CreatedAtUtc,
                 PaidAtUtc = reservation.PaidAtUtc,
@@ -2470,6 +2476,7 @@ public class ReservationService(
             RemainingAmount = Math.Max(0, row.FinalAmount - row.PaidAmount),
             Currency = row.Currency,
             Status = ReservationStatusNormalizer.Normalize(row.Status),
+            HasPendingCancellationRequest = row.HasPendingCancellationRequest,
             Source = row.Source,
             CreatedAtUtc = row.CreatedAtUtc,
             ApprovalExpiresAtUtc = row.ApprovalExpiresAtUtc,
@@ -2889,6 +2896,7 @@ public class ReservationService(
         public decimal PaidAmount { get; set; }
         public string Currency { get; set; } = "IRR";
         public ReservationStatus Status { get; set; }
+        public bool HasPendingCancellationRequest { get; set; }
         public ReservationSource Source { get; set; }
         public DateTime CreatedAtUtc { get; set; }
         public DateTime? PaidAtUtc { get; set; }
