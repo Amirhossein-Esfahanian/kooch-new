@@ -20,9 +20,13 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 }));
 vi.mock("@/components/reservations/ManualReservationDialog", () => ({ ManualReservationDialog: () => null }));
 vi.mock("@/components/reservations/ReservationTable", () => ({
-  ReservationTable: ({ onView }: { onView: (item: unknown) => void }) => (
+  ReservationTable: ({ emptyMessage, onPageChange, onView }: {
+    emptyMessage: string; onPageChange: (page: number) => void; onView: (item: unknown) => void;
+  }) => <div>
     <button onClick={() => onView({ id: 12, reservationNumber: "R-123456" })}>مشاهده رزرو آزمون</button>
-  ),
+    <button onClick={() => onPageChange(2)}>صفحه دوم آزمون</button>
+    <p>{emptyMessage}</p>
+  </div>,
 }));
 vi.mock("@/components/reservations/ReservationDetailsDialog", () => ({
   ReservationDetailsDialog: (props: Record<string, unknown>) => {
@@ -134,6 +138,36 @@ describe("Admin cancellation and refund API integration", () => {
     rejectRequestPromise = null;
     createRequestFailure = null;
     installApi();
+  });
+
+  it("applies the Pending request filter with existing status, preserves it on paging, and clears only its query parameter", async () => {
+    render(<AdminReservationsPage />);
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) =>
+      String(path).startsWith("/admin/reservations?"))).toBe(true));
+    expect(screen.getByRole("option", { name: "همه رزروها" })).toBeTruthy();
+    expect(screen.getByRole("option", { name: "درخواست لغو در انتظار" })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("وضعیت"), { target: { value: "Confirmed" } });
+    fireEvent.change(screen.getByLabelText("درخواست لغو"), { target: { value: "true" } });
+    fireEvent.click(screen.getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const url = new URL(String(path), "http://test.local");
+      return url.pathname === "/admin/reservations" && url.searchParams.get("pendingCancellationRequest") === "true" &&
+        url.searchParams.get("status") === "Confirmed" && url.searchParams.get("page") === "1";
+    })).toBe(true));
+    expect(screen.getByText("درخواست لغو در انتظار بررسی وجود ندارد.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "صفحه دوم آزمون" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const url = new URL(String(path), "http://test.local");
+      return url.pathname === "/admin/reservations" && url.searchParams.get("page") === "2" &&
+        url.searchParams.get("pendingCancellationRequest") === "true" && url.searchParams.get("status") === "Confirmed";
+    })).toBe(true));
+    fireEvent.change(screen.getByLabelText("درخواست لغو"), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "اعمال" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => {
+      const url = new URL(String(path), "http://test.local");
+      return url.pathname === "/admin/reservations" && url.searchParams.get("page") === "1" &&
+        !url.searchParams.has("pendingCancellationRequest") && url.searchParams.get("status") === "Confirmed";
+    })).toBe(true));
   });
 
   it("rejects a pending guest request, then reads its authoritative status without cancelling the reservation", async () => {

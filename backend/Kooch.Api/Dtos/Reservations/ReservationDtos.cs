@@ -121,6 +121,7 @@ public class ReservationTimelineEventResponse
 
 public class ReservationListQuery
 {
+    public bool? PendingCancellationRequest { get; set; }
     public int? PropertyId { get; set; }
     public string? ReservationNumber { get; set; }
     public ReservationStatus? Status { get; set; }

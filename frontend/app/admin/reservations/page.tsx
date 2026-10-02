@@ -58,6 +58,7 @@ interface ReservationListQuery {
   propertyId: string;
   reservationNumber: string;
   status: ReservationStatusFilter;
+  pendingCancellationRequest: "" | "true";
   bookingMode: ReservationBookingModeFilter;
   roomTypeId: string;
   roomId: string;
@@ -126,6 +127,7 @@ const initialFilters: ReservationListQuery = {
   propertyId: "",
   reservationNumber: "",
   status: "",
+  pendingCancellationRequest: "",
   bookingMode: "",
   roomTypeId: "",
   roomId: "",
@@ -770,7 +772,7 @@ export default function AdminReservationsPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
               <KoochField label="شماره رزرو">
                 <KoochInput
                   onChange={(event) =>
@@ -828,6 +830,21 @@ export default function AdminReservationsPage() {
                       {option.label}
                     </option>
                   ))}
+                </KoochSelect>
+              </KoochField>
+
+              <KoochField label="درخواست لغو">
+                <KoochSelect
+                  onChange={(event) =>
+                    setDraftFilters((current) => ({
+                      ...current,
+                      pendingCancellationRequest: event.target.value as "" | "true",
+                    }))
+                  }
+                  value={draftFilters.pendingCancellationRequest}
+                >
+                  <option value="">همه رزروها</option>
+                  <option value="true">درخواست لغو در انتظار</option>
                 </KoochSelect>
               </KoochField>
             </div>
@@ -1201,7 +1218,9 @@ export default function AdminReservationsPage() {
         <ReservationTable
           context="admin"
           currentPage={currentPage}
-          emptyMessage="هنوز رزروی ثبت نشده است."
+          emptyMessage={filters.pendingCancellationRequest === "true"
+            ? "درخواست لغو در انتظار بررسی وجود ندارد."
+            : "هنوز رزروی ثبت نشده است."}
           loading={loading}
           onPageChange={setCurrentPage}
           onView={viewReservation}

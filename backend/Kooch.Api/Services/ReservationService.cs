@@ -2105,6 +2105,10 @@ public class ReservationService(
             scopedPropertyId,
             scopedGuestId,
             allowedPropertyIds);
+        if (includePendingCancellationRequest && query.PendingCancellationRequest == true)
+            reservations = reservations.Where(reservation => dbContext.ReservationCancellationRequests.Any(request =>
+                request.ReservationId == reservation.Id &&
+                request.Status == ReservationCancellationRequestStatus.Pending));
         var totalCount = await reservations.CountAsync(cancellationToken);
         var rows = await ApplySort(reservations, query.Sort)
             .Skip((page - 1) * pageSize)

@@ -75,6 +75,65 @@ public sealed class AdminReservationPendingCancellationListTests
     }
 
     [Fact]
+    public async Task PendingFilter_ExcludesRejectedResolvedAndMissingButIncludesRejectedThenPending()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var pending = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        var rejected = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        var resolved = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        var renewed = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        await AddRequestAsync(harness, pending.Id, ReservationCancellationRequestStatus.Pending);
+        await AddRequestAsync(harness, rejected.Id, ReservationCancellationRequestStatus.Rejected);
+        await AddRequestAsync(harness, resolved.Id, ReservationCancellationRequestStatus.Resolved);
+        await AddRequestAsync(harness, renewed.Id, ReservationCancellationRequestStatus.Rejected);
+        await AddRequestAsync(harness, renewed.Id, ReservationCancellationRequestStatus.Pending);
+
+        var unfiltered = await harness.Service.SearchAsync(new ReservationListQuery(), harness.SuperAdmin);
+        var filtered = await harness.Service.SearchAsync(new ReservationListQuery
+        {
+            PendingCancellationRequest = true
+        }, harness.SuperAdmin);
+
+        Assert.Equal(5, unfiltered.TotalCount);
+        Assert.Equal(2, filtered.TotalCount);
+        Assert.Equal(1, filtered.TotalPages);
+        Assert.Equal(2, filtered.Items.Count);
+        Assert.Equal(new[] { pending.Id, renewed.Id }.Order(), filtered.Items.Select(item => item.Id).Order());
+        Assert.All(filtered.Items, item => Assert.True(item.HasPendingCancellationRequest));
+    }
+
+    [Fact]
+    public async Task PendingFilter_AppliesBeforePagingAndComposesWithStatusAndProperty()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var confirmed = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        var pendingStatus = await harness.AddReservationAsync(ReservationStatus.Pending);
+        var secondConfirmed = await harness.AddReservationAsync(ReservationStatus.Confirmed);
+        await AddRequestAsync(harness, confirmed.Id, ReservationCancellationRequestStatus.Pending);
+        await AddRequestAsync(harness, pendingStatus.Id, ReservationCancellationRequestStatus.Pending);
+        await AddRequestAsync(harness, secondConfirmed.Id, ReservationCancellationRequestStatus.Pending);
+
+        var first = await harness.Service.SearchAsync(new ReservationListQuery
+        {
+            PendingCancellationRequest = true, PropertyId = 10, Status = ReservationStatus.Confirmed,
+            Page = 1, PageSize = 1, Sort = "reservationnumberasc"
+        }, harness.SuperAdmin);
+        var second = await harness.Service.SearchAsync(new ReservationListQuery
+        {
+            PendingCancellationRequest = true, PropertyId = 10, Status = ReservationStatus.Confirmed,
+            Page = 2, PageSize = 1, Sort = "reservationnumberasc"
+        }, harness.SuperAdmin);
+
+        Assert.Equal(2, first.TotalCount);
+        Assert.Equal(2, first.TotalPages);
+        Assert.Single(first.Items);
+        Assert.Single(second.Items);
+        Assert.Equal(new[] { confirmed.Id, secondConfirmed.Id }.Order(),
+            first.Items.Concat(second.Items).Select(item => item.Id).Order());
+    }
+
+    [Fact]
     public async Task NonAdminListPaths_DoNotExposeTheAdminPendingFlag()
     {
         await using var harness = await ReservationTestHarness.CreateAsync();
