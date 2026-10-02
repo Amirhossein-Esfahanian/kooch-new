@@ -1,12 +1,14 @@
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
+using System.Text.Json;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class ReservationCancellationRequestService(KoochDbContext context, IPermissionService permissionService)
+public sealed class ReservationCancellationRequestService(
+    KoochDbContext context, IPermissionService permissionService, INotificationService notificationService)
 {
     public async Task<AdminReservationCancellationRequestResponse?> GetLatestForAdminAsync(
         int reservationId, CancellationToken cancellationToken = default)
@@ -188,6 +190,44 @@ public sealed class ReservationCancellationRequestService(KoochDbContext context
         catch (DbUpdateException error) when (IsPendingCollision(error))
         {
             throw new InvalidOperationException("A cancellation request is already pending.", error);
+        }
+
+        var reservation = await context.Reservations.AsNoTracking()
+            .Where(row => row.Id == reservationId)
+            .Select(row => new { row.PropertyId, row.ReservationNumber })
+            .SingleAsync(cancellationToken);
+        var candidateIds = await context.Users.AsNoTracking()
+            .Where(user => user.IsActive &&
+                (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant))
+            .Select(user => user.Id)
+            .ToListAsync(cancellationToken);
+        foreach (var userId in candidateIds)
+        {
+            if (source == ReservationCancellationRequestSource.Support && userId == creatorUserId)
+                continue;
+            if (!await permissionService.HasPermissionAsync(userId, PermissionKey.ManageReservations,
+                    cancellationToken: cancellationToken) ||
+                !await permissionService.CanAsync(userId, reservation.PropertyId, "bookings.cancel", cancellationToken) ||
+                !await permissionService.CanAsync(userId, reservation.PropertyId, "bookings.view", cancellationToken))
+                continue;
+
+            await notificationService.SendAsync(new NotificationRequest
+            {
+                EventType = NotificationEventType.ReservationCancellationRequested,
+                RecipientUserId = userId,
+                PropertyId = reservation.PropertyId,
+                ReservationId = reservationId,
+                Subject = "درخواست لغو جدید",
+                Message = $"برای رزرو {reservation.ReservationNumber} درخواست لغو ثبت شده است.",
+                DataJson = JsonSerializer.Serialize(new
+                {
+                    reservationNumber = reservation.ReservationNumber,
+                    requestSource = source.ToString(),
+                    internalLink = "/admin/reservations"
+                }),
+                DedupeKey = $"reservation-cancellation-request:{entity.Id}:recipient:{userId}",
+                Channels = NotificationChannel.InApp
+            }, cancellationToken);
         }
         return entity;
     }

@@ -205,7 +205,8 @@ public sealed class ReservationCancellationRequestTests
         Reason = ReservationCancellationReason.GuestRequest, Message = " Please cancel "
     };
 
-    private static ReservationCancellationRequestService Service(KoochDbContext context) => new(context, null!);
+    private static ReservationCancellationRequestService Service(KoochDbContext context) =>
+        new(context, null!, new NotificationService(context));
 
     private static KoochDbContext NewContext() => new(new DbContextOptionsBuilder<KoochDbContext>()
         .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
@@ -213,8 +214,8 @@ public sealed class ReservationCancellationRequestTests
     private static void Seed(KoochDbContext context)
     {
         context.Users.AddRange(
-            new User { Id = 1, FirstName = "Guest", LastName = "One", Email = "one@test.local", PasswordHash = "unused" },
-            new User { Id = 2, FirstName = "Other", LastName = "Two", Email = "two@test.local", PasswordHash = "unused" });
+            new User { Id = 1, FirstName = "Guest", LastName = "One", Email = "one@test.local", PasswordHash = "unused", Role = UserRole.Client },
+            new User { Id = 2, FirstName = "Other", LastName = "Two", Email = "two@test.local", PasswordHash = "unused", Role = UserRole.Client });
         context.Guests.Add(new Guest { Id = 3, UserId = 1, FirstName = "Guest", LastName = "One" });
         context.Reservations.Add(new Reservation
         {

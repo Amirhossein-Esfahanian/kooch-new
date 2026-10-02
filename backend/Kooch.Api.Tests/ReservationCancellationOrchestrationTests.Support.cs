@@ -53,7 +53,7 @@ public sealed partial class ReservationCancellationOrchestrationTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             RequestService(db, cancelAllowed: false).CreateForSupportAsync(1, 1, UserRole.SuperAdmin, SupportRequest()));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
-            new ReservationCancellationRequestService(db, new DeniedManageReservations())
+            new ReservationCancellationRequestService(db, new DeniedManageReservations(), new NotificationService(db))
                 .CreateForSupportAsync(1, 1, UserRole.AdminAssistant, SupportRequest()));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             RequestService(db).CreateForSupportAsync(1, 2, UserRole.Client, SupportRequest()));

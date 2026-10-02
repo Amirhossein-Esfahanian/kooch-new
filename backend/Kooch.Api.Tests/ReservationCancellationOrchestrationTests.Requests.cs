@@ -137,7 +137,7 @@ public sealed partial class ReservationCancellationOrchestrationTests
         await using var store = await Store.CreateAsync(paid: false);
         await using var db = store.Open();
         await AddRequestAsync(db);
-        var service = new ReservationCancellationRequestService(db, new DeniedManageReservations());
+        var service = new ReservationCancellationRequestService(db, new DeniedManageReservations(), new NotificationService(db));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             service.RejectAsync(1, 1, UserRole.AdminAssistant, null));
         Assert.Equal(ReservationCancellationRequestStatus.Pending,
@@ -273,14 +273,14 @@ public sealed partial class ReservationCancellationOrchestrationTests
     }
 
     private static ReservationCancellationRequestService RequestService(KoochDbContext db, bool cancelAllowed = true) =>
-        new(db, new Permissions(cancelAllowed, payments: true));
+        new(db, new Permissions(cancelAllowed, payments: true), new NotificationService(db));
 
     private static AdminReservationsController AdminController(KoochDbContext db, bool cancelAllowed = true)
     {
         var permissions = new Permissions(cancelAllowed, payments: true);
         var controller = new AdminReservationsController(
             Service(db), null!, null!, null!, permissions,
-            new ReservationCancellationRequestService(db, permissions))
+            new ReservationCancellationRequestService(db, permissions, new NotificationService(db)))
         {
             ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
         };
