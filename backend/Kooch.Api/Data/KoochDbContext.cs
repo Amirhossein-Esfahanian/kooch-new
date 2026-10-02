@@ -192,6 +192,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             if (entry.Property(row => row.ReservationId).IsModified ||
                 entry.Property(row => row.RequestedByUserId).IsModified ||
                 entry.Property(row => row.Reason).IsModified ||
+                entry.Property(row => row.RequestSource).IsModified ||
                 entry.Property(row => row.GuestMessage).IsModified ||
                 entry.Property(row => row.RequestedAtUtc).IsModified)
                 throw new InvalidOperationException("Submitted cancellation request details cannot be changed.");
@@ -219,12 +220,15 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.ToTable("ReservationCancellationRequests");
             entity.Property(row => row.Status).IsRequired();
+            entity.Property(row => row.RequestSource).IsRequired().HasDefaultValue(ReservationCancellationRequestSource.GuestOnline);
             entity.Property(row => row.Reason).IsRequired();
             entity.Property(row => row.GuestMessage).HasMaxLength(2000);
             entity.Property(row => row.ResolutionNote).HasMaxLength(2000);
             entity.Property(row => row.RequestedAtUtc).IsRequired();
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_ReservationCancellationRequests_Status", "[Status] IN (0, 1, 2)"));
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_ReservationCancellationRequests_RequestSource", "[RequestSource] IN (0, 1)"));
             entity.HasIndex(row => row.ReservationId)
                 .IsUnique()
                 .HasFilter("[Status] = 0");

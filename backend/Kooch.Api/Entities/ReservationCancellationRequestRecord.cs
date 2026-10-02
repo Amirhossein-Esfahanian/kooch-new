@@ -7,11 +7,18 @@ public enum ReservationCancellationRequestStatus
     Rejected = 2
 }
 
+public enum ReservationCancellationRequestSource
+{
+    GuestOnline = 0,
+    Support = 1
+}
+
 public class ReservationCancellationRequestRecord : BaseEntity
 {
     public int ReservationId { get; set; }
     public int RequestedByUserId { get; set; }
     public ReservationCancellationRequestStatus Status { get; set; } = ReservationCancellationRequestStatus.Pending;
+    public ReservationCancellationRequestSource RequestSource { get; set; } = ReservationCancellationRequestSource.GuestOnline;
     public ReservationCancellationReason Reason { get; set; }
     public string? GuestMessage { get; set; }
     public DateTime RequestedAtUtc { get; set; }

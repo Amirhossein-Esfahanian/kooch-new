@@ -81,6 +81,17 @@ public class AdminReservationsController(
             id, actor.UserId, actor.Role, request.Note, cancellationToken));
     }
 
+    [HttpPost("{id:int}/cancellation-request")]
+    [PermissionAuthorize(PermissionKey.ManageReservations)]
+    [ProducesResponseType<AdminReservationCancellationRequestResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<AdminReservationCancellationRequestResponse>> CreateCancellationRequest(
+        int id, CreateReservationCancellationRequest request, CancellationToken cancellationToken)
+    {
+        var actor = GetCurrentUser();
+        return Ok(await cancellationRequestService.CreateForSupportAsync(
+            id, actor.UserId, actor.Role, request, cancellationToken));
+    }
+
     [HttpPost]
     [ProducesResponseType<ReservationResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<ReservationResponse>> Create(

@@ -20,6 +20,7 @@ public sealed class ReservationCancellationRequestResponse
 public sealed class AdminReservationCancellationRequestResponse
 {
     public ReservationCancellationRequestStatus Status { get; set; }
+    public ReservationCancellationRequestSource RequestSource { get; set; }
     public ReservationCancellationReason Reason { get; set; }
     public string? GuestMessage { get; set; }
     public DateTime RequestedAtUtc { get; set; }
