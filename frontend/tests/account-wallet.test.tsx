@@ -15,9 +15,12 @@ import AccountPage from "@/app/account/page";
 
 const balance = { currency: "IRR", balance: 7000000, withdrawableBalance: 5000000, nonWithdrawableBalance: 2000000 };
 const request = { id: 27, currency: "IRR", amount: 1000000, status: "Pending", requestedAtUtc: "2026-10-03T10:00:00Z" };
+const credit = { id: 901, amount: 150000, direction: "Credit", currency: "IRR", createdAtUtc: "2026-10-03T08:00:00Z" };
+const debit = { id: 902, amount: 25000, direction: "Debit", currency: "IRR", createdAtUtc: "2026-10-03T09:00:00Z" };
 const paged = (items: unknown[]) => ({ items, totalCount: items.length, page: 1, pageSize: 10, totalPages: 1 });
 let currentBalance = { ...balance };
 let history = [request];
+let transactionItems = [credit, debit];
 const postCalls = () => api.mock.calls.filter(([, init]) => init?.method === "POST");
 
 beforeEach(() => {
@@ -25,9 +28,11 @@ beforeEach(() => {
   navigation.replace.mockReset();
   currentBalance = { ...balance };
   history = [request];
+  transactionItems = [credit, debit];
   api.mockImplementation(async (path: string, init?: RequestInit) => {
     if (init?.method === "POST") return request;
     if (path === "/account/wallet?currency=IRR") return currentBalance;
+    if (path.startsWith("/account/wallet/transactions?")) return { ...paged(transactionItems), pageSize: 20 };
     if (path.startsWith("/account/wallet/withdrawals?")) return paged(history);
     throw new Error(`Unexpected API: ${path}`);
   });
@@ -40,6 +45,99 @@ async function openDialog() {
 }
 
 describe("Guest account wallet", () => {
+  it("loads the first ledger page for the balance currency and keeps withdrawal requests separate", async () => {
+    render(<Page />);
+    const ledger = await screen.findByRole("region", { name: "تراکنش‌های کیف پول" });
+    await within(ledger).findByText("افزایش موجودی");
+    expect(api).toHaveBeenCalledWith("/account/wallet/transactions?currency=IRR&page=1&pageSize=20");
+    expect(within(ledger).getByText("کاهش موجودی")).not.toBeNull();
+    expect(within(ledger).getByText(/۱۵۰٬۰۰۰/)).not.toBeNull();
+    expect(within(ledger).getByText(/۲۵٬۰۰۰/)).not.toBeNull();
+    expect(within(ledger).getAllByText("IRR")).toHaveLength(2);
+    expect(within(ledger).queryByText("در انتظار بررسی")).toBeNull();
+    expect(within(ledger).queryByText(/901|902|cashback|برداشت/)).toBeNull();
+    expect(await screen.findByText("در انتظار بررسی")).not.toBeNull();
+  });
+
+  it("keeps local loading and empty ledger states independent of balance and withdrawal history", async () => {
+    let release: ((result: ReturnType<typeof paged>) => void) | undefined;
+    const pending = new Promise<ReturnType<typeof paged>>(resolve => { release = resolve; });
+    api.mockImplementation(async (path: string) => {
+      if (path === "/account/wallet?currency=IRR") return currentBalance;
+      if (path.startsWith("/account/wallet/transactions?")) return pending;
+      return paged(history);
+    });
+    render(<Page />);
+    const ledger = await screen.findByRole("region", { name: "تراکنش‌های کیف پول" });
+    expect(await within(ledger).findByText("در حال بارگذاری تراکنش‌ها...")).not.toBeNull();
+    expect(await screen.findByText("در انتظار بررسی")).not.toBeNull();
+    release?.({ ...paged([]), pageSize: 20 });
+    expect(await within(ledger).findByText("هنوز تراکنشی در کیف پول شما ثبت نشده است.")).not.toBeNull();
+  });
+
+  it("shows a local ledger error and retries without hiding balance or withdrawals", async () => {
+    let attempts = 0;
+    api.mockImplementation(async (path: string) => {
+      if (path === "/account/wallet?currency=IRR") return currentBalance;
+      if (path.startsWith("/account/wallet/transactions?")) {
+        attempts += 1;
+        if (attempts === 1) throw new Error("دریافت تراکنش‌ها ناموفق بود");
+        return { ...paged([credit]), pageSize: 20 };
+      }
+      return paged(history);
+    });
+    render(<Page />);
+    const ledger = await screen.findByRole("region", { name: "تراکنش‌های کیف پول" });
+    expect(await within(ledger).findByText("تراکنش‌ها در دسترس نیستند.")).not.toBeNull();
+    expect(screen.getByText("موجودی قابل استفاده")).not.toBeNull();
+    expect(await screen.findByText("در انتظار بررسی")).not.toBeNull();
+    fireEvent.click(within(ledger).getByRole("button", { name: "تلاش دوباره" }));
+    expect(await within(ledger).findByText("افزایش موجودی")).not.toBeNull();
+    expect(attempts).toBe(2);
+  });
+
+  it("appends separate ledger rows, removes duplicates, and stops at the last page", async () => {
+    const anotherDebit = { ...debit, id: 903, amount: 35000 };
+    api.mockImplementation(async (path: string) => {
+      if (path === "/account/wallet?currency=IRR") return currentBalance;
+      if (path.startsWith("/account/wallet/transactions?")) {
+        const page = path.includes("page=2") ? 2 : 1;
+        return { items: page === 1 ? [credit, debit] : [debit, anotherDebit], totalCount: 3, page, pageSize: 20, totalPages: 2 };
+      }
+      return paged(history);
+    });
+    render(<Page />);
+    const ledger = await screen.findByRole("region", { name: "تراکنش‌های کیف پول" });
+    fireEvent.click(await within(ledger).findByRole("button", { name: "نمایش بیشتر" }));
+    await within(ledger).findByText(/۳۵٬۰۰۰/);
+    expect(api).toHaveBeenCalledWith("/account/wallet/transactions?currency=IRR&page=2&pageSize=20");
+    expect(within(ledger).getAllByText("کاهش موجودی")).toHaveLength(2);
+    expect(within(ledger).queryByRole("button", { name: "نمایش بیشتر" })).toBeNull();
+  });
+
+  it("preserves loaded rows and retries the same next page after load-more fails", async () => {
+    let secondPageAttempts = 0;
+    api.mockImplementation(async (path: string) => {
+      if (path === "/account/wallet?currency=IRR") return currentBalance;
+      if (path.startsWith("/account/wallet/transactions?")) {
+        if (path.includes("page=2")) {
+          secondPageAttempts += 1;
+          if (secondPageAttempts === 1) throw new Error("بارگذاری بیشتر ناموفق بود");
+          return { items: [debit], totalCount: 2, page: 2, pageSize: 20, totalPages: 2 };
+        }
+        return { items: [credit], totalCount: 2, page: 1, pageSize: 20, totalPages: 2 };
+      }
+      return paged(history);
+    });
+    render(<Page />);
+    const ledger = await screen.findByRole("region", { name: "تراکنش‌های کیف پول" });
+    fireEvent.click(await within(ledger).findByRole("button", { name: "نمایش بیشتر" }));
+    expect(await within(ledger).findByText("بارگذاری بیشتر ناموفق بود")).not.toBeNull();
+    expect(within(ledger).getByText("افزایش موجودی")).not.toBeNull();
+    fireEvent.click(within(ledger).getByRole("button", { name: "نمایش بیشتر" }));
+    expect(await within(ledger).findByText("کاهش موجودی")).not.toBeNull();
+    expect(secondPageAttempts).toBe(2);
+  });
   it("links wallet from the existing account landing page", () => {
     render(<AccountPage />);
     expect(screen.getByRole("link", { name: "مشاهده کیف پول" }).getAttribute("href")).toBe("/account/wallet");

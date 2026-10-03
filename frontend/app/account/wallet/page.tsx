@@ -23,9 +23,11 @@ import { apiRequest } from "@/lib/owner-api";
 type Balance = { currency: string; balance: number; withdrawableBalance: number; nonWithdrawableBalance: number };
 type WithdrawalStatus = "Pending" | "Approved" | "Paid" | "Rejected" | "Cancelled";
 type Withdrawal = { id: number; currency: string; amount: number; status: WithdrawalStatus; requestedAtUtc: string };
+type WalletTransaction = { id: number; amount: number; direction: "Credit" | "Debit"; currency: string; createdAtUtc: string };
 type Page<T> = { items: T[]; totalCount: number; page: number; pageSize: number; totalPages: number };
 type RequestForm = { amount: number };
 const pageSize = 10;
+const transactionPageSize = 20;
 const statusLabels: Record<WithdrawalStatus, string> = {
   Pending: "در انتظار بررسی",
   Approved: "تأییدشده؛ در انتظار پرداخت",
@@ -47,6 +49,15 @@ export default function AccountWalletPage() {
   const [historyError, setHistoryError] = useState("");
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [transactionPage, setTransactionPage] = useState(0);
+  const [transactionTotalPages, setTransactionTotalPages] = useState(0);
+  const [transactionsLoading, setTransactionsLoading] = useState(true);
+  const [moreTransactionsLoading, setMoreTransactionsLoading] = useState(false);
+  const [transactionsError, setTransactionsError] = useState("");
+  const [transactionRefresh, setTransactionRefresh] = useState(0);
+  const transactionRequestEpoch = useRef(0);
+  const loadingMoreRef = useRef<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [supportVisible, setSupportVisible] = useState(false);
@@ -100,6 +111,58 @@ export default function AccountWalletPage() {
       .finally(() => { if (active) setHistoryLoading(false); });
     return () => { active = false; };
   }, [hasAccountWorkspace, page, refresh, session.authenticated, session.loading]);
+
+  useEffect(() => {
+    if (session.loading || !session.authenticated || !hasAccountWorkspace || !balance?.currency) return;
+    const epoch = ++transactionRequestEpoch.current;
+    loadingMoreRef.current = null;
+    setMoreTransactionsLoading(false);
+    setTransactions([]);
+    setTransactionPage(0);
+    setTransactionTotalPages(0);
+    setTransactionsLoading(true);
+    setTransactionsError("");
+    void apiRequest<Page<WalletTransaction>>(`/account/wallet/transactions?currency=${encodeURIComponent(balance.currency)}&page=1&pageSize=${transactionPageSize}`)
+      .then(result => {
+        if (epoch !== transactionRequestEpoch.current) return;
+        setTransactions(result.items);
+        setTransactionPage(result.page);
+        setTransactionTotalPages(result.totalPages);
+      })
+      .catch(error => {
+        if (epoch === transactionRequestEpoch.current) setTransactionsError(errorText(error));
+      })
+      .finally(() => {
+        if (epoch === transactionRequestEpoch.current) setTransactionsLoading(false);
+      });
+    return () => { transactionRequestEpoch.current += 1; };
+  }, [balance?.currency, hasAccountWorkspace, session.authenticated, session.loading, transactionRefresh]);
+
+  const loadMoreTransactions = async () => {
+    if (loadingMoreRef.current !== null || transactionsLoading || !balance?.currency || transactionPage >= transactionTotalPages) return;
+    const epoch = transactionRequestEpoch.current;
+    loadingMoreRef.current = epoch;
+    const nextPage = transactionPage + 1;
+    setMoreTransactionsLoading(true);
+    setTransactionsError("");
+    try {
+      const result = await apiRequest<Page<WalletTransaction>>(`/account/wallet/transactions?currency=${encodeURIComponent(balance.currency)}&page=${nextPage}&pageSize=${transactionPageSize}`);
+      if (epoch !== transactionRequestEpoch.current) return;
+      setTransactions(current => {
+        const existingIds = new Set(current.map(item => item.id));
+        return [...current, ...result.items.filter(item => !existingIds.has(item.id))];
+      });
+      setTransactionPage(result.page);
+      setTransactionTotalPages(result.totalPages);
+    } catch (error) {
+      if (epoch === transactionRequestEpoch.current) setTransactionsError(errorText(error));
+    } finally {
+      if (loadingMoreRef.current === epoch) {
+        loadingMoreRef.current = null;
+        setMoreTransactionsLoading(false);
+      }
+    }
+  };
 
   const openRequest = () => {
     form.reset({ amount: undefined });
@@ -159,6 +222,30 @@ export default function AccountWalletPage() {
           <KoochCard className="grid gap-1" padding="sm"><h3 className="text-sm font-semibold text-muted-foreground">اعتبار غیرقابل برداشت</h3><p className="text-lg font-bold tabular-nums">{money(balance.nonWithdrawableBalance, balance.currency)}</p></KoochCard>
         </div>
       </section>}
+
+      <section aria-label="تراکنش‌های کیف پول" className="grid min-w-0 gap-3">
+        <h2 className="text-lg font-semibold">تراکنش‌های کیف پول</h2>
+        {transactionsError && <KoochAlert variant="destructive" role="alert">
+          {transactionsError}{" "}
+          {!transactionPage && <KoochButton size="sm" variant="outline" onClick={() => setTransactionRefresh(value => value + 1)}>تلاش دوباره</KoochButton>}
+        </KoochAlert>}
+        <KoochTable className="!min-w-0">
+          <KoochTableHeader><KoochTableRow><KoochTableHead>نوع</KoochTableHead><KoochTableHead>مبلغ</KoochTableHead><KoochTableHead>زمان</KoochTableHead></KoochTableRow></KoochTableHeader>
+          <KoochTableBody>
+            {transactionsLoading ? <KoochTableEmpty colSpan={3}>در حال بارگذاری تراکنش‌ها...</KoochTableEmpty>
+              : !transactionPage && transactionsError ? <KoochTableEmpty colSpan={3}>تراکنش‌ها در دسترس نیستند.</KoochTableEmpty>
+              : !transactions.length ? <KoochTableEmpty colSpan={3}>هنوز تراکنشی در کیف پول شما ثبت نشده است.</KoochTableEmpty>
+              : transactions.map(item => <KoochTableRow key={item.id}>
+                <KoochTableCell><KoochBadge variant={item.direction === "Credit" ? "success" : "destructive"}>{item.direction === "Credit" ? "افزایش موجودی" : "کاهش موجودی"}</KoochBadge></KoochTableCell>
+                <KoochTableCell className="tabular-nums">{money(item.amount, item.currency)}</KoochTableCell>
+                <KoochTableCell><time dateTime={item.createdAtUtc}>{formatDateTime(item.createdAtUtc)}</time></KoochTableCell>
+              </KoochTableRow>)}
+          </KoochTableBody>
+        </KoochTable>
+        {transactionPage > 0 && transactionPage < transactionTotalPages && <div className="flex justify-center">
+          <KoochButton size="sm" variant="outline" loading={moreTransactionsLoading} disabled={moreTransactionsLoading} onClick={() => void loadMoreTransactions()}>نمایش بیشتر</KoochButton>
+        </div>}
+      </section>
 
       <section aria-label="تاریخچه درخواست‌های برداشت" className="grid min-w-0 gap-3">
         <h2 className="text-lg font-semibold">درخواست‌های برداشت</h2>
