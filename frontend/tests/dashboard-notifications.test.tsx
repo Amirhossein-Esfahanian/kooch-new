@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+const adminSession = vi.hoisted(() => ({ role: "SuperAdmin", permissions: [] as string[] }));
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin",
   useRouter: () => navigation,
@@ -12,8 +13,8 @@ vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({
     authenticated: true,
     loading: false,
-    platformPermissions: [],
-    platformRole: "SuperAdmin",
+    platformPermissions: adminSession.permissions,
+    platformRole: adminSession.role,
     workspaces: ["admin"],
   }),
 }));
@@ -61,7 +62,29 @@ function openInbox() {
 
 describe("Dashboard notification inbox", () => {
   afterEach(() => vi.unstubAllGlobals());
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adminSession.role = "SuperAdmin";
+    adminSession.permissions = [];
+  });
+
+  it("shows wallet withdrawal navigation only with ManagePayments for AdminAssistant", () => {
+    adminSession.role = "AdminAssistant";
+    renderShell();
+    expect(screen.queryByRole("link", { name: "درخواست‌های برداشت" })).toBeNull();
+  });
+
+  it("shows wallet withdrawal navigation to a permitted AdminAssistant", () => {
+    adminSession.role = "AdminAssistant";
+    adminSession.permissions = ["ManagePayments"];
+    renderShell();
+    expect(screen.getByRole("link", { name: "درخواست‌های برداشت" }).getAttribute("href")).toBe("/admin/wallet/withdrawals");
+  });
+
+  it("shows wallet withdrawal navigation to SuperAdmin", () => {
+    renderShell();
+    expect(screen.getByRole("link", { name: "درخواست‌های برداشت" }).getAttribute("href")).toBe("/admin/wallet/withdrawals");
+  });
 
   it("loads authoritative unread count and first page, without mock content or deep links", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {

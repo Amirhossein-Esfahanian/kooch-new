@@ -112,6 +112,12 @@ const adminMenuItems: DashboardMenuItem[] = [
     href: "/admin/settlements",
     platformPermission: "ManagePayments",
   },
+  {
+    label: "درخواست‌های برداشت",
+    icon: "/svgs/receipt.svg",
+    href: "/admin/wallet/withdrawals",
+    platformPermission: "ManagePayments",
+  },
   { label: "تنظیمات", icon: "/svgs/cogs.svg", href: "/admin/settings" },
 ];
 
