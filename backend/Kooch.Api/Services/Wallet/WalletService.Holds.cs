@@ -18,6 +18,10 @@ public sealed partial class WalletService
                     .Sum(entry => (decimal?)(entry.Direction == WalletEntryDirection.Credit ? entry.Amount : -entry.Amount)) ?? 0m)
                 - (context.WalletHoldAllocations.Where(allocation => allocation.WalletLotId == lot.Id &&
                         allocation.WalletHold.Status == WalletHoldStatus.Active && allocation.WalletHold.ExpiresAtUtc > now)
+                    .Sum(allocation => (decimal?)allocation.Amount) ?? 0m)
+                - (context.WalletWithdrawalAllocations.Where(allocation => allocation.WalletLotId == lot.Id &&
+                        (allocation.WalletWithdrawalRequest.Status == WalletWithdrawalStatus.Pending ||
+                         allocation.WalletWithdrawalRequest.Status == WalletWithdrawalStatus.Approved))
                     .Sum(allocation => (decimal?)allocation.Amount) ?? 0m)));
 
     public Task<int> CreateHoldAsync(int userId, string currency, decimal amount, DateTime expiresAtUtc,
@@ -27,7 +31,7 @@ public sealed partial class WalletService
             throw new ArgumentException("Wallet hold must have a positive decimal(18,2) amount.");
         if (expiresAtUtc.Kind != DateTimeKind.Utc)
             throw new ArgumentException("Wallet hold expiry must be UTC.");
-        return WithHoldTransactionAsync(userId, currency, async (account, now) =>
+        return WithWalletReservationTransactionAsync(userId, currency, async (account, now) =>
         {
             if (expiresAtUtc <= now) throw new ArgumentException("Wallet hold expiry must be in the future.");
             var lots = await AvailableLots(userId, account.Currency, now).ToListAsync(cancellationToken);
@@ -60,7 +64,7 @@ public sealed partial class WalletService
     }
 
     public Task ConsumeHoldAsync(int userId, string currency, int holdId, CancellationToken cancellationToken = default) =>
-        WithHoldTransactionAsync(userId, currency, async (account, now) =>
+        WithWalletReservationTransactionAsync(userId, currency, async (account, now) =>
         {
             var hold = await LoadHoldAsync(account.Id, holdId, cancellationToken);
             if (hold.Status != WalletHoldStatus.Active || hold.ExpiresAtUtc <= now)
@@ -79,7 +83,7 @@ public sealed partial class WalletService
         }, cancellationToken);
 
     public Task ReleaseHoldAsync(int userId, string currency, int holdId, CancellationToken cancellationToken = default) =>
-        WithHoldTransactionAsync(userId, currency, async (account, now) =>
+        WithWalletReservationTransactionAsync(userId, currency, async (account, now) =>
         {
             var hold = await LoadHoldAsync(account.Id, holdId, cancellationToken);
             if (hold.Status is WalletHoldStatus.Released or WalletHoldStatus.Expired) return true;
@@ -100,7 +104,7 @@ public sealed partial class WalletService
         }, cancellationToken);
 
     public Task<int> ExpireHoldsAsync(int userId, string currency, CancellationToken cancellationToken = default) =>
-        WithHoldTransactionAsync(userId, currency, async (account, now) =>
+        WithWalletReservationTransactionAsync(userId, currency, async (account, now) =>
         {
             var ids = await context.WalletHolds.AsNoTracking().Where(hold => hold.WalletAccountId == account.Id &&
                 hold.Status == WalletHoldStatus.Active && hold.ExpiresAtUtc <= now).Select(hold => hold.Id)
@@ -126,16 +130,17 @@ public sealed partial class WalletService
         return hold;
     }
 
-    private async Task<T> WithHoldTransactionAsync<T>(int userId, string currency,
+    private async Task<T> WithWalletReservationTransactionAsync<T>(int userId, string currency,
         Func<WalletAccount, DateTime, Task<T>> operation, CancellationToken cancellationToken)
     {
         currency = NormalizeCurrency(currency);
         if (!context.Database.IsRelational())
-            throw new InvalidOperationException("Wallet holds require transactional relational storage.");
+            throw new InvalidOperationException("Wallet reservations require transactional relational storage.");
         if (context.ChangeTracker.Entries().Any(entry =>
-                entry.Entity is WalletAccount or WalletLot or WalletEntry or WalletHold or WalletHoldAllocation &&
+                entry.Entity is WalletAccount or WalletLot or WalletEntry or WalletHold or WalletHoldAllocation or
+                    WalletWithdrawalRequest or WalletWithdrawalAllocation &&
                 entry.State is EntityState.Added or EntityState.Modified or EntityState.Deleted))
-            throw new InvalidOperationException("Persist pending wallet changes before invoking a hold operation.");
+            throw new InvalidOperationException("Persist pending wallet changes before invoking a reservation operation.");
         var ownsTransaction = context.Database.CurrentTransaction is null;
         if (ownsTransaction && context.ChangeTracker.HasChanges())
             throw new InvalidOperationException("A standalone wallet operation requires no unrelated pending changes.");
@@ -159,7 +164,8 @@ public sealed partial class WalletService
             {
                 await owned.RollbackAsync(CancellationToken.None);
                 foreach (var entry in context.ChangeTracker.Entries().Where(entry =>
-                             entry.Entity is WalletHold or WalletHoldAllocation or WalletEntry).ToList())
+                             entry.Entity is WalletHold or WalletHoldAllocation or WalletWithdrawalRequest or
+                                 WalletWithdrawalAllocation or WalletEntry).ToList())
                 {
                     if (!trackedBefore.TryGetValue(entry.Entity, out var before)) entry.State = EntityState.Detached;
                     else

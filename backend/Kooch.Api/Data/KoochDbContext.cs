@@ -35,6 +35,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<WalletEntry> WalletEntries => Set<WalletEntry>();
     public DbSet<WalletHold> WalletHolds => Set<WalletHold>();
     public DbSet<WalletHoldAllocation> WalletHoldAllocations => Set<WalletHoldAllocation>();
+    public DbSet<WalletWithdrawalRequest> WalletWithdrawalRequests => Set<WalletWithdrawalRequest>();
+    public DbSet<WalletWithdrawalAllocation> WalletWithdrawalAllocations => Set<WalletWithdrawalAllocation>();
     public DbSet<BookingFundingAttempt> BookingFundingAttempts => Set<BookingFundingAttempt>();
     public DbSet<BookingFundingItem> BookingFundingItems => Set<BookingFundingItem>();
     public DbSet<ReservationWalletFundingAllocation> ReservationWalletFundingAllocations => Set<ReservationWalletFundingAllocation>();
@@ -117,6 +119,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureFinancialFoundation(modelBuilder);
         ConfigureWalletFoundation(modelBuilder);
         ConfigureWalletHolds(modelBuilder);
+        ConfigureWalletWithdrawals(modelBuilder);
         ConfigureReservationFunding(modelBuilder);
         ConfigureReviews(modelBuilder);
         ConfigureAmenities(modelBuilder);
@@ -436,6 +439,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     private void EnsureWalletHistoryIsImmutable()
     {
         EnsureWalletHoldsAreValid();
+        EnsureWalletWithdrawalsAreValid();
         foreach (var entry in ChangeTracker.Entries<WalletAccount>())
         {
             if (entry.State == EntityState.Deleted || (entry.State == EntityState.Modified &&
@@ -536,6 +540,83 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
     private static bool ValidWalletAmount(decimal amount) => amount > 0 && amount <= 9999999999999999.99m &&
         amount == decimal.Round(amount, 2);
+
+    private void EnsureWalletWithdrawalsAreValid()
+    {
+        foreach (var entry in ChangeTracker.Entries<WalletWithdrawalAllocation>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Wallet withdrawal allocations are immutable.");
+            if (entry.State != EntityState.Added) continue;
+            var allocation = entry.Entity;
+            if (!ValidWalletAmount(allocation.Amount) || allocation.IsDeleted || allocation.DeletedAtUtc.HasValue ||
+                allocation.WalletWithdrawalRequest is null ||
+                Entry(allocation.WalletWithdrawalRequest).State != EntityState.Added ||
+                allocation.WalletAccountId != allocation.WalletWithdrawalRequest.WalletAccountId)
+                throw new InvalidOperationException("Withdrawal allocations require a new request and its wallet account.");
+        }
+        foreach (var entry in ChangeTracker.Entries<WalletWithdrawalRequest>())
+        {
+            if (entry.State == EntityState.Deleted)
+                throw new InvalidOperationException("Wallet withdrawal requests cannot be deleted.");
+            if (entry.State == EntityState.Modified)
+            {
+                var reviewed = entry.Entity;
+                if (entry.OriginalValues.GetValue<WalletWithdrawalStatus>(nameof(WalletWithdrawalRequest.Status)) !=
+                        WalletWithdrawalStatus.Pending ||
+                    reviewed.Status is not (WalletWithdrawalStatus.Approved or WalletWithdrawalStatus.Rejected) ||
+                    reviewed.UpdatedByUserId is null ||
+                    entry.Properties.Any(property => property.IsModified && property.Metadata.Name is not
+                        (nameof(WalletWithdrawalRequest.Status) or nameof(BaseEntity.UpdatedAtUtc) or
+                         nameof(BaseEntity.UpdatedByUserId))))
+                    throw new InvalidOperationException("Only Pending wallet withdrawals can be reviewed once.");
+                continue;
+            }
+            if (entry.State != EntityState.Added) continue;
+            var request = entry.Entity;
+            if (!ValidWalletAmount(request.Amount) || request.Status != WalletWithdrawalStatus.Pending ||
+                request.RequestedAtUtc == default || request.RequestedAtUtc.Kind != DateTimeKind.Utc ||
+                request.IsDeleted || request.DeletedAtUtc.HasValue || request.Allocations.Count == 0 ||
+                request.Allocations.Sum(allocation => allocation.Amount) != request.Amount ||
+                request.Allocations.Select(allocation => allocation.WalletLotId).Distinct().Count() != request.Allocations.Count)
+                throw new InvalidOperationException("A new withdrawal requires exact, distinct lot allocations and Pending status.");
+        }
+    }
+
+    private static void ConfigureWalletWithdrawals(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WalletWithdrawalRequest>(entity =>
+        {
+            entity.Property(request => request.Amount).HasPrecision(18, 2);
+            entity.Property(request => request.Status).IsConcurrencyToken();
+            entity.HasAlternateKey(request => new { request.Id, request.WalletAccountId });
+            entity.HasIndex(request => new { request.WalletAccountId, request.Status, request.RequestedAtUtc });
+            entity.HasOne(request => request.WalletAccount).WithMany()
+                .HasForeignKey(request => request.WalletAccountId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletWithdrawalRequests", table =>
+            {
+                table.HasCheckConstraint("CK_WalletWithdrawalRequests_Amount", "[Amount] > 0");
+                table.HasCheckConstraint("CK_WalletWithdrawalRequests_Status", "[Status] IN (0, 1, 2, 3, 4)");
+                table.HasCheckConstraint("CK_WalletWithdrawalRequests_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+        modelBuilder.Entity<WalletWithdrawalAllocation>(entity =>
+        {
+            entity.Property(allocation => allocation.Amount).HasPrecision(18, 2);
+            entity.HasIndex(allocation => new { allocation.WalletWithdrawalRequestId, allocation.WalletLotId }).IsUnique();
+            entity.HasOne(allocation => allocation.WalletWithdrawalRequest).WithMany(request => request.Allocations)
+                .HasForeignKey(allocation => new { allocation.WalletWithdrawalRequestId, allocation.WalletAccountId })
+                .HasPrincipalKey(request => new { request.Id, request.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(allocation => allocation.WalletLot).WithMany()
+                .HasForeignKey(allocation => new { allocation.WalletLotId, allocation.WalletAccountId })
+                .HasPrincipalKey(lot => new { lot.Id, lot.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable("WalletWithdrawalAllocations", table =>
+            {
+                table.HasCheckConstraint("CK_WalletWithdrawalAllocations_Amount", "[Amount] > 0");
+                table.HasCheckConstraint("CK_WalletWithdrawalAllocations_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+    }
 
     private static void ConfigureWalletHolds(ModelBuilder modelBuilder)
     {
