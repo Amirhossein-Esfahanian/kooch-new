@@ -274,11 +274,26 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureWalletHistoryIsImmutable();
         foreach (var entry in ChangeTracker.Entries<ReservationCashbackEntitlement>())
         {
+            var granting = entry.State == EntityState.Modified &&
+                entry.OriginalValues.GetValue<CashbackEntitlementStatus>(nameof(ReservationCashbackEntitlement.Status)) ==
+                    CashbackEntitlementStatus.Pending &&
+                entry.Entity.Status == CashbackEntitlementStatus.Granted &&
+                entry.Entity.GrantedAtUtc is { Kind: DateTimeKind.Utc } &&
+                entry.Entity.GrantedWalletLotId.HasValue && entry.Entity.GrantedWalletEntryId.HasValue &&
+                entry.Properties.All(property => !property.IsModified || property.Metadata.Name is
+                    (nameof(ReservationCashbackEntitlement.Status) or
+                     nameof(ReservationCashbackEntitlement.GrantedAtUtc) or
+                     nameof(ReservationCashbackEntitlement.GrantedWalletLotId) or
+                     nameof(ReservationCashbackEntitlement.GrantedWalletEntryId) or
+                     nameof(BaseEntity.UpdatedAtUtc)));
             if (entry.State == EntityState.Deleted ||
                 (entry.State == EntityState.Modified &&
+                 !granting &&
                  (entry.OriginalValues.GetValue<CashbackEntitlementStatus>(nameof(ReservationCashbackEntitlement.Status)) !=
                       CashbackEntitlementStatus.Pending ||
                   entry.Entity.Status != CashbackEntitlementStatus.Voided ||
+                  entry.Entity.GrantedWalletLotId.HasValue || entry.Entity.GrantedWalletEntryId.HasValue ||
+                  entry.Entity.GrantedAtUtc.HasValue ||
                   entry.Properties.Any(property => property.IsModified &&
                       property.Metadata.Name is not (nameof(ReservationCashbackEntitlement.Status) or
                           nameof(BaseEntity.UpdatedAtUtc))))))

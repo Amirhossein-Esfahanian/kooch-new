@@ -1,5 +1,7 @@
+using System.Data;
 using Kooch.Api.Data;
 using Kooch.Api.Entities;
+using Kooch.Api.Services.Wallet;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
@@ -27,6 +29,8 @@ public interface IReservationCashbackEntitlementService
     decimal CalculateAmount(PendingCashbackEntitlementInput input);
     Task<ReservationCashbackEntitlement?> CreatePendingAsync(
         PendingCashbackEntitlementInput input, CancellationToken cancellationToken = default);
+    Task<ReservationCashbackEntitlement> GrantAsync(
+        int entitlementId, DateTime nowUtc, CancellationToken cancellationToken = default);
 }
 
 public sealed class ReservationCashbackEntitlementService(KoochDbContext dbContext)
@@ -54,6 +58,109 @@ public sealed class ReservationCashbackEntitlementService(KoochDbContext dbConte
             .SingleOrDefaultAsync(row => row.ReservationId == reservationId, cancellationToken);
         if (entitlement?.Status == CashbackEntitlementStatus.Pending)
             entitlement.Status = CashbackEntitlementStatus.Voided;
+    }
+
+    public async Task<ReservationCashbackEntitlement> GrantAsync(
+        int entitlementId, DateTime nowUtc, CancellationToken cancellationToken = default)
+    {
+        if (entitlementId <= 0 || nowUtc.Kind != DateTimeKind.Utc)
+            throw new ArgumentException("A Cashback entitlement and UTC grant time are required.");
+        if (!dbContext.Database.IsRelational() || dbContext.Database.CurrentTransaction is not null ||
+            dbContext.ChangeTracker.HasChanges())
+            throw new InvalidOperationException("Cashback Grant owns its relational transaction and requires no pending changes.");
+
+        // Resolve only the lock key before opening the transaction; the row is
+        // reloaded below under the reservation lock, so this read is never an eligibility decision.
+        var reservationId = await dbContext.ReservationCashbackEntitlements.AsNoTracking()
+            .Where(row => row.Id == entitlementId).Select(row => (int?)row.ReservationId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Cashback entitlement was not found.");
+
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.ReadCommitted, cancellationToken);
+        try
+        {
+            // Cancellation takes these locks in the same order before voiding Pending Cashback.
+            await BookingFundingLock.ForReservationAsync(dbContext, reservationId, cancellationToken);
+            var reservationQuery = dbContext.Database.IsSqlServer()
+                ? dbContext.Reservations.FromSqlInterpolated(
+                    $"SELECT * FROM [Reservations] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {reservationId}")
+                : dbContext.Reservations.Where(row => row.Id == reservationId);
+            var reservation = await reservationQuery.AsNoTracking()
+                .SingleOrDefaultAsync(cancellationToken)
+                ?? throw new KeyNotFoundException("Cashback reservation was not found.");
+
+            var entitlementQuery = dbContext.Database.IsSqlServer()
+                ? dbContext.ReservationCashbackEntitlements.FromSqlInterpolated(
+                    $"SELECT * FROM [ReservationCashbackEntitlements] WITH (UPDLOCK, HOLDLOCK) WHERE [Id] = {entitlementId}")
+                : dbContext.ReservationCashbackEntitlements.Where(row => row.Id == entitlementId);
+            var entitlement = await entitlementQuery.SingleAsync(cancellationToken);
+            if (entitlement.Status == CashbackEntitlementStatus.Granted)
+            {
+                if (!entitlement.GrantedWalletLotId.HasValue || !entitlement.GrantedWalletEntryId.HasValue ||
+                    !entitlement.GrantedAtUtc.HasValue)
+                    throw new InvalidOperationException("Granted Cashback linkage is incomplete.");
+                await transaction.CommitAsync(cancellationToken);
+                return entitlement;
+            }
+            if (entitlement.Status != CashbackEntitlementStatus.Pending ||
+                entitlement.GrantedWalletLotId.HasValue || entitlement.GrantedWalletEntryId.HasValue ||
+                entitlement.GrantedAtUtc.HasValue)
+                throw new InvalidOperationException("Only an ungranted Pending Cashback entitlement can be granted.");
+            if (entitlement.EligibleAtUtc > nowUtc)
+                throw new InvalidOperationException("Cashback entitlement is not yet due.");
+            if (reservation.Status == ReservationStatus.Cancelled)
+                throw new InvalidOperationException("Cancelled reservations cannot receive Cashback.");
+            if (reservation.ClientId != entitlement.UserId || reservation.PropertyId != entitlement.PropertyId ||
+                reservation.Currency != entitlement.Currency)
+                throw new InvalidOperationException("Cashback entitlement no longer matches its reservation.");
+
+            var expiry = nowUtc.AddDays(entitlement.ExpiryDaysSnapshot);
+            if (entitlement.CashbackAmount <= 0 || entitlement.CashbackAmount != decimal.Round(entitlement.CashbackAmount, 2) ||
+                entitlement.ExpiryDaysSnapshot <= 0 || expiry <= nowUtc)
+                throw new InvalidOperationException("Cashback grant snapshot is invalid.");
+
+            var account = await WalletAccountLock.Query(dbContext, entitlement.UserId, entitlement.Currency)
+                .SingleOrDefaultAsync(cancellationToken);
+            if (account is null)
+            {
+                account = new WalletAccount { UserId = entitlement.UserId, Currency = entitlement.Currency };
+                dbContext.WalletAccounts.Add(account);
+            }
+            var lot = new WalletLot
+            {
+                WalletAccount = account, SourceType = WalletSourceType.PromotionalCredit,
+                IsWithdrawable = false, ExpiresAtUtc = expiry,
+                SourceReference = $"cashback:entitlement:{entitlement.Id}", Reason = "Reservation Cashback"
+            };
+            var credit = new WalletEntry
+            {
+                WalletAccount = account, WalletLot = lot,
+                Direction = WalletEntryDirection.Credit, Amount = entitlement.CashbackAmount
+            };
+            dbContext.WalletEntries.Add(credit);
+            await dbContext.SaveChangesAsync(cancellationToken);
+
+            if (lot.WalletAccountId != account.Id || account.UserId != entitlement.UserId ||
+                account.Currency != entitlement.Currency || lot.IsWithdrawable ||
+                credit.WalletAccountId != account.Id || credit.WalletLotId != lot.Id ||
+                credit.Amount != entitlement.CashbackAmount)
+                throw new InvalidOperationException("Cashback Wallet credit does not match its entitlement.");
+
+            entitlement.GrantedWalletLotId = lot.Id;
+            entitlement.GrantedWalletEntryId = credit.Id;
+            entitlement.GrantedAtUtc = nowUtc;
+            entitlement.Status = CashbackEntitlementStatus.Granted;
+            await dbContext.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+            return entitlement;
+        }
+        catch
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+            dbContext.ChangeTracker.Clear();
+            throw;
+        }
     }
 
     private async Task<ReservationCashbackEntitlement?> CreatePendingCoreAsync(
