@@ -36,6 +36,8 @@ builder.Services.Configure<PnlDevOptions>(
     builder.Configuration.GetSection(PnlDevOptions.SectionName));
 builder.Services.Configure<HolidayCalendarSynchronizationOptions>(
     builder.Configuration.GetSection(HolidayCalendarSynchronizationOptions.SectionName));
+builder.Services.Configure<CashbackGrantProcessorOptions>(
+    builder.Configuration.GetSection(CashbackGrantProcessorOptions.SectionName));
 builder.Services.Configure<MediaStorageOptions>(
     builder.Configuration.GetSection(MediaStorageOptions.SectionName));
 builder.Services.AddSingleton<IMediaStorage, FileSystemMediaStorage>();
@@ -84,6 +86,8 @@ builder.Services.AddScoped<ISiteSettingUploadService, SiteSettingUploadService>(
 builder.Services.AddScoped<IPricingBoundsService, PricingBoundsService>();
 builder.Services.AddScoped<ICashbackSettingsService, CashbackSettingsService>();
 builder.Services.AddScoped<IReservationCashbackEntitlementService, ReservationCashbackEntitlementService>();
+builder.Services.AddSingleton<CashbackGrantProcessor>();
+builder.Services.AddHostedService<CashbackGrantHostedService>();
 builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
 builder.Services.AddScoped<IPropertyCommonAreaService, PropertyCommonAreaService>();
 builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
