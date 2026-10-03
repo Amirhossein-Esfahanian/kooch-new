@@ -11,7 +11,8 @@ namespace Kooch.Api.Controllers;
 [Route("api/account/reservations")]
 public class AccountReservationsController(
     IReservationService reservationService,
-    ReservationCancellationRequestService cancellationRequestService) : AuthenticatedControllerBase
+    ReservationCancellationRequestService cancellationRequestService,
+    ReservationCashbackQueryService cashbackQueryService) : AuthenticatedControllerBase
 {
     [HttpGet]
     [ProducesResponseType<PagedResult<ReservationListItemResponse>>(StatusCodes.Status200OK)]
@@ -31,6 +32,17 @@ public class AccountReservationsController(
     {
         var user = GetCurrentUser();
         return Ok(await reservationService.GetByNumberForGuestUserAsync(user.UserId, reservationNumber, cancellationToken));
+    }
+
+    [HttpGet("{reservationNumber}/cashback")]
+    [ProducesResponseType<GuestReservationCashbackResponse>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<GuestReservationCashbackResponse>> GetCashback(
+        string reservationNumber,
+        CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await cashbackQueryService.GetForGuestAsync(
+            user.UserId, reservationNumber, cancellationToken));
     }
 
     [HttpPost("{reservationNumber}/cancellation-request")]

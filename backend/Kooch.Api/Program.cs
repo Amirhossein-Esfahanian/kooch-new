@@ -120,6 +120,7 @@ builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabil
 builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ReservationCancellationRequestService>();
+builder.Services.AddScoped<ReservationCashbackQueryService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
 builder.Services.AddScoped<SettlementService>();
