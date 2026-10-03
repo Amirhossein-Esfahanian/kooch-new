@@ -538,7 +538,7 @@ public sealed partial class ReservationWalletFundingTests
         public Database()
         {
             connection = new SqliteConnection($"Data Source={path};Pooling=False");
-            connection.CreateFunction<string, int>("LEN", value => value?.Length ?? 0);
+            SqliteTestFunctions.RegisterLen(connection);
             connection.Open();
             Context = new TestContext(new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection)
                 .AddInterceptors(Failure).Options);

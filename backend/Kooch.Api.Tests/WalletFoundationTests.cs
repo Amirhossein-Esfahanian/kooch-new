@@ -472,6 +472,7 @@ public sealed class WalletFoundationTests
         public WalletService Service => new(Context, Clock);
         public Database()
         {
+            SqliteTestFunctions.RegisterLen(connection);
             connection.Open();
             Context = NewContext();
             Context.Database.EnsureCreated();

@@ -186,7 +186,8 @@ public sealed class WalletTransactionHistoryTests
         public Database()
         {
             Context = new TestContext(new DbContextOptionsBuilder<KoochDbContext>()
-                .UseSqlite($"Data Source={path};Pooling=False;Default Timeout=15").Options);
+                .UseSqlite($"Data Source={path};Pooling=False;Default Timeout=15")
+                .AddInterceptors(SqliteTestFunctions.LenInterceptor).Options);
             Context.Database.EnsureCreated();
             Context.Users.AddRange(new User { Id = 1 }, new User { Id = 2 }, new User { Id = 3 });
             Context.SaveChanges();

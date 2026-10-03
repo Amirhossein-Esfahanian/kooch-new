@@ -240,7 +240,8 @@ public sealed class WalletWithdrawalReviewTests
             Context.SaveChanges();
         }
         public TestContext NewContext() => new(new DbContextOptionsBuilder<KoochDbContext>()
-            .UseSqlite($"Data Source={path};Pooling=False;Default Timeout=15").Options);
+            .UseSqlite($"Data Source={path};Pooling=False;Default Timeout=15")
+            .AddInterceptors(SqliteTestFunctions.LenInterceptor).Options);
         public Task<int> Credit(decimal amount, DateTime? expiry = null, int userId = 1) =>
             Service.CreateCreditAsync(new(userId, "IRR", amount, WalletSourceType.CashReceived, expiry));
         public Task<int> Hold(decimal amount) => Service.CreateHoldAsync(1, "IRR", amount, Clock.UtcNow.AddMinutes(10));

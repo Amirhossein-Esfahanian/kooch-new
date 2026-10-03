@@ -185,6 +185,7 @@ public sealed class FinancialFoundationPersistenceTests
 
         public FinancialConstraintDatabase()
         {
+            SqliteTestFunctions.RegisterLen(connection);
             connection.Open();
             var options = new DbContextOptionsBuilder<KoochDbContext>()
                 .UseSqlite(connection)
