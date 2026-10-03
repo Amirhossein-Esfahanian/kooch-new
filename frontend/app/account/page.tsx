@@ -86,6 +86,21 @@ export default function AccountPage() {
               مشاهده رزروهای مستقل
             </Link>
           </KoochCard>
+
+          <KoochCard className="flex h-full flex-col items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold text-foreground">کیف پول من</h2>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                موجودی قابل استفاده، مبلغ قابل برداشت و وضعیت درخواست‌های برداشت خود را ببینید.
+              </p>
+            </div>
+            <Link
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+              href="/account/wallet"
+            >
+              مشاهده کیف پول
+            </Link>
+          </KoochCard>
         </div>
       </div>
     </main>
