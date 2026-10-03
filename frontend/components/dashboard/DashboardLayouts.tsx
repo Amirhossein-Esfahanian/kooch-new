@@ -90,6 +90,12 @@ const adminMenuItems: DashboardMenuItem[] = [
     platformPermission: "ManageSettings",
   },
   {
+    label: "تنظیمات کش‌بک",
+    icon: "/svgs/receipt.svg",
+    href: "/admin/cashback",
+    platformPermission: "ManageSettings",
+  },
+  {
     label: "تنظیمات رزرو",
     icon: "/svgs/square-sliders.svg",
     href: "/admin/reservation-settings",
