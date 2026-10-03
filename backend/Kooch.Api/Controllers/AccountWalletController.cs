@@ -35,4 +35,12 @@ public sealed class AccountWalletController(WalletService walletService) : Authe
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
         CancellationToken cancellationToken = default) =>
         Ok(await walletService.ListWithdrawalsAsync(GetCurrentUser().UserId, page, pageSize, cancellationToken));
+
+    [HttpGet("transactions")]
+    [ProducesResponseType<PagedResult<WalletTransactionResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<WalletTransactionResponse>>> ListTransactions(
+        [FromQuery] string currency = "IRR", [FromQuery] int page = 1, [FromQuery] int pageSize = 20,
+        CancellationToken cancellationToken = default) =>
+        Ok(await walletService.ListTransactionsAsync(
+            GetCurrentUser().UserId, currency, page, pageSize, cancellationToken));
 }
