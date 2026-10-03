@@ -24,6 +24,7 @@ public sealed record PendingCashbackEntitlementInput(
 
 public interface IReservationCashbackEntitlementService
 {
+    decimal CalculateAmount(PendingCashbackEntitlementInput input);
     Task<ReservationCashbackEntitlement?> CreatePendingAsync(
         PendingCashbackEntitlementInput input, CancellationToken cancellationToken = default);
 }
@@ -31,13 +32,27 @@ public interface IReservationCashbackEntitlementService
 public sealed class ReservationCashbackEntitlementService(KoochDbContext dbContext)
     : IReservationCashbackEntitlementService
 {
-    public async Task<ReservationCashbackEntitlement?> CreatePendingAsync(
-        PendingCashbackEntitlementInput input, CancellationToken cancellationToken = default)
+    public decimal CalculateAmount(PendingCashbackEntitlementInput input)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ValidateSnapshot(input);
+        return CalculateExpectedCashback(input);
+    }
+
+    public Task<ReservationCashbackEntitlement?> CreatePendingAsync(
+        PendingCashbackEntitlementInput input, CancellationToken cancellationToken = default) =>
+        CreatePendingCoreAsync(input, true, cancellationToken);
+
+    internal Task<ReservationCashbackEntitlement?> StagePendingAsync(
+        PendingCashbackEntitlementInput input, CancellationToken cancellationToken = default) =>
+        CreatePendingCoreAsync(input, false, cancellationToken);
+
+    private async Task<ReservationCashbackEntitlement?> CreatePendingCoreAsync(
+        PendingCashbackEntitlementInput input, bool saveChanges, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(input);
         var currency = NormalizeCurrency(input.Currency);
-        ValidateSnapshot(input);
-        var expected = CalculateExpectedCashback(input);
+        var expected = CalculateAmount(input);
         if (input.CashbackAmount != expected)
             throw new ArgumentException("Cashback amount does not match the immutable policy snapshot.");
         if (expected == 0) return null;
@@ -49,7 +64,8 @@ public sealed class ReservationCashbackEntitlementService(KoochDbContext dbConte
                 cancellationToken))
             throw new ArgumentException("Cashback identity does not match the reservation.");
 
-        if (await dbContext.ReservationCashbackEntitlements.AnyAsync(
+        if (dbContext.ReservationCashbackEntitlements.Local.Any(e => e.ReservationId == input.ReservationId) ||
+            await dbContext.ReservationCashbackEntitlements.AnyAsync(
                 entitlement => entitlement.ReservationId == input.ReservationId, cancellationToken))
             throw new InvalidOperationException("Reservation already has a Cashback entitlement.");
 
@@ -73,7 +89,7 @@ public sealed class ReservationCashbackEntitlementService(KoochDbContext dbConte
             EligibleAtUtc = input.EligibleAtUtc
         };
         dbContext.ReservationCashbackEntitlements.Add(entitlement);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        if (saveChanges) await dbContext.SaveChangesAsync(cancellationToken);
         return entitlement;
     }
 

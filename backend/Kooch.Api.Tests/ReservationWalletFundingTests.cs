@@ -5,6 +5,7 @@ using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Kooch.Api.Services.Wallet;
+using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
@@ -530,12 +531,16 @@ public sealed partial class ReservationWalletFundingTests
     private sealed class Database : IDisposable
     {
         private readonly string path = Path.GetTempFileName();
+        private readonly SqliteConnection connection;
         public TestContext Context { get; }
         public FailAfterFinalSave Failure { get; } = new();
         public WalletService Wallet => new(Context, TimeProvider.System);
         public Database()
         {
-            Context = new TestContext(new DbContextOptionsBuilder<KoochDbContext>().UseSqlite($"Data Source={path};Pooling=False")
+            connection = new SqliteConnection($"Data Source={path};Pooling=False");
+            connection.CreateFunction<string, int>("LEN", value => value?.Length ?? 0);
+            connection.Open();
+            Context = new TestContext(new DbContextOptionsBuilder<KoochDbContext>().UseSqlite(connection)
                 .AddInterceptors(Failure).Options);
             Context.Database.EnsureCreated();
             Context.Users.AddRange(new User { Id = 1, FirstName = "Wallet", LastName = "Guest" }, new User { Id = 2 });
@@ -575,7 +580,7 @@ public sealed partial class ReservationWalletFundingTests
             return await CallbackService().ReceiveAsync(InternalTestPaymentProvider.ProviderName, new(body,
                 new Dictionary<string, string> { [InternalTestPaymentProvider.SignatureHeaderName] = InternalTestPaymentProvider.CreateSignature(body, "secret") }));
         }
-        public void Dispose() { Context.Dispose(); File.Delete(path); }
+        public void Dispose() { Context.Dispose(); connection.Dispose(); File.Delete(path); }
     }
 
     private sealed class TestContext(DbContextOptions<KoochDbContext> options) : KoochDbContext(options)
@@ -588,8 +593,10 @@ public sealed partial class ReservationWalletFundingTests
             // SQLite maps decimal to TEXT by default, making SQL CHECK column comparisons
             // lexical. Use numeric affinity here; SQL Server keeps the real decimal(18,2) model.
             foreach (var type in new[] { typeof(BookingFundingItem), typeof(ReservationFinancialSnapshot),
-                typeof(CancellationFinancialResolution), typeof(CancellationSourceDisposition) })
-                foreach (var property in builder.Model.FindEntityType(type)!.GetProperties().Where(p => p.ClrType == typeof(decimal)))
+                typeof(CancellationFinancialResolution), typeof(CancellationSourceDisposition),
+                typeof(ReservationCashbackEntitlement), typeof(CashbackSetting) })
+                foreach (var property in builder.Model.FindEntityType(type)!.GetProperties()
+                             .Where(p => p.ClrType == typeof(decimal) || p.ClrType == typeof(decimal?)))
                     builder.Entity(type).Property(property.Name).HasColumnType("decimal(18,2)");
             builder.Entity<ReservationFinancialSnapshot>().Property(s => s.ExternalPaymentAmount)
                 .HasComputedColumnSql("ROUND([GrossAmount] - [WalletFundingAmount], 2)", stored: true);

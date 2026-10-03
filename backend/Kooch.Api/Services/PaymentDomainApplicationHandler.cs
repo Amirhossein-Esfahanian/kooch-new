@@ -164,6 +164,8 @@ public sealed class PaymentDomainApplicationHandler : IPaymentDomainApplicationH
 
         if (funding is not null) await BookingWalletFunding.AddProvenanceAsync(dbContext, funding, cancellationToken);
 
+        await BookingCashback.CreatePendingAsync(dbContext, includedReservations, cancellationToken);
+
         ApplySuccessfulPayment(payment, includedReservations, now);
         foreach (var reservation in includedReservations)
         {
