@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminPropertyPanel } from "@/components/admin/AdminPropertyPanel";
+import { PropertyCashbackSettings } from "@/components/admin/PropertyCashbackSettings";
 import { PropertyWizard } from "@/components/owner/PropertyWizard";
 
 const linkButtonClass =
@@ -11,6 +13,10 @@ const linkButtonClass =
 export default function AdminPropertyEditPage() {
   const params = useParams<{ id: string }>();
   const propertyId = Number(params.id);
+  const session = useAuthSession();
+  const canManageCashback = !session.loading && session.authenticated &&
+    session.workspaces.includes("admin") &&
+    (session.platformRole === "SuperAdmin" || session.platformPermissions.includes("ManageSettings"));
 
   return (
     <AdminPropertyPanel
@@ -36,6 +42,8 @@ export default function AdminPropertyEditPage() {
       title="ویرایش اقامتگاه"
     >
       <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
+      {canManageCashback && Number.isInteger(propertyId) && propertyId > 0 &&
+        <PropertyCashbackSettings key={propertyId} propertyId={propertyId} />}
     </AdminPropertyPanel>
   );
 }
