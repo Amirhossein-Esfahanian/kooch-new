@@ -49,6 +49,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<SettlementPaymentRecord> SettlementPaymentRecords => Set<SettlementPaymentRecord>();
     public DbSet<ReservationVoucher> ReservationVouchers => Set<ReservationVoucher>();
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
+    public DbSet<ReservationCashbackEntitlement> ReservationCashbackEntitlements => Set<ReservationCashbackEntitlement>();
     public DbSet<CashbackSetting> CashbackSettings => Set<CashbackSetting>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
@@ -129,6 +130,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigurePoliciesAndPricing(modelBuilder);
         ConfigureSiteSettings(modelBuilder);
         ConfigureCashbackSettings(modelBuilder);
+        ConfigureReservationCashbackEntitlements(modelBuilder);
         ApplySoftDeleteFilters(modelBuilder);
     }
 
@@ -270,6 +272,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     private void EnsureFinancialHistoryIsAppendOnly()
     {
         EnsureWalletHistoryIsImmutable();
+        foreach (var entry in ChangeTracker.Entries<ReservationCashbackEntitlement>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted)
+                throw new InvalidOperationException("Cashback entitlement history cannot be modified or deleted.");
+            if (entry.State == EntityState.Added &&
+                (entry.Entity.Status != CashbackEntitlementStatus.Pending ||
+                 entry.Entity.GrantedWalletLotId.HasValue || entry.Entity.GrantedWalletEntryId.HasValue ||
+                 entry.Entity.GrantedAtUtc.HasValue || entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue))
+                throw new InvalidOperationException("New Cashback entitlements must be ungranted Pending records.");
+        }
         foreach (var entry in ChangeTracker.Entries<BookingFundingItem>().Where(e => e.State == EntityState.Added))
         {
             var item = entry.Entity;
@@ -2207,6 +2219,51 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             {
                 table.HasCheckConstraint("CK_CashbackSettings_Currency", "LEN([Currency]) = 3 AND [Currency] NOT LIKE '%[^A-Z]%'");
                 table.HasCheckConstraint("CK_CashbackSettings_Mode", "([Enabled] = 0 AND [CalculationMode] IS NULL AND [PercentageRate] IS NULL AND [SpendUnitAmount] IS NULL AND [RewardAmount] IS NULL AND [MaxCashbackPerReservation] IS NULL AND [ExpiryDays] IS NULL) OR ([Enabled] = 1 AND [CalculationMode] IS NOT NULL AND [MaxCashbackPerReservation] IS NOT NULL AND [MaxCashbackPerReservation] > 0 AND [ExpiryDays] IS NOT NULL AND [ExpiryDays] > 0 AND (([CalculationMode] = 0 AND [PercentageRate] IS NOT NULL AND [PercentageRate] > 0 AND [PercentageRate] <= 20 AND [SpendUnitAmount] IS NULL AND [RewardAmount] IS NULL) OR ([CalculationMode] = 1 AND [PercentageRate] IS NULL AND [SpendUnitAmount] IS NOT NULL AND [SpendUnitAmount] > 0 AND [RewardAmount] IS NOT NULL AND [RewardAmount] > 0)))");
+            });
+        });
+    }
+
+    private static void ConfigureReservationCashbackEntitlements(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReservationCashbackEntitlement>(entity =>
+        {
+            entity.Property(row => row.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(row => row.Status).HasDefaultValue(CashbackEntitlementStatus.Pending);
+            entity.Property(row => row.GuestPayableSnapshot).HasPrecision(18, 2);
+            entity.Property(row => row.NonWithdrawableWalletFundingSnapshot).HasPrecision(18, 2);
+            entity.Property(row => row.EligibleBaseSnapshot).HasPrecision(18, 2);
+            entity.Property(row => row.CashbackAmount).HasPrecision(18, 2);
+            entity.Property(row => row.PercentageRateSnapshot).HasPrecision(5, 2);
+            entity.Property(row => row.SpendUnitAmountSnapshot).HasPrecision(18, 2);
+            entity.Property(row => row.RewardAmountSnapshot).HasPrecision(18, 2);
+            entity.Property(row => row.MaxCashbackPerReservationSnapshot).HasPrecision(18, 2);
+            entity.HasIndex(row => row.ReservationId).IsUnique();
+            entity.HasIndex(row => row.GrantedWalletLotId).IsUnique()
+                .HasFilter("[GrantedWalletLotId] IS NOT NULL");
+            entity.HasIndex(row => row.GrantedWalletEntryId).IsUnique()
+                .HasFilter("[GrantedWalletEntryId] IS NOT NULL");
+            entity.HasOne(row => row.Reservation).WithMany().HasForeignKey(row => row.ReservationId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.User).WithMany().HasForeignKey(row => row.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.Property).WithMany().HasForeignKey(row => row.PropertyId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.GrantedWalletLot).WithMany().HasForeignKey(row => row.GrantedWalletLotId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.GrantedWalletEntry).WithMany().HasForeignKey(row => row.GrantedWalletEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_ReservationCashbackEntitlements_Currency",
+                    "[Currency] LIKE '___' AND [Currency] NOT LIKE '%[^A-Z]%'");
+                table.HasCheckConstraint("CK_ReservationCashbackEntitlements_Amounts",
+                    "[GuestPayableSnapshot] >= 0 AND [NonWithdrawableWalletFundingSnapshot] >= 0 AND [NonWithdrawableWalletFundingSnapshot] <= [GuestPayableSnapshot] AND [EligibleBaseSnapshot] = [GuestPayableSnapshot] - [NonWithdrawableWalletFundingSnapshot] AND [CashbackAmount] > 0 AND [MaxCashbackPerReservationSnapshot] > 0 AND [CashbackAmount] <= [MaxCashbackPerReservationSnapshot] AND [ExpiryDaysSnapshot] > 0");
+                table.HasCheckConstraint("CK_ReservationCashbackEntitlements_Policy",
+                    "[PolicySource] IN (0, 1) AND (([CalculationMode] = 0 AND [PercentageRateSnapshot] IS NOT NULL AND [PercentageRateSnapshot] > 0 AND [PercentageRateSnapshot] <= 20 AND [SpendUnitAmountSnapshot] IS NULL AND [RewardAmountSnapshot] IS NULL) OR ([CalculationMode] = 1 AND [PercentageRateSnapshot] IS NULL AND [SpendUnitAmountSnapshot] IS NOT NULL AND [SpendUnitAmountSnapshot] > 0 AND [RewardAmountSnapshot] IS NOT NULL AND [RewardAmountSnapshot] > 0))");
+                table.HasCheckConstraint("CK_ReservationCashbackEntitlements_GrantLink",
+                    "([Status] IN (0, 2) AND [GrantedWalletLotId] IS NULL AND [GrantedWalletEntryId] IS NULL AND [GrantedAtUtc] IS NULL) OR ([Status] = 1 AND [GrantedWalletLotId] IS NOT NULL AND [GrantedWalletEntryId] IS NOT NULL AND [GrantedAtUtc] IS NOT NULL)");
+                table.HasCheckConstraint("CK_ReservationCashbackEntitlements_NotDeleted",
+                    "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
             });
         });
     }
