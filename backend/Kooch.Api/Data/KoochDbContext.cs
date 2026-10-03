@@ -470,6 +470,20 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 entry.Entity.Amount > 9999999999999999.99m ||
                 entry.Entity.Amount != decimal.Round(entry.Entity.Amount, 2)))
                 throw new InvalidOperationException("Wallet ledger amounts must be positive decimal(18,2) values.");
+            if (entry.State == EntityState.Added && entry.Entity.WalletWithdrawalAllocationId.HasValue)
+            {
+                var allocation = entry.Entity.WalletWithdrawalAllocation;
+                if (entry.Entity.Direction != WalletEntryDirection.Debit || allocation is null ||
+                    entry.Entity.WalletAccountId != allocation.WalletAccountId ||
+                    entry.Entity.WalletLotId != allocation.WalletLotId ||
+                    entry.Entity.Amount != allocation.Amount ||
+                    !ChangeTracker.Entries<WalletWithdrawalRequest>().Any(request =>
+                        request.Entity.Id == allocation.WalletWithdrawalRequestId &&
+                        request.State == EntityState.Modified &&
+                        request.Entity.Status == WalletWithdrawalStatus.Paid &&
+                        entry.Entity.CreatedByUserId == request.Entity.PaidByUserId))
+                    throw new InvalidOperationException("Withdrawal debits require an exact Paid allocation transition.");
+            }
         }
     }
 
@@ -562,20 +576,53 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             if (entry.State == EntityState.Modified)
             {
                 var reviewed = entry.Entity;
-                if (entry.OriginalValues.GetValue<WalletWithdrawalStatus>(nameof(WalletWithdrawalRequest.Status)) !=
-                        WalletWithdrawalStatus.Pending ||
-                    reviewed.Status is not (WalletWithdrawalStatus.Approved or WalletWithdrawalStatus.Rejected) ||
-                    reviewed.UpdatedByUserId is null ||
+                var originalStatus = entry.OriginalValues.GetValue<WalletWithdrawalStatus>(nameof(WalletWithdrawalRequest.Status));
+                if (originalStatus == WalletWithdrawalStatus.Pending &&
+                    reviewed.Status is WalletWithdrawalStatus.Approved or WalletWithdrawalStatus.Rejected)
+                {
+                    if (reviewed.UpdatedByUserId is null || reviewed.PaidAtUtc.HasValue ||
+                        reviewed.PaidByUserId.HasValue || reviewed.PayoutMethod.HasValue ||
+                        reviewed.PayoutReferenceNumber is not null || reviewed.PayoutNote is not null ||
+                        entry.Properties.Any(property => property.IsModified && property.Metadata.Name is not
+                            (nameof(WalletWithdrawalRequest.Status) or nameof(BaseEntity.UpdatedAtUtc) or
+                             nameof(BaseEntity.UpdatedByUserId))))
+                        throw new InvalidOperationException("Only review status and actor can change on a Pending withdrawal.");
+                    continue;
+                }
+                if (originalStatus != WalletWithdrawalStatus.Approved || reviewed.Status != WalletWithdrawalStatus.Paid ||
+                    reviewed.PaidAtUtc is not { Kind: DateTimeKind.Utc } || reviewed.PaidByUserId is null ||
+                    reviewed.UpdatedByUserId != reviewed.PaidByUserId ||
+                    reviewed.PayoutMethod is null || !Enum.IsDefined(reviewed.PayoutMethod.Value) ||
+                    string.IsNullOrWhiteSpace(reviewed.PayoutReferenceNumber) ||
+                    reviewed.PayoutReferenceNumber.Length > 200 || reviewed.PayoutNote?.Length > 2000 ||
                     entry.Properties.Any(property => property.IsModified && property.Metadata.Name is not
-                        (nameof(WalletWithdrawalRequest.Status) or nameof(BaseEntity.UpdatedAtUtc) or
-                         nameof(BaseEntity.UpdatedByUserId))))
-                    throw new InvalidOperationException("Only Pending wallet withdrawals can be reviewed once.");
+                        (nameof(WalletWithdrawalRequest.Status) or nameof(WalletWithdrawalRequest.PaidAtUtc) or
+                         nameof(WalletWithdrawalRequest.PaidByUserId) or nameof(WalletWithdrawalRequest.PayoutMethod) or
+                         nameof(WalletWithdrawalRequest.PayoutReferenceNumber) or nameof(WalletWithdrawalRequest.PayoutNote) or
+                         nameof(BaseEntity.UpdatedAtUtc) or nameof(BaseEntity.UpdatedByUserId))))
+                    throw new InvalidOperationException("Only Approved withdrawals can be paid with immutable execution facts.");
+                if (!entry.Collection(request => request.Allocations).IsLoaded || reviewed.Allocations.Count == 0 ||
+                    reviewed.Allocations.Sum(allocation => allocation.Amount) != reviewed.Amount ||
+                    reviewed.Allocations.Select(allocation => allocation.Id).Distinct().Count() != reviewed.Allocations.Count)
+                    throw new InvalidOperationException("Paid withdrawals require their original complete allocations.");
+                var debits = ChangeTracker.Entries<WalletEntry>().Where(debit => debit.State == EntityState.Added &&
+                    debit.Entity.WalletWithdrawalAllocationId.HasValue &&
+                    reviewed.Allocations.Any(allocation => allocation.Id == debit.Entity.WalletWithdrawalAllocationId))
+                    .Select(debit => debit.Entity).ToArray();
+                if (debits.Length != reviewed.Allocations.Count ||
+                    reviewed.Allocations.Any(allocation => debits.Count(debit =>
+                        debit.WalletWithdrawalAllocationId == allocation.Id &&
+                        debit.WalletAccountId == allocation.WalletAccountId && debit.WalletLotId == allocation.WalletLotId &&
+                        debit.Amount == allocation.Amount && debit.Direction == WalletEntryDirection.Debit) != 1))
+                    throw new InvalidOperationException("Paid withdrawals require exactly one debit per original allocation.");
                 continue;
             }
             if (entry.State != EntityState.Added) continue;
             var request = entry.Entity;
             if (!ValidWalletAmount(request.Amount) || request.Status != WalletWithdrawalStatus.Pending ||
                 request.RequestedAtUtc == default || request.RequestedAtUtc.Kind != DateTimeKind.Utc ||
+                request.PaidAtUtc.HasValue || request.PaidByUserId.HasValue || request.PayoutMethod.HasValue ||
+                request.PayoutReferenceNumber is not null || request.PayoutNote is not null ||
                 request.IsDeleted || request.DeletedAtUtc.HasValue || request.Allocations.Count == 0 ||
                 request.Allocations.Sum(allocation => allocation.Amount) != request.Amount ||
                 request.Allocations.Select(allocation => allocation.WalletLotId).Distinct().Count() != request.Allocations.Count)
@@ -589,20 +636,27 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         {
             entity.Property(request => request.Amount).HasPrecision(18, 2);
             entity.Property(request => request.Status).IsConcurrencyToken();
+            entity.Property(request => request.PayoutReferenceNumber).HasMaxLength(200);
+            entity.Property(request => request.PayoutNote).HasMaxLength(2000);
             entity.HasAlternateKey(request => new { request.Id, request.WalletAccountId });
             entity.HasIndex(request => new { request.WalletAccountId, request.Status, request.RequestedAtUtc });
             entity.HasOne(request => request.WalletAccount).WithMany()
                 .HasForeignKey(request => request.WalletAccountId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(request => request.PaidByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
             entity.ToTable("WalletWithdrawalRequests", table =>
             {
                 table.HasCheckConstraint("CK_WalletWithdrawalRequests_Amount", "[Amount] > 0");
                 table.HasCheckConstraint("CK_WalletWithdrawalRequests_Status", "[Status] IN (0, 1, 2, 3, 4)");
+                table.HasCheckConstraint("CK_WalletWithdrawalRequests_PayoutFacts",
+                    "([Status] = 2 AND [PaidAtUtc] IS NOT NULL AND [PaidByUserId] IS NOT NULL AND [PayoutMethod] IN (0, 1, 2) AND [PayoutReferenceNumber] IS NOT NULL) OR ([Status] <> 2 AND [PaidAtUtc] IS NULL AND [PaidByUserId] IS NULL AND [PayoutMethod] IS NULL AND [PayoutReferenceNumber] IS NULL AND [PayoutNote] IS NULL)");
                 table.HasCheckConstraint("CK_WalletWithdrawalRequests_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
             });
         });
         modelBuilder.Entity<WalletWithdrawalAllocation>(entity =>
         {
             entity.Property(allocation => allocation.Amount).HasPrecision(18, 2);
+            entity.HasAlternateKey(allocation => new { allocation.Id, allocation.WalletAccountId, allocation.WalletLotId });
             entity.HasIndex(allocation => new { allocation.WalletWithdrawalRequestId, allocation.WalletLotId }).IsUnique();
             entity.HasOne(allocation => allocation.WalletWithdrawalRequest).WithMany(request => request.Allocations)
                 .HasForeignKey(allocation => new { allocation.WalletWithdrawalRequestId, allocation.WalletAccountId })
@@ -735,17 +789,25 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<WalletEntry>(entity =>
         {
             entity.Property(entry => entry.Amount).HasPrecision(18, 2);
+            entity.HasIndex(entry => entry.WalletWithdrawalAllocationId).IsUnique()
+                .HasFilter("[WalletWithdrawalAllocationId] IS NOT NULL");
             entity.HasOne(entry => entry.WalletAccount).WithMany().HasForeignKey(entry => entry.WalletAccountId)
                 .OnDelete(DeleteBehavior.NoAction);
             // Prevent an entry from referring to a lot belonging to a different wallet/currency.
             entity.HasOne(entry => entry.WalletLot).WithMany()
                 .HasForeignKey(entry => new { entry.WalletLotId, entry.WalletAccountId })
                 .HasPrincipalKey(lot => new { lot.Id, lot.WalletAccountId }).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(entry => entry.WalletWithdrawalAllocation).WithMany()
+                .HasForeignKey(entry => new { entry.WalletWithdrawalAllocationId, entry.WalletAccountId, entry.WalletLotId })
+                .HasPrincipalKey(allocation => new { allocation.Id, allocation.WalletAccountId, allocation.WalletLotId })
+                .OnDelete(DeleteBehavior.NoAction);
             entity.HasOne<User>().WithMany().HasForeignKey(entry => entry.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
             entity.ToTable("WalletEntries", table =>
             {
                 table.HasCheckConstraint("CK_WalletEntries_Amount", "[Amount] > 0");
                 table.HasCheckConstraint("CK_WalletEntries_Direction", "[Direction] IN (0, 1)");
+                table.HasCheckConstraint("CK_WalletEntries_WithdrawalDebit",
+                    "[WalletWithdrawalAllocationId] IS NULL OR [Direction] = 1");
                 table.HasCheckConstraint("CK_WalletEntries_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
             });
         });

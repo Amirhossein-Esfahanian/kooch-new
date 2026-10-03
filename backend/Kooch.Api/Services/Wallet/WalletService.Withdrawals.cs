@@ -100,6 +100,60 @@ public sealed partial class WalletService
         CancellationToken cancellationToken = default) =>
         ReviewWithdrawalAsync(id, actorUserId, WalletWithdrawalStatus.Rejected, cancellationToken);
 
+    public async Task<AdminWalletWithdrawalResponse> PayWithdrawalAsync(int id, int actorUserId,
+        MarkWalletWithdrawalPaidRequest payment, CancellationToken cancellationToken = default)
+    {
+        if (!payment.PayoutMethod.HasValue || !Enum.IsDefined(payment.PayoutMethod.Value))
+            throw new ArgumentException("A valid withdrawal payout method is required.");
+        var reference = payment.ReferenceNumber?.Trim();
+        if (string.IsNullOrEmpty(reference) || reference.Length > 200)
+            throw new ArgumentException("A payout reference of up to 200 characters is required.");
+        if (!payment.PaidAtUtc.HasValue || payment.PaidAtUtc.Value == default)
+            throw new ArgumentException("The actual payout timestamp is required.");
+        if (actorUserId <= 0) throw new ArgumentException("A valid Admin actor is required.");
+        var note = string.IsNullOrWhiteSpace(payment.Note) ? null : payment.Note.Trim();
+        if (note?.Length > 2000) throw new ArgumentException("Payout note cannot exceed 2000 characters.");
+
+        var owner = await context.WalletWithdrawalRequests.AsNoTracking().Where(request => request.Id == id)
+            .Select(request => new { request.WalletAccountId, request.WalletAccount.UserId,
+                request.WalletAccount.Currency })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Wallet withdrawal request was not found.");
+        return await WithWalletReservationTransactionAsync(owner.UserId, owner.Currency, async (account, _) =>
+        {
+            if (account.Id != owner.WalletAccountId)
+                throw new InvalidOperationException("Wallet withdrawal account changed during payout.");
+            if (!await context.Users.AnyAsync(user => user.Id == actorUserId, cancellationToken))
+                throw new KeyNotFoundException("Withdrawal payout actor was not found.");
+            var request = await context.WalletWithdrawalRequests.SingleOrDefaultAsync(
+                item => item.Id == id && item.WalletAccountId == account.Id, cancellationToken)
+                ?? throw new KeyNotFoundException("Wallet withdrawal request was not found.");
+            await context.Entry(request).ReloadAsync(cancellationToken);
+            if (request.Status != WalletWithdrawalStatus.Approved)
+                throw new InvalidOperationException("Only Approved wallet withdrawals can be paid.");
+            await context.Entry(request).Collection(item => item.Allocations).LoadAsync(cancellationToken);
+            if (request.Allocations.Count == 0 || request.Allocations.Sum(allocation => allocation.Amount) != request.Amount)
+                throw new InvalidOperationException("Withdrawal payout requires complete original allocations.");
+            foreach (var allocation in request.Allocations)
+                context.WalletEntries.Add(new WalletEntry
+                {
+                    WalletAccountId = account.Id, WalletLotId = allocation.WalletLotId,
+                    WalletWithdrawalAllocationId = allocation.Id, WalletWithdrawalAllocation = allocation,
+                    Direction = WalletEntryDirection.Debit, Amount = allocation.Amount,
+                    CreatedByUserId = actorUserId
+                });
+            request.Status = WalletWithdrawalStatus.Paid;
+            request.PaidAtUtc = payment.PaidAtUtc.Value.UtcDateTime;
+            request.PaidByUserId = actorUserId;
+            request.PayoutMethod = payment.PayoutMethod.Value;
+            request.PayoutReferenceNumber = reference;
+            request.PayoutNote = note;
+            request.UpdatedByUserId = actorUserId;
+            await context.SaveChangesAsync(cancellationToken);
+            return await GetAdminWithdrawalAsync(id, cancellationToken);
+        }, cancellationToken);
+    }
+
     private async Task<AdminWalletWithdrawalResponse> ReviewWithdrawalAsync(int id, int actorUserId,
         WalletWithdrawalStatus targetStatus, CancellationToken cancellationToken)
     {
@@ -135,5 +189,6 @@ public sealed partial class WalletService
             request.Id,
             request.WalletAccount.User.FirstName + " " + request.WalletAccount.User.LastName,
             request.WalletAccount.Currency, request.Amount, request.Status, request.RequestedAtUtc,
-            request.Status == WalletWithdrawalStatus.Pending ? null : request.UpdatedAtUtc));
+            request.Status == WalletWithdrawalStatus.Pending ? null : request.UpdatedAtUtc,
+            request.PaidAtUtc, request.PayoutMethod, request.PayoutReferenceNumber, request.PayoutNote));
 }

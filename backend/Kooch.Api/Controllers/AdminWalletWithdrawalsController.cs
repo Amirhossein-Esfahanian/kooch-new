@@ -34,4 +34,9 @@ public sealed class AdminWalletWithdrawalsController(WalletService walletService
     public async Task<ActionResult<AdminWalletWithdrawalResponse>> Reject(int id,
         CancellationToken cancellationToken) =>
         Ok(await walletService.RejectWithdrawalAsync(id, GetCurrentUser().UserId, cancellationToken));
+
+    [HttpPut("{id:int}/paid")]
+    public async Task<ActionResult<AdminWalletWithdrawalResponse>> Paid(int id,
+        MarkWalletWithdrawalPaidRequest request, CancellationToken cancellationToken) =>
+        Ok(await walletService.PayWithdrawalAsync(id, GetCurrentUser().UserId, request, cancellationToken));
 }
