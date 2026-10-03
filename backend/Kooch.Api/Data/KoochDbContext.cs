@@ -49,6 +49,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<SettlementPaymentRecord> SettlementPaymentRecords => Set<SettlementPaymentRecord>();
     public DbSet<ReservationVoucher> ReservationVouchers => Set<ReservationVoucher>();
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
+    public DbSet<CashbackSetting> CashbackSettings => Set<CashbackSetting>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -127,6 +128,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureTravelPurposes(modelBuilder);
         ConfigurePoliciesAndPricing(modelBuilder);
         ConfigureSiteSettings(modelBuilder);
+        ConfigureCashbackSettings(modelBuilder);
         ApplySoftDeleteFilters(modelBuilder);
     }
 
@@ -2183,6 +2185,29 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(setting => setting.IsActive).HasDefaultValue(true);
             entity.HasIndex(setting => setting.Key).IsUnique();
             entity.HasIndex(setting => new { setting.Group, setting.SortOrder });
+        });
+    }
+
+    private static void ConfigureCashbackSettings(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<CashbackSetting>(entity =>
+        {
+            entity.Property(setting => setting.Currency).HasMaxLength(3).IsRequired();
+            entity.Property(setting => setting.PercentageRate).HasPrecision(5, 2);
+            entity.Property(setting => setting.SpendUnitAmount).HasPrecision(18, 2);
+            entity.Property(setting => setting.RewardAmount).HasPrecision(18, 2);
+            entity.Property(setting => setting.MaxCashbackPerReservation).HasPrecision(18, 2);
+            entity.HasIndex(setting => setting.Currency).IsUnique()
+                .HasFilter("[PropertyId] IS NULL AND [IsDeleted] = 0");
+            entity.HasIndex(setting => new { setting.PropertyId, setting.Currency }).IsUnique()
+                .HasFilter("[PropertyId] IS NOT NULL AND [IsDeleted] = 0");
+            entity.HasOne(setting => setting.Property).WithMany()
+                .HasForeignKey(setting => setting.PropertyId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_CashbackSettings_Currency", "LEN([Currency]) = 3 AND [Currency] NOT LIKE '%[^A-Z]%'");
+                table.HasCheckConstraint("CK_CashbackSettings_Mode", "([Enabled] = 0 AND [CalculationMode] IS NULL AND [PercentageRate] IS NULL AND [SpendUnitAmount] IS NULL AND [RewardAmount] IS NULL AND [MaxCashbackPerReservation] IS NULL AND [ExpiryDays] IS NULL) OR ([Enabled] = 1 AND [CalculationMode] IS NOT NULL AND [MaxCashbackPerReservation] IS NOT NULL AND [MaxCashbackPerReservation] > 0 AND [ExpiryDays] IS NOT NULL AND [ExpiryDays] > 0 AND (([CalculationMode] = 0 AND [PercentageRate] IS NOT NULL AND [PercentageRate] > 0 AND [PercentageRate] <= 20 AND [SpendUnitAmount] IS NULL AND [RewardAmount] IS NULL) OR ([CalculationMode] = 1 AND [PercentageRate] IS NULL AND [SpendUnitAmount] IS NOT NULL AND [SpendUnitAmount] > 0 AND [RewardAmount] IS NOT NULL AND [RewardAmount] > 0)))");
+            });
         });
     }
 
