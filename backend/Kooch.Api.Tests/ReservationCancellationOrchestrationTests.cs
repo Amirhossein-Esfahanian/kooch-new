@@ -410,6 +410,14 @@ public sealed partial class ReservationCancellationOrchestrationTests
             builder.Entity<Reservation>().Property(item => item.RowVersion).ValueGeneratedNever();
             builder.Entity<Payment>().Property(item => item.RowVersion).ValueGeneratedNever();
             builder.Entity<BookingSession>().Property(item => item.RowVersion).ValueGeneratedNever();
+            builder.Entity<CashbackSetting>().ToTable(table => table.HasCheckConstraint(
+                "CK_CashbackSettings_Currency",
+                "length([Currency]) = 3 AND [Currency] GLOB '[A-Z][A-Z][A-Z]'"));
+            foreach (var property in builder.Model.FindEntityType(typeof(ReservationCashbackEntitlement))!
+                         .GetProperties().Where(property => property.ClrType == typeof(decimal) ||
+                                                     property.ClrType == typeof(decimal?)))
+                builder.Entity<ReservationCashbackEntitlement>().Property(property.Name)
+                    .HasColumnType("decimal(18,2)");
         }
     }
 }

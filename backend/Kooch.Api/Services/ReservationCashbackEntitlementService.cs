@@ -47,6 +47,15 @@ public sealed class ReservationCashbackEntitlementService(KoochDbContext dbConte
         PendingCashbackEntitlementInput input, CancellationToken cancellationToken = default) =>
         CreatePendingCoreAsync(input, false, cancellationToken);
 
+    internal async Task VoidPendingForReservationAsync(int reservationId,
+        CancellationToken cancellationToken = default)
+    {
+        var entitlement = await dbContext.ReservationCashbackEntitlements
+            .SingleOrDefaultAsync(row => row.ReservationId == reservationId, cancellationToken);
+        if (entitlement?.Status == CashbackEntitlementStatus.Pending)
+            entitlement.Status = CashbackEntitlementStatus.Voided;
+    }
+
     private async Task<ReservationCashbackEntitlement?> CreatePendingCoreAsync(
         PendingCashbackEntitlementInput input, bool saveChanges, CancellationToken cancellationToken)
     {

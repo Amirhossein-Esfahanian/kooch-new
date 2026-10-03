@@ -238,6 +238,22 @@ public sealed class ReservationCashbackEntitlementTests
     }
 
     [Fact]
+    public async Task VoidingPermitsOnlyPendingToVoidedAndKeepsSnapshotImmutable()
+    {
+        await using var db = await CreateDbAsync();
+        var row = (await new ReservationCashbackEntitlementService(db).CreatePendingAsync(Percentage()))!;
+        await new ReservationCashbackEntitlementService(db).VoidPendingForReservationAsync(row.ReservationId);
+        await db.SaveChangesAsync();
+        Assert.Equal(CashbackEntitlementStatus.Voided, row.Status);
+        Assert.Equal(10m, row.CashbackAmount);
+        row.CashbackAmount = 11m;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+        db.Entry(row).State = EntityState.Unchanged;
+        row.Status = CashbackEntitlementStatus.Pending;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+    }
+
+    [Fact]
     public async Task DirectInsertCannotBypassPendingOrGrantLinkageFoundation()
     {
         await using var db = await CreateDbAsync();

@@ -864,6 +864,9 @@ public class ReservationService(
             pendingCancellationRequest.ResolvedByUserId = currentUser.UserId;
         }
 
+        await new ReservationCashbackEntitlementService(dbContext)
+            .VoidPendingForReservationAsync(reservationId, cancellationToken);
+
         await dbContext.SaveChangesAsync(cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.CancellationOutcome = await CancellationOutcomeAsync(reservationId, false, cancellationToken);

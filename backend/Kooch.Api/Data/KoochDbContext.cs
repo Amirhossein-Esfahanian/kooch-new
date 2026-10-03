@@ -274,7 +274,14 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureWalletHistoryIsImmutable();
         foreach (var entry in ChangeTracker.Entries<ReservationCashbackEntitlement>())
         {
-            if (entry.State is EntityState.Modified or EntityState.Deleted)
+            if (entry.State == EntityState.Deleted ||
+                (entry.State == EntityState.Modified &&
+                 (entry.OriginalValues.GetValue<CashbackEntitlementStatus>(nameof(ReservationCashbackEntitlement.Status)) !=
+                      CashbackEntitlementStatus.Pending ||
+                  entry.Entity.Status != CashbackEntitlementStatus.Voided ||
+                  entry.Properties.Any(property => property.IsModified &&
+                      property.Metadata.Name is not (nameof(ReservationCashbackEntitlement.Status) or
+                          nameof(BaseEntity.UpdatedAtUtc))))))
                 throw new InvalidOperationException("Cashback entitlement history cannot be modified or deleted.");
             if (entry.State == EntityState.Added &&
                 (entry.Entity.Status != CashbackEntitlementStatus.Pending ||
