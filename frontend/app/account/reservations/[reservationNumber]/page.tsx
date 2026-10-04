@@ -91,6 +91,87 @@ function DetailSection({
   );
 }
 
+type GuestCashbackSummary = {
+  status: string;
+  amount: number;
+  currency: string;
+  eligibleAtUtc: string;
+  grantedAtUtc: string | null;
+  expiresAtUtc: string | null;
+};
+
+type GuestCashbackResponse = { cashback: GuestCashbackSummary | null };
+
+function ReservationCashbackSection({ reservationNumber }: { reservationNumber: string }) {
+  const [cashback, setCashback] = useState<GuestCashbackSummary | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setError("");
+    setCashback(null);
+    void apiRequest<GuestCashbackResponse>(
+      `/account/reservations/${encodeURIComponent(reservationNumber)}/cashback`,
+    ).then((response) => {
+      if (!active) return;
+      if (response.cashback && !["Pending", "Granted", "Voided"].includes(response.cashback.status)) {
+        throw new Error("وضعیت کش‌بک این رزرو قابل نمایش نیست.");
+      }
+      setCashback(response.cashback);
+    }).catch((caught) => {
+      if (active) setError(caught instanceof Error ? caught.message : "دریافت کش‌بک انجام نشد.");
+    }).finally(() => {
+      if (active) setLoading(false);
+    });
+    return () => { active = false; };
+  }, [reservationNumber, retry]);
+
+  if (!loading && !error && !cashback) return null;
+
+  return <KoochCard aria-label="کش‌بک رزرو" className="grid gap-3" padding="sm" variant="elevated">
+    <h2 className="text-sm font-bold text-foreground">کش‌بک این رزرو</h2>
+    {loading ? <p className="text-sm text-muted-foreground" role="status">در حال دریافت وضعیت کش‌بک…</p>
+      : error ? <div className="flex flex-wrap items-center gap-3">
+        <p className="text-sm text-muted-foreground" role="alert">{error}</p>
+        <KoochButton onClick={() => setRetry((value) => value + 1)} size="sm" variant="outline">
+          تلاش دوباره برای کش‌بک
+        </KoochButton>
+      </div>
+        : cashback && <div className="grid gap-2 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <KoochBadge variant={cashback.status === "Granted" ? "success" : "muted"}>
+              {cashback.status === "Pending" ? "در انتظار" : cashback.status === "Granted"
+                ? "اضافه‌شده به کیف پول" : "لغوشده / اعطا نشده"}
+            </KoochBadge>
+            <span className="font-bold tabular-nums text-foreground">
+              {formatCurrency(cashback.amount, { showCurrency: false })} <bdi dir="ltr">{cashback.currency}</bdi>
+            </span>
+          </div>
+          {cashback.status === "Pending" && <>
+            <p className="text-muted-foreground">
+              این مبلغ هنوز به کیف پول شما اضافه نشده است. پس از پایان اقامت، در صورت لغو نشدن رزرو، امکان افزودن آن فراهم می‌شود.
+            </p>
+            <p className="text-muted-foreground">زمان واجد شرایط شدن: <time dateTime={cashback.eligibleAtUtc}>{formatDateTime(cashback.eligibleAtUtc)}</time></p>
+            <p className="text-muted-foreground">کش‌بک به‌صورت اعتبار غیرقابل‌برداشت به کیف پول اضافه می‌شود.</p>
+          </>}
+          {cashback.status === "Granted" && <>
+            <p className="text-muted-foreground">این کش‌بک به‌صورت اعتبار غیرقابل‌برداشت به کیف پول شما اضافه شده است.</p>
+            {cashback.grantedAtUtc && <p className="text-muted-foreground">زمان افزودن: <time dateTime={cashback.grantedAtUtc}>{formatDateTime(cashback.grantedAtUtc)}</time></p>}
+            {cashback.expiresAtUtc && <p className="text-muted-foreground">تاریخ انقضا: <time dateTime={cashback.expiresAtUtc}>{formatDateTime(cashback.expiresAtUtc)}</time></p>}
+            <Link className="justify-self-start text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" href="/account/wallet">
+              مشاهده کیف پول
+            </Link>
+          </>}
+          {cashback.status === "Voided" && <p className="text-muted-foreground">
+            کش‌بک این رزرو به دلیل لغو رزرو پیش از اعطا، به کیف پول اضافه نشد.
+          </p>}
+        </div>}
+  </KoochCard>;
+}
+
 export default function AccountReservationDetailsPage() {
   const currencyLabel = useSiteCurrencyLabel();
   const router = useRouter();
@@ -465,6 +546,9 @@ export default function AccountReservationDetailsPage() {
               />
               <DetailItem label="واحد پول" value={currencyLabel} />
             </DetailSection>
+
+            {reservation.reservationNumber === reservationNumber &&
+              <ReservationCashbackSection key={reservationNumber} reservationNumber={reservationNumber} />}
 
             <DetailSection title="پرداخت">
               <DetailItem
