@@ -60,6 +60,8 @@ public class ReservationResponse : ReservationListItemResponse
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ReservationCancellationFinancialStateResponse? CancellationFinancial { get; set; }
     public int? RatePlanId { get; set; }
+    public string? RatePlanName { get; set; }
+    public string? MealPlanName { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
     public string? GuestEmail { get; set; }
     public string? GuestNationalCode { get; set; }

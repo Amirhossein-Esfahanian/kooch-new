@@ -43,6 +43,150 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(persisted.Id, persistedReservation.BookingSessionId);
         Assert.Equal(100, persistedReservation.RoomId);
         Assert.Equal(ReservationSource.Website, persistedReservation.Source);
+        Assert.Null(persistedReservation.RatePlanId);
+        Assert.Null(persistedReservation.RatePlanNameSnapshot);
+        Assert.Null(persistedReservation.MealPlanNameSnapshot);
+        Assert.Null(persistedReservation.MealPlanSlugSnapshot);
+        Assert.Null(persistedReservation.RatePlanPriceModifierTypeSnapshot);
+        Assert.Null(persistedReservation.RatePlanPriceModifierValueSnapshot);
+    }
+
+    [Theory]
+    [InlineData(-300000)]
+    [InlineData(0)]
+    [InlineData(200000)]
+    public async Task SelectedRatePlan_SnapshotsDatabaseValuesWithoutChangingBookingAmount(decimal modifier)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.MealPlans.Add(new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" });
+            setup.RatePlans.Add(new RatePlan
+            {
+                Id = 50, RoomTypeId = 10, MealPlanId = 70, Name = "Standard",
+                PriceModifierType = PriceModifierType.FixedAmount,
+                PriceModifierValue = modifier, IsActive = true
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var item = CreateItem(10, 100);
+        item.RatePlanId = 50;
+        var result = await scope.Service.CreateAsync(CreateRequest(item));
+        var response = Assert.Single(result.Reservations);
+        Assert.Equal(50, response.RatePlanId);
+        Assert.Equal("Standard", response.RatePlanName);
+        Assert.Equal("Breakfast", response.MealPlanName);
+        Assert.Equal(100, response.FinalAmount);
+
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Equal(50, saved.RatePlanId);
+        Assert.Equal("Standard", saved.RatePlanNameSnapshot);
+        Assert.Equal("Breakfast", saved.MealPlanNameSnapshot);
+        Assert.Equal("breakfast", saved.MealPlanSlugSnapshot);
+        Assert.Equal(PriceModifierType.FixedAmount, saved.RatePlanPriceModifierTypeSnapshot);
+        Assert.Equal(modifier, saved.RatePlanPriceModifierValueSnapshot);
+        Assert.Equal(100, saved.BaseAmount);
+        Assert.Equal(100, saved.FinalAmount);
+    }
+
+    [Fact]
+    public async Task AccountBooking_CarriesSelectedRatePlanThroughSharedCreationPath()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.RatePlans.Add(new RatePlan
+            {
+                Id = 50, RoomTypeId = 10, Name = "Room only", IsActive = true,
+                PriceModifierType = PriceModifierType.FixedAmount, PriceModifierValue = 0
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+        var item = CreateAccountItem(10, 100);
+        item.RatePlanId = 50;
+        var result = await scope.Service.CreateForAccountAsync(1, CreateAccountRequest(item));
+        Assert.Equal(50, Assert.Single(result.Reservations).RatePlanId);
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Equal("Room only", saved.RatePlanNameSnapshot);
+        Assert.Null(saved.MealPlanNameSnapshot);
+        Assert.Null(saved.MealPlanSlugSnapshot);
+        Assert.Equal(100, saved.FinalAmount);
+    }
+
+    [Fact]
+    public async Task SelectedRatePlan_RejectsWrongRoomTypeInactiveDeletedPercentageAndDeletedMeal()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.MealPlans.Add(new MealPlan { Id = 70, Name = "Deleted", Slug = "deleted", IsDeleted = true });
+            setup.RatePlans.AddRange(
+                new RatePlan { Id = 50, RoomTypeId = 20, Name = "Wrong room type", IsActive = true, PriceModifierType = PriceModifierType.FixedAmount },
+                new RatePlan { Id = 51, RoomTypeId = 10, Name = "Inactive", IsActive = false, PriceModifierType = PriceModifierType.FixedAmount },
+                new RatePlan { Id = 52, RoomTypeId = 10, Name = "Deleted", IsActive = true, IsDeleted = true, PriceModifierType = PriceModifierType.FixedAmount },
+                new RatePlan { Id = 53, RoomTypeId = 10, Name = "Percentage", IsActive = true, PriceModifierType = PriceModifierType.Percentage },
+                new RatePlan { Id = 54, RoomTypeId = 10, Name = "Deleted meal", MealPlanId = 70, IsActive = true, PriceModifierType = PriceModifierType.FixedAmount });
+            setup.RatePlans.Add(new RatePlan { Id = 55, RoomTypeId = 30, Name = "Other property", IsActive = true, PriceModifierType = PriceModifierType.FixedAmount });
+            await setup.SaveChangesAsync();
+        }
+
+        foreach (var id in new[] { 50, 51, 52, 53, 54, 55, 999 })
+        {
+            await using var scope = harness.CreateService();
+            var item = CreateItem(10, 100);
+            item.RatePlanId = id;
+            if (id is 52 or 999)
+                await Assert.ThrowsAsync<KeyNotFoundException>(() => scope.Service.CreateAsync(CreateRequest(item)));
+            else
+                await Assert.ThrowsAsync<ArgumentException>(() => scope.Service.CreateAsync(CreateRequest(item)));
+        }
+        await using var verification = harness.CreateContext();
+        Assert.Empty(verification.Reservations);
+    }
+
+    [Fact]
+    public void RatePlanId_ParticipatesInCanonicalRequestHash()
+    {
+        var first = CreateRequest(CreateItem(10, 100));
+        first.Items[0].RatePlanId = 50;
+        var second = CreateRequest(CreateItem(10, 100));
+        second.Items[0].RatePlanId = 51;
+        var withoutPlan = CreateRequest(CreateItem(10, 100));
+        Assert.NotEqual(BookingSessionService.ComputeRequestHash(first), BookingSessionService.ComputeRequestHash(second));
+        Assert.NotEqual(BookingSessionService.ComputeRequestHash(first), BookingSessionService.ComputeRequestHash(withoutPlan));
+    }
+
+    [Fact]
+    public async Task SameIdempotencyKeyWithDifferentRatePlan_IsRejected()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.RatePlans.AddRange(
+                new RatePlan { Id = 50, RoomTypeId = 10, Name = "A", IsActive = true, PriceModifierType = PriceModifierType.FixedAmount },
+                new RatePlan { Id = 51, RoomTypeId = 10, Name = "B", IsActive = true, PriceModifierType = PriceModifierType.FixedAmount });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+        var firstItem = CreateItem(10, 100);
+        firstItem.RatePlanId = 50;
+        var first = CreateRequest(firstItem);
+        first.IdempotencyKey = "same-key";
+        await scope.Service.CreateAsync(first);
+
+        var changedItem = CreateItem(10, 100);
+        changedItem.RatePlanId = 51;
+        var changed = CreateRequest(changedItem);
+        changed.IdempotencyKey = "same-key";
+        var error = await Assert.ThrowsAsync<InvalidOperationException>(() => scope.Service.CreateAsync(changed));
+        Assert.Contains("different booking payload", error.Message, StringComparison.Ordinal);
+        await using var verification = harness.CreateContext();
+        Assert.Single(await verification.Reservations.ToListAsync());
     }
 
     [Fact]

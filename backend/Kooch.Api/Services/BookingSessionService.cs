@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.BookingSessions;
 using Kooch.Api.Dtos.Reservations;
@@ -145,6 +146,7 @@ public sealed class BookingSessionService(
         var roomTypes = await LockRoomTypesAsync(lockOrder.RoomTypeIds, cancellationToken);
         var rooms = await LockRoomsAsync(lockOrder.RoomIds, cancellationToken);
         ValidateRoomRelationships(request, roomTypes, rooms);
+        var ratePlans = await LoadSelectedRatePlansAsync(request.Items, cancellationToken);
 
         var preparedItems = await PrepareItemsAsync(
             request,
@@ -191,6 +193,7 @@ public sealed class BookingSessionService(
         for (var index = 0; index < preparedItems.Count; index++)
         {
             var prepared = preparedItems[index];
+            var ratePlan = prepared.Item.RatePlanId is int ratePlanId ? ratePlans[ratePlanId] : null;
             session.Reservations.Add(new Reservation
             {
                 ReservationNumber = reservationNumbers[index],
@@ -200,6 +203,12 @@ public sealed class BookingSessionService(
                 PropertyId = request.PropertyId,
                 RoomTypeId = prepared.Item.RoomTypeId,
                 RoomId = prepared.Item.RoomId,
+                RatePlanId = prepared.Item.RatePlanId,
+                RatePlanNameSnapshot = ratePlan?.Name,
+                MealPlanNameSnapshot = ratePlan?.MealPlan?.Name,
+                MealPlanSlugSnapshot = ratePlan?.MealPlan?.Slug,
+                RatePlanPriceModifierTypeSnapshot = ratePlan?.PriceModifierType,
+                RatePlanPriceModifierValueSnapshot = ratePlan?.PriceModifierValue,
                 CheckInDate = prepared.Item.CheckInDate,
                 CheckOutDate = prepared.Item.CheckOutDate,
                 AdultCount = prepared.Price.Adults,
@@ -251,6 +260,7 @@ public sealed class BookingSessionService(
         new()
         {
             RoomTypeId = item.RoomTypeId,
+            RatePlanId = item.RatePlanId,
             RoomId = item.RoomId,
             CheckInDate = item.CheckInDate,
             CheckOutDate = item.CheckOutDate,
@@ -267,6 +277,7 @@ public sealed class BookingSessionService(
         var canonicalItems = request.Items
             .Select(item => new CanonicalBookingItem(
                 item.RoomTypeId,
+                item.RatePlanId,
                 item.RoomId,
                 item.CheckInDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
                 item.CheckOutDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
@@ -278,6 +289,7 @@ public sealed class BookingSessionService(
                 NormalizeOptionalText(item.Notes)))
             .OrderBy(item => item.RoomTypeId)
             .ThenBy(item => item.RoomId)
+            .ThenBy(item => item.RatePlanId)
             .ThenBy(item => item.CheckInDate, StringComparer.Ordinal)
             .ThenBy(item => item.CheckOutDate, StringComparer.Ordinal)
             .ThenBy(item => item.Adults)
@@ -716,7 +728,7 @@ public sealed class BookingSessionService(
 
         foreach (var item in request.Items)
         {
-            if (item.RoomTypeId <= 0 || item.RoomId is <= 0)
+            if (item.RoomTypeId <= 0 || item.RoomId is <= 0 || item.RatePlanId is <= 0)
             {
                 throw new ArgumentException("Room allocation identifiers must be positive.", nameof(request));
             }
@@ -871,6 +883,30 @@ public sealed class BookingSessionService(
                     "Selected room does not belong to the selected room type.");
             }
         }
+    }
+
+    private async Task<IReadOnlyDictionary<int, RatePlan>> LoadSelectedRatePlansAsync(
+        IReadOnlyList<BookingSessionReservationCreateItem> items,
+        CancellationToken cancellationToken)
+    {
+        var ids = items.Where(item => item.RatePlanId.HasValue)
+            .Select(item => item.RatePlanId!.Value).Distinct().ToArray();
+        if (ids.Length == 0) return new Dictionary<int, RatePlan>();
+
+        var plans = await dbContext.RatePlans.AsNoTracking()
+            .Include(plan => plan.MealPlan)
+            .Where(plan => ids.Contains(plan.Id))
+            .ToDictionaryAsync(plan => plan.Id, cancellationToken);
+        foreach (var item in items.Where(item => item.RatePlanId.HasValue))
+        {
+            if (!plans.TryGetValue(item.RatePlanId!.Value, out var plan))
+                throw new KeyNotFoundException("Rate plan not found.");
+            if (!plan.IsActive || plan.RoomTypeId != item.RoomTypeId ||
+                plan.PriceModifierType != PriceModifierType.FixedAmount ||
+                (plan.MealPlanId.HasValue && plan.MealPlan is null))
+                throw new ArgumentException("Rate plan is not available for this room type.");
+        }
+        return plans;
     }
 
     private async Task<IReadOnlyList<PreparedBookingItem>> PrepareItemsAsync(
@@ -1137,6 +1173,9 @@ public sealed class BookingSessionService(
                     ReservationId = reservation.Id,
                     ReservationNumber = reservation.ReservationNumber ?? string.Empty,
                     RoomTypeId = reservation.RoomTypeId,
+                    RatePlanId = reservation.RatePlanId,
+                    RatePlanName = reservation.RatePlanNameSnapshot,
+                    MealPlanName = reservation.MealPlanNameSnapshot,
                     RoomId = reservation.RoomId,
                     CheckInDate = reservation.CheckInDate,
                     CheckOutDate = reservation.CheckOutDate,
@@ -1203,6 +1242,7 @@ public sealed class BookingSessionService(
 
     private sealed record CanonicalBookingItem(
         int RoomTypeId,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] int? RatePlanId,
         int? RoomId,
         string CheckInDate,
         string CheckOutDate,

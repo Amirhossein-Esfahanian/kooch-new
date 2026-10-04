@@ -79,6 +79,9 @@ public sealed class BookingSessionReservationDetailsResponse
     public int ReservationId { get; set; }
     public string ReservationNumber { get; set; } = string.Empty;
     public int RoomTypeId { get; set; }
+    public int? RatePlanId { get; set; }
+    public string? RatePlanName { get; set; }
+    public string? MealPlanName { get; set; }
     public string RoomTypeName { get; set; } = string.Empty;
     public int? RoomId { get; set; }
     public string? RoomName { get; set; }
@@ -156,6 +159,9 @@ public sealed class AccountBookingSessionReservationResponse
 {
     public string ReservationNumber { get; set; } = string.Empty;
     public int RoomTypeId { get; set; }
+    public int? RatePlanId { get; set; }
+    public string? RatePlanName { get; set; }
+    public string? MealPlanName { get; set; }
     public string RoomTypeName { get; set; } = string.Empty;
     public int? RoomId { get; set; }
     public string? RoomName { get; set; }
