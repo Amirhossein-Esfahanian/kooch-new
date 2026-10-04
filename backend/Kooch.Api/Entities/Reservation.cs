@@ -10,6 +10,11 @@ public class Reservation : BaseEntity
     public int RoomTypeId { get; set; }
     public int? RoomId { get; set; }
     public int? RatePlanId { get; set; }
+    public string? RatePlanNameSnapshot { get; set; }
+    public string? MealPlanNameSnapshot { get; set; }
+    public string? MealPlanSlugSnapshot { get; set; }
+    public PriceModifierType? RatePlanPriceModifierTypeSnapshot { get; set; }
+    public decimal? RatePlanPriceModifierValueSnapshot { get; set; }
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }
     public int AdultCount { get; set; }

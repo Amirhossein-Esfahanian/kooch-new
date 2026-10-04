@@ -343,6 +343,12 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 throw new InvalidOperationException("Reservation cancellation idempotency key and fingerprint must be a valid pair.");
 
             if (entry.State != EntityState.Modified) continue;
+            if (entry.Property(reservation => reservation.RatePlanNameSnapshot).IsModified ||
+                entry.Property(reservation => reservation.MealPlanNameSnapshot).IsModified ||
+                entry.Property(reservation => reservation.MealPlanSlugSnapshot).IsModified ||
+                entry.Property(reservation => reservation.RatePlanPriceModifierTypeSnapshot).IsModified ||
+                entry.Property(reservation => reservation.RatePlanPriceModifierValueSnapshot).IsModified)
+                throw new InvalidOperationException("Reservation rate plan snapshots are immutable after creation.");
             var originalKey = entry.OriginalValues.GetValue<string?>(nameof(Reservation.CancellationIdempotencyKey));
             var originalFingerprint = entry.OriginalValues.GetValue<string?>(nameof(Reservation.CancellationRequestFingerprint));
             if (originalKey is not null || originalFingerprint is not null)
@@ -1520,6 +1526,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<Reservation>(entity =>
         {
+            entity.Property(reservation => reservation.RatePlanNameSnapshot).HasMaxLength(150);
+            entity.Property(reservation => reservation.MealPlanNameSnapshot).HasMaxLength(150);
+            entity.Property(reservation => reservation.MealPlanSlugSnapshot).HasMaxLength(170);
+            entity.Property(reservation => reservation.RatePlanPriceModifierValueSnapshot).HasPrecision(18, 2);
             entity.Property(reservation => reservation.TotalPrice).HasPrecision(18, 2);
             entity.Property(reservation => reservation.BaseAmount).HasPrecision(18, 2);
             entity.Property(reservation => reservation.DiscountAmount).HasPrecision(18, 2);
