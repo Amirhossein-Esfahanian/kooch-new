@@ -41,9 +41,14 @@ export default function AdminPropertyEditPage() {
       showPricingWarnings={false}
       title="ویرایش اقامتگاه"
     >
-      <PropertyWizard isAdmin mode="edit" propertyId={propertyId} />
-      {canManageCashback && Number.isInteger(propertyId) && propertyId > 0 &&
-        <PropertyCashbackSettings key={propertyId} propertyId={propertyId} />}
+      <PropertyWizard
+        isAdmin
+        mode="edit"
+        propertyId={propertyId}
+        adminCashbackSettings={canManageCashback && Number.isInteger(propertyId) && propertyId > 0
+          ? <PropertyCashbackSettings key={propertyId} propertyId={propertyId} />
+          : null}
+      />
     </AdminPropertyPanel>
   );
 }

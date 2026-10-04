@@ -63,6 +63,7 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 });
 
 import { PropertyWizard } from "@/components/owner/PropertyWizard";
+import { PropertyCashbackSettings } from "@/components/admin/PropertyCashbackSettings";
 
 const property: PropertyResponse = {
   id: 17,
@@ -299,6 +300,27 @@ let deferStatusUpdate = false;
 let resolveStatusUpdate: (() => void) | null = null;
 
 describe("PropertyWizard media and common areas", () => {
+  it("places the Admin Cashback slot in rules, never in Location", async () => {
+    window.history.replaceState({}, "", "?step=1");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17}
+      adminCashbackSettings={<div data-testid="cashback-slot">کش‌بک این اقامتگاه</div>} />);
+    await screen.findByRole("heading", { name: "موقعیت و نشانی" });
+    expect(screen.queryByTestId("cashback-slot")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /قوانین و زمان‌ها/ }));
+    const rules = (await screen.findByRole("heading", { name: "قوانین و زمان‌ها" })).closest("section");
+    expect(rules?.querySelector('[data-testid="cashback-slot"]')).toBeTruthy();
+  });
+
+  it("never mounts or fetches Admin Cashback in the Owner rules step", async () => {
+    window.history.replaceState({}, "", "?step=7");
+    render(<PropertyWizard mode="edit" propertyId={17}
+      adminCashbackSettings={<PropertyCashbackSettings propertyId={17} />} />);
+    await screen.findByRole("heading", { name: "قوانین و زمان‌ها" });
+    expect(screen.queryByText("کش‌بک این اقامتگاه")).toBeNull();
+    expect(screen.queryByRole("button", { name: "تنظیمات" })).toBeNull();
+    expect(api.request.mock.calls.some(([path]) => String(path).includes("/cashback"))).toBe(false);
+  });
+
   it("saves the Admin-only guest phone toggle through the existing rules section", async () => {
     window.history.replaceState({}, "", "?step=7");
     render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);

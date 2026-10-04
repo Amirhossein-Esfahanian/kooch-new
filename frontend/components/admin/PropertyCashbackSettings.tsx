@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { z } from "zod";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
-import { KoochCard } from "@/components/KoochCard";
+import { KoochDialog } from "@/components/KoochDialog";
 import { KoochField, KoochInput, KoochSelect } from "@/components/KoochFormControls";
 import { apiRequest } from "@/lib/owner-api";
 
@@ -133,9 +133,15 @@ function errorText(error: unknown) {
   return message || "درخواست انجام نشد؛ دوباره تلاش کنید.";
 }
 
+const currency = "IRR";
+const stateLabels: Record<PropertyCashbackState, string> = {
+  Inherit: "استفاده از تنظیمات سراسری",
+  EnabledOverride: "تنظیم اختصاصی فعال",
+  Disabled: "کش‌بک برای این اقامتگاه غیرفعال",
+};
+
 export function PropertyCashbackSettings({ propertyId }: { propertyId: number }) {
-  const [currencyInput, setCurrencyInput] = useState("IRR");
-  const currency = /^[A-Z]{3}$/.test(currencyInput) ? currencyInput : null;
+  const [dialogOpen, setDialogOpen] = useState(false);
   const [response, setResponse] = useState<PropertyCashbackResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -172,19 +178,11 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
   }, [path, reset]);
 
   useEffect(() => {
-    if (currency) {
-      void loadPolicy(currency);
-    } else {
-      requestEpoch.current++;
-      setResponse(null);
-      setLoadError("");
-      setLoading(false);
-      reset(emptyForm);
-    }
-  }, [currency, loadPolicy, reset]);
+    void loadPolicy(currency);
+  }, [loadPolicy]);
 
   async function save(values: FormValues) {
-    if (!currency || !visibleResponse || savingRef.current) return;
+    if (!visibleResponse || savingRef.current) return;
     savingRef.current = true;
     setSaving(true);
     setSaveError("");
@@ -192,8 +190,11 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
       await apiRequest<PropertyCashbackResponse>(path, {
         method: "PUT", body: JSON.stringify(toUpdate(currency, values)),
       });
+      setDialogOpen(false);
       const refreshed = await loadPolicy(currency);
-      if (refreshed) toast.success("تنظیمات کش‌بک این اقامتگاه ذخیره شد.");
+      if (refreshed) {
+        toast.success("تنظیمات کش‌بک این اقامتگاه ذخیره شد.");
+      }
       else toast.warning("تنظیمات ذخیره شد، اما دریافت نسخهٔ تازه انجام نشد. دوباره بارگذاری کنید.");
     } catch (error) {
       const message = errorText(error);
@@ -210,27 +211,38 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
     reset(emptyFormWithState(next), { keepErrors: false });
   }
 
-  return <KoochCard className="grid gap-5" padding="md" aria-labelledby="property-cashback-heading">
-    <div className="grid gap-1">
-      <h2 id="property-cashback-heading" className="text-base font-semibold">کش‌بک این اقامتگاه</h2>
-      <p className="text-sm text-muted-foreground">این تنظیم فقط سیاست این اقامتگاه را برای ارز انتخاب‌شده مشخص می‌کند.</p>
-    </div>
-    <div className="max-w-xs">
-      <KoochField label="کد ارز" helperText="کد سه‌حرفی ارز؛ مانند IRR.">
-        <KoochInput dir="ltr" maxLength={3} value={currencyInput} disabled={saving}
-          onChange={(event) => setCurrencyInput(event.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 3))} />
-      </KoochField>
-    </div>
+  function openSettings() {
+    if (!visibleResponse || savingRef.current) return;
+    reset(toForm(visibleResponse));
+    setSaveError("");
+    setDialogOpen(true);
+  }
 
-    {!currency && <p className="text-sm text-muted-foreground" role="status">برای بارگذاری، کد سه‌حرفی ارز را وارد کنید.</p>}
+  return <div className="grid gap-3">
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg border border-border p-4">
+      <div className="min-w-0 flex-1">
+        <h3 className="text-sm font-semibold text-foreground">کش‌بک این اقامتگاه</h3>
+        <p className="mt-1 text-sm leading-6 text-muted-foreground">نحوه اعمال کش‌بک سراسری برای این اقامتگاه را تعیین کنید.</p>
+        {visibleResponse && !loading && !loadError &&
+          <p className="mt-1 text-sm text-foreground">وضعیت: {stateLabels[visibleResponse.state]}</p>}
+      </div>
+      <KoochButton type="button" size="sm" variant="outline" disabled={!visibleResponse || loading || saving}
+        onClick={openSettings}>تنظیمات</KoochButton>
+    </div>
     {loading && <p className="text-sm text-muted-foreground" role="status">در حال دریافت تنظیمات کش‌بک این اقامتگاه…</p>}
     {loadError && !loading && <div className="grid justify-items-start gap-3">
-      <KoochAlert variant="destructive">دریافت تنظیمات این ارز انجام نشد: {loadError}</KoochAlert>
-      <KoochButton variant="outline" onClick={() => currency && void loadPolicy(currency)}>تلاش دوباره</KoochButton>
+      <KoochAlert variant="destructive">دریافت تنظیمات کش‌بک انجام نشد: {loadError}</KoochAlert>
+      <KoochButton type="button" variant="outline" onClick={() => void loadPolicy(currency)}>تلاش دوباره</KoochButton>
     </div>}
-
-    {visibleResponse && !loading && !loadError && <form className="grid max-w-3xl gap-5" noValidate
-      onSubmit={form.handleSubmit(save)}>
+    {saveError && !dialogOpen && <KoochAlert variant="destructive">{saveError}</KoochAlert>}
+    <KoochDialog open={dialogOpen} onOpenChange={(open) => { if (!savingRef.current) setDialogOpen(open); }}
+      closeDisabled={saving} size="md" title="تنظیمات کش‌بک اقامتگاه"
+      description="سیاست کش‌بک این اقامتگاه را نسبت به تنظیمات سراسری مشخص کنید.">
+      {visibleResponse && <form className="grid gap-5" noValidate
+      onSubmit={(event) => {
+        event.stopPropagation();
+        void form.handleSubmit(save)(event);
+      }}>
       <KoochField label="رفتار کش‌بک برای این اقامتگاه" required>
         <KoochSelect required value={state} disabled={saving}
           onChange={(event) => changeState(event.target.value as PropertyCashbackState)}>
@@ -263,7 +275,7 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
             form.clearErrors();
           }}>
             <option value="Percentage">درصدی</option>
-            <option value="FixedPerUnit">مبلغ ثابت به‌ازای هر واحد هزینه</option>
+            <option value="FixedPerUnit">مبلغ ثابت به‌ازای واحد خرید</option>
           </KoochSelect>
         </KoochField>
 
@@ -273,18 +285,18 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
           <KoochInput required disabled={saving} type="number" min="0" max="20" step="0.01" inputMode="decimal"
             {...form.register("percentageRate")} />
         </KoochField> : <div className="grid gap-4 sm:grid-cols-2">
-          <KoochField label={`به‌ازای هر مبلغ (${currency})`} required error={form.formState.errors.spendUnitAmount?.message}>
+          <KoochField label="مبلغ هر واحد خرید" required error={form.formState.errors.spendUnitAmount?.message}>
             <KoochInput required disabled={saving} type="number" min="0" step="0.01" inputMode="decimal"
               {...form.register("spendUnitAmount")} />
           </KoochField>
-          <KoochField label={`مقدار کش‌بک (${currency})`} required error={form.formState.errors.rewardAmount?.message}>
+          <KoochField label="مبلغ کش‌بک هر واحد" required error={form.formState.errors.rewardAmount?.message}>
             <KoochInput required disabled={saving} type="number" min="0" step="0.01" inputMode="decimal"
               {...form.register("rewardAmount")} />
           </KoochField>
         </div>}
 
         <div className="grid gap-4 sm:grid-cols-2">
-          <KoochField label={`حداکثر کش‌بک هر رزرو (${currency})`} required
+          <KoochField label="حداکثر کش‌بک هر رزرو" required
             error={form.formState.errors.maxCashbackPerReservation?.message}>
             <KoochInput required disabled={saving} type="number" min="0" step="0.01" inputMode="decimal"
               {...form.register("maxCashbackPerReservation")} />
@@ -299,14 +311,14 @@ export function PropertyCashbackSettings({ propertyId }: { propertyId: number })
       </>}
 
       {saveError && <KoochAlert variant="destructive">{saveError}</KoochAlert>}
+      <p className="text-xs leading-6 text-muted-foreground">
+        تغییر این سیاست فقط بر تصمیم‌های آینده اثر دارد؛ کش‌بک رزروهای قبلی و اعتبارهای ثبت‌شده دوباره محاسبه نمی‌شوند.
+        کش‌بک این اقامتگاه کمیسیون آن را به‌طور خودکار تغییر نمی‌دهد.
+      </p>
       <div className="flex justify-end border-t border-border pt-4">
         <KoochButton type="submit" loading={saving} disabled={saving}>ذخیره تنظیمات کش‌بک</KoochButton>
       </div>
     </form>}
-
-    <p className="max-w-3xl text-xs leading-6 text-muted-foreground">
-      تغییر این سیاست فقط بر تصمیم‌های آینده اثر دارد؛ کش‌بک رزروهای قبلی و اعتبارهای ثبت‌شده دوباره محاسبه نمی‌شوند.
-      کش‌بک این اقامتگاه کمیسیون آن را به‌طور خودکار تغییر نمی‌دهد.
-    </p>
-  </KoochCard>;
+    </KoochDialog>
+  </div>;
 }

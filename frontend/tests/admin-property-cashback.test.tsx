@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import AdminPropertyEditPage from "@/app/admin/properties/[id]/page";
+import OwnerPropertyEditPage from "@/app/owner/properties/[id]/page";
 import { PropertyCashbackSettings } from "@/components/admin/PropertyCashbackSettings";
 
 const api = vi.hoisted(() => ({ request: vi.fn() }));
@@ -16,8 +17,17 @@ vi.mock("next/navigation", () => ({ useParams: () => ({ id: "17" }) }));
 vi.mock("@/components/admin/AdminPropertyPanel", () => ({
   AdminPropertyPanel: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
+vi.mock("@/components/dashboard/DashboardLayouts", () => ({
+  OwnerLayout: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
+}));
 vi.mock("@/components/owner/PropertyWizard", () => ({
-  PropertyWizard: () => <div>Property wizard</div>,
+  PropertyWizard: ({ adminCashbackSettings }: { adminCashbackSettings?: React.ReactNode }) => <div>
+    <section aria-label="موقعیت">موقعیت</section>
+    <section aria-label="قوانین و زمان‌ها">
+      <h2>قوانین و زمان‌ها</h2>
+      {adminCashbackSettings}
+    </section>
+  </div>,
 }));
 vi.mock("sonner", () => ({ toast: notifications }));
 
@@ -52,6 +62,8 @@ function mockResponse(response: TestResponse = override) {
 async function load(response: TestResponse = override) {
   mockResponse(response);
   render(<PropertyCashbackSettings propertyId={17} />);
+  await screen.findByText(`وضعیت: ${response.state === "Inherit" ? "استفاده از تنظیمات سراسری" : response.state === "Disabled" ? "کش‌بک برای این اقامتگاه غیرفعال" : "تنظیم اختصاصی فعال"}`);
+  fireEvent.click(screen.getByRole("button", { name: "تنظیمات" }));
   await screen.findByRole("combobox", { name: /رفتار کش‌بک/ });
 }
 function put() {
@@ -79,6 +91,11 @@ describe("Admin Property Cashback override", () => {
     mockResponse(inherited);
     render(<AdminPropertyEditPage />);
     await screen.findByRole("heading", { name: "کش‌بک این اقامتگاه" });
+    expect(within(screen.getByRole("region", { name: "قوانین و زمان‌ها" })).getByText("وضعیت: استفاده از تنظیمات سراسری")).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "موقعیت" })).queryByText(/کش‌بک/)).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "تنظیمات" }));
+    expect(await screen.findByRole("dialog", { name: "تنظیمات کش‌بک اقامتگاه" })).toBeTruthy();
     expect(api.request).toHaveBeenCalledWith(`${path}?currency=IRR`);
   });
 
@@ -97,6 +114,13 @@ describe("Admin Property Cashback override", () => {
     render(<AdminPropertyEditPage />);
     expect(screen.queryByRole("heading", { name: "کش‌بک این اقامتگاه" })).toBeNull();
     expect(api.request).not.toHaveBeenCalled();
+  });
+
+  it("does not pass Cashback UI or issue its request from the Owner edit route", () => {
+    render(<OwnerPropertyEditPage />);
+    expect(screen.queryByRole("heading", { name: "کش‌بک این اقامتگاه" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "تنظیمات کش‌بک اقامتگاه" })).toBeNull();
+    expect(api.request.mock.calls.some(([url]) => String(url).includes("/cashback"))).toBe(false);
   });
 
   it("distinguishes inherited global policy from explicit disabled state", async () => {
@@ -165,6 +189,8 @@ describe("Admin Property Cashback override", () => {
       throw new Error(url);
     });
     render(<PropertyCashbackSettings propertyId={17} />);
+    await screen.findByText("وضعیت: تنظیم اختصاصی فعال");
+    fireEvent.click(screen.getByRole("button", { name: "تنظیمات" }));
     await screen.findByRole("spinbutton", { name: /درصد کش‌بک/ });
     save();
     await waitFor(() => expect(gets).toBe(2));
@@ -173,7 +199,30 @@ describe("Admin Property Cashback override", () => {
       percentageRate: 10, spendUnitAmount: null, rewardAmount: null,
       maxCashbackPerReservation: 100000, expiryDays: 90,
     });
-    expect((screen.getByRole("spinbutton", { name: /درصد کش‌بک/ }) as HTMLInputElement).value).toBe("12");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "تنظیمات" }));
+    expect((await screen.findByRole("spinbutton", { name: /درصد کش‌بک/ }) as HTMLInputElement).value).toBe("12");
+  });
+
+  it("closes the editor and offers retry when a saved policy cannot be refetched", async () => {
+    let gets = 0;
+    api.request.mockImplementation(async (url: string) => {
+      if (url === `${path}?currency=IRR`) {
+        if (++gets === 1) return override;
+        throw new Error("Unavailable");
+      }
+      if (url === path) return override;
+      throw new Error(url);
+    });
+    render(<PropertyCashbackSettings propertyId={17} />);
+    await screen.findByText("وضعیت: تنظیم اختصاصی فعال");
+    fireEvent.click(screen.getByRole("button", { name: "تنظیمات" }));
+    await screen.findByRole("spinbutton", { name: /درصد کش‌بک/ });
+    save();
+    await waitFor(() => expect(notifications.warning).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByRole("button", { name: "تلاش دوباره" })).toBeTruthy();
+    expect(screen.queryByText("وضعیت: تنظیم اختصاصی فعال")).toBeNull();
   });
 
   it("switches to FixedPerUnit and omits the stale Percentage field", async () => {
@@ -181,8 +230,8 @@ describe("Admin Property Cashback override", () => {
     fireEvent.change(screen.getByRole("combobox", { name: /شیوه محاسبه/ }),
       { target: { value: "FixedPerUnit" } });
     expect(screen.queryByRole("spinbutton", { name: /درصد کش‌بک/ })).toBeNull();
-    input(/به‌ازای هر مبلغ/, "1000000");
-    input(/مقدار کش‌بک/, "100000");
+    input(/مبلغ هر واحد خرید/, "1000000");
+    input(/مبلغ کش‌بک هر واحد/, "100000");
     save();
     await waitFor(() => expect(put()).toBeTruthy());
     expect(JSON.parse(put()?.[1].body)).toEqual({
@@ -196,8 +245,8 @@ describe("Admin Property Cashback override", () => {
     await load();
     const mode = screen.getByRole("combobox", { name: /شیوه محاسبه/ });
     fireEvent.change(mode, { target: { value: "FixedPerUnit" } });
-    input(/به‌ازای هر مبلغ/, "1000000");
-    input(/مقدار کش‌بک/, "100000");
+    input(/مبلغ هر واحد خرید/, "1000000");
+    input(/مبلغ کش‌بک هر واحد/, "100000");
     fireEvent.change(mode, { target: { value: "Percentage" } });
     input(/درصد کش‌بک/, "12");
     save();
@@ -208,23 +257,25 @@ describe("Admin Property Cashback override", () => {
     });
   });
 
-  it("loads another currency and never displays old settings after failed load", async () => {
+  it("keeps IRR internal without an editable currency field", async () => {
     await load();
-    api.request.mockImplementation(async (url: string) => {
-      if (url === `${path}?currency=USD`) throw new Error("Unavailable");
-      return override;
-    });
-    fireEvent.change(screen.getByRole("textbox", { name: "کد ارز" }), { target: { value: "usd" } });
-    await waitFor(() => expect(api.request).toHaveBeenCalledWith(`${path}?currency=USD`));
-    await screen.findByRole("button", { name: "تلاش دوباره" });
-    expect(screen.queryByRole("combobox", { name: /رفتار کش‌بک/ })).toBeNull();
-    api.request.mockImplementation(async (url: string) => url === `${path}?currency=USD`
-      ? { ...disabled, effectivePolicy: { ...disabled.effectivePolicy, currency: "USD" } } : override);
-    fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
-    await waitFor(() => expect((screen.getByRole("combobox", { name: /رفتار کش‌بک/ }) as HTMLSelectElement).value).toBe("Disabled"));
+    expect(screen.queryByRole("textbox", { name: "کد ارز" })).toBeNull();
+    expect(api.request).toHaveBeenCalledWith(`${path}?currency=IRR`);
     save();
     await waitFor(() => expect(put()).toBeTruthy());
-    expect(JSON.parse(put()?.[1].body)).toMatchObject({ currency: "USD", state: "Disabled" });
+    expect(JSON.parse(put()?.[1].body)).toMatchObject({ currency: "IRR", state: "EnabledOverride" });
+  });
+
+  it("does not submit the surrounding Property wizard form from the dialog", async () => {
+    const submitWizard = vi.fn((event: React.FormEvent) => event.preventDefault());
+    mockResponse();
+    render(<form onSubmit={submitWizard}><PropertyCashbackSettings propertyId={17} /></form>);
+    await screen.findByText("وضعیت: تنظیم اختصاصی فعال");
+    fireEvent.click(screen.getByRole("button", { name: "تنظیمات" }));
+    await screen.findByRole("spinbutton", { name: /درصد کش‌بک/ });
+    save();
+    await waitFor(() => expect(put()).toBeTruthy());
+    expect(submitWizard).not.toHaveBeenCalled();
   });
 
   it("prevents duplicate saves while PUT is pending", async () => {

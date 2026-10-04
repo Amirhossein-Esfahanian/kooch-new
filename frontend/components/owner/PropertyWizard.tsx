@@ -1,7 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import {
+  FormEvent,
+  type ReactNode,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
@@ -195,6 +202,7 @@ interface PropertyWizardProps {
   mode: "create" | "edit";
   propertyId?: number;
   isAdmin?: boolean;
+  adminCashbackSettings?: ReactNode;
   onDone?: (property: PropertyResponse) => void;
 }
 
@@ -240,6 +248,7 @@ export function PropertyWizard({
   mode,
   propertyId,
   isAdmin = false,
+  adminCashbackSettings,
   onDone,
 }: PropertyWizardProps) {
   const router = useRouter();
@@ -682,6 +691,15 @@ export function PropertyWizard({
     setData((current) => ({ ...current, [key]: value }));
   }
 
+  function updateLocationCoordinates(next: PropertyCoordinates | null) {
+    setEditCoordinates(next);
+    setData((current) => ({
+      ...current,
+      latitude: next ? String(next.latitude) : "",
+      longitude: next ? String(next.longitude) : "",
+    }));
+  }
+
   function propertyPayload(description = data.propertyDescription.trim()) {
     const payload = {
       destinationId: resolveDestinationId(data.city),
@@ -712,7 +730,9 @@ export function PropertyWizard({
       extraGuestPrice:
         data.extraGuestPrice === "" ? null : Number(data.extraGuestPrice),
       hasSeparateForeignPricing: data.hasSeparateForeignPricing,
-      ...(isAdmin ? { showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers } : {}),
+      ...(isAdmin
+        ? { showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers }
+        : {}),
       totalAreaM2: data.totalArea === "" ? null : Number(data.totalArea),
       landAreaM2: data.landArea === "" ? null : Number(data.landArea),
       floorsCount: data.floors === "" ? null : Number(data.floors),
@@ -956,7 +976,11 @@ export function PropertyWizard({
     if (step === 6) await saveNearbyPlaces(saved.id);
     if (step === 7)
       saved = await updatePropertySection("rules", {
-        ...(isAdmin ? { showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers } : {}),
+        ...(isAdmin
+          ? {
+              showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers,
+            }
+          : {}),
         checkInTime: data.checkInTime || null,
         checkOutTime: data.checkOutTime || null,
         breakfastOption: data.breakfastOption,
@@ -1228,41 +1252,12 @@ export function PropertyWizard({
                   value={data.address}
                 />
               </label>
-              {mode === "edit" ? (
-                <div className="min-w-0 md:col-span-2">
-                  <PropertyLocationPicker
-                    onChange={setEditCoordinates}
-                    value={editCoordinates}
-                  />
-                </div>
-              ) : (
-                <>
-                  <label className="grid gap-1 text-sm font-bold">
-                    عرض جغرافیایی
-                    <input
-                      className={inputClass}
-                      dir="ltr"
-                      onChange={(event) =>
-                        update("latitude", event.target.value)
-                      }
-                      type="number"
-                      value={data.latitude}
-                    />
-                  </label>
-                  <label className="grid gap-1 text-sm font-bold">
-                    طول جغرافیایی
-                    <input
-                      className={inputClass}
-                      dir="ltr"
-                      onChange={(event) =>
-                        update("longitude", event.target.value)
-                      }
-                      type="number"
-                      value={data.longitude}
-                    />
-                  </label>
-                </>
-              )}
+              <div className="min-w-0 md:col-span-2">
+                <PropertyLocationPicker
+                  onChange={updateLocationCoordinates}
+                  value={editCoordinates}
+                />
+              </div>
             </div>
             <section
               aria-labelledby="property-settings-title"
@@ -1664,13 +1659,22 @@ export function PropertyWizard({
                     aria-describedby="guest-phone-visibility-help"
                     checked={data.showGuestPhoneToPropertyUsers}
                     className="h-4 w-4 accent-[var(--theme-primary)]"
-                    onChange={(event) => update("showGuestPhoneToPropertyUsers", event.target.checked)}
+                    onChange={(event) =>
+                      update(
+                        "showGuestPhoneToPropertyUsers",
+                        event.target.checked,
+                      )
+                    }
                     type="checkbox"
                   />
                   نمایش شماره تماس مهمان به اقامتگاه
                 </label>
-                <p className="text-sm text-muted-foreground" id="guest-phone-visibility-help">
-                  در صورت فعال بودن، شماره تماس مهمان در اطلاعات رزرو و ووچر اقامتگاه نمایش داده می‌شود.
+                <p
+                  className="text-sm text-muted-foreground"
+                  id="guest-phone-visibility-help"
+                >
+                  در صورت فعال بودن، شماره تماس مهمان در اطلاعات رزرو و ووچر
+                  اقامتگاه نمایش داده می‌شود.
                 </p>
               </div>
             )}
@@ -1732,6 +1736,11 @@ export function PropertyWizard({
                 </label>
               )}
             </div>
+            {isAdmin && mode === "edit" && adminCashbackSettings && (
+              <div className="border-t border-border pt-4">
+                {adminCashbackSettings}
+              </div>
+            )}
           </section>
         )}
 

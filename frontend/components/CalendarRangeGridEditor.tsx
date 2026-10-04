@@ -253,8 +253,8 @@ export function CalendarSelectionEditor({
   const priceInputId = useId();
   if (selectedCount <= 0) return null;
 
-  const writtenPriceValue = Number.isSafeInteger(priceValue) && priceValue >= 0
-    ? priceValue : null;
+  const writtenPriceValue =
+    Number.isSafeInteger(priceValue) && priceValue >= 0 ? priceValue : null;
 
   const uniqueSelectedRoomLabels = Array.from(
     new Set(selectedRoomLabels.filter(Boolean)),
@@ -323,7 +323,7 @@ export function CalendarSelectionEditor({
 
       <div
         aria-hidden={!open}
-        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-3xl justify-center px-3 transition-all duration-150 ease-out motion-reduce:transition-opacity motion-reduce:duration-100 ${
+        className={`fixed inset-x-0 bottom-4 z-[90] mx-auto flex max-w-2xl justify-center px-3 transition-all duration-150 ease-out motion-reduce:transition-opacity motion-reduce:duration-100 ${
           open
             ? "visible translate-y-0 opacity-100"
             : "pointer-events-none invisible translate-y-3 opacity-0"
@@ -409,11 +409,17 @@ export function CalendarSelectionEditor({
                 <div className="rounded-xl border border-border/70 bg-muted/50 p-3 lg:flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
-                      <label className="text-[13px]" htmlFor={priceInputId}>نرخ اتاق</label>
+                      <label className="text-[13px]" htmlFor={priceInputId}>
+                        نرخ اتاق
+                      </label>
                       <span className="relative mt-1 block">
                         <input
                           id={priceInputId}
-                          aria-describedby={writtenPriceValue === null ? undefined : `${priceInputId}-words`}
+                          aria-describedby={
+                            writtenPriceValue === null
+                              ? undefined
+                              : `${priceInputId}-words`
+                          }
                           className={`w-full rounded-lg border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                             pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"
                           }`}
