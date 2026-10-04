@@ -36,6 +36,11 @@ const genericSettings = [
   setting(1, "pricing.currencyLabel", "تومان", "Text", "Pricing", "واحد پول"),
   setting(2, "site.name", "Kooch", "Text", "Brand", "نام سایت"),
 ];
+const cashbackPolicy = {
+  enabled: false, source: "Global", currency: "IRR", calculationMode: null,
+  percentageRate: null, spendUnitAmount: null, rewardAmount: null,
+  maxCashbackPerReservation: null, expiryDays: null,
+};
 
 describe("Admin Site Settings pricing bounds editor", () => {
   beforeEach(() => {
@@ -44,6 +49,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
     notifications.success.mockReset();
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           if (options?.method === "PUT") {
             return JSON.parse(options.body ?? "{}");
@@ -68,8 +74,8 @@ describe("Admin Site Settings pricing bounds editor", () => {
     ).toHaveProperty("value", "100");
     expect(
       screen.getByLabelText(/حداکثر قیمت روزانه/) as HTMLInputElement,
-    ).toHaveProperty("value", "1000");
-    expect(screen.getByText("محدوده قیمت روزانه")).toBeTruthy();
+    ).toHaveProperty("value", "1,000");
+    expect(screen.getByRole("heading", { name: "قیمت‌گذاری و نمایش مبلغ" })).toBeTruthy();
     expect(screen.getAllByLabelText(/حداقل قیمت روزانه/)).toHaveLength(1);
     expect(screen.getAllByLabelText(/حداکثر قیمت روزانه/)).toHaveLength(1);
     expect(screen.queryByText("pricing.minPrice")).toBeNull();
@@ -82,18 +88,16 @@ describe("Admin Site Settings pricing bounds editor", () => {
   });
 
   it.each([
-    ["250.5", "2500.75"],
-    ["50.25", "750.5"],
-  ])("saves changed decimal bounds in one paired PUT", async (min, max) => {
+    ["250", "2500"],
+    ["50", "750"],
+  ])("saves changed integer bounds in one paired PUT", async (min, max) => {
     render(<AdminSiteSettingsPage />);
 
     const minInput = await screen.findByLabelText(/حداقل قیمت روزانه/);
     const maxInput = screen.getByLabelText(/حداکثر قیمت روزانه/);
     fireEvent.change(minInput, { target: { value: min } });
     fireEvent.change(maxInput, { target: { value: max } });
-    fireEvent.click(
-      screen.getByRole("button", { name: "ذخیره محدوده قیمت" }),
-    );
+    fireEvent.click(saveButtonFor(minInput));
 
     await waitFor(() =>
       expect(ownerApi.request).toHaveBeenCalledWith(
@@ -115,7 +119,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
     expect(puts[0]?.[0]).not.toContain("pricing.minPrice");
     expect(puts[0]?.[0]).not.toContain("pricing.maxPrice");
     expect(notifications.success).toHaveBeenCalledWith(
-      "محدوده قیمت ذخیره شد",
+      "تغییرات این بخش ذخیره شد",
     );
   });
 
@@ -124,7 +128,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
 
     const minInput = await screen.findByLabelText(/حداقل قیمت روزانه/);
     const maxInput = screen.getByLabelText(/حداکثر قیمت روزانه/);
-    const save = screen.getByRole("button", { name: "ذخیره محدوده قیمت" });
+    const save = saveButtonFor(minInput);
 
     expect((save as HTMLButtonElement).disabled).toBe(true);
 
@@ -134,8 +138,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
     expect((save as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.change(minInput, { target: { value: "-1" } });
-    expect(screen.getByText("مقدار نمی‌تواند منفی باشد")).toBeTruthy();
-    expect((save as HTMLButtonElement).disabled).toBe(true);
+    expect((minInput as HTMLInputElement).value).toBe("1");
 
     fireEvent.change(minInput, { target: { value: "2000" } });
     expect(
@@ -152,6 +155,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
   it("keeps the draft and persisted pair unchanged when PUT fails", async () => {
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           if (options?.method === "PUT") throw new Error("قیمت تکراری است");
           return { minPrice: 100, maxPrice: 1000 };
@@ -163,7 +167,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
 
     const minInput = await screen.findByLabelText(/حداقل قیمت روزانه/);
     fireEvent.change(minInput, { target: { value: "200" } });
-    const save = screen.getByRole("button", { name: "ذخیره محدوده قیمت" });
+    const save = saveButtonFor(minInput);
     await waitFor(() =>
       expect((save as HTMLButtonElement).disabled).toBe(false),
     );
@@ -177,6 +181,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
   it("isolates pricing GET failure from generic setting saves", async () => {
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           throw new Error("دریافت قیمت ناموفق بود");
         }
@@ -206,7 +211,7 @@ describe("Admin Site Settings pricing bounds editor", () => {
     );
   });
 
-  it("does not let an invalid pricing draft block currencyLabel generic save", async () => {
+  it("keeps the shared pricing save disabled while pricing bounds are invalid", async () => {
     render(<AdminSiteSettingsPage />);
 
     const minInput = await screen.findByLabelText(/حداقل قیمت روزانه/);
@@ -214,25 +219,18 @@ describe("Admin Site Settings pricing bounds editor", () => {
 
     const currency = screen.getByDisplayValue("تومان");
     fireEvent.change(currency, { target: { value: "ریال آزمایشی" } });
-    fireEvent.click(saveButtonFor(currency));
-
-    await waitFor(() =>
-      expect(ownerApi.request).toHaveBeenCalledWith(
-        "/admin/site-settings/pricing.currencyLabel",
-        {
-          method: "PUT",
-          body: JSON.stringify({ value: "ریال آزمایشی" }),
-        },
-      ),
-    );
+    expect((saveButtonFor(currency) as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      ownerApi.request.mock.calls.filter(([, options]) => options?.method === "PUT"),
+    ).toHaveLength(0);
   });
 });
 
 function saveButtonFor(input: HTMLElement) {
-  const settingCard = input.closest("div.grid.gap-4");
-  expect(settingCard).toBeTruthy();
-  return within(settingCard as HTMLElement).getByRole("button", {
-    name: "ذخیره",
+  const section = input.closest("section");
+  expect(section).toBeTruthy();
+  return within(section as HTMLElement).getByRole("button", {
+    name: "ذخیره تغییرات",
   });
 }
 

@@ -49,6 +49,11 @@ const standardSettings = [
   setting(19, "ReferralCommissionPercent", "3", "Number", "Reservation", "درصد کمیسیون معرفی"),
   setting(20, "CommissionType3Percent", "2", "Number", "Reservation", "درصد کمیسیون نوع سوم"),
 ];
+const cashbackPolicy = {
+  enabled: false, source: "Global", currency: "IRR", calculationMode: null,
+  percentageRate: null, spendUnitAmount: null, rewardAmount: null,
+  maxCashbackPerReservation: null, expiryDays: null,
+};
 
 describe("Admin Site Settings information architecture", () => {
   afterEach(() => {
@@ -61,6 +66,7 @@ describe("Admin Site Settings information architecture", () => {
     notifications.success.mockReset();
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           return { minPrice: 100, maxPrice: 1000 };
         }
@@ -238,6 +244,8 @@ describe("Admin Site Settings information architecture", () => {
     scrollTo(446);
     expectActive(1);
     scrollTo(747);
+    expectActive(1);
+    fireEvent.wheel(root);
     expectActive(2);
 
     fireEvent.click(links[5]);
@@ -246,6 +254,8 @@ describe("Admin Site Settings information architecture", () => {
       expectActive(5);
     }
     scrollTo(1346);
+    expectActive(5);
+    fireEvent.wheel(root);
     expectActive(4);
 
     fireEvent.click(links[0]);
@@ -254,6 +264,8 @@ describe("Admin Site Settings information architecture", () => {
       expectActive(0);
     }
     scrollTo(447);
+    expectActive(0);
+    fireEvent.pointerDown(root);
     expectActive(1);
 
     fireEvent.click(links[5]);
@@ -264,6 +276,8 @@ describe("Admin Site Settings information architecture", () => {
     scrollTo(1046);
     expectActive(3);
     scrollTo(1347);
+    expectActive(3);
+    fireEvent.wheel(root);
     expectActive(4);
 
     fireEvent.click(links[0]);
@@ -279,6 +293,8 @@ describe("Admin Site Settings information architecture", () => {
     scrollTo(746);
     expectActive(2);
     scrollTo(1047);
+    expectActive(2);
+    fireEvent.wheel(root);
     expectActive(3);
 
     Object.defineProperty(root, "scrollHeight", { configurable: true, value: 2000 });
@@ -286,7 +302,9 @@ describe("Admin Site Settings information architecture", () => {
     scrollTo(1400);
     expectActive(5);
     scrollTo(1300);
-    expectActive(3);
+    expectActive(5);
+    fireEvent.wheel(root);
+    expectActive(4);
   });
 
   it("places exact known settings in their user-facing sections", async () => {
@@ -306,7 +324,7 @@ describe("Admin Site Settings information architecture", () => {
     expect(within(images).getByText("تبدیل WebP")).toBeTruthy();
 
     const pricing = section("pricing-and-currency");
-    expect(within(pricing).getByText("محدوده قیمت روزانه")).toBeTruthy();
+    expect(within(pricing).getByRole("heading", { name: "قیمت‌گذاری و نمایش مبلغ" })).toBeTruthy();
     expect(within(pricing).getByText("واحد پول")).toBeTruthy();
 
     const seo = section("seo");
@@ -340,7 +358,7 @@ describe("Admin Site Settings information architecture", () => {
     fireEvent.change(within(commissions).getByDisplayValue("5"), {
       target: { value: "6" },
     });
-    fireEvent.click(within(commissions).getAllByRole("button", { name: "ذخیره" })[0]);
+    fireEvent.click(within(commissions).getAllByRole("button", { name: "ذخیره تغییرات" })[0]);
 
     await waitFor(() =>
       expect(ownerApi.request).toHaveBeenCalledWith(
@@ -352,6 +370,7 @@ describe("Admin Site Settings information architecture", () => {
 
   it("keeps an unknown generic setting visible in the fallback section", async () => {
     ownerApi.request.mockImplementation(async (path: string) => {
+      if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
       if (path === "/admin/site-settings/pricing-bounds") {
         return { minPrice: 100, maxPrice: 1000 };
       }

@@ -58,6 +58,17 @@ describe("Site Settings persisted image deletion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/admin/cashback/settings?currency=IRR")
+        return {
+          enabled: false,
+          calculationMode: "Percentage",
+          percentage: null,
+          spendUnitAmount: null,
+          rewardAmount: null,
+          maxCashbackPerReservation: null,
+          expiryDays: null,
+          currency: "IRR",
+        };
       if (path.endsWith("pricing-bounds"))
         return { minPrice: 0, maxPrice: 1000000 };
       if (init?.method === "DELETE")
@@ -89,7 +100,7 @@ describe("Site Settings persisted image deletion", () => {
           method: "DELETE",
         }),
       );
-      await screen.findByText("Add photo");
+      await screen.findByText("افزودن عکس");
       expect(screen.getAllByRole("button", { name: "مشاهده" })).toHaveLength(1);
       expect(
         document.querySelector(`img[src="${settings[index].value}"]`),

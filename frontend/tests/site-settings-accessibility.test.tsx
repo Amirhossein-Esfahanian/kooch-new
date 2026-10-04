@@ -88,6 +88,11 @@ const genericSettings = [
     "یک تنظیم آزمایشی آینده",
   ),
 ];
+const cashbackPolicy = {
+  enabled: false, source: "Global", currency: "IRR", calculationMode: null,
+  percentageRate: null, spendUnitAmount: null, rewardAmount: null,
+  maxCashbackPerReservation: null, expiryDays: null,
+};
 
 describe("Admin Site Settings generic field accessibility", () => {
   beforeEach(() => {
@@ -96,6 +101,7 @@ describe("Admin Site Settings generic field accessibility", () => {
     notifications.success.mockReset();
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           return { minPrice: 100, maxPrice: 1000 };
         }
@@ -182,6 +188,7 @@ describe("Admin Site Settings generic field accessibility", () => {
   it("applies the same semantics in fallback and preserves server-error feedback", async () => {
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           return { minPrice: 100, maxPrice: 1000 };
         }
@@ -212,10 +219,10 @@ describe("Admin Site Settings generic field accessibility", () => {
 });
 
 function saveButtonFor(control: HTMLElement) {
-  const settingCard = control.closest("div.grid.gap-4");
-  expect(settingCard).toBeTruthy();
-  return within(settingCard as HTMLElement).getByRole("button", {
-    name: "ذخیره",
+  const section = control.closest("section");
+  expect(section).toBeTruthy();
+  return within(section as HTMLElement).getByRole("button", {
+    name: "ذخیره تغییرات",
   });
 }
 

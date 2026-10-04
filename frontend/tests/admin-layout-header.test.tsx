@@ -2,7 +2,6 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import AdminCashbackPage from "@/app/admin/cashback/page";
 
 const auth = vi.hoisted(() => ({
   current: {
@@ -16,9 +15,6 @@ const auth = vi.hoisted(() => ({
 }));
 
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
-const cashbackApi = vi.hoisted(() => ({ request: vi.fn() }));
-
-vi.mock("@/lib/owner-api", () => ({ apiRequest: cashbackApi.request }));
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/users",
@@ -36,7 +32,6 @@ vi.mock("@/components/KoochUserMenu", () => ({
 
 beforeEach(() => {
   navigation.replace.mockReset();
-  cashbackApi.request.mockReset();
   auth.current = {
     authenticated: true,
     loading: false,
@@ -201,10 +196,11 @@ describe("Admin header layout", () => {
     expect(screen.getByTestId("site-settings-content")).toBeTruthy();
   });
 
-  it("shows Global Cashback navigation only with the existing ManageSettings permission", () => {
+  it("keeps Site Settings permission-gated without a standalone Cashback destination", () => {
     const { rerender } = render(<AdminLayout>محتوا</AdminLayout>);
-    expect(screen.getByRole("link", { name: "تنظیمات کش‌بک" }).getAttribute("href"))
-      .toBe("/admin/cashback");
+    expect(screen.getByRole("link", { name: "تنظیمات سایت" }).getAttribute("href"))
+      .toBe("/admin/site-settings");
+    expect(screen.queryByRole("link", { name: "تنظیمات کش‌بک" })).toBeNull();
 
     auth.current.platformRole = "AdminAssistant";
     rerender(<AdminLayout>محتوا</AdminLayout>);
@@ -212,14 +208,7 @@ describe("Admin header layout", () => {
 
     auth.current.platformPermissions = ["ManageSettings"];
     rerender(<AdminLayout>محتوا</AdminLayout>);
-    expect(screen.getByRole("link", { name: "تنظیمات کش‌بک" })).toBeTruthy();
-  });
-
-  it("does not mount or fetch Global Cashback settings without ManageSettings", async () => {
-    auth.current.platformRole = "AdminAssistant";
-    render(<AdminCashbackPage />);
-    await waitFor(() => expect(navigation.replace).toHaveBeenCalledWith("/admin"));
-    expect(screen.queryByRole("heading", { name: "تنظیمات کش‌بک" })).toBeNull();
-    expect(cashbackApi.request).not.toHaveBeenCalled();
+    expect(screen.getByRole("link", { name: "تنظیمات سایت" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "تنظیمات کش‌بک" })).toBeNull();
   });
 });

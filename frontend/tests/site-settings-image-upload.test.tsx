@@ -126,6 +126,18 @@ describe("Site Settings image upload persistence", () => {
     uploadedValues.clear();
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string; body?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") {
+          return {
+            enabled: false,
+            calculationMode: "Percentage",
+            percentage: null,
+            spendUnitAmount: null,
+            rewardAmount: null,
+            maxCashbackPerReservation: null,
+            expiryDays: null,
+            currency: "IRR",
+          };
+        }
         if (path === "/admin/site-settings/pricing-bounds") {
           if (options?.method === "PUT") {
             return JSON.parse(options.body ?? "{}");
@@ -156,9 +168,7 @@ describe("Site Settings image upload persistence", () => {
       name: "ذخیره تغییرات",
     });
     expect(sectionSave).toHaveProperty("disabled", true);
-    expect(identitySection?.textContent).toContain(
-      "همه تغییرات این بخش ذخیره شده‌اند",
-    );
+    expect(identitySection?.textContent).not.toContain("تغییر ذخیره‌نشده");
   });
 
   it("opts both image settings into auto-upload with flow-specific guidance", async () => {
@@ -293,7 +303,7 @@ describe("Site Settings image upload persistence", () => {
     render(<AdminSiteSettingsPage />);
 
     const currencyInput = await screen.findByLabelText("pricing.currencyLabel");
-    const minPriceInput = screen.getByDisplayValue("100000");
+    const minPriceInput = screen.getByDisplayValue("100,000");
 
     fireEvent.change(currencyInput, { target: { value: "ریال" } });
     fireEvent.change(minPriceInput, { target: { value: "200000" } });

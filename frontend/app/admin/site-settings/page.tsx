@@ -16,6 +16,7 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { apiRequest, getToken } from "@/lib/owner-api";
 import { SharedUploader } from "@/components/SharedUploader";
+import { AdminGlobalCashbackSettings } from "@/components/admin/AdminGlobalCashbackSettings";
 
 type SiteSettingType =
   | "Text"
@@ -1199,6 +1200,11 @@ export default function AdminSiteSettingsPage() {
       <div className={`grid gap-x-8 gap-y-7 ${desktopColumns}`}>
         {genericInventoryAvailable && items.map(renderSetting)}
         {includesPricingBounds && renderPricingBoundsFields()}
+        {id === "pricing-and-currency" && (
+          <div className="md:col-span-3">
+            <AdminGlobalCashbackSettings />
+          </div>
+        )}
       </div>
     );
   }

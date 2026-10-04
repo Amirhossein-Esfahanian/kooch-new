@@ -40,6 +40,11 @@ const siteNameSetting = setting(
   "Brand",
   "نام سایت",
 );
+const cashbackPolicy = {
+  enabled: false, source: "Global", currency: "IRR", calculationMode: null,
+  percentageRate: null, spendUnitAmount: null, rewardAmount: null,
+  maxCashbackPerReservation: null, expiryDays: null,
+};
 
 describe("Admin Site Settings loading and recovery states", () => {
   beforeEach(() => {
@@ -52,16 +57,18 @@ describe("Admin Site Settings loading and recovery states", () => {
     const genericRequest = deferred<typeof siteNameSetting[]>();
     const pricingRequest = deferred<{ minPrice: number; maxPrice: number }>();
     ownerApi.request.mockImplementation((path: string) =>
-      path === "/admin/site-settings/pricing-bounds"
-        ? pricingRequest.promise
-        : genericRequest.promise,
+      path === "/admin/cashback/settings?currency=IRR"
+        ? Promise.resolve(cashbackPolicy)
+        : path === "/admin/site-settings/pricing-bounds"
+          ? pricingRequest.promise
+          : genericRequest.promise,
     );
 
     render(<AdminSiteSettingsPage />);
 
-    expect(screen.getByRole("status").textContent).toContain(
-      "در حال بارگذاری تنظیمات",
-    );
+    expect(screen.getAllByRole("status").some((status) =>
+      status.textContent?.includes("در حال بارگذاری تنظیمات"),
+    )).toBe(true);
     expect(screen.queryByLabelText("نام سایت")).toBeNull();
     expect(screen.queryByText("دریافت تنظیمات سایت انجام نشد")).toBeNull();
   });
@@ -70,6 +77,9 @@ describe("Admin Site Settings loading and recovery states", () => {
     const retryRequest = deferred<typeof siteNameSetting[]>();
     let genericGetCount = 0;
     ownerApi.request.mockImplementation((path: string) => {
+      if (path === "/admin/cashback/settings?currency=IRR") {
+        return Promise.resolve(cashbackPolicy);
+      }
       if (path === "/admin/site-settings/pricing-bounds") {
         return Promise.resolve({ minPrice: 100, maxPrice: 1000 });
       }
@@ -92,7 +102,11 @@ describe("Admin Site Settings loading and recovery states", () => {
     fireEvent.click(retry);
     fireEvent.click(retry);
     expect(genericGetCount).toBe(2);
-    expect(screen.getByRole("status")).toBeTruthy();
+    expect(
+      screen.getAllByRole("status").some((status) =>
+        status.textContent?.includes("در حال بارگذاری تنظیمات"),
+      ),
+    ).toBe(true);
 
     retryRequest.resolve([siteNameSetting]);
     const siteName = await screen.findByLabelText("نام سایت");
@@ -103,6 +117,9 @@ describe("Admin Site Settings loading and recovery states", () => {
   it("restores the recoverable error when retry also fails", async () => {
     let genericGetCount = 0;
     ownerApi.request.mockImplementation((path: string) => {
+      if (path === "/admin/cashback/settings?currency=IRR") {
+        return Promise.resolve(cashbackPolicy);
+      }
       if (path === "/admin/site-settings/pricing-bounds") {
         return Promise.resolve({ minPrice: 100, maxPrice: 1000 });
       }
@@ -125,9 +142,11 @@ describe("Admin Site Settings loading and recovery states", () => {
 
   it("keeps usable generic settings visible when Pricing Bounds fails", async () => {
     ownerApi.request.mockImplementation((path: string) =>
-      path === "/admin/site-settings/pricing-bounds"
-        ? Promise.reject(new Error("محدوده قیمت در دسترس نیست"))
-        : Promise.resolve([siteNameSetting]),
+      path === "/admin/cashback/settings?currency=IRR"
+        ? Promise.resolve(cashbackPolicy)
+        : path === "/admin/site-settings/pricing-bounds"
+          ? Promise.reject(new Error("محدوده قیمت در دسترس نیست"))
+          : Promise.resolve([siteNameSetting]),
     );
 
     render(<AdminSiteSettingsPage />);
@@ -139,9 +158,11 @@ describe("Admin Site Settings loading and recovery states", () => {
 
   it("treats an empty generic response as empty while preserving Pricing Bounds", async () => {
     ownerApi.request.mockImplementation((path: string) =>
-      path === "/admin/site-settings/pricing-bounds"
-        ? Promise.resolve({ minPrice: 100, maxPrice: 1000 })
-        : Promise.resolve([]),
+      path === "/admin/cashback/settings?currency=IRR"
+        ? Promise.resolve(cashbackPolicy)
+        : path === "/admin/site-settings/pricing-bounds"
+          ? Promise.resolve({ minPrice: 100, maxPrice: 1000 })
+          : Promise.resolve([]),
     );
 
     render(<AdminSiteSettingsPage />);
@@ -166,6 +187,7 @@ describe("Admin Site Settings loading and recovery states", () => {
   it("renders anchors only for populated sections and keeps PUT failures local", async () => {
     ownerApi.request.mockImplementation(
       async (path: string, options?: { method?: string }) => {
+        if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
         if (path === "/admin/site-settings/pricing-bounds") {
           return { minPrice: 100, maxPrice: 1000 };
         }
@@ -217,10 +239,10 @@ function deferred<T>() {
 }
 
 function saveButtonFor(control: HTMLElement) {
-  const settingCard = control.closest("div.grid.gap-4");
-  expect(settingCard).toBeTruthy();
-  return within(settingCard as HTMLElement).getByRole("button", {
-    name: "ذخیره",
+  const section = control.closest("section");
+  expect(section).toBeTruthy();
+  return within(section as HTMLElement).getByRole("button", {
+    name: "ذخیره تغییرات",
   }) as HTMLButtonElement;
 }
 
