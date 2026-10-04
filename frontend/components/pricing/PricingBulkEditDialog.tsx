@@ -1,12 +1,13 @@
 "use client";
 
-import { ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochMultiSelect } from "@/components/KoochFormControls";
+import { KoochAmountInWords } from "@/components/KoochAmountInWords";
 import { KoochWeekdaySelector } from "@/components/KoochWeekdaySelector";
 import {
   formatLocalIsoDate,
@@ -15,6 +16,7 @@ import {
   isSameOrAfterLocalIsoDate,
 } from "@/lib/date-utils";
 import { defaultCurrencyLabel } from "@/lib/currency";
+import { numberToPersianWords } from "@/lib/number-to-persian-words";
 
 type RoomId = number | string;
 
@@ -274,6 +276,7 @@ export function PricingBulkEditDialog({
   saving = false,
   renderDateRangeFields,
 }: PricingBulkEditDialogProps) {
+  const priceInputId = useId();
   const [mounted, setMounted] = useState(false);
   const isDarkMode = usePortalDarkMode();
   const openedRef = useRef(false);
@@ -627,10 +630,12 @@ export function PricingBulkEditDialog({
               </div>
 
               {selectedRooms.length > 1 && (
-                <label className="mb-3 grid gap-2 text-sm font-bold text-foreground">
-                  <span>قیمت همه اتاق‌ها</span>
+                <div className="mb-3 grid gap-2 text-sm font-bold text-foreground">
+                  <label htmlFor={`${priceInputId}-all`}>قیمت همه اتاق‌ها</label>
                   <span className="relative block">
                     <input
+                      id={`${priceInputId}-all`}
+                      aria-describedby={numberToPersianWords(allRoomsPriceInput) === null ? undefined : `${priceInputId}-all-words`}
                       className="h-9 w-full rounded-lg border border-border bg-background text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                       inputMode="numeric"
                       onChange={(event) =>
@@ -652,22 +657,29 @@ export function PricingBulkEditDialog({
                       </span>
                     )}
                   </span>
-                </label>
+                  <KoochAmountInWords
+                    id={`${priceInputId}-all-words`}
+                    value={allRoomsPriceInput}
+                    currencyLabel={pricingCurrencyLabel}
+                  />
+                </div>
               )}
 
               <div className="grid gap-3 md:grid-cols-2">
-                {selectedRooms.map((room) => (
-                  <label
+                {selectedRooms.map((room) => {
+                  const roomId = `${priceInputId}-${roomKey(room.id)}`;
+                  const roomValue = roomPriceInputs[roomKey(room.id)] ?? "";
+                  return <div
                     className="grid gap-2 text-sm font-bold text-foreground"
                     key={roomKey(room.id)}
                   >
-                    <span>
-                      {selectedRooms.length === 1
-                        ? `اتاق ${room.label}`
-                        : room.label}
-                    </span>
+                    <label htmlFor={roomId}>
+                      {selectedRooms.length === 1 ? `اتاق ${room.label}` : room.label}
+                    </label>
                     <span className="relative block">
                       <input
+                        id={roomId}
+                        aria-describedby={numberToPersianWords(roomValue) === null ? undefined : `${roomId}-words`}
                         className="h-9 w-full rounded-lg border border-border bg-background text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring"
                         inputMode="numeric"
                         onChange={(event) =>
@@ -675,7 +687,7 @@ export function PricingBulkEditDialog({
                         }
                         placeholder="قیمت"
                         type="text"
-                        value={roomPriceInputs[roomKey(room.id)] ?? ""}
+                        value={roomValue}
                         style={{
                           paddingLeft: pricingCurrencyLabel
                             ? "4.25rem"
@@ -689,8 +701,13 @@ export function PricingBulkEditDialog({
                         </span>
                       )}
                     </span>
-                  </label>
-                ))}
+                    <KoochAmountInWords
+                      id={`${roomId}-words`}
+                      value={roomValue}
+                      currencyLabel={pricingCurrencyLabel}
+                    />
+                  </div>;
+                })}
               </div>
             </div>
           )}

@@ -4,6 +4,7 @@ import {
   PointerEvent,
   ReactNode,
   useEffect,
+  useId,
   useMemo,
   useRef,
   useState,
@@ -11,6 +12,7 @@ import {
 import { AvailabilityStatus } from "@/lib/owner-api";
 import { toast } from "sonner";
 import { QuickPriceSelector } from "@/components/pricing/QuickPriceSelector";
+import { KoochAmountInWords } from "@/components/KoochAmountInWords";
 import { KoochButton } from "./KoochButton";
 import { KoochCard } from "./KoochCard";
 
@@ -248,7 +250,11 @@ export function CalendarSelectionEditor({
   minValue = 0,
   maxValue,
 }: CalendarSelectionEditorProps) {
+  const priceInputId = useId();
   if (selectedCount <= 0) return null;
+
+  const writtenPriceValue = Number.isSafeInteger(priceValue) && priceValue >= 0
+    ? priceValue : null;
 
   const uniqueSelectedRoomLabels = Array.from(
     new Set(selectedRoomLabels.filter(Boolean)),
@@ -404,10 +410,12 @@ export function CalendarSelectionEditor({
                       </p>
                     </div>
 
-                    <label className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
-                      نرخ اتاق
+                    <div className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
+                      <label htmlFor={priceInputId}>نرخ اتاق</label>
                       <span className="relative mt-1 block">
                         <input
+                          id={priceInputId}
+                          aria-describedby={writtenPriceValue === null ? undefined : `${priceInputId}-words`}
                           className={`w-full rounded-lg border border-border bg-background py-2 text-foreground outline-none transition focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background ${
                             pricingCurrencyLabel ? "pl-16 pr-3" : "px-3"
                           }`}
@@ -432,7 +440,13 @@ export function CalendarSelectionEditor({
                           </span>
                         )}
                       </span>
-                    </label>
+                      <KoochAmountInWords
+                        id={`${priceInputId}-words`}
+                        value={writtenPriceValue}
+                        currencyLabel={pricingCurrencyLabel}
+                        className="mt-1"
+                      />
+                    </div>
                   </div>
                 </div>
               ) : (
