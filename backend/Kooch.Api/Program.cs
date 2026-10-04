@@ -94,6 +94,7 @@ builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
 builder.Services.AddScoped<IPropertySettingService, PropertySettingService>();
 builder.Services.AddScoped<INearbyPlaceService, NearbyPlaceService>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
+builder.Services.AddScoped<IRatePlanService, RatePlanService>();
 builder.Services.AddScoped<IRoomService, RoomService>();
 builder.Services.AddScoped<IAvailabilityService, AvailabilityService>();
 builder.Services.AddScoped<IRoomDailyPriceService, RoomDailyPriceService>();

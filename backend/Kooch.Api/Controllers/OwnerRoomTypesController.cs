@@ -8,7 +8,7 @@ namespace Kooch.Api.Controllers;
 [ApiController]
 [OwnerAuthorize]
 [Route("api/owner")]
-public class OwnerRoomTypesController(IRoomTypeService roomTypeService) : AuthenticatedControllerBase
+public class OwnerRoomTypesController(IRoomTypeService roomTypeService, IRatePlanService ratePlanService) : AuthenticatedControllerBase
 {
     [HttpPost("properties/{propertyId:int}/room-types")]
     [ProducesResponseType<RoomTypeResponse>(StatusCodes.Status201Created)]
@@ -53,5 +53,55 @@ public class OwnerRoomTypesController(IRoomTypeService roomTypeService) : Authen
         var user = GetCurrentUser();
         await roomTypeService.DeleteRoomTypeAsync(user.UserId, user.Role, id, cancellationToken);
         return NoContent();
+    }
+
+    [HttpGet("properties/{propertyId:int}/room-types/{roomTypeId:int}/rate-plans")]
+    public async Task<ActionResult<IReadOnlyList<RatePlanResponse>>> ListRatePlans(
+        int propertyId, int roomTypeId, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await ratePlanService.ListAsync(user.UserId, user.Role, propertyId, roomTypeId, cancellationToken));
+    }
+
+    [HttpGet("properties/{propertyId:int}/room-types/{roomTypeId:int}/rate-plans/{ratePlanId:int}")]
+    public async Task<ActionResult<RatePlanResponse>> GetRatePlan(
+        int propertyId, int roomTypeId, int ratePlanId, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await ratePlanService.GetAsync(user.UserId, user.Role, propertyId, roomTypeId, ratePlanId, cancellationToken));
+    }
+
+    [HttpPost("properties/{propertyId:int}/room-types/{roomTypeId:int}/rate-plans")]
+    public async Task<ActionResult<RatePlanResponse>> CreateRatePlan(
+        int propertyId, int roomTypeId, CreateRatePlanRequest request, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        var plan = await ratePlanService.CreateAsync(user.UserId, user.Role, propertyId, roomTypeId, request, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, plan);
+    }
+
+    [HttpPut("properties/{propertyId:int}/room-types/{roomTypeId:int}/rate-plans/{ratePlanId:int}")]
+    public async Task<ActionResult<RatePlanResponse>> UpdateRatePlan(
+        int propertyId, int roomTypeId, int ratePlanId, UpdateRatePlanRequest request, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await ratePlanService.UpdateAsync(user.UserId, user.Role, propertyId, roomTypeId, ratePlanId, request, cancellationToken));
+    }
+
+    [HttpDelete("properties/{propertyId:int}/room-types/{roomTypeId:int}/rate-plans/{ratePlanId:int}")]
+    public async Task<IActionResult> DeleteRatePlan(
+        int propertyId, int roomTypeId, int ratePlanId, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        await ratePlanService.DeleteAsync(user.UserId, user.Role, propertyId, roomTypeId, ratePlanId, cancellationToken);
+        return NoContent();
+    }
+
+    [HttpGet("properties/{propertyId:int}/meal-plans")]
+    public async Task<ActionResult<IReadOnlyList<MealPlanOptionResponse>>> ListMealPlans(
+        int propertyId, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await ratePlanService.ListMealPlansAsync(user.UserId, user.Role, propertyId, cancellationToken));
     }
 }
