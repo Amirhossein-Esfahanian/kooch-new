@@ -38,7 +38,7 @@ export function QuickPriceSelector({
         <div className="flex flex-wrap gap-2">
           {visiblePrices.map((price) => (
             <KoochButton
-              className="min-h-8 rounded-full px-3 py-1 text-xs font-bold"
+              className="!h-7 !min-h-2 !px-2 !py-1 text-xs font-bold leading-none"
               key={price}
               onClick={() => onSelect(price)}
               size="sm"

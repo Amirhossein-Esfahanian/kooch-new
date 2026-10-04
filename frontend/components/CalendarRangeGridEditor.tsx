@@ -346,7 +346,11 @@ export function CalendarSelectionEditor({
 
               <div className="min-w-0">
                 <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="text-lg font-bold text-foreground">
+                  <h3
+                    className={`font-bold text-foreground ${
+                      mode === "pricing" ? "text-base" : "text-lg"
+                    }`}
+                  >
                     {mode === "inventory" ? "ویرایش ظرفیت" : "ویرایش قیمت"}
                   </h3>
 
@@ -376,7 +380,13 @@ export function CalendarSelectionEditor({
                   )}
                 </div>
 
-                <p className="mt-1 text-sm font-semibold text-muted-foreground">
+                <p
+                  className={`mt-1 text-muted-foreground ${
+                    mode === "pricing"
+                      ? "text-xs font-medium"
+                      : "text-sm font-semibold"
+                  }`}
+                >
                   {selectionSummary}
                 </p>
               </div>
@@ -386,32 +396,20 @@ export function CalendarSelectionEditor({
           <div
             className={`mt-4 grid gap-3 ${
               mode === "pricing"
-                ? "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-start"
+                ? "lg:grid-cols-[minmax(0,1fr)_18rem] lg:items-stretch"
                 : ""
             }`}
           >
-            <div className="min-w-0 space-y-3">
+            <div
+              className={`min-w-0 space-y-3 ${
+                mode === "pricing" ? "lg:flex lg:flex-col" : ""
+              }`}
+            >
               {mode === "pricing" ? (
-                <div className="rounded-xl border border-border/70 bg-muted/50 p-3">
+                <div className="rounded-xl border border-border/70 bg-muted/50 p-3 lg:flex-1">
                   <div className="flex flex-wrap items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-xs font-semibold text-muted-foreground">
-                        قیمت انتخاب‌شده
-                      </p>
-
-                      <p className="mt-1 text-sm font-bold text-foreground">
-                        {mixedPricingValue
-                          ? "مقادیر انتخاب‌شده متفاوت هستند"
-                          : Number.isFinite(priceValue)
-                            ? `${formatPrice(priceValue)} ${
-                                pricingCurrencyLabel || ""
-                              }`
-                            : "قیمت را وارد کنید"}
-                      </p>
-                    </div>
-
                     <div className="min-w-[9rem] flex-1 text-sm font-bold text-foreground sm:flex-none">
-                      <label htmlFor={priceInputId}>نرخ اتاق</label>
+                      <label className="text-[13px]" htmlFor={priceInputId}>نرخ اتاق</label>
                       <span className="relative mt-1 block">
                         <input
                           id={priceInputId}
@@ -533,8 +531,9 @@ export function CalendarSelectionEditor({
             </div>
 
             {mode === "pricing" && (
-              <div className="w-full min-w-0 space-y-3 lg:w-[18rem]">
+              <div className="w-full min-w-0 space-y-3 lg:flex lg:w-[18rem] lg:flex-col">
                 <QuickPriceSelector
+                  className="lg:flex-1"
                   onSelect={(price) => onPriceValueChange?.(price)}
                   prices={quickPricePresets}
                 />

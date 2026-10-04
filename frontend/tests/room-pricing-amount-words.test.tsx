@@ -4,7 +4,15 @@ import { describe, expect, it, vi } from "vitest";
 import { CalendarSelectionEditor } from "@/components/CalendarRangeGridEditor";
 import { PricingBulkEditDialog } from "@/components/pricing/PricingBulkEditDialog";
 
-function CalendarPriceHarness({ onSave = vi.fn() }: { onSave?: () => void }) {
+function CalendarPriceHarness({
+  onSave = vi.fn(),
+  onPriceValueChange,
+  quickPricePresets = [],
+}: {
+  onSave?: () => void;
+  onPriceValueChange?: (price: number) => void;
+  quickPricePresets?: number[];
+}) {
   const [price, setPrice] = useState(Number.NaN);
   return <CalendarSelectionEditor
     mode="pricing"
@@ -15,9 +23,13 @@ function CalendarPriceHarness({ onSave = vi.fn() }: { onSave?: () => void }) {
     onOpenChange={vi.fn()}
     onCancel={vi.fn()}
     onSave={onSave}
-    onPriceValueChange={setPrice}
+    onPriceValueChange={(nextPrice) => {
+      setPrice(nextPrice);
+      onPriceValueChange?.(nextPrice);
+    }}
     priceValue={price}
     pricingCurrencyLabel="ریال"
+    quickPricePresets={quickPricePresets}
   />;
 }
 
@@ -40,6 +52,51 @@ describe("Room Pricing amount in words", () => {
     expect(screen.getByText("ده ریال")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
     expect(onSave).toHaveBeenCalledOnce();
+  });
+
+  it("removes the selected-price summary while keeping recent prices and input actions working", () => {
+    const onSave = vi.fn();
+    const onPriceValueChange = vi.fn();
+    const preset = 2_000_000;
+    render(
+      <CalendarPriceHarness
+        onPriceValueChange={onPriceValueChange}
+        onSave={onSave}
+        quickPricePresets={[preset]}
+      />,
+    );
+
+    expect(screen.queryByText("قیمت انتخاب‌شده")).toBeNull();
+    const input = screen.getByRole("textbox", { name: "نرخ اتاق" });
+    const recentPrice = screen.getByRole("button", {
+      name: new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(
+        preset,
+      ),
+    });
+
+    fireEvent.click(recentPrice);
+    expect(onPriceValueChange).toHaveBeenCalledWith(preset);
+    expect((input as HTMLInputElement).value).toBe(
+      new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 0 }).format(
+        preset,
+      ),
+    );
+    expect(screen.getByText("دو میلیون ریال")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "انصراف" })).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "1250000" } });
+    expect(onPriceValueChange).toHaveBeenLastCalledWith(1_250_000);
+    expect(screen.getByRole("button", { name: "ذخیره" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    expect(onSave).toHaveBeenCalledOnce();
+
+    const entryPanel = input.closest(".rounded-xl");
+    const recentPricePanel = recentPrice.closest(".rounded-lg");
+    expect(entryPanel?.classList.contains("lg:flex-1")).toBe(true);
+    expect(recentPricePanel?.classList.contains("lg:flex-1")).toBe(true);
+    expect(
+      input.closest(".mt-4.grid.gap-3")?.classList.contains("lg:items-stretch"),
+    ).toBe(true);
   });
 
   it("updates each bulk room input without changing the submitted numeric payload", async () => {
