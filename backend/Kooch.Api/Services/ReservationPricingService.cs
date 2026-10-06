@@ -37,6 +37,19 @@ public class ReservationPricingService(
                 cancellationToken)
             ?? throw new KeyNotFoundException("Room type not found.");
 
+        RatePlan? ratePlan = null;
+        if (request.RatePlanId.HasValue)
+        {
+            ratePlan = await dbContext.RatePlans.AsNoTracking()
+                .Include(plan => plan.MealPlan)
+                .SingleOrDefaultAsync(plan => plan.Id == request.RatePlanId.Value, cancellationToken)
+                ?? throw new KeyNotFoundException("Rate plan not found.");
+            if (!ratePlan.IsActive || ratePlan.RoomTypeId != request.RoomTypeId ||
+                ratePlan.PriceModifierType != PriceModifierType.FixedAmount ||
+                (ratePlan.MealPlanId.HasValue && ratePlan.MealPlan is null))
+                throw new ArgumentException("Rate plan is not available for this room type.");
+        }
+
         var nights = GetReservationNights(request.CheckInDate, request.CheckOutDate).ToList();
         var prices = await dbContext.RoomDailyPrices.AsNoTracking()
             .Where(item =>
@@ -86,10 +99,13 @@ public class ReservationPricingService(
             var basePrice = requireCompleteDailyPricing
                 ? prices[night].BasePrice
                 : prices.GetValueOrDefault(night)?.BasePrice ?? roomType.BasePrice ?? 0;
+            var effectiveRoomBase = basePrice + (ratePlan?.PriceModifierValue ?? 0);
+            if (ratePlan is not null && effectiveRoomBase <= 0)
+                throw new ArgumentException($"Rate plan produces a non-positive room price for {night:yyyy-MM-dd}.");
             var calculation = pricingService.CalculateNightPrice(
                 roomType.MaxAdults * request.RoomCount,
                 0,
-                basePrice * request.RoomCount,
+                effectiveRoomBase * request.RoomCount,
                 childPricingRuleResolver.ResolveChildPrice(basePrice, childRules),
                 effectiveRules.ExtraGuestPrice,
                 pricedAdults,
@@ -139,6 +155,8 @@ public class ReservationPricingService(
 
     private static void ValidateRequest(ReservationPricePreviewRequest request)
     {
+        if (request.RatePlanId is <= 0)
+            throw new ArgumentException("Rate plan identifier must be positive.");
         if (request.CheckInDate >= request.CheckOutDate)
         {
             throw new ArgumentException("بازه تاریخ نامعتبر است");

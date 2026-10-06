@@ -392,6 +392,8 @@ public class ReservationPricePreviewRequest : IValidatableObject
     [Range(1, int.MaxValue)]
     public int RoomTypeId { get; set; }
 
+    public int? RatePlanId { get; set; }
+
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }
 

@@ -27,6 +27,118 @@ public sealed class PublicDailyPricingTests
         Assert.Equal([120m, 180m], result.Nights.Select(night => night.BasePrice));
     }
 
+    [Theory]
+    [InlineData(-20, 260)]
+    [InlineData(0, 300)]
+    [InlineData(30, 360)]
+    public async Task FixedRatePlan_AdjustsEachDifferentNightOnce(decimal modifier, decimal expected)
+    {
+        await using var context = await CreateContextAsync(basePrice: 900);
+        AddPrice(context, CheckIn, PricingGuestType.Iranian, 120);
+        AddPrice(context, CheckIn.AddDays(1), PricingGuestType.Iranian, 180);
+        AddPlan(context, 50, 10, modifier);
+        await context.SaveChangesAsync();
+
+        var request = Request();
+        request.RatePlanId = 50;
+        var result = await CreateService(context).PreviewPublicBookingPriceAsync(request);
+
+        Assert.Equal(expected, result.BaseAmount);
+        Assert.Equal(expected, result.FinalAmount);
+        Assert.Equal([120m + modifier, 180m + modifier], result.Nights.Select(night => night.BasePrice));
+    }
+
+    [Fact]
+    public async Task FixedRatePlan_DoesNotMultiplyByGuestsOrChangeExtraGuestCharge()
+    {
+        await using var context = await CreateContextAsync(basePrice: null);
+        AddPrice(context, CheckIn, PricingGuestType.Iranian, 120);
+        AddPrice(context, CheckIn.AddDays(1), PricingGuestType.Iranian, 180);
+        AddPlan(context, 50, 10, -20);
+        var roomType = await context.RoomTypes.SingleAsync();
+        roomType.AllowExtraGuest = true;
+        roomType.MaxExtraGuests = 1;
+        (await context.Properties.SingleAsync()).ExtraGuestPrice = 15;
+        await context.SaveChangesAsync();
+
+        var request = Request();
+        request.RatePlanId = 50;
+        request.Adults = 3;
+        var result = await CreateService(context).PreviewPublicBookingPriceAsync(request);
+
+        Assert.Equal(260, result.BaseAmount);
+        Assert.Equal(30, result.ExtraGuestAmount);
+        Assert.Equal(290, result.FinalAmount);
+        Assert.Equal([15m, 15m], result.Nights.Select(night => night.ExtraGuestAmount));
+    }
+
+    [Theory]
+    [InlineData(-120)]
+    [InlineData(-121)]
+    public async Task FixedRatePlan_RejectsNonPositiveEffectiveNight(decimal modifier)
+    {
+        await using var context = await CreateContextAsync(basePrice: null);
+        AddPrice(context, CheckIn, PricingGuestType.Iranian, 120);
+        AddPrice(context, CheckIn.AddDays(1), PricingGuestType.Iranian, 180);
+        AddPlan(context, 50, 10, modifier);
+        await context.SaveChangesAsync();
+        var request = Request();
+        request.RatePlanId = 50;
+
+        var error = await Assert.ThrowsAsync<ArgumentException>(() =>
+            CreateService(context).PreviewPublicBookingPriceAsync(request));
+        Assert.Contains(CheckIn.ToString("yyyy-MM-dd"), error.Message, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task PricingBoundary_RejectsUnavailableOrIncompatibleRatePlans()
+    {
+        await using var context = await CreateContextAsync(basePrice: null);
+        AddPrice(context, CheckIn, PricingGuestType.Iranian, 120);
+        AddPrice(context, CheckIn.AddDays(1), PricingGuestType.Iranian, 180);
+        context.MealPlans.Add(new MealPlan { Id = 70, Name = "Deleted", Slug = "deleted", IsDeleted = true });
+        AddPlan(context, 50, 20, 0);
+        AddPlan(context, 51, 10, 0, isActive: false);
+        AddPlan(context, 52, 10, 0, isDeleted: true);
+        AddPlan(context, 53, 10, 0, type: PriceModifierType.Percentage);
+        AddPlan(context, 54, 10, 0, mealPlanId: 70);
+        await context.SaveChangesAsync();
+
+        foreach (var id in new[] { 50, 51, 52, 53, 54, 999 })
+        {
+            var request = Request();
+            request.RatePlanId = id;
+            if (id is 52 or 999)
+                await Assert.ThrowsAsync<KeyNotFoundException>(() => CreateService(context).PreviewPublicBookingPriceAsync(request));
+            else
+                await Assert.ThrowsAsync<ArgumentException>(() => CreateService(context).PreviewPublicBookingPriceAsync(request));
+        }
+    }
+
+    [Fact]
+    public async Task Promotion_AppliesAfterRatePlanAdjustedRoomBase()
+    {
+        await using var context = await CreateContextAsync(basePrice: null);
+        AddPrice(context, CheckIn, PricingGuestType.Iranian, 120);
+        AddPrice(context, CheckIn.AddDays(1), PricingGuestType.Iranian, 180);
+        AddPlan(context, 50, 10, 20);
+        context.Promotions.Add(new Promotion
+        {
+            Title = "Ten percent", Type = PromotionType.PercentageDiscount, Percentage = 10,
+            StartDate = CheckIn, EndDate = CheckOut, IsActive = true,
+            Weekdays = PromotionService.ToWeekdayMask(Enum.GetValues<DayOfWeek>()),
+            PromotionRoomTypes = [new PromotionRoomType { RoomTypeId = 10 }]
+        });
+        await context.SaveChangesAsync();
+        var request = Request();
+        request.RatePlanId = 50;
+
+        var result = await CreateService(context).PreviewPublicBookingPriceAsync(request);
+        Assert.Equal(340, result.BaseAmount);
+        Assert.Equal(34, result.DiscountAmount);
+        Assert.Equal(306, result.FinalAmount);
+    }
+
     [Fact]
     public async Task MissingDailyPrice_IsRejectedEvenWhenLegacyBasePriceExists()
     {
@@ -143,6 +255,16 @@ public sealed class PublicDailyPricingTests
             Date = date,
             GuestType = guestType,
             BasePrice = amount
+        });
+
+    private static void AddPlan(KoochDbContext context, int id, int roomTypeId, decimal modifier,
+        bool isActive = true, bool isDeleted = false,
+        PriceModifierType type = PriceModifierType.FixedAmount, int? mealPlanId = null) =>
+        context.RatePlans.Add(new RatePlan
+        {
+            Id = id, RoomTypeId = roomTypeId, Name = $"Plan {id}", MealPlanId = mealPlanId,
+            PriceModifierType = type, PriceModifierValue = modifier,
+            IsActive = isActive, IsDeleted = isDeleted
         });
 
     private static async Task<KoochDbContext> CreateContextAsync(decimal? basePrice)

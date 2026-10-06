@@ -93,6 +93,37 @@ public sealed class BookingSessionServiceTests
     }
 
     [Fact]
+    public async Task SelectedRatePlan_UsesAuthoritativePricingForCreatedReservation()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.RatePlans.Add(new RatePlan
+            {
+                Id = 50, RoomTypeId = 10, Name = "Without breakfast", IsActive = true,
+                PriceModifierType = PriceModifierType.FixedAmount, PriceModifierValue = -10
+            });
+            setup.RoomDailyPrices.AddRange(
+                new RoomDailyPrice { RoomTypeId = 10, Date = new DateOnly(2035, 2, 1), GuestType = PricingGuestType.Iranian, BasePrice = 100 },
+                new RoomDailyPrice { RoomTypeId = 10, Date = new DateOnly(2035, 2, 2), GuestType = PricingGuestType.Iranian, BasePrice = 120 });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService(useAuthoritativePricing: true);
+        var item = CreateAccountItem(10, 100);
+        item.RatePlanId = 50;
+        var result = await scope.Service.CreateForAccountAsync(1, CreateAccountRequest(item));
+        Assert.Equal(200, Assert.Single(result.Reservations).FinalAmount);
+
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Equal(200, saved.BaseAmount);
+        Assert.Equal(200, saved.FinalAmount);
+        Assert.Equal(50, saved.RatePlanId);
+        Assert.Equal("Without breakfast", saved.RatePlanNameSnapshot);
+        Assert.Equal(-10, saved.RatePlanPriceModifierValueSnapshot);
+    }
+
+    [Fact]
     public async Task AccountBooking_CarriesSelectedRatePlanThroughSharedCreationPath()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
@@ -177,7 +208,10 @@ public sealed class BookingSessionServiceTests
         firstItem.RatePlanId = 50;
         var first = CreateRequest(firstItem);
         first.IdempotencyKey = "same-key";
-        await scope.Service.CreateAsync(first);
+        var created = await scope.Service.CreateAsync(first);
+        var replay = await scope.Service.CreateAsync(first);
+        Assert.Equal(created.BookingSessionId, replay.BookingSessionId);
+        Assert.Equal(50, Assert.Single(replay.Reservations).RatePlanId);
 
         var changedItem = CreateItem(10, 100);
         changedItem.RatePlanId = 51;
@@ -1534,14 +1568,19 @@ public sealed class BookingSessionServiceTests
 
         public KoochDbContext CreateContext() => new(options);
 
-        public ServiceScope CreateService(TestReservationPricingService? pricing = null)
+        public ServiceScope CreateService(TestReservationPricingService? pricing = null, bool useAuthoritativePricing = false)
         {
             var context = CreateContext();
             var notificationDispatcher = new RecordingReservationNotificationDispatcher();
+            var childRules = new ChildPricingRuleResolver(context);
+            IReservationPricingService pricingService = useAuthoritativePricing
+                ? new ReservationPricingService(context, new PricingService(), childRules,
+                    new ReservationRulesResolver(context, childRules))
+                : pricing ?? new TestReservationPricingService();
             var service = new BookingSessionService(
                 context,
                 new EffectiveAvailabilityService(context),
-                pricing ?? new TestReservationPricingService(),
+                pricingService,
                 new ReservationStatusWorkflow(),
                 new ReservationNumberGenerator(context),
                 new BookingSessionCodeGenerator(context),

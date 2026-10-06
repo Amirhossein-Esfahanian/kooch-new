@@ -985,6 +985,7 @@ public sealed class BookingSessionService(
             {
                     PropertyId = request.PropertyId,
                     RoomTypeId = item.RoomTypeId,
+                    RatePlanId = item.RatePlanId,
                     CheckInDate = item.CheckInDate,
                     CheckOutDate = item.CheckOutDate,
                     Adults = item.Adults,
