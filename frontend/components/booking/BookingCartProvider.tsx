@@ -21,6 +21,7 @@ export interface BookingCartItem {
   propertySlug: string;
   bookingMode: BookingMode;
   roomTypeId: number;
+  ratePlanId: number | null;
   roomTypeName: string;
   roomId: number | null;
   roomName: string | null;
@@ -35,8 +36,21 @@ export interface BookingCartItem {
 }
 
 export interface BookingCartSelection
-  extends Omit<BookingCartItem, "id" | "roomId" | "roomName"> {
+  extends Omit<BookingCartItem, "id" | "roomId" | "roomName" | "ratePlanId"> {
+  ratePlanId?: number | null;
   quantity: number;
+}
+
+export function bookingCartOfferMatches(
+  item: Pick<BookingCartItem, "roomTypeId" | "ratePlanId">,
+  roomTypeId: number,
+  ratePlanId: number | null = null,
+) {
+  return item.roomTypeId === roomTypeId && (item.ratePlanId ?? null) === ratePlanId;
+}
+
+function normalizeBookingCartItem(item: BookingCartItem): BookingCartItem {
+  return { ...item, ratePlanId: item.ratePlanId ?? null };
 }
 
 export interface BookingCartState {
@@ -184,6 +198,7 @@ export function expandBookingCartSelection(
   const { quantity: _quantity, ...item } = selection;
   return Array.from({ length: quantity }, () => ({
     ...item,
+    ratePlanId: selection.ratePlanId ?? null,
     id: createIdentifier(),
     roomId: null,
     roomName: null,
@@ -288,7 +303,7 @@ export function addItemsToBookingCart(
     propertySlug: first.propertySlug,
     bookingMode: first.bookingMode,
     idempotencyKey: state.idempotencyKey ?? createIdentifier(),
-    items: [...state.items, ...additions],
+    items: [...state.items.map(normalizeBookingCartItem), ...additions.map(normalizeBookingCartItem)],
   };
 }
 
@@ -306,7 +321,7 @@ export function restoreBookingCart(value: string | null): StoredBookingCart | nu
       return null;
     }
     if (!parsed.items.every(isBookingCartItem)) return null;
-    const items = parsed.items;
+    const items = parsed.items.map(normalizeBookingCartItem);
     if (
       !bookingCartItemsShareContext(items) ||
       items.some(
@@ -340,6 +355,8 @@ function isBookingCartItem(value: unknown): value is BookingCartItem {
     typeof item.propertySlug === "string" &&
     (item.bookingMode === "Instant" || item.bookingMode === "OnRequest") &&
     typeof item.roomTypeId === "number" &&
+    (item.ratePlanId === undefined || item.ratePlanId === null ||
+      (Number.isInteger(item.ratePlanId) && item.ratePlanId > 0)) &&
     typeof item.roomTypeName === "string" &&
     (item.roomId === null || typeof item.roomId === "number") &&
     (item.roomName === null || typeof item.roomName === "string") &&
@@ -400,7 +417,7 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
     if (!bookingCartItemsShareContext(items)) {
       throw new Error("اطلاعات اقامت سبد رزرو یکسان نیست.");
     }
-    dispatch({ type: "replace", payload: { ...state, items } });
+    dispatch({ type: "replace", payload: { ...state, items: items.map(normalizeBookingCartItem) } });
   }, [state]);
 
   const replaceWithSelection = useCallback((selection: BookingCartSelection) => {

@@ -17,6 +17,7 @@ import {
 } from "@/components/booking/BookingCart";
 import { PublicRoomTypeCard } from "@/components/booking/PublicRoomTypeCard";
 import {
+  bookingCartOfferMatches,
   bookingCartSelectionMatchesItems,
   BookingCartProvider,
   getBookingCartStayContext,
@@ -172,6 +173,7 @@ function PropertyBookingPanelContent({
       propertySlug,
       bookingMode: option.bookingMode,
       roomTypeId: option.roomTypeId,
+      ratePlanId: null,
       roomTypeName: option.name,
       checkIn: dates.startDate,
       checkOut: dates.endDate,
@@ -190,9 +192,9 @@ function PropertyBookingPanelContent({
     addSelectionToCart(selection);
   }
 
-  function removeOneFromCart(roomTypeId: number) {
+  function removeOneFromCart(roomTypeId: number, ratePlanId: number | null = null) {
     const selectedItems = currentStayCartItems.filter(
-      (item) => item.roomTypeId === roomTypeId,
+      (item) => bookingCartOfferMatches(item, roomTypeId, ratePlanId),
     );
     const itemToRemove = selectedItems.at(-1);
     if (itemToRemove) cart.removeItem(itemToRemove.id);
@@ -369,7 +371,7 @@ function PropertyBookingPanelContent({
                 )
               : undefined;
             const selectedItems = currentStayCartItems.filter(
-              (item) => item.roomTypeId === roomType.id,
+              (item) => bookingCartOfferMatches(item, roomType.id),
             );
             const availableToAdd =
               option && dates.startDate && dates.endDate

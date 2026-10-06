@@ -103,14 +103,21 @@ export async function revalidateBookingCart(
       throw new Error("اتاق مشخص‌شده دیگر در این بازه قابل رزرو نیست.");
     }
 
+    const offer = item.ratePlanId == null
+      ? option
+      : option.ratePlans?.find((plan) => plan.ratePlanId === item.ratePlanId);
+    if (!offer) {
+      throw new Error("نرخ فروش انتخاب‌شده دیگر برای این بازه در دسترس نیست.");
+    }
     priceChanged ||=
-      option.finalAmount !== item.displayAmount ||
-      option.currency !== item.currency;
+      offer.finalAmount !== item.displayAmount ||
+      offer.currency !== item.currency;
     return {
       ...item,
+      ratePlanId: item.ratePlanId ?? null,
       roomTypeName: option.name,
-      displayAmount: option.finalAmount,
-      currency: option.currency,
+      displayAmount: offer.finalAmount,
+      currency: offer.currency,
     };
   });
 
@@ -134,6 +141,7 @@ export function createBookingSessionFromCart(
     specialRequest: stayDetails.specialRequest,
     items: items.map((item) => ({
       roomTypeId: item.roomTypeId,
+      ratePlanId: item.ratePlanId ?? null,
       checkInDate: item.checkIn,
       checkOutDate: item.checkOut,
       adults: item.adults,

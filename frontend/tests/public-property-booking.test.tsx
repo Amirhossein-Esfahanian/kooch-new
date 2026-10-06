@@ -694,6 +694,51 @@ describe("public property booking integration", () => {
     expect(increase.hasAttribute("disabled")).toBe(true);
   });
 
+  it("keeps the base offer separate from a stored RatePlan while sharing RoomType capacity", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{ ...availableOptions.roomTypes[0], availableCount: 2 }],
+    });
+    const existingItems = expandBookingCartSelection({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      roomTypeId: 10,
+      ratePlanId: 12,
+      roomTypeName: property.roomTypes[0].name,
+      checkIn: "2030-08-10",
+      checkOut: "2030-08-12",
+      adults: 2,
+      children: 0,
+      childAges: [],
+      notes: null,
+      displayAmount: 3_500_000,
+      currency: "IRR",
+      quantity: 1,
+    });
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
+      propertyId: 1,
+      propertyName: property.name,
+      propertySlug: property.slug,
+      bookingMode: "Instant",
+      idempotencyKey: "shared-roomtype-capacity",
+      checkoutRequested: false,
+      items: existingItems,
+    }));
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const selectBase = await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" });
+    fireEvent.click(selectBase);
+
+    expect(screen.getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+    await waitFor(() => {
+      const saved = JSON.parse(sessionStorage.getItem(bookingCartStorageKey) ?? "{}");
+      expect(saved.items.map((entry: { ratePlanId: number | null }) => entry.ratePlanId)).toEqual([12, null]);
+    });
+  });
+
   it("keeps the current cart or replaces it only after confirming a changed stay", async () => {
     const existingItems = expandBookingCartSelection({
       propertyId: 1,

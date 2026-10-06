@@ -22,6 +22,7 @@ export function groupBookingCartItems(items: BookingCartItem[]) {
   for (const item of items) {
     const key = JSON.stringify([
       item.roomTypeId,
+      item.ratePlanId ?? null,
       item.roomName,
       item.checkIn,
       item.checkOut,

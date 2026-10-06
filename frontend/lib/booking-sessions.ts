@@ -17,6 +17,16 @@ export interface PublicBookingRoom {
   name: string;
 }
 
+export interface PublicBookingRatePlanOption {
+  ratePlanId: number;
+  name: string;
+  mealPlanName: string | null;
+  mealPlanSlug: string | null;
+  minimumNights: number | null;
+  finalAmount: number;
+  currency: string;
+}
+
 export interface PublicBookingRoomTypeOption {
   roomTypeId: number;
   name: string;
@@ -34,6 +44,7 @@ export interface PublicBookingRoomTypeOption {
   finalAmount: number;
   currency: string;
   rooms: PublicBookingRoom[];
+  ratePlans?: PublicBookingRatePlanOption[];
 }
 
 export interface PublicBookingOptions {
@@ -61,6 +72,7 @@ export interface PublicBookingOptions {
 
 export interface AccountBookingSessionItemRequest {
   roomTypeId: number;
+  ratePlanId: number | null;
   checkInDate: string;
   checkOutDate: string;
   adults: number;

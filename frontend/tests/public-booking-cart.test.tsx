@@ -19,6 +19,7 @@ import {
 } from "@/components/booking/booking-display";
 import {
   addItemsToBookingCart,
+  bookingCartOfferMatches,
   bookingCartItemsShareContext,
   bookingCartSelectionMatchesItems,
   bookingCartStorageKey,
@@ -196,6 +197,46 @@ describe("public booking cart", () => {
     expect(lines[0].total).toBe(6_000_000);
   });
 
+  it("normalizes omitted RatePlan identity and keeps base and explicit offers distinct", () => {
+    const base = item();
+    const explicit = item({ id: "plan-12", ratePlanId: 12, displayAmount: 1_700_000 });
+    const otherPlan = item({ id: "plan-13", ratePlanId: 13, displayAmount: 1_800_000 });
+    expect(base.ratePlanId).toBeNull();
+    expect(bookingCartOfferMatches(base, 10, null)).toBe(true);
+    expect(bookingCartOfferMatches(explicit, 10, 12)).toBe(true);
+    expect(bookingCartOfferMatches(explicit, 10, 13)).toBe(false);
+    expect(bookingCartOfferMatches(explicit, 10, null)).toBe(false);
+    expect(groupBookingCartItems([base, explicit, otherPlan])).toHaveLength(3);
+    expect(groupBookingCartItems([explicit, item({ id: "plan-12-again", ratePlanId: 12, displayAmount: 1_700_000 })])).toHaveLength(1);
+    expect([base, explicit, otherPlan].filter((entry) => bookingCartOfferMatches(entry, 10, 12))).toHaveLength(1);
+    expect(bookingCartItemsShareContext([base, explicit, otherPlan])).toBe(true);
+    expect(addItemsToBookingCart(state([base]), [explicit]).items).toHaveLength(2);
+  });
+
+  it("shares RoomType inventory across rate offers instead of multiplying capacity", () => {
+    const items = [
+      item({ ratePlanId: null }),
+      item({ id: "plan-12-a", ratePlanId: 12 }),
+      item({ id: "plan-12-b", ratePlanId: 12 }),
+    ];
+    expect(getCartAwareAvailableCount({
+      items, propertyId: 1, roomTypeId: 10,
+      checkIn: "2026-08-10", checkOut: "2026-08-12", serverAvailableCount: 3,
+    })).toBe(0);
+    expect(items.filter((entry) => bookingCartOfferMatches(entry, 10, 12))).toHaveLength(2);
+  });
+
+  it("removes only the selected rate bucket from grouped cart lines", () => {
+    const onRemove = vi.fn();
+    const items = [item({ id: "base" }), item({ id: "explicit", ratePlanId: 12 })];
+    render(<BookingCartSummary items={items} total={4_000_000} onRemove={onRemove} />);
+    const lines = screen.getAllByRole("listitem");
+    expect(lines).toHaveLength(2);
+    fireEvent.click(within(lines[1]).getByRole("button", { name: /حذف/ }));
+    expect(onRemove).toHaveBeenCalledOnce();
+    expect(onRemove.mock.calls[0][0]).toBe("explicit");
+  });
+
   it("renders Jalali dates, Persian numbers, booking mode, and the cart summary", () => {
     const items = expandBookingCartSelection(selection({
       childAges: [7],
@@ -337,6 +378,14 @@ describe("public booking cart", () => {
     expect(restoreBookingCart(sessionStorage.getItem(bookingCartStorageKey))?.idempotencyKey).toBe("stable-key");
   });
 
+  it("restores legacy stored selections without RatePlanId as the base offer", () => {
+    const saved = { ...state([item()]), checkoutRequested: true };
+    const { hydrated: _hydrated, ...stored } = saved;
+    const legacy = JSON.parse(JSON.stringify(stored));
+    delete legacy.items[0].ratePlanId;
+    expect(restoreBookingCart(JSON.stringify(legacy))?.items[0].ratePlanId).toBeNull();
+  });
+
   it("rejects an inconsistent legacy cart instead of mixing stay contexts", () => {
     const stored = {
       propertyId: 1,
@@ -369,6 +418,32 @@ describe("public booking cart", () => {
     }));
     expect(result.priceChanged).toBe(true);
     expect(result.items[0].displayAmount).toBe(2_500_000);
+  });
+
+  it("revalidates the selected RatePlan quote while enforcing shared RoomType inventory", async () => {
+    const items = [item({ id: "base", ratePlanId: null }), item({ id: "plan", ratePlanId: 12, displayAmount: 1_700_000 })];
+    const fetcher = vi.fn().mockResolvedValue({
+      propertyId: 1,
+      roomTypes: [{ roomTypeId: 10, name: "اتاق شاه‌نشین", availableCount: 2, bookingMode: "Instant",
+        finalAmount: 2_000_000, currency: "IRR", rooms: [],
+        ratePlans: [{ ratePlanId: 12, finalAmount: 1_600_000, currency: "IRR" }] }],
+    });
+    const result = await revalidateBookingCart(items, fetcher);
+    expect(fetcher).toHaveBeenCalledOnce();
+    expect(result.priceChanged).toBe(true);
+    expect(result.items.map((entry) => entry.displayAmount)).toEqual([2_000_000, 1_600_000]);
+    expect(result.items.map((entry) => entry.ratePlanId)).toEqual([null, 12]);
+
+    await expect(revalidateBookingCart([...items, item({ id: "third", ratePlanId: 13 })], fetcher))
+      .rejects.toThrow(/حداکثر ۲ واحد/);
+  });
+
+  it("rejects an explicit plan missing from current backend options", async () => {
+    await expect(revalidateBookingCart([item({ ratePlanId: 12 })], vi.fn().mockResolvedValue({
+      propertyId: 1,
+      roomTypes: [{ roomTypeId: 10, name: "اتاق شاه‌نشین", availableCount: 1, bookingMode: "Instant",
+        finalAmount: 2_000_000, currency: "IRR", rooms: [], ratePlans: [] }],
+    }))).rejects.toThrow(/نرخ فروش انتخاب‌شده/);
   });
 
   it("reports the actionable current limit when cart quantity exceeds revalidated availability", async () => {
@@ -417,6 +492,7 @@ describe("public booking cart", () => {
       expect(payload.items[0]).not.toHaveProperty("status");
       expect(payload.items[0]).not.toHaveProperty("roomId");
       expect(payload.items[0].notes).toBeNull();
+      expect(payload.items[0].ratePlanId).toBeNull();
       expect(payload.items).toHaveLength(2);
       expect(payload.items.every((entry: { checkInDate: string; checkOutDate: string; adults: number }) =>
         entry.checkInDate === "2026-08-10" &&
@@ -424,6 +500,17 @@ describe("public booking cart", () => {
         entry.adults === 2,
       )).toBe(true);
     }
+  });
+
+  it("sends only explicit RatePlan identity, never modifier or meal metadata", async () => {
+    const create = vi.fn().mockResolvedValue({ sessionCode: "O-123456" });
+    const stayDetails = { bookingForSelf: true, primaryGuest: null, expectedArrivalTime: null, specialRequest: null };
+    await createBookingSessionFromCart([item({ ratePlanId: 12 })], "key", stayDetails, create);
+    const [payload] = create.mock.calls[0];
+    expect(payload.items[0].ratePlanId).toBe(12);
+    expect(payload.items[0]).not.toHaveProperty("priceModifierValue");
+    expect(payload.items[0]).not.toHaveProperty("mealPlanId");
+    expect(payload.items[0]).not.toHaveProperty("ratePlanName");
   });
 
   it("serializes an optional primary guest national code without changing legacy fields", async () => {
