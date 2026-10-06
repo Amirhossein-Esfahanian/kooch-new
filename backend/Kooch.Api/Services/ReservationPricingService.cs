@@ -51,6 +51,8 @@ public class ReservationPricingService(
         }
 
         var nights = GetReservationNights(request.CheckInDate, request.CheckOutDate).ToList();
+        if (ratePlan?.MinimumNights is int minimumNights && nights.Count < minimumNights)
+            throw new ArgumentException("Stay is shorter than the selected rate plan minimum nights.");
         var prices = await dbContext.RoomDailyPrices.AsNoTracking()
             .Where(item =>
                 item.RoomTypeId == request.RoomTypeId &&

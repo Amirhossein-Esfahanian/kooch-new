@@ -123,6 +123,62 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(-10, saved.RatePlanPriceModifierValueSnapshot);
     }
 
+    [Theory]
+    [InlineData(null, 1, true)]
+    [InlineData(1, 1, true)]
+    [InlineData(2, 1, false)]
+    [InlineData(2, 2, true)]
+    [InlineData(3, 3, true)]
+    public async Task SelectedRatePlan_MinimumNightsIsEnforcedByBookingPricing(
+        int? minimumNights, int stayNights, bool accepted)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.RatePlans.Add(new RatePlan
+            {
+                Id = 50, RoomTypeId = 10, Name = "Standard", IsActive = true,
+                PriceModifierType = PriceModifierType.FixedAmount,
+                PriceModifierValue = -10, MinimumNights = minimumNights
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService(useAuthoritativePricing: true);
+        var item = CreateItem(10, 100);
+        item.RatePlanId = 50;
+        item.CheckOutDate = item.CheckInDate.AddDays(stayNights);
+        if (accepted)
+        {
+            var result = await scope.Service.CreateAsync(CreateRequest(item));
+            Assert.Equal(50, Assert.Single(result.Reservations).RatePlanId);
+            Assert.Equal(90m * stayNights, Assert.Single(result.Reservations).FinalAmount);
+        }
+        else
+        {
+            var error = await Assert.ThrowsAsync<ArgumentException>(
+                () => scope.Service.CreateAsync(CreateRequest(item)));
+            Assert.Contains("minimum nights", error.Message, StringComparison.Ordinal);
+            await using var verification = harness.CreateContext();
+            Assert.Empty(await verification.Reservations.ToListAsync());
+        }
+    }
+
+    [Fact]
+    public async Task NoRatePlan_OneNightBookingRemainsAvailable()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService(useAuthoritativePricing: true);
+        var item = CreateItem(10, 100);
+        item.CheckOutDate = item.CheckInDate.AddDays(1);
+
+        var result = await scope.Service.CreateAsync(CreateRequest(item));
+
+        var reservation = Assert.Single(result.Reservations);
+        Assert.Null(reservation.RatePlanId);
+        Assert.Equal(100m, reservation.FinalAmount);
+    }
+
     [Fact]
     public async Task AccountBooking_CarriesSelectedRatePlanThroughSharedCreationPath()
     {
