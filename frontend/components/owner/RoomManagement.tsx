@@ -25,6 +25,7 @@ import {
   KoochTableRow,
 } from "@/components/KoochTable";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
+import { RoomTypeRatePlans } from "@/components/owner/RoomTypeRatePlans";
 import { AmenitySelectionCard } from "@/components/amenities/AmenitySelectionCard";
 import {
   AmenityCategoryResponse,
@@ -121,6 +122,7 @@ export function RoomManagement({
   propertyId: number;
 }) {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
+  const [ratePlanRoomType, setRatePlanRoomType] = useState<RoomTypeResponse | null>(null);
   const [images, setImages] = useState<PropertyImageResponse[]>([]);
   const [bedTypes, setBedTypes] = useState<BedTypeResponse[]>([]);
   const [amenities, setAmenities] = useState<AmenityResponse[]>([]);
@@ -890,6 +892,13 @@ export function RoomManagement({
                             ویرایش
                           </KoochButton>
                           <KoochButton
+                            onClick={() => setRatePlanRoomType(roomType)}
+                            size="sm"
+                            variant="outline"
+                          >
+                            نرخ‌های فروش
+                          </KoochButton>
+                          <KoochButton
                             disabled={saving}
                             onClick={() => void toggleRoomTypeStatus(roomType)}
                             size="sm"
@@ -982,6 +991,14 @@ export function RoomManagement({
         )}
         {currentStep()}
       </KoochDialog>
+      {ratePlanRoomType && (
+        <RoomTypeRatePlans
+          key={ratePlanRoomType.id}
+          onClose={() => setRatePlanRoomType(null)}
+          propertyId={propertyId}
+          roomType={ratePlanRoomType}
+        />
+      )}
     </div>
   );
 }

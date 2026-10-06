@@ -310,6 +310,70 @@ export interface RoomTypeResponse {
   amenities: RoomTypeAmenityResponse[];
 }
 
+export interface RoomTypeRatePlanResponse {
+  id: number;
+  roomTypeId: number;
+  name: string;
+  mealPlanId: number | null;
+  mealPlanName: string | null;
+  mealPlanSlug: string | null;
+  cancellationPolicyId: number | null;
+  priceModifierType: "FixedAmount" | "Percentage";
+  priceModifierValue: number;
+  minimumNights: number | null;
+  isActive: boolean;
+}
+
+export interface MealPlanOptionResponse {
+  id: number;
+  name: string;
+  slug: string;
+}
+
+export interface RoomTypeRatePlanWriteRequest {
+  name: string;
+  mealPlanId: number | null;
+  cancellationPolicyId: number | null;
+  priceModifierType: "FixedAmount";
+  priceModifierValue: number;
+  minimumNights: number | null;
+  isActive: boolean;
+}
+
+const ratePlansPath = (propertyId: number, roomTypeId: number) =>
+  `/owner/properties/${propertyId}/room-types/${roomTypeId}/rate-plans`;
+
+export function listRoomTypeRatePlans(propertyId: number, roomTypeId: number) {
+  return apiRequest<RoomTypeRatePlanResponse[]>(ratePlansPath(propertyId, roomTypeId));
+}
+
+export function listPropertyMealPlans(propertyId: number) {
+  return apiRequest<MealPlanOptionResponse[]>(`/owner/properties/${propertyId}/meal-plans`);
+}
+
+export function createRoomTypeRatePlan(
+  propertyId: number, roomTypeId: number, request: RoomTypeRatePlanWriteRequest,
+) {
+  return apiRequest<RoomTypeRatePlanResponse>(ratePlansPath(propertyId, roomTypeId), {
+    method: "POST", body: JSON.stringify(request),
+  });
+}
+
+export function updateRoomTypeRatePlan(
+  propertyId: number, roomTypeId: number, ratePlanId: number,
+  request: RoomTypeRatePlanWriteRequest,
+) {
+  return apiRequest<RoomTypeRatePlanResponse>(`${ratePlansPath(propertyId, roomTypeId)}/${ratePlanId}`, {
+    method: "PUT", body: JSON.stringify(request),
+  });
+}
+
+export function deleteRoomTypeRatePlan(
+  propertyId: number, roomTypeId: number, ratePlanId: number,
+) {
+  return apiRequest<void>(`${ratePlansPath(propertyId, roomTypeId)}/${ratePlanId}`, { method: "DELETE" });
+}
+
 export interface RoomCompletionResponse {
   isComplete: boolean;
   missingItems: string[];
