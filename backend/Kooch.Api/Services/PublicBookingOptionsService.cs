@@ -35,8 +35,22 @@ public sealed class PublicBookingOptionsService(
         var roomTypes = property.RoomTypes
             .OrderBy(roomType => roomType.Name)
             .ToArray();
+        var roomTypeIds = roomTypes.Select(roomType => roomType.Id).ToArray();
+        var ratePlansByRoomType = await dbContext.RatePlans.AsNoTracking()
+            .Include(plan => plan.MealPlan)
+            .Where(plan => roomTypeIds.Contains(plan.RoomTypeId) && plan.IsActive &&
+                plan.PriceModifierType == PriceModifierType.FixedAmount)
+            .OrderBy(plan => plan.Name).ThenBy(plan => plan.Id)
+            .ToListAsync(cancellationToken);
+        var eligiblePlans = ratePlansByRoomType
+            .Where(plan => !plan.MealPlanId.HasValue || plan.MealPlan is not null)
+            .Where(plan => !plan.MinimumNights.HasValue ||
+                plan.MinimumNights.Value > 0 &&
+                checkOutDate.DayNumber - checkInDate.DayNumber >= plan.MinimumNights.Value)
+            .GroupBy(plan => plan.RoomTypeId)
+            .ToDictionary(group => group.Key, group => group.ToArray());
         var availability = await effectiveAvailabilityService.GetRangeAsync(
-            roomTypes.Select(roomType => roomType.Id).ToArray(),
+            roomTypeIds,
             checkInDate,
             checkOutDate,
             cancellationToken: cancellationToken);
@@ -80,6 +94,10 @@ public sealed class PublicBookingOptionsService(
             }
             if (option.AvailableCount > 0)
             {
+                if (eligiblePlans.TryGetValue(roomType.Id, out var plans))
+                    option.RatePlans = await BuildRatePlanOptionsAsync(
+                        property.Id, roomType.Id, plans, checkInDate, checkOutDate,
+                        adults, children, childAges, cancellationToken);
                 options.Add(option);
             }
             else
@@ -200,5 +218,56 @@ public sealed class PublicBookingOptionsService(
             Currency = price.Currency,
             Rooms = rooms
         };
+    }
+
+    private async Task<IReadOnlyList<PublicBookingRatePlanOption>> BuildRatePlanOptionsAsync(
+        int propertyId,
+        int roomTypeId,
+        IReadOnlyList<RatePlan> plans,
+        DateOnly checkInDate,
+        DateOnly checkOutDate,
+        int adults,
+        int children,
+        IReadOnlyList<int> childAges,
+        CancellationToken cancellationToken)
+    {
+        var options = new List<PublicBookingRatePlanOption>(plans.Count);
+        foreach (var plan in plans)
+        {
+            ReservationPricePreviewResponse price;
+            try
+            {
+                price = await pricingService.PreviewPublicBookingPriceAsync(
+                    new ReservationPricePreviewRequest
+                    {
+                        PropertyId = propertyId,
+                        RoomTypeId = roomTypeId,
+                        RatePlanId = plan.Id,
+                        CheckInDate = checkInDate,
+                        CheckOutDate = checkOutDate,
+                        Adults = adults,
+                        Children = children,
+                        ChildAges = childAges,
+                        RoomCount = 1,
+                        GuestType = PricingGuestType.Iranian
+                    }, cancellationToken);
+            }
+            catch (Exception error) when (error is ArgumentException or KeyNotFoundException)
+            {
+                // A plan can become unavailable or produce a non-positive nightly price; keep the base offer.
+                continue;
+            }
+            options.Add(new PublicBookingRatePlanOption
+            {
+                RatePlanId = plan.Id,
+                Name = plan.Name,
+                MealPlanName = plan.MealPlan?.Name,
+                MealPlanSlug = plan.MealPlan?.Slug,
+                MinimumNights = plan.MinimumNights,
+                FinalAmount = price.FinalAmount,
+                Currency = price.Currency
+            });
+        }
+        return options;
     }
 }

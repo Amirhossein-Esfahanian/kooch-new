@@ -39,11 +39,82 @@ public sealed class PublicBookingOptionsTests
         Assert.Equal(ReservationBookingModeFilter.Instant, instant.BookingMode);
         Assert.Equal(1, instant.AvailableCount);
         Assert.Equal(20, instant.FinalAmount);
+        Assert.Empty(instant.RatePlans);
         Assert.Equal(101, Assert.Single(instant.Rooms).RoomId);
         var onRequest = Assert.Single(result.RoomTypes, item => item.RoomTypeId == 20);
         Assert.Equal(ReservationBookingModeFilter.OnRequest, onRequest.BookingMode);
         Assert.Equal(40, onRequest.FinalAmount);
         Assert.Empty(result.UnavailableRoomTypes);
+    }
+
+    [Fact]
+    public async Task AvailableRoomType_ReturnsDeterministicAuthoritativelyPricedAlternatives()
+    {
+        await using var context = await CreatePricedContextAsync();
+        context.MealPlans.Add(new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" });
+        context.RatePlans.AddRange(
+            Plan(53, "C premium", 30),
+            Plan(51, "A without breakfast", -20),
+            Plan(52, "B standard", 0));
+        context.RatePlans.Local.Single(plan => plan.Id == 51).MealPlanId = 70;
+        await context.SaveChangesAsync();
+
+        var result = await AuthoritativeService(context).GetAsync(
+            "public-property", new DateOnly(2035, 2, 1), new DateOnly(2035, 2, 3), 1, 0, []);
+
+        var room = Assert.Single(result.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(300, room.FinalAmount);
+        Assert.Equal(1, room.AvailableCount);
+        Assert.Equal([51, 52, 53], room.RatePlans.Select(plan => plan.RatePlanId));
+        Assert.Equal([260m, 300m, 360m], room.RatePlans.Select(plan => plan.FinalAmount));
+        Assert.All(room.RatePlans, plan => Assert.Equal("IRR", plan.Currency));
+        Assert.Equal("Breakfast", room.RatePlans[0].MealPlanName);
+        Assert.Equal("breakfast", room.RatePlans[0].MealPlanSlug);
+        Assert.DoesNotContain(result.UnavailableRoomTypes, option => option.RoomTypeId == 10);
+    }
+
+    [Fact]
+    public async Task UnsupportedOrInvalidPlans_DoNotRemoveValidBaseOffer()
+    {
+        await using var context = await CreatePricedContextAsync();
+        context.MealPlans.Add(new MealPlan { Id = 70, Name = "Deleted", Slug = "deleted", IsDeleted = true });
+        context.RatePlans.AddRange(
+            Plan(51, "Non-positive", -120),
+            Plan(52, "Inactive", 0, isActive: false),
+            Plan(53, "Deleted", 0, isDeleted: true),
+            Plan(54, "Percentage", 10, type: PriceModifierType.Percentage),
+            Plan(55, "Deleted meal", 0, mealPlanId: 70),
+            Plan(56, "Valid", -10));
+        await context.SaveChangesAsync();
+
+        var result = await AuthoritativeService(context).GetAsync(
+            "public-property", new DateOnly(2035, 2, 1), new DateOnly(2035, 2, 3), 1, 0, []);
+
+        var room = Assert.Single(result.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(300, room.FinalAmount);
+        Assert.Equal(1, room.AvailableCount);
+        var plan = Assert.Single(room.RatePlans);
+        Assert.Equal(56, plan.RatePlanId);
+        Assert.Equal(280, plan.FinalAmount);
+    }
+
+    [Fact]
+    public async Task RatePlanMinimumNights_FiltersOnlyTheAlternativeForShortStay()
+    {
+        await using var context = await CreatePricedContextAsync();
+        context.RatePlans.AddRange(
+            Plan(51, "Three nights", -10, minimumNights: 3),
+            Plan(52, "Two nights", 0, minimumNights: 2));
+        await context.SaveChangesAsync();
+
+        var result = await AuthoritativeService(context).GetAsync(
+            "public-property", new DateOnly(2035, 2, 1), new DateOnly(2035, 2, 3), 1, 0, []);
+
+        var room = Assert.Single(result.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(300, room.FinalAmount);
+        var plan = Assert.Single(room.RatePlans);
+        Assert.Equal(52, plan.RatePlanId);
+        Assert.Equal(2, plan.MinimumNights);
     }
 
     [Fact]
@@ -248,6 +319,37 @@ public sealed class PublicBookingOptionsTests
         });
         await context.SaveChangesAsync();
     }
+
+    private static async Task<KoochDbContext> CreatePricedContextAsync()
+    {
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase($"public-rate-plans-{Guid.NewGuid():N}")
+            .Options;
+        var context = new KoochDbContext(options);
+        await SeedAsync(context);
+        context.RoomDailyPrices.AddRange(
+            new RoomDailyPrice { RoomTypeId = 10, Date = new DateOnly(2035, 2, 1), GuestType = PricingGuestType.Iranian, BasePrice = 120 },
+            new RoomDailyPrice { RoomTypeId = 10, Date = new DateOnly(2035, 2, 2), GuestType = PricingGuestType.Iranian, BasePrice = 180 });
+        await context.SaveChangesAsync();
+        return context;
+    }
+
+    private static PublicBookingOptionsService AuthoritativeService(KoochDbContext context)
+    {
+        var childRules = new ChildPricingRuleResolver(context);
+        return new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
+            new ReservationPricingService(context, new PricingService(), childRules,
+                new ReservationRulesResolver(context, childRules)));
+    }
+
+    private static RatePlan Plan(int id, string name, decimal modifier, bool isActive = true,
+        bool isDeleted = false, PriceModifierType type = PriceModifierType.FixedAmount,
+        int? mealPlanId = null, int? minimumNights = null) => new()
+    {
+        Id = id, RoomTypeId = 10, Name = name, PriceModifierType = type,
+        PriceModifierValue = modifier, IsActive = isActive, IsDeleted = isDeleted,
+        MealPlanId = mealPlanId, MinimumNights = minimumNights
+    };
 
     private static RoomType RoomType(
         int id,
