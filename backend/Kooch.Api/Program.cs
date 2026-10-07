@@ -22,6 +22,7 @@ using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 
 var builder = WebApplication.CreateBuilder(args);
+var automaticDatabaseMutationsEnabled = AutomaticDatabaseMutationsStartup.IsEnabled(builder.Configuration);
 var internalTestPaymentOptions = builder.Configuration
     .GetSection(InternalTestPaymentProviderOptions.SectionName)
     .Get<InternalTestPaymentProviderOptions>() ?? new InternalTestPaymentProviderOptions();
@@ -52,7 +53,6 @@ builder.Services.AddScoped<Kooch.Api.Services.Wallet.WalletService>();
 builder.Services.AddScoped<IHolidayCalendarSynchronizationService, HolidayCalendarSynchronizationService>();
 builder.Services.AddScoped<IHolidayCalendarQueryService, HolidayCalendarQueryService>();
 builder.Services.AddSingleton<HolidayCalendarSolarYearResolver>();
-builder.Services.AddHostedService<HolidayCalendarSyncHostedService>();
 
 var jwtSection = builder.Configuration.GetSection(JwtOptions.SectionName);
 var jwtOptions = jwtSection.Get<JwtOptions>()
@@ -87,7 +87,6 @@ builder.Services.AddScoped<IPricingBoundsService, PricingBoundsService>();
 builder.Services.AddScoped<ICashbackSettingsService, CashbackSettingsService>();
 builder.Services.AddScoped<IReservationCashbackEntitlementService, ReservationCashbackEntitlementService>();
 builder.Services.AddSingleton<CashbackGrantProcessor>();
-builder.Services.AddHostedService<CashbackGrantHostedService>();
 builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
 builder.Services.AddScoped<IPropertyCommonAreaService, PropertyCommonAreaService>();
 builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
@@ -133,8 +132,7 @@ builder.Services.AddScoped<IVoucherNumberGenerator, VoucherNumberGenerator>();
 builder.Services.AddScoped<IReservationVoucherService, ReservationVoucherService>();
 builder.Services.AddScoped<IReservationVoucherQueryService, ReservationVoucherQueryService>();
 builder.Services.AddScoped<IAdminManualPaymentService, AdminManualPaymentService>();
-builder.Services.AddHostedService<ReservationExpirationHostedService>();
-builder.Services.AddHostedService<ReservationApprovalReminderHostedService>();
+builder.Services.AddWriterHostedServices(automaticDatabaseMutationsEnabled);
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IAccountBookingSessionPaymentService, AccountBookingSessionPaymentService>();
 builder.Services.AddScoped<IPaymentDomainApplicationHandler, PaymentDomainApplicationHandler>();
@@ -314,8 +312,15 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapMockPaymentCheckout(internalTestPaymentsEnabled);
 
-await using (var scope = app.Services.CreateAsyncScope())
+if (!automaticDatabaseMutationsEnabled)
 {
+    app.Logger.LogInformation(
+        "Automatic database migrations, seed operations, and background database writers are disabled.");
+}
+
+await AutomaticDatabaseMutationsStartup.RunInitializationAsync(automaticDatabaseMutationsEnabled, async () =>
+{
+    await using var scope = app.Services.CreateAsyncScope();
     var dbContext = scope.ServiceProvider.GetRequiredService<KoochDbContext>();
     await dbContext.Database.MigrateAsync();
     await SeedData.InitializeAsync(dbContext);
@@ -367,6 +372,6 @@ await using (var scope = app.Services.CreateAsyncScope())
         throw new InvalidOperationException(
             $"Amenity icon startup migration failed with {amenityIconMigrationResult.FailedCount} unresolved failure(s).");
     }
-}
+});
 
 app.Run();
