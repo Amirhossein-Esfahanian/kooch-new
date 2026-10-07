@@ -205,8 +205,12 @@ public sealed class BookingSessionService(
                 RoomId = prepared.Item.RoomId,
                 RatePlanId = prepared.Item.RatePlanId,
                 RatePlanNameSnapshot = ratePlan?.Name,
-                MealPlanNameSnapshot = ratePlan?.MealPlan?.Name,
-                MealPlanSlugSnapshot = ratePlan?.MealPlan?.Slug,
+                MealPlanNameSnapshot = ratePlan is null
+                    ? roomTypes[prepared.Item.RoomTypeId].DefaultMealPlan?.Name
+                    : ratePlan.MealPlan?.Name,
+                MealPlanSlugSnapshot = ratePlan is null
+                    ? roomTypes[prepared.Item.RoomTypeId].DefaultMealPlan?.Slug
+                    : ratePlan.MealPlan?.Slug,
                 RatePlanPriceModifierTypeSnapshot = ratePlan?.PriceModifierType,
                 RatePlanPriceModifierValueSnapshot = ratePlan?.PriceModifierValue,
                 CheckInDate = prepared.Item.CheckInDate,
@@ -822,9 +826,11 @@ public sealed class BookingSessionService(
                 ? await dbContext.RoomTypes
                     .FromSqlInterpolated(
                         $"SELECT * FROM RoomTypes WITH (UPDLOCK, HOLDLOCK) WHERE Id = {roomTypeId}")
+                    .Include(item => item.DefaultMealPlan)
                     .AsNoTracking()
                     .SingleOrDefaultAsync(cancellationToken)
                 : await dbContext.RoomTypes.AsNoTracking()
+                    .Include(item => item.DefaultMealPlan)
                     .SingleOrDefaultAsync(item => item.Id == roomTypeId, cancellationToken);
             if (roomType is null || !roomType.IsActive)
             {

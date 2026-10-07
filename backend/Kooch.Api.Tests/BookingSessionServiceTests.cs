@@ -92,6 +92,108 @@ public sealed class BookingSessionServiceTests
         Assert.Equal(100, saved.FinalAmount);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StandardOffer_SnapshotsDefaultMealPlanWithoutRatePlanOrPricingChanges(bool accountBooking)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.MealPlans.Add(new MealPlan { Id = 70, Name = "Breakfast included", Slug = "breakfast-included" });
+            (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = 70;
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var result = accountBooking
+            ? await scope.Service.CreateForAccountAsync(1, CreateAccountRequest(CreateAccountItem(10, 100)))
+            : await scope.Service.CreateAsync(CreateRequest(CreateItem(10, 100)));
+        var response = Assert.Single(result.Reservations);
+        Assert.Null(response.RatePlanId);
+        Assert.Null(response.RatePlanName);
+        Assert.Equal("Breakfast included", response.MealPlanName);
+        Assert.Equal(100m, response.FinalAmount);
+
+        await using (var change = harness.CreateContext())
+        {
+            var originalMeal = await change.MealPlans.SingleAsync(item => item.Id == 70);
+            originalMeal.Name = "Renamed breakfast";
+            originalMeal.Slug = "renamed-breakfast";
+            change.MealPlans.Add(new MealPlan { Id = 71, Name = "Room only", Slug = "room-only" });
+            (await change.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = 71;
+            await change.SaveChangesAsync();
+        }
+
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Null(saved.RatePlanId);
+        Assert.Null(saved.RatePlanNameSnapshot);
+        Assert.Equal("Breakfast included", saved.MealPlanNameSnapshot);
+        Assert.Equal("breakfast-included", saved.MealPlanSlugSnapshot);
+        Assert.Null(saved.RatePlanPriceModifierTypeSnapshot);
+        Assert.Null(saved.RatePlanPriceModifierValueSnapshot);
+        Assert.Equal(100m, saved.FinalAmount);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task StandardOffer_WithoutUsableDefaultMealPlan_KeepsMealSnapshotsNull(bool deletedMeal)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        if (deletedMeal)
+        {
+            await using var setup = harness.CreateContext();
+            setup.MealPlans.Add(new MealPlan { Id = 70, Name = "Deleted", Slug = "deleted", IsDeleted = true });
+            (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = 70;
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var result = await scope.Service.CreateAsync(CreateRequest(CreateItem(10, 100)));
+        Assert.Null(Assert.Single(result.Reservations).MealPlanName);
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Null(saved.MealPlanNameSnapshot);
+        Assert.Null(saved.MealPlanSlugSnapshot);
+        Assert.Null(saved.RatePlanId);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ExplicitRatePlan_UsesOnlyItsOwnMealPlanEvenWhenRoomTypeHasDefault(bool planHasMeal)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.MealPlans.AddRange(
+                new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" },
+                new MealPlan { Id = 71, Name = "Room only", Slug = "room-only" });
+            (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = 70;
+            setup.RatePlans.Add(new RatePlan
+            {
+                Id = 50, RoomTypeId = 10, Name = "Alternative", MealPlanId = planHasMeal ? 71 : null,
+                IsActive = true, PriceModifierType = PriceModifierType.FixedAmount,
+                PriceModifierValue = 0
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var item = CreateItem(10, 100);
+        item.RatePlanId = 50;
+        await scope.Service.CreateAsync(CreateRequest(item));
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Equal(50, saved.RatePlanId);
+        Assert.Equal("Alternative", saved.RatePlanNameSnapshot);
+        Assert.Equal(planHasMeal ? "Room only" : null, saved.MealPlanNameSnapshot);
+        Assert.Equal(planHasMeal ? "room-only" : null, saved.MealPlanSlugSnapshot);
+        Assert.Equal(100m, saved.FinalAmount);
+    }
+
     [Fact]
     public async Task SelectedRatePlan_UsesAuthoritativePricingForCreatedReservation()
     {
