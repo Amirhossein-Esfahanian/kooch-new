@@ -26,6 +26,8 @@ public sealed class PublicBookingOptionsService(
         var property = await dbContext.Properties.AsNoTracking()
             .Include(item => item.RoomTypes.Where(roomType => roomType.IsActive))
                 .ThenInclude(roomType => roomType.Rooms.Where(room => room.IsActive))
+            .Include(item => item.RoomTypes.Where(roomType => roomType.IsActive))
+                .ThenInclude(roomType => roomType.DefaultMealPlan)
             .SingleOrDefaultAsync(
                 item => item.Slug == normalizedSlug &&
                         item.Status == PropertyStatus.Approved,
@@ -216,6 +218,8 @@ public sealed class PublicBookingOptionsService(
             NightsCount = price.NightsCount,
             FinalAmount = price.FinalAmount,
             Currency = price.Currency,
+            DefaultMealPlanName = roomType.DefaultMealPlan?.Name,
+            DefaultMealPlanSlug = roomType.DefaultMealPlan?.Slug,
             Rooms = rooms
         };
     }

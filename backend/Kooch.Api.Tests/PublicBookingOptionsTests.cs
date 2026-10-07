@@ -74,6 +74,24 @@ public sealed class PublicBookingOptionsTests
     }
 
     [Fact]
+    public async Task StandardOffer_ExposesDefaultMealPlanMetadataWithoutChangingPriceOrRatePlans()
+    {
+        await using var context = await CreatePricedContextAsync();
+        context.MealPlans.Add(new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" });
+        (await context.RoomTypes.SingleAsync(roomType => roomType.Id == 10)).DefaultMealPlanId = 70;
+        await context.SaveChangesAsync();
+
+        var result = await AuthoritativeService(context).GetAsync(
+            "public-property", new DateOnly(2035, 2, 1), new DateOnly(2035, 2, 3), 1, 0, []);
+
+        var room = Assert.Single(result.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal("Breakfast", room.DefaultMealPlanName);
+        Assert.Equal("breakfast", room.DefaultMealPlanSlug);
+        Assert.Equal(300m, room.FinalAmount);
+        Assert.Empty(room.RatePlans);
+    }
+
+    [Fact]
     public async Task UnsupportedOrInvalidPlans_DoNotRemoveValidBaseOffer()
     {
         await using var context = await CreatePricedContextAsync();

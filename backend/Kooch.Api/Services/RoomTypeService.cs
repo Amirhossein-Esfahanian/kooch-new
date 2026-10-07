@@ -29,6 +29,7 @@ public class RoomTypeService(
         await EnsureUniqueSlugAsync(propertyId, slug, null, cancellationToken);
         var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
         var amenityIds = await ValidateAmenityIdsAsync(request.AmenityIds, cancellationToken);
+        await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
 
         var roomType = new RoomType
         {
@@ -45,6 +46,7 @@ public class RoomTypeService(
             InventoryMode = CanonicalInventoryMode,
             RoomKind = request.RoomKind,
             BasePrice = request.BasePrice,
+            DefaultMealPlanId = request.DefaultMealPlanId,
             Notes = CleanOptional(request.Notes),
             FloorNumber = request.FloorNumber,
             StairCount = request.StairCount,
@@ -99,6 +101,7 @@ public class RoomTypeService(
         await EnsureUniqueSlugAsync(roomType.PropertyId, slug, roomTypeId, cancellationToken);
         var beds = await ValidateBedsAsync(request.BedConfigurations, cancellationToken);
         var amenityIds = await ValidateAmenityIdsAsync(request.AmenityIds, cancellationToken);
+        await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
 
         roomType.Name = request.Name.Trim();
         roomType.EnglishName = englishName;
@@ -111,6 +114,7 @@ public class RoomTypeService(
         roomType.TotalInventory = request.TotalInventory;
         roomType.InventoryMode = CanonicalInventoryMode;
         roomType.RoomKind = request.RoomKind;
+        roomType.DefaultMealPlanId = request.DefaultMealPlanId;
         if (request.BasePrice.HasValue)
         {
             roomType.BasePrice = request.BasePrice;
@@ -173,6 +177,7 @@ public class RoomTypeService(
                     .ThenInclude(amenity => amenity.AmenityCategory)
             .Include(roomType => roomType.PropertyImages)
             .Include(roomType => roomType.Rooms)
+            .Include(roomType => roomType.DefaultMealPlan)
             .ToListAsync(cancellationToken);
 
         return roomTypes.Select(MapRoomType).ToList();
@@ -256,6 +261,7 @@ public class RoomTypeService(
                     .ThenInclude(amenity => amenity.AmenityCategory)
             .Include(roomType => roomType.PropertyImages)
             .Include(roomType => roomType.Rooms)
+            .Include(roomType => roomType.DefaultMealPlan)
             .SingleAsync(cancellationToken);
 
         return MapRoomType(roomType);
@@ -301,6 +307,9 @@ public class RoomTypeService(
             InventoryMode = roomType.InventoryMode,
             RoomKind = roomType.RoomKind,
             BasePrice = roomType.BasePrice,
+            DefaultMealPlanId = roomType.DefaultMealPlanId,
+            DefaultMealPlanName = roomType.DefaultMealPlan?.Name,
+            DefaultMealPlanSlug = roomType.DefaultMealPlan?.Slug,
             Notes = roomType.Notes,
             FloorNumber = roomType.FloorNumber,
             StairCount = roomType.StairCount,
@@ -454,6 +463,16 @@ public class RoomTypeService(
     }
 
     private static string? CleanOptional(string? value) => string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private async Task ValidateDefaultMealPlanAsync(int? mealPlanId, CancellationToken cancellationToken)
+    {
+        if (mealPlanId.HasValue &&
+            !await dbContext.MealPlans.AsNoTracking()
+                .AnyAsync(mealPlan => mealPlan.Id == mealPlanId.Value, cancellationToken))
+        {
+            throw new ArgumentException("Default meal plan not found.", nameof(mealPlanId));
+        }
+    }
 
     private static void EnsureValidRoomKind(RoomKind roomKind)
     {

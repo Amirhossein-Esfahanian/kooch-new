@@ -39,6 +39,7 @@ public class UpdateRoomTypeRequest
 
     [Range(0, double.MaxValue)]
     public decimal? BasePrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
 
     [MaxLength(2000)]
     public string? Notes { get; set; }

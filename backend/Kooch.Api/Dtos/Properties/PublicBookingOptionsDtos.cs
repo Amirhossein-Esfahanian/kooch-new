@@ -52,6 +52,8 @@ public sealed class PublicBookingRoomTypeOption
     public int NightsCount { get; set; }
     public decimal FinalAmount { get; set; }
     public string Currency { get; set; } = string.Empty;
+    public string? DefaultMealPlanName { get; set; }
+    public string? DefaultMealPlanSlug { get; set; }
     public IReadOnlyList<PublicBookingRoomOption> Rooms { get; set; } = [];
     public IReadOnlyList<PublicBookingRatePlanOption> RatePlans { get; set; } = [];
 }

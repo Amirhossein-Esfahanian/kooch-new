@@ -1233,6 +1233,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(property => property.RoomTypes)
                 .HasForeignKey(roomType => roomType.PropertyId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(roomType => roomType.DefaultMealPlan)
+                .WithMany(mealPlan => mealPlan.DefaultRoomTypes)
+                .HasForeignKey(roomType => roomType.DefaultMealPlanId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
     }
 

@@ -147,6 +147,83 @@ public sealed class RoomKindRoomTypeTests
     }
 
     [Fact]
+    public async Task DefaultMealPlan_CreateUpdateAndClear_UsesActiveMealPlanWithoutChangingLegacyBreakfast()
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        var property = await context.Properties.SingleAsync();
+        property.BreakfastOption = BreakfastOption.Paid;
+        property.BreakfastPrice = 200000m;
+        context.MealPlans.Add(new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" });
+        await context.SaveChangesAsync();
+        var service = new RoomTypeService(context, new PropertyAccessService(context), new NoOpAuditLogService());
+
+        var created = await service.CreateRoomTypeAsync(1, UserRole.SuperAdmin, 10, ValidCreateRequest(RoomKind.Double));
+        Assert.Null(created.DefaultMealPlanId);
+        var update = ValidUpdateRequest(RoomKind.Double);
+        update.DefaultMealPlanId = 70;
+        var assigned = await service.UpdateRoomTypeAsync(1, UserRole.SuperAdmin, created.Id, update);
+        Assert.Equal(70, assigned.DefaultMealPlanId);
+        Assert.Equal("Breakfast", assigned.DefaultMealPlanName);
+        Assert.Equal("breakfast", assigned.DefaultMealPlanSlug);
+        Assert.Equal(70, (await service.GetRoomTypesByPropertyAsync(1, UserRole.SuperAdmin, 10)).Single().DefaultMealPlanId);
+
+        update.DefaultMealPlanId = null;
+        var cleared = await service.UpdateRoomTypeAsync(1, UserRole.SuperAdmin, created.Id, update);
+        Assert.Null(cleared.DefaultMealPlanId);
+        Assert.Null(cleared.DefaultMealPlanName);
+        Assert.Null((await context.RoomTypes.SingleAsync()).DefaultMealPlanId);
+        Assert.Equal(BreakfastOption.Paid, (await context.Properties.SingleAsync()).BreakfastOption);
+        Assert.Equal(200000m, (await context.Properties.SingleAsync()).BreakfastPrice);
+    }
+
+    [Fact]
+    public async Task DefaultMealPlan_CreateWithValidMealPlan_PersistsAndReturnsMetadata()
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        context.MealPlans.Add(new MealPlan { Id = 70, Name = "Room only", Slug = "room-only" });
+        await context.SaveChangesAsync();
+        var service = new RoomTypeService(context, new PropertyAccessService(context), new NoOpAuditLogService());
+        var request = ValidCreateRequest(RoomKind.Double);
+        request.DefaultMealPlanId = 70;
+
+        var created = await service.CreateRoomTypeAsync(1, UserRole.SuperAdmin, 10, request);
+
+        Assert.Equal(70, created.DefaultMealPlanId);
+        Assert.Equal("Room only", created.DefaultMealPlanName);
+        Assert.Equal("room-only", created.DefaultMealPlanSlug);
+        Assert.Equal(70, (await context.RoomTypes.SingleAsync()).DefaultMealPlanId);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task DefaultMealPlan_RejectsMissingOrSoftDeletedMealPlan(bool deleted)
+    {
+        await using var context = CreateContext();
+        await SeedPropertyAsync(context);
+        if (deleted)
+        {
+            context.MealPlans.Add(new MealPlan { Id = 70, Name = "Deleted", Slug = "deleted", IsDeleted = true });
+            await context.SaveChangesAsync();
+        }
+        var service = new RoomTypeService(context, new PropertyAccessService(context), new NoOpAuditLogService());
+        var create = ValidCreateRequest(RoomKind.Double);
+        create.DefaultMealPlanId = 70;
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.CreateRoomTypeAsync(1, UserRole.SuperAdmin, 10, create));
+        Assert.Empty(context.RoomTypes);
+
+        var existing = await service.CreateRoomTypeAsync(1, UserRole.SuperAdmin, 10, ValidCreateRequest(RoomKind.Double));
+        var update = ValidUpdateRequest(RoomKind.Double);
+        update.DefaultMealPlanId = 70;
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            service.UpdateRoomTypeAsync(1, UserRole.SuperAdmin, existing.Id, update));
+        Assert.Null((await context.RoomTypes.SingleAsync()).DefaultMealPlanId);
+    }
+
+    [Fact]
     public void RoomTypeRequests_AllowZeroInventoryAndRejectNegativeInventory()
     {
         var create = ValidCreateRequest(RoomKind.Double);

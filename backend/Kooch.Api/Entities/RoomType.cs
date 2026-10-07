@@ -17,6 +17,7 @@ public class RoomType : BaseEntity
     public InventoryMode InventoryMode { get; set; }
     public RoomKind RoomKind { get; set; } = RoomKind.Double;
     public decimal? BasePrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }
     public int? StairCount { get; set; }
@@ -25,6 +26,7 @@ public class RoomType : BaseEntity
     public bool IsActive { get; set; } = true;
 
     public Property Property { get; set; } = null!;
+    public MealPlan? DefaultMealPlan { get; set; }
     public ICollection<Room> Rooms { get; set; } = [];
     public ICollection<RoomTypeBed> BedConfigurations { get; set; } = [];
     public ICollection<Availability> Availability { get; set; } = [];

@@ -21,6 +21,9 @@ public class RoomTypeResponse
     public RoomKind RoomKind { get; set; }
     public string RoomKindCode => RoomKindCatalog.GetCode(RoomKind);
     public decimal? BasePrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
+    public string? DefaultMealPlanName { get; set; }
+    public string? DefaultMealPlanSlug { get; set; }
     public string? Notes { get; set; }
     public int? FloorNumber { get; set; }
     public int? StairCount { get; set; }
