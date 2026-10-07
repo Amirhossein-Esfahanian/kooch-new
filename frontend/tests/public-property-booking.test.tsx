@@ -240,6 +240,17 @@ const availableOptions = {
   ],
 };
 
+const availableWithRatePlans = {
+  ...availableOptions,
+  roomTypes: [{
+    ...availableOptions.roomTypes[0],
+    ratePlans: [
+      { ratePlanId: 12, name: "بدون صبحانه", mealPlanName: "Room Only", mealPlanSlug: "room-only", minimumNights: null, finalAmount: 2_700_000, currency: "IRR" },
+      { ratePlanId: 13, name: "فول‌برد", mealPlanName: "سه وعده غذا", mealPlanSlug: "full-board", minimumNights: null, finalAmount: 4_600_000, currency: "IRR" },
+    ],
+  }],
+};
+
 const changedStayHint = "این نتایج برای تاریخ یا مهمان‌های متفاوتی است. با انتخاب اتاق جدید می‌توانید انتخاب‌های فعلی را جایگزین کنید.";
 
 function storeExistingCart({
@@ -613,6 +624,7 @@ describe("public property booking integration", () => {
     render(<PublicPropertyPage />);
 
     fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    expect(await within(screen.getByTestId("room-type-card-10")).findByText("نرخ استاندارد")).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
 
     expect(screen.queryByRole("button", { name: /افزایش تعداد/ })).toBeNull();
@@ -623,6 +635,51 @@ describe("public property booking integration", () => {
     expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
     expect(screen.getByText("هنوز اتاقی انتخاب نکرده‌اید.")).toBeTruthy();
     expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
+  });
+
+  it("renders standard and authoritative RatePlan offers in one RoomType card", async () => {
+    api.fetchOptions.mockResolvedValueOnce(availableWithRatePlans);
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(screen.getAllByTestId("room-type-card-10")).toHaveLength(1);
+    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(card).getByText("بدون صبحانه")).toBeTruthy();
+    expect(within(card).getByText("Room Only")).toBeTruthy();
+    expect(within(card).getByText("فول‌برد")).toBeTruthy();
+    expect(within(card).getByText("سه وعده غذا")).toBeTruthy();
+    expect(within(card).getByText("۲٬۷۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(card).getByText("۴٬۶۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(card).getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(card).queryByText(/modifier|RatePlanId|mealPlanSlug/i)).toBeNull();
+  });
+
+  it("keeps per-offer quantities distinct and caps all offers at shared RoomType inventory", async () => {
+    api.fetchOptions.mockResolvedValueOnce(availableWithRatePlans);
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، بدون صبحانه" }));
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، فول‌برد" }));
+
+    expect(within(card).getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین، نرخ استاندارد" })).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین، بدون صبحانه" })).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین، فول‌برد" })).toBeTruthy();
+    expect(within(card).queryByRole("button", { name: /^افزایش تعداد/ })).toBeNull();
+    await waitFor(() => {
+      const saved = JSON.parse(sessionStorage.getItem(bookingCartStorageKey) ?? "{}");
+      expect(saved.items.map((entry: { ratePlanId: number | null }) => entry.ratePlanId)).toEqual([null, 12, 13]);
+    });
+
+    fireEvent.click(within(card).getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین، فول‌برد" }));
+    expect(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، بدون صبحانه" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، بدون صبحانه" }));
+    expect(within(card).getByRole("group", { name: "تعداد انتخاب‌شده اتاق شاه‌نشین، بدون صبحانه" }).textContent).toContain("۲");
+    expect(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، بدون صبحانه" }).hasAttribute("disabled")).toBe(true);
+    expect(within(card).getByRole("button", { name: "تکمیل ظرفیت اتاق شاه‌نشین، فول‌برد" }).hasAttribute("disabled")).toBe(true);
   });
 
   it("increments and decrements a multi-unit selection through zero", async () => {

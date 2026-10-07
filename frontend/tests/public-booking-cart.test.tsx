@@ -237,6 +237,21 @@ describe("public booking cart", () => {
     expect(onRemove.mock.calls[0][0]).toBe("explicit");
   });
 
+  it("distinguishes the standard offer and two named RatePlans in the cart", () => {
+    render(<BookingCartSummary items={[
+      item({ id: "base" }),
+      item({ id: "room-only", ratePlanId: 12, ratePlanName: "بدون صبحانه", mealPlanName: "Room Only", displayAmount: 1_700_000 }),
+      item({ id: "full-board", ratePlanId: 13, ratePlanName: "فول‌برد", mealPlanName: "سه وعده غذا", displayAmount: 2_300_000 }),
+    ]} total={6_000_000} />);
+    const lines = screen.getAllByRole("listitem");
+    expect(lines).toHaveLength(3);
+    expect(within(lines[0]).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(lines[1]).getByText("بدون صبحانه · Room Only")).toBeTruthy();
+    expect(within(lines[2]).getByText("فول‌برد · سه وعده غذا")).toBeTruthy();
+    expect(within(lines[1]).getByText(/۱٬۷۰۰٬۰۰۰/)).toBeTruthy();
+    expect(within(lines[2]).getByText(/۲٬۳۰۰٬۰۰۰/)).toBeTruthy();
+  });
+
   it("renders Jalali dates, Persian numbers, booking mode, and the cart summary", () => {
     const items = expandBookingCartSelection(selection({
       childAges: [7],
@@ -426,13 +441,15 @@ describe("public booking cart", () => {
       propertyId: 1,
       roomTypes: [{ roomTypeId: 10, name: "اتاق شاه‌نشین", availableCount: 2, bookingMode: "Instant",
         finalAmount: 2_000_000, currency: "IRR", rooms: [],
-        ratePlans: [{ ratePlanId: 12, finalAmount: 1_600_000, currency: "IRR" }] }],
+        ratePlans: [{ ratePlanId: 12, name: "بدون صبحانه", mealPlanName: "Room Only", finalAmount: 1_600_000, currency: "IRR" }] }],
     });
     const result = await revalidateBookingCart(items, fetcher);
     expect(fetcher).toHaveBeenCalledOnce();
     expect(result.priceChanged).toBe(true);
     expect(result.items.map((entry) => entry.displayAmount)).toEqual([2_000_000, 1_600_000]);
     expect(result.items.map((entry) => entry.ratePlanId)).toEqual([null, 12]);
+    expect(result.items[1].ratePlanName).toBe("بدون صبحانه");
+    expect(result.items[1].mealPlanName).toBe("Room Only");
 
     await expect(revalidateBookingCart([...items, item({ id: "third", ratePlanId: 13 })], fetcher))
       .rejects.toThrow(/حداکثر ۲ واحد/);

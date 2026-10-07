@@ -70,6 +70,12 @@ export function BookingCartItemRow({
           {item.roomTypeName}
           {item.roomName ? `، ${item.roomName}` : ""}
         </p>
+        <p className="mt-1 text-xs font-semibold text-muted-foreground">
+          {item.ratePlanId == null ? "نرخ استاندارد" : (item.ratePlanName || "نرخ انتخاب‌شده")}
+          {item.ratePlanId != null && item.mealPlanName && item.mealPlanName !== item.ratePlanName
+            ? ` · ${item.mealPlanName}`
+            : ""}
+        </p>
         <p className="mt-1 text-xs font-bold text-foreground">
           <span aria-hidden="true">{mode.icon}</span> {mode.label}
         </p>

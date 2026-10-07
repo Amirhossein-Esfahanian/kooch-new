@@ -103,18 +103,21 @@ export async function revalidateBookingCart(
       throw new Error("اتاق مشخص‌شده دیگر در این بازه قابل رزرو نیست.");
     }
 
-    const offer = item.ratePlanId == null
-      ? option
+    const selectedPlan = item.ratePlanId == null
+      ? null
       : option.ratePlans?.find((plan) => plan.ratePlanId === item.ratePlanId);
-    if (!offer) {
+    if (item.ratePlanId != null && !selectedPlan) {
       throw new Error("نرخ فروش انتخاب‌شده دیگر برای این بازه در دسترس نیست.");
     }
+    const offer = selectedPlan ?? option;
     priceChanged ||=
       offer.finalAmount !== item.displayAmount ||
       offer.currency !== item.currency;
     return {
       ...item,
       ratePlanId: item.ratePlanId ?? null,
+      ratePlanName: selectedPlan?.name ?? null,
+      mealPlanName: selectedPlan?.mealPlanName ?? null,
       roomTypeName: option.name,
       displayAmount: offer.finalAmount,
       currency: offer.currency,

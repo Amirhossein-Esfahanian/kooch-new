@@ -22,6 +22,8 @@ export interface BookingCartItem {
   bookingMode: BookingMode;
   roomTypeId: number;
   ratePlanId: number | null;
+  ratePlanName?: string | null;
+  mealPlanName?: string | null;
   roomTypeName: string;
   roomId: number | null;
   roomName: string | null;
@@ -357,6 +359,8 @@ function isBookingCartItem(value: unknown): value is BookingCartItem {
     typeof item.roomTypeId === "number" &&
     (item.ratePlanId === undefined || item.ratePlanId === null ||
       (Number.isInteger(item.ratePlanId) && item.ratePlanId > 0)) &&
+    (item.ratePlanName === undefined || item.ratePlanName === null || typeof item.ratePlanName === "string") &&
+    (item.mealPlanName === undefined || item.mealPlanName === null || typeof item.mealPlanName === "string") &&
     typeof item.roomTypeName === "string" &&
     (item.roomId === null || typeof item.roomId === "number") &&
     (item.roomName === null || typeof item.roomName === "string") &&

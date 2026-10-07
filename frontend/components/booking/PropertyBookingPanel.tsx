@@ -29,6 +29,7 @@ import { formatBookingDateRange } from "@/components/booking/booking-display";
 import {
   fetchBookingOptions,
   type PublicBookingOptions,
+  type PublicBookingRatePlanOption,
   type PublicBookingRoomTypeOption,
 } from "@/lib/booking-sessions";
 import type { PublicRoomType } from "@/lib/public-properties";
@@ -165,7 +166,7 @@ function PropertyBookingPanelContent({
     }
   }
 
-  function addToCart(option: PublicBookingRoomTypeOption) {
+  function addToCart(option: PublicBookingRoomTypeOption, ratePlan?: PublicBookingRatePlanOption) {
     if (!dates.startDate || !dates.endDate) return;
     const selection: BookingCartSelection = {
       propertyId,
@@ -173,7 +174,9 @@ function PropertyBookingPanelContent({
       propertySlug,
       bookingMode: option.bookingMode,
       roomTypeId: option.roomTypeId,
-      ratePlanId: null,
+      ratePlanId: ratePlan?.ratePlanId ?? null,
+      ratePlanName: ratePlan?.name ?? null,
+      mealPlanName: ratePlan?.mealPlanName ?? null,
       roomTypeName: option.name,
       checkIn: dates.startDate,
       checkOut: dates.endDate,
@@ -181,8 +184,8 @@ function PropertyBookingPanelContent({
       children: guests.children,
       childAges: guests.childAges,
       notes: null,
-      displayAmount: option.finalAmount,
-      currency: option.currency,
+      displayAmount: ratePlan?.finalAmount ?? option.finalAmount,
+      currency: ratePlan?.currency ?? option.currency,
       quantity: 1,
     };
     if (!bookingCartSelectionMatchesItems(cart.items, selection)) {
@@ -370,9 +373,10 @@ function PropertyBookingPanelContent({
                   (item) => item.roomTypeId === roomType.id,
                 )
               : undefined;
-            const selectedItems = currentStayCartItems.filter(
+            const selectedBaseItems = currentStayCartItems.filter(
               (item) => bookingCartOfferMatches(item, roomType.id),
             );
+            const roomTypeItems = currentStayCartItems.filter((item) => item.roomTypeId === roomType.id);
             const availableToAdd =
               option && dates.startDate && dates.endDate
                 ? getCartAwareAvailableCount({
@@ -393,9 +397,16 @@ function PropertyBookingPanelContent({
                         option,
                         unavailableReason: unavailable?.reason,
                         availableToAdd,
-                        selectedQuantity: selectedItems.length,
+                        selectedQuantity: selectedBaseItems.length,
+                        totalSelectedQuantity: roomTypeItems.length,
                         onAdd: () => option && addToCart(option),
                         onRemove: () => removeOneFromCart(roomType.id),
+                        ratePlans: option?.ratePlans?.map((plan) => ({
+                          ...plan,
+                          selectedQuantity: roomTypeItems.filter((item) => bookingCartOfferMatches(item, roomType.id, plan.ratePlanId)).length,
+                          onAdd: () => addToCart(option, plan),
+                          onRemove: () => removeOneFromCart(roomType.id, plan.ratePlanId),
+                        })) ?? [],
                       }
                     : undefined
                 }

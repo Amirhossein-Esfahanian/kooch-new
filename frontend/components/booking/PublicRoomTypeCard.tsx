@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { KoochButton } from "@/components/KoochButton";
 import { bookingModePresentation } from "@/components/booking/booking-display";
-import type { PublicBookingRoomTypeOption } from "@/lib/booking-sessions";
+import type { PublicBookingRatePlanOption, PublicBookingRoomTypeOption } from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import { formatPrice, type PublicRoomType } from "@/lib/public-properties";
@@ -19,8 +19,14 @@ export interface PublicRoomTypeBookingState {
   unavailableReason?: RoomTypeUnavailableReason;
   availableToAdd: number;
   selectedQuantity: number;
+  totalSelectedQuantity: number;
   onAdd: () => void;
   onRemove: () => void;
+  ratePlans: Array<PublicBookingRatePlanOption & {
+    selectedQuantity: number;
+    onAdd: () => void;
+    onRemove: () => void;
+  }>;
 }
 
 export function PublicRoomTypeCard({
@@ -35,6 +41,7 @@ export function PublicRoomTypeCard({
   onShowDetails: () => void;
 }) {
   const currencyLabel = useSiteCurrencyLabel();
+  const ratePlanOption = booking?.option;
   const details = [
     roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
     roomType.stairCount != null ? `${roomType.stairCount} پله` : "",
@@ -52,7 +59,7 @@ export function PublicRoomTypeCard({
 
   return (
     <article
-      className="overflow-hidden rounded-2xl border bg-white shadow-sm"
+      className="overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-sm"
       data-testid={`room-type-card-${roomType.id}`}
       role="listitem"
     >
@@ -72,25 +79,25 @@ export function PublicRoomTypeCard({
         <div className="p-5">
           <h3 className="text-xl font-bold">{roomType.name}</h3>
           {roomType.englishName && (
-            <p className="mt-1 text-xs text-slate-400" dir="ltr">
+            <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
               {roomType.englishName}
             </p>
           )}
-          <p className="mt-3 text-sm font-semibold text-slate-700">
+          <p className="mt-3 text-sm font-semibold text-foreground">
             {roomType.maxAdults + roomType.maxChildren} نفر |{" "}
             {roomType.bedInformation.map(persianBed).join(" | ") ||
               "ترکیب تخت ثبت نشده"}
           </p>
-          <p className="mt-3 text-sm leading-7 text-slate-600">
+          <p className="mt-3 text-sm leading-7 text-muted-foreground">
             {roomType.description}
           </p>
           {details.length > 0 && (
-            <p className="mt-3 text-sm font-semibold text-slate-700">
+            <p className="mt-3 text-sm font-semibold text-foreground">
               {details.join(" | ")}
             </p>
           )}
           {roomType.notes && (
-            <p className="mt-2 text-sm leading-7 text-slate-600">
+            <p className="mt-2 text-sm leading-7 text-muted-foreground">
               {roomType.notes}
             </p>
           )}
@@ -98,7 +105,7 @@ export function PublicRoomTypeCard({
             <div className="mt-3 flex flex-wrap gap-2">
               {roomType.amenities.map((amenity) => (
                 <span
-                  className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold"
+                  className="rounded-full bg-muted px-3 py-1 text-xs font-bold text-foreground"
                   key={amenity.id}
                 >
                   {amenity.name}
@@ -107,7 +114,7 @@ export function PublicRoomTypeCard({
             </div>
           )}
         </div>
-        <div className="flex flex-col justify-between gap-5 border-t p-5 md:border-r md:border-t-0">
+        <div className="flex flex-col justify-between gap-5 border-t border-border p-5 md:border-r md:border-t-0">
           <RoomTypeBookingDetails
             booking={booking}
             currencyLabel={currencyLabel}
@@ -122,7 +129,83 @@ export function PublicRoomTypeCard({
           </KoochButton>
         </div>
       </div>
+      {ratePlanOption && booking.ratePlans.length > 0 && (
+        <div className="border-t border-border px-5 py-2">
+          <RateOfferRow
+            availableToAdd={booking.availableToAdd}
+            currencyLabel={currencyLabel}
+            name="نرخ استاندارد"
+            controlName={`${roomType.name}، نرخ استاندارد`}
+            finalAmount={ratePlanOption.finalAmount}
+            onAdd={booking.onAdd}
+            onRemove={booking.onRemove}
+            selectedQuantity={booking.selectedQuantity}
+            totalAvailable={ratePlanOption.availableCount}
+          />
+          {booking.ratePlans.map((plan) => (
+            <RateOfferRow
+              availableToAdd={booking.availableToAdd}
+              controlName={`${roomType.name}، ${plan.name}`}
+              currencyLabel={currencyLabel}
+              finalAmount={plan.finalAmount}
+              key={plan.ratePlanId}
+              mealPlanName={plan.mealPlanName}
+              name={plan.name}
+              onAdd={plan.onAdd}
+              onRemove={plan.onRemove}
+              selectedQuantity={plan.selectedQuantity}
+              totalAvailable={ratePlanOption.availableCount}
+            />
+          ))}
+        </div>
+      )}
     </article>
+  );
+}
+
+function RateOfferRow({
+  availableToAdd,
+  controlName,
+  currencyLabel,
+  finalAmount,
+  mealPlanName,
+  name,
+  onAdd,
+  onRemove,
+  selectedQuantity,
+  totalAvailable,
+}: {
+  availableToAdd: number;
+  controlName: string;
+  currencyLabel: string;
+  finalAmount: number;
+  mealPlanName?: string | null;
+  name: string;
+  onAdd: () => void;
+  onRemove: () => void;
+  selectedQuantity: number;
+  totalAvailable: number;
+}) {
+  return (
+    <div className="grid gap-3 border-b border-border py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+      <div className="min-w-0">
+        <p className="font-bold text-foreground">{name}</p>
+        {mealPlanName && mealPlanName !== name && (
+          <p className="mt-1 text-xs text-muted-foreground">{mealPlanName}</p>
+        )}
+      </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
+        <p className="font-bold text-foreground">{formatCurrency(finalAmount, { currencyLabel })}</p>
+        <OfferQuantityControl
+          availableToAdd={availableToAdd}
+          name={controlName}
+          onAdd={onAdd}
+          onRemove={onRemove}
+          selectedQuantity={selectedQuantity}
+          totalAvailable={totalAvailable}
+        />
+      </div>
+    </div>
   );
 }
 
@@ -138,18 +221,18 @@ function RoomTypeBookingDetails({
   if (!booking) {
     return (
       <div>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-muted-foreground">
           {roomType.displayPrice != null && roomType.displayPrice > 0
             ? "کمترین قیمت روزانه آینده"
             : "قیمت اقامت"}
         </p>
-        <p className="mt-1 text-lg font-bold text-blue-700">
+        <p className="mt-1 text-lg font-bold text-primary">
           {formatPrice(roomType.displayPrice, currencyLabel)}
         </p>
-        <p className="mt-3 text-xs text-slate-500">
+        <p className="mt-3 text-xs text-muted-foreground">
           برای قیمت قطعی و موجودی، تاریخ اقامت را بررسی کنید.
         </p>
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-muted-foreground">
           {roomType.totalInventory === 1
             ? "یک واحد قابل فروش"
             : `${roomType.totalInventory.toLocaleString("fa-IR")} واحد قابل فروش`}
@@ -161,10 +244,10 @@ function RoomTypeBookingDetails({
   if (!booking.option) {
     return (
       <div>
-        <p className="text-sm font-bold text-slate-800">
+        <p className="text-sm font-bold text-foreground">
           در این بازه قابل رزرو نیست
         </p>
-        <p className="mt-2 text-xs leading-6 text-slate-600">
+        <p className="mt-2 text-xs leading-6 text-muted-foreground">
           {unavailableRoomTypeMessage(booking.unavailableReason)}
         </p>
         {booking.selectedQuantity > 0 && (
@@ -182,21 +265,38 @@ function RoomTypeBookingDetails({
   }
 
   const option = booking.option;
-  const maximumSelectable = booking.selectedQuantity + booking.availableToAdd;
-  const isOverCapacity = booking.selectedQuantity > option.availableCount;
-  const isSingleUnit = booking.selectedQuantity <= 1 && maximumSelectable <= 1;
+  const isOverCapacity = booking.totalSelectedQuantity > option.availableCount;
   const mode = bookingModePresentation(option.bookingMode);
+
+  if (booking.ratePlans.length > 0) {
+    return (
+      <div>
+        <p className="text-xs font-bold text-foreground">
+          <span aria-hidden="true">{mode.icon}</span> {mode.label}
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {option.availableCount.toLocaleString("fa-IR")} واحد برای این بازه
+        </p>
+        {isOverCapacity && (
+          <p className="mt-2 text-xs font-bold leading-6 text-destructive" role="status">
+            موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")} واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div>
-      <p className="text-xs text-slate-500">مبلغ کل اقامت</p>
-      <p className="mt-1 text-lg font-bold text-blue-700">
+      <p className="text-xs font-bold text-foreground">نرخ استاندارد</p>
+      <p className="text-xs text-muted-foreground">مبلغ کل اقامت</p>
+      <p className="mt-1 text-lg font-bold text-primary">
         {formatCurrency(option.finalAmount, { currencyLabel })}
       </p>
-      <p className="mt-2 text-xs font-bold text-slate-700">
+      <p className="mt-2 text-xs font-bold text-foreground">
         <span aria-hidden="true">{mode.icon}</span> {mode.label}
       </p>
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-xs text-muted-foreground">
         {option.availableCount.toLocaleString("fa-IR")} واحد برای این بازه
       </p>
       {isOverCapacity && (
@@ -209,67 +309,81 @@ function RoomTypeBookingDetails({
         </p>
       )}
       <div className="mt-4 flex min-h-11 items-center justify-start md:justify-end">
-        {booking.selectedQuantity === 0 ? (
-          <KoochButton
-            aria-label={
-              booking.availableToAdd === 0
-                ? `تکمیل ظرفیت ${option.name}`
-                : `انتخاب ${option.name}`
-            }
-            className="w-full"
-            disabled={booking.availableToAdd === 0}
-            onClick={booking.onAdd}
-            variant={booking.availableToAdd === 0 ? "outline" : "primary"}
-          >
-            {booking.availableToAdd === 0 ? "تکمیل ظرفیت" : "انتخاب"}
-          </KoochButton>
-        ) : isSingleUnit ? (
-          <KoochButton
-            aria-label={`حذف انتخاب ${option.name}`}
-            aria-pressed={true}
-            className="w-full"
-            onClick={booking.onRemove}
-            variant="outline"
-          >
-            <span aria-hidden="true">✓</span> انتخاب شد؛ حذف
-          </KoochButton>
-        ) : (
-          <div
-            aria-label={`تعداد انتخاب‌شده ${option.name}`}
-            className="flex items-center gap-2"
-            role="group"
-          >
-            <KoochButton
-              aria-label={`کاهش تعداد ${option.name}`}
-              onClick={booking.onRemove}
-              size="icon"
-              variant="outline"
-            >
-              <span aria-hidden="true" className="text-lg">
-                −
-              </span>
-            </KoochButton>
-            <output
-              aria-atomic="true"
-              aria-live="polite"
-              className="min-w-8 text-center text-base font-bold text-slate-900"
-            >
-              {booking.selectedQuantity.toLocaleString("fa-IR")}
-            </output>
-            <KoochButton
-              aria-label={`افزایش تعداد ${option.name}`}
-              disabled={booking.availableToAdd === 0 || isOverCapacity}
-              onClick={booking.onAdd}
-              size="icon"
-              variant="outline"
-            >
-              <span aria-hidden="true" className="text-lg">
-                +
-              </span>
-            </KoochButton>
-          </div>
-        )}
+        <OfferQuantityControl
+          availableToAdd={booking.availableToAdd}
+          fullWidth
+          name={option.name}
+          onAdd={booking.onAdd}
+          onRemove={booking.onRemove}
+          selectedQuantity={booking.selectedQuantity}
+          totalAvailable={option.availableCount}
+        />
       </div>
+    </div>
+  );
+}
+
+function OfferQuantityControl({
+  availableToAdd,
+  fullWidth = false,
+  name,
+  onAdd,
+  onRemove,
+  selectedQuantity,
+  totalAvailable,
+}: {
+  availableToAdd: number;
+  fullWidth?: boolean;
+  name: string;
+  onAdd: () => void;
+  onRemove: () => void;
+  selectedQuantity: number;
+  totalAvailable: number;
+}) {
+  const isSingleUnit = selectedQuantity <= 1 && selectedQuantity + availableToAdd <= 1;
+  if (selectedQuantity === 0) {
+    return (
+      <KoochButton
+        aria-label={availableToAdd === 0 ? `تکمیل ظرفیت ${name}` : `انتخاب ${name}`}
+        className={fullWidth ? "w-full" : "min-w-28"}
+        disabled={availableToAdd === 0}
+        onClick={onAdd}
+        variant={availableToAdd === 0 ? "outline" : "primary"}
+      >
+        {availableToAdd === 0 ? "تکمیل ظرفیت" : "انتخاب"}
+      </KoochButton>
+    );
+  }
+  if (isSingleUnit) {
+    return (
+      <KoochButton
+        aria-label={`حذف انتخاب ${name}`}
+        aria-pressed={true}
+        className={fullWidth ? "w-full" : "min-w-28"}
+        onClick={onRemove}
+        variant="outline"
+      >
+        <span aria-hidden="true">✓</span> انتخاب شد؛ حذف
+      </KoochButton>
+    );
+  }
+  return (
+    <div aria-label={`تعداد انتخاب‌شده ${name}`} className="flex items-center gap-2" role="group">
+      <KoochButton aria-label={`کاهش تعداد ${name}`} onClick={onRemove} size="icon" variant="outline">
+        <span aria-hidden="true" className="text-lg">−</span>
+      </KoochButton>
+      <output aria-atomic="true" aria-live="polite" className="min-w-8 text-center text-base font-bold text-foreground">
+        {selectedQuantity.toLocaleString("fa-IR")}
+      </output>
+      <KoochButton
+        aria-label={`افزایش تعداد ${name}`}
+        disabled={availableToAdd === 0 || selectedQuantity > totalAvailable}
+        onClick={onAdd}
+        size="icon"
+        variant="outline"
+      >
+        <span aria-hidden="true" className="text-lg">+</span>
+      </KoochButton>
     </div>
   );
 }
