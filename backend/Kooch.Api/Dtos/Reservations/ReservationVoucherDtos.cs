@@ -9,6 +9,9 @@ public sealed class GuestReservationVoucherResponse
     public string GuestName { get; set; } = string.Empty;
     public string RoomTypeName { get; set; } = string.Empty;
     public string? RoomName { get; set; }
+    public bool HasExplicitRatePlan { get; set; }
+    public string? RatePlanName { get; set; }
+    public string? MealPlanName { get; set; }
     public DateOnly CheckIn { get; set; }
     public DateOnly CheckOut { get; set; }
     public int Nights { get; set; }
@@ -29,6 +32,9 @@ public sealed class OwnerReservationVoucherResponse
     public string GuestName { get; set; } = string.Empty;
     public string RoomTypeName { get; set; } = string.Empty;
     public string? RoomName { get; set; }
+    public bool HasExplicitRatePlan { get; set; }
+    public string? RatePlanName { get; set; }
+    public string? MealPlanName { get; set; }
     public DateOnly CheckIn { get; set; }
     public DateOnly CheckOut { get; set; }
     public int Nights { get; set; }

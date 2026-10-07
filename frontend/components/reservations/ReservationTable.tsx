@@ -135,6 +135,9 @@ export interface ReservationTableItem {
   propertyName?: string | null;
   roomTypeId?: number;
   roomTypeName?: string | null;
+  ratePlanId?: number | null;
+  ratePlanName?: string | null;
+  mealPlanName?: string | null;
   roomId?: number | null;
   roomName?: string | null;
   roomBaseCapacity?: number | null;

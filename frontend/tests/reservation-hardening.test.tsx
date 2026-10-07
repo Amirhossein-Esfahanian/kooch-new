@@ -38,6 +38,34 @@ function reservation(
 }
 
 describe("reservation hardening", () => {
+  it("does not infer a standard rate from a list item before details load", async () => {
+    render(<ReservationDetailsDialog onOpenChange={vi.fn()} open
+      reservation={reservation()} />);
+
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    expect(screen.queryByText("نوع نرخ")).toBeNull();
+  });
+
+  it.each([
+    { ratePlanId: null, ratePlanName: null, mealPlanName: null, expected: "نرخ استاندارد" },
+    { ratePlanId: 7, ratePlanName: "بدون صبحانه", mealPlanName: "فقط اقامت", expected: "بدون صبحانه" },
+    { ratePlanId: 7, ratePlanName: null, mealPlanName: null, expected: "نرخ رزروشده" },
+  ])("shows the booked historical rate in shared reservation details: $expected", async (rate) => {
+    render(<ReservationDetailsDialog onOpenChange={vi.fn()} open
+      reservation={reservation(rate)} />);
+
+    await screen.findByRole("dialog", { name: "جزئیات رزرو" });
+    const stay = screen.getByRole("heading", { name: "اقامت" }).closest("section")!;
+    expect(within(stay).getByText("نوع نرخ")).toBeTruthy();
+    expect(within(stay).getByText(rate.expected)).toBeTruthy();
+    if (rate.mealPlanName) {
+      expect(within(stay).getByText("وعده غذایی")).toBeTruthy();
+      expect(within(stay).getByText(rate.mealPlanName)).toBeTruthy();
+    } else {
+      expect(within(stay).queryByText("وعده غذایی")).toBeNull();
+    }
+  });
+
   it.each([null, "09123456789"])("shows guest phone only when returned by the API: %s", async (guestMobile) => {
     render(<ReservationDetailsDialog onOpenChange={vi.fn()} open
       reservation={reservation({ guestMobile })} />);

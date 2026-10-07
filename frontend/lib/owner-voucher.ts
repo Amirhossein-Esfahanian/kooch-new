@@ -9,6 +9,9 @@ export interface OwnerVoucher {
   guestMobile?: string | null;
   roomTypeName: string;
   roomName: string | null;
+  hasExplicitRatePlan: boolean;
+  ratePlanName: string | null;
+  mealPlanName: string | null;
   checkIn: string;
   checkOut: string;
   nights: number;

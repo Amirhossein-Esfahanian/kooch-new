@@ -21,6 +21,7 @@ const voucher: OwnerVoucher = {
   voucherNumber: "V-583214", reservationNumber: "R-271946",
   issuedAtUtc: "2026-09-20T09:30:00Z", propertyName: "خانه کاشان", guestName: "مریم احمدی",
   roomTypeName: "اتاق دو نفره", roomName: "بهار", checkIn: "2026-09-25", checkOut: "2026-09-28",
+  hasExplicitRatePlan: false, ratePlanName: null, mealPlanName: null,
   nights: 3, adultCount: 2, childCount: 1, currency: "IRR", grossAmount: 1000000,
   // Intentionally not recomputable: the UI must present persisted values verbatim.
   commissionRate: 12.5, commissionAmount: 123456, propertyPayableAmount: 876543,
@@ -32,6 +33,35 @@ beforeEach(() => { request.mockReset(); });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe("read-only reservation vouchers", () => {
+  it.each(["guest", "owner", "admin"])("shows historical RatePlan and MealPlan in the %s document", async (mode) => {
+    request.mockResolvedValue({ ...voucher, hasExplicitRatePlan: true,
+      ratePlanName: "بدون صبحانه", mealPlanName: "فقط اقامت" });
+    render(mode === "guest" ? <GuestVoucherView reservationNumber="R-271946" />
+      : mode === "owner" ? <OwnerVoucherView propertyId={7} reservationId={23} />
+      : <AdminVoucherView reservationId={23} />);
+
+    await screen.findByRole("article", { name: "سند ووچر رزرو" });
+    const view = within(doc());
+    expect(view.getByText("نوع نرخ")).toBeTruthy();
+    expect(view.getByText("بدون صبحانه")).toBeTruthy();
+    expect(view.getByText("وعده غذایی")).toBeTruthy();
+    expect(view.getByText("فقط اقامت")).toBeTruthy();
+    expect(doc().textContent).not.toContain("ratePlanId");
+    expect(doc().textContent).not.toContain("FixedAmount");
+  });
+
+  it.each([
+    { hasExplicitRatePlan: false, ratePlanName: null, mealPlanName: null, expected: "نرخ استاندارد" },
+    { hasExplicitRatePlan: true, ratePlanName: null, mealPlanName: null, expected: "نرخ رزروشده" },
+  ])("shows the safe $expected label without a meal line", async (rate) => {
+    request.mockResolvedValue({ ...voucher, ...rate });
+    render(<GuestVoucherView reservationNumber="R-271946" />);
+
+    await screen.findByRole("article", { name: "سند ووچر رزرو" });
+    expect(within(doc()).getByText(rate.expected)).toBeTruthy();
+    expect(within(doc()).queryByText("وعده غذایی")).toBeNull();
+  });
+
   it.each(["owner", "admin"])("shows the full API phone in the %s financial document", async (mode) => {
     request.mockResolvedValue({ ...voucher, guestMobile: "09123456789" });
     render(mode === "owner" ? <OwnerVoucherView propertyId={7} reservationId={23} />

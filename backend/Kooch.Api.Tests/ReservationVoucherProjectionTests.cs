@@ -18,6 +18,63 @@ namespace Kooch.Api.Tests;
 
 public sealed class ReservationVoucherProjectionTests
 {
+    [Fact]
+    public async Task StandardVoucherProjection_HasNoExplicitRatePlan()
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+
+        var guest = await harness.Service.GetForGuestAsync(1, "R-583214");
+        var owner = await harness.Service.GetForPropertyAsync(3, 10, 40);
+        var admin = await harness.Service.GetForAdminAsync(40);
+
+        Assert.False(guest.HasExplicitRatePlan);
+        Assert.Null(guest.RatePlanName);
+        Assert.Null(guest.MealPlanName);
+        Assert.False(owner.HasExplicitRatePlan);
+        Assert.False(admin.HasExplicitRatePlan);
+    }
+
+    [Fact]
+    public async Task ExplicitRatePlanProjection_UsesReservationSnapshotAfterPlanChanges()
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync(withRatePlan: true);
+        var plan = await harness.Context.RatePlans.SingleAsync();
+        plan.Name = "Renamed current plan";
+        plan.IsActive = false;
+        plan.IsDeleted = true;
+        await harness.Context.SaveChangesAsync();
+        harness.Context.ChangeTracker.Clear();
+
+        var guest = await harness.Service.GetForGuestAsync(1, "R-583214");
+        var owner = await harness.Service.GetForPropertyAsync(3, 10, 40);
+        var admin = await harness.Service.GetForAdminAsync(40);
+
+        Assert.True(guest.HasExplicitRatePlan);
+        Assert.Equal("Without breakfast", guest.RatePlanName);
+        Assert.Equal("Room only", guest.MealPlanName);
+        Assert.Equal(guest.RatePlanName, owner.RatePlanName);
+        Assert.Equal(guest.RatePlanName, admin.RatePlanName);
+        Assert.Equal(guest.MealPlanName, owner.MealPlanName);
+        Assert.Equal(guest.MealPlanName, admin.MealPlanName);
+        var json = JsonSerializer.Serialize(guest, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        Assert.DoesNotContain("ratePlanId", json, StringComparison.OrdinalIgnoreCase);
+        Assert.DoesNotContain("modifier", json, StringComparison.OrdinalIgnoreCase);
+        Assert.Empty(harness.Context.ChangeTracker.Entries());
+    }
+
+    [Fact]
+    public async Task ExplicitRatePlanWithoutSnapshot_DoesNotProjectMutablePlanName()
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync(
+            withRatePlan: true, ratePlanSnapshotName: null);
+
+        var guest = await harness.Service.GetForGuestAsync(1, "R-583214");
+
+        Assert.True(guest.HasExplicitRatePlan);
+        Assert.Null(guest.RatePlanName);
+        Assert.NotEqual("Current plan", guest.RatePlanName);
+    }
+
     [Theory]
     [InlineData(UserRole.SuperAdmin, false, true)]
     [InlineData(UserRole.AdminAssistant, true, true)]
@@ -330,7 +387,9 @@ public sealed class ReservationVoucherProjectionTests
         public Reservation Reservation { get; }
         public ReservationVoucherQueryService Service { get; }
 
-        public static async Task<VoucherProjectionHarness> CreateAsync()
+        public static async Task<VoucherProjectionHarness> CreateAsync(
+            bool withRatePlan = false,
+            string? ratePlanSnapshotName = "Without breakfast")
         {
             var options = new DbContextOptionsBuilder<KoochDbContext>()
                 .UseInMemoryDatabase($"voucher-projection-{Guid.NewGuid():N}")
@@ -361,6 +420,15 @@ public sealed class ReservationVoucherProjectionTests
                 InventoryMode = InventoryMode.TypeBasedInventory
             };
             var reservation = CreateReservation(40, "R-583214", ReservationStatus.Confirmed);
+            if (withRatePlan)
+            {
+                reservation.RatePlanId = 99;
+                reservation.RatePlanNameSnapshot = ratePlanSnapshotName;
+                reservation.MealPlanNameSnapshot = "Room only";
+                reservation.MealPlanSlugSnapshot = "room-only";
+                reservation.RatePlanPriceModifierTypeSnapshot = PriceModifierType.FixedAmount;
+                reservation.RatePlanPriceModifierValueSnapshot = -100m;
+            }
             var capacityLost = CreateReservation(41, "R-NO-VOUCHER", ReservationStatus.CapacityLost);
             var payment = new Payment
             {
@@ -428,6 +496,17 @@ public sealed class ReservationVoucherProjectionTests
                 voucher,
                 Membership(80, propertyOwner.Id, property.Id),
                 Membership(81, propertyOwner.Id, otherProperty.Id));
+            if (withRatePlan)
+            {
+                context.RatePlans.Add(new RatePlan
+                {
+                    Id = 99,
+                    RoomTypeId = roomType.Id,
+                    Name = "Current plan",
+                    PriceModifierType = PriceModifierType.FixedAmount,
+                    PriceModifierValue = -100m
+                });
+            }
             await context.SaveChangesAsync();
             return new VoucherProjectionHarness(context, property, guest, roomType, reservation);
         }

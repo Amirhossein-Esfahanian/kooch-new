@@ -27,6 +27,7 @@ import type {
   ReservationTableStatus,
 } from "@/components/reservations/ReservationTable";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { bookedRatePlanLabel } from "@/lib/booked-rate-plan";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 
@@ -1828,6 +1829,15 @@ export function ReservationDetailsDialog({
                 value={toPersianDigits(reservation.propertyName ?? "-")}
               />
               <DetailItem label="نوع اتاق" value={toPersianDigits(roomName)} />
+              {reservation.ratePlanId !== undefined && (
+                <DetailItem
+                  label="نوع نرخ"
+                  value={bookedRatePlanLabel(reservation.ratePlanId != null, reservation.ratePlanName)}
+                />
+              )}
+              {reservation.ratePlanId != null && reservation.mealPlanName && (
+                <DetailItem label="وعده غذایی" value={reservation.mealPlanName} />
+              )}
               <DetailItem
                 label="تاریخ ورود"
                 value={formatDate(reservation.checkInDate)}

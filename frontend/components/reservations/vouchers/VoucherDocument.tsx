@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { KoochButton } from "@/components/KoochButton";
 import { formatDate, formatDateTime, formatNumber } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
+import { bookedRatePlanLabel } from "@/lib/booked-rate-plan";
 import { fetchPublicSiteSettings, settingValue } from "@/lib/site-settings";
 import styles from "./VoucherDocument.module.css";
 
@@ -17,6 +18,9 @@ interface VoucherStay {
   guestMobile?: string | null;
   roomTypeName: string;
   roomName: string | null;
+  hasExplicitRatePlan: boolean;
+  ratePlanName: string | null;
+  mealPlanName: string | null;
   checkIn: string;
   checkOut: string;
   nights: number;
@@ -106,6 +110,12 @@ export function VoucherDocument({ voucher, children, audience = "guest" }: {
         <dl className={styles.roomFields}>
           <VoucherField label="نوع اتاق">{voucher.roomTypeName}</VoucherField>
           {voucher.roomName && <VoucherField label="اتاق">{voucher.roomName}</VoucherField>}
+          <VoucherField label="نوع نرخ">
+            {bookedRatePlanLabel(voucher.hasExplicitRatePlan, voucher.ratePlanName)}
+          </VoucherField>
+          {voucher.hasExplicitRatePlan && voucher.mealPlanName && (
+            <VoucherField label="وعده غذایی">{voucher.mealPlanName}</VoucherField>
+          )}
           <VoucherField label="بزرگسال">{formatNumber(voucher.adultCount)}</VoucherField>
           <VoucherField label="کودک">{formatNumber(voucher.childCount)}</VoucherField>
         </dl>
