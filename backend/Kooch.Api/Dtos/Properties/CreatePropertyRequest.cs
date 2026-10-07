@@ -44,6 +44,7 @@ public class CreatePropertyRequest : PropertyCoordinatesRequest
     public BreakfastOption BreakfastOption { get; set; }
     [Range(0, double.MaxValue)]
     public decimal? BreakfastPrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
     public PropertyStatus? Status { get; set; }
     public bool? IsWheelchairAccessible { get; set; }
     public bool HasElevator { get; set; }

@@ -29,6 +29,9 @@ public class PropertyResponse
     public TimeOnly? CheckOutTime { get; set; }
     public BreakfastOption BreakfastOption { get; set; }
     public decimal? BreakfastPrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
+    public string? DefaultMealPlanName { get; set; }
+    public string? DefaultMealPlanSlug { get; set; }
     public decimal? TotalAreaM2 { get; set; }
     public decimal? LandAreaM2 { get; set; }
     public int? FloorsCount { get; set; }

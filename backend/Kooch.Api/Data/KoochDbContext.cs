@@ -1074,6 +1074,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(destination => destination.Properties)
                 .HasForeignKey(property => property.DestinationId)
                 .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(property => property.DefaultMealPlan)
+                .WithMany(mealPlan => mealPlan.DefaultProperties)
+                .HasForeignKey(property => property.DefaultMealPlanId)
+                .OnDelete(DeleteBehavior.Restrict);
                 entity.Property(property => property.HasSeparateForeignPricing).HasDefaultValue(false);
             entity.Property(property => property.ShowGuestPhoneToPropertyUsers).HasDefaultValue(false);
         });

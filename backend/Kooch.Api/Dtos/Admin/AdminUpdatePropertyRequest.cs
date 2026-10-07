@@ -44,6 +44,7 @@ public class AdminUpdatePropertyRequest : PropertyCoordinatesRequest
     public BreakfastOption BreakfastOption { get; set; }
     [Range(0, double.MaxValue)]
     public decimal? BreakfastPrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
     public int? TotalAreaM2 { get; set; }
     public int? LandAreaM2 { get; set; }
     public int? FloorsCount { get; set; }

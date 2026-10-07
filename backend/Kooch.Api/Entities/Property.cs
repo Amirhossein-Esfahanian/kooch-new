@@ -22,6 +22,7 @@ public class Property : BaseEntity
     public TimeOnly? CheckOutTime { get; set; }
     public BreakfastOption BreakfastOption { get; set; }
     public decimal? BreakfastPrice { get; set; }
+    public int? DefaultMealPlanId { get; set; }
     public decimal? TotalAreaM2 { get; set; }
     public decimal? LandAreaM2 { get; set; }
     public int? FloorsCount { get; set; }
@@ -40,6 +41,7 @@ public class Property : BaseEntity
 
     public User Owner { get; set; } = null!;
     public Destination Destination { get; set; } = null!;
+    public MealPlan? DefaultMealPlan { get; set; }
     public SeoMetadata? SeoMetadata { get; set; }
     public ICollection<RoomType> RoomTypes { get; set; } = [];
     public ICollection<PropertyHighlight> Highlights { get; set; } = [];

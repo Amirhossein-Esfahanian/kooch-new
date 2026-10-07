@@ -47,6 +47,7 @@ public class PropertyService(
         await EnsureCanonicalOwnerAccountAsync(ownerId, cancellationToken);
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
         var slug = EnglishSlugGenerator.Create(englishName, "property");
         await EnsureUniqueSlugAsync(slug, null, cancellationToken);
@@ -72,6 +73,7 @@ public class PropertyService(
             CheckOutTime = request.CheckOutTime,
             BreakfastOption = request.BreakfastOption,
             BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null,
+            DefaultMealPlanId = request.DefaultMealPlanId,
             HasElevator = request.HasElevator,
             IsWheelchairAccessible = request.IsWheelchairAccessible,
             HasGroundFloorRoom = request.HasGroundFloorRoom,
@@ -141,6 +143,7 @@ public class PropertyService(
         PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
         var englishName = request.EnglishName is null
             ? property.EnglishName
             : CleanOptional(request.EnglishName);
@@ -165,6 +168,7 @@ public class PropertyService(
         property.CheckOutTime = request.CheckOutTime;
         property.BreakfastOption = request.BreakfastOption;
         property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
+        property.DefaultMealPlanId = request.DefaultMealPlanId;
         property.TotalAreaM2 = request.TotalAreaM2;
         property.LandAreaM2 = request.LandAreaM2;
         property.FloorsCount = request.FloorsCount;
@@ -348,6 +352,7 @@ public class PropertyService(
         }
 
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
+        await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
         var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
         await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
@@ -374,6 +379,7 @@ public class PropertyService(
         property.CheckOutTime = request.CheckOutTime;
         property.BreakfastOption = request.BreakfastOption;
         property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
+        property.DefaultMealPlanId = request.DefaultMealPlanId;
         property.Latitude = request.Latitude;
         property.Longitude = request.Longitude;
         property.TotalAreaM2 = request.TotalAreaM2;
@@ -1269,6 +1275,16 @@ public class PropertyService(
         }
     }
 
+    private async Task ValidateDefaultMealPlanAsync(int? mealPlanId, CancellationToken cancellationToken)
+    {
+        if (mealPlanId.HasValue &&
+            !await dbContext.MealPlans.AsNoTracking()
+                .AnyAsync(mealPlan => mealPlan.Id == mealPlanId.Value, cancellationToken))
+        {
+            throw new ArgumentException("Default meal plan not found.", nameof(mealPlanId));
+        }
+    }
+
     private async Task EnsureUniqueSlugAsync(string slug, int? propertyId, CancellationToken cancellationToken)
     {
         if (await dbContext.Properties.IgnoreQueryFilters().AsNoTracking()
@@ -1306,6 +1322,9 @@ public class PropertyService(
             CheckOutTime = property.CheckOutTime,
             BreakfastOption = property.BreakfastOption,
             BreakfastPrice = property.BreakfastPrice,
+            DefaultMealPlanId = property.DefaultMealPlanId,
+            DefaultMealPlanName = property.DefaultMealPlan != null ? property.DefaultMealPlan.Name : null,
+            DefaultMealPlanSlug = property.DefaultMealPlan != null ? property.DefaultMealPlan.Slug : null,
             TotalAreaM2 = property.TotalAreaM2,
             LandAreaM2 = property.LandAreaM2,
             FloorsCount = property.FloorsCount,

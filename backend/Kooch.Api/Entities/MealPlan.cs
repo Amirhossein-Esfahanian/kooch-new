@@ -8,4 +8,5 @@ public class MealPlan : BaseEntity
 
     public ICollection<RatePlan> RatePlans { get; set; } = [];
     public ICollection<RoomType> DefaultRoomTypes { get; set; } = [];
+    public ICollection<Property> DefaultProperties { get; set; } = [];
 }
