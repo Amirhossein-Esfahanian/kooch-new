@@ -235,6 +235,8 @@ const availableOptions = {
       nightsCount: 2,
       finalAmount: 4_000_000,
       currency: "IRR",
+      defaultMealPlanName: null,
+      defaultMealPlanSlug: null,
       rooms: [],
     },
   ],
@@ -653,6 +655,63 @@ describe("public property booking integration", () => {
     expect(within(card).getByText("۴٬۶۰۰٬۰۰۰ تومان")).toBeTruthy();
     expect(within(card).getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
     expect(within(card).queryByText(/modifier|RatePlanId|mealPlanSlug/i)).toBeNull();
+  });
+
+  it("shows the standard offer's backend DefaultMealPlan beside independent explicit RatePlan meals", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{
+        ...availableWithRatePlans.roomTypes[0],
+        defaultMealPlanName: "صبحانه شامل قیمت",
+        defaultMealPlanSlug: "breakfast-included",
+      }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(card).getByText("صبحانه شامل قیمت")).toBeTruthy();
+    expect(within(card).getByText("Room Only")).toBeTruthy();
+    expect(within(card).getByText("سه وعده غذا")).toBeTruthy();
+    expect(within(card).queryByText("breakfast-included")).toBeNull();
+
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    await waitFor(() => {
+      const saved = JSON.parse(sessionStorage.getItem(bookingCartStorageKey) ?? "{}");
+      expect(saved.items[0].ratePlanId).toBeNull();
+      expect(saved.items[0].mealPlanName).toBeNull();
+    });
+  });
+
+  it("shows DefaultMealPlan for the standard offer without alternative RatePlans", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{
+        ...availableOptions.roomTypes[0],
+        defaultMealPlanName: "صبحانه شامل قیمت",
+        defaultMealPlanSlug: "breakfast-included",
+      }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(card).getByText("صبحانه شامل قیمت")).toBeTruthy();
+    expect(within(card).queryByText("نرخ‌های جایگزین")).toBeNull();
+  });
+
+  it("does not infer a standard meal from legacy Property breakfast when DefaultMealPlan is absent", async () => {
+    api.fetchOptions.mockResolvedValueOnce(availableOptions);
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(card).queryByText("صبحانه شامل قیمت")).toBeNull();
+    expect(within(card).queryByText("بدون صبحانه")).toBeNull();
+    expect(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
   });
 
   it("keeps per-offer quantities distinct and caps all offers at shared RoomType inventory", async () => {

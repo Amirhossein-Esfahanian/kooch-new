@@ -43,6 +43,8 @@ export interface PublicBookingRoomTypeOption {
   nightsCount: number;
   finalAmount: number;
   currency: string;
+  defaultMealPlanName: string | null;
+  defaultMealPlanSlug: string | null;
   rooms: PublicBookingRoom[];
   ratePlans?: PublicBookingRatePlanOption[];
 }

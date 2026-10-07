@@ -137,6 +137,7 @@ export function PublicRoomTypeCard({
             name="نرخ استاندارد"
             controlName={`${roomType.name}، نرخ استاندارد`}
             finalAmount={ratePlanOption.finalAmount}
+            mealPlanName={ratePlanOption.defaultMealPlanName}
             onAdd={booking.onAdd}
             onRemove={booking.onRemove}
             selectedQuantity={booking.selectedQuantity}
@@ -289,6 +290,9 @@ function RoomTypeBookingDetails({
   return (
     <div>
       <p className="text-xs font-bold text-foreground">نرخ استاندارد</p>
+      {option.defaultMealPlanName && (
+        <p className="mt-1 text-xs text-muted-foreground">{option.defaultMealPlanName}</p>
+      )}
       <p className="text-xs text-muted-foreground">مبلغ کل اقامت</p>
       <p className="mt-1 text-lg font-bold text-primary">
         {formatCurrency(option.finalAmount, { currencyLabel })}
