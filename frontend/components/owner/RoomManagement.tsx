@@ -33,6 +33,8 @@ import {
   apiRequest,
   BedTypeResponse,
   bedTypeLabel,
+  listPropertyMealPlans,
+  MealPlanOptionResponse,
   PropertyImageResponse,
   RoomKindCatalogResponse,
   RoomTypeResponse,
@@ -44,6 +46,7 @@ type RoomTypeDraft = {
   englishName: string;
   description: string;
   roomKindCode: string;
+  defaultMealPlanId: number | null;
   maxAdults: number;
   maxChildren: number;
   allowExtraGuest: boolean;
@@ -64,6 +67,7 @@ const emptyRoomType: RoomTypeDraft = {
   englishName: "",
   description: "",
   roomKindCode: "",
+  defaultMealPlanId: null,
   maxAdults: 0,
   maxChildren: 0,
   allowExtraGuest: false,
@@ -92,6 +96,7 @@ function roomTypeToDraft(roomType: RoomTypeResponse): RoomTypeDraft {
     englishName: roomType.englishName ?? "",
     description: roomType.description,
     roomKindCode: roomType.roomKindCode,
+    defaultMealPlanId: roomType.defaultMealPlanId,
     maxAdults: roomType.maxAdults,
     maxChildren: roomType.maxChildren,
     allowExtraGuest: roomType.allowExtraGuest,
@@ -130,6 +135,7 @@ export function RoomManagement({
     AmenityCategoryResponse[]
   >([]);
   const [roomKinds, setRoomKinds] = useState<RoomKindCatalogResponse[]>([]);
+  const [mealPlans, setMealPlans] = useState<MealPlanOptionResponse[]>([]);
   const [draft, setDraft] = useState<RoomTypeDraft>(emptyRoomType);
   const [activeStep, setActiveStep] = useState(0);
   const [dialogMode, setDialogMode] = useState<"create" | "edit">("create");
@@ -156,12 +162,14 @@ export function RoomManagement({
       apiRequest<AmenityCategoryResponse[]>("/amenity-categories"),
       apiRequest<AmenityResponse[]>("/amenities"),
       apiRequest<RoomKindCatalogResponse[]>("/catalogs/room-kinds"),
+      listPropertyMealPlans(propertyId),
     ])
-      .then(([, , beds, categories, amenityItems, kinds]) => {
+      .then(([, , beds, categories, amenityItems, kinds, mealPlanItems]) => {
         setBedTypes(beds);
         setAmenityCategories(categories);
         setAmenities(amenityItems);
         setRoomKinds(kinds);
+        setMealPlans(mealPlanItems);
       })
       .catch((caught: Error) => {
         setError(caught.message);
@@ -289,6 +297,7 @@ export function RoomManagement({
             hasWindow: draft.hasWindow,
             hasPrivateBathroom: draft.hasPrivateBathroom,
             roomKind,
+            defaultMealPlanId: draft.defaultMealPlanId,
             maxAdults: draft.maxAdults,
             maxChildren: draft.maxChildren,
             allowExtraGuest: draft.allowExtraGuest,
@@ -388,6 +397,7 @@ export function RoomManagement({
           allowExtraGuest: roomType.allowExtraGuest,
           maxExtraGuests: roomType.maxExtraGuests,
           totalInventory: roomType.totalInventory,
+          defaultMealPlanId: roomType.defaultMealPlanId,
           notes: roomType.notes,
           floorNumber: roomType.floorNumber,
           stairCount: roomType.stairCount,
@@ -472,6 +482,25 @@ export function RoomManagement({
             />
             <span className="text-xs font-normal text-muted-foreground">
               صفر یعنی این نوع اتاق هنوز برای فروش آماده نیست.
+            </span>
+          </label>
+          <label className="grid gap-1 text-sm font-bold">
+            وعده غذایی نرخ استاندارد
+            <KoochSelect
+              onChange={(event) =>
+                patchDraft({ defaultMealPlanId: nullableNumber(event.target.value) })
+              }
+              value={draft.defaultMealPlanId == null ? "" : String(draft.defaultMealPlanId)}
+            >
+              <option value="">نامشخص</option>
+              {mealPlans.map((mealPlan) => (
+                <option key={mealPlan.id} value={mealPlan.id}>
+                  {mealPlan.name}
+                </option>
+              ))}
+            </KoochSelect>
+            <span className="text-xs font-normal text-muted-foreground">
+              مشخص می‌کند نرخ پایه تقویم شامل چه وعده غذایی است.
             </span>
           </label>
           <label className="grid gap-1 text-sm font-bold">

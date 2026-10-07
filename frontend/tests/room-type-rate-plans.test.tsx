@@ -32,6 +32,7 @@ const roomType: RoomTypeResponse = {
   maxExtraGuests: 0, totalInventory: 1, activeRoomCount: 1,
   inventoryMode: "TypeBasedInventory", roomKind: "Double", roomKindCode: "double",
   basePrice: 3_000_000, notes: null, floorNumber: null, stairCount: null,
+  defaultMealPlanId: null, defaultMealPlanName: null, defaultMealPlanSlug: null,
   hasWindow: true, hasPrivateBathroom: true, isActive: true,
   completion: { isComplete: true, missingItems: [], sections: [] },
   bedConfigurations: [], amenities: [],

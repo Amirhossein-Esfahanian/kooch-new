@@ -299,6 +299,9 @@ export interface RoomTypeResponse {
   roomKind: RoomKind;
   roomKindCode: string;
   basePrice: number | null;
+  defaultMealPlanId: number | null;
+  defaultMealPlanName: string | null;
+  defaultMealPlanSlug: string | null;
   notes: string | null;
   floorNumber: number | null;
   stairCount: number | null;

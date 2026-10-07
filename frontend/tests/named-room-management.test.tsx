@@ -13,13 +13,13 @@ import type {
   RoomTypeResponse,
 } from "@/lib/owner-api";
 
-const ownerApi = vi.hoisted(() => ({ apiRequest: vi.fn() }));
+const ownerApi = vi.hoisted(() => ({ apiRequest: vi.fn(), listPropertyMealPlans: vi.fn() }));
 const notifications = vi.hoisted(() => ({ error: vi.fn(), success: vi.fn() }));
 let roomTypeSaveError: Error | null = null;
 
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
-  return { ...actual, apiRequest: ownerApi.apiRequest };
+  return { ...actual, ...ownerApi };
 });
 
 vi.mock("sonner", () => ({ toast: notifications }));
@@ -78,6 +78,9 @@ const zanbagh: RoomTypeResponse = {
   roomKind: "Double",
   roomKindCode: "double",
   basePrice: 2_500_000,
+  defaultMealPlanId: null,
+  defaultMealPlanName: null,
+  defaultMealPlanSlug: null,
   notes: null,
   floorNumber: null,
   stairCount: null,
@@ -127,6 +130,9 @@ function arrangeApi(
           totalInventory: Number(payload.totalInventory),
           roomKind: payload.roomKind === 3 ? "Twin" : "Double",
           roomKindCode: payload.roomKind === 3 ? "twin" : "double",
+          defaultMealPlanId: payload.defaultMealPlanId == null ? null : Number(payload.defaultMealPlanId),
+          defaultMealPlanName: payload.defaultMealPlanId === 7 ? "صبحانه شامل قیمت" : null,
+          defaultMealPlanSlug: payload.defaultMealPlanId === 7 ? "breakfast-included" : null,
         };
         roomTypes = [...roomTypes, created];
         return created;
@@ -162,6 +168,9 @@ function arrangeApi(
           allowExtraGuest: Boolean(payload.allowExtraGuest),
           maxExtraGuests: Number(payload.maxExtraGuests),
           totalInventory: Number(payload.totalInventory),
+          defaultMealPlanId: payload.defaultMealPlanId == null ? null : Number(payload.defaultMealPlanId),
+          defaultMealPlanName: payload.defaultMealPlanId === 7 ? "صبحانه شامل قیمت" : null,
+          defaultMealPlanSlug: payload.defaultMealPlanId === 7 ? "breakfast-included" : null,
           isActive: Boolean(payload.isActive),
           bedConfigurations: (
             (payload.bedConfigurations as {
@@ -271,6 +280,10 @@ describe("unified owner sellable room type management", () => {
   beforeEach(() => {
     roomTypeSaveError = null;
     vi.clearAllMocks();
+    ownerApi.listPropertyMealPlans.mockResolvedValue([
+      { id: 7, name: "صبحانه شامل قیمت", slug: "breakfast-included" },
+      { id: 8, name: "فقط اقامت", slug: "room-only" },
+    ]);
   });
 
   it("shows sellable RoomTypes and keeps physical-room and InventoryMode concepts out of the main UI", async () => {
@@ -322,6 +335,70 @@ describe("unified owner sellable room type management", () => {
     ).toBe("0");
     expect(within(dialog).queryByLabelText(/قیمت پایه/)).toBeNull();
     expect(within(dialog).queryByLabelText(/شیوه مدیریت موجودی/)).toBeNull();
+  });
+
+  it("loads named MealPlans for the standard offer without exposing IDs or slugs", async () => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    const select = within(dialog).getByLabelText(/وعده غذایی نرخ استاندارد/) as HTMLSelectElement;
+
+    expect(ownerApi.listPropertyMealPlans).toHaveBeenCalledWith(3);
+    expect(select.value).toBe("");
+    expect(within(dialog).getByText("مشخص می‌کند نرخ پایه تقویم شامل چه وعده غذایی است.")).toBeTruthy();
+    expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
+      "نامشخص", "صبحانه شامل قیمت", "فقط اقامت",
+    ]);
+    expect(select.textContent).not.toContain("breakfast-included");
+    expect(select.textContent).not.toContain("room-only");
+  });
+
+  it.each([
+    ["", null],
+    ["7", 7],
+  ])("creates a RoomType with standard MealPlan selection %s", async (selection, expectedId) => {
+    arrangeApi();
+    render(<RoomManagement propertyId={3} />);
+    const dialog = await openCreateDialog();
+    await fillRequiredFields(dialog);
+    fireEvent.change(within(dialog).getByLabelText(/وعده غذایی نرخ استاندارد/), {
+      target: { value: selection },
+    });
+    await continueTo(dialog, "ویژگی‌های نوع اتاق");
+
+    const call = ownerApi.apiRequest.mock.calls.find(
+      ([path, init]) => path === "/owner/properties/3/room-types" && init?.method === "POST",
+    );
+    expect(JSON.parse(String(call?.[1]?.body)).defaultMealPlanId).toBe(expectedId);
+  });
+
+  it("preselects and round-trips the default MealPlan across unrelated edits, status changes, and clearing", async () => {
+    arrangeApi([{ ...zanbagh, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت", defaultMealPlanSlug: "breakfast-included" }]);
+    render(<RoomManagement propertyId={3} />);
+    fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
+    const dialog = await screen.findByRole("dialog");
+    const select = within(dialog).getByLabelText(/وعده غذایی نرخ استاندارد/) as HTMLSelectElement;
+    expect(select.value).toBe("7");
+
+    fireEvent.change(within(dialog).getByLabelText(/نام نوع اتاق/), { target: { value: "زنبق تازه" } });
+    await continueTo(dialog, "ویژگی‌های نوع اتاق");
+    const updateCalls = () => ownerApi.apiRequest.mock.calls.filter(
+      ([path, init]) => path === "/owner/room-types/4" && init?.method === "PUT",
+    );
+    expect(JSON.parse(String(updateCalls().at(-1)?.[1]?.body)).defaultMealPlanId).toBe(7);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "بستن" }));
+    fireEvent.click(await screen.findByRole("button", { name: "فعال‌سازی" }));
+    await waitFor(() => expect(updateCalls().length).toBeGreaterThan(1));
+    expect(JSON.parse(String(updateCalls().at(-1)?.[1]?.body)).defaultMealPlanId).toBe(7);
+
+    fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
+    const reopened = await screen.findByRole("dialog");
+    fireEvent.change(within(reopened).getByLabelText(/وعده غذایی نرخ استاندارد/), {
+      target: { value: "" },
+    });
+    await continueTo(reopened, "ویژگی‌های نوع اتاق");
+    expect(JSON.parse(String(updateCalls().at(-1)?.[1]?.body)).defaultMealPlanId).toBeNull();
   });
 
   it("uses simple step titles and places the close control opposite the RTL title", async () => {
