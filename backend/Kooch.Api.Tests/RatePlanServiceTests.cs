@@ -133,6 +133,26 @@ public sealed class RatePlanServiceTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListMealPlansAsync(2, UserRole.Client, 10));
     }
 
+    [Fact]
+    public async Task GlobalMealPlanCatalog_DoesNotRequirePropertyAndReturnsOrderedUsableOptions()
+    {
+        await using var db = await CreateContextAsync();
+        db.MealPlans.AddRange(
+            new MealPlan { Id = 32, Name = "A", Slug = "a-2" },
+            new MealPlan { Id = 33, Name = "A", Slug = "a-1" });
+        await db.SaveChangesAsync();
+
+        db.Properties.RemoveRange(db.Properties);
+        await db.SaveChangesAsync();
+
+        var options = await Service(db).ListReferenceMealPlansAsync();
+        Assert.Equal([32, 33, 30], options.Select(option => option.Id));
+        Assert.Equal(["A", "A", "Breakfast"], options.Select(option => option.Name));
+        Assert.Equal(["a-2", "a-1", "breakfast"], options.Select(option => option.Slug));
+        Assert.DoesNotContain(options, option => option.Id == 31);
+        Assert.All(options, option => Assert.Equal(3, option.GetType().GetProperties().Length));
+    }
+
     private static RatePlanService Service(KoochDbContext db) => new(db, new PropertyAccessService(db));
 
     private static CreateRatePlanRequest Request(decimal modifier) => new()

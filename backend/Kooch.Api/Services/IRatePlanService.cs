@@ -11,4 +11,5 @@ public interface IRatePlanService
     Task<RatePlanResponse> UpdateAsync(int userId, UserRole role, int propertyId, int roomTypeId, int ratePlanId, UpdateRatePlanRequest request, CancellationToken cancellationToken = default);
     Task DeleteAsync(int userId, UserRole role, int propertyId, int roomTypeId, int ratePlanId, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<MealPlanOptionResponse>> ListMealPlansAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MealPlanOptionResponse>> ListReferenceMealPlansAsync(CancellationToken cancellationToken = default);
 }

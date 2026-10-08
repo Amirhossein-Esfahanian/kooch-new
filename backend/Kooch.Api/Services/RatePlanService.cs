@@ -68,8 +68,15 @@ public sealed class RatePlanService(KoochDbContext dbContext, IPropertyAccessSer
         if (!await dbContext.Properties.AsNoTracking().AnyAsync(item => item.Id == propertyId, cancellationToken))
             throw new KeyNotFoundException("Property not found.");
         await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
+        return await ListReferenceMealPlansAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MealPlanOptionResponse>> ListReferenceMealPlansAsync(
+        CancellationToken cancellationToken = default)
+    {
         return await dbContext.MealPlans.AsNoTracking()
             .OrderBy(plan => plan.Name)
+            .ThenBy(plan => plan.Id)
             .Select(plan => new MealPlanOptionResponse { Id = plan.Id, Name = plan.Name, Slug = plan.Slug })
             .ToArrayAsync(cancellationToken);
     }
