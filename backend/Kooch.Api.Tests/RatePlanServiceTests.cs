@@ -136,13 +136,15 @@ public sealed class RatePlanServiceTests
     [Fact]
     public async Task GlobalMealPlanCatalog_DoesNotRequirePropertyAndReturnsOrderedUsableOptions()
     {
-        await using var db = await CreateContextAsync();
+        var dbOptions = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseInMemoryDatabase($"meal-plan-reference-{Guid.NewGuid():N}")
+            .Options;
+        await using var db = new KoochDbContext(dbOptions);
         db.MealPlans.AddRange(
             new MealPlan { Id = 32, Name = "A", Slug = "a-2" },
-            new MealPlan { Id = 33, Name = "A", Slug = "a-1" });
-        await db.SaveChangesAsync();
-
-        db.Properties.RemoveRange(db.Properties);
+            new MealPlan { Id = 33, Name = "A", Slug = "a-1" },
+            new MealPlan { Id = 30, Name = "Breakfast", Slug = "breakfast" },
+            new MealPlan { Id = 31, Name = "Deleted", Slug = "deleted", IsDeleted = true });
         await db.SaveChangesAsync();
 
         var options = await Service(db).ListReferenceMealPlansAsync();
