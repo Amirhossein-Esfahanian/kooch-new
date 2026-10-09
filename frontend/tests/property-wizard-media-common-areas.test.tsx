@@ -340,6 +340,25 @@ describe("PropertyWizard media and common areas", () => {
     });
   });
 
+  it.each([false, true])("removes legacy breakfast controls while preserving loaded values in the %s rules update", async (isAdmin) => {
+    loadedProperty = { ...property, breakfastOption: "Paid", breakfastPrice: 300_000 };
+    window.history.replaceState({}, "", "?step=7");
+    render(<PropertyWizard isAdmin={isAdmin} mode="edit" propertyId={17} />);
+    await screen.findByRole("heading", { name: "قوانین و زمان‌ها" });
+    expect(screen.queryByLabelText("صبحانه")).toBeNull();
+    expect(screen.queryByLabelText(/هزینه صبحانه/)).toBeNull();
+    expect(screen.queryByText("قیمت صبحانه را وارد کنید.")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => {
+      const base = isAdmin ? "/admin" : "/owner";
+      const call = api.request.mock.calls.find(([path, init]) =>
+        path === `${base}/properties/17/sections/rules` && init?.method === "PUT");
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+        breakfastOption: "Paid", breakfastPrice: 300_000,
+      });
+    });
+  });
+
   it("does not expose or send the guest phone setting in the Owner rules form", async () => {
     loadedProperty = { ...property, showGuestPhoneToPropertyUsers: true };
     window.history.replaceState({}, "", "?step=7");
@@ -500,6 +519,8 @@ describe("PropertyWizard media and common areas", () => {
     const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد");
     await waitFor(() => expect(screen.getByRole("option", { name: "صبحانه شامل قیمت" })).toBeTruthy());
     expect(api.request).toHaveBeenCalledWith("/meal-plans");
+    expect(screen.queryByLabelText("صبحانه")).toBeNull();
+    expect(screen.queryByLabelText(/هزینه صبحانه/)).toBeNull();
     expect(api.request.mock.calls.some(([path]) => /\/owner\/properties\/\d+\/meal-plans/.test(path))).toBe(false);
     expect(screen.queryByText("breakfast-included")).toBeNull();
     expect(screen.queryByText("7")).toBeNull();
@@ -511,6 +532,8 @@ describe("PropertyWizard media and common areas", () => {
     await waitFor(() => {
       const call = api.request.mock.calls.find(([path, init]) => path === "/owner/properties" && init?.method === "POST");
       expect(JSON.parse(String(call?.[1]?.body)).defaultMealPlanId).toBe(7);
+      expect(JSON.parse(String(call?.[1]?.body))).not.toHaveProperty("breakfastOption");
+      expect(JSON.parse(String(call?.[1]?.body))).not.toHaveProperty("breakfastPrice");
     });
   });
 
@@ -528,7 +551,7 @@ describe("PropertyWizard media and common areas", () => {
 
   it.each([false, true])("round-trips the selected MealPlan through %s full update and permits clearing", async (isAdmin) => {
     window.history.replaceState({}, "", "?step=0");
-    loadedProperty = { ...property, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت" };
+    loadedProperty = { ...property, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت", breakfastOption: "Paid", breakfastPrice: 300_000 };
     render(<PropertyWizard isAdmin={isAdmin} mode="edit" propertyId={17} />);
     const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد") as HTMLSelectElement;
     await waitFor(() => expect(selector.value).toBe("7"));
@@ -540,6 +563,7 @@ describe("PropertyWizard media and common areas", () => {
       const call = api.request.mock.calls.find(([url, init]) => url === path && init?.method === "PUT");
       const payload = JSON.parse(String(call?.[1]?.body));
       expect(payload.defaultMealPlanId).toBeNull();
+      expect(payload).toMatchObject({ breakfastOption: "Paid", breakfastPrice: 300_000 });
       expect(payload.name).toBe("نام ویرایش‌شده");
       if (isAdmin) expect(payload).toMatchObject({ ownerId: 1, status: "Draft" });
     });
@@ -565,7 +589,7 @@ describe("PropertyWizard media and common areas", () => {
 
   it("sends a newly selected MealPlan on Owner edit", async () => {
     window.history.replaceState({}, "", "?step=0");
-    loadedProperty = { ...property, defaultMealPlanId: 7 };
+    loadedProperty = { ...property, defaultMealPlanId: 7, breakfastOption: "Paid", breakfastPrice: 300_000 };
     render(<PropertyWizard mode="edit" propertyId={17} />);
     const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد") as HTMLSelectElement;
     await waitFor(() => expect(selector.value).toBe("7"));
@@ -573,7 +597,9 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
     await waitFor(() => {
       const call = api.request.mock.calls.find(([url, init]) => url === "/owner/properties/17" && init?.method === "PUT");
-      expect(JSON.parse(String(call?.[1]?.body)).defaultMealPlanId).toBe(8);
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+        defaultMealPlanId: 8, breakfastOption: "Paid", breakfastPrice: 300_000,
+      });
     });
   });
 

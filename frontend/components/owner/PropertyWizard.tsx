@@ -17,7 +17,6 @@ import {
   AmenityResponse,
   ApiRequestError,
   apiRequest,
-  BreakfastOption,
   InventoryMode,
   listMealPlans,
   type MealPlanOptionResponse,
@@ -143,8 +142,6 @@ interface WizardData {
   nearbyPlaces: NearbyPlaceDraft[];
   checkInTime: string;
   checkOutTime: string;
-  breakfastOption: BreakfastOption;
-  breakfastPrice: string;
   defaultMealPlanId: number | null;
   freeChildAgeLimit: string;
   maxFreeChildren: string;
@@ -181,8 +178,6 @@ const initialData: WizardData = {
   ],
   checkInTime: "14:00",
   checkOutTime: "12:00",
-  breakfastOption: "NoBreakfast",
-  breakfastPrice: "",
   defaultMealPlanId: null,
   freeChildAgeLimit: "",
   maxFreeChildren: "",
@@ -480,12 +475,7 @@ export function PropertyWizard({
                 ],
             checkInTime: propertyResult.checkInTime ?? "14:00",
             checkOutTime: propertyResult.checkOutTime ?? "12:00",
-            breakfastOption: propertyResult.breakfastOption ?? "NoBreakfast",
             defaultMealPlanId: propertyResult.defaultMealPlanId ?? null,
-            breakfastPrice:
-              propertyResult.breakfastPrice == null
-                ? ""
-                : String(propertyResult.breakfastPrice),
             freeChildAgeLimit:
               propertyResult.freeChildAgeLimit == null
                 ? ""
@@ -627,12 +617,7 @@ export function PropertyWizard({
           [Boolean(data.checkInTime), "ساعت ورود"],
           [Boolean(data.checkOutTime), "ساعت خروج"],
         ]),
-        recommendedMissingItems: recommended([
-          [
-            data.breakfastOption !== "Paid" || Boolean(data.breakfastPrice),
-            "قیمت صبحانه",
-          ],
-        ]),
+        recommendedMissingItems: [],
       },
       {
         key: "financial",
@@ -725,12 +710,13 @@ export function PropertyWizard({
       inventoryMode: data.inventoryMode,
       checkInTime: data.checkInTime || null,
       checkOutTime: data.checkOutTime || null,
-      breakfastOption: data.breakfastOption,
       defaultMealPlanId: data.defaultMealPlanId,
-      breakfastPrice:
-        data.breakfastOption === "Paid" && data.breakfastPrice !== ""
-          ? Number(data.breakfastPrice)
-          : null,
+      ...(property
+        ? {
+            breakfastOption: property.breakfastOption,
+            breakfastPrice: property.breakfastPrice,
+          }
+        : {}),
       freeChildAgeLimit:
         data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
       maxFreeChildren:
@@ -933,12 +919,6 @@ export function PropertyWizard({
       return "نام فارسی و انگلیسی را وارد کنید.";
     if (index === 2 && data.floors !== "" && Number(data.floors) < 1)
       return "تعداد طبقات باید حداقل ۱ باشد.";
-    if (
-      index === 7 &&
-      data.breakfastOption === "Paid" &&
-      data.breakfastPrice === ""
-    )
-      return "قیمت صبحانه را وارد کنید.";
     return "";
   }
 
@@ -997,11 +977,8 @@ export function PropertyWizard({
           : {}),
         checkInTime: data.checkInTime || null,
         checkOutTime: data.checkOutTime || null,
-        breakfastOption: data.breakfastOption,
-        breakfastPrice:
-          data.breakfastOption === "Paid" && data.breakfastPrice !== ""
-            ? Number(data.breakfastPrice)
-            : null,
+        breakfastOption: property.breakfastOption,
+        breakfastPrice: property.breakfastPrice,
       });
     if (step === 8)
       saved = await updatePropertySection("financial", {
@@ -1735,40 +1712,6 @@ export function PropertyWizard({
                   value={data.checkOutTime}
                 />
               </label>
-              <label className="grid gap-1 text-sm font-bold">
-                صبحانه
-                <select
-                  className={inputClass}
-                  onChange={(event) =>
-                    update(
-                      "breakfastOption",
-                      event.target.value as BreakfastOption,
-                    )
-                  }
-                  value={data.breakfastOption}
-                >
-                  <option value="NoBreakfast">بدون صبحانه</option>
-                  <option value="Included">صبحانه رایگان</option>
-                  <option value="Paid">صبحانه با هزینه</option>
-                </select>
-              </label>
-              {data.breakfastOption === "Paid" && (
-                <label className="grid gap-1 text-sm font-bold">
-                  هزینه صبحانه ({currencyLabel})
-                  <input
-                    className={inputClass}
-                    inputMode="numeric"
-                    onChange={(event) =>
-                      update(
-                        "breakfastPrice",
-                        rawLocalizedAmount(event.target.value),
-                      )
-                    }
-                    type="text"
-                    value={formatLocalizedAmount(data.breakfastPrice)}
-                  />
-                </label>
-              )}
             </div>
             {isAdmin && mode === "edit" && adminCashbackSettings && (
               <div className="border-t border-border pt-4">

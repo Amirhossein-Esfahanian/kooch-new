@@ -153,8 +153,6 @@ const property = {
   inventoryMode: "TypeBasedInventory" as const,
   checkInTime: "14:00:00",
   checkOutTime: "12:00:00",
-  breakfastOption: "Included" as const,
-  breakfastPrice: null,
   latitude: null,
   longitude: null,
   hasElevator: false,
@@ -315,7 +313,7 @@ describe("public property booking integration", () => {
     api.fetchOptions.mockResolvedValue(availableOptions);
   });
 
-  it("uses one configured label for daily, breakfast, and booked amounts", async () => {
+  it("ignores legacy Property breakfast while using the configured label for booked amounts", async () => {
     api.currencyLabel = "ریال آزمایشی";
     api.fetchProperty.mockResolvedValueOnce({
       ...property,
@@ -325,9 +323,9 @@ describe("public property booking integration", () => {
 
     render(<PublicPropertyPage />);
 
-    expect(
-      await screen.findByText("صبحانه با هزینه (۳۰۰٬۰۰۰ ریال آزمایشی / شب)"),
-    ).toBeTruthy();
+    await screen.findByRole("heading", { name: "خانه کاشان", level: 1 });
+    expect(screen.queryByText(/صبحانه با هزینه/)).toBeNull();
+    expect(screen.queryByText(/۳۰۰٬۰۰۰ ریال آزمایشی/)).toBeNull();
     expect(screen.getByText("۲٬۰۰۰٬۰۰۰ ریال آزمایشی / شب")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));

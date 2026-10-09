@@ -750,8 +750,6 @@ export interface PropertyFormValues {
   inventoryMode: InventoryMode;
   checkInTime: string;
   checkOutTime: string;
-  breakfastOption: BreakfastOption;
-  breakfastPrice: number | null;
   defaultMealPlanId: number | null;
   totalAreaM2?: number | null;
   landAreaM2?: number | null;

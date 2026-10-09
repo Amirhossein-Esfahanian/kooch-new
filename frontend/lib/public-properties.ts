@@ -2,7 +2,6 @@ import type { RoomKind } from "@/lib/owner-api";
 import { defaultSiteSettings } from "@/lib/site-settings";
 
 export type PublicInventoryMode = "NamedRooms" | "TypeBasedInventory";
-export type PublicBreakfastOption = "NoBreakfast" | "Included" | "Paid";
 export type PublicPropertyView =
   | "CourtyardView"
   | "GardenView"
@@ -96,8 +95,6 @@ export interface PublicProperty {
   inventoryMode: PublicInventoryMode;
   checkInTime: string | null;
   checkOutTime: string | null;
-  breakfastOption: PublicBreakfastOption;
-  breakfastPrice: number | null;
   latitude: number | null;
   longitude: number | null;
   hasElevator: boolean;

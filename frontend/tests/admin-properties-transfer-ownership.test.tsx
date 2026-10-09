@@ -228,6 +228,9 @@ describe("Admin property transfer ownership", () => {
       expect(createCall).toBeTruthy();
       const payload = JSON.parse(String(createCall?.[1]?.body));
       expect(payload).not.toHaveProperty("inventoryMode");
+      expect(payload).not.toHaveProperty("breakfastOption");
+      expect(payload).not.toHaveProperty("breakfastPrice");
+      expect(within(dialog).queryByLabelText("وضعیت صبحانه")).toBeNull();
       expect(payload).toMatchObject({
         defaultMealPlanId: 7,
         name: "اقامتگاه جدید",

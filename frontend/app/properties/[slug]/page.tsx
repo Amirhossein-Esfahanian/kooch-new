@@ -13,10 +13,8 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { PropertyLocationMap } from "@/components/property/PropertyLocationMap";
-import { useSiteCurrencyLabel } from "@/lib/currency";
 import {
   fetchPublicApi,
-  formatPrice,
   PublicImage,
   PublicProperty,
   PublicRoomType,
@@ -93,7 +91,6 @@ function readGuestParams(
 export default function PublicPropertyPage() {
   const { slug } = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
-  const currencyLabel = useSiteCurrencyLabel();
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -184,11 +181,6 @@ export default function PublicPropertyPage() {
     ["اتاق همکف", property.hasGroundFloorRoom],
     ["سرویس مناسب افراد کم‌توان", property.hasAccessibleBathroom],
   ].filter(([, value]) => value !== null);
-  const breakfastLabel = {
-    NoBreakfast: "بدون صبحانه",
-    Included: "صبحانه رایگان",
-    Paid: "صبحانه با هزینه",
-  }[property.breakfastOption];
   const resultQuery = searchParams.toString();
   const resultsHref = resultQuery
     ? `/properties?${resultQuery}`
@@ -227,7 +219,6 @@ export default function PublicPropertyPage() {
                         property.propertyType}
                     </Badge>
                     <Badge green>تایید شده</Badge>
-                    <Badge>{breakfastLabel}</Badge>
                   </div>
                   <h1 className="mt-3 text-3xl font-bold sm:text-5xl">
                     {property.name}
@@ -286,15 +277,6 @@ export default function PublicPropertyPage() {
                       <Highlight
                         title="ساعت خروج"
                         value={property.checkOutTime?.slice(0, 5) ?? "ثبت نشده"}
-                      />
-                      <Highlight
-                        title="صبحانه"
-                        value={
-                          property.breakfastOption === "Paid" &&
-                          property.breakfastPrice != null
-                            ? `${breakfastLabel} (${formatPrice(property.breakfastPrice, currencyLabel)})`
-                            : breakfastLabel
-                        }
                       />
                       <Highlight
                         title="نوع اقامتگاه"

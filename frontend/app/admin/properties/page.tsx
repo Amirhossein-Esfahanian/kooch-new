@@ -700,7 +700,6 @@ export default function AdminPropertiesPage() {
           type: createForm.type,
           checkInTime: "14:00",
           checkOutTime: "12:00",
-          breakfastOption: "NoBreakfast",
           defaultMealPlanId: createForm.defaultMealPlanId,
           status: "Draft",
           hasElevator: false,
