@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
@@ -44,6 +44,7 @@ type PropertyBookingPanelSlots = {
 export const propertyRoomsAnchorId = "property-rooms";
 
 export function PropertyBookingPanel(props: {
+  autoCheckInitialContextKey?: string | null;
   propertyId: number;
   propertyName: string;
   propertySlug: string;
@@ -64,6 +65,7 @@ export function PropertyBookingPanel(props: {
 }
 
 function PropertyBookingPanelContent({
+  autoCheckInitialContextKey,
   propertyId,
   propertyName,
   propertySlug,
@@ -76,6 +78,7 @@ function PropertyBookingPanelContent({
   onGuestsChange,
   children,
 }: {
+  autoCheckInitialContextKey?: string | null;
   propertyId: number;
   propertyName: string;
   propertySlug: string;
@@ -91,7 +94,8 @@ function PropertyBookingPanelContent({
   const router = useRouter();
   const cart = useBookingCart();
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
-  const [loadingOptions, setLoadingOptions] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(Boolean(autoCheckInitialContextKey));
+  const attemptedAutoCheckKey = useRef<string | null>(null);
   const [hasSuccessfulAvailabilitySearch, setHasSuccessfulAvailabilitySearch] =
     useState(false);
   const [message, setMessage] = useState<{
@@ -126,7 +130,7 @@ function PropertyBookingPanelContent({
     if (options && !optionsMatchSearch) setMessage(null);
   }, [options, optionsMatchSearch]);
 
-  async function checkAvailability() {
+  const checkAvailability = useCallback(async () => {
     if (!dates.startDate || !dates.endDate) {
       setHasSuccessfulAvailabilitySearch(false);
       setMessage({ tone: "error", text: "تاریخ ورود و خروج را انتخاب کنید." });
@@ -164,7 +168,18 @@ function PropertyBookingPanelContent({
     } finally {
       setLoadingOptions(false);
     }
-  }
+  }, [dates.startDate, dates.endDate, guests.adults, guests.children, guests.childAges, propertySlug]);
+
+  useEffect(() => {
+    if (!autoCheckInitialContextKey || attemptedAutoCheckKey.current === autoCheckInitialContextKey) return;
+    const currentContextKey = JSON.stringify([
+      propertySlug, dates.startDate, dates.endDate, guests.rooms,
+      guests.adults, guests.children, guests.childAges,
+    ]);
+    if (currentContextKey !== autoCheckInitialContextKey) return;
+    attemptedAutoCheckKey.current = autoCheckInitialContextKey;
+    void checkAvailability();
+  }, [autoCheckInitialContextKey, checkAvailability, dates.startDate, dates.endDate, guests, propertySlug]);
 
   function addToCart(option: PublicBookingRoomTypeOption, ratePlan?: PublicBookingRatePlanOption) {
     if (!dates.startDate || !dates.endDate) return;
@@ -333,7 +348,7 @@ function PropertyBookingPanelContent({
             </KoochAlert>
           )}
 
-          {!hasSearchResults && !message && (
+          {!hasSearchResults && !message && !loadingOptions && (
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
               تاریخ و تعداد مهمان را برای بررسی موجودی انتخاب کنید.
             </p>

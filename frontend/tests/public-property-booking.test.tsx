@@ -95,6 +95,9 @@ vi.mock("@/components/GuestSelector", () => ({
       <button type="button" onClick={() => onChange({ adults: 2, children: 1, childAges: [7], rooms: 1 })}>
         افزودن کودک آزمایشی
       </button>
+      <button type="button" onClick={() => onChange({ adults: 2, children: 0, childAges: [], rooms: 2 })}>
+        تغییر تعداد اتاق آزمایشی
+      </button>
     </div>
   ),
 }));
@@ -311,6 +314,80 @@ describe("public property booking integration", () => {
     });
     api.fetchProperty.mockResolvedValue(property);
     api.fetchOptions.mockResolvedValue(availableOptions);
+  });
+
+  it("checks a complete search-result context once and renders authoritative availability and rate plans", async () => {
+    searchParams.set("children", "0");
+    api.fetchOptions.mockResolvedValue(availableWithRatePlans);
+
+    const view = render(<PublicPropertyPage />);
+
+    const card = await screen.findByTestId("room-type-card-10");
+    await within(card).findByText("نرخ استاندارد");
+    expect(api.fetchOptions).toHaveBeenCalledExactlyOnceWith("kashan-house", {
+      checkIn: "2030-08-10",
+      checkOut: "2030-08-12",
+      adults: 2,
+      children: 0,
+      childAges: [],
+    });
+    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(card).getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(card).getByText("بدون صبحانه")).toBeTruthy();
+    expect(within(card).getByText("۲٬۷۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(card).getByText("فول‌برد")).toBeTruthy();
+
+    view.rerender(<PublicPropertyPage />);
+    fireEvent.click(screen.getByRole("button", { name: "تغییر مهمانان آزمایشی" }));
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "تغییر تعداد اتاق آزمایشی" }));
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
+  });
+
+  it("auto-checks a complete deep link on each new Property page mount", async () => {
+    searchParams.set("children", "0");
+    const first = render(<PublicPropertyPage />);
+    await screen.findByText("نرخ استاندارد");
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
+    first.unmount();
+
+    render(<PublicPropertyPage />);
+    await screen.findByText("نرخ استاندارد");
+    expect(api.fetchOptions).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not auto-check direct, incomplete, or invalid URL contexts", async () => {
+    const cases = [
+      "",
+      "?checkIn=2030-08-10&checkOut=2030-08-12&adults=2&rooms=1",
+      "?checkIn=2030-08-10&adults=2&rooms=1&children=0",
+      "?checkIn=2030-08-12&checkOut=2030-08-10&adults=2&rooms=1&children=0",
+      "?checkIn=2030-02-30&checkOut=2030-03-03&adults=2&rooms=1&children=0",
+      "?checkIn=2030-08-10&checkOut=2030-08-12&adults=0&rooms=1&children=0",
+      "?checkIn=2030-08-10&checkOut=2030-08-12&adults=2&rooms=1&children=1",
+    ];
+    for (const query of cases) {
+      searchParams = new URLSearchParams(query);
+      const view = render(<PublicPropertyPage />);
+      await screen.findByRole("button", { name: "بررسی موجودی" });
+      expect(api.fetchOptions).not.toHaveBeenCalled();
+      view.unmount();
+    }
+  });
+
+  it("keeps the manual retry path after an automatic availability failure", async () => {
+    searchParams.set("children", "0");
+    api.fetchOptions.mockRejectedValueOnce(new Error("خطای بررسی موجودی"));
+
+    render(<PublicPropertyPage />);
+
+    expect(await screen.findByText("خطای بررسی موجودی")).toBeTruthy();
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(await screen.findByText("نرخ استاندارد")).toBeTruthy();
+    expect(api.fetchOptions).toHaveBeenCalledTimes(2);
   });
 
   it("uses the configured label for booked amounts without Property-wide meal text", async () => {

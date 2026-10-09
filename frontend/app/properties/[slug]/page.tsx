@@ -20,6 +20,12 @@ import {
   PublicRoomType,
 } from "@/lib/public-properties";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
+import {
+  formatLocalIsoDate,
+  getExclusiveRangeLength,
+  isBeforeLocalIsoDate,
+  parseLocalIsoDate,
+} from "@/lib/date-utils";
 
 const placeholder =
   "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80";
@@ -86,6 +92,43 @@ function readGuestParams(
     children,
     childAges,
   };
+}
+
+function initialAvailabilityContextKey(
+  searchParams: Pick<URLSearchParams, "get">,
+  propertySlug: string,
+): string | null {
+  const checkIn = searchParams.get("checkIn");
+  const checkOut = searchParams.get("checkOut");
+  const rooms = searchParams.get("rooms");
+  const adults = searchParams.get("adults") ?? searchParams.get("guests");
+  const children = searchParams.get("children");
+  if (!checkIn || !checkOut || !rooms || !adults || children === null) return null;
+
+  const validDate = (value: string) =>
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    formatLocalIsoDate(parseLocalIsoDate(value)) === value;
+  if (
+    !validDate(checkIn) ||
+    !validDate(checkOut) ||
+    getExclusiveRangeLength(checkIn, checkOut) < 1 ||
+    isBeforeLocalIsoDate(checkIn, formatLocalIsoDate(new Date()))
+  ) return null;
+
+  const validCount = (value: string, minimum: number) =>
+    /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= minimum;
+  if (!validCount(rooms, 1) || !validCount(adults, 1) || !validCount(children, 0)) return null;
+
+  const childAges = Number(children) === 0 ? [] : (searchParams.get("childAges") ?? "").split(",");
+  if (
+    childAges.length !== Number(children) ||
+    childAges.some((age) => !validCount(age, 0) || Number(age) > 17)
+  ) return null;
+
+  return JSON.stringify([
+    propertySlug, checkIn, checkOut, Number(rooms), Number(adults),
+    Number(children), childAges.map(Number),
+  ]);
 }
 
 export default function PublicPropertyPage() {
@@ -185,9 +228,11 @@ export default function PublicPropertyPage() {
   const resultsHref = resultQuery
     ? `/properties?${resultQuery}`
     : "/properties";
+  const autoCheckInitialContextKey = initialAvailabilityContextKey(searchParams, property.slug);
 
   return (
     <PropertyBookingPanel
+      autoCheckInitialContextKey={autoCheckInitialContextKey}
       dates={bookingDates}
       galleryFallback={gallery[0].url}
       guests={bookingGuests}
