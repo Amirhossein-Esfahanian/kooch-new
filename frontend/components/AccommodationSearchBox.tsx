@@ -21,8 +21,8 @@ export interface AccommodationSearchBoxProps {
   /** Initial search values, usually from URL params or homepage defaults. */
   initialValues?: Partial<AccommodationSearchValues>;
 
-  /** Visual layout: hero for homepage, compact for results header, sidebar for vertical filters. */
-  variant?: "hero" | "compact" | "sidebar";
+  /** Visual layout: hero for homepage, band for results header, sidebar for vertical filters. */
+  variant?: "hero" | "compact" | "band" | "sidebar";
 
   /** Show optional title/subtitle above the fields. */
   showTitle?: boolean;
@@ -182,7 +182,7 @@ export function AccommodationSearchBox({
   }, [enableSuggestions, suggestions.length, values.city, values.q]);
 
   const fieldClass = `${
-    variant === "hero" ? "h-16" : "h-[60px]"
+    variant === "hero" ? "h-16" : variant === "band" ? "h-12" : "h-[60px]"
   } kooch-form-control w-full px-4 text-sm font-bold transition`;
 
   const labelClass =
@@ -191,9 +191,11 @@ export function AccommodationSearchBox({
   const shellClass =
     variant === "hero"
       ? "relative z-10 mx-auto  w-full max-w-[860px] rounded-xl border border-slate-200 bg-[#f8f7f9] p-4 pb-5 shadow-2xl sm:p-6 sm:pb-14"
-      : variant === "sidebar"
-        ? "rounded-xl  border border-slate-200 bg-[#f8f7f9] p-4 shadow-sm"
-        : "rounded-xl border border-slate-200 bg-[#f8f7f9] p-4 shadow-sm";
+      : variant === "band"
+        ? "w-full"
+        : variant === "sidebar"
+          ? "rounded-xl  border border-slate-200 bg-[#f8f7f9] p-4 shadow-sm"
+          : "rounded-xl border border-slate-200 bg-[#f8f7f9] p-4 shadow-sm";
   function update(next: Partial<AccommodationSearchValues>) {
     setValues((current) =>
       normalizeValues({
@@ -219,7 +221,7 @@ export function AccommodationSearchBox({
   }
 
   const destinationField = (
-    <label className={`${labelClass} relative`}>
+    <label className={`${labelClass} relative ${variant === "band" ? "col-span-2 sm:col-span-1" : ""}`}>
       <span className="sr-only">مقصد</span>
 
       <div className="relative">
@@ -298,7 +300,7 @@ export function AccommodationSearchBox({
     <KoochCompactDateRangePicker
       calendarType="jalali"
       disablePastDates
-      fieldSize="standard"
+      fieldSize={variant === "band" ? "compact" : "standard"}
       onChange={(nextValue) =>
         update({
           checkIn: nextValue.startDate,
@@ -314,6 +316,7 @@ export function AccommodationSearchBox({
 
   const guestSelector = (
     <GuestSelector
+      className={variant === "band" ? "col-span-1" : undefined}
       label=""
       controlClassName={fieldClass}
       icon={<KoochSvgIcon src="/svgs/users-3.svg" size="lg" />}
@@ -332,7 +335,7 @@ export function AccommodationSearchBox({
       className={
         variant === "hero"
           ? "h-16 w-full rounded-full bg-[var(--theme-primary)] px-8 text-base font-bold text-white shadow-lg shadow-blue-600/20 transition hover:bg-[var(--theme-primary-hover)] sm:absolute sm:-bottom-8 sm:left-1/2 sm:w-[58%] sm:-translate-x-1/2"
-          : "h-[60px] w-full rounded-lg bg-[var(--theme-primary)] px-6 text-sm font-bold text-white transition hover:bg-[var(--theme-primary-hover)]"
+          : `${variant === "band" ? "col-span-1 h-12" : "h-[60px]"} w-full rounded-lg bg-[var(--theme-primary)] px-6 text-sm font-bold text-white transition hover:bg-[var(--theme-primary-hover)]`
       }
       type="submit"
     >
@@ -377,13 +380,17 @@ export function AccommodationSearchBox({
       ) : (
         <div
           className={
-            variant === "compact"
-              ? "grid gap-4 lg:grid-cols-[1.15fr_1.65fr_1.05fr_auto] lg:items-end"
-              : "grid gap-4"
+            variant === "band"
+              ? "grid grid-cols-2 items-end gap-2 sm:gap-3 xl:grid-cols-[minmax(180px,0.8fr)_minmax(320px,1.5fr)_minmax(240px,1fr)_auto]"
+              : variant === "compact"
+                ? "grid gap-4 lg:grid-cols-[1.15fr_1.65fr_1.05fr_auto] lg:items-end"
+                : "grid gap-4"
           }
         >
           {destinationField}
-          {datePicker}
+          {variant === "band" ? (
+            <div className="col-span-2 min-w-0 sm:col-span-1">{datePicker}</div>
+          ) : datePicker}
           {guestSelector}
           {searchButton}
         </div>

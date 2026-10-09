@@ -320,23 +320,24 @@ function PropertiesContent() {
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900" dir="rtl">
-      <div className="sticky top-16 z-40 border-b border-slate-200 bg-white/95 px-5 py-4 backdrop-blur sm:px-8">
-        <AccommodationSearchBox
-          className="mx-auto max-w-7xl"
-          initialValues={{
-            q,
-            city,
-            checkIn: checkIn || null,
-            checkOut: checkOut || null,
-            rooms,
-            adults,
-            children,
-            childAges,
-          }}
-          enableSuggestions
-          redirectToResults
-          variant="compact"
-        />
+      <div className="sticky top-[var(--header-height)] z-40 w-full border-b border-border bg-[var(--property-search-background)] shadow-sm" data-testid="results-search-bar">
+        <div className="mx-auto max-w-7xl px-5 py-2 sm:px-8 sm:py-3">
+          <AccommodationSearchBox
+            initialValues={{
+              q,
+              city,
+              checkIn: checkIn || null,
+              checkOut: checkOut || null,
+              rooms,
+              adults,
+              children,
+              childAges,
+            }}
+            enableSuggestions
+            redirectToResults
+            variant="band"
+          />
+        </div>
       </div>
 
       <main className="mx-auto max-w-7xl px-5 py-8 sm:px-8 sm:py-10">

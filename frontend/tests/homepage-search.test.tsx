@@ -69,6 +69,35 @@ describe("homepage accommodation search", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps destination, dates, guests and query submission in the compact results band", () => {
+    render(
+      <AccommodationSearchBox
+        initialValues={initialValues}
+        redirectToResults
+        variant="band"
+      />,
+    );
+
+    const form = screen.getByRole("button", { name: "جستجوی اقامتگاه" }).closest("form");
+    expect(form?.className).not.toContain("rounded-xl");
+    expect(form?.firstElementChild?.className).toContain("grid-cols-2");
+    expect(form?.firstElementChild?.className).toContain("xl:grid-cols-");
+    expect(screen.getByRole("textbox", { name: "مقصد" })).toHaveProperty("value", "کاشان");
+    expect(document.querySelector("[data-combined-date-field]")).not.toBeNull();
+    expect(document.querySelector('[style*="/svgs/users-3.svg"]')).not.toBeNull();
+    expect(screen.getByRole("button", { name: "جستجوی اقامتگاه" }).className).toContain("h-12");
+
+    fireEvent.click(screen.getByRole("button", { name: "جستجوی اقامتگاه" }));
+    expect(mocks.push).toHaveBeenCalledOnce();
+    const query = new URL(String(mocks.push.mock.calls[0][0]), "http://localhost").searchParams;
+    expect(query.get("q")).toBe("کاشان");
+    expect(query.get("checkIn")).toBe("2030-08-20");
+    expect(query.get("checkOut")).toBe("2030-08-22");
+    expect(query.get("rooms")).toBe("2");
+    expect(query.get("adults")).toBe("3");
+    expect(query.get("children")).toBe("1");
+  });
+
   it("uses one standard compact date-range field and the shared guest icon", () => {
     render(
       <AccommodationSearchBox

@@ -75,6 +75,22 @@ describe("public PropertySetting search filter", () => {
     );
   });
 
+  it("keeps result filters and cards below the full-width search band", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [resultProperty]),
+    );
+    render(<PropertiesPage />);
+
+    const band = screen.getByTestId("results-search-bar");
+    expect(band.className).toContain("bg-[var(--property-search-background)]");
+    expect(band.className).toContain("top-[var(--header-height)]");
+    expect(band.className).not.toContain("rounded-xl");
+    const filter = await screen.findByRole("group", { name: "بافت و موقعیت محیطی" });
+    expect(band.contains(filter)).toBe(false);
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    expect(band.contains(screen.getByText("خانه آزمون"))).toBe(false);
+  });
+
   it("uses the configured currency label in property result prices", async () => {
     mocks.currencyLabel = "ریال آزمایشی";
     mocks.fetchPublicApi.mockImplementation((path: string) =>
