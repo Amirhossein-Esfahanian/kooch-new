@@ -1062,7 +1062,6 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(property => property.Longitude).HasPrecision(9, 6);
             entity.Property(property => property.TotalAreaM2).HasPrecision(12, 2);
             entity.Property(property => property.LandAreaM2).HasPrecision(12, 2);
-            entity.Property(property => property.BreakfastPrice).HasPrecision(18, 2);
             entity.Property(property => property.ChildPrice).HasPrecision(18, 2);
             entity.Property(property => property.ExtraGuestPrice).HasPrecision(18, 2);
             entity.HasIndex(property => property.Slug).IsUnique();

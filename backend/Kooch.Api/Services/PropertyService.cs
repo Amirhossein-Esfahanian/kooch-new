@@ -71,8 +71,6 @@ public class PropertyService(
             InventoryMode = CanonicalPublicInventoryMode,
             CheckInTime = request.CheckInTime,
             CheckOutTime = request.CheckOutTime,
-            BreakfastOption = request.BreakfastOption,
-            BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null,
             DefaultMealPlanId = request.DefaultMealPlanId,
             HasElevator = request.HasElevator,
             IsWheelchairAccessible = request.IsWheelchairAccessible,
@@ -166,8 +164,6 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
-        property.BreakfastOption = request.BreakfastOption;
-        property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
         property.DefaultMealPlanId = request.DefaultMealPlanId;
         property.TotalAreaM2 = request.TotalAreaM2;
         property.LandAreaM2 = request.LandAreaM2;
@@ -268,8 +264,6 @@ public class PropertyService(
         }
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
-        property.BreakfastOption = request.BreakfastOption;
-        property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -377,8 +371,6 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
-        property.BreakfastOption = request.BreakfastOption;
-        property.BreakfastPrice = request.BreakfastOption == BreakfastOption.Paid ? request.BreakfastPrice : null;
         property.DefaultMealPlanId = request.DefaultMealPlanId;
         property.Latitude = request.Latitude;
         property.Longitude = request.Longitude;
@@ -1320,8 +1312,6 @@ public class PropertyService(
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
             CheckOutTime = property.CheckOutTime,
-            BreakfastOption = property.BreakfastOption,
-            BreakfastPrice = property.BreakfastPrice,
             DefaultMealPlanId = property.DefaultMealPlanId,
             DefaultMealPlanName = property.DefaultMealPlan != null ? property.DefaultMealPlan.Name : null,
             DefaultMealPlanSlug = property.DefaultMealPlan != null ? property.DefaultMealPlan.Slug : null,
@@ -1373,8 +1363,6 @@ public class PropertyService(
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
             CheckOutTime = property.CheckOutTime,
-            BreakfastOption = property.BreakfastOption,
-            BreakfastPrice = property.BreakfastPrice,
             Latitude = property.Latitude,
             Longitude = property.Longitude,
             HasElevator = property.HasElevator,

@@ -88,7 +88,6 @@ public enum RoomKind
     Dormitory = 11,
     Other = 12
 }
-public enum BreakfastOption { NoBreakfast, Included, Paid }
 public enum ReservationStatus
 {
     Pending = 0,

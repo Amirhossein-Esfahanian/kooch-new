@@ -22,8 +22,6 @@ public class PublicPropertyResponse
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
-    public BreakfastOption BreakfastOption { get; set; }
-    public decimal? BreakfastPrice { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
     public bool HasElevator { get; set; }

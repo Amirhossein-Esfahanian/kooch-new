@@ -152,8 +152,6 @@ public sealed class RoomKindRoomTypeTests
         await using var context = CreateContext();
         await SeedPropertyAsync(context);
         var property = await context.Properties.SingleAsync();
-        property.BreakfastOption = BreakfastOption.Paid;
-        property.BreakfastPrice = 200000m;
         context.MealPlans.Add(new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" });
         await context.SaveChangesAsync();
         var service = new RoomTypeService(context, new PropertyAccessService(context), new NoOpAuditLogService());
@@ -173,8 +171,6 @@ public sealed class RoomKindRoomTypeTests
         Assert.Null(cleared.DefaultMealPlanId);
         Assert.Null(cleared.DefaultMealPlanName);
         Assert.Null((await context.RoomTypes.SingleAsync()).DefaultMealPlanId);
-        Assert.Equal(BreakfastOption.Paid, (await context.Properties.SingleAsync()).BreakfastOption);
-        Assert.Equal(200000m, (await context.Properties.SingleAsync()).BreakfastPrice);
     }
 
     [Fact]

@@ -51,10 +51,6 @@ public class UpdatePropertyRulesSectionRequest
 {
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
-    public BreakfastOption BreakfastOption { get; set; }
-
-    [Range(0, double.MaxValue)]
-    public decimal? BreakfastPrice { get; set; }
 }
 
 public class UpdatePropertyFinancialSectionRequest

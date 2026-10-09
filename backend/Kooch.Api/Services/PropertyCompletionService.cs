@@ -47,7 +47,6 @@ public class PropertyCompletionService(
                 Amenities = property.PropertyAmenities.Any(),
                 PoliciesCheckIn = property.CheckInTime != null,
                 PoliciesCheckOut = property.CheckOutTime != null,
-                PaidBreakfastPrice = property.BreakfastOption != BreakfastOption.Paid || property.BreakfastPrice != null,
                 ChildPriceSettings = property.FreeChildAgeLimit != null && property.MaxFreeChildren != null,
                 Rooms = property.RoomTypes.Any(roomType => roomType.IsActive),
                 Pricing = property.RoomTypes.Any(roomType =>
@@ -104,8 +103,7 @@ public class PropertyCompletionService(
                 "policies",
                 [
                     (state.PoliciesCheckIn, "ساعت ورود"),
-                    (state.PoliciesCheckOut, "ساعت خروج"),
-                    (state.PaidBreakfastPrice, "قیمت صبحانه پولی")
+                    (state.PoliciesCheckOut, "ساعت خروج")
                 ],
                 started: state.PoliciesCheckIn || state.PoliciesCheckOut),
             Section(

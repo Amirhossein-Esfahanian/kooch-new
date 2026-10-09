@@ -11,20 +11,51 @@ namespace Kooch.Api.Tests;
 public sealed class PropertyDefaultMealPlanTests
 {
     [Fact]
-    public async Task Create_AllowsNullDefaultMealPlanAndDoesNotInferLegacyBreakfast()
+    public void PropertyContracts_DoNotExposeLegacyBreakfastFields()
+    {
+        Type[] contracts =
+        [
+            typeof(Property), typeof(CreatePropertyRequest), typeof(UpdatePropertyRequest),
+            typeof(AdminUpdatePropertyRequest), typeof(UpdatePropertyRulesSectionRequest),
+            typeof(PropertyResponse), typeof(PublicPropertyResponse)
+        ];
+
+        foreach (var contract in contracts)
+        {
+            Assert.Null(contract.GetProperty("BreakfastOption"));
+            Assert.Null(contract.GetProperty("BreakfastPrice"));
+        }
+    }
+
+    [Fact]
+    public async Task Completion_DoesNotRequireLegacyBreakfastPrice()
     {
         await using var db = CreateContext();
         await SeedAsync(db);
         var request = CreateRequest();
-        request.BreakfastOption = BreakfastOption.Paid;
-        request.BreakfastPrice = 300000m;
+        request.CheckInTime = new TimeOnly(14, 0);
+        request.CheckOutTime = new TimeOnly(12, 0);
+        var property = await CreateService(db).CreatePropertyAsync(1, UserRole.SuperAdmin, request);
+
+        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(property.Id);
+
+        Assert.Contains("policies", completion.CompletedSections);
+        Assert.DoesNotContain(completion.Sections.SelectMany(section => section.MissingItems),
+            item => item.Contains("صبحانه"));
+        Assert.DoesNotContain(completion.Warnings, warning => warning.Contains("صبحانه"));
+    }
+
+    [Fact]
+    public async Task Create_AllowsNullDefaultMealPlan()
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db);
+        var request = CreateRequest();
 
         var response = await CreateService(db).CreatePropertyAsync(1, UserRole.SuperAdmin, request);
 
         Assert.Null(response.DefaultMealPlanId);
         Assert.Null(response.DefaultMealPlanName);
-        Assert.Equal(BreakfastOption.Paid, response.BreakfastOption);
-        Assert.Equal(300000m, response.BreakfastPrice);
         Assert.Null((await db.Properties.SingleAsync()).DefaultMealPlanId);
     }
 
@@ -67,7 +98,7 @@ public sealed class PropertyDefaultMealPlanTests
     }
 
     [Fact]
-    public async Task OwnerAndAdminFullUpdates_ChangePreserveAndClearMealWithoutChangingRoomPlanOrBreakfast()
+    public async Task OwnerAndAdminFullUpdates_ChangePreserveAndClearMealWithoutChangingRoomPlan()
     {
         await using var db = CreateContext();
         await SeedAsync(db);
@@ -78,8 +109,6 @@ public sealed class PropertyDefaultMealPlanTests
         var service = CreateService(db);
         var create = CreateRequest();
         create.DefaultMealPlanId = 70;
-        create.BreakfastOption = BreakfastOption.Paid;
-        create.BreakfastPrice = 300000m;
         var property = await service.CreatePropertyAsync(1, UserRole.SuperAdmin, create);
         db.RoomTypes.Add(new RoomType
         {
@@ -121,8 +150,6 @@ public sealed class PropertyDefaultMealPlanTests
         db.ChangeTracker.Clear();
         var stored = await db.Properties.SingleAsync();
         Assert.Null(stored.DefaultMealPlanId);
-        Assert.Equal(BreakfastOption.Paid, stored.BreakfastOption);
-        Assert.Equal(300000m, stored.BreakfastPrice);
         Assert.Equal(71, (await db.RoomTypes.SingleAsync()).DefaultMealPlanId);
         Assert.Equal(71, (await db.RatePlans.SingleAsync()).MealPlanId);
     }
@@ -181,13 +208,12 @@ public sealed class PropertyDefaultMealPlanTests
     {
         DestinationId = destinationId, Name = "Updated property", Description = "Description",
         Address = "Address", City = "Kashan", Country = "IR", Type = PropertyType.TraditionalHouse,
-        BreakfastOption = BreakfastOption.Paid, BreakfastPrice = 300000m
     };
 
     private static AdminUpdatePropertyRequest AdminUpdateRequest(int destinationId) => new()
     {
         OwnerId = 2, DestinationId = destinationId, Name = "Admin property", Description = "Description",
         Address = "Address", City = "Kashan", Country = "IR", Type = PropertyType.TraditionalHouse,
-        Status = PropertyStatus.Draft, BreakfastOption = BreakfastOption.Paid, BreakfastPrice = 300000m
+        Status = PropertyStatus.Draft
     };
 }

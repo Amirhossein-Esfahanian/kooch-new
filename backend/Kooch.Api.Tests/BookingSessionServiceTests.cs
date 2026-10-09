@@ -179,8 +179,6 @@ public sealed class BookingSessionServiceTests
                 new MealPlan { Id = 71, Name = "Room meal", Slug = "room-meal", IsDeleted = deletedRoomMeal });
             var property = await setup.Properties.SingleAsync(item => item.Id == 1);
             property.DefaultMealPlanId = propertyDefault ? 70 : null;
-            property.BreakfastOption = BreakfastOption.Paid;
-            property.BreakfastPrice = 999;
             (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = roomDefault ? 71 : null;
             await setup.SaveChangesAsync();
         }

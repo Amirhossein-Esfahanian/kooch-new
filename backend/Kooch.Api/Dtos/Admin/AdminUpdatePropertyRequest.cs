@@ -41,9 +41,6 @@ public class AdminUpdatePropertyRequest : PropertyCoordinatesRequest
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
-    public BreakfastOption BreakfastOption { get; set; }
-    [Range(0, double.MaxValue)]
-    public decimal? BreakfastPrice { get; set; }
     public int? DefaultMealPlanId { get; set; }
     public int? TotalAreaM2 { get; set; }
     public int? LandAreaM2 { get; set; }
