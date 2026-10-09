@@ -150,11 +150,12 @@ export async function fetchPublicApi<T>(path: string): Promise<T> {
 export function formatPrice(
   price: number | null,
   currencyLabel = defaultSiteSettings["pricing.currencyLabel"],
+  zeroIsValid = false,
 ) {
   const resolvedCurrencyLabel =
     currencyLabel || defaultSiteSettings["pricing.currencyLabel"];
 
-  return price === null || price <= 0
+  return price === null || (!zeroIsValid && price <= 0)
     ? "قیمت پس از تعیین در تقویم"
     : `${new Intl.NumberFormat("fa-IR").format(price)} ${resolvedCurrencyLabel} / شب`;
 }

@@ -247,9 +247,10 @@ function PropertiesContent() {
     const max = maxPrice ? Number(maxPrice) : null;
 
     return properties.filter((property) => {
-      const price = property.startingPrice ?? 0;
-      if (min !== null && Number.isFinite(min) && price < min) return false;
-      if (max !== null && Number.isFinite(max) && price > max) return false;
+      const price = property.startingPrice;
+      if (price === null && (min !== null || max !== null)) return false;
+      if (price !== null && min !== null && Number.isFinite(min) && price < min) return false;
+      if (price !== null && max !== null && Number.isFinite(max) && price > max) return false;
       if (
         propertyTypes.length > 0 &&
         !propertyTypes.includes(property.propertyType)
@@ -604,9 +605,13 @@ function PropertiesContent() {
                         />
                       </div>
                       <div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right">
-                        <p className="text-xs text-slate-400">قیمت از</p>
+                        <p className="text-xs text-slate-400">
+                          {checkIn && checkOut && rooms > 1
+                            ? `قیمت از برای ${new Intl.NumberFormat("fa-IR").format(rooms)} اتاق`
+                            : "قیمت از"}
+                        </p>
                         <p className="mt-1 text-lg font-bold text-blue-700">
-                          {formatPrice(property.startingPrice, currencyLabel)}
+                          {formatPrice(property.startingPrice, currencyLabel, true)}
                         </p>
                         <Link
                           className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700"

@@ -104,6 +104,72 @@ describe("public PropertySetting search filter", () => {
     ).toBeTruthy();
   });
 
+  it("shows zero as a real price and null as an unknown price", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, id: 2, name: "اقامت رایگان", startingPrice: 0 },
+        { ...resultProperty, id: 3, name: "اقامت نامشخص", startingPrice: null },
+      ]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText("۰ تومان / شب")).toBeTruthy();
+    expect(screen.getByText("قیمت پس از تعیین در تقویم")).toBeTruthy();
+    expect(screen.getByText("اقامت نامشخص")).toBeTruthy();
+  });
+
+  it.each([
+    ["maxPrice", "2000000", ["اقامت رایگان", "اقامت میانی"]],
+    ["minPrice", "1", ["اقامت میانی", "اقامت گران"]],
+    ["minPrice", "1500000", ["اقامت میانی", "اقامت گران"]],
+  ])("filters the authoritative price with %s=%s", async (key, value, expected) => {
+    searchParams = new URLSearchParams({ [key]: value });
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, id: 2, name: "اقامت رایگان", startingPrice: 0 },
+        { ...resultProperty, id: 3, name: "اقامت نامشخص", startingPrice: null },
+        { ...resultProperty, id: 4, name: "اقامت میانی", startingPrice: 1_800_000 },
+        { ...resultProperty, id: 5, name: "اقامت گران", startingPrice: 2_500_000 },
+      ]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText(expected[0])).toBeTruthy();
+    for (const name of expected) expect(screen.getByText(name)).toBeTruthy();
+    expect(screen.queryByText("اقامت نامشخص")).toBeNull();
+    expect(screen.queryByText("اقامت رایگان") !== null).toBe(expected.includes("اقامت رایگان"));
+    expect(screen.queryByText("اقامت گران") !== null).toBe(expected.includes("اقامت گران"));
+  });
+
+  it("keeps the compact label for one room and names multiple requested rooms for dated results", async () => {
+    searchParams = new URLSearchParams({ checkIn: "2026-10-14", checkOut: "2026-10-16", rooms: "2" });
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [resultProperty]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText("قیمت از برای ۲ اتاق")).toBeTruthy();
+    expect(screen.getByText("۱٬۲۵۰٬۰۰۰ تومان / شب")).toBeTruthy();
+  });
+
+  it.each([
+    { checkIn: "2026-10-14", checkOut: "2026-10-16", rooms: "1" },
+    { rooms: "2" },
+  ])("keeps the ordinary label without a dated multi-room context", async (params) => {
+    searchParams = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value) searchParams.set(key, value);
+    });
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [resultProperty]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    expect(screen.getByText("قیمت از")).toBeTruthy();
+    expect(screen.queryByText(/قیمت از برای/)).toBeNull();
+  });
+
   it("loads options from the catalog and omits an empty filter", async () => {
     render(<PropertiesPage />);
 
