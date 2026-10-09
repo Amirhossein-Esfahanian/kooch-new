@@ -10,7 +10,8 @@ namespace Kooch.Api.Controllers;
 [Route("api/properties")]
 public class PublicPropertiesController(
     IPropertyService propertyService,
-    IPublicBookingOptionsService bookingOptionsService) : ControllerBase
+    IPublicBookingOptionsService bookingOptionsService,
+    PublicRoomTypeCalendarService roomTypeCalendarService) : ControllerBase
 {
     [HttpGet]
     [ProducesResponseType<IReadOnlyList<PublicPropertyResponse>>(StatusCodes.Status200OK)]
@@ -54,6 +55,28 @@ public class PublicPropertiesController(
     {
         var property = await propertyService.GetPublicPropertyBySlugAsync(slug, cancellationToken);
         return property is null ? NotFound() : Ok(property);
+    }
+
+    [HttpGet("{slug}/room-types/{roomTypeId:int}/calendar")]
+    [ProducesResponseType<PublicRoomTypeCalendarResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PublicRoomTypeCalendarResponse>> GetRoomTypeCalendar(
+        string slug,
+        int roomTypeId,
+        [FromQuery] DateOnly? from,
+        [FromQuery] DateOnly? to,
+        CancellationToken cancellationToken)
+    {
+        if (from is null || to is null || from > to || to == DateOnly.MaxValue ||
+            to.Value.DayNumber - from.Value.DayNumber > 62)
+        {
+            return BadRequest(new { message = "Use from/to dates with a maximum inclusive range of 63 days." });
+        }
+
+        var calendar = await roomTypeCalendarService.GetAsync(
+            slug, roomTypeId, from.Value, to.Value, cancellationToken);
+        return calendar is null ? NotFound() : Ok(calendar);
     }
 
     [HttpGet("{slug}/booking-options")]
