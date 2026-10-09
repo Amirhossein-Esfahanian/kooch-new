@@ -103,8 +103,6 @@ const property: PropertyResponse = {
   inventoryMode: "NamedRooms",
   checkInTime: null,
   checkOutTime: null,
-  breakfastOption: "NoBreakfast",
-  breakfastPrice: null,
   defaultMealPlanId: null,
   defaultMealPlanName: null,
   defaultMealPlanSlug: null,

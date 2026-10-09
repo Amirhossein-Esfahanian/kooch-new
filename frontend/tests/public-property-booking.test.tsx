@@ -313,19 +313,13 @@ describe("public property booking integration", () => {
     api.fetchOptions.mockResolvedValue(availableOptions);
   });
 
-  it("ignores legacy Property breakfast while using the configured label for booked amounts", async () => {
+  it("uses the configured label for booked amounts without Property-wide meal text", async () => {
     api.currencyLabel = "ریال آزمایشی";
-    api.fetchProperty.mockResolvedValueOnce({
-      ...property,
-      breakfastOption: "Paid",
-      breakfastPrice: 300_000,
-    });
 
     render(<PublicPropertyPage />);
 
     await screen.findByRole("heading", { name: "خانه کاشان", level: 1 });
     expect(screen.queryByText(/صبحانه با هزینه/)).toBeNull();
-    expect(screen.queryByText(/۳۰۰٬۰۰۰ ریال آزمایشی/)).toBeNull();
     expect(screen.getByText("۲٬۰۰۰٬۰۰۰ ریال آزمایشی / شب")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));

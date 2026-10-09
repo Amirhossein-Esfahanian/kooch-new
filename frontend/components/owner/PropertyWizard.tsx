@@ -711,12 +711,6 @@ export function PropertyWizard({
       checkInTime: data.checkInTime || null,
       checkOutTime: data.checkOutTime || null,
       defaultMealPlanId: data.defaultMealPlanId,
-      ...(property
-        ? {
-            breakfastOption: property.breakfastOption,
-            breakfastPrice: property.breakfastPrice,
-          }
-        : {}),
       freeChildAgeLimit:
         data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
       maxFreeChildren:
@@ -977,8 +971,6 @@ export function PropertyWizard({
           : {}),
         checkInTime: data.checkInTime || null,
         checkOutTime: data.checkOutTime || null,
-        breakfastOption: property.breakfastOption,
-        breakfastPrice: property.breakfastPrice,
       });
     if (step === 8)
       saved = await updatePropertySection("financial", {

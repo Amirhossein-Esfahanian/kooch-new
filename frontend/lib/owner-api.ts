@@ -42,7 +42,6 @@ export type RoomKind =
   | "Villa"
   | "Dormitory"
   | "Other";
-export type BreakfastOption = "NoBreakfast" | "Included" | "Paid";
 
 export interface RoomKindCatalogResponse {
   value: number;
@@ -76,8 +75,6 @@ export interface PropertyResponse {
   inventoryMode: InventoryMode;
   checkInTime: string | null;
   checkOutTime: string | null;
-  breakfastOption: BreakfastOption;
-  breakfastPrice: number | null;
   defaultMealPlanId: number | null;
   defaultMealPlanName: string | null;
   defaultMealPlanSlug: string | null;
