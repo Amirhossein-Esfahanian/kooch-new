@@ -91,6 +91,39 @@ public sealed class PublicBookingOptionsTests
         Assert.Empty(room.RatePlans);
     }
 
+    [Theory]
+    [InlineData(true, false, false, false, "Property meal")]
+    [InlineData(false, true, false, false, "Room meal")]
+    [InlineData(true, true, false, false, "Room meal")]
+    [InlineData(false, false, false, false, null)]
+    [InlineData(true, true, false, true, "Property meal")]
+    [InlineData(true, false, true, false, null)]
+    public async Task StandardOffer_ResolvesUsableMealPlanWithoutChangingPriceOrInventory(
+        bool propertyDefault, bool roomDefault, bool deletedPropertyMeal,
+        bool deletedRoomMeal, string? expectedName)
+    {
+        await using var context = await CreatePricedContextAsync();
+        context.MealPlans.AddRange(
+            new MealPlan { Id = 70, Name = "Property meal", Slug = "property-meal", IsDeleted = deletedPropertyMeal },
+            new MealPlan { Id = 71, Name = "Room meal", Slug = "room-meal", IsDeleted = deletedRoomMeal });
+        var property = await context.Properties.SingleAsync(item => item.Id == 1);
+        property.DefaultMealPlanId = propertyDefault ? 70 : null;
+        property.BreakfastOption = BreakfastOption.Paid;
+        property.BreakfastPrice = 999;
+        (await context.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = roomDefault ? 71 : null;
+        await context.SaveChangesAsync();
+
+        var result = await AuthoritativeService(context).GetAsync(
+            "public-property", new DateOnly(2035, 2, 1), new DateOnly(2035, 2, 3), 1, 0, []);
+
+        var room = Assert.Single(result.RoomTypes, item => item.RoomTypeId == 10);
+        Assert.Equal(expectedName, room.DefaultMealPlanName);
+        Assert.Equal(expectedName?.ToLowerInvariant().Replace(' ', '-'), room.DefaultMealPlanSlug);
+        Assert.Equal(300m, room.FinalAmount);
+        Assert.Equal(1, room.AvailableCount);
+        Assert.Empty(room.RatePlans);
+    }
+
     [Fact]
     public async Task UnsupportedOrInvalidPlans_DoNotRemoveValidBaseOffer()
     {

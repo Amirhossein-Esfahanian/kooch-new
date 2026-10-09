@@ -161,6 +161,49 @@ public sealed class BookingSessionServiceTests
     }
 
     [Theory]
+    [InlineData(true, false, false, false, "Property meal")]
+    [InlineData(false, true, false, false, "Room meal")]
+    [InlineData(true, true, false, false, "Room meal")]
+    [InlineData(false, false, false, false, null)]
+    [InlineData(true, true, false, true, "Property meal")]
+    [InlineData(true, false, true, false, null)]
+    public async Task StandardOffer_SnapshotsEffectiveMealPlanWithoutChangingPrice(
+        bool propertyDefault, bool roomDefault, bool deletedPropertyMeal,
+        bool deletedRoomMeal, string? expectedName)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.MealPlans.AddRange(
+                new MealPlan { Id = 70, Name = "Property meal", Slug = "property-meal", IsDeleted = deletedPropertyMeal },
+                new MealPlan { Id = 71, Name = "Room meal", Slug = "room-meal", IsDeleted = deletedRoomMeal });
+            var property = await setup.Properties.SingleAsync(item => item.Id == 1);
+            property.DefaultMealPlanId = propertyDefault ? 70 : null;
+            property.BreakfastOption = BreakfastOption.Paid;
+            property.BreakfastPrice = 999;
+            (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = roomDefault ? 71 : null;
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var result = await scope.Service.CreateAsync(CreateRequest(CreateItem(10, 100)));
+        var response = Assert.Single(result.Reservations);
+        Assert.Null(response.RatePlanId);
+        Assert.Equal(expectedName, response.MealPlanName);
+        Assert.Equal(100m, response.FinalAmount);
+
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Null(saved.RatePlanId);
+        Assert.Null(saved.RatePlanNameSnapshot);
+        Assert.Equal(expectedName, saved.MealPlanNameSnapshot);
+        Assert.Equal(expectedName?.ToLowerInvariant().Replace(' ', '-'), saved.MealPlanSlugSnapshot);
+        Assert.Null(saved.RatePlanPriceModifierTypeSnapshot);
+        Assert.Null(saved.RatePlanPriceModifierValueSnapshot);
+        Assert.Equal(100m, saved.FinalAmount);
+    }
+
+    [Theory]
     [InlineData(true)]
     [InlineData(false)]
     public async Task ExplicitRatePlan_UsesOnlyItsOwnMealPlanEvenWhenRoomTypeHasDefault(bool planHasMeal)
@@ -170,8 +213,10 @@ public sealed class BookingSessionServiceTests
         {
             setup.MealPlans.AddRange(
                 new MealPlan { Id = 70, Name = "Breakfast", Slug = "breakfast" },
-                new MealPlan { Id = 71, Name = "Room only", Slug = "room-only" });
+                new MealPlan { Id = 71, Name = "Room only", Slug = "room-only" },
+                new MealPlan { Id = 72, Name = "Property breakfast", Slug = "property-breakfast" });
             (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).DefaultMealPlanId = 70;
+            (await setup.Properties.SingleAsync(item => item.Id == 1)).DefaultMealPlanId = 72;
             setup.RatePlans.Add(new RatePlan
             {
                 Id = 50, RoomTypeId = 10, Name = "Alternative", MealPlanId = planHasMeal ? 71 : null,

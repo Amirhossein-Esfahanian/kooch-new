@@ -139,7 +139,7 @@ public sealed class BookingSessionService(
         }
 
         await ValidateClientAndGuestAsync(request, cancellationToken);
-        await ValidatePropertyAsync(
+        var property = await ValidatePropertyAsync(
             request.PropertyId,
             creationKind,
             cancellationToken);
@@ -194,6 +194,9 @@ public sealed class BookingSessionService(
         {
             var prepared = preparedItems[index];
             var ratePlan = prepared.Item.RatePlanId is int ratePlanId ? ratePlans[ratePlanId] : null;
+            var mealPlan = ratePlan is null
+                ? StandardMealPlanResolver.Resolve(roomTypes[prepared.Item.RoomTypeId], property)
+                : ratePlan.MealPlan;
             session.Reservations.Add(new Reservation
             {
                 ReservationNumber = reservationNumbers[index],
@@ -205,12 +208,8 @@ public sealed class BookingSessionService(
                 RoomId = prepared.Item.RoomId,
                 RatePlanId = prepared.Item.RatePlanId,
                 RatePlanNameSnapshot = ratePlan?.Name,
-                MealPlanNameSnapshot = ratePlan is null
-                    ? roomTypes[prepared.Item.RoomTypeId].DefaultMealPlan?.Name
-                    : ratePlan.MealPlan?.Name,
-                MealPlanSlugSnapshot = ratePlan is null
-                    ? roomTypes[prepared.Item.RoomTypeId].DefaultMealPlan?.Slug
-                    : ratePlan.MealPlan?.Slug,
+                MealPlanNameSnapshot = mealPlan?.Name,
+                MealPlanSlugSnapshot = mealPlan?.Slug,
                 RatePlanPriceModifierTypeSnapshot = ratePlan?.PriceModifierType,
                 RatePlanPriceModifierValueSnapshot = ratePlan?.PriceModifierValue,
                 CheckInDate = prepared.Item.CheckInDate,
@@ -795,12 +794,13 @@ public sealed class BookingSessionService(
         }
     }
 
-    private async Task ValidatePropertyAsync(
+    private async Task<Property> ValidatePropertyAsync(
         int propertyId,
         BookingSessionCreationKind creationKind,
         CancellationToken cancellationToken)
     {
         var property = await dbContext.Properties.AsNoTracking()
+            .Include(item => item.DefaultMealPlan)
             .SingleOrDefaultAsync(item => item.Id == propertyId, cancellationToken)
             ?? throw new KeyNotFoundException("Property not found.");
         if (property.Status is PropertyStatus.Rejected or PropertyStatus.Suspended)
@@ -813,6 +813,8 @@ public sealed class BookingSessionService(
         {
             throw new InvalidOperationException("Property is not available for public booking.");
         }
+
+        return property;
     }
 
     private async Task<IReadOnlyDictionary<int, RoomType>> LockRoomTypesAsync(

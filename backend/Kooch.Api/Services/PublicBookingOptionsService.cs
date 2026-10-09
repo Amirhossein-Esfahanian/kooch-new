@@ -24,6 +24,7 @@ public sealed class PublicBookingOptionsService(
         ValidateRequest(checkInDate, checkOutDate, adults, children, childAges);
         var normalizedSlug = EnglishSlugGenerator.NormalizeLookup(slug);
         var property = await dbContext.Properties.AsNoTracking()
+            .Include(item => item.DefaultMealPlan)
             .Include(item => item.RoomTypes.Where(roomType => roomType.IsActive))
                 .ThenInclude(roomType => roomType.Rooms.Where(room => room.IsActive))
             .Include(item => item.RoomTypes.Where(roomType => roomType.IsActive))
@@ -77,7 +78,7 @@ public sealed class PublicBookingOptionsService(
             try
             {
                 option = await BuildOptionAsync(
-                    property.Id,
+                    property,
                     roomType,
                     effective,
                     checkInDate,
@@ -160,7 +161,7 @@ public sealed class PublicBookingOptionsService(
     }
 
     private async Task<PublicBookingRoomTypeOption> BuildOptionAsync(
-        int propertyId,
+        Property property,
         RoomType roomType,
         EffectiveRoomTypeAvailability availability,
         DateOnly checkInDate,
@@ -173,7 +174,7 @@ public sealed class PublicBookingOptionsService(
         var price = await pricingService.PreviewPublicBookingPriceAsync(
             new ReservationPricePreviewRequest
             {
-                PropertyId = propertyId,
+                PropertyId = property.Id,
                 RoomTypeId = roomType.Id,
                 CheckInDate = checkInDate,
                 CheckOutDate = checkOutDate,
@@ -201,6 +202,7 @@ public sealed class PublicBookingOptionsService(
                 Name = room.Name
             })
             .ToArray();
+        var standardMealPlan = StandardMealPlanResolver.Resolve(roomType, property);
 
         return new PublicBookingRoomTypeOption
         {
@@ -218,8 +220,8 @@ public sealed class PublicBookingOptionsService(
             NightsCount = price.NightsCount,
             FinalAmount = price.FinalAmount,
             Currency = price.Currency,
-            DefaultMealPlanName = roomType.DefaultMealPlan?.Name,
-            DefaultMealPlanSlug = roomType.DefaultMealPlan?.Slug,
+            DefaultMealPlanName = standardMealPlan?.Name,
+            DefaultMealPlanSlug = standardMealPlan?.Slug,
             Rooms = rooms
         };
     }
