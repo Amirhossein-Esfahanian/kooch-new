@@ -189,44 +189,60 @@ export function RoomTypeRatePlans({ propertyId, roomType, onClose }: {
       open onOpenChange={(open) => { if (!open && !busyRef.current && !deleting) onClose(); }}
       closeDisabled={saving || deleteBusy || !!deleting}
       size="md"
-      title={`نرخ‌های فروش ${roomType.name}`}
-      description="قیمت پایهٔ تقویم، نرخ پیش‌فرض این نوع اتاق است. نرخ‌های زیر گزینه‌های فروش جایگزین هستند."
+      contentClassName="!h-auto"
+      title={`نرخ‌های فروش اتاق ${roomType.name}`}
+      description="قیمت تقویم، نرخ پایه این نوع اتاق است. نرخ‌های زیر گزینه‌های جایگزین هستند."
     >
-      <div className="grid gap-4">
+      <div className="grid gap-5">
         {!formOpen && <>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-muted p-4">
-            <div>
+          <section className="flex flex-wrap items-start justify-between gap-3 rounded-lg border border-border px-4 py-3">
+            <div className="min-w-0">
               <h3 className="font-semibold text-foreground">نرخ استاندارد</h3>
-              <p className="text-sm text-muted-foreground">قیمت پایه تقویم · نرخ پیش‌فرض این نوع اتاق</p>
+              <p className="mt-1 text-sm text-muted-foreground">قیمت بر اساس تقویم</p>
+              {roomType.defaultMealPlanName &&
+                <p className="mt-1 text-sm text-muted-foreground">وعده غذایی: {roomType.defaultMealPlanName}</p>}
             </div>
-            <KoochBadge variant="muted">بدون نرخ فروش جداگانه</KoochBadge>
-          </div>
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="font-semibold text-foreground">نرخ‌های جایگزین</h3>
-            <KoochButton disabled={loading || !!loadError} onClick={() => openForm(null)} size="sm">افزودن نرخ فروش</KoochButton>
-          </div>
-          {loading && <p role="status" className="text-sm text-muted-foreground">در حال دریافت نرخ‌های فروش…</p>}
-          {loadError && <div className="grid justify-items-start gap-2">
-            <KoochAlert variant="destructive">دریافت نرخ‌های فروش انجام نشد: {loadError}</KoochAlert>
-            <KoochButton onClick={() => void load()} variant="outline" size="sm">تلاش دوباره</KoochButton>
-          </div>}
-          {!loading && !loadError && plans.length === 0 &&
-            <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">نرخ دیگری برای این نوع اتاق تعریف نشده است.</p>}
-          {!loading && !loadError && plans.map((plan) => <div key={plan.id} className="flex flex-wrap items-center justify-between gap-3 border-b border-border py-3 last:border-b-0">
-            <div className="grid min-w-0 gap-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-semibold text-foreground">{plan.name}</span>
-                <KoochBadge variant={plan.isActive ? "success" : "muted"}>{plan.isActive ? "فعال" : "غیرفعال"}</KoochBadge>
-              </div>
-              {plan.mealPlanName && <p className="text-sm text-muted-foreground">برنامه غذایی: {plan.mealPlanName}</p>}
-              <p className="text-sm text-foreground">{relationship(plan)}</p>
-              {plan.minimumNights != null && <p className="text-xs text-muted-foreground">حداقل اقامت: {new Intl.NumberFormat("fa-IR").format(plan.minimumNights)} شب</p>}
+            <KoochBadge variant="muted">پیش‌فرض</KoochBadge>
+          </section>
+
+          <section className="grid gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-2">
+              <h3 className="font-semibold text-foreground">نرخ‌های جایگزین</h3>
+              <KoochButton disabled={loading || !!loadError} onClick={() => openForm(null)} size="sm">افزودن نرخ</KoochButton>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <KoochButton disabled={plan.priceModifierType !== "FixedAmount"} onClick={() => openForm(plan)} size="sm" variant="outline">ویرایش</KoochButton>
-              <KoochButton onClick={() => setDeleting(plan)} size="sm" variant="ghost">حذف</KoochButton>
-            </div>
-          </div>)}
+
+            {loading && <p role="status" className="py-2 text-sm text-muted-foreground">در حال دریافت نرخ‌های فروش…</p>}
+            {loadError && <div className="grid justify-items-start gap-2 py-1">
+              <KoochAlert variant="destructive">دریافت نرخ‌های فروش انجام نشد: {loadError}</KoochAlert>
+              <KoochButton onClick={() => void load()} variant="outline" size="sm">تلاش دوباره</KoochButton>
+            </div>}
+
+            {!loading && !loadError && plans.length === 0 &&
+              <div className="py-2 text-sm text-muted-foreground">
+                <p>هنوز نرخ جایگزینی تعریف نشده است.</p>
+                <p className="mt-1 text-xs">برای ارائه گزینه‌هایی مثل «بدون صبحانه» یک نرخ جدید بسازید.</p>
+              </div>}
+
+            {!loading && !loadError && plans.length > 0 &&
+              <div className="max-h-[42vh] divide-y divide-border overflow-y-auto pe-1">
+                {plans.map((plan) => <div key={plan.id} className="grid gap-3 py-3 first:pt-1 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="grid min-w-0 gap-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-foreground">{plan.name}</span>
+                      <KoochBadge variant={plan.isActive ? "success" : "muted"}>{plan.isActive ? "فعال" : "غیرفعال"}</KoochBadge>
+                    </div>
+                    {plan.mealPlanName && <p className="text-sm text-muted-foreground">وعده غذایی: {plan.mealPlanName}</p>}
+                    <p className="text-sm text-foreground">{relationship(plan)}</p>
+                    {plan.minimumNights != null && <p className="text-xs text-muted-foreground">حداقل اقامت: {new Intl.NumberFormat("fa-IR").format(plan.minimumNights)} شب</p>}
+                  </div>
+                  <div className="flex flex-wrap gap-2 sm:justify-self-end">
+                    <KoochButton disabled={plan.priceModifierType !== "FixedAmount"} onClick={() => openForm(plan)} size="sm" variant="outline">ویرایش</KoochButton>
+                    <KoochButton onClick={() => setDeleting(plan)} size="sm" variant="ghost">حذف</KoochButton>
+                  </div>
+                </div>)}
+              </div>}
+          </section>
+
           {actionError && <KoochAlert variant="destructive">{actionError}</KoochAlert>}
         </>}
 

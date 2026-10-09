@@ -32,7 +32,7 @@ const roomType: RoomTypeResponse = {
   maxExtraGuests: 0, totalInventory: 1, activeRoomCount: 1,
   inventoryMode: "TypeBasedInventory", roomKind: "Double", roomKindCode: "double",
   basePrice: 3_000_000, notes: null, floorNumber: null, stairCount: null,
-  defaultMealPlanId: null, defaultMealPlanName: null, defaultMealPlanSlug: null,
+  defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت", defaultMealPlanSlug: "breakfast-included",
   hasWindow: true, hasPrivateBathroom: true, isActive: true,
   completion: { isComplete: true, missingItems: [], sections: [] },
   bedConfigurations: [], amenities: [],
@@ -77,14 +77,14 @@ beforeEach(() => {
 async function openRates(compactHeader = false) {
   render(<RoomManagement propertyId={3} compactHeader={compactHeader} />);
   fireEvent.click(await screen.findByRole("button", { name: "نرخ‌های فروش" }));
-  const dialog = await screen.findByRole("dialog", { name: "نرخ‌های فروش زنبق" });
+  const dialog = await screen.findByRole("dialog", { name: "نرخ‌های فروش اتاق زنبق" });
   await waitFor(() => expect(requests.listRoomTypeRatePlans).toHaveBeenCalledWith(3, 4));
   return dialog;
 }
 
 async function openCreate() {
   const dialog = await openRates();
-  fireEvent.click(await within(dialog).findByRole("button", { name: "افزودن نرخ فروش" }));
+  fireEvent.click(await within(dialog).findByRole("button", { name: "افزودن نرخ" }));
   return dialog;
 }
 
@@ -92,8 +92,11 @@ describe("RoomType RatePlan management", () => {
   it("opens from the shared Admin/Owner RoomType surface and shows the base plus empty state", async () => {
     const dialog = await openRates(true);
     expect(within(dialog).getByText("نرخ استاندارد")).toBeTruthy();
-    expect(within(dialog).getByText(/قیمت پایه تقویم/)).toBeTruthy();
-    expect(within(dialog).getByText("نرخ دیگری برای این نوع اتاق تعریف نشده است.")).toBeTruthy();
+    expect(within(dialog).getByText("پیش‌فرض")).toBeTruthy();
+    expect(within(dialog).getByText("قیمت بر اساس تقویم")).toBeTruthy();
+    expect(within(dialog).getByText("وعده غذایی: صبحانه شامل قیمت")).toBeTruthy();
+    expect(within(dialog).queryByText("بدون نرخ فروش جداگانه")).toBeNull();
+    expect(within(dialog).getByText("هنوز نرخ جایگزینی تعریف نشده است.")).toBeTruthy();
     expect(requests.listPropertyMealPlans).toHaveBeenCalledWith(3);
     expect(requests.createRoomTypeRatePlan).not.toHaveBeenCalled();
   });
@@ -104,7 +107,7 @@ describe("RoomType RatePlan management", () => {
     expect(within(dialog).getByText("۳۰۰٬۰۰۰ واحد آزمون کمتر از نرخ پایه")).toBeTruthy();
     expect(within(dialog).getByText("همان قیمت پایه")).toBeTruthy();
     expect(within(dialog).getByText("۵۰۰٬۰۰۰ واحد آزمون بیشتر از نرخ پایه")).toBeTruthy();
-    expect(within(dialog).getAllByText("برنامه غذایی: صبحانه")).toHaveLength(3);
+    expect(within(dialog).getAllByText("وعده غذایی: صبحانه")).toHaveLength(3);
     expect(within(dialog).getAllByText("حداقل اقامت: ۲ شب")).toHaveLength(3);
     expect(within(dialog).getByText("غیرفعال")).toBeTruthy();
   });
@@ -177,7 +180,7 @@ describe("RoomType RatePlan management", () => {
     await screen.findByRole("alertdialog", { name: "حذف نرخ فروش" });
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("alertdialog", { name: "حذف نرخ فروش" })).toBeNull());
-    expect(screen.getByRole("dialog", { name: "نرخ‌های فروش زنبق" })).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "نرخ‌های فروش اتاق زنبق" })).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "حذف" }));
     const reopenedConfirmation = await screen.findByRole("alertdialog", { name: "حذف نرخ فروش" });
     fireEvent.click(within(reopenedConfirmation).getByRole("button", { name: "انصراف" }));
@@ -185,7 +188,7 @@ describe("RoomType RatePlan management", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: "حذف" }));
     fireEvent.click(within(await screen.findByRole("alertdialog", { name: "حذف نرخ فروش" })).getByRole("button", { name: "حذف" }));
     await waitFor(() => expect(requests.deleteRoomTypeRatePlan).toHaveBeenCalledWith(3, 4, 51));
-    await waitFor(() => expect(within(dialog).getByText("نرخ دیگری برای این نوع اتاق تعریف نشده است.")).toBeTruthy());
+    await waitFor(() => expect(within(dialog).getByText("هنوز نرخ جایگزینی تعریف نشده است.")).toBeTruthy());
     expect(requests.listRoomTypeRatePlans).toHaveBeenCalledTimes(2);
   });
 
@@ -194,6 +197,6 @@ describe("RoomType RatePlan management", () => {
     const dialog = await openRates();
     expect(await within(dialog).findByText(/دریافت فهرست ناموفق بود/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole("button", { name: "تلاش دوباره" }));
-    expect(await within(dialog).findByText("نرخ دیگری برای این نوع اتاق تعریف نشده است.")).toBeTruthy();
+    expect(await within(dialog).findByText("هنوز نرخ جایگزینی تعریف نشده است.")).toBeTruthy();
   });
 });

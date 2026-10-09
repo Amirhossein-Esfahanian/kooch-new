@@ -510,9 +510,16 @@ describe("PropertyWizard media and common areas", () => {
     ]);
   });
 
-  it("loads global MealPlans and creates with a selected or null default", async () => {
+  it("loads global MealPlans in rules while keeping the basic step free of the field", async () => {
     window.history.replaceState({}, "", "?step=0");
-    render(<PropertyWizard mode="create" />);
+    const { unmount } = render(<PropertyWizard mode="create" />);
+    await screen.findByLabelText("نام فارسی");
+    expect(screen.queryByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد")).toBeNull();
+    unmount();
+    window.history.replaceState({}, "", "?step=7");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+    const rules = (await screen.findByRole("heading", { name: "قوانین و زمان‌ها" })).closest("section");
+    expect(rules).toBeTruthy();
     const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد");
     await waitFor(() => expect(screen.getByRole("option", { name: "صبحانه شامل قیمت" })).toBeTruthy());
     expect(api.request).toHaveBeenCalledWith("/meal-plans");
@@ -522,16 +529,7 @@ describe("PropertyWizard media and common areas", () => {
     expect(screen.queryByText("breakfast-included")).toBeNull();
     expect(screen.queryByText("7")).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("نام فارسی"), { target: { value: "آزمون" } });
-    fireEvent.change(screen.getByLabelText("نام انگلیسی"), { target: { value: "Test Stay" } });
-    fireEvent.change(selector, { target: { value: "7" } });
-    fireEvent.click(screen.getByRole("button", { name: "ذخیره و ادامه" }));
-    await waitFor(() => {
-      const call = api.request.mock.calls.find(([path, init]) => path === "/owner/properties" && init?.method === "POST");
-      expect(JSON.parse(String(call?.[1]?.body)).defaultMealPlanId).toBe(7);
-      expect(JSON.parse(String(call?.[1]?.body))).not.toHaveProperty("breakfastOption");
-      expect(JSON.parse(String(call?.[1]?.body))).not.toHaveProperty("breakfastPrice");
-    });
+    expect(rules?.contains(selector)).toBe(true);
   });
 
   it("creates with null when the global MealPlan selector is untouched", async () => {
@@ -547,12 +545,11 @@ describe("PropertyWizard media and common areas", () => {
   });
 
   it.each([false, true])("round-trips the selected MealPlan through %s full update and permits clearing", async (isAdmin) => {
-    window.history.replaceState({}, "", "?step=0");
+    window.history.replaceState({}, "", "?step=7");
     loadedProperty = { ...property, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت" };
     render(<PropertyWizard isAdmin={isAdmin} mode="edit" propertyId={17} />);
     const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد") as HTMLSelectElement;
     await waitFor(() => expect(selector.value).toBe("7"));
-    fireEvent.change(screen.getByLabelText("نام فارسی"), { target: { value: "نام ویرایش‌شده" } });
     fireEvent.change(selector, { target: { value: "" } });
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
     await waitFor(() => {
@@ -562,7 +559,7 @@ describe("PropertyWizard media and common areas", () => {
       expect(payload.defaultMealPlanId).toBeNull();
       expect(payload).not.toHaveProperty("breakfastOption");
       expect(payload).not.toHaveProperty("breakfastPrice");
-      expect(payload.name).toBe("نام ویرایش‌شده");
+      expect(payload.name).toBe(property.name);
       if (isAdmin) expect(payload).toMatchObject({ ownerId: 1, status: "Draft" });
     });
   });
@@ -571,8 +568,8 @@ describe("PropertyWizard media and common areas", () => {
     window.history.replaceState({}, "", "?step=0");
     loadedProperty = { ...property, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت" };
     render(<PropertyWizard isAdmin={isAdmin} mode="edit" propertyId={17} />);
-    const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد") as HTMLSelectElement;
-    await waitFor(() => expect(selector.value).toBe("7"));
+    await screen.findByLabelText("نام فارسی");
+    expect(screen.queryByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد")).toBeNull();
     fireEvent.change(screen.getByLabelText("نام فارسی"), { target: { value: "نام جدید" } });
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
     await waitFor(() => {
@@ -586,7 +583,7 @@ describe("PropertyWizard media and common areas", () => {
   });
 
   it("sends a newly selected MealPlan on Owner edit", async () => {
-    window.history.replaceState({}, "", "?step=0");
+    window.history.replaceState({}, "", "?step=7");
     loadedProperty = { ...property, defaultMealPlanId: 7 };
     render(<PropertyWizard mode="edit" propertyId={17} />);
     const selector = await screen.findByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد") as HTMLSelectElement;

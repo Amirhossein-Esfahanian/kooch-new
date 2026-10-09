@@ -930,14 +930,12 @@ export function PropertyWizard({
 
     let saved = property;
     if (step === 0)
-      saved = data.defaultMealPlanId !== (property.defaultMealPlanId ?? null)
-        ? await saveProperty()
-        : await updatePropertySection("basic", {
-            name: data.name.trim(),
-            englishName: data.englishName.trim() || null,
-            type: data.type,
-            inventoryMode: data.inventoryMode,
-          });
+      saved = await updatePropertySection("basic", {
+        name: data.name.trim(),
+        englishName: data.englishName.trim() || null,
+        type: data.type,
+        inventoryMode: data.inventoryMode,
+      });
     if (step === 1) {
       saved = await updatePropertySection("location", {
         destinationId: resolveDestinationId(data.city),
@@ -963,15 +961,17 @@ export function PropertyWizard({
     if (step === 5) await saveDescriptions(saved.id);
     if (step === 6) await saveNearbyPlaces(saved.id);
     if (step === 7)
-      saved = await updatePropertySection("rules", {
-        ...(isAdmin
-          ? {
-              showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers,
-            }
-          : {}),
-        checkInTime: data.checkInTime || null,
-        checkOutTime: data.checkOutTime || null,
-      });
+      saved = data.defaultMealPlanId !== (property.defaultMealPlanId ?? null)
+        ? await saveProperty()
+        : await updatePropertySection("rules", {
+            ...(isAdmin
+              ? {
+                  showGuestPhoneToPropertyUsers: data.showGuestPhoneToPropertyUsers,
+                }
+              : {}),
+            checkInTime: data.checkInTime || null,
+            checkOutTime: data.checkOutTime || null,
+          });
     if (step === 8)
       saved = await updatePropertySection("financial", {
         freeChildAgeLimit:
@@ -1211,26 +1211,6 @@ export function PropertyWizard({
                   ))}
                 </select>
               </label>
-              <div className="grid gap-1 text-sm font-bold md:col-span-2">
-                <label htmlFor="property-default-meal-plan">وعده غذایی پیش‌فرض نرخ استاندارد</label>
-                <select
-                  aria-describedby="property-default-meal-plan-help"
-                  className={inputClass}
-                  id="property-default-meal-plan"
-                  onChange={(event) =>
-                    update("defaultMealPlanId", event.target.value ? Number(event.target.value) : null)
-                  }
-                  value={data.defaultMealPlanId ?? ""}
-                >
-                  <option value="">تعیین نشده</option>
-                  {mealPlans.map((mealPlan) => (
-                    <option key={mealPlan.id} value={mealPlan.id}>{mealPlan.name}</option>
-                  ))}
-                </select>
-                <span className="text-xs font-normal text-muted-foreground" id="property-default-meal-plan-help">
-                  اگر برای یک نوع اتاق وعده غذایی جداگانه تعیین نشود، این گزینه برای نرخ استاندارد آن اتاق استفاده می‌شود.
-                </span>
-              </div>
             </div>
           </section>
         )}
@@ -1704,6 +1684,26 @@ export function PropertyWizard({
                   value={data.checkOutTime}
                 />
               </label>
+            </div>
+            <div className="grid gap-1 text-sm font-bold">
+              <label htmlFor="property-default-meal-plan">وعده غذایی پیش‌فرض نرخ استاندارد</label>
+              <select
+                aria-describedby="property-default-meal-plan-help"
+                className={inputClass}
+                id="property-default-meal-plan"
+                onChange={(event) =>
+                  update("defaultMealPlanId", event.target.value ? Number(event.target.value) : null)
+                }
+                value={data.defaultMealPlanId ?? ""}
+              >
+                <option value="">تعیین نشده</option>
+                {mealPlans.map((mealPlan) => (
+                  <option key={mealPlan.id} value={mealPlan.id}>{mealPlan.name}</option>
+                ))}
+              </select>
+              <span className="text-xs font-normal text-muted-foreground" id="property-default-meal-plan-help">
+                اگر برای یک نوع اتاق وعده غذایی جداگانه تعیین نشود، این گزینه برای نرخ استاندارد آن اتاق استفاده می‌شود.
+              </span>
             </div>
             {isAdmin && mode === "edit" && adminCashbackSettings && (
               <div className="border-t border-border pt-4">
