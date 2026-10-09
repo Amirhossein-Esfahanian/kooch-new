@@ -78,6 +78,9 @@ export interface PropertyResponse {
   checkOutTime: string | null;
   breakfastOption: BreakfastOption;
   breakfastPrice: number | null;
+  defaultMealPlanId: number | null;
+  defaultMealPlanName: string | null;
+  defaultMealPlanSlug: string | null;
   totalAreaM2: number | null;
   landAreaM2: number | null;
   floorsCount: number | null;
@@ -352,6 +355,10 @@ export function listRoomTypeRatePlans(propertyId: number, roomTypeId: number) {
 
 export function listPropertyMealPlans(propertyId: number) {
   return apiRequest<MealPlanOptionResponse[]>(`/owner/properties/${propertyId}/meal-plans`);
+}
+
+export function listMealPlans() {
+  return apiRequest<MealPlanOptionResponse[]>("/meal-plans");
 }
 
 export function createRoomTypeRatePlan(
@@ -745,6 +752,7 @@ export interface PropertyFormValues {
   checkOutTime: string;
   breakfastOption: BreakfastOption;
   breakfastPrice: number | null;
+  defaultMealPlanId: number | null;
   totalAreaM2?: number | null;
   landAreaM2?: number | null;
   floorsCount?: number | null;

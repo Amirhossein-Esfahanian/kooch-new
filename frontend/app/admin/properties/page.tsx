@@ -47,6 +47,8 @@ import {
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import {
   apiRequest,
+  listMealPlans,
+  type MealPlanOptionResponse,
   AdminPropertyOwnerAccountResponse,
   AdminPropertyOwnerCandidatePageResponse,
   AdminPropertyOwnerCandidateResponse,
@@ -106,6 +108,7 @@ type CreatePropertyForm = {
   city: string;
   address: string;
   description: string;
+  defaultMealPlanId: number | null;
 };
 
 const previousOwnerRoleOptions: Exclude<PropertyUserRole, "PropertyOwner">[] = [
@@ -163,6 +166,7 @@ const emptyCreateForm: CreatePropertyForm = {
   city: "کاشان",
   address: "",
   description: "",
+  defaultMealPlanId: null,
 };
 
 function normalizeSearchText(value: unknown) {
@@ -385,6 +389,7 @@ export default function AdminPropertiesPage() {
   const [selectedTransferOwner, setSelectedTransferOwner] =
     useState<AdminPropertyOwnerCandidateResponse | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [mealPlans, setMealPlans] = useState<MealPlanOptionResponse[]>([]);
   const [createForm, setCreateForm] =
     useState<CreatePropertyForm>(emptyCreateForm);
   const [createCoordinates, setCreateCoordinates] =
@@ -454,6 +459,14 @@ export default function AdminPropertiesPage() {
       .catch((caught: Error) => setError(caught.message))
       .finally(() => setLoading(false));
   }, [authenticated, load, sessionLoading, workspaces]);
+
+  useEffect(() => {
+    if (!createOpen) return;
+    setMealPlans([]);
+    listMealPlans()
+      .then(setMealPlans)
+      .catch((caught: Error) => setError(caught.message));
+  }, [createOpen]);
 
   function resetFilters() {
     setSearchTerm("");
@@ -688,6 +701,7 @@ export default function AdminPropertiesPage() {
           checkInTime: "14:00",
           checkOutTime: "12:00",
           breakfastOption: "NoBreakfast",
+          defaultMealPlanId: createForm.defaultMealPlanId,
           status: "Draft",
           hasElevator: false,
         }),
@@ -1335,6 +1349,25 @@ export default function AdminPropertiesPage() {
                     <option key={type} value={type}>
                       {propertyTypeLabels[type]}
                     </option>
+                  ))}
+                </KoochSelect>
+              </KoochField>
+
+              <KoochField
+                className="md:col-span-2"
+                helperText="اگر برای یک نوع اتاق وعده غذایی جداگانه تعیین نشود، این گزینه برای نرخ استاندارد آن اتاق استفاده می‌شود."
+                label="وعده غذایی پیش‌فرض نرخ استاندارد"
+              >
+                <KoochSelect
+                  onChange={(event) => setCreateForm({
+                    ...createForm,
+                    defaultMealPlanId: event.target.value ? Number(event.target.value) : null,
+                  })}
+                  value={createForm.defaultMealPlanId ?? ""}
+                >
+                  <option value="">تعیین نشده</option>
+                  {mealPlans.map((mealPlan) => (
+                    <option key={mealPlan.id} value={mealPlan.id}>{mealPlan.name}</option>
                   ))}
                 </KoochSelect>
               </KoochField>

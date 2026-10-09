@@ -32,7 +32,7 @@ const session = vi.hoisted(() => ({
 
 vi.mock("@/lib/owner-api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/owner-api")>();
-  return { ...actual, apiRequest: ownerApi.apiRequest };
+  return { ...actual, apiRequest: ownerApi.apiRequest, listMealPlans: () => ownerApi.apiRequest("/meal-plans") };
 });
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
@@ -105,6 +105,9 @@ const property: PropertyResponse = {
   checkOutTime: null,
   breakfastOption: "NoBreakfast",
   breakfastPrice: null,
+  defaultMealPlanId: null,
+  defaultMealPlanName: null,
+  defaultMealPlanSlug: null,
   totalAreaM2: null,
   landAreaM2: null,
   floorsCount: null,
@@ -160,6 +163,7 @@ describe("Admin property transfer ownership", () => {
   it("creates a property without exposing or sending the legacy inventory model", async () => {
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/meal-plans") return Promise.resolve([{ id: 7, name: "صبحانه شامل قیمت", slug: "breakfast-included" }]);
         if (path === "/admin/properties" && !options)
           return Promise.resolve([]);
         if (path.startsWith("/admin/properties/owner-candidates?")) {
@@ -183,6 +187,12 @@ describe("Admin property transfer ownership", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "افزودن اقامتگاه",
     });
+    const mealPlanSelect = within(dialog).getByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد") as HTMLSelectElement;
+    await waitFor(() => expect(within(mealPlanSelect).getByRole("option", { name: "صبحانه شامل قیمت" })).toBeTruthy());
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith("/meal-plans");
+    expect(ownerApi.apiRequest.mock.calls.some(([path]) => /\/owner\/properties\/\d+\/meal-plans/.test(path))).toBe(false);
+    expect(within(dialog).queryByText("breakfast-included")).toBeNull();
+    fireEvent.change(mealPlanSelect, { target: { value: "7" } });
     expect(within(dialog).queryByLabelText("مدل موجودی")).toBeNull();
     expect(
       within(dialog).queryByRole("option", { name: "اتاق‌های نام‌دار" }),
@@ -190,8 +200,8 @@ describe("Admin property transfer ownership", () => {
 
     const userSearch = within(dialog).getByLabelText("جست‌وجوی کاربر");
     const ownerSelect = within(dialog).getByLabelText(/مالک اقامتگاه/);
-    const ownerFields = userSearch.parentElement?.parentElement;
-    expect(ownerFields).toBe(ownerSelect.parentElement?.parentElement);
+    const ownerFields = userSearch.closest(".md\\:grid-cols-2");
+    expect(ownerFields).toBe(ownerSelect.closest(".md\\:grid-cols-2"));
     expect(ownerFields?.className).toContain("md:grid-cols-2");
     expect(
       (within(dialog).getByLabelText(/شهر/) as HTMLInputElement).value,
@@ -219,6 +229,7 @@ describe("Admin property transfer ownership", () => {
       const payload = JSON.parse(String(createCall?.[1]?.body));
       expect(payload).not.toHaveProperty("inventoryMode");
       expect(payload).toMatchObject({
+        defaultMealPlanId: 7,
         name: "اقامتگاه جدید",
         address: "کاشان، خیابان نمونه",
         city: "کاشان",
@@ -233,6 +244,7 @@ describe("Admin property transfer ownership", () => {
   it("maps a selected location to create payload without changing city or address", async () => {
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/meal-plans") return Promise.resolve([{ id: 7, name: "صبحانه شامل قیمت", slug: "breakfast-included" }]);
         if (path === "/admin/properties" && !options)
           return Promise.resolve([]);
         if (path.startsWith("/admin/properties/owner-candidates?")) {
@@ -291,6 +303,7 @@ describe("Admin property transfer ownership", () => {
   it("sends a cleared create location as a null coordinate pair", async () => {
     ownerApi.apiRequest.mockImplementation(
       (path: string, options?: RequestInit) => {
+        if (path === "/meal-plans") return Promise.resolve([{ id: 7, name: "صبحانه شامل قیمت", slug: "breakfast-included" }]);
         if (path === "/admin/properties" && !options)
           return Promise.resolve([]);
         if (path.startsWith("/admin/properties/owner-candidates?")) {
@@ -339,6 +352,7 @@ describe("Admin property transfer ownership", () => {
       const payload = JSON.parse(String(createCall?.[1]?.body));
       expect(payload.latitude).toBeNull();
       expect(payload.longitude).toBeNull();
+      expect(payload.defaultMealPlanId).toBeNull();
     });
   });
 
