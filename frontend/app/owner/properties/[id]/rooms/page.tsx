@@ -64,6 +64,7 @@ export default function OwnerRoomsPage() {
             </Link>
           }
           propertyId={propertyId}
+          propertyDefaultMealPlanName={property?.defaultMealPlanName}
         />
       </main>
     </OwnerLayout>

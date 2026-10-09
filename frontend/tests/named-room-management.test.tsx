@@ -345,12 +345,27 @@ describe("unified owner sellable room type management", () => {
 
     expect(ownerApi.listPropertyMealPlans).toHaveBeenCalledWith(3);
     expect(select.value).toBe("");
-    expect(within(dialog).getByText("مشخص می‌کند نرخ پایه تقویم شامل چه وعده غذایی است.")).toBeTruthy();
+    expect(within(dialog).getByText(/در حالت پیش‌فرض، این نوع اتاق از وعده غذایی تعیین‌شده برای اقامتگاه استفاده می‌کند/)).toBeTruthy();
     expect(Array.from(select.options).map((option) => option.textContent)).toEqual([
-      "نامشخص", "صبحانه شامل قیمت", "فقط اقامت",
+      "استفاده از پیش‌فرض اقامتگاه", "صبحانه شامل قیمت", "فقط اقامت",
     ]);
     expect(select.textContent).not.toContain("breakfast-included");
     expect(select.textContent).not.toContain("room-only");
+  });
+
+  it("shows the loaded Property meal as the inherit option without storing its ID", async () => {
+    arrangeApi([{ ...zanbagh, defaultMealPlanId: null }]);
+    render(<RoomManagement propertyId={3} propertyDefaultMealPlanName="صبحانه شامل قیمت" />);
+    fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
+    const dialog = await screen.findByRole("dialog");
+    const select = within(dialog).getByLabelText(/وعده غذایی نرخ استاندارد/) as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect(within(dialog).getByRole("option", { name: "پیش‌فرض اقامتگاه — صبحانه شامل قیمت" })).toBeTruthy();
+    await continueTo(dialog, "ویژگی‌های نوع اتاق");
+    const update = ownerApi.apiRequest.mock.calls.find(
+      ([path, init]) => path === "/owner/room-types/4" && init?.method === "PUT",
+    );
+    expect(JSON.parse(String(update?.[1]?.body)).defaultMealPlanId).toBeNull();
   });
 
   it.each([
@@ -358,7 +373,7 @@ describe("unified owner sellable room type management", () => {
     ["7", 7],
   ])("creates a RoomType with standard MealPlan selection %s", async (selection, expectedId) => {
     arrangeApi();
-    render(<RoomManagement propertyId={3} />);
+    render(<RoomManagement propertyId={3} propertyDefaultMealPlanName="فقط اقامت" />);
     const dialog = await openCreateDialog();
     await fillRequiredFields(dialog);
     fireEvent.change(within(dialog).getByLabelText(/وعده غذایی نرخ استاندارد/), {
@@ -374,11 +389,12 @@ describe("unified owner sellable room type management", () => {
 
   it("preselects and round-trips the default MealPlan across unrelated edits, status changes, and clearing", async () => {
     arrangeApi([{ ...zanbagh, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت", defaultMealPlanSlug: "breakfast-included" }]);
-    render(<RoomManagement propertyId={3} />);
+    render(<RoomManagement propertyId={3} propertyDefaultMealPlanName="فقط اقامت" />);
     fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
     const dialog = await screen.findByRole("dialog");
     const select = within(dialog).getByLabelText(/وعده غذایی نرخ استاندارد/) as HTMLSelectElement;
     expect(select.value).toBe("7");
+    expect(within(dialog).getByRole("option", { name: "پیش‌فرض اقامتگاه — فقط اقامت" })).toBeTruthy();
 
     fireEvent.change(within(dialog).getByLabelText(/نام نوع اتاق/), { target: { value: "زنبق تازه" } });
     await continueTo(dialog, "ویژگی‌های نوع اتاق");

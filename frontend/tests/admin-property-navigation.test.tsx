@@ -73,4 +73,21 @@ describe("Admin property navigation", () => {
       within(breadcrumb).queryByRole("link", { name: "اتاق‌ها" }),
     ).toBeNull();
   });
+
+  it("passes the already-loaded Property meal name to a room-page child", async () => {
+    apiRequestMock.mockResolvedValue({
+      id: 17,
+      name: "خانه قاجاری",
+      defaultMealPlanName: "صبحانه شامل قیمت",
+    });
+    render(
+      <AdminPropertyPanel propertyId={17} showPricingWarnings={false} title="مدیریت اتاق‌ها">
+        {(property) => <span>{property?.defaultMealPlanName ?? "استفاده از پیش‌فرض اقامتگاه"}</span>}
+      </AdminPropertyPanel>,
+    );
+
+    expect(await screen.findByText("صبحانه شامل قیمت")).toBeTruthy();
+    expect(apiRequestMock).toHaveBeenCalledWith("/admin/properties/17");
+    expect(apiRequestMock.mock.calls.every(([path]) => path === "/admin/properties/17")).toBe(true);
+  });
 });

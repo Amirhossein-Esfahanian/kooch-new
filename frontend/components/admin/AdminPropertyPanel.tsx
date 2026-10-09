@@ -21,7 +21,7 @@ export function AdminPropertyPanel({
   title,
 }: {
   actions?: ReactNode;
-  children: ReactNode;
+  children: ReactNode | ((property: PropertyResponse | null) => ReactNode);
   description?: ReactNode;
   propertyId: number;
   sectionLabel?: string;
@@ -103,7 +103,7 @@ export function AdminPropertyPanel({
             warnings={getPropertyFinancialWarnings(property)}
           />
         )}
-        {children}
+        {typeof children === "function" ? children(property) : children}
       </main>
     </AdminLayout>
   );

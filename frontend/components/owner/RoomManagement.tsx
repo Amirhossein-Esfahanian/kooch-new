@@ -121,10 +121,12 @@ export function RoomManagement({
   compactHeader = false,
   headerAction,
   propertyId,
+  propertyDefaultMealPlanName,
 }: {
   compactHeader?: boolean;
   headerAction?: ReactNode;
   propertyId: number;
+  propertyDefaultMealPlanName?: string | null;
 }) {
   const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
   const [ratePlanRoomType, setRatePlanRoomType] = useState<RoomTypeResponse | null>(null);
@@ -492,7 +494,11 @@ export function RoomManagement({
               }
               value={draft.defaultMealPlanId == null ? "" : String(draft.defaultMealPlanId)}
             >
-              <option value="">نامشخص</option>
+              <option value="">
+                {propertyDefaultMealPlanName
+                  ? `پیش‌فرض اقامتگاه — ${propertyDefaultMealPlanName}`
+                  : "استفاده از پیش‌فرض اقامتگاه"}
+              </option>
               {mealPlans.map((mealPlan) => (
                 <option key={mealPlan.id} value={mealPlan.id}>
                   {mealPlan.name}
@@ -500,7 +506,7 @@ export function RoomManagement({
               ))}
             </KoochSelect>
             <span className="text-xs font-normal text-muted-foreground">
-              مشخص می‌کند نرخ پایه تقویم شامل چه وعده غذایی است.
+              در حالت پیش‌فرض، این نوع اتاق از وعده غذایی تعیین‌شده برای اقامتگاه استفاده می‌کند. انتخاب وعده دیگر، جایگزین آن می‌شود.
             </span>
           </label>
           <label className="grid gap-1 text-sm font-bold">
