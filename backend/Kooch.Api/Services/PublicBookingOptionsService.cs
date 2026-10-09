@@ -135,11 +135,11 @@ public sealed class PublicBookingOptionsService(
             Reason = reason
         };
 
-    private static bool CanAccommodate(RoomType roomType, int adults, int children)
+    internal static bool CanAccommodate(RoomType roomType, int adults, int children, int roomCount = 1)
     {
-        var maximumAdults = roomType.MaxAdults +
-                            (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0);
-        return adults <= maximumAdults && children <= roomType.MaxChildren;
+        var maximumAdults = (roomType.MaxAdults +
+                             (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * roomCount;
+        return adults <= maximumAdults && children <= roomType.MaxChildren * roomCount;
     }
 
     private static void ValidateRequest(

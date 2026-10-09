@@ -44,15 +44,9 @@ public class ReservationPricingService(
                 .Include(plan => plan.MealPlan)
                 .SingleOrDefaultAsync(plan => plan.Id == request.RatePlanId.Value, cancellationToken)
                 ?? throw new KeyNotFoundException("Rate plan not found.");
-            if (!ratePlan.IsActive || ratePlan.RoomTypeId != request.RoomTypeId ||
-                ratePlan.PriceModifierType != PriceModifierType.FixedAmount ||
-                (ratePlan.MealPlanId.HasValue && ratePlan.MealPlan is null))
-                throw new ArgumentException("Rate plan is not available for this room type.");
         }
+        ValidateSelectedRatePlan(request, ratePlan);
 
-        var nights = GetReservationNights(request.CheckInDate, request.CheckOutDate).ToList();
-        if (ratePlan?.MinimumNights is int minimumNights && nights.Count < minimumNights)
-            throw new ArgumentException("Stay is shorter than the selected rate plan minimum nights.");
         var prices = await dbContext.RoomDailyPrices.AsNoTracking()
             .Where(item =>
                 item.RoomTypeId == request.RoomTypeId &&
@@ -60,17 +54,8 @@ public class ReservationPricingService(
                 item.Date >= request.CheckInDate &&
                 item.Date < request.CheckOutDate)
             .ToDictionaryAsync(item => item.Date, cancellationToken);
-
         if (requireCompleteDailyPricing)
-        {
-            var unavailableDates = nights
-                .Where(night => !prices.TryGetValue(night, out var price) || price.BasePrice <= 0)
-                .ToArray();
-            if (unavailableDates.Length > 0)
-            {
-                throw new IncompleteDailyPricingException(request.RoomTypeId, unavailableDates);
-            }
-        }
+            EnsureCompleteDailyPricing(request, prices);
 
         var promotions = await dbContext.Promotions.AsNoTracking()
             .Include(item => item.PromotionRoomTypes)
@@ -87,6 +72,29 @@ public class ReservationPricingService(
             request.PropertyId,
             request.RoomTypeId,
             cancellationToken);
+        return CalculateLoadedPrice(request, roomType, ratePlan, prices, promotions,
+            effectiveRules, bookingDate, requireCompleteDailyPricing);
+    }
+
+    internal ReservationPricePreviewResponse CalculateLoadedPrice(
+        ReservationPricePreviewRequest request,
+        RoomType roomType,
+        RatePlan? ratePlan,
+        IReadOnlyDictionary<DateOnly, RoomDailyPrice> prices,
+        IReadOnlyList<Promotion> promotions,
+        EffectiveReservationRules effectiveRules,
+        DateOnly bookingDate,
+        bool requireCompleteDailyPricing = true)
+    {
+        ValidateRequest(request);
+        if (!roomType.IsActive || roomType.Id != request.RoomTypeId || roomType.PropertyId != request.PropertyId)
+            throw new ArgumentException("Room type is not available for this property.");
+        ValidateSelectedRatePlan(request, ratePlan);
+
+        var nights = GetReservationNights(request.CheckInDate, request.CheckOutDate).ToList();
+        if (requireCompleteDailyPricing)
+            EnsureCompleteDailyPricing(request, prices);
+
         var childRules = effectiveRules.ChildPricingRules;
         var occupancy = childPricingRuleResolver.ResolveOccupancy(
             request.ChildAges,
@@ -153,6 +161,32 @@ public class ReservationPricingService(
             Currency = "IRR",
             Nights = nightSnapshots
         };
+    }
+
+    private static void ValidateSelectedRatePlan(ReservationPricePreviewRequest request, RatePlan? ratePlan)
+    {
+        if (request.RatePlanId.HasValue && ratePlan is null)
+            throw new KeyNotFoundException("Rate plan not found.");
+        if (ratePlan is not null && (!ratePlan.IsActive || ratePlan.Id != request.RatePlanId ||
+            ratePlan.RoomTypeId != request.RoomTypeId ||
+            ratePlan.PriceModifierType != PriceModifierType.FixedAmount ||
+            (ratePlan.MealPlanId.HasValue && ratePlan.MealPlan is null)))
+            throw new ArgumentException("Rate plan is not available for this room type.");
+
+        if (ratePlan?.MinimumNights is int minimumNights &&
+            request.CheckOutDate.DayNumber - request.CheckInDate.DayNumber < minimumNights)
+            throw new ArgumentException("Stay is shorter than the selected rate plan minimum nights.");
+    }
+
+    private static void EnsureCompleteDailyPricing(
+        ReservationPricePreviewRequest request,
+        IReadOnlyDictionary<DateOnly, RoomDailyPrice> prices)
+    {
+        var unavailableDates = GetReservationNights(request.CheckInDate, request.CheckOutDate)
+            .Where(night => !prices.TryGetValue(night, out var price) || price.BasePrice <= 0)
+            .ToArray();
+        if (unavailableDates.Length > 0)
+            throw new IncompleteDailyPricingException(request.RoomTypeId, unavailableDates);
     }
 
     private static void ValidateRequest(ReservationPricePreviewRequest request)

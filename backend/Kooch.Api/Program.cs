@@ -117,7 +117,9 @@ builder.Services.AddScoped<IPublicBookingOptionsService, PublicBookingOptionsSer
 builder.Services.AddScoped<IReservationStatusWorkflow, ReservationStatusWorkflow>();
 builder.Services.AddScoped<IEffectiveAvailabilityService, EffectiveAvailabilityService>();
 builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabilityService>();
-builder.Services.AddScoped<IReservationPricingService, ReservationPricingService>();
+builder.Services.AddScoped<ReservationPricingService>();
+builder.Services.AddScoped<IReservationPricingService>(services => services.GetRequiredService<ReservationPricingService>());
+builder.Services.AddScoped<DatedPropertyStartingPriceService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ReservationCancellationRequestService>();
 builder.Services.AddScoped<ReservationCashbackQueryService>();

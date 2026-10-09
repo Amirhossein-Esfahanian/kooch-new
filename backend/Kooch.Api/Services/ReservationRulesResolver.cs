@@ -21,19 +21,29 @@ public sealed class ReservationRulesResolver(
                 cancellationToken)
             ?? throw new KeyNotFoundException("Room type not found.");
 
+        return ResolveFromLoadedRoomType(roomType,
+            await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken),
+            childPricingRuleResolver);
+    }
+
+    internal static EffectiveReservationRules ResolveFromLoadedRoomType(
+        Kooch.Api.Entities.RoomType roomType,
+        ChildPricingRules globalDefaults,
+        IChildPricingRuleResolver childPricingRuleResolver)
+    {
         var childRules = childPricingRuleResolver.Resolve(
             roomType.Property.FreeChildAgeLimit,
             roomType.Property.MaxFreeChildren,
             roomType.Property.ChildPrice,
-            await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken));
+            globalDefaults);
         var hasPropertyChildRule = roomType.Property.FreeChildAgeLimit.HasValue ||
                                    roomType.Property.MaxFreeChildren.HasValue ||
                                    roomType.Property.ChildPrice.HasValue;
 
         return new EffectiveReservationRules
         {
-            PropertyId = propertyId,
-            RoomTypeId = roomTypeId,
+            PropertyId = roomType.PropertyId,
+            RoomTypeId = roomType.Id,
             BaseCapacity = roomType.MaxAdults,
             MaxDeclaredChildren = Math.Max(0, roomType.MaxAdults - 1),
             ExtraGuestAllowed = roomType.AllowExtraGuest,

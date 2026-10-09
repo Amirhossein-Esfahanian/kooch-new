@@ -18,7 +18,8 @@ public class PropertyService(
     IPropertyAuthorizationService propertyAuthorizationService,
     IPermissionService permissionService,
     IPropertyCompletionService propertyCompletionService,
-    IChildPricingRuleResolver childPricingRuleResolver) : IPropertyService
+    IChildPricingRuleResolver childPricingRuleResolver,
+    DatedPropertyStartingPriceService? datedStartingPriceService = null) : IPropertyService
 {
     private const InventoryMode CanonicalPublicInventoryMode = InventoryMode.TypeBasedInventory;
 
@@ -777,6 +778,7 @@ public class PropertyService(
         string? settingSlugs = null,
         CancellationToken cancellationToken = default)
     {
+        var hasDatedSearch = checkIn.HasValue && checkOut.HasValue && checkIn < checkOut;
         var minAdults = Math.Max(0, adults ?? 0);
         var requestedChildren = Math.Max(0, children ?? 0);
         var parsedChildAges = ParseChildAges(childAges, requestedChildren);
@@ -817,7 +819,7 @@ public class PropertyService(
                 requestedSettingSlugs.Contains(assignment.PropertySetting.Slug)));
         }
 
-        if (hasGuestFilter)
+        if (hasGuestFilter && !hasDatedSearch)
         {
             query = query.Where(property => property.RoomTypes.Any(roomType =>
                 roomType.IsActive &&
@@ -828,6 +830,39 @@ public class PropertyService(
 
         var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0)
             .ToListAsync(cancellationToken);
+        if (hasDatedSearch)
+        {
+            if (datedStartingPriceService is null)
+                throw new InvalidOperationException("Dated property search pricing is not configured.");
+            var datedPrices = await datedStartingPriceService.GetAsync(
+                properties.Select(property => property.Id).ToArray(),
+                checkIn!.Value, checkOut!.Value,
+                Math.Max(1, rooms ?? 1), Math.Max(1, adults ?? 2),
+                requestedChildren, parsedChildAges, cancellationToken);
+            foreach (var property in properties)
+            {
+                if (!datedPrices.TryGetValue(property.Id, out var price)) continue;
+                property.StartingPrice = price.StartingPrice;
+                property.MatchingRoomTypes = property.RoomTypes
+                    .Where(roomType => price.MatchingRoomTypeIds.Contains(roomType.Id))
+                    .Select(roomType => new PublicRoomTypeSummaryResponse
+                    {
+                        Id = roomType.Id,
+                        Name = roomType.Name,
+                        RoomKind = roomType.RoomKind,
+                        MaxAdults = roomType.MaxAdults,
+                        MaxChildren = roomType.MaxChildren,
+                        AllowExtraGuest = roomType.AllowExtraGuest,
+                        MaxExtraGuests = roomType.MaxExtraGuests,
+                        TotalInventory = roomType.TotalInventory,
+                        DisplayPrice = roomType.DisplayPrice
+                    }).ToList();
+                property.MatchingRoomTypesCount = property.MatchingRoomTypes.Count;
+                property.GuestFitStatus = "مناسب ظرفیت";
+                property.AvailabilityStatusSummary = "Available";
+            }
+            return properties.Where(property => datedPrices.ContainsKey(property.Id)).ToList();
+        }
         var globalChildRules = await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken);
 
         foreach (var property in properties)
