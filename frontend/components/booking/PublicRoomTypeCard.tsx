@@ -3,7 +3,10 @@
 import Image from "next/image";
 import { KoochButton } from "@/components/KoochButton";
 import { bookingModePresentation } from "@/components/booking/booking-display";
-import type { PublicBookingRatePlanOption, PublicBookingRoomTypeOption } from "@/lib/booking-sessions";
+import type {
+  PublicBookingRatePlanOption,
+  PublicBookingRoomTypeOption,
+} from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import { formatPrice, type PublicRoomType } from "@/lib/public-properties";
@@ -22,11 +25,13 @@ export interface PublicRoomTypeBookingState {
   totalSelectedQuantity: number;
   onAdd: () => void;
   onRemove: () => void;
-  ratePlans: Array<PublicBookingRatePlanOption & {
-    selectedQuantity: number;
-    onAdd: () => void;
-    onRemove: () => void;
-  }>;
+  ratePlans: Array<
+    PublicBookingRatePlanOption & {
+      selectedQuantity: number;
+      onAdd: () => void;
+      onRemove: () => void;
+    }
+  >;
 }
 
 export function PublicRoomTypeCard({
@@ -123,11 +128,19 @@ export function PublicRoomTypeCard({
             roomType={roomType}
           />
           <div className="grid gap-2">
-            <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
+            <KoochButton
+              className="w-full"
+              onClick={onShowDetails}
+              variant="outline"
+            >
               مشاهده جزئیات
             </KoochButton>
-            <KoochButton className="w-full" onClick={onShowCalendar} variant="outline">
-              مشاهده تقویم قیمت و موجودی
+            <KoochButton
+              className="w-full"
+              onClick={onShowCalendar}
+              variant="outline"
+            >
+              مشاهده تقویم
             </KoochButton>
           </div>
         </div>
@@ -199,7 +212,9 @@ function RateOfferRow({
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-        <p className="font-bold text-foreground">{formatCurrency(finalAmount, { currencyLabel })}</p>
+        <p className="font-bold text-foreground">
+          {formatCurrency(finalAmount, { currencyLabel })}
+        </p>
         <OfferQuantityControl
           availableToAdd={availableToAdd}
           name={controlName}
@@ -282,8 +297,12 @@ function RoomTypeBookingDetails({
           {option.availableCount.toLocaleString("fa-IR")} واحد برای این بازه
         </p>
         {isOverCapacity && (
-          <p className="mt-2 text-xs font-bold leading-6 text-destructive" role="status">
-            موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")} واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
+          <p
+            className="mt-2 text-xs font-bold leading-6 text-destructive"
+            role="status"
+          >
+            موجودی جدید حداکثر {option.availableCount.toLocaleString("fa-IR")}{" "}
+            واحد است؛ تعداد انتخاب‌شده را کاهش دهید.
           </p>
         )}
       </div>
@@ -294,7 +313,9 @@ function RoomTypeBookingDetails({
     <div>
       <p className="text-xs font-bold text-foreground">نرخ استاندارد</p>
       {option.defaultMealPlanName && (
-        <p className="mt-1 text-xs text-muted-foreground">{option.defaultMealPlanName}</p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {option.defaultMealPlanName}
+        </p>
       )}
       <p className="text-xs text-muted-foreground">مبلغ کل اقامت</p>
       <p className="mt-1 text-lg font-bold text-primary">
@@ -347,11 +368,14 @@ function OfferQuantityControl({
   selectedQuantity: number;
   totalAvailable: number;
 }) {
-  const isSingleUnit = selectedQuantity <= 1 && selectedQuantity + availableToAdd <= 1;
+  const isSingleUnit =
+    selectedQuantity <= 1 && selectedQuantity + availableToAdd <= 1;
   if (selectedQuantity === 0) {
     return (
       <KoochButton
-        aria-label={availableToAdd === 0 ? `تکمیل ظرفیت ${name}` : `انتخاب ${name}`}
+        aria-label={
+          availableToAdd === 0 ? `تکمیل ظرفیت ${name}` : `انتخاب ${name}`
+        }
         className={fullWidth ? "w-full" : "min-w-28"}
         disabled={availableToAdd === 0}
         onClick={onAdd}
@@ -375,11 +399,26 @@ function OfferQuantityControl({
     );
   }
   return (
-    <div aria-label={`تعداد انتخاب‌شده ${name}`} className="flex items-center gap-2" role="group">
-      <KoochButton aria-label={`کاهش تعداد ${name}`} onClick={onRemove} size="icon" variant="outline">
-        <span aria-hidden="true" className="text-lg">−</span>
+    <div
+      aria-label={`تعداد انتخاب‌شده ${name}`}
+      className="flex items-center gap-2"
+      role="group"
+    >
+      <KoochButton
+        aria-label={`کاهش تعداد ${name}`}
+        onClick={onRemove}
+        size="icon"
+        variant="outline"
+      >
+        <span aria-hidden="true" className="text-lg">
+          −
+        </span>
       </KoochButton>
-      <output aria-atomic="true" aria-live="polite" className="min-w-8 text-center text-base font-bold text-foreground">
+      <output
+        aria-atomic="true"
+        aria-live="polite"
+        className="min-w-8 text-center text-base font-bold text-foreground"
+      >
         {selectedQuantity.toLocaleString("fa-IR")}
       </output>
       <KoochButton
@@ -389,7 +428,9 @@ function OfferQuantityControl({
         size="icon"
         variant="outline"
       >
-        <span aria-hidden="true" className="text-lg">+</span>
+        <span aria-hidden="true" className="text-lg">
+          +
+        </span>
       </KoochButton>
     </div>
   );
