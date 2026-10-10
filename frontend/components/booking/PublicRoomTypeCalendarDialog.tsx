@@ -9,6 +9,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { RoomPricingCalendar, type RoomPricingCalendarRoom } from "@/components/pricing/RoomPricingCalendar";
 import { useSiteCurrencyLabel } from "@/lib/currency";
+import { toPersianDigits } from "@/lib/persian-digits";
 import { fetchPublicRoomTypeCalendar, type PublicRoomTypeCalendarResponse, type PublicRoomType } from "@/lib/public-properties";
 
 dayjs.extend(jalaliday);
@@ -98,11 +99,11 @@ export function PublicRoomTypeCalendarDialog({
       const status = source?.availabilityStatus ?? "Unavailable";
       const availableUnits = source?.availableUnits ?? 0;
       const availabilityLabel = status === "Available"
-        ? "موجود"
+        ? ""
         : status === "OnRequest" ? "درخواست رزرو" : "ناموجود";
       return {
         date: iso,
-        dayLabel: date.locale("fa").format("D"),
+        dayLabel: toPersianDigits(date.locale("fa").format("D")),
         dateLabel: date.locale("fa").format("YYYY/MM/DD"),
         priceLabel: price === null ? "—" : formatDisplayPrice(price),
         priceAccessibleLabel: price === null ? "قیمت تعیین نشده" : `${formatDisplayPrice(price)} ${displayUnit}`,

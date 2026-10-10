@@ -32,6 +32,8 @@ function response(roomTypeId = 13) {
       { date: toIso(start), standardPrice: 3_000_000, availableUnits: 2, availabilityStatus: "Available" },
       { date: toIso(start.add(1, "day")), standardPrice: null, availableUnits: 1, availabilityStatus: "OnRequest" },
       { date: toIso(start.add(2, "day")), standardPrice: 0, availableUnits: 0, availabilityStatus: "Unavailable" },
+      { date: toIso(start.add(6, "day")), standardPrice: 1_000_000, availableUnits: 2, availabilityStatus: "Available" },
+      { date: toIso(start.add(17, "day")), standardPrice: 2_000_000, availableUnits: 2, availabilityStatus: "Available" },
       { date: toIso(next), standardPrice: 4_000_000, availableUnits: 3, availabilityStatus: "Available" },
     ],
   };
@@ -84,20 +86,39 @@ describe("guest RoomType calendar", () => {
     expect(within(calendar).queryByText("۳٬۰۰۰٬۰۰۰ تومان")).toBeNull();
     expect(within(calendar).getAllByText("—").length).toBeGreaterThan(0);
     expect(within(calendar).getByText("۰")).toBeTruthy();
-    expect(within(calendar).getByText("موجود")).toBeTruthy();
+    expect(within(calendar).queryByText("موجود")).toBeNull();
     expect(within(calendar).queryByText("۲ واحد")).toBeNull();
     expect(within(calendar).getByText("درخواست رزرو")).toBeTruthy();
     expect(within(calendar).getAllByText("ناموجود").length).toBeGreaterThan(0);
     expect(within(calendar).queryByText("⚡")).toBeNull();
     const dayGroups = within(calendar).getAllByRole("group", { name: /نرخ/ });
     expect(dayGroups[0].className).toContain("bg-muted");
-    expect(dayGroups[0].querySelector(".text-muted-foreground")?.textContent).toContain("1");
+    expect(dayGroups[0].querySelector(".text-muted-foreground")?.textContent).toContain("۱");
     expect(dayGroups[0].hasAttribute("aria-pressed")).toBe(false);
     expect(dayGroups[0].className).not.toContain("ring-primary");
     expect(within(calendar).queryByRole("button", { name: /نرخ/ })).toBeNull();
     expect(dayGroups[0].parentElement?.className).toContain("grid-cols-7");
     expect(dayGroups[0].className).toContain("min-h-14");
     expect(response().days[0].standardPrice).toBe(3_000_000);
+  });
+
+  it("shows Persian Jalali day digits without changing the underlying dates or availability", async () => {
+    render(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={roomType} />);
+    await screen.findByText("۳٬۰۰۰");
+    const singleDigitDate = dayjs("2026-10-10").calendar("jalali").date(7).calendar("gregory").format("YYYY-MM-DD");
+    const eighteenthDate = dayjs("2026-10-10").calendar("jalali").date(18).calendar("gregory").format("YYYY-MM-DD");
+    const groups = screen.getAllByRole("group", { name: /نرخ/ });
+    const singleDigitDay = groups.find((group) => group.getAttribute("aria-label")?.includes("/07/07"));
+    const eighteenthDay = groups.find((group) => group.getAttribute("aria-label")?.includes("/07/18"));
+    expect(singleDigitDay).toBeTruthy();
+    expect(eighteenthDay).toBeTruthy();
+    expect(within(singleDigitDay!).getByText("۷")).toBeTruthy();
+    expect(within(eighteenthDay!).getByText("۱۸")).toBeTruthy();
+    expect(within(eighteenthDay!).queryByText("موجود")).toBeNull();
+    expect(response().days.some((day) => day.date === singleDigitDate)).toBe(true);
+    expect(response().days.some((day) => day.date === eighteenthDate)).toBe(true);
+    expect(response().days.find((day) => day.date === eighteenthDate)?.availabilityStatus).toBe("Available");
+    expect(mocks.fetchCalendar).toHaveBeenCalledWith("kashan-house", 13, response().from, response().to);
   });
 
   it("derives the thousands unit from the configured currency label", async () => {

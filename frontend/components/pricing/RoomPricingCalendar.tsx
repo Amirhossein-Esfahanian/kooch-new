@@ -94,7 +94,10 @@ export function RoomPricingCalendar({
               const availabilityLabel = day.totalInventory == null
                 ? persianNumber(day.availableUnits)
                 : `${persianNumber(day.availableUnits)} از ${persianNumber(day.totalInventory)}`;
-              const label = `${room.name}، ${day.dateLabel}، ${day.availabilityLabel ?? `${bookingLabel}، ${availabilityLabel}`}، نرخ ${day.priceAccessibleLabel}`;
+              const statusDescription = isGuest
+                ? day.availabilityLabel ? `، ${day.availabilityLabel}` : ""
+                : `، ${day.availabilityLabel ?? `${bookingLabel}، ${availabilityLabel}`}`;
+              const label = `${room.name}، ${day.dateLabel}${statusDescription}، نرخ ${day.priceAccessibleLabel}`;
               const content = isGuest ? (
                 <div className="flex flex-col items-center justify-center gap-0.5 text-center">
                   <span className={`text-base font-bold leading-none ${day.isPast ? "text-muted-foreground" : "text-foreground"}`}>
@@ -103,9 +106,11 @@ export function RoomPricingCalendar({
                   <span className={`min-w-0 max-w-full break-words text-[10px] font-medium leading-tight tabular-nums ${day.isPast ? "text-muted-foreground" : "text-foreground/80"}`}>
                     {day.priceLabel}
                   </span>
-                  <span className="text-[9px] font-medium leading-none text-muted-foreground">
-                    {day.availabilityLabel}
-                  </span>
+                  {day.availabilityLabel && (
+                    <span className="text-[9px] font-medium leading-none text-muted-foreground">
+                      {day.availabilityLabel}
+                    </span>
+                  )}
                 </div>
               ) : (
                 <>

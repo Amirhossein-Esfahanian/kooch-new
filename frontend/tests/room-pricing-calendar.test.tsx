@@ -84,9 +84,9 @@ describe("shared RoomType pricing calendar presentation", () => {
   });
 
   it("keeps compact guest cells and icon removal scoped to the guest variant", () => {
-    const guestDay = { ...days[0], availabilityLabel: "موجود", isPast: true };
+    const guestDay = { ...days[0], availabilityLabel: "", isPast: true };
     const view = render(<RoomPricingCalendar audience="guest" rooms={[{
-      id: 7, name: "اتاق تست", days: [guestDay, { ...days[1], availabilityLabel: "درخواست رزرو" }],
+      id: 7, name: "اتاق تست", days: [guestDay, { ...days[1], availabilityLabel: "درخواست رزرو" }, { ...days[2], availabilityLabel: "ناموجود" }],
     }]} startOffset={1} />);
     const guest = screen.getByRole("group", { name: /۱۴۰۵\/۰۷\/۱۸/ });
     const dayNumber = within(guest).getByText("۱۸");
@@ -100,7 +100,11 @@ describe("shared RoomType pricing calendar presentation", () => {
     const missingPriceDay = screen.getByRole("group", { name: /۱۴۰۵\/۰۷\/۱۹/ });
     expect(within(missingPriceDay).getByText("—").previousElementSibling?.textContent).toBe("۱۹");
     expect(guest.parentElement?.className).toContain("grid-cols-7");
-    expect(screen.getByText("موجود")).toBeTruthy();
+    expect(screen.queryByText("موجود")).toBeNull();
+    expect(screen.getByText("درخواست رزرو")).toBeTruthy();
+    expect(screen.getByText("ناموجود")).toBeTruthy();
+    expect(guest.getAttribute("aria-label")).toContain("نرخ ۳٬۰۰۰٬۰۰۰ تومان");
+    expect(guest.getAttribute("aria-label")).not.toContain("موجود");
     expect(screen.queryByText("⚡")).toBeNull();
     expect(screen.queryByText("۲")).toBeNull();
     expect(dayNumber.className).toContain("text-muted-foreground");
