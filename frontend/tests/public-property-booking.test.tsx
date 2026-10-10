@@ -1037,24 +1037,13 @@ describe("public property booking integration", () => {
       }),
     );
 
-    expect(
-      within(card).getByRole("button", {
-        name: "حذف انتخاب اتاق شاه‌نشین، نرخ استاندارد",
-      }),
-    ).toBeTruthy();
-    expect(
-      within(card).getByRole("button", {
-        name: "حذف انتخاب اتاق شاه‌نشین، بدون صبحانه",
-      }),
-    ).toBeTruthy();
-    expect(
-      within(card).getByRole("button", {
-        name: "حذف انتخاب اتاق شاه‌نشین، فول‌برد",
-      }),
-    ).toBeTruthy();
-    expect(
-      within(card).queryByRole("button", { name: /^افزایش تعداد/ }),
-    ).toBeNull();
+    for (const offer of ["نرخ استاندارد", "بدون صبحانه", "فول‌برد"]) {
+      const name = `اتاق شاه‌نشین، ${offer}`;
+      expect(within(card).getByRole("group", { name: `تعداد انتخاب‌شده ${name}` }).querySelector("output")?.textContent).toBe("۱");
+      expect((within(card).getByRole("button", { name: `افزایش تعداد ${name}` }) as HTMLButtonElement).disabled).toBe(true);
+      expect((within(card).getByRole("button", { name: `کاهش تعداد ${name}` }) as HTMLButtonElement).disabled).toBe(false);
+      expect(within(card).queryByRole("button", { name: `حذف انتخاب ${name}` })).toBeNull();
+    }
     await waitFor(() => {
       const saved = JSON.parse(
         sessionStorage.getItem(bookingCartStorageKey) ?? "{}",
@@ -1068,7 +1057,7 @@ describe("public property booking integration", () => {
 
     fireEvent.click(
       within(card).getByRole("button", {
-        name: "حذف انتخاب اتاق شاه‌نشین، فول‌برد",
+        name: "کاهش تعداد اتاق شاه‌نشین، فول‌برد",
       }),
     );
     expect(
@@ -1100,6 +1089,64 @@ describe("public property booking integration", () => {
         .getByRole("button", { name: "تکمیل ظرفیت اتاق شاه‌نشین، فول‌برد" })
         .hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("uses binary selection only for a truly single-inventory RoomType with sibling offers", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{ ...availableWithRatePlans.roomTypes[0], availableCount: 1 }],
+    });
+    render(<PublicPropertyPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، بدون صبحانه" }));
+    expect(within(card).getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین، بدون صبحانه" })).toBeTruthy();
+    expect(within(card).queryByRole("group", { name: /تعداد انتخاب‌شده/ })).toBeNull();
+    expect((within(card).getByRole("button", { name: "تکمیل ظرفیت اتاق شاه‌نشین، نرخ استاندارد" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((within(card).getByRole("button", { name: "تکمیل ظرفیت اتاق شاه‌نشین، فول‌برد" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(within(card).getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین، بدون صبحانه" }));
+    expect(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" })).toBeTruthy();
+  });
+
+  it.each([
+    ["نرخ استاندارد", "بدون صبحانه", null, 12],
+    ["بدون صبحانه", "نرخ استاندارد", 12, null],
+  ])("keeps multi-inventory steppers at 4 + 1 when %s is selected first", async (firstOffer, secondOffer, firstRatePlanId, secondRatePlanId) => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{ ...availableWithRatePlans.roomTypes[0], availableCount: 5 }],
+    });
+    render(<PublicPropertyPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    const firstName = `اتاق شاه‌نشین، ${firstOffer}`;
+    const secondName = `اتاق شاه‌نشین، ${secondOffer}`;
+    fireEvent.click(within(card).getByRole("button", { name: `انتخاب ${firstName}` }));
+    fireEvent.click(within(card).getByRole("button", { name: `انتخاب ${secondName}` }));
+    for (let count = 2; count <= 4; count++) {
+      fireEvent.click(within(card).getByRole("button", { name: `افزایش تعداد ${firstName}` }));
+    }
+    const quantity = (name: string) => within(card).getByRole("group", { name: `تعداد انتخاب‌شده ${name}` }).querySelector("output")?.textContent;
+    expect(quantity(firstName)).toBe("۴");
+    expect(quantity(secondName)).toBe("۱");
+    for (const name of [firstName, secondName]) {
+      expect((within(card).getByRole("button", { name: `افزایش تعداد ${name}` }) as HTMLButtonElement).disabled).toBe(true);
+      expect((within(card).getByRole("button", { name: `کاهش تعداد ${name}` }) as HTMLButtonElement).disabled).toBe(false);
+      expect(within(card).queryByRole("button", { name: `حذف انتخاب ${name}` })).toBeNull();
+    }
+    await waitFor(() => {
+      const saved = JSON.parse(sessionStorage.getItem(bookingCartStorageKey) ?? "{}");
+      expect(saved.items).toHaveLength(5);
+      expect(saved.items.filter((item: { ratePlanId: number | null }) => item.ratePlanId === firstRatePlanId)).toHaveLength(4);
+      expect(saved.items.filter((item: { ratePlanId: number | null }) => item.ratePlanId === secondRatePlanId)).toHaveLength(1);
+    });
+    fireEvent.click(within(card).getByRole("button", { name: `کاهش تعداد ${firstName}` }));
+    expect(quantity(firstName)).toBe("۳");
+    expect((within(card).getByRole("button", { name: `افزایش تعداد ${secondName}` }) as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(within(card).getByRole("button", { name: `افزایش تعداد ${firstName}` }));
+    expect(quantity(firstName)).toBe("۴");
+    expect(quantity(secondName)).toBe("۱");
+    expect(within(card).queryByRole("button", { name: `حذف انتخاب ${secondName}` })).toBeNull();
   });
 
   it("increments and decrements a multi-unit selection through zero", async () => {
@@ -1235,9 +1282,8 @@ describe("public property booking integration", () => {
     });
     fireEvent.click(selectBase);
 
-    expect(
-      screen.getByRole("button", { name: "حذف انتخاب اتاق شاه‌نشین" }),
-    ).toBeTruthy();
+    expect(screen.getByRole("group", { name: "تعداد انتخاب‌شده اتاق شاه‌نشین" }).querySelector("output")?.textContent).toBe("۱");
+    expect((screen.getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین" }) as HTMLButtonElement).disabled).toBe(true);
     await waitFor(() => {
       const saved = JSON.parse(
         sessionStorage.getItem(bookingCartStorageKey) ?? "{}",

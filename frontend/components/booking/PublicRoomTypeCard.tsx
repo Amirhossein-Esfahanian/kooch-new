@@ -368,8 +368,8 @@ function OfferQuantityControl({
   selectedQuantity: number;
   totalAvailable: number;
 }) {
-  const isSingleUnit =
-    selectedQuantity <= 1 && selectedQuantity + availableToAdd <= 1;
+  // Keep an over-capacity selection visible and decrementable after availability shrinks.
+  const isSingleUnit = totalAvailable === 1 && selectedQuantity <= 1;
   if (selectedQuantity === 0) {
     return (
       <KoochButton
