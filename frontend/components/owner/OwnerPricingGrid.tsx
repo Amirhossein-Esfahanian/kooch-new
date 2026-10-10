@@ -26,6 +26,7 @@ import {
   CalendarSelectionEditor,
 } from "@/components/CalendarRangeGridEditor";
 import RoomPricingMatrixEditor from "@/components/pricing/RoomPricingMatrixEditor";
+import { RoomPricingCalendar, type RoomPricingCalendarRoom } from "@/components/pricing/RoomPricingCalendar";
 import PricingBulkEditDialog, {
   PricingBulkEditPayload,
   PricingBulkRoom,
@@ -150,16 +151,6 @@ const pricingGuestTypeLabels: Record<PricingGuestType, string> = {
 };
 
 type CopyPricingDirection = "IranianToForeign" | "ForeignToIranian";
-
-const pricingCalendarWeekdays = [
-  "شنبه",
-  "یکشنبه",
-  "دوشنبه",
-  "سه‌شنبه",
-  "چهارشنبه",
-  "پنجشنبه",
-  "جمعه",
-] as const;
 
 type CompactSelectionMode = "range" | "single";
 
@@ -1305,6 +1296,82 @@ export function OwnerPricingGrid({
       window.localStorage.setItem(pricingGuestTypeStorageKey, nextGuestType);
     }
   }
+  const calendarRooms: RoomPricingCalendarRoom[] = usePricingCalendar ? rows.map((row) => {
+    const inventoryRoom = inventoryRoomById.get(row.roomTypeId);
+    const totalInventory = inventoryRoom?.totalInventory ?? 0;
+    const selection = getCalendarSelection(row.roomTypeId);
+    const selectedDateSet = new Set(selection.dates);
+    const selectedCount = selection.dates.length;
+
+    return {
+      id: row.roomTypeId,
+      name: row.label,
+      onDaySelect: (date) => toggleCalendarDate(row.roomTypeId, date),
+      headerActions: (
+        <div className="inline-flex shrink-0 rounded-md border border-border bg-muted p-0.5">
+          {[
+            { value: "range" as const, label: "بازه‌ای" },
+            { value: "single" as const, label: "تکی" },
+          ].map((option) => (
+            <button
+              className={`rounded px-2 py-1 text-[9px] font-bold transition ${
+                selection.mode === option.value
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground"
+              }`}
+              key={option.value}
+              onClick={() => setCalendarSelectionMode(row.roomTypeId, option.value)}
+              type="button"
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      ),
+      selectionSummary: (
+        <>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            {selectedCount > 0 && (
+              <span className="text-[10px] font-semibold text-muted-foreground">
+                {formatPlainNumber(selectedCount)} روز انتخاب شده
+              </span>
+            )}
+            {selectedCount > 0 && (
+              <button
+                aria-label="پاک کردن انتخاب"
+                className="rounded-md px-1.5 py-1 text-[9px] font-bold text-destructive transition hover:bg-muted"
+                onClick={() => clearCalendarSelection(row.roomTypeId)}
+                type="button"
+              >
+                ×
+              </button>
+            )}
+          </div>
+          {selection.mode === "range" && selection.anchorDate && (
+            <p className="text-[9px] font-semibold text-primary">روز پایان بازه را انتخاب کنید.</p>
+          )}
+        </>
+      ),
+      days: monthDays.map((date) => {
+        const iso = toIso(date);
+        const priceDay = getCellValue(row.id, iso);
+        const inventoryDay = inventoryRoom?.days.find((day) => day.date === iso);
+        return {
+          date: iso,
+          dayLabel: formatPlainNumber(Number(date.calendar("jalali").format("D"))),
+          dateLabel: formatIsoDate(iso),
+          priceLabel: priceDay.basePrice > 0 ? formatCalendarPrice(priceDay.basePrice) : "—",
+          priceAccessibleLabel: formatPriceWithCurrency(priceDay.basePrice, currencyLabel),
+          availableUnits: inventoryDay?.availableCount ?? 0,
+          totalInventory,
+          status: inventoryDay?.status ?? "Unavailable",
+          isPast: dayjs(iso).isBefore(dayjs().startOf("day"), "day"),
+          isHoliday: date.day() === 5,
+          isSelected: selectedDateSet.has(iso),
+        };
+      }),
+    };
+  }) : [];
   return (
     <KoochCard
       className="min-w-0 max-w-full overflow-hidden"
@@ -1618,226 +1685,7 @@ export function OwnerPricingGrid({
                     {inventoryError}
                   </KoochAlert>
                 ) : (
-                  <div className="grid items-start gap-3 md:grid-cols-2 xl:grid-cols-3">
-                    {rows.map((row) => {
-                      const inventoryRoom = inventoryRoomById.get(
-                        row.roomTypeId,
-                      );
-                      const totalInventory = inventoryRoom?.totalInventory ?? 0;
-                      const selection = getCalendarSelection(row.roomTypeId);
-                      const selectedDateSet = new Set(selection.dates);
-                      const selectedCount = selection.dates.length;
-
-                      return (
-                        <section
-                          className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"
-                          key={row.roomTypeId}
-                        >
-                          <div className="grid gap-2 border-b border-border px-3 py-2">
-                            <div className="flex min-w-0 items-center justify-between gap-2">
-                              <h3 className="min-w-0 truncate text-sm font-bold text-foreground">
-                                {row.label}
-                              </h3>
-
-                              <div className="inline-flex shrink-0 rounded-md border border-border bg-muted p-0.5">
-                                {[
-                                  { value: "range" as const, label: "بازه‌ای" },
-                                  { value: "single" as const, label: "تکی" },
-                                ].map((option) => (
-                                  <button
-                                    className={`rounded px-2 py-1 text-[9px] font-bold transition ${
-                                      selection.mode === option.value
-                                        ? "bg-primary text-primary-foreground"
-                                        : "text-muted-foreground hover:text-foreground"
-                                    }`}
-                                    key={option.value}
-                                    onClick={() =>
-                                      setCalendarSelectionMode(
-                                        row.roomTypeId,
-                                        option.value,
-                                      )
-                                    }
-                                    type="button"
-                                  >
-                                    {option.label}
-                                  </button>
-                                ))}
-                              </div>
-                            </div>
-
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              {selectedCount > 0 && (
-                                <span className="text-[10px] font-semibold text-muted-foreground">
-                                  {formatPlainNumber(selectedCount)} روز انتخاب
-                                  شده
-                                </span>
-                              )}
-
-                              {selectedCount > 0 && (
-                                <button
-                                  aria-label="پاک کردن انتخاب"
-                                  className="rounded-md px-1.5 py-1 text-[9px] font-bold text-destructive transition hover:bg-muted"
-                                  onClick={() =>
-                                    clearCalendarSelection(row.roomTypeId)
-                                  }
-                                  type="button"
-                                >
-                                  ×
-                                </button>
-                              )}
-                            </div>
-
-                            {selection.mode === "range" &&
-                              selection.anchorDate && (
-                                <p className="text-[9px] font-semibold text-primary">
-                                  روز پایان بازه را انتخاب کنید.
-                                </p>
-                              )}
-                          </div>
-
-                          <div className="grid grid-cols-7 bg-muted">
-                            {pricingCalendarWeekdays.map((weekday) => (
-                              <div
-                                className={`border-2 border-white px-0.5 py-1.5 text-center text-[9px] font-semibold ${
-                                  weekday === "جمعه"
-                                    ? "text-destructive"
-                                    : "text-muted-foreground"
-                                }`}
-                                key={weekday}
-                              >
-                                {weekday}
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="grid grid-cols-7 bg-muted">
-                            {Array.from(
-                              { length: pricingCalendarStartOffset },
-                              (_, index) => (
-                                <div
-                                  aria-hidden="true"
-                                  className="min-h-16 border-2 border-white bg-card"
-                                  key={`empty-${row.roomTypeId}-${index}`}
-                                />
-                              ),
-                            )}
-
-                            {monthDays.map((date) => {
-                              const iso = toIso(date);
-                              const priceDay = getCellValue(row.id, iso);
-                              const inventoryDay = inventoryRoom?.days.find(
-                                (day) => day.date === iso,
-                              );
-                              const availableCount =
-                                inventoryDay?.availableCount ?? 0;
-                              const status =
-                                inventoryDay?.status ?? "Unavailable";
-                              const isPast = dayjs(iso).isBefore(
-                                dayjs().startOf("day"),
-                                "day",
-                              );
-                              const isAvailable =
-                                status === "Available" && availableCount > 0;
-                              const isOnRequest =
-                                status === "OnRequest" && availableCount > 0;
-                              const isHoliday = date.day() === 5;
-                              const isSelected = selectedDateSet.has(iso);
-
-                              const statusSurface = isPast
-                                ? "bg-muted text-muted-foreground"
-                                : isAvailable
-                                  ? "bg-[var(--theme-success-soft)] text-foreground"
-                                  : isOnRequest
-                                    ? "bg-[var(--theme-warning-soft)] text-foreground"
-                                    : "bg-muted text-muted-foreground";
-
-                              const bookingLabel = isAvailable
-                                ? "رزرو فوری"
-                                : isOnRequest
-                                  ? "استعلامی"
-                                  : "ناموجود";
-
-                              const bookingIconClass = isAvailable
-                                ? "text-[var(--theme-success)]"
-                                : isOnRequest
-                                  ? "text-[var(--theme-warning)]"
-                                  : "text-muted-foreground";
-
-                              const jalaliDay = Number(
-                                date.calendar("jalali").format("D"),
-                              );
-
-                              return (
-                                <button
-                                  aria-label={`${row.label}، ${formatIsoDate(
-                                    iso,
-                                  )}، ${bookingLabel}، ${formatPlainNumber(
-                                    availableCount,
-                                  )} از ${formatPlainNumber(
-                                    totalInventory,
-                                  )}، نرخ ${formatPriceWithCurrency(
-                                    priceDay.basePrice,
-                                    currencyLabel,
-                                  )}`}
-                                  aria-pressed={isSelected}
-                                  className={`relative grid min-h-16 content-between gap-1 border-2 border-white p-1 text-right transition ${
-                                    isPast
-                                      ? "cursor-not-allowed"
-                                      : "cursor-pointer hover:brightness-[0.98]"
-                                  } ${statusSurface} ${
-                                    isSelected
-                                      ? "z-10 ring-2 ring-inset ring-primary"
-                                      : ""
-                                  }`}
-                                  disabled={isPast}
-                                  key={`${row.roomTypeId}-${iso}`}
-                                  onClick={() =>
-                                    toggleCalendarDate(row.roomTypeId, iso)
-                                  }
-                                  type="button"
-                                >
-                                  <div className="flex items-start justify-between gap-0.5">
-                                    <span
-                                      className={`text-[11px] font-bold ${
-                                        isHoliday ? "text-destructive" : ""
-                                      }`}
-                                    >
-                                      {formatPlainNumber(jalaliDay)}
-                                    </span>
-                                    {status !== "Unavailable" &&
-                                      availableCount > 0 && (
-                                        <span
-                                          aria-hidden="true"
-                                          className={`text-[10px] leading-none ${bookingIconClass}`}
-                                          title={bookingLabel}
-                                        >
-                                          ⚡
-                                        </span>
-                                      )}
-                                  </div>
-
-                                  <div className="text-center">
-                                    <div className="text-[11px] font-bold leading-none tabular-nums text-foreground">
-                                      {priceDay.basePrice > 0
-                                        ? formatCalendarPrice(
-                                            priceDay.basePrice,
-                                          )
-                                        : "—"}
-                                    </div>
-                                  </div>
-
-                                  <div className="text-left text-[9px] font-semibold leading-none tabular-nums text-muted-foreground">
-                                    {formatPlainNumber(availableCount)}/
-                                    {formatPlainNumber(totalInventory)}
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
+                  <RoomPricingCalendar rooms={calendarRooms} startOffset={pricingCalendarStartOffset} />
                 )}
               </div>
             ) : usePricingMatrix ? (

@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -59,6 +59,7 @@ import { OwnerPricingGrid } from "@/components/owner/OwnerPricingGrid";
 
 function installApiResponses(
   managementResult: Record<string, string> | Error,
+  calendarDate?: string,
 ) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path === "/site-settings/management") {
@@ -87,9 +88,20 @@ function installApiResponses(
           {
             roomTypeId: 7,
             name: "اتاق تست",
-            days: [],
+            days: calendarDate ? [{ date: calendarDate, basePrice: 3_000_000 }] : [],
           },
         ],
+      });
+    }
+    if (path.startsWith("/owner/properties/51/inventory?")) {
+      return Promise.resolve({
+        propertyId: 51,
+        roomTypes: [{
+          roomTypeId: 7,
+          name: "اتاق تست",
+          totalInventory: 3,
+          days: calendarDate ? [{ date: calendarDate, availableCount: 2, status: "OnRequest" }] : [],
+        }],
       });
     }
     return Promise.reject(new Error(`Unexpected API request: ${path}`));
@@ -162,5 +174,41 @@ describe("OwnerPricingGrid operational settings", () => {
     );
     expect(editor.getAttribute("data-minimum")).toBe("125000");
     expect(editor.getAttribute("data-maximum")).toBe("9750000");
+  });
+
+  it("keeps calendar switching, month navigation and management day selection", async () => {
+    const today = new Date();
+    const calendarDate = [today.getFullYear(), String(today.getMonth() + 1).padStart(2, "0"), String(today.getDate()).padStart(2, "0")].join("-");
+    installApiResponses({ "pricing.minPrice": "0", "pricing.maxPrice": "10000000" }, calendarDate);
+    render(<OwnerPricingGrid propertyId={51} />);
+
+    expect(await screen.findByRole("button", { name: "نمایش پیش‌فرض" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "نمایش تقویم" }));
+    expect(screen.getByRole("button", { name: "نمایش تقویم" }).getAttribute("aria-pressed")).toBe("true");
+    expect(await screen.findByText("تقویم آزمایشی نرخ و موجودی")).toBeTruthy();
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.some(([path]) => path.startsWith("/owner/properties/51/inventory?"))).toBe(true));
+    expect(screen.getByText("شنبه")).toBeTruthy();
+    expect(screen.getByText("جمعه")).toBeTruthy();
+    expect(screen.getByText("۳٬۰۰۰")).toBeTruthy();
+    expect(screen.getByText("۲/۳")).toBeTruthy();
+
+    const day = screen.getByRole("button", { name: /اتاق تست،.*استعلامی.*۳٬۰۰۰٬۰۰۰ تومان/ });
+    expect(day.getAttribute("aria-pressed")).toBe("false");
+    fireEvent.click(day);
+    expect(day.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByText("۱ روز انتخاب شده")).toBeTruthy();
+    expect(screen.getByText("روز پایان بازه را انتخاب کنید.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "تکی" }));
+    expect(screen.queryByText("روز پایان بازه را انتخاب کنید.")).toBeNull();
+
+    const callsBeforeMonthChange = mocks.apiRequest.mock.calls.filter(([path]) => path.startsWith("/owner/properties/51/pricing?")).length;
+    fireEvent.click(screen.getByRole("button", { name: "ماه بعد" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.filter(([path]) => path.startsWith("/owner/properties/51/pricing?")).length).toBeGreaterThan(callsBeforeMonthChange));
+    fireEvent.click(screen.getByRole("button", { name: "ماه قبل" }));
+    await waitFor(() => expect(mocks.apiRequest.mock.calls.filter(([path]) => path.startsWith("/owner/properties/51/pricing?")).length).toBeGreaterThan(callsBeforeMonthChange + 1));
+    fireEvent.click(screen.getByRole("button", { name: "نمایش جدول" }));
+    expect(screen.getByRole("button", { name: "نمایش جدول" }).getAttribute("aria-pressed")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "نمایش پیش‌فرض" }));
+    expect(screen.getByRole("button", { name: "نمایش پیش‌فرض" }).getAttribute("aria-pressed")).toBe("true");
   });
 });
