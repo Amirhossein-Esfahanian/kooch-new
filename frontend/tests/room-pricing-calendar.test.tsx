@@ -94,7 +94,7 @@ describe("shared RoomType pricing calendar presentation", () => {
     expect(guest.className).toContain("min-h-14");
     expect(guest.className).toContain("text-center");
     expect(dayNumber.className).toContain("text-base");
-    expect(price.className).toContain("text-[10px]");
+    expect(price.className).toContain("text-[11px]");
     expect(dayNumber.parentElement).toBe(price.parentElement);
     expect(dayNumber.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const missingPriceDay = screen.getByRole("group", { name: /۱۴۰۵\/۰۷\/۱۹/ });
@@ -105,6 +105,7 @@ describe("shared RoomType pricing calendar presentation", () => {
     expect(screen.getByText("ناموجود")).toBeTruthy();
     expect(guest.getAttribute("aria-label")).toContain("نرخ ۳٬۰۰۰٬۰۰۰ تومان");
     expect(guest.getAttribute("aria-label")).not.toContain("موجود");
+    expect(screen.queryByRole("heading", { name: "اتاق تست" })).toBeNull();
     expect(screen.queryByText("⚡")).toBeNull();
     expect(screen.queryByText("۲")).toBeNull();
     expect(dayNumber.className).toContain("text-muted-foreground");
@@ -114,7 +115,9 @@ describe("shared RoomType pricing calendar presentation", () => {
     expect(screen.getByText("⚡")).toBeTruthy();
     expect(screen.getByText("۲/۳")).toBeTruthy();
     const operatorDay = screen.getByRole("button", { name: /۱۴۰۵\/۰۷\/۱۸/ });
+    expect(screen.getByRole("heading", { name: "اتاق تست" })).toBeTruthy();
     expect(operatorDay.className).toContain("text-right");
     expect(within(operatorDay).getByText("۱۸").className).toContain("text-[11px]");
+    expect(within(operatorDay).getByText("۳٬۰۰۰").className).toContain("text-[11px]");
   });
 });

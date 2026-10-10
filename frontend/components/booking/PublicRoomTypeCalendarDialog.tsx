@@ -31,7 +31,7 @@ function calendarMonths() {
     start,
     from: toIso(start),
     to: toIso(start.add(1, "month").subtract(1, "day")),
-    title: start.locale("fa").format("MMMM YYYY"),
+    title: toPersianDigits(start.locale("fa").format("MMMM YYYY")),
   }));
 }
 
@@ -124,40 +124,48 @@ export function PublicRoomTypeCalendarDialog({
       size="md"
       title={`تقویم قیمت و موجودی — ${roomType?.name ?? ""}`}
     >
-      <div className="grid gap-3">
-        <div aria-label="ماه تقویم" className="flex flex-wrap gap-2" role="group">
-          {["ماه جاری", "ماه بعد"].map((label, index) => (
-            <KoochButton
-              aria-pressed={monthIndex === index}
-              className="!px-2"
-              key={label}
-              onClick={() => setMonthIndex(index)}
-              size="sm"
-              variant={monthIndex === index ? "primary" : "outline"}
-            >
-              {label}
-            </KoochButton>
-          ))}
+      <div className="grid gap-2">
+        <div className="max-w-full overflow-x-auto">
+          <div className="grid min-w-[420px] gap-2 sm:min-w-0">
+            <div aria-label="ماه تقویم" className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-1.5" role="group">
+              <KoochButton
+                aria-pressed={monthIndex === 0}
+                className="justify-self-start !px-2"
+                onClick={() => setMonthIndex(0)}
+                size="sm"
+                variant={monthIndex === 0 ? "primary" : "outline"}
+              >
+                ماه جاری
+              </KoochButton>
+              <h2 className="whitespace-nowrap text-center text-sm font-semibold text-foreground">{selectedMonth.title}</h2>
+              <KoochButton
+                aria-pressed={monthIndex === 1}
+                className="justify-self-end !px-2"
+                onClick={() => setMonthIndex(1)}
+                size="sm"
+                variant={monthIndex === 1 ? "primary" : "outline"}
+              >
+                ماه بعد
+              </KoochButton>
+            </div>
+            {!loading && !error && calendar?.roomTypeId === roomTypeId && (
+              <RoomPricingCalendar
+                audience="guest"
+                layout="single"
+                rooms={[{ id: roomTypeId!, name: roomType?.name ?? "", days }]}
+                startOffset={(selectedMonth.start.day() + 1) % 7}
+              />
+            )}
+            {!loading && !error && calendar?.roomTypeId === roomTypeId && (
+              <p className="text-center text-xs font-medium text-muted-foreground">واحد قیمت‌ها: {displayUnit}</p>
+            )}
+          </div>
         </div>
-        <p className="text-xs font-medium text-muted-foreground">واحد قیمت‌ها: {displayUnit}</p>
         {loading && <p className="py-6 text-center text-sm text-muted-foreground" role="status">در حال دریافت تقویم…</p>}
         {error && (
           <KoochAlert variant="destructive">
             دریافت تقویم انجام نشد. <KoochButton className="ms-2" onClick={() => setRetry((value) => value + 1)} size="sm" variant="outline">تلاش دوباره</KoochButton>
           </KoochAlert>
-        )}
-        {!loading && !error && calendar?.roomTypeId === roomTypeId && (
-          <div className="max-w-full overflow-x-auto">
-            <div className="min-w-[420px] sm:min-w-0">
-              <RoomPricingCalendar
-                audience="guest"
-                layout="single"
-                monthTitle={selectedMonth.title}
-                rooms={[{ id: roomTypeId!, name: roomType?.name ?? "", days }]}
-                startOffset={(selectedMonth.start.day() + 1) % 7}
-              />
-            </div>
-          </div>
         )}
       </div>
     </KoochDialog>

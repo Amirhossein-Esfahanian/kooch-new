@@ -52,13 +52,13 @@ export function RoomPricingCalendar({
       <div className={`grid items-start gap-3 ${layout === "responsive" ? "md:grid-cols-2 xl:grid-cols-3" : ""}`}>
       {rooms.map((room) => (
         <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card" key={room.id}>
-          <div className={`grid gap-2 border-b border-border ${isGuest ? "px-2 py-1.5" : "px-3 py-2"}`}>
+          {!isGuest && <div className="grid gap-2 border-b border-border px-3 py-2">
             <div className="flex min-w-0 items-center justify-between gap-2">
               <h3 className="min-w-0 truncate text-sm font-bold text-foreground">{room.name}</h3>
               {room.headerActions}
             </div>
             {room.selectionSummary}
-          </div>
+          </div>}
           <div className="grid grid-cols-7 bg-muted">
             {weekdays.map((weekday) => (
               <div
@@ -103,7 +103,7 @@ export function RoomPricingCalendar({
                   <span className={`text-base font-bold leading-none ${day.isPast ? "text-muted-foreground" : "text-foreground"}`}>
                     {day.dayLabel}
                   </span>
-                  <span className={`min-w-0 max-w-full break-words text-[10px] font-medium leading-tight tabular-nums ${day.isPast ? "text-muted-foreground" : "text-foreground/80"}`}>
+                  <span className={`min-w-0 max-w-full break-words text-[11px] font-medium leading-tight tabular-nums ${day.isPast ? "text-muted-foreground" : "text-foreground/80"}`}>
                     {day.priceLabel}
                   </span>
                   {day.availabilityLabel && (
