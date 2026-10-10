@@ -82,4 +82,35 @@ describe("shared RoomType pricing calendar presentation", () => {
     expect(screen.queryByRole("button")).toBeNull();
     expect(view.container.querySelector(".md\\:grid-cols-2")).toBeNull();
   });
+
+  it("keeps compact guest cells and icon removal scoped to the guest variant", () => {
+    const guestDay = { ...days[0], availabilityLabel: "موجود", isPast: true };
+    const view = render(<RoomPricingCalendar audience="guest" rooms={[{
+      id: 7, name: "اتاق تست", days: [guestDay, { ...days[1], availabilityLabel: "درخواست رزرو" }],
+    }]} startOffset={1} />);
+    const guest = screen.getByRole("group", { name: /۱۴۰۵\/۰۷\/۱۸/ });
+    const dayNumber = within(guest).getByText("۱۸");
+    const price = within(guest).getByText("۳٬۰۰۰");
+    expect(guest.className).toContain("min-h-14");
+    expect(guest.className).toContain("text-center");
+    expect(dayNumber.className).toContain("text-base");
+    expect(price.className).toContain("text-[10px]");
+    expect(dayNumber.parentElement).toBe(price.parentElement);
+    expect(dayNumber.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const missingPriceDay = screen.getByRole("group", { name: /۱۴۰۵\/۰۷\/۱۹/ });
+    expect(within(missingPriceDay).getByText("—").previousElementSibling?.textContent).toBe("۱۹");
+    expect(guest.parentElement?.className).toContain("grid-cols-7");
+    expect(screen.getByText("موجود")).toBeTruthy();
+    expect(screen.queryByText("⚡")).toBeNull();
+    expect(screen.queryByText("۲")).toBeNull();
+    expect(dayNumber.className).toContain("text-muted-foreground");
+    expect(price.className).toContain("text-muted-foreground");
+
+    view.rerender(<RoomPricingCalendar rooms={[{ id: 7, name: "اتاق تست", days: [days[0]], onDaySelect: vi.fn() }]} startOffset={1} />);
+    expect(screen.getByText("⚡")).toBeTruthy();
+    expect(screen.getByText("۲/۳")).toBeTruthy();
+    const operatorDay = screen.getByRole("button", { name: /۱۴۰۵\/۰۷\/۱۸/ });
+    expect(operatorDay.className).toContain("text-right");
+    expect(within(operatorDay).getByText("۱۸").className).toContain("text-[11px]");
+  });
 });

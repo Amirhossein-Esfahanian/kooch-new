@@ -37,19 +37,22 @@ export function RoomPricingCalendar({
   startOffset,
   monthTitle,
   layout = "responsive",
+  audience = "operator",
 }: {
   rooms: RoomPricingCalendarRoom[];
   startOffset: number;
   monthTitle?: string;
   layout?: "responsive" | "single";
+  audience?: "operator" | "guest";
 }) {
+  const isGuest = audience === "guest";
   return (
     <div dir="rtl">
       {monthTitle && <h2 className="mb-3 text-sm font-semibold text-foreground">{monthTitle}</h2>}
       <div className={`grid items-start gap-3 ${layout === "responsive" ? "md:grid-cols-2 xl:grid-cols-3" : ""}`}>
       {rooms.map((room) => (
         <section className="min-w-0 overflow-hidden rounded-xl border border-border bg-card" key={room.id}>
-          <div className="grid gap-2 border-b border-border px-3 py-2">
+          <div className={`grid gap-2 border-b border-border ${isGuest ? "px-2 py-1.5" : "px-3 py-2"}`}>
             <div className="flex min-w-0 items-center justify-between gap-2">
               <h3 className="min-w-0 truncate text-sm font-bold text-foreground">{room.name}</h3>
               {room.headerActions}
@@ -59,7 +62,7 @@ export function RoomPricingCalendar({
           <div className="grid grid-cols-7 bg-muted">
             {weekdays.map((weekday) => (
               <div
-                className={`border-2 border-card px-0.5 py-1.5 text-center text-[9px] font-semibold ${
+                className={`${isGuest ? "border px-0.5 py-1 text-[10px]" : "border-2 px-0.5 py-1.5 text-[9px]"} border-card text-center font-semibold ${
                   weekday === "جمعه" ? "text-destructive" : "text-muted-foreground"
                 }`}
                 key={weekday}
@@ -70,7 +73,7 @@ export function RoomPricingCalendar({
           </div>
           <div className="grid grid-cols-7 bg-muted">
             {Array.from({ length: startOffset }, (_, index) => (
-              <div aria-hidden="true" className="min-h-16 border-2 border-card bg-card" key={`empty-${room.id}-${index}`} />
+              <div aria-hidden="true" className={`${isGuest ? "min-h-14 border" : "min-h-16 border-2"} border-card bg-card`} key={`empty-${room.id}-${index}`} />
             ))}
             {room.days.map((day) => {
               const isAvailable = day.status === "Available" && day.availableUnits > 0;
@@ -92,7 +95,19 @@ export function RoomPricingCalendar({
                 ? persianNumber(day.availableUnits)
                 : `${persianNumber(day.availableUnits)} از ${persianNumber(day.totalInventory)}`;
               const label = `${room.name}، ${day.dateLabel}، ${day.availabilityLabel ?? `${bookingLabel}، ${availabilityLabel}`}، نرخ ${day.priceAccessibleLabel}`;
-              const content = (
+              const content = isGuest ? (
+                <div className="flex flex-col items-center justify-center gap-0.5 text-center">
+                  <span className={`text-base font-bold leading-none ${day.isPast ? "text-muted-foreground" : "text-foreground"}`}>
+                    {day.dayLabel}
+                  </span>
+                  <span className={`min-w-0 max-w-full break-words text-[10px] font-medium leading-tight tabular-nums ${day.isPast ? "text-muted-foreground" : "text-foreground/80"}`}>
+                    {day.priceLabel}
+                  </span>
+                  <span className="text-[9px] font-medium leading-none text-muted-foreground">
+                    {day.availabilityLabel}
+                  </span>
+                </div>
+              ) : (
                 <>
                   <div className="flex items-start justify-between gap-0.5">
                     <span className={`text-[11px] font-bold ${day.isHoliday ? "text-destructive" : ""}`}>{day.dayLabel}</span>
@@ -108,7 +123,7 @@ export function RoomPricingCalendar({
                   </div>
                 </>
               );
-              const className = `relative grid min-h-16 content-between gap-1 border-2 border-card p-1 text-right transition ${
+              const className = `relative border-card transition ${isGuest ? "flex min-h-14 flex-col justify-center border px-0.5 py-1 text-center" : "grid min-h-16 content-between gap-1 border-2 p-1 text-right"} ${
                 room.onDaySelect
                   ? day.isPast ? "cursor-not-allowed" : "cursor-pointer hover:brightness-[0.98]"
                   : ""

@@ -8,10 +8,18 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { RoomPricingCalendar, type RoomPricingCalendarRoom } from "@/components/pricing/RoomPricingCalendar";
-import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { useSiteCurrencyLabel } from "@/lib/currency";
 import { fetchPublicRoomTypeCalendar, type PublicRoomTypeCalendarResponse, type PublicRoomType } from "@/lib/public-properties";
 
 dayjs.extend(jalaliday);
+
+const displayPriceDivisor = 1_000;
+
+function formatDisplayPrice(price: number) {
+  return new Intl.NumberFormat("fa-IR", { maximumFractionDigits: 5 }).format(
+    price / displayPriceDivisor,
+  );
+}
 
 function calendarMonths() {
   const currentStart = dayjs().calendar("jalali").date(1).startOf("day");
@@ -43,6 +51,7 @@ export function PublicRoomTypeCalendarDialog({
   const [retry, setRetry] = useState(0);
   const cache = useRef(new Map<string, PublicRoomTypeCalendarResponse>());
   const currencyLabel = useSiteCurrencyLabel();
+  const displayUnit = `هزار ${currencyLabel}`;
   const roomTypeId = roomType?.id;
   const from = months[0].from;
   const to = months[1].to;
@@ -89,14 +98,14 @@ export function PublicRoomTypeCalendarDialog({
       const status = source?.availabilityStatus ?? "Unavailable";
       const availableUnits = source?.availableUnits ?? 0;
       const availabilityLabel = status === "Available"
-        ? `${availableUnits.toLocaleString("fa-IR")} واحد`
+        ? "موجود"
         : status === "OnRequest" ? "درخواست رزرو" : "ناموجود";
       return {
         date: iso,
         dayLabel: date.locale("fa").format("D"),
         dateLabel: date.locale("fa").format("YYYY/MM/DD"),
-        priceLabel: price === null ? "—" : formatCurrency(price, { currencyLabel }),
-        priceAccessibleLabel: price === null ? "قیمت تعیین نشده" : formatCurrency(price, { currencyLabel }),
+        priceLabel: price === null ? "—" : formatDisplayPrice(price),
+        priceAccessibleLabel: price === null ? "قیمت تعیین نشده" : `${formatDisplayPrice(price)} ${displayUnit}`,
         availableUnits,
         availabilityLabel,
         status,
@@ -108,17 +117,18 @@ export function PublicRoomTypeCalendarDialog({
   return (
     <KoochDialog
       bodyClassName="min-w-0 px-3 py-4 sm:px-6"
-      contentClassName="!h-auto"
+      contentClassName="!h-auto sm:!max-w-xl"
       onOpenChange={(open) => { if (!open) onClose(); }}
       open={roomType !== null}
       size="md"
       title={`تقویم قیمت و موجودی — ${roomType?.name ?? ""}`}
     >
-      <div className="grid gap-4">
+      <div className="grid gap-3">
         <div aria-label="ماه تقویم" className="flex flex-wrap gap-2" role="group">
           {["ماه جاری", "ماه بعد"].map((label, index) => (
             <KoochButton
               aria-pressed={monthIndex === index}
+              className="!px-2"
               key={label}
               onClick={() => setMonthIndex(index)}
               size="sm"
@@ -128,6 +138,7 @@ export function PublicRoomTypeCalendarDialog({
             </KoochButton>
           ))}
         </div>
+        <p className="text-xs font-medium text-muted-foreground">واحد قیمت‌ها: {displayUnit}</p>
         {loading && <p className="py-6 text-center text-sm text-muted-foreground" role="status">در حال دریافت تقویم…</p>}
         {error && (
           <KoochAlert variant="destructive">
@@ -136,8 +147,9 @@ export function PublicRoomTypeCalendarDialog({
         )}
         {!loading && !error && calendar?.roomTypeId === roomTypeId && (
           <div className="max-w-full overflow-x-auto">
-            <div className="min-w-[560px] sm:min-w-0">
+            <div className="min-w-[420px] sm:min-w-0">
               <RoomPricingCalendar
+                audience="guest"
                 layout="single"
                 monthTitle={selectedMonth.title}
                 rooms={[{ id: roomTypeId!, name: roomType?.name ?? "", days }]}

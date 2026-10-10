@@ -7,14 +7,14 @@ import type { PublicRoomType } from "@/lib/public-properties";
 
 dayjs.extend(jalaliday);
 
-const mocks = vi.hoisted(() => ({ fetchCalendar: vi.fn() }));
+const mocks = vi.hoisted(() => ({ fetchCalendar: vi.fn(), currencyLabel: "تومان" }));
 vi.mock("@/lib/public-properties", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/public-properties")>();
   return { ...actual, fetchPublicRoomTypeCalendar: mocks.fetchCalendar };
 });
 vi.mock("@/lib/currency", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/currency")>();
-  return { ...actual, useSiteCurrencyLabel: () => "ریال آزمایشی" };
+  return { ...actual, useSiteCurrencyLabel: () => mocks.currencyLabel };
 });
 
 const roomType = { id: 13, name: "تویین" } as PublicRoomType;
@@ -40,6 +40,7 @@ function response(roomTypeId = 13) {
 describe("guest RoomType calendar", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.currencyLabel = "تومان";
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-10T12:00:00"));
     mocks.fetchCalendar.mockResolvedValue(response());
@@ -71,32 +72,50 @@ describe("guest RoomType calendar", () => {
     expect(await screen.findByRole("heading", { name: "تقویم قیمت و موجودی — تویین" })).toBeTruthy();
   });
 
-  it("shows authoritative full prices, missing price, zero, statuses, and noninteractive past dates", async () => {
+  it("scales only displayed prices and keeps null, zero, statuses, and past dates clear", async () => {
     render(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={roomType} />);
     const calendar = await screen.findByRole("dialog");
-    await within(calendar).findByText("۳٬۰۰۰٬۰۰۰ ریال آزمایشی");
-    expect(within(calendar).getByText("۳٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
+    await within(calendar).findByText("۳٬۰۰۰");
+    expect(calendar.className).toContain("sm:!max-w-xl");
+    expect(calendar.className).toContain("w-[calc(100vw-2rem)]");
+    expect(calendar.querySelector(".min-w-\\[420px\\]"))?.toBeTruthy();
+    expect(within(calendar).getByText("واحد قیمت‌ها: هزار تومان")).toBeTruthy();
+    expect(within(calendar).getByText("۳٬۰۰۰")).toBeTruthy();
+    expect(within(calendar).queryByText("۳٬۰۰۰٬۰۰۰ تومان")).toBeNull();
     expect(within(calendar).getAllByText("—").length).toBeGreaterThan(0);
-    expect(within(calendar).getByText("۰ ریال آزمایشی")).toBeTruthy();
-    expect(within(calendar).getByText("۲ واحد")).toBeTruthy();
+    expect(within(calendar).getByText("۰")).toBeTruthy();
+    expect(within(calendar).getByText("موجود")).toBeTruthy();
+    expect(within(calendar).queryByText("۲ واحد")).toBeNull();
     expect(within(calendar).getByText("درخواست رزرو")).toBeTruthy();
     expect(within(calendar).getAllByText("ناموجود").length).toBeGreaterThan(0);
+    expect(within(calendar).queryByText("⚡")).toBeNull();
     const dayGroups = within(calendar).getAllByRole("group", { name: /نرخ/ });
     expect(dayGroups[0].className).toContain("bg-muted");
+    expect(dayGroups[0].querySelector(".text-muted-foreground")?.textContent).toContain("1");
     expect(dayGroups[0].hasAttribute("aria-pressed")).toBe(false);
     expect(dayGroups[0].className).not.toContain("ring-primary");
     expect(within(calendar).queryByRole("button", { name: /نرخ/ })).toBeNull();
+    expect(dayGroups[0].parentElement?.className).toContain("grid-cols-7");
+    expect(dayGroups[0].className).toContain("min-h-14");
+    expect(response().days[0].standardPrice).toBe(3_000_000);
+  });
+
+  it("derives the thousands unit from the configured currency label", async () => {
+    mocks.currencyLabel = "ریال آزمایشی";
+    render(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={roomType} />);
+    expect(await screen.findByText("واحد قیمت‌ها: هزار ریال آزمایشی")).toBeTruthy();
+    expect(screen.getByText("۳٬۰۰۰")).toBeTruthy();
   });
 
   it("switches to next month without another request and caches successful reopening", async () => {
     const view = render(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={roomType} />);
-    await screen.findByText("۳٬۰۰۰٬۰۰۰ ریال آزمایشی");
+    await screen.findByText("۳٬۰۰۰");
     fireEvent.click(screen.getByRole("button", { name: "ماه بعد" }));
-    expect(screen.getByText("۴٬۰۰۰٬۰۰۰ ریال آزمایشی")).toBeTruthy();
+    expect(screen.getByText("۴٬۰۰۰")).toBeTruthy();
     expect(mocks.fetchCalendar).toHaveBeenCalledTimes(1);
     view.rerender(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={null} />);
     view.rerender(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={roomType} />);
-    await screen.findByText("۳٬۰۰۰٬۰۰۰ ریال آزمایشی");
+    await screen.findByText("۳٬۰۰۰");
     expect(mocks.fetchCalendar).toHaveBeenCalledTimes(1);
     mocks.fetchCalendar.mockResolvedValue(response(14));
     view.rerender(<PublicRoomTypeCalendarDialog onClose={vi.fn()} propertySlug="kashan-house" roomType={secondRoomType} />);
@@ -114,7 +133,7 @@ describe("guest RoomType calendar", () => {
     expect(screen.getByRole("dialog")).toBeTruthy();
     mocks.fetchCalendar.mockResolvedValueOnce(response());
     fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
-    await screen.findByText("۳٬۰۰۰٬۰۰۰ ریال آزمایشی");
+    await screen.findByText("۳٬۰۰۰");
     expect(mocks.fetchCalendar).toHaveBeenCalledTimes(2);
   });
 });
