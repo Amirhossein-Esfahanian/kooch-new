@@ -57,6 +57,30 @@ export interface PublicRoomTypeSummary {
   displayPrice: number | null;
 }
 
+export interface PublicRoomTypeCalendarResponse {
+  roomTypeId: number;
+  from: string;
+  to: string;
+  days: {
+    date: string;
+    standardPrice: number | null;
+    availableUnits: number;
+    availabilityStatus: "Available" | "OnRequest" | "Unavailable";
+  }[];
+}
+
+export function fetchPublicRoomTypeCalendar(
+  slug: string,
+  roomTypeId: number,
+  from: string,
+  to: string,
+) {
+  const query = new URLSearchParams({ from, to });
+  return fetchPublicApi<PublicRoomTypeCalendarResponse>(
+    `/properties/${encodeURIComponent(slug)}/room-types/${roomTypeId}/calendar?${query}`,
+  );
+}
+
 export interface PublicPromotion {
   id: number;
   title: string;

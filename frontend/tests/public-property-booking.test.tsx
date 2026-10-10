@@ -7,6 +7,7 @@ const api = vi.hoisted(() => ({
   currencyLabel: "تومان",
   fetchProperty: vi.fn(),
   fetchOptions: vi.fn(),
+  fetchCalendar: vi.fn(),
 }));
 const navigation = vi.hoisted(() => ({
   push: vi.fn(),
@@ -103,7 +104,7 @@ vi.mock("@/components/GuestSelector", () => ({
 }));
 vi.mock("@/lib/public-properties", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/public-properties")>();
-  return { ...actual, fetchPublicApi: api.fetchProperty };
+  return { ...actual, fetchPublicApi: api.fetchProperty, fetchPublicRoomTypeCalendar: api.fetchCalendar };
 });
 vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/booking-sessions")>();
@@ -314,6 +315,22 @@ describe("public property booking integration", () => {
     });
     api.fetchProperty.mockResolvedValue(property);
     api.fetchOptions.mockResolvedValue(availableOptions);
+    api.fetchCalendar.mockResolvedValue({ roomTypeId: 10, from: "2026-09-23", to: "2026-11-21", days: [] });
+  });
+
+  it("offers a lazy informational calendar without changing the booking search or selected offer", async () => {
+    searchParams.set("children", "0");
+    api.fetchOptions.mockResolvedValue(availableWithRatePlans);
+    render(<PublicPropertyPage />);
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(api.fetchCalendar).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole("button", { name: "مشاهده تقویم قیمت و موجودی" }));
+    await waitFor(() => expect(api.fetchCalendar).toHaveBeenCalledTimes(1));
+    expect(api.fetchCalendar.mock.calls[0].slice(0, 2)).toEqual(["kashan-house", 10]);
+    expect(await screen.findByRole("dialog", { name: "تقویم قیمت و موجودی — اتاق شاه‌نشین" })).toBeTruthy();
+    expect(within(card).getByText("بدون صبحانه")).toBeTruthy();
+    expect(screen.getByTestId("booking-date-value").textContent).toBe("2030-08-10|2030-08-12");
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
   });
 
   it("checks a complete search-result context once and renders authoritative availability and rate plans", async () => {

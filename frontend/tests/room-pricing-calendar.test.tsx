@@ -73,4 +73,13 @@ describe("shared RoomType pricing calendar presentation", () => {
     expect(screen.getByText("۲")).toBeTruthy();
     expect(screen.queryByText("۲/۳")).toBeNull();
   });
+
+  it("can use a single-column read-only layout without changing management defaults", () => {
+    const view = render(<RoomPricingCalendar layout="single" rooms={[{
+      id: 7, name: "اتاق تست", days: [{ ...days[0], availabilityLabel: "۲ واحد" }],
+    }]} startOffset={0} />);
+    expect(screen.getByText("۲ واحد")).toBeTruthy();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(view.container.querySelector(".md\\:grid-cols-2")).toBeNull();
+  });
 });

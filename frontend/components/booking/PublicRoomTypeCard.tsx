@@ -34,11 +34,13 @@ export function PublicRoomTypeCard({
   galleryFallback,
   booking,
   onShowDetails,
+  onShowCalendar,
 }: {
   roomType: PublicRoomType;
   galleryFallback: string;
   booking?: PublicRoomTypeBookingState;
   onShowDetails: () => void;
+  onShowCalendar: () => void;
 }) {
   const currencyLabel = useSiteCurrencyLabel();
   const ratePlanOption = booking?.option;
@@ -120,13 +122,14 @@ export function PublicRoomTypeCard({
             currencyLabel={currencyLabel}
             roomType={roomType}
           />
-          <KoochButton
-            className="w-full"
-            onClick={onShowDetails}
-            variant="outline"
-          >
-            مشاهده جزئیات
-          </KoochButton>
+          <div className="grid gap-2">
+            <KoochButton className="w-full" onClick={onShowDetails} variant="outline">
+              مشاهده جزئیات
+            </KoochButton>
+            <KoochButton className="w-full" onClick={onShowCalendar} variant="outline">
+              مشاهده تقویم قیمت و موجودی
+            </KoochButton>
+          </div>
         </div>
       </div>
       {ratePlanOption && booking.ratePlans.length > 0 && (

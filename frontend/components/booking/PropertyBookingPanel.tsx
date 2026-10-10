@@ -16,6 +16,7 @@ import {
   BookingCartSummary,
 } from "@/components/booking/BookingCart";
 import { PublicRoomTypeCard } from "@/components/booking/PublicRoomTypeCard";
+import { PublicRoomTypeCalendarDialog } from "@/components/booking/PublicRoomTypeCalendarDialog";
 import {
   bookingCartOfferMatches,
   bookingCartSelectionMatchesItems,
@@ -104,6 +105,7 @@ function PropertyBookingPanelContent({
   } | null>(null);
   const [replacementSelection, setReplacementSelection] =
     useState<BookingCartSelection | null>(null);
+  const [calendarRoomType, setCalendarRoomType] = useState<PublicRoomType | null>(null);
 
   const optionsMatchSearch =
     options?.checkInDate === dates.startDate &&
@@ -428,6 +430,7 @@ function PropertyBookingPanelContent({
                 galleryFallback={galleryFallback}
                 key={roomType.id}
                 onShowDetails={() => onShowRoomDetails(roomType)}
+                onShowCalendar={() => setCalendarRoomType(roomType)}
                 roomType={roomType}
               />
             );
@@ -441,6 +444,11 @@ function PropertyBookingPanelContent({
         loading={false}
         onContinue={continueCheckout}
         total={cart.total}
+      />
+      <PublicRoomTypeCalendarDialog
+        onClose={() => setCalendarRoomType(null)}
+        propertySlug={propertySlug}
+        roomType={calendarRoomType}
       />
       <KoochConfirmDialog
         cancelText="حفظ سبد فعلی"
