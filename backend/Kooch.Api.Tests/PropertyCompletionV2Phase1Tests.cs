@@ -19,7 +19,7 @@ public sealed class PropertyCompletionV2Phase1Tests
         await using var db = CreateContext();
         await SeedCompletePropertyAsync(db, hasEnglishName, hasAmenities);
 
-        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+        var completion = await CreateCompletionService(db).CalculateAsync(100);
 
         Assert.True(completion.CanActivate);
         Assert.Equal(100, completion.CompletionPercentage);
@@ -59,12 +59,12 @@ public sealed class PropertyCompletionV2Phase1Tests
             case "check-in": property.CheckInTime = null; break;
             case "check-out": property.CheckOutTime = null; break;
             case "room": (await db.RoomTypes.SingleAsync()).IsActive = false; break;
-            case "price": (await db.RoomTypes.SingleAsync()).BasePrice = null; break;
-            case "availability": db.Availabilities.RemoveRange(db.Availabilities); break;
+            case "price": db.RoomDailyPrices.RemoveRange(db.RoomDailyPrices); break;
+            case "availability": (await db.Availabilities.SingleAsync()).IsClosed = true; break;
         }
         await db.SaveChangesAsync();
 
-        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+        var completion = await CreateCompletionService(db).CalculateAsync(100);
 
         Assert.False(completion.CanActivate);
         Assert.Contains(sectionKey, completion.MissingSections);
@@ -126,7 +126,7 @@ public sealed class PropertyCompletionV2Phase1Tests
         property.ExtraGuestPrice = null;
         await db.SaveChangesAsync();
 
-        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+        var completion = await CreateCompletionService(db).CalculateAsync(100);
 
         Assert.True(completion.CanActivate);
         Assert.Equal(100, completion.CompletionPercentage);
@@ -153,7 +153,7 @@ public sealed class PropertyCompletionV2Phase1Tests
         property.ExtraGuestPrice = extraGuestPrice;
         await db.SaveChangesAsync();
 
-        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+        var completion = await CreateCompletionService(db).CalculateAsync(100);
         var financial = completion.Sections.Single(section => section.Key == "financial");
 
         Assert.Equal(financialComplete, financial.Status == Kooch.Api.Dtos.Properties.PropertyCompletionSectionStatus.Complete);
@@ -176,12 +176,13 @@ public sealed class PropertyCompletionV2Phase1Tests
         await using var db = CreateContext();
         await SeedCompletePropertyAsync(db, false, false);
         db.Availabilities.RemoveRange(db.Availabilities);
+        db.RoomDailyPrices.RemoveRange(db.RoomDailyPrices);
         db.RoomTypes.RemoveRange(db.RoomTypes);
         var property = await db.Properties.SingleAsync();
         property.ExtraGuestPrice = null;
         await db.SaveChangesAsync();
 
-        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+        var completion = await CreateCompletionService(db).CalculateAsync(100);
 
         Assert.Empty(completion.Sections.Single(section => section.Key == "financial").MissingItems);
         Assert.Contains("rooms", completion.MissingSections);
@@ -228,6 +229,11 @@ public sealed class PropertyCompletionV2Phase1Tests
             {
                 Name = "Double", Slug = "double", MaxAdults = 2, TotalInventory = 1,
                 BasePrice = 1000m, IsActive = true,
+                DailyPrices = [new RoomDailyPrice
+                {
+                    Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
+                    GuestType = PricingGuestType.Iranian, BasePrice = 1000m
+                }],
                 Availability = [new Availability
                 {
                     Date = DateOnly.FromDateTime(DateTime.UtcNow).AddDays(1),
@@ -248,8 +254,13 @@ public sealed class PropertyCompletionV2Phase1Tests
     {
         var access = new PropertyAccessService(db);
         return new PropertyService(db, access, access, new PermissionService(db, access),
-            new PropertyCompletionService(db, access), null!);
+            CreateCompletionService(db, access), null!);
     }
+
+    private static PropertyCompletionService CreateCompletionService(
+        KoochDbContext db,
+        IPropertyAccessService? access = null) =>
+        new(db, access!, new PropertyStandardStayReadinessService(db));
 
     private static KoochDbContext CreateContext() => new(
         new DbContextOptionsBuilder<KoochDbContext>()

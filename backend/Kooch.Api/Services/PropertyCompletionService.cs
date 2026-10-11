@@ -7,7 +7,8 @@ namespace Kooch.Api.Services;
 
 public class PropertyCompletionService(
     KoochDbContext dbContext,
-    IPropertyAccessService propertyAccessService) : IPropertyCompletionService
+    IPropertyAccessService propertyAccessService,
+    IPropertyStandardStayReadinessService standardStayReadinessService) : IPropertyCompletionService
 {
     public async Task<PropertyCompletionResponse> GetAsync(
         int userId,
@@ -50,19 +51,17 @@ public class PropertyCompletionService(
                 Rooms = property.RoomTypes.Any(roomType => roomType.IsActive),
                 HasActiveExtraGuestRoomType = property.RoomTypes.Any(roomType =>
                     roomType.IsActive && roomType.AllowExtraGuest && roomType.MaxExtraGuests > 0),
-                Pricing = property.RoomTypes.Any(roomType =>
+                PricingStarted = property.RoomTypes.Any(roomType =>
                     roomType.IsActive &&
                     (roomType.BasePrice != null && roomType.BasePrice > 0 ||
-                     roomType.DailyPrices.Any(price => price.BasePrice > 0))),
-                Availability = property.RoomTypes.Any(roomType =>
+                     roomType.DailyPrices.Any())),
+                AvailabilityStarted = property.RoomTypes.Any(roomType =>
                     roomType.IsActive &&
-                    roomType.Availability.Any(availability =>
-                        availability.Date >= today &&
-                        availability.Status != AvailabilityStatus.Unavailable &&
-                        availability.AvailableCount > 0)),
+                    (roomType.TotalInventory > 0 || roomType.Availability.Any())),
                 HasExtraGuestPrice = property.ExtraGuestPrice != null,
             })
             .SingleAsync(cancellationToken);
+        var readiness = await standardStayReadinessService.EvaluateAsync(propertyId, today, cancellationToken);
 
         var sections = new[]
         {
@@ -121,14 +120,14 @@ public class PropertyCompletionService(
                 "pricing",
                 "قیمت‌گذاری",
                 "pricing",
-                [(state.Pricing, "حداقل یک قیمت ثبت‌شده")],
-                started: state.Pricing),
+                [(readiness.HasValidDailyPricing, "حداقل یک قیمت روزانه معتبر")],
+                started: state.PricingStarted || readiness.HasValidDailyPricing),
             Section(
                 "availability",
                 "موجودی",
                 "availability",
-                [(state.Availability, "حداقل یک روز موجود")],
-                started: state.Availability),
+                [(readiness.HasJointStandardStay, "حداقل یک تاریخ دارای قیمت و موجودی قابل رزرو")],
+                started: state.AvailabilityStarted || readiness.HasValidConfiguredAvailability),
         };
 
         var completedSections = sections
@@ -153,7 +152,7 @@ public class PropertyCompletionService(
                     ? PropertyHealthStatus.NeedsAttention
                     : PropertyHealthStatus.Incomplete,
             Sections = sections,
-            Warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images, state.Rooms, state.Pricing, state.Availability, state.HasActiveExtraGuestRoomType && !state.HasExtraGuestPrice),
+            Warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images, state.Rooms, readiness.HasValidDailyPricing, readiness.HasJointStandardStay, state.HasActiveExtraGuestRoomType && !state.HasExtraGuestPrice),
             CompletedSections = completedSections,
             MissingSections = missingSections,
             CanActivate = missingSections.Length == 0

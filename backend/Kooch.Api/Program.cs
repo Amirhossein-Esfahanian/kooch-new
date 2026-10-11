@@ -80,6 +80,7 @@ builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<IAdminPropertyMemberDirectoryService, AdminPropertyMemberDirectoryService>();
 builder.Services.AddScoped<IAdminReportService, AdminReportService>();
 builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService>();
+builder.Services.AddScoped<IPropertyStandardStayReadinessService, PropertyStandardStayReadinessService>();
 builder.Services.AddScoped<IPropertyDescriptionService, PropertyDescriptionService>();
 builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();
 builder.Services.AddScoped<ISiteSettingUploadService, SiteSettingUploadService>();
