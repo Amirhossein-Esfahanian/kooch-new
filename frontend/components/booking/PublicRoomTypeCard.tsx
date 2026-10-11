@@ -154,6 +154,7 @@ export function PublicRoomTypeCard({
             controlName={`${roomType.name}، نرخ استاندارد`}
             finalAmount={ratePlanOption.finalAmount}
             mealPlanName={ratePlanOption.defaultMealPlanName}
+            nightsCount={ratePlanOption.nightsCount}
             onAdd={booking.onAdd}
             onRemove={booking.onRemove}
             selectedQuantity={booking.selectedQuantity}
@@ -167,6 +168,7 @@ export function PublicRoomTypeCard({
               finalAmount={plan.finalAmount}
               key={plan.ratePlanId}
               mealPlanName={plan.mealPlanName}
+              nightsCount={ratePlanOption.nightsCount}
               name={plan.name}
               onAdd={plan.onAdd}
               onRemove={plan.onRemove}
@@ -186,6 +188,7 @@ function RateOfferRow({
   currencyLabel,
   finalAmount,
   mealPlanName,
+  nightsCount,
   name,
   onAdd,
   onRemove,
@@ -197,6 +200,7 @@ function RateOfferRow({
   currencyLabel: string;
   finalAmount: number;
   mealPlanName?: string | null;
+  nightsCount: number;
   name: string;
   onAdd: () => void;
   onRemove: () => void;
@@ -212,9 +216,14 @@ function RateOfferRow({
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-        <p className="font-bold text-foreground">
-          {formatCurrency(finalAmount, { currencyLabel })}
-        </p>
+        <div className="min-w-0">
+          <p className="font-bold text-foreground">
+            {formatCurrency(finalAmount, { currencyLabel })}
+          </p>
+          <p className="mt-1 text-xs text-muted-foreground">
+            {formatStayQuoteScope(nightsCount)}
+          </p>
+        </div>
         <OfferQuantityControl
           availableToAdd={availableToAdd}
           name={controlName}
@@ -317,7 +326,9 @@ function RoomTypeBookingDetails({
           {option.defaultMealPlanName}
         </p>
       )}
-      <p className="text-xs text-muted-foreground">مبلغ کل اقامت</p>
+      <p className="text-xs text-muted-foreground">
+        {formatStayQuoteScope(option.nightsCount)}
+      </p>
       <p className="mt-1 text-lg font-bold text-primary">
         {formatCurrency(option.finalAmount, { currencyLabel })}
       </p>
@@ -349,6 +360,10 @@ function RoomTypeBookingDetails({
       </div>
     </div>
   );
+}
+
+function formatStayQuoteScope(nightsCount: number) {
+  return `مبلغ کل اقامت برای یک واحد · ${nightsCount.toLocaleString("fa-IR")} شب`;
 }
 
 function OfferQuantityControl({

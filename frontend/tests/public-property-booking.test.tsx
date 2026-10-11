@@ -962,6 +962,11 @@ describe("public property booking integration", () => {
     expect(within(card).getByText("۴٬۶۰۰٬۰۰۰ تومان")).toBeTruthy();
     expect(within(card).getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
     expect(
+      within(card).getAllByText("مبلغ کل اقامت برای یک واحد · ۲ شب"),
+    ).toHaveLength(3);
+    expect(within(card).queryByText("۱٬۳۵۰٬۰۰۰ تومان")).toBeNull();
+    expect(within(card).queryByText("۲٬۳۰۰٬۰۰۰ تومان")).toBeNull();
+    expect(
       within(card).queryByText(/modifier|RatePlanId|mealPlanSlug/i),
     ).toBeNull();
   });
@@ -1023,6 +1028,43 @@ describe("public property booking integration", () => {
     expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
     expect(within(card).getByText("صبحانه شامل قیمت")).toBeTruthy();
     expect(within(card).queryByText("نرخ‌های جایگزین")).toBeNull();
+  });
+
+  it("labels standard-only dated quotes as the unchanged total stay price for one unit", async () => {
+    api.fetchOptions.mockResolvedValueOnce(availableOptions);
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "بررسی موجودی" }),
+    );
+    const card = await screen.findByTestId("room-type-card-10");
+
+    expect(within(card).getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(
+      within(card).getByText("مبلغ کل اقامت برای یک واحد · ۲ شب"),
+    ).toBeTruthy();
+    expect(within(card).queryByText("۲٬۰۰۰٬۰۰۰ تومان")).toBeNull();
+  });
+
+  it("formats a one-night dated quote with Persian digits", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [
+        { ...availableWithRatePlans.roomTypes[0], nightsCount: 1 },
+      ],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "بررسی موجودی" }),
+    );
+    const card = await screen.findByTestId("room-type-card-10");
+
+    expect(
+      within(card).getAllByText("مبلغ کل اقامت برای یک واحد · ۱ شب"),
+    ).toHaveLength(3);
+    expect(within(card).getByText("۲٬۷۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(card).getByText("۴٬۶۰۰٬۰۰۰ تومان")).toBeTruthy();
   });
 
   it("does not infer a standard meal from legacy Property breakfast when DefaultMealPlan is absent", async () => {
@@ -1732,7 +1774,9 @@ describe("public property booking integration", () => {
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
 
     expect(
-      await within(canonicalCard).findByText("مبلغ کل اقامت"),
+      await within(canonicalCard).findByText(
+        "مبلغ کل اقامت برای یک واحد · ۲ شب",
+      ),
     ).toBeTruthy();
     expect(within(canonicalCard).getByText("رزرو آنی")).toBeTruthy();
     expect(
