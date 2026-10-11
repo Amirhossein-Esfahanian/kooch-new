@@ -193,7 +193,7 @@ function PropertyBookingPanelContent({
       roomTypeId: option.roomTypeId,
       ratePlanId: ratePlan?.ratePlanId ?? null,
       ratePlanName: ratePlan?.name ?? null,
-      mealPlanName: ratePlan?.mealPlanName ?? null,
+      mealPlanName: ratePlan ? ratePlan.mealPlanName : option.defaultMealPlanName,
       roomTypeName: option.name,
       checkIn: dates.startDate,
       checkOut: dates.endDate,

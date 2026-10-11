@@ -999,11 +999,44 @@ describe("public property booking integration", () => {
         name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد",
       }),
     );
+    const summary = screen.getByTestId("booking-choices-summary");
+    expect(
+      within(summary).getByText("نرخ استاندارد · صبحانه شامل قیمت"),
+    ).toBeTruthy();
     await waitFor(() => {
       const saved = JSON.parse(
         sessionStorage.getItem(bookingCartStorageKey) ?? "{}",
       );
       expect(saved.items[0].ratePlanId).toBeNull();
+      expect(saved.items[0].mealPlanName).toBe("صبحانه شامل قیمت");
+    });
+  });
+
+  it("does not inherit the standard meal for an explicit RatePlan without a MealPlan", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{
+        ...availableWithRatePlans.roomTypes[0],
+        defaultMealPlanName: "صبحانه شامل قیمت",
+        ratePlans: [
+          { ...availableWithRatePlans.roomTypes[0].ratePlans[0], mealPlanName: null },
+        ],
+      }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(within(card).getByRole("button", {
+      name: "انتخاب اتاق شاه‌نشین، بدون صبحانه",
+    }));
+
+    const summary = screen.getByTestId("booking-choices-summary");
+    expect(within(summary).getByText("بدون صبحانه")).toBeTruthy();
+    expect(within(summary).queryByText(/صبحانه شامل قیمت/)).toBeNull();
+    await waitFor(() => {
+      const saved = JSON.parse(sessionStorage.getItem(bookingCartStorageKey) ?? "{}");
+      expect(saved.items[0].ratePlanId).toBe(12);
       expect(saved.items[0].mealPlanName).toBeNull();
     });
   });
@@ -1081,6 +1114,10 @@ describe("public property booking integration", () => {
     expect(
       within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }),
     ).toBeTruthy();
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    const summary = screen.getByTestId("booking-choices-summary");
+    expect(within(summary).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(summary).queryByText(/صبحانه شامل قیمت/)).toBeNull();
   });
 
   it("keeps per-offer quantities distinct and caps all offers at shared RoomType inventory", async () => {

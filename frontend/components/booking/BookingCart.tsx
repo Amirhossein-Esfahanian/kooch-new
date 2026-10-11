@@ -72,7 +72,7 @@ export function BookingCartItemRow({
         </p>
         <p className="mt-1 text-xs font-semibold text-muted-foreground">
           {item.ratePlanId == null ? "نرخ استاندارد" : (item.ratePlanName || "نرخ انتخاب‌شده")}
-          {item.ratePlanId != null && item.mealPlanName && item.mealPlanName !== item.ratePlanName
+          {item.mealPlanName && (item.ratePlanId == null || item.mealPlanName !== item.ratePlanName)
             ? ` · ${item.mealPlanName}`
             : ""}
         </p>

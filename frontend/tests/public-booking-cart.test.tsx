@@ -213,6 +213,15 @@ describe("public booking cart", () => {
     expect(addItemsToBookingCart(state([base]), [explicit]).items).toHaveLength(2);
   });
 
+  it("keeps MealPlan display metadata out of offer identity and grouping", () => {
+    const withMeal = item({ mealPlanName: "صبحانه شامل قیمت" });
+    const withoutMeal = item({ id: "same-offer", mealPlanName: null });
+    expect(bookingCartOfferMatches(withMeal, 10, null)).toBe(true);
+    expect(bookingCartOfferMatches(withoutMeal, 10, null)).toBe(true);
+    expect(groupBookingCartItems([withMeal, withoutMeal])).toHaveLength(1);
+    expect(groupBookingCartItems([withMeal, withoutMeal])[0].total).toBe(4_000_000);
+  });
+
   it("shares RoomType inventory across rate offers instead of multiplying capacity", () => {
     const items = [
       item({ ratePlanId: null }),
@@ -250,6 +259,17 @@ describe("public booking cart", () => {
     expect(within(lines[2]).getByText("فول‌برد · سه وعده غذا")).toBeTruthy();
     expect(within(lines[1]).getByText(/۱٬۷۰۰٬۰۰۰/)).toBeTruthy();
     expect(within(lines[2]).getByText(/۲٬۳۰۰٬۰۰۰/)).toBeTruthy();
+  });
+
+  it("shows the standard meal when present and no inherited meal on a null-meal RatePlan", () => {
+    render(<BookingCartSummary items={[
+      item({ id: "base", mealPlanName: "صبحانه شامل قیمت" }),
+      item({ id: "explicit", ratePlanId: 12, ratePlanName: "بدون صبحانه", mealPlanName: null }),
+    ]} total={4_000_000} />);
+    const lines = screen.getAllByRole("listitem");
+    expect(within(lines[0]).getByText("نرخ استاندارد · صبحانه شامل قیمت")).toBeTruthy();
+    expect(within(lines[1]).getByText("بدون صبحانه")).toBeTruthy();
+    expect(within(lines[1]).queryByText(/صبحانه شامل قیمت/)).toBeNull();
   });
 
   it("renders Jalali dates, Persian numbers, booking mode, and the cart summary", () => {
@@ -398,7 +418,10 @@ describe("public booking cart", () => {
     const { hydrated: _hydrated, ...stored } = saved;
     const legacy = JSON.parse(JSON.stringify(stored));
     delete legacy.items[0].ratePlanId;
-    expect(restoreBookingCart(JSON.stringify(legacy))?.items[0].ratePlanId).toBeNull();
+    delete legacy.items[0].mealPlanName;
+    const restored = restoreBookingCart(JSON.stringify(legacy));
+    expect(restored?.items[0].ratePlanId).toBeNull();
+    expect(restored?.items[0].mealPlanName).toBeUndefined();
   });
 
   it("rejects an inconsistent legacy cart instead of mixing stay contexts", () => {
@@ -440,6 +463,7 @@ describe("public booking cart", () => {
     const fetcher = vi.fn().mockResolvedValue({
       propertyId: 1,
       roomTypes: [{ roomTypeId: 10, name: "اتاق شاه‌نشین", availableCount: 2, bookingMode: "Instant",
+        defaultMealPlanName: "صبحانه شامل قیمت",
         finalAmount: 2_000_000, currency: "IRR", rooms: [],
         ratePlans: [{ ratePlanId: 12, name: "بدون صبحانه", mealPlanName: "Room Only", finalAmount: 1_600_000, currency: "IRR" }] }],
     });
@@ -448,11 +472,31 @@ describe("public booking cart", () => {
     expect(result.priceChanged).toBe(true);
     expect(result.items.map((entry) => entry.displayAmount)).toEqual([2_000_000, 1_600_000]);
     expect(result.items.map((entry) => entry.ratePlanId)).toEqual([null, 12]);
+    expect(result.items[0].mealPlanName).toBe("صبحانه شامل قیمت");
     expect(result.items[1].ratePlanName).toBe("بدون صبحانه");
     expect(result.items[1].mealPlanName).toBe("Room Only");
 
     await expect(revalidateBookingCart([...items, item({ id: "third", ratePlanId: 13 })], fetcher))
       .rejects.toThrow(/حداکثر ۲ واحد/);
+  });
+
+  it("revalidates an explicit plan with no meal without borrowing the standard meal", async () => {
+    const fetcher = vi.fn().mockResolvedValue({
+      propertyId: 1,
+      roomTypes: [{
+        roomTypeId: 10, name: "اتاق شاه‌نشین", availableCount: 1,
+        bookingMode: "Instant", finalAmount: 2_000_000, currency: "IRR", rooms: [],
+        defaultMealPlanName: "صبحانه شامل قیمت",
+        ratePlans: [{
+          ratePlanId: 12, name: "بدون صبحانه", mealPlanName: null,
+          finalAmount: 2_000_000, currency: "IRR",
+        }],
+      }],
+    });
+    const result = await revalidateBookingCart([
+      item({ ratePlanId: 12, ratePlanName: "بدون صبحانه", mealPlanName: "قدیمی" }),
+    ], fetcher);
+    expect(result.items[0].mealPlanName).toBeNull();
   });
 
   it("rejects an explicit plan missing from current backend options", async () => {
@@ -481,7 +525,7 @@ describe("public booking cart", () => {
 
   it("creates an idempotent safe payload whose independent children share one stay context", async () => {
     const create = vi.fn().mockResolvedValue({ sessionCode: "BS-1" });
-    const items = [item(), item({ id: "second-room", roomTypeId: 20, roomTypeName: "اتاق دوقلو" })];
+    const items = [item({ mealPlanName: "صبحانه شامل قیمت" }), item({ id: "second-room", roomTypeId: 20, roomTypeName: "اتاق دوقلو" })];
     const stayDetails = {
       bookingForSelf: false,
       primaryGuest: {
@@ -510,6 +554,7 @@ describe("public booking cart", () => {
       expect(payload.items[0]).not.toHaveProperty("roomId");
       expect(payload.items[0].notes).toBeNull();
       expect(payload.items[0].ratePlanId).toBeNull();
+      expect(payload.items[0]).not.toHaveProperty("mealPlanName");
       expect(payload.items).toHaveLength(2);
       expect(payload.items.every((entry: { checkInDate: string; checkOutDate: string; adults: number }) =>
         entry.checkInDate === "2026-08-10" &&

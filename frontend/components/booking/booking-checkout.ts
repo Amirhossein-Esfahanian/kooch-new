@@ -117,7 +117,9 @@ export async function revalidateBookingCart(
       ...item,
       ratePlanId: item.ratePlanId ?? null,
       ratePlanName: selectedPlan?.name ?? null,
-      mealPlanName: selectedPlan?.mealPlanName ?? null,
+      mealPlanName: item.ratePlanId == null
+        ? option.defaultMealPlanName ?? null
+        : selectedPlan?.mealPlanName ?? null,
       roomTypeName: option.name,
       displayAmount: offer.finalAmount,
       currency: offer.currency,
