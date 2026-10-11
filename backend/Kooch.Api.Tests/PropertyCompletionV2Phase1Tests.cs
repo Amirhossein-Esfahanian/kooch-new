@@ -43,9 +43,6 @@ public sealed class PropertyCompletionV2Phase1Tests
     [InlineData("check-in", "policies")]
     [InlineData("check-out", "policies")]
     [InlineData("room", "rooms")]
-    [InlineData("child-rule", "financial")]
-    [InlineData("child-price", "financial")]
-    [InlineData("extra-price", "financial")]
     [InlineData("price", "pricing")]
     [InlineData("availability", "availability")]
     public async Task ExistingHardBlockers_RemainBlocking(string missing, string sectionKey)
@@ -62,9 +59,6 @@ public sealed class PropertyCompletionV2Phase1Tests
             case "check-in": property.CheckInTime = null; break;
             case "check-out": property.CheckOutTime = null; break;
             case "room": (await db.RoomTypes.SingleAsync()).IsActive = false; break;
-            case "child-rule": property.FreeChildAgeLimit = null; break;
-            case "child-price": property.ChildPrice = null; break;
-            case "extra-price": property.ExtraGuestPrice = 0; break;
             case "price": (await db.RoomTypes.SingleAsync()).BasePrice = null; break;
             case "availability": db.Availabilities.RemoveRange(db.Availabilities); break;
         }
@@ -85,7 +79,12 @@ public sealed class PropertyCompletionV2Phase1Tests
     public async Task ApprovedTransition_AllowsMissingOptionalContent(bool hasEnglishName, bool hasAmenities)
     {
         await using var db = CreateContext();
-        await SeedCompletePropertyAsync(db, hasEnglishName, hasAmenities);
+        var property = await SeedCompletePropertyAsync(db, hasEnglishName, hasAmenities);
+        property.FreeChildAgeLimit = null;
+        property.MaxFreeChildren = null;
+        property.ChildPrice = null;
+        property.ExtraGuestPrice = null;
+        await db.SaveChangesAsync();
         var service = CreateService(db);
 
         var response = await service.SetPropertyStatusAsync(1, UserRole.SuperAdmin, 100, PropertyStatus.Approved);
@@ -108,6 +107,104 @@ public sealed class PropertyCompletionV2Phase1Tests
 
         Assert.Contains("basic", failure.Completion.MissingSections);
         Assert.Equal(PropertyStatus.Draft, (await db.Properties.SingleAsync()).Status);
+    }
+
+    [Theory]
+    [InlineData(null, 1, null)]
+    [InlineData(5, null, null)]
+    [InlineData(null, null, null)]
+    [InlineData(null, null, 0)]
+    [InlineData(null, null, 100)]
+    public async Task OptionalChildRulesAndPrice_DoNotBlockFinancialCompletion(
+        int? freeChildAgeLimit, int? maxFreeChildren, int? childPrice)
+    {
+        await using var db = CreateContext();
+        var property = await SeedCompletePropertyAsync(db, false, false);
+        property.FreeChildAgeLimit = freeChildAgeLimit;
+        property.MaxFreeChildren = maxFreeChildren;
+        property.ChildPrice = childPrice;
+        property.ExtraGuestPrice = null;
+        await db.SaveChangesAsync();
+
+        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+
+        Assert.True(completion.CanActivate);
+        Assert.Equal(100, completion.CompletionPercentage);
+        Assert.Empty(completion.Sections.Single(section => section.Key == "financial").MissingItems);
+        Assert.DoesNotContain(completion.Warnings, warning => warning.Contains("قیمت کودک") || warning.Contains("تنظیمات مالی"));
+    }
+
+    [Theory]
+    [InlineData(true, true, 2, null, false)]
+    [InlineData(true, true, 2, 0, true)]
+    [InlineData(true, true, 2, 100, true)]
+    [InlineData(false, true, 2, null, true)]
+    [InlineData(true, false, 2, null, true)]
+    [InlineData(true, true, 0, null, true)]
+    public async Task ExtraGuestPrice_IsRequiredOnlyForActiveCapableRoomType(
+        bool isActive, bool allowExtraGuest, int maxExtraGuests, int? extraGuestPrice, bool financialComplete)
+    {
+        await using var db = CreateContext();
+        var property = await SeedCompletePropertyAsync(db, false, false);
+        var roomType = property.RoomTypes.Single();
+        roomType.IsActive = isActive;
+        roomType.AllowExtraGuest = allowExtraGuest;
+        roomType.MaxExtraGuests = maxExtraGuests;
+        property.ExtraGuestPrice = extraGuestPrice;
+        await db.SaveChangesAsync();
+
+        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+        var financial = completion.Sections.Single(section => section.Key == "financial");
+
+        Assert.Equal(financialComplete, financial.Status == Kooch.Api.Dtos.Properties.PropertyCompletionSectionStatus.Complete);
+        Assert.Equal(financialComplete ? [] : ["قیمت نفر اضافه"], financial.MissingItems);
+        Assert.Equal(!financialComplete, completion.Warnings.Contains("قیمت نفر اضافه ثبت نشده است."));
+        if (isActive)
+        {
+            Assert.Equal(financialComplete, completion.CanActivate);
+            Assert.Equal(financialComplete ? 100 : 89, completion.CompletionPercentage);
+        }
+        else
+        {
+            Assert.Contains("rooms", completion.MissingSections);
+        }
+    }
+
+    [Fact]
+    public async Task NoRoomTypes_DoesNotInventFinancialRequirement()
+    {
+        await using var db = CreateContext();
+        await SeedCompletePropertyAsync(db, false, false);
+        db.Availabilities.RemoveRange(db.Availabilities);
+        db.RoomTypes.RemoveRange(db.RoomTypes);
+        var property = await db.Properties.SingleAsync();
+        property.ExtraGuestPrice = null;
+        await db.SaveChangesAsync();
+
+        var completion = await new PropertyCompletionService(db, null!).CalculateAsync(100);
+
+        Assert.Empty(completion.Sections.Single(section => section.Key == "financial").MissingItems);
+        Assert.Contains("rooms", completion.MissingSections);
+    }
+
+    [Fact]
+    public async Task OneActiveCapableRoomTypeAmongMultiple_RequiresExtraGuestPriceForApproval()
+    {
+        await using var db = CreateContext();
+        var property = await SeedCompletePropertyAsync(db, false, false);
+        property.ExtraGuestPrice = null;
+        property.RoomTypes.Add(new RoomType
+        {
+            Name = "Extra", Slug = "extra", MaxAdults = 2, TotalInventory = 1,
+            IsActive = true, AllowExtraGuest = true, MaxExtraGuests = 2
+        });
+        await db.SaveChangesAsync();
+
+        var failure = await Assert.ThrowsAsync<PropertyActivationException>(() =>
+            CreateService(db).SetPropertyStatusAsync(1, UserRole.SuperAdmin, 100, PropertyStatus.Approved));
+
+        Assert.Equal(["قیمت نفر اضافه"], failure.Completion.Sections.Single(section => section.Key == "financial").MissingItems);
+        Assert.Equal(PropertyStatus.Draft, property.Status);
     }
 
     private static async Task<Property> SeedCompletePropertyAsync(KoochDbContext db, bool hasEnglishName, bool hasAmenities)

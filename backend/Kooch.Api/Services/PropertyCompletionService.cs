@@ -47,8 +47,9 @@ public class PropertyCompletionService(
                 Amenities = property.PropertyAmenities.Any(),
                 PoliciesCheckIn = property.CheckInTime != null,
                 PoliciesCheckOut = property.CheckOutTime != null,
-                ChildPriceSettings = property.FreeChildAgeLimit != null && property.MaxFreeChildren != null,
                 Rooms = property.RoomTypes.Any(roomType => roomType.IsActive),
+                HasActiveExtraGuestRoomType = property.RoomTypes.Any(roomType =>
+                    roomType.IsActive && roomType.AllowExtraGuest && roomType.MaxExtraGuests > 0),
                 Pricing = property.RoomTypes.Any(roomType =>
                     roomType.IsActive &&
                     (roomType.BasePrice != null && roomType.BasePrice > 0 ||
@@ -59,8 +60,7 @@ public class PropertyCompletionService(
                         availability.Date >= today &&
                         availability.Status != AvailabilityStatus.Unavailable &&
                         availability.AvailableCount > 0)),
-                ChildPrice = property.ChildPrice != null && property.ChildPrice > 0,
-                ExtraGuestPrice = property.ExtraGuestPrice != null && property.ExtraGuestPrice > 0,
+                HasExtraGuestPrice = property.ExtraGuestPrice != null,
             })
             .SingleAsync(cancellationToken);
 
@@ -109,12 +109,8 @@ public class PropertyCompletionService(
                 "financial",
                 "تنظیمات مالی",
                 "financial",
-                [
-                    (state.ChildPriceSettings, "قانون قیمت کودک"),
-                    (state.ChildPrice, "قیمت کودک"),
-                    (state.ExtraGuestPrice, "قیمت نفر اضافه")
-                ],
-                started: state.ChildPriceSettings || state.ChildPrice || state.ExtraGuestPrice),
+                [(!state.HasActiveExtraGuestRoomType || state.HasExtraGuestPrice, "قیمت نفر اضافه")],
+                started: state.HasActiveExtraGuestRoomType || state.HasExtraGuestPrice),
             Section(
                 "rooms",
                 "اتاق‌ها",
@@ -157,7 +153,7 @@ public class PropertyCompletionService(
                     ? PropertyHealthStatus.NeedsAttention
                     : PropertyHealthStatus.Incomplete,
             Sections = sections,
-            Warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images, state.Rooms, state.Pricing, state.Availability, state.ChildPriceSettings, state.ChildPrice, state.ExtraGuestPrice),
+            Warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images, state.Rooms, state.Pricing, state.Availability, state.HasActiveExtraGuestRoomType && !state.HasExtraGuestPrice),
             CompletedSections = completedSections,
             MissingSections = missingSections,
             CanActivate = missingSections.Length == 0
@@ -197,9 +193,7 @@ public class PropertyCompletionService(
         bool hasRooms,
         bool hasPricing,
         bool hasAvailability,
-        bool hasFinancialSettings,
-        bool hasChildPrice,
-        bool hasExtraGuestPrice)
+        bool isExtraGuestPriceMissing)
     {
         var warnings = new List<string>();
         if (!hasEnglishName) warnings.Add("نام انگلیسی اقامتگاه ثبت نشده است.");
@@ -208,9 +202,7 @@ public class PropertyCompletionService(
         if (!hasRooms) warnings.Add("هیچ اتاق فعالی ثبت نشده است.");
         if (!hasPricing) warnings.Add("قیمت‌گذاری اقامتگاه کامل نیست.");
         if (!hasAvailability) warnings.Add("موجودی قابل رزرو ثبت نشده است.");
-        if (!hasChildPrice) warnings.Add("قیمت کودک ثبت نشده است.");
-        if (!hasExtraGuestPrice) warnings.Add("قیمت نفر اضافه ثبت نشده است.");
-        if (!hasFinancialSettings) warnings.Add("تنظیمات مالی اقامتگاه کامل نیست.");
+        if (isExtraGuestPriceMissing) warnings.Add("قیمت نفر اضافه ثبت نشده است.");
         return warnings;
     }
 }

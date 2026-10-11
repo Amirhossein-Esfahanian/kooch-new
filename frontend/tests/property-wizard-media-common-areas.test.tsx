@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PropertyCompletionResponse,
   PropertyResponse,
+  RoomTypeResponse,
 } from "@/lib/owner-api";
 import { ApiRequestError } from "@/lib/owner-api";
 
@@ -111,6 +112,7 @@ const property: PropertyResponse = {
 };
 
 let loadedProperty = property;
+let loadedRoomTypes: Array<Pick<RoomTypeResponse, "isActive" | "allowExtraGuest" | "maxExtraGuests">> = [];
 
 const completion = {
   propertyId: 17,
@@ -142,7 +144,7 @@ const completion = {
       key: "financial",
       label: "وضعیت مالی آزمایشی",
       status: "Incomplete",
-      missingItems: ["قیمت کودک"],
+      missingItems: ["قیمت نفر اضافه"],
       actionTarget: "financial",
     },
   ],
@@ -374,6 +376,7 @@ describe("PropertyWizard media and common areas", () => {
   });
   beforeEach(() => {
     loadedProperty = property;
+    loadedRoomTypes = [];
     loadedAmenityCategories = [];
     loadedAmenities = [];
     loadedPropertyAmenities = [];
@@ -457,7 +460,7 @@ describe("PropertyWizard media and common areas", () => {
         return Promise.resolve(loadedAssignedPropertySettings);
       }
       if (path === "/owner/properties/17/room-types")
-        return Promise.resolve([]);
+        return Promise.resolve(loadedRoomTypes);
       if (path === "/owner/properties/17/sections/description")
         return Promise.resolve(property);
       if ((path === "/owner/properties/17/sections/basic" || path === "/admin/properties/17/sections/basic") && init?.method === "PUT") {
@@ -882,6 +885,7 @@ describe("PropertyWizard media and common areas", () => {
   });
 
   it("renders one compact authoritative completion summary on Review", async () => {
+    loadedRoomTypes = [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }];
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
@@ -1163,6 +1167,7 @@ describe("PropertyWizard media and common areas", () => {
   });
 
   it("shows the financial warning only on final review when settings are incomplete", async () => {
+    loadedRoomTypes = [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }];
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
@@ -1170,6 +1175,7 @@ describe("PropertyWizard media and common areas", () => {
   });
 
   it("leaves Admin navigation actions to the property page header and breadcrumb", async () => {
+    loadedRoomTypes = [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }];
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
 
@@ -1296,7 +1302,7 @@ describe("PropertyWizard media and common areas", () => {
       sections: [
         { key: "basic", label: "اطلاعات پایه", status: "Incomplete", missingItems: ["نام فارسی"], actionTarget: "basic" },
         { key: "amenities", label: "امکانات", status: "Complete", missingItems: [], actionTarget: "amenities" },
-        { key: "financial", label: "تنظیمات مالی", status: "Incomplete", missingItems: ["قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه"], actionTarget: "financial" },
+        { key: "financial", label: "تنظیمات مالی", status: "Incomplete", missingItems: ["قیمت نفر اضافه"], actionTarget: "financial" },
         { key: "availability", label: "موجودی", status: "Incomplete", missingItems: ["حداقل یک روز موجود"], actionTarget: "availability" },
         { key: "complete", label: "بخش کامل", status: "Complete", missingItems: [], actionTarget: "complete" },
       ],
@@ -1315,7 +1321,7 @@ describe("PropertyWizard media and common areas", () => {
     for (const label of ["اطلاعات پایه", "تنظیمات مالی", "موجودی"]) {
       expect(within(dialog).getByText(label)).toBeTruthy();
     }
-    for (const missing of ["نام فارسی", "قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه", "حداقل یک روز موجود"]) {
+    for (const missing of ["نام فارسی", "قیمت نفر اضافه", "حداقل یک روز موجود"]) {
       expect(within(dialog).getByText(new RegExp(missing))).toBeTruthy();
     }
     expect(within(dialog).queryByText("امکانات")).toBeNull();
@@ -1339,6 +1345,44 @@ describe("PropertyWizard media and common areas", () => {
     expect(screen.queryByRole("dialog", { name: "فعال‌سازی انجام نشد" })).toBeNull();
     expect(screen.getByRole("button", { name: "تایید شده" }).hasAttribute("disabled")).toBe(false);
     expect(screen.getByRole("button", { name: "پیش‌نویس" }).getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it.each([
+    ["no rooms", []],
+    ["inactive capable room", [{ isActive: false, allowExtraGuest: true, maxExtraGuests: 2 }]],
+    ["disabled extra guests", [{ isActive: true, allowExtraGuest: false, maxExtraGuests: 2 }]],
+    ["zero extra capacity", [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 0 }]],
+  ])("does not require financial values with %s", async (_case, rooms) => {
+    loadedRoomTypes = rooms;
+    window.history.replaceState({}, "", "?step=8");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    expect(await screen.findByRole("heading", { name: "قوانین کودک و نفر اضافه" })).toBeTruthy();
+    expect(screen.getByLabelText("سن کودک رایگان تا")).toBeTruthy();
+    expect(screen.getByLabelText("حداکثر تعداد کودک رایگان")).toBeTruthy();
+    expect(screen.getByLabelText(/نرخ کودک/)).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("✓"));
+    expect(screen.getByText("اگر اتاقی نفر اضافه نمی‌پذیرد، این مبلغ اختیاری است.")).toBeTruthy();
+  });
+
+  it("requires extra guest price only for an active capable room and accepts explicit zero", async () => {
+    loadedRoomTypes = [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }];
+    window.history.replaceState({}, "", "?step=8");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+
+    expect(await screen.findByRole("heading", { name: "قوانین کودک و نفر اضافه" })).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("ناقص"));
+    expect(screen.getByText("برای اتاق‌های دارای نفر اضافه الزامی است؛ صفر به معنی رایگان است.")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/نرخ نفر اضافه/), { target: { value: "۰" } });
+    expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("✓");
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(([path, init]) =>
+        path === "/owner/properties/17/sections/financial" && init?.method === "PUT");
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+        freeChildAgeLimit: null, maxFreeChildren: null, childPrice: null, extraGuestPrice: 0,
+      });
+    });
   });
 
   it("formats financial inputs in Persian while sending separator-free numbers", async () => {

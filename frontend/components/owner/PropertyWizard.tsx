@@ -50,10 +50,7 @@ import {
   PropertyLocationPicker,
   type PropertyCoordinates,
 } from "@/components/property/PropertyLocationPicker";
-import {
-  getPropertyFinancialWarnings,
-  PricingSettingsWarning,
-} from "@/components/pricing/PricingWarnings";
+import { PricingSettingsWarning } from "@/components/pricing/PricingWarnings";
 import { useSiteCurrencyLabel } from "@/lib/currency";
 import {
   formatLocalizedAmount,
@@ -528,6 +525,10 @@ export function PropertyWizard({
       (setting) => !activePropertySettingIds.has(setting.id),
     ),
   ];
+  const hasActiveExtraGuestRoomType = roomTypes.some(
+    (roomType) =>
+      roomType.isActive && roomType.allowExtraGuest && roomType.maxExtraGuests > 0,
+  );
   const completionSections = useMemo<CompletionSection[]>(() => {
     const hasImages = allImages.some(
       (image) => !image.roomTypeId && !image.roomId,
@@ -629,18 +630,9 @@ export function PropertyWizard({
         key: "financial",
         label: "کودک و نفر اضافه",
         targetStepIndex: 8,
-        isComplete:
-          data.freeChildAgeLimit !== "" &&
-          data.maxFreeChildren !== "" &&
-          Number(data.childPrice) > 0 &&
-          Number(data.extraGuestPrice) > 0,
+        isComplete: !hasActiveExtraGuestRoomType || data.extraGuestPrice !== "",
         missingItems: required([
-          [
-            data.freeChildAgeLimit !== "" && data.maxFreeChildren !== "",
-            "قانون کودک رایگان",
-          ],
-          [Number(data.childPrice) > 0, "نرخ کودک"],
-          [Number(data.extraGuestPrice) > 0, "نرخ نفر اضافه"],
+          [!hasActiveExtraGuestRoomType || data.extraGuestPrice !== "", "نرخ نفر اضافه"],
         ]),
         recommendedMissingItems: [],
       },
@@ -664,7 +656,7 @@ export function PropertyWizard({
         recommendedMissingItems: [],
       },
     ];
-  }, [allImages, data, property]);
+  }, [allImages, data, hasActiveExtraGuestRoomType, property]);
 
   function jumpToStep(index: number) {
     setError("");
@@ -1742,6 +1734,9 @@ export function PropertyWizard({
         {step === 8 && (
           <section className={`${cardClass} grid gap-4`}>
             <h2 className="text-2xl font-bold">قوانین کودک و نفر اضافه</h2>
+            <p className="text-sm text-muted-foreground">
+              تنظیمات کودک اختیاری است؛ در صورت خالی بودن، تنظیمات پیش‌فرض سامانه استفاده می‌شود.
+            </p>
             <div className="grid gap-4 md:grid-cols-2">
               <label className="grid gap-1 text-sm font-bold">
                 سن کودک رایگان تا
@@ -1778,7 +1773,13 @@ export function PropertyWizard({
                   value={formatLocalizedAmount(data.childPrice)}
                 />
               </KoochField>
-              <KoochField label={`نرخ نفر اضافه (${currencyLabel})`}>
+              <KoochField
+                label={`نرخ نفر اضافه (${currencyLabel})`}
+                required={hasActiveExtraGuestRoomType}
+                helperText={hasActiveExtraGuestRoomType
+                  ? "برای اتاق‌های دارای نفر اضافه الزامی است؛ صفر به معنی رایگان است."
+                  : "اگر اتاقی نفر اضافه نمی‌پذیرد، این مبلغ اختیاری است."}
+              >
                 <KoochInput
                   inputMode="numeric"
                   onChange={(event) =>
@@ -1851,7 +1852,9 @@ export function PropertyWizard({
               <PricingSettingsWarning
                 editHref={`${isAdmin ? "/admin" : "/owner"}/properties/${property.id}?step=8`}
                 title="تنظیمات مالی کامل نشده"
-                warnings={getPropertyFinancialWarnings(property)}
+                warnings={hasActiveExtraGuestRoomType && property.extraGuestPrice == null
+                  ? ["missingExtraGuestPrice"]
+                  : []}
               />
             )}
             {isAdmin && property && (
