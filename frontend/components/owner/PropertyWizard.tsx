@@ -25,6 +25,7 @@ import {
   PropertyAmenityResponse,
   PropertyCommonAreaResponse,
   PropertyCompletionResponse,
+  PropertyCompletionSectionResponse,
   PropertyDescriptionSectionResponse,
   PropertyImageResponse,
   propertyTypes,
@@ -40,6 +41,7 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
+import { KoochDialog } from "@/components/KoochDialog";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
 import { PropertyImageManager } from "@/components/owner/PropertyImageManager";
 import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
@@ -270,6 +272,10 @@ export function PropertyWizard({
     useState<PropertyStatus>("PendingReview");
   const [approvalConfirmationOpen, setApprovalConfirmationOpen] =
     useState(false);
+  const [activationFailure, setActivationFailure] = useState<{
+    message: string;
+    completion: PropertyCompletionResponse;
+  } | null>(null);
   const statusSavingRef = useRef(false);
   const [amenityCategories, setAmenityCategories] = useState<
     AmenityCategoryResponse[]
@@ -1046,6 +1052,7 @@ export function PropertyWizard({
     statusSavingRef.current = true;
     setSavingSection("status");
     setError("");
+    setActivationFailure(null);
     try {
       const updated = await apiRequest<PropertyResponse>(
         `/admin/properties/${property.id}/status`,
@@ -1067,6 +1074,10 @@ export function PropertyWizard({
         caught instanceof Error ? caught.message : "تغییر وضعیت انجام نشد.";
       setError(message);
       toast.error(message);
+      if (status === "Approved" && body?.completion?.canActivate === false && Array.isArray(body.completion.sections)) {
+        setApprovalConfirmationOpen(false);
+        setActivationFailure({ message, completion: body.completion });
+      }
     } finally {
       statusSavingRef.current = false;
       setSavingSection(null);
@@ -1085,6 +1096,21 @@ export function PropertyWizard({
   function setApprovalConfirmation(nextOpen: boolean) {
     if (!nextOpen && statusSavingRef.current) return;
     setApprovalConfirmationOpen(nextOpen);
+  }
+
+  function completionActionHref(section: PropertyCompletionSectionResponse) {
+    if (!property) return undefined;
+    const target = section.actionTarget || section.key;
+    if (completionStepTarget(target) != null) return undefined;
+    return propertyCompletionHref(isAdmin ? "admin" : "owner", property.id, section);
+  }
+
+  function openCompletionSection(section: PropertyCompletionSectionResponse) {
+    const target = completionStepTarget(section.actionTarget || section.key);
+    if (target != null) {
+      setActivationFailure(null);
+      jumpToStep(target);
+    }
   }
 
   function syncImages(images: PropertyImageResponse[]) {
@@ -1869,27 +1895,33 @@ export function PropertyWizard({
                   title="تأیید اقامتگاه؟"
                   variant="question"
                 />
+                {activationFailure && (
+                  <KoochDialog
+                    contentClassName="!h-auto max-h-[90vh]"
+                    onOpenChange={(open) => { if (!open) setActivationFailure(null); }}
+                    open
+                    size="md"
+                    title="فعال‌سازی انجام نشد"
+                  >
+                    <div className="grid gap-4">
+                      <p className="text-sm font-semibold text-destructive" role="alert">{activationFailure.message}</p>
+                      <PropertyCompletionCard
+                        completion={activationFailure.completion}
+                        getActionHref={completionActionHref}
+                        incompleteOnly
+                        onSectionAction={openCompletionSection}
+                      />
+                    </div>
+                  </KoochDialog>
+                )}
               </div>
             )}
             {completion && property && (
               <PropertyCompletionCard
                 compact
                 completion={completion}
-                getActionHref={(section) => {
-                  const target = section.actionTarget || section.key;
-                  if (completionStepTarget(target) != null) return undefined;
-                  return propertyCompletionHref(
-                    isAdmin ? "admin" : "owner",
-                    property.id,
-                    section,
-                  );
-                }}
-                onSectionAction={(section) => {
-                  const target = completionStepTarget(
-                    section.actionTarget || section.key,
-                  );
-                  if (target != null) jumpToStep(target);
-                }}
+                getActionHref={completionActionHref}
+                onSectionAction={openCompletionSection}
               />
             )}
             <div className="grid gap-4 md:grid-cols-2">

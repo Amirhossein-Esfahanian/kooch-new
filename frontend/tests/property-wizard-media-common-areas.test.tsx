@@ -1,9 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
   PropertyCompletionResponse,
   PropertyResponse,
 } from "@/lib/owner-api";
+import { ApiRequestError } from "@/lib/owner-api";
 
 const api = vi.hoisted(() => ({
   request: vi.fn(),
@@ -300,6 +301,7 @@ let loadedAssignedPropertySettings: Array<{
 let propertySettingsPutError: Error | null = null;
 let deferStatusUpdate = false;
 let resolveStatusUpdate: (() => void) | null = null;
+let statusUpdateError: Error | null = null;
 
 describe("PropertyWizard media and common areas", () => {
   it("places the Admin Cashback slot in rules, never in Location", async () => {
@@ -379,6 +381,7 @@ describe("PropertyWizard media and common areas", () => {
     propertySettingsPutError = null;
     deferStatusUpdate = false;
     resolveStatusUpdate = null;
+    statusUpdateError = null;
     api.request.mockReset();
     api.replaceCommonAreas.mockReset();
     api.request.mockImplementation((path: string, init?: RequestInit) => {
@@ -475,6 +478,7 @@ describe("PropertyWizard media and common areas", () => {
         return Promise.resolve({ ...loadedProperty, ...payload });
       }
       if (path === "/admin/properties/17/status" && init?.method === "PUT") {
+        if (statusUpdateError) return Promise.reject(statusUpdateError);
         const payload = JSON.parse(String(init.body)) as {
           status: PropertyResponse["status"];
         };
@@ -1224,6 +1228,57 @@ describe("PropertyWizard media and common areas", () => {
 
     resolveStatusUpdate?.();
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("shows every incomplete backend section after rejected approval without changing status", async () => {
+    const rejectedCompletion: PropertyCompletionResponse = {
+      ...completion,
+      completionPercentage: 56,
+      sections: [
+        { key: "basic", label: "اطلاعات پایه", status: "Incomplete", missingItems: ["نام انگلیسی"], actionTarget: "basic" },
+        { key: "amenities", label: "امکانات", status: "NotStarted", missingItems: ["حداقل یک امکان"], actionTarget: "amenities" },
+        { key: "financial", label: "تنظیمات مالی", status: "Incomplete", missingItems: ["قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه"], actionTarget: "financial" },
+        { key: "availability", label: "موجودی", status: "Incomplete", missingItems: ["حداقل یک روز موجود"], actionTarget: "availability" },
+        { key: "complete", label: "بخش کامل", status: "Complete", missingItems: [], actionTarget: "complete" },
+      ],
+    };
+    statusUpdateError = new ApiRequestError("اطلاعات اقامتگاه برای فعال‌سازی کامل نیست.", 400, {
+      message: "اطلاعات اقامتگاه برای فعال‌سازی کامل نیست.",
+      completion: rejectedCompletion,
+    });
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+    fireEvent.click(await screen.findByRole("button", { name: "تایید شده" }));
+    fireEvent.click(await screen.findByRole("button", { name: "تأیید و تغییر وضعیت" }));
+    const dialog = await screen.findByRole("dialog", { name: "فعال‌سازی انجام نشد" });
+    expect(within(dialog).getByText("اطلاعات اقامتگاه برای فعال‌سازی کامل نیست.")).toBeTruthy();
+    expect(within(dialog).getByText("56% تکمیل شده")).toBeTruthy();
+    for (const label of ["اطلاعات پایه", "امکانات", "تنظیمات مالی", "موجودی"]) {
+      expect(within(dialog).getByText(label)).toBeTruthy();
+    }
+    for (const missing of ["نام انگلیسی", "حداقل یک امکان", "قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه", "حداقل یک روز موجود"]) {
+      expect(within(dialog).getByText(new RegExp(missing))).toBeTruthy();
+    }
+    expect(within(dialog).queryByText("بخش کامل")).toBeNull();
+    expect(dialog.textContent).not.toContain('"completionPercentage"');
+    expect(within(dialog).getByRole("link", { name: "تکمیل" }).getAttribute("href")).toBe("/admin/properties/17/inventory");
+    expect(screen.getByRole("button", { name: "پیش‌نویس" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByRole("button", { name: "تایید شده" }).hasAttribute("disabled")).toBe(false);
+    fireEvent.click(within(dialog).getAllByRole("button", { name: "تکمیل" })[0]);
+    expect(screen.getByRole("heading", { name: "اطلاعات پایه" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "فعال‌سازی انجام نشد" })).toBeNull();
+  });
+
+  it("keeps generic approval failures visible without a completion dialog", async () => {
+    statusUpdateError = new ApiRequestError("خطای موقت سرور", 500, { message: "خطای موقت سرور" });
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+    fireEvent.click(await screen.findByRole("button", { name: "تایید شده" }));
+    fireEvent.click(await screen.findByRole("button", { name: "تأیید و تغییر وضعیت" }));
+    expect(await screen.findByText("خطای موقت سرور")).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "فعال‌سازی انجام نشد" })).toBeNull();
+    expect(screen.getByRole("button", { name: "تایید شده" }).hasAttribute("disabled")).toBe(false);
+    expect(screen.getByRole("button", { name: "پیش‌نویس" }).getAttribute("aria-pressed")).toBe("true");
   });
 
   it("formats financial inputs in Persian while sending separator-free numbers", async () => {

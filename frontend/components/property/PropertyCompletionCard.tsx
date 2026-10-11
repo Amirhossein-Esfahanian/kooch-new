@@ -62,6 +62,7 @@ export function PropertyCompletionCard({
   compact = false,
   completion,
   getActionHref,
+  incompleteOnly = false,
   onSectionAction,
   title = "وضعیت تکمیل اقامتگاه",
 }: {
@@ -69,6 +70,7 @@ export function PropertyCompletionCard({
   compact?: boolean;
   completion: PropertyCompletionResponse;
   getActionHref?: CompletionActionResolver;
+  incompleteOnly?: boolean;
   onSectionAction?: (section: PropertyCompletionSectionResponse) => void;
   title?: string;
 }) {
@@ -76,9 +78,9 @@ export function PropertyCompletionCard({
   const incompleteSections = safeCompletion.sections.filter(
     (section) => section.status !== "Complete",
   );
-  const visibleSections = compact
-    ? incompleteSections.slice(0, 3)
-    : safeCompletion.sections;
+  const visibleSections = incompleteOnly
+    ? incompleteSections
+    : compact ? incompleteSections.slice(0, 3) : safeCompletion.sections;
 
   return (
     <KoochCard
