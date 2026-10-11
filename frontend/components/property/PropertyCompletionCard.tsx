@@ -4,6 +4,8 @@ import Link from "next/link";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochIcon } from "@/components/KoochIcon";
+import { toPersianDigits } from "@/lib/persian-digits";
 import type {
   PropertyCompletionResponse,
   PropertyCompletionSectionResponse,
@@ -110,6 +112,21 @@ export function PropertyCompletionCard({
           />
         </div>
       </div>
+
+      {compact && safeCompletion.warnings.length > 0 && (
+        <KoochBadge
+          aria-label={`${toPersianDigits(safeCompletion.warnings.length)} هشدار برای این اقامتگاه`}
+          className="!gap-1.5 !px-2 !py-1 !text-xs !border-[var(--theme-warning)] !bg-[var(--theme-warning-soft)] !text-[var(--theme-warning)]"
+          role="status"
+          variant="warning"
+        >
+          <KoochIcon
+            className="!h-3.5 !w-3.5 text-[var(--theme-warning)]"
+            name="warning"
+          />
+          <span>{toPersianDigits(safeCompletion.warnings.length)} هشدار</span>
+        </KoochBadge>
+      )}
 
       {safeCompletion.warnings.length > 0 && !compact && (
         <div className="rounded-xl border border-yellow-500/25 bg-yellow-500/10 p-3 text-sm font-semibold text-foreground">
