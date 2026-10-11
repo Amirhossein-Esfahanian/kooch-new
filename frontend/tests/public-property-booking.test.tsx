@@ -973,6 +973,57 @@ describe("public property booking integration", () => {
     ).toBeNull();
   });
 
+  it("keeps long RoomType and offer details present in the responsive card structure", async () => {
+    const longRoomName = "اتاق شاه‌نشین بزرگ با نمای حیاط مرکزی اقامتگاه";
+    const longPlanName = "نرخ اقامت ویژه بدون صبحانه برای بازه‌های چندشبه";
+    const longMealName = "اقامت بدون وعده غذایی با خدمات پایه اتاق";
+    api.fetchProperty.mockResolvedValueOnce({
+      ...property,
+      roomTypes: [{
+        ...property.roomTypes[0],
+        name: longRoomName,
+        description: "اتاقی بزرگ رو به حیاط مرکزی با فضای نشیمن و امکانات کامل اقامت",
+      }],
+    });
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{
+        ...availableWithRatePlans.roomTypes[0],
+        ratePlans: [{
+          ...availableWithRatePlans.roomTypes[0].ratePlans[0],
+          name: longPlanName,
+          mealPlanName: longMealName,
+          minimumNights: 3,
+          finalAmount: 1_234_567_890,
+        }],
+      }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    const card = await screen.findByTestId("room-type-card-10");
+    const cardGrid = card.firstElementChild as HTMLElement;
+    const details = cardGrid.children[1] as HTMLElement;
+    const bookingArea = cardGrid.children[2] as HTMLElement;
+
+    expect(cardGrid.className).toContain("md:grid-cols-[220px_minmax(0,1fr)]");
+    expect(cardGrid.className).toContain("xl:grid-cols-[220px_minmax(0,1fr)_190px]");
+    expect(bookingArea.className).toContain("md:col-span-2");
+    expect(bookingArea.className).toContain("xl:col-span-1");
+    expect(bookingArea.className).toContain("xl:border-t-0");
+    expect(details.className).toContain("min-w-0");
+    expect(within(card).getByText(longRoomName).className).toContain("break-words");
+    expect(within(card).getByText(longPlanName).className).toContain("break-words");
+    expect(within(card).getByText(longMealName)).toBeTruthy();
+    expect(within(card).getByText("حداقل اقامت: ۳ شب")).toBeTruthy();
+    expect(within(card).getByText("۱٬۲۳۴٬۵۶۷٬۸۹۰ تومان")).toBeTruthy();
+    expect(within(card).getAllByText("مبلغ کل اقامت برای یک واحد · ۲ شب")).toHaveLength(2);
+    expect(within(card).getByText("ظرفیت این نوع اتاق بین همه نرخ‌ها مشترک است.")).toBeTruthy();
+    expect(within(card).getByRole("button", {
+      name: `انتخاب ${longRoomName}، ${longPlanName}`,
+    })).toBeTruthy();
+  });
+
   it("shows a Persian minimum-stay note only on an explicit RatePlan without changing its offer behavior", async () => {
     api.fetchOptions.mockResolvedValueOnce({
       ...availableWithRatePlans,

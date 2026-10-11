@@ -70,7 +70,7 @@ export function PublicRoomTypeCard({
       data-testid={`room-type-card-${roomType.id}`}
       role="listitem"
     >
-      <div className="grid md:grid-cols-[220px_minmax(0,1fr)_190px]">
+      <div className="grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_190px]">
         <Image
           alt={roomType.name}
           className="h-full min-h-52 w-full object-cover"
@@ -83,8 +83,8 @@ export function PublicRoomTypeCard({
           )}
           width={660}
         />
-        <div className="p-5">
-          <h3 className="text-xl font-bold">{roomType.name}</h3>
+        <div className="min-w-0 p-5">
+          <h3 className="break-words text-xl font-bold">{roomType.name}</h3>
           {roomType.englishName && (
             <p className="mt-1 text-xs text-muted-foreground" dir="ltr">
               {roomType.englishName}
@@ -121,7 +121,7 @@ export function PublicRoomTypeCard({
             </div>
           )}
         </div>
-        <div className="flex flex-col justify-between gap-5 border-t border-border p-5 md:border-r md:border-t-0">
+        <div className="flex min-w-0 flex-col justify-between gap-5 border-t border-border p-5 md:col-span-2 xl:col-span-1 xl:border-r xl:border-t-0">
           <RoomTypeBookingDetails
             booking={booking}
             currencyLabel={currencyLabel}
@@ -221,7 +221,7 @@ function RateOfferRow({
   return (
     <div className="grid gap-3 border-b border-border py-4 last:border-b-0 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
       <div className="min-w-0">
-        <p className="font-bold text-foreground">{name}</p>
+        <p className="break-words font-bold text-foreground">{name}</p>
         {mealPlanName && mealPlanName !== name && (
           <p className="mt-1 text-xs text-muted-foreground">{mealPlanName}</p>
         )}
@@ -233,7 +233,7 @@ function RateOfferRow({
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
         <div className="min-w-0">
-          <p className="font-bold text-foreground">
+          <p className="break-words font-bold text-foreground">
             {formatCurrency(finalAmount, { currencyLabel })}
           </p>
           <p className="mt-1 text-xs text-muted-foreground">
@@ -270,7 +270,7 @@ function RoomTypeBookingDetails({
             ? "کمترین قیمت روزانه آینده"
             : "قیمت اقامت"}
         </p>
-        <p className="mt-1 text-lg font-bold text-primary">
+        <p className="mt-1 break-words text-lg font-bold text-primary">
           {formatPrice(roomType.displayPrice, currencyLabel)}
         </p>
         <p className="mt-3 text-xs text-muted-foreground">
@@ -345,7 +345,7 @@ function RoomTypeBookingDetails({
       <p className="text-xs text-muted-foreground">
         {formatStayQuoteScope(option.nightsCount)}
       </p>
-      <p className="mt-1 text-lg font-bold text-primary">
+      <p className="mt-1 break-words text-lg font-bold text-primary">
         {formatCurrency(option.finalAmount, { currencyLabel })}
       </p>
       <p className="mt-2 text-xs font-bold text-foreground">
