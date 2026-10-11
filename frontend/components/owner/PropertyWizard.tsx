@@ -50,7 +50,11 @@ import {
   PropertyLocationPicker,
   type PropertyCoordinates,
 } from "@/components/property/PropertyLocationPicker";
-import { PricingSettingsWarning } from "@/components/pricing/PricingWarnings";
+import {
+  getPropertyFinancialWarnings,
+  hasActiveExtraGuestRoomType as hasExtraGuestRoomType,
+  PricingSettingsWarning,
+} from "@/components/pricing/PricingWarnings";
 import { useSiteCurrencyLabel } from "@/lib/currency";
 import {
   formatLocalizedAmount,
@@ -525,10 +529,7 @@ export function PropertyWizard({
       (setting) => !activePropertySettingIds.has(setting.id),
     ),
   ];
-  const hasActiveExtraGuestRoomType = roomTypes.some(
-    (roomType) =>
-      roomType.isActive && roomType.allowExtraGuest && roomType.maxExtraGuests > 0,
-  );
+  const hasActiveExtraGuestRoomType = hasExtraGuestRoomType(roomTypes);
   const completionSections = useMemo<CompletionSection[]>(() => {
     const hasImages = allImages.some(
       (image) => !image.roomTypeId && !image.roomId,
@@ -1852,9 +1853,7 @@ export function PropertyWizard({
               <PricingSettingsWarning
                 editHref={`${isAdmin ? "/admin" : "/owner"}/properties/${property.id}?step=8`}
                 title="تنظیمات مالی کامل نشده"
-                warnings={hasActiveExtraGuestRoomType && property.extraGuestPrice == null
-                  ? ["missingExtraGuestPrice"]
-                  : []}
+                warnings={getPropertyFinancialWarnings(property, roomTypes)}
               />
             )}
             {isAdmin && property && (

@@ -60,6 +60,8 @@ import { OwnerPricingGrid } from "@/components/owner/OwnerPricingGrid";
 function installApiResponses(
   managementResult: Record<string, string> | Error,
   calendarDate?: string,
+  extraGuestPrice: number | null = 100,
+  roomTypes = [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }],
 ) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path === "/site-settings/management") {
@@ -72,9 +74,12 @@ function installApiResponses(
         id: 51,
         name: "اقامتگاه تست",
         childPrice: 100,
-        extraGuestPrice: 100,
+        extraGuestPrice,
         hasSeparateForeignPricing: false,
       });
+    }
+    if (path === "/owner/properties/51/room-types") {
+      return Promise.resolve(roomTypes);
     }
     if (path === "/owner/properties/51/pricing/history") {
       return Promise.resolve([]);
@@ -113,6 +118,20 @@ describe("OwnerPricingGrid operational settings", () => {
     mocks.apiRequest.mockReset();
     mocks.currencyLabel = "تومان";
     mocks.push.mockReset();
+  });
+
+  it("shows the extra guest warning only for an active capable RoomType with missing price", async () => {
+    installApiResponses({}, undefined, null);
+    const view = render(<OwnerPricingGrid propertyId={51} />);
+    expect(await screen.findByText("نرخ نفر اضافه برای این اقامتگاه تعریف نشده است.")).toBeTruthy();
+    expect(screen.queryByText("نرخ کودک برای این اقامتگاه تعریف نشده است.")).toBeNull();
+    view.unmount();
+
+    mocks.apiRequest.mockReset();
+    installApiResponses({}, undefined, null, [{ isActive: false, allowExtraGuest: true, maxExtraGuests: 2 }]);
+    render(<OwnerPricingGrid propertyId={51} />);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith("/owner/properties/51/room-types"));
+    expect(screen.queryByText("نرخ نفر اضافه برای این اقامتگاه تعریف نشده است.")).toBeNull();
   });
 
   it("gets price bounds from management and currency from the canonical helper", async () => {

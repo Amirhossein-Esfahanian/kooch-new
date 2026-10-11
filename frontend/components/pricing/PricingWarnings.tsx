@@ -9,10 +9,22 @@ import {
   PricingGuestType,
   PropertyPricingResponse,
   PropertyResponse,
+  RoomTypeResponse,
 } from "@/lib/owner-api";
 import { formatLocalIsoDate } from "@/lib/date-utils";
 
-export type PricingWarningKey = "missingChildPrice" | "missingExtraGuestPrice";
+export type PricingWarningKey = "missingExtraGuestPrice";
+
+type ExtraGuestRoomType = Pick<
+  RoomTypeResponse,
+  "isActive" | "allowExtraGuest" | "maxExtraGuests"
+>;
+
+export function hasActiveExtraGuestRoomType(roomTypes: readonly ExtraGuestRoomType[]) {
+  return roomTypes.some(
+    (roomType) => roomType.isActive && roomType.allowExtraGuest && roomType.maxExtraGuests > 0,
+  );
+}
 
 export type PropertyPriceBounds = {
   minimum: number | null;
@@ -51,18 +63,14 @@ export function getPricingWarnings(
 }
 
 export function getPropertyFinancialWarnings(
-  property: PropertyResponse | null,
+  property: Pick<PropertyResponse, "extraGuestPrice"> | null,
+  roomTypes: readonly ExtraGuestRoomType[],
 ): PricingWarningKey[] {
   if (!property) return [];
 
-  const warnings: PricingWarningKey[] = [];
-  if (property.childPrice == null || property.childPrice <= 0) {
-    warnings.push("missingChildPrice");
-  }
-  if (property.extraGuestPrice == null || property.extraGuestPrice <= 0) {
-    warnings.push("missingExtraGuestPrice");
-  }
-  return warnings;
+  return hasActiveExtraGuestRoomType(roomTypes) && property.extraGuestPrice == null
+    ? ["missingExtraGuestPrice"]
+    : [];
 }
 
 export function isOutlierPrice(price: number, bounds: PropertyPriceBounds) {
@@ -114,9 +122,6 @@ export function PricingSettingsWarning({
   if (warnings.length === 0) return null;
 
   const messages = [
-    warnings.includes("missingChildPrice")
-      ? "نرخ کودک برای این اقامتگاه تعریف نشده است."
-      : null,
     warnings.includes("missingExtraGuestPrice")
       ? "نرخ نفر اضافه برای این اقامتگاه تعریف نشده است."
       : null,

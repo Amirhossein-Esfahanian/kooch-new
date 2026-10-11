@@ -1,9 +1,13 @@
 import type { ReactNode } from "react";
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminPropertyPanel } from "@/components/admin/AdminPropertyPanel";
 
 const apiRequestMock = vi.fn();
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn() }),
+}));
 
 vi.mock("next/link", () => ({
   default: ({ children, href, ...props }: { children: ReactNode; href: string }) => (
@@ -89,5 +93,27 @@ describe("Admin property navigation", () => {
     expect(await screen.findByText("صبحانه شامل قیمت")).toBeTruthy();
     expect(apiRequestMock).toHaveBeenCalledWith("/admin/properties/17");
     expect(apiRequestMock.mock.calls.every(([path]) => path === "/admin/properties/17")).toBe(true);
+  });
+
+  it.each([
+    [null, true],
+    [0, false],
+    [100, false],
+  ])("uses active RoomTypes for Admin financial warning with extra price %s", async (extraGuestPrice, warns) => {
+    apiRequestMock.mockImplementation((path: string) => Promise.resolve(
+      path === "/owner/properties/17/room-types"
+        ? [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }]
+        : { id: 17, name: "خانه قاجاری", childPrice: null, extraGuestPrice },
+    ));
+
+    render(<AdminPropertyPanel propertyId={17} title="اقامتگاه"><div>محتوا</div></AdminPropertyPanel>);
+
+    await waitFor(() => expect(apiRequestMock).toHaveBeenCalledWith("/owner/properties/17/room-types"));
+    if (warns) {
+      expect(await screen.findByText("نرخ نفر اضافه برای این اقامتگاه تعریف نشده است.")).toBeTruthy();
+    } else {
+      expect(screen.queryByText("نرخ نفر اضافه برای این اقامتگاه تعریف نشده است.")).toBeNull();
+    }
+    expect(screen.queryByText("نرخ کودک برای این اقامتگاه تعریف نشده است.")).toBeNull();
   });
 });

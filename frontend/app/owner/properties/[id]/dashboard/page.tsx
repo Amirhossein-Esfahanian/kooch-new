@@ -114,7 +114,7 @@ export default function OwnerPropertyDashboardPage() {
 
         <PricingSettingsWarning
           editHref={`/owner/properties/${propertyId}?step=7`}
-          warnings={getPropertyFinancialWarnings(property)}
+          warnings={getPropertyFinancialWarnings(property, roomTypes)}
         />
 
         {completion && (

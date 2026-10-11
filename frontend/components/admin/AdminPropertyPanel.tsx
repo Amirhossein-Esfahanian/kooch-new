@@ -9,7 +9,7 @@ import {
   getPropertyFinancialWarnings,
   PricingSettingsWarning,
 } from "@/components/pricing/PricingWarnings";
-import { apiRequest, PropertyResponse } from "@/lib/owner-api";
+import { apiRequest, PropertyResponse, RoomTypeResponse } from "@/lib/owner-api";
 
 export function AdminPropertyPanel({
   actions,
@@ -30,6 +30,7 @@ export function AdminPropertyPanel({
 }) {
   const { authenticated, loading, workspaces } = useAuthSession();
   const [property, setProperty] = useState<PropertyResponse | null>(null);
+  const [financialRoomTypes, setFinancialRoomTypes] = useState<RoomTypeResponse[] | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -39,6 +40,15 @@ export function AdminPropertyPanel({
       .then(setProperty)
       .catch((caught: Error) => setError(caught.message));
   }, [authenticated, loading, propertyId, workspaces]);
+
+  useEffect(() => {
+    if (loading || !authenticated || !workspaces.includes("admin") || !showPricingWarnings) return;
+
+    setFinancialRoomTypes(null);
+    apiRequest<RoomTypeResponse[]>(`/owner/properties/${propertyId}/room-types`)
+      .then(setFinancialRoomTypes)
+      .catch((caught: Error) => setError(caught.message));
+  }, [authenticated, loading, propertyId, showPricingWarnings, workspaces]);
 
   return (
     <AdminLayout>
@@ -100,7 +110,7 @@ export function AdminPropertyPanel({
         {showPricingWarnings && (
           <PricingSettingsWarning
             editHref={`/admin/properties/${propertyId}?step=7`}
-            warnings={getPropertyFinancialWarnings(property)}
+            warnings={financialRoomTypes ? getPropertyFinancialWarnings(property, financialRoomTypes) : []}
           />
         )}
         {typeof children === "function" ? children(property) : children}

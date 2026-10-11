@@ -15,6 +15,7 @@ import {
   PropertyInventoryResponse,
   PropertyPricingResponse,
   PropertyResponse,
+  RoomTypeResponse,
   RoomDailyPriceHistoryResponse,
   RoomDailyPriceResponse,
 } from "@/lib/owner-api";
@@ -288,6 +289,7 @@ export function OwnerPricingGrid({
   const [activeGuestType, setActiveGuestType] =
     useState<PricingGuestType>(readStoredGuestType);
   const [property, setProperty] = useState<PropertyResponse | null>(null);
+  const [financialRoomTypes, setFinancialRoomTypes] = useState<RoomTypeResponse[] | null>(null);
   const hasSeparateForeignPricing =
     property?.hasSeparateForeignPricing === true;
   const pricingGuestType: PricingGuestType = hasSeparateForeignPricing
@@ -431,8 +433,8 @@ export function OwnerPricingGrid({
     [pricing, quickPriceHistory, storedQuickPrices],
   );
   const pricingWarnings = useMemo(
-    () => getPropertyFinancialWarnings(property),
-    [property],
+    () => financialRoomTypes ? getPropertyFinancialWarnings(property, financialRoomTypes) : [],
+    [financialRoomTypes, property],
   );
   const propertyPriceBounds = useMemo(
     () => getPropertyPriceBounds(pricing),
@@ -492,6 +494,12 @@ export function OwnerPricingGrid({
       .then(setProperty)
       .catch(() => setProperty(null));
   }, [context, propertyId]);
+  useEffect(() => {
+    setFinancialRoomTypes(null);
+    apiRequest<RoomTypeResponse[]>(`/owner/properties/${propertyId}/room-types`)
+      .then(setFinancialRoomTypes)
+      .catch(() => setFinancialRoomTypes(null));
+  }, [propertyId]);
   useEffect(() => {
     setStoredQuickPrices(readStoredQuickPrices(propertyId));
   }, [propertyId]);
