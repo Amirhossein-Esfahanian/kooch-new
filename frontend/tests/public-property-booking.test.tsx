@@ -973,6 +973,99 @@ describe("public property booking integration", () => {
     ).toBeNull();
   });
 
+  it("shows a Persian minimum-stay note only on an explicit RatePlan without changing its offer behavior", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [
+        {
+          ...availableWithRatePlans.roomTypes[0],
+          ratePlans: [
+            {
+              ...availableWithRatePlans.roomTypes[0].ratePlans[0],
+              minimumNights: 3,
+            },
+          ],
+        },
+      ],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "بررسی موجودی" }),
+    );
+    const card = await screen.findByTestId("room-type-card-10");
+    const planLabel = within(card).getByText("بدون صبحانه");
+    const planRow = planLabel.parentElement?.parentElement;
+
+    expect(within(planRow as HTMLElement).getByText("حداقل اقامت: ۳ شب")).toBeTruthy();
+    expect(within(planRow as HTMLElement).getByText("Room Only")).toBeTruthy();
+    expect(
+      within(planRow as HTMLElement).getByText("۲٬۷۰۰٬۰۰۰ تومان"),
+    ).toBeTruthy();
+    expect(
+      within(planRow as HTMLElement).getByText(
+        "مبلغ کل اقامت برای یک واحد · ۲ شب",
+      ),
+    ).toBeTruthy();
+
+    const standardLabel = within(card).getByText("نرخ استاندارد");
+    const standardRow = standardLabel.parentElement?.parentElement;
+    expect(
+      within(standardRow as HTMLElement).queryByText(/حداقل اقامت/),
+    ).toBeNull();
+
+    const selectPlan = within(card).getByRole("button", {
+      name: "انتخاب اتاق شاه‌نشین، بدون صبحانه",
+    });
+    expect(selectPlan).toBeTruthy();
+    fireEvent.click(selectPlan);
+    expect(
+      within(screen.getByTestId("booking-choices-summary")).getByText(
+        /بدون صبحانه/,
+      ),
+    ).toBeTruthy();
+  });
+
+  it.each([
+    { minimumNights: 2, expected: "حداقل اقامت: ۲ شب" },
+    { minimumNights: 1, expected: null },
+    { minimumNights: 0, expected: null },
+    { minimumNights: null, expected: null },
+    { minimumNights: undefined, expected: null },
+  ])("renders minimum-stay metadata only when it is greater than one night (%s)", async ({
+    minimumNights,
+    expected,
+  }) => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [
+        {
+          ...availableWithRatePlans.roomTypes[0],
+          ratePlans: [
+            {
+              ...availableWithRatePlans.roomTypes[0].ratePlans[0],
+              minimumNights: minimumNights as number | null,
+              mealPlanName: null,
+            },
+          ],
+        },
+      ],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: "بررسی موجودی" }),
+    );
+    const card = await screen.findByTestId("room-type-card-10");
+
+    if (expected) {
+      expect(within(card).getByText(expected)).toBeTruthy();
+    } else {
+      expect(within(card).queryByText(/حداقل اقامت/)).toBeNull();
+    }
+    expect(within(card).queryByText(/نرخ استاندارد.*حداقل اقامت/)).toBeNull();
+  });
+
   it("shows the standard offer's backend DefaultMealPlan beside independent explicit RatePlan meals", async () => {
     api.fetchOptions.mockResolvedValueOnce({
       ...availableWithRatePlans,

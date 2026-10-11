@@ -176,6 +176,7 @@ export function PublicRoomTypeCard({
               finalAmount={plan.finalAmount}
               key={plan.ratePlanId}
               mealPlanName={plan.mealPlanName}
+              minimumNights={plan.minimumNights}
               nightsCount={ratePlanOption.nightsCount}
               name={plan.name}
               onAdd={plan.onAdd}
@@ -196,6 +197,7 @@ function RateOfferRow({
   currencyLabel,
   finalAmount,
   mealPlanName,
+  minimumNights,
   nightsCount,
   name,
   onAdd,
@@ -208,6 +210,7 @@ function RateOfferRow({
   currencyLabel: string;
   finalAmount: number;
   mealPlanName?: string | null;
+  minimumNights?: number | null;
   nightsCount: number;
   name: string;
   onAdd: () => void;
@@ -221,6 +224,11 @@ function RateOfferRow({
         <p className="font-bold text-foreground">{name}</p>
         {mealPlanName && mealPlanName !== name && (
           <p className="mt-1 text-xs text-muted-foreground">{mealPlanName}</p>
+        )}
+        {minimumNights != null && minimumNights > 1 && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            حداقل اقامت: {minimumNights.toLocaleString("fa-IR")} شب
+          </p>
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
