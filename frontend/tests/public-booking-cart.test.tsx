@@ -235,15 +235,94 @@ describe("public booking cart", () => {
     expect(items.filter((entry) => bookingCartOfferMatches(entry, 10, 12))).toHaveLength(2);
   });
 
-  it("removes only the selected rate bucket from grouped cart lines", () => {
+  it("names remove actions by RoomType, offer, and grouped quantity while removing only that bucket", () => {
     const onRemove = vi.fn();
-    const items = [item({ id: "base" }), item({ id: "explicit", ratePlanId: 12 })];
-    render(<BookingCartSummary items={items} total={4_000_000} onRemove={onRemove} />);
+    const items = [
+      item({ id: "base", roomTypeName: "اتاق دبل", displayAmount: 2_000_000 }),
+      item({
+        id: "room-only-1",
+        roomTypeName: "اتاق دبل",
+        ratePlanId: 12,
+        ratePlanName: "بدون صبحانه",
+        displayAmount: 1_500_000,
+      }),
+      item({
+        id: "room-only-2",
+        roomTypeName: "اتاق دبل",
+        ratePlanId: 12,
+        ratePlanName: "بدون صبحانه",
+        displayAmount: 1_500_000,
+      }),
+      item({
+        id: "full-board",
+        roomTypeName: "اتاق دبل",
+        ratePlanId: 13,
+        ratePlanName: "فول‌برد",
+        displayAmount: 2_500_000,
+      }),
+    ];
+    const view = render(
+      <BookingCartSummary
+        items={items}
+        total={7_500_000}
+        onRemove={onRemove}
+      />,
+    );
     const lines = screen.getAllByRole("listitem");
-    expect(lines).toHaveLength(2);
-    fireEvent.click(within(lines[1]).getByRole("button", { name: /حذف/ }));
-    expect(onRemove).toHaveBeenCalledOnce();
-    expect(onRemove.mock.calls[0][0]).toBe("explicit");
+    expect(lines).toHaveLength(3);
+    expect(
+      within(lines[0]).getByRole("button", {
+        name: "حذف ۱ واحد اتاق دبل - نرخ استاندارد از سبد رزرو",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(lines[1]).getByRole("button", {
+        name: "حذف ۲ واحد اتاق دبل - بدون صبحانه از سبد رزرو",
+      }),
+    ).toBeTruthy();
+    expect(
+      within(lines[2]).getByRole("button", {
+        name: "حذف ۱ واحد اتاق دبل - فول‌برد از سبد رزرو",
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      within(lines[1]).getByRole("button", {
+        name: "حذف ۲ واحد اتاق دبل - بدون صبحانه از سبد رزرو",
+      }),
+    );
+    expect(onRemove.mock.calls.map(([id]) => id)).toEqual(["room-only-1", "room-only-2"]);
+
+    const removedIds = new Set(["room-only-1", "room-only-2"]);
+    const remainingItems = items.filter((entry) => !removedIds.has(entry.id));
+    view.rerender(
+      <BookingCartSummary
+        items={remainingItems}
+        total={4_500_000}
+        onRemove={onRemove}
+      />,
+    );
+    const remainingLines = screen.getAllByRole("listitem");
+    expect(remainingLines).toHaveLength(2);
+    expect(within(remainingLines[0]).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(within(remainingLines[1]).getByText("فول‌برد")).toBeTruthy();
+    expect(screen.getByText(/۴٬۵۰۰٬۰۰۰/)).toBeTruthy();
+  });
+
+  it("keeps remove labels safe for legacy explicit items without a stored offer name", () => {
+    render(
+      <BookingCartSummary
+        items={[item({ id: "legacy-plan", ratePlanId: 21, ratePlanName: null })]}
+        total={2_000_000}
+        onRemove={vi.fn()}
+      />,
+    );
+    const line = screen.getByRole("listitem");
+    expect(
+      within(line).getByRole("button", {
+        name: "حذف ۱ واحد اتاق شاه‌نشین - نرخ انتخاب‌شده از سبد رزرو",
+      }),
+    ).toBeTruthy();
   });
 
   it("distinguishes the standard offer and two named RatePlans in the cart", () => {

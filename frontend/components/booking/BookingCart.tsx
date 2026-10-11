@@ -63,6 +63,10 @@ export function BookingCartItemRow({
 }) {
   const { item } = line;
   const mode = bookingModePresentation(item.bookingMode);
+  const offerName =
+    item.ratePlanId == null
+      ? "نرخ استاندارد"
+      : item.ratePlanName || "نرخ انتخاب‌شده";
   return (
     <li className="flex items-start justify-between gap-3 border-b border-border py-3 last:border-0">
       <div className="min-w-0 text-sm">
@@ -86,7 +90,7 @@ export function BookingCartItemRow({
       </div>
       {onRemove && (
         <KoochButton
-          aria-label={`حذف ${item.roomTypeName} از سبد رزرو`}
+          aria-label={`حذف ${line.quantity.toLocaleString("fa-IR")} واحد ${item.roomTypeName} - ${offerName} از سبد رزرو`}
           className="shrink-0"
           onClick={() => onRemove(line.itemIds)}
           size="sm"
