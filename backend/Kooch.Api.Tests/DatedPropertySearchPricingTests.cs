@@ -14,14 +14,14 @@ public sealed class DatedPropertySearchPricingTests
     private static readonly DateOnly CheckOut = new(2035, 2, 3);
 
     [Fact]
-    public async Task UndatedAndIncompleteRanges_KeepTheFutureCalendarMinimum()
+    public async Task UndatedAndIncompleteRanges_ExcludePricesOutsideTheNinetyDayHorizon()
     {
         await using var fixture = await Fixture.CreateAsync();
 
-        Assert.Equal(1_000_000m, Assert.Single(await fixture.Search.GetPublicPropertiesAsync()).StartingPrice);
-        Assert.Equal(1_000_000m, Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
+        Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync()).StartingPrice);
+        Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
             checkIn: CheckIn)).StartingPrice);
-        Assert.Equal(1_000_000m, Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
+        Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
             checkIn: CheckOut, checkOut: CheckIn)).StartingPrice);
     }
 
@@ -48,7 +48,7 @@ public sealed class DatedPropertySearchPricingTests
         Assert.Equal(4_400_000m, room.FinalAmount);
         Assert.Equal(4_000_000m, Assert.Single(room.RatePlans).FinalAmount);
         Assert.Equal(2_000_000m, property.StartingPrice);
-        Assert.Equal(1_000_000m, Assert.Single(await fixture.Search.GetPublicPropertiesAsync()).StartingPrice);
+        Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync()).StartingPrice);
     }
 
     [Fact]

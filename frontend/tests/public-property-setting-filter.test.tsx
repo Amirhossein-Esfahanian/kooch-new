@@ -100,11 +100,13 @@ describe("public PropertySetting search filter", () => {
     render(<PropertiesPage />);
 
     expect(
-      await screen.findByText("۱٬۲۵۰٬۰۰۰ ریال آزمایشی / شب"),
+      await screen.findByText("۱٬۲۵۰٬۰۰۰ ریال آزمایشی"),
     ).toBeTruthy();
+    expect(screen.getByText("برای هر اتاق / شب")).toBeTruthy();
   });
 
-  it("shows zero as a real price and null as an unknown price", async () => {
+  it("preserves real zero and existing null formatting for dated quotes", async () => {
+    searchParams = new URLSearchParams({ checkIn: "2026-10-14", checkOut: "2026-10-16" });
     mocks.fetchPublicApi.mockImplementation((path: string) =>
       Promise.resolve(path === "/property-settings" ? settings : [
         { ...resultProperty, id: 2, name: "اقامت رایگان", startingPrice: 0 },
@@ -123,7 +125,9 @@ describe("public PropertySetting search filter", () => {
     ["minPrice", "1", ["اقامت میانی", "اقامت گران"]],
     ["minPrice", "1500000", ["اقامت میانی", "اقامت گران"]],
   ])("filters the authoritative price with %s=%s", async (key, value, expected) => {
-    searchParams = new URLSearchParams({ [key]: value });
+    searchParams = new URLSearchParams({
+      checkIn: "2026-10-14", checkOut: "2026-10-16", [key]: value,
+    });
     mocks.fetchPublicApi.mockImplementation((path: string) =>
       Promise.resolve(path === "/property-settings" ? settings : [
         { ...resultProperty, id: 2, name: "اقامت رایگان", startingPrice: 0 },
@@ -152,13 +156,9 @@ describe("public PropertySetting search filter", () => {
     expect(screen.getByText("۱٬۲۵۰٬۰۰۰ تومان / شب")).toBeTruthy();
   });
 
-  it.each([
-    { checkIn: "2026-10-14", checkOut: "2026-10-16", rooms: "1" },
-    { rooms: "2" },
-  ])("keeps the ordinary label without a dated multi-room context", async (params) => {
-    searchParams = new URLSearchParams();
-    Object.entries(params).forEach(([key, value]) => {
-      if (value) searchParams.set(key, value);
+  it("keeps the ordinary label for a dated one-room quote", async () => {
+    searchParams = new URLSearchParams({
+      checkIn: "2026-10-14", checkOut: "2026-10-16", rooms: "1",
     });
     mocks.fetchPublicApi.mockImplementation((path: string) =>
       Promise.resolve(path === "/property-settings" ? settings : [resultProperty]),
@@ -168,6 +168,86 @@ describe("public PropertySetting search filter", () => {
     expect(await screen.findByText("خانه آزمون")).toBeTruthy();
     expect(screen.getByText("قیمت از")).toBeTruthy();
     expect(screen.queryByText(/قیمت از برای/)).toBeNull();
+    expect(screen.getByText("۱٬۲۵۰٬۰۰۰ تومان / شب")).toBeTruthy();
+    expect(screen.queryByText("نرخ استاندارد از")).toBeNull();
+    expect(screen.queryByText(/کمترین نرخ ثبت‌شده/)).toBeNull();
+  });
+
+  it.each([
+    "",
+    "rooms=2",
+    "checkIn=2026-10-14",
+    "checkOut=2026-10-16",
+    "checkIn=2026-10-14&checkOut=2026-10-14",
+    "checkIn=2026-10-16&checkOut=2026-10-14&rooms=2",
+  ])("labels the generic standard teaser for an undated range: %s", async (query) => {
+    searchParams = new URLSearchParams(query);
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [resultProperty]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText("نرخ استاندارد از")).toBeTruthy();
+    expect(screen.getByText("۱٬۲۵۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(screen.getByText("برای هر اتاق / شب")).toBeTruthy();
+    expect(screen.getByText(
+      "کمترین نرخ ثبت‌شده در ۹۰ روز آینده؛ قیمت و موجودی نهایی با انتخاب تاریخ مشخص می‌شود.",
+    )).toBeTruthy();
+    expect(screen.queryByText("قیمت از")).toBeNull();
+    expect(screen.queryByText(/قیمت از برای/)).toBeNull();
+  });
+
+  it("keeps an undated null-priced Property visible without fabricating zero", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, startingPrice: null },
+      ]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    expect(screen.getByText("قیمت با انتخاب تاریخ مشخص می‌شود")).toBeTruthy();
+    expect(screen.queryByText("نرخ استاندارد از")).toBeNull();
+    expect(screen.queryByText(/۰ تومان/)).toBeNull();
+    expect(screen.queryByText(/کمترین نرخ ثبت‌شده/)).toBeNull();
+  });
+
+  it.each(["minPrice", "maxPrice"])(
+    "uses the displayed undated StartingPrice for inclusive %s filtering",
+    async (bound) => {
+      searchParams = new URLSearchParams({ [bound]: "1800000" });
+      const pricedProperties = [
+        { ...resultProperty, id: 1, name: "قیمت پایین", startingPrice: 1_000_000 },
+        {
+          ...resultProperty, id: 2, name: "قیمت مرزی", startingPrice: 1_800_000,
+          roomTypes: [{ displayPrice: 9_000_000 }],
+        },
+        { ...resultProperty, id: 3, name: "قیمت بالا", startingPrice: 2_500_000 },
+        { ...resultProperty, id: 4, name: "قیمت نامشخص", startingPrice: null },
+      ];
+      mocks.fetchPublicApi.mockImplementation((path: string) =>
+        Promise.resolve(path === "/property-settings" ? settings : pricedProperties),
+      );
+      render(<PropertiesPage />);
+
+      expect(await screen.findByText("قیمت مرزی")).toBeTruthy();
+      expect(screen.getByText("۱٬۸۰۰٬۰۰۰ تومان")).toBeTruthy();
+      expect(screen.queryByText("۹٬۰۰۰٬۰۰۰ تومان")).toBeNull();
+      expect(screen.queryByText("قیمت نامشخص")).toBeNull();
+      expect(screen.queryByText("قیمت پایین") !== null).toBe(bound === "maxPrice");
+      expect(screen.queryByText("قیمت بالا") !== null).toBe(bound === "minPrice");
+    },
+  );
+
+  it("preserves the existing undated availability summary", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, availabilitySummary: "فعلاً همه موجود فرض شده‌اند" },
+      ]),
+    );
+    render(<PropertiesPage />);
+
+    expect(await screen.findByText("فعلاً همه موجود فرض شده‌اند")).toBeTruthy();
   });
 
   it("loads options from the catalog and omits an empty filter", async () => {

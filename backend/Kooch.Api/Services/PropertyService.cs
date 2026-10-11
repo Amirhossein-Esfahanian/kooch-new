@@ -22,6 +22,7 @@ public class PropertyService(
     DatedPropertyStartingPriceService? datedStartingPriceService = null) : IPropertyService
 {
     private const InventoryMode CanonicalPublicInventoryMode = InventoryMode.TypeBasedInventory;
+    private const int UndatedStartingPriceHorizonDays = 90;
 
     public async Task<PropertyResponse> CreatePropertyAsync(
         int userId,
@@ -822,7 +823,8 @@ public class PropertyService(
                 roomType.MaxChildren >= 0));
         }
 
-        var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0)
+        var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0,
+                useUndatedSearchStartingPrice: !hasDatedSearch)
             .ToListAsync(cancellationToken);
         if (hasDatedSearch)
         {
@@ -1379,9 +1381,11 @@ public class PropertyService(
         bool hasDates = false,
         DateOnly? rangeStartValue = null,
         DateOnly? rangeEndExclusiveValue = null,
-        int nights = 1)
+        int nights = 1,
+        bool useUndatedSearchStartingPrice = false)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var undatedStartingPriceEndExclusive = today.AddDays(UndatedStartingPriceHorizonDays);
         var rangeStart = rangeStartValue ?? today;
         var rangeEndExclusive = rangeEndExclusiveValue ?? today.AddDays(1);
         return query.Select(property => new PublicPropertyResponse
@@ -1485,9 +1489,12 @@ public class PropertyService(
                 .Select(image => image.Url)
                 .FirstOrDefault(),
             StartingPrice = property.RoomTypes
-                .Where(roomType => roomType.IsActive)
+                .Where(roomType => roomType.IsActive &&
+                    (!useUndatedSearchStartingPrice ||
+                     roomType.TotalInventory > 0 && roomType.MaxAdults >= 1))
                 .SelectMany(roomType => roomType.DailyPrices)
                 .Where(price => price.Date >= today &&
+                                (!useUndatedSearchStartingPrice || price.Date < undatedStartingPriceEndExclusive) &&
                                 price.GuestType == PricingGuestType.Iranian &&
                                 price.BasePrice > 0)
                 .Select(price => (decimal?)price.BasePrice)

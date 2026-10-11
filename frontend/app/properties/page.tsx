@@ -7,7 +7,8 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
 import { KoochCheckbox } from "@/components/KoochFormControls";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
-import { useSiteCurrencyLabel } from "@/lib/currency";
+import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { isBeforeLocalIsoDate } from "@/lib/date-utils";
 import {
   fetchPublicApi,
   formatPrice,
@@ -161,6 +162,9 @@ function PropertiesContent() {
   const city = searchParams.get("city") ?? "";
   const checkIn = searchParams.get("checkIn") ?? "";
   const checkOut = searchParams.get("checkOut") ?? "";
+  const hasDatedSearch = Boolean(
+    checkIn && checkOut && isBeforeLocalIsoDate(checkIn, checkOut),
+  );
   const rooms = Number(searchParams.get("rooms") ?? 1);
   const adults = Number(
     searchParams.get("adults") ?? searchParams.get("guests") ?? 2,
@@ -605,14 +609,32 @@ function PropertiesContent() {
                         />
                       </div>
                       <div className="flex flex-col items-start justify-end border-t border-slate-100 p-5 md:items-end md:border-l md:border-t-0 md:text-right">
-                        <p className="text-xs text-slate-400">
-                          {checkIn && checkOut && rooms > 1
-                            ? `قیمت از برای ${new Intl.NumberFormat("fa-IR").format(rooms)} اتاق`
-                            : "قیمت از"}
-                        </p>
+                        {(hasDatedSearch || property.startingPrice !== null) && (
+                          <p className="text-xs text-muted-foreground">
+                            {hasDatedSearch
+                              ? rooms > 1
+                                ? `قیمت از برای ${new Intl.NumberFormat("fa-IR").format(rooms)} اتاق`
+                                : "قیمت از"
+                              : "نرخ استاندارد از"}
+                          </p>
+                        )}
                         <p className="mt-1 text-lg font-bold text-blue-700">
-                          {formatPrice(property.startingPrice, currencyLabel, true)}
+                          {hasDatedSearch
+                            ? formatPrice(property.startingPrice, currencyLabel, true)
+                            : property.startingPrice === null
+                              ? "قیمت با انتخاب تاریخ مشخص می‌شود"
+                              : formatCurrency(property.startingPrice, { currencyLabel })}
                         </p>
+                        {!hasDatedSearch && property.startingPrice !== null && (
+                          <>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              برای هر اتاق / شب
+                            </p>
+                            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                              کمترین نرخ ثبت‌شده در ۹۰ روز آینده؛ قیمت و موجودی نهایی با انتخاب تاریخ مشخص می‌شود.
+                            </p>
+                          </>
+                        )}
                         <Link
                           className="mt-5 w-full rounded-lg bg-blue-600 px-4 py-3 text-center text-sm font-bold text-white hover:bg-blue-700"
                           href={detailHref}
