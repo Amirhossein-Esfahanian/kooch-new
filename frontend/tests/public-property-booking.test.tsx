@@ -707,6 +707,75 @@ describe("public property booking integration", () => {
     expect(screen.queryByRole("button", { name: "ادامه رزرو" })).toBeNull();
   });
 
+  it("keeps the desktop cart summary below the measured header and search stack", async () => {
+    let searchHeight = 193;
+    let resizeCallback: ResizeObserverCallback = () => {
+      throw new Error("ResizeObserver callback was not registered");
+    };
+    const disconnect = vi.fn();
+    const rectSpy = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect")
+      .mockImplementation(function (this: HTMLElement) {
+        const height = this.dataset.testid === "property-search-bar" ? searchHeight : 0;
+        return {
+          height,
+          width: 1024,
+          x: 0,
+          y: 0,
+          top: 0,
+          right: 1024,
+          bottom: height,
+          left: 0,
+          toJSON: () => ({}),
+        } as DOMRect;
+      });
+    vi.stubGlobal("ResizeObserver", class {
+      constructor(callback: ResizeObserverCallback) {
+        resizeCallback = callback;
+      }
+      observe() {}
+      disconnect() {
+        disconnect();
+      }
+    });
+    let rendered: ReturnType<typeof render> | null = null;
+
+    try {
+      rendered = render(<PublicPropertyPage />);
+      const searchBar = await screen.findByTestId("property-search-bar");
+      await waitFor(() => expect(
+        document.documentElement.style.getPropertyValue("--property-booking-search-height"),
+      ).toBe("193px"));
+      expect(searchBar.className).toContain("top-[var(--header-height)]");
+
+      fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+      const summary = await screen.findByTestId("booking-choices-summary");
+      expect(summary.className).toContain("lg:sticky");
+      expect(summary.className).toContain(
+        "lg:top-[calc(var(--header-height)+var(--property-booking-search-height,0px)+1rem)]",
+      );
+      expect(summary.className).not.toContain("top-24");
+      expect(summary.className).not.toContain("max-h-");
+
+      searchHeight = 73;
+      resizeCallback([], {} as ResizeObserver);
+      expect(
+        document.documentElement.style.getPropertyValue("--property-booking-search-height"),
+      ).toBe("73px");
+
+      rendered.unmount();
+      rendered = null;
+      expect(disconnect).toHaveBeenCalled();
+      expect(
+        document.documentElement.style.getPropertyValue("--property-booking-search-height"),
+      ).toBe("");
+    } finally {
+      rendered?.unmount();
+      document.documentElement.style.removeProperty("--property-booking-search-height");
+      vi.unstubAllGlobals();
+      rectSpy.mockRestore();
+    }
+  });
+
   it("defines a property search surface for every color theme and appearance", () => {
     const css = readFileSync(resolve(process.cwd(), "app/globals.css"), "utf8");
     const panelSource = readFileSync(

@@ -106,6 +106,34 @@ function PropertyBookingPanelContent({
   const [replacementSelection, setReplacementSelection] =
     useState<BookingCartSelection | null>(null);
   const [calendarRoomType, setCalendarRoomType] = useState<PublicRoomType | null>(null);
+  const searchBarRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const searchBar = searchBarRef.current;
+    if (!searchBar) return;
+
+    const publishSearchHeight = () => {
+      document.documentElement.style.setProperty(
+        "--property-booking-search-height",
+        `${Math.ceil(searchBar.getBoundingClientRect().height)}px`,
+      );
+    };
+
+    publishSearchHeight();
+    const observer =
+      typeof ResizeObserver === "undefined"
+        ? null
+        : new ResizeObserver(publishSearchHeight);
+    observer?.observe(searchBar);
+    if (!observer) window.addEventListener("resize", publishSearchHeight);
+    return () => {
+      observer?.disconnect();
+      if (!observer) window.removeEventListener("resize", publishSearchHeight);
+      document.documentElement.style.removeProperty(
+        "--property-booking-search-height",
+      );
+    };
+  }, []);
 
   const optionsMatchSearch =
     options?.checkInDate === dates.startDate &&
@@ -264,7 +292,11 @@ function PropertyBookingPanelContent({
   const showCartSummary = hasSearchResults || cart.items.length > 0;
   const cartSummary = (
     <BookingCartSummary
-      className={hasSearchResults ? "lg:sticky lg:top-24" : undefined}
+      className={
+        hasSearchResults
+          ? "lg:sticky lg:top-[calc(var(--header-height)+var(--property-booking-search-height,0px)+1rem)]"
+          : undefined
+      }
       items={cart.items}
       loading={false}
       onContinue={continueCheckout}
@@ -278,6 +310,7 @@ function PropertyBookingPanelContent({
       <div
         className="sticky top-[var(--header-height)] z-40 w-full border-b border-border bg-[var(--property-search-background)] shadow-sm"
         data-testid="property-search-bar"
+        ref={searchBarRef}
       >
         <div
           className="mx-auto max-w-7xl px-5 py-2 sm:px-8 sm:py-3"
