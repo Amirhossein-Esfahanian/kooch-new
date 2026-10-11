@@ -12,7 +12,10 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
-import { PropertyLocationMap } from "@/components/property/PropertyLocationMap";
+import {
+  getValidPublicLocation,
+  PropertyLocationMap,
+} from "@/components/property/PropertyLocationMap";
 import {
   fetchPublicApi,
   PublicImage,
@@ -229,6 +232,19 @@ export default function PublicPropertyPage() {
     ? `/properties?${resultQuery}`
     : "/properties";
   const autoCheckInitialContextKey = initialAvailabilityContextKey(searchParams, property.slug);
+  const publicLocation = getValidPublicLocation(
+    property.latitude,
+    property.longitude,
+  );
+  const mapSearchParams = new URLSearchParams({
+    api: "1",
+    query: publicLocation
+      ? `${publicLocation.latitude},${publicLocation.longitude}`
+      : "",
+  });
+  const mapUrl = publicLocation
+    ? `https://www.google.com/maps/search/?${mapSearchParams.toString()}`
+    : null;
 
   return (
     <PropertyBookingPanel
@@ -523,11 +539,23 @@ export default function PublicPropertyPage() {
                     )}
                   </section>
 
-                  <PropertyLocationMap
-                    latitude={property.latitude}
-                    longitude={property.longitude}
-                    propertyName={property.name}
-                  />
+                  {mapUrl && (
+                    <div className="space-y-3">
+                      <PropertyLocationMap
+                        latitude={property.latitude}
+                        longitude={property.longitude}
+                        propertyName={property.name}
+                      />
+                      <a
+                        className="inline-flex min-h-10 w-fit max-w-full items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [@media(pointer:coarse)]:min-h-11"
+                        href={mapUrl}
+                        rel="noopener noreferrer"
+                        target="_blank"
+                      >
+                        باز کردن در نقشه
+                      </a>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

@@ -158,27 +158,32 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
     await importOriginal<typeof import("@/lib/booking-sessions")>();
   return { ...actual, fetchBookingOptions: api.fetchOptions };
 });
-vi.mock("@/components/property/PropertyLocationMap", () => ({
-  PropertyLocationMap: ({
-    latitude,
-    longitude,
-    propertyName,
-  }: {
-    latitude: number | null;
-    longitude: number | null;
-    propertyName?: string;
-  }) =>
-    latitude != null && longitude != null ? (
-      <div
-        data-latitude={latitude}
-        data-longitude={longitude}
-        data-property-name={propertyName}
-        data-testid="public-property-location-map"
-      >
-        موقعیت اقامتگاه
-      </div>
-    ) : null,
-}));
+vi.mock("@/components/property/PropertyLocationMap", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@/components/property/PropertyLocationMap")>();
+  return {
+    ...actual,
+    PropertyLocationMap: ({
+      latitude,
+      longitude,
+      propertyName,
+    }: {
+      latitude: number | null;
+      longitude: number | null;
+      propertyName?: string;
+    }) =>
+      actual.getValidPublicLocation(latitude, longitude) ? (
+        <div
+          data-latitude={latitude}
+          data-longitude={longitude}
+          data-property-name={propertyName}
+          data-testid="public-property-location-map"
+        >
+          موقعیت اقامتگاه
+        </div>
+      ) : null,
+  };
+});
 
 import PublicPropertyPage from "@/app/properties/[slug]/page";
 import { formatBookingDateRange } from "@/components/booking/booking-display";
@@ -539,6 +544,14 @@ describe("public property booking integration", () => {
     expect(map.getAttribute("data-latitude")).toBe("33.986407");
     expect(map.getAttribute("data-longitude")).toBe("51.447647");
     expect(map.getAttribute("data-property-name")).toBe(property.name);
+    const mapLink = screen.getByRole("link", { name: "باز کردن در نقشه" });
+    const mapUrl = new URL(mapLink.getAttribute("href")!);
+    expect(mapUrl.origin).toBe("https://www.google.com");
+    expect(mapUrl.pathname).toBe("/maps/search/");
+    expect(mapUrl.searchParams.get("api")).toBe("1");
+    expect(mapUrl.searchParams.get("query")).toBe("33.986407,51.447647");
+    expect(mapLink.getAttribute("target")).toBe("_blank");
+    expect(mapLink.getAttribute("rel")).toBe("noopener noreferrer");
     expect(
       screen.getByText(`${property.address}، ${property.city}`),
     ).toBeTruthy();
@@ -615,6 +628,21 @@ describe("public property booking integration", () => {
       screen.getByText(`${property.address}، ${property.city}`),
     ).toBeTruthy();
     expect(screen.queryByText("نقشه به‌زودی اضافه می‌شود")).toBeNull();
+    expect(screen.queryByRole("link", { name: "باز کردن در نقشه" })).toBeNull();
+  });
+
+  it.each([
+    { latitude: 0, longitude: 51.447647, expected: "0,51.447647" },
+    { latitude: 33.986407, longitude: 0, expected: "33.986407,0" },
+    { latitude: 0, longitude: 0, expected: "0,0" },
+  ])("offers map link for valid coordinates $expected", async ({ latitude, longitude, expected }) => {
+    api.fetchProperty.mockResolvedValueOnce({ ...property, latitude, longitude });
+
+    render(<PublicPropertyPage />);
+
+    const mapLink = await screen.findByRole("link", { name: "باز کردن در نقشه" });
+    expect(new URL(mapLink.getAttribute("href")!).searchParams.get("query")).toBe(expected);
+    expect(screen.getByText(`${property.address}، ${property.city}`)).toBeTruthy();
   });
 
   it("renders the real booking panel and removes the obsolete placeholder", async () => {
