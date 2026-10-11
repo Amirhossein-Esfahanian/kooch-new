@@ -146,13 +146,11 @@ public class PropertyService(
         var englishName = request.EnglishName is null
             ? property.EnglishName
             : CleanOptional(request.EnglishName);
-        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
-        await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
+        await RepairMissingSlugAsync(property, englishName, cancellationToken);
 
         property.DestinationId = request.DestinationId;
         property.Name = request.Name.Trim();
         property.EnglishName = englishName;
-        property.Slug = slug;
         property.Description = request.Description.Trim();
         property.SeoTitle = CleanOptional(request.SeoTitle);
         property.SeoDescription = CleanOptional(request.SeoDescription);
@@ -196,12 +194,10 @@ public class PropertyService(
     {
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
-        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
-        await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
+        await RepairMissingSlugAsync(property, englishName, cancellationToken);
 
         property.Name = request.Name.Trim();
         property.EnglishName = englishName;
-        property.Slug = slug;
         property.Type = request.Type;
         property.InventoryMode = request.InventoryMode;
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -349,13 +345,11 @@ public class PropertyService(
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
-        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id, property.Slug);
-        await EnsureUniqueSlugAsync(slug, propertyId, cancellationToken);
+        await RepairMissingSlugAsync(property, englishName, cancellationToken);
 
         property.DestinationId = request.DestinationId;
         property.Name = request.Name.Trim();
         property.EnglishName = englishName;
-        property.Slug = slug;
         property.Description = request.Description.Trim();
         property.SeoTitle = CleanOptional(request.SeoTitle);
         property.SeoDescription = CleanOptional(request.SeoDescription);
@@ -1310,6 +1304,18 @@ public class PropertyService(
         {
             throw new ArgumentException("Default meal plan not found.", nameof(mealPlanId));
         }
+    }
+
+    private async Task RepairMissingSlugAsync(Property property, string? englishName, CancellationToken cancellationToken)
+    {
+        if (!string.IsNullOrWhiteSpace(property.Slug))
+        {
+            return;
+        }
+
+        var slug = EnglishSlugGenerator.CreateWithEntityFallback(englishName, "property", property.Id);
+        await EnsureUniqueSlugAsync(slug, property.Id, cancellationToken);
+        property.Slug = slug;
     }
 
     private async Task EnsureUniqueSlugAsync(string slug, int? propertyId, CancellationToken cancellationToken)
