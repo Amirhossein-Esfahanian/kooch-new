@@ -8,7 +8,8 @@ namespace Kooch.Api.Services;
 public class PropertyCompletionService(
     KoochDbContext dbContext,
     IPropertyAccessService propertyAccessService,
-    IPropertyStandardStayReadinessService standardStayReadinessService) : IPropertyCompletionService
+    IPropertyStandardStayReadinessService standardStayReadinessService,
+    IPropertyOperationalHealthService operationalHealthService) : IPropertyCompletionService
 {
     public async Task<PropertyCompletionResponse> GetAsync(
         int userId,
@@ -38,6 +39,7 @@ public class PropertyCompletionService(
             .Where(property => property.Id == propertyId)
             .Select(property => new
             {
+                property.Status,
                 BasicName = property.Name != "",
                 BasicEnglishName = property.EnglishName != null && property.EnglishName != "",
                 BasicDescription = property.Description != "",
@@ -141,6 +143,15 @@ public class PropertyCompletionService(
         var completionPercentage = (int)Math.Round(
             completedSections.Length / (decimal)sections.Length * 100m,
             MidpointRounding.AwayFromZero);
+        var warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images,
+            state.Rooms, readiness.HasValidDailyPricing, readiness.HasJointStandardStay,
+            state.HasActiveExtraGuestRoomType && !state.HasExtraGuestPrice).ToList();
+        if (state.Status == PropertyStatus.Approved && readiness.HasJointStandardStay &&
+            !await operationalHealthService.HasCurrentlyBookableStandardStayAsync(
+                readiness.ConfiguredCandidates, today, cancellationToken))
+        {
+            warnings.Add("در ۶۰ روز آینده در حال حاضر اقامت قابل رزروی باقی نمانده است.");
+        }
 
         return new PropertyCompletionResponse
         {
@@ -152,7 +163,7 @@ public class PropertyCompletionService(
                     ? PropertyHealthStatus.NeedsAttention
                     : PropertyHealthStatus.Incomplete,
             Sections = sections,
-            Warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images, state.Rooms, readiness.HasValidDailyPricing, readiness.HasJointStandardStay, state.HasActiveExtraGuestRoomType && !state.HasExtraGuestPrice),
+            Warnings = warnings,
             CompletedSections = completedSections,
             MissingSections = missingSections,
             CanActivate = missingSections.Length == 0

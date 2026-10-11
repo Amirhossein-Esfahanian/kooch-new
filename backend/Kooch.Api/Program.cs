@@ -81,6 +81,7 @@ builder.Services.AddScoped<IAdminPropertyMemberDirectoryService, AdminPropertyMe
 builder.Services.AddScoped<IAdminReportService, AdminReportService>();
 builder.Services.AddScoped<IPropertyCompletionService, PropertyCompletionService>();
 builder.Services.AddScoped<IPropertyStandardStayReadinessService, PropertyStandardStayReadinessService>();
+builder.Services.AddScoped<IPropertyOperationalHealthService, PropertyOperationalHealthService>();
 builder.Services.AddScoped<IPropertyDescriptionService, PropertyDescriptionService>();
 builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();
 builder.Services.AddScoped<ISiteSettingUploadService, SiteSettingUploadService>();

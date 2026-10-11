@@ -52,11 +52,17 @@ public sealed class PropertyStandardStayReadinessService(KoochDbContext dbContex
         var hasConfiguredAvailability = roomTypes.Any(roomType =>
             Enumerable.Range(0, ReadinessHorizonDays)
                 .Any(offset => IsConfiguredAvailable(roomType.Id, today.AddDays(offset))));
-        var hasJointStay = pricedNights.Any(night => IsConfiguredAvailable(night.RoomTypeId, night.Date));
+        var configuredCandidates = pricedNights
+            .Where(night => IsConfiguredAvailable(night.RoomTypeId, night.Date))
+            .Select(night => new PropertyStandardStayCandidate(night.RoomTypeId, night.Date))
+            .ToArray();
 
         return new PropertyStandardStayReadiness(
             pricedNights.Length > 0,
             hasConfiguredAvailability,
-            hasJointStay);
+            configuredCandidates.Length > 0)
+        {
+            ConfiguredCandidates = configuredCandidates
+        };
     }
 }

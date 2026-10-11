@@ -11,4 +11,9 @@ public interface IPropertyStandardStayReadinessService
 public sealed record PropertyStandardStayReadiness(
     bool HasValidDailyPricing,
     bool HasValidConfiguredAvailability,
-    bool HasJointStandardStay);
+    bool HasJointStandardStay)
+{
+    public IReadOnlyList<PropertyStandardStayCandidate> ConfiguredCandidates { get; init; } = [];
+}
+
+public sealed record PropertyStandardStayCandidate(int RoomTypeId, DateOnly Date);

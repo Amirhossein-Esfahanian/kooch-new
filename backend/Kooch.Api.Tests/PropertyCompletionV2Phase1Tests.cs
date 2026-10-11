@@ -260,7 +260,8 @@ public sealed class PropertyCompletionV2Phase1Tests
     private static PropertyCompletionService CreateCompletionService(
         KoochDbContext db,
         IPropertyAccessService? access = null) =>
-        new(db, access!, new PropertyStandardStayReadinessService(db));
+        new(db, access!, new PropertyStandardStayReadinessService(db),
+            new PropertyOperationalHealthService(new EffectiveAvailabilityService(db)));
 
     private static KoochDbContext CreateContext() => new(
         new DbContextOptionsBuilder<KoochDbContext>()

@@ -20,10 +20,7 @@ public sealed class EffectiveRoomTypeAvailability
     public IReadOnlySet<int> ClaimedRoomIds { get; init; } = new HashSet<int>();
 
     public bool HasCapacityForFullRange(int roomCount) =>
-        Nights.Count > 0 && Nights.Values.All(night =>
-            !night.IsClosed &&
-            night.ConfiguredStatus is AvailabilityStatus.Available or AvailabilityStatus.OnRequest &&
-            night.RemainingCapacity >= roomCount);
+        Nights.Count > 0 && Nights.Values.All(night => night.HasCapacity(roomCount));
 }
 
 public sealed class EffectiveAvailabilityNight
@@ -35,4 +32,9 @@ public sealed class EffectiveAvailabilityNight
     public AvailabilityStatus ConfiguredStatus { get; init; }
     public AvailabilityStatus EffectiveStatus { get; init; }
     public bool IsClosed { get; init; }
+
+    public bool HasCapacity(int roomCount) =>
+        !IsClosed &&
+        ConfiguredStatus is AvailabilityStatus.Available or AvailabilityStatus.OnRequest &&
+        RemainingCapacity >= roomCount;
 }

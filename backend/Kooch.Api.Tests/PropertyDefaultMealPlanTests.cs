@@ -38,7 +38,9 @@ public sealed class PropertyDefaultMealPlanTests
         var property = await CreateService(db).CreatePropertyAsync(1, UserRole.SuperAdmin, request);
 
         var completion = await new PropertyCompletionService(
-            db, null!, new PropertyStandardStayReadinessService(db)).CalculateAsync(property.Id);
+            db, null!, new PropertyStandardStayReadinessService(db),
+            new PropertyOperationalHealthService(new EffectiveAvailabilityService(db)))
+            .CalculateAsync(property.Id);
 
         Assert.Contains("policies", completion.CompletedSections);
         Assert.DoesNotContain(completion.Sections.SelectMany(section => section.MissingItems),

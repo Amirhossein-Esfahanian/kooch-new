@@ -215,7 +215,9 @@ public sealed class PropertyStandardStayReadinessTests
         await db.SaveChangesAsync();
 
         var completion = await new PropertyCompletionService(
-            db, null!, new PropertyStandardStayReadinessService(db)).CalculateAsync(100);
+            db, null!, new PropertyStandardStayReadinessService(db),
+            new PropertyOperationalHealthService(new EffectiveAvailabilityService(db)))
+            .CalculateAsync(100);
 
         Assert.Equal(available, completion.CanActivate);
         Assert.Equal(available ? 100 : 89, completion.CompletionPercentage);
