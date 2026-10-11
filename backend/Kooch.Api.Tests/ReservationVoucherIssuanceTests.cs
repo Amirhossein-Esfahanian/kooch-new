@@ -268,6 +268,7 @@ public sealed class ReservationVoucherIssuanceTests
         var context = new FailingSaveContext(
             new DbContextOptionsBuilder<KoochDbContext>()
                 .UseSqlite("Data Source=:memory:")
+                .AddInterceptors(SqliteTestFunctions.LenInterceptor)
                 .Options,
             sqlNumber,
             index,

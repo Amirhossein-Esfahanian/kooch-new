@@ -239,15 +239,81 @@ describe("public PropertySetting search filter", () => {
     },
   );
 
-  it("preserves the existing undated availability summary", async () => {
+  it.each(["Available", "OnRequest", "Unknown"])("uses neutral undated copy regardless of raw %s status", async (status) => {
     mocks.fetchPublicApi.mockImplementation((path: string) =>
       Promise.resolve(path === "/property-settings" ? settings : [
-        { ...resultProperty, availabilitySummary: "فعلاً همه موجود فرض شده‌اند" },
+        { ...resultProperty, availabilitySummary: status, availabilityStatusSummary: status, isInstantBooking: true },
       ]),
     );
     render(<PropertiesPage />);
 
-    expect(await screen.findByText("فعلاً همه موجود فرض شده‌اند")).toBeTruthy();
+    expect(await screen.findByText("برای بررسی موجودی، تاریخ را انتخاب کنید")).toBeTruthy();
+    expect(screen.queryByText(status)).toBeNull();
+    expect(screen.getByText("متناسب با تعداد مهمانان")).toBeTruthy();
+  });
+
+  it.each([
+    "bookingMode=instant&availability=Available",
+    "bookingMode=request&availability=OnRequest",
+    "checkIn=2026-10-14&availability=Available",
+    "checkIn=2026-10-14&checkOut=2026-10-14&bookingMode=request",
+    "checkIn=2026-10-16&checkOut=2026-10-14&availability=OnRequest",
+  ])("disables and ignores stale availability filters without valid dates: %s", async (query) => {
+    searchParams = new URLSearchParams(query);
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, availabilityStatusSummary: "Unknown" },
+      ]),
+    );
+    render(<PropertiesPage />);
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    for (const label of ["نوع رزرو", "موجودی"]) {
+      const control = screen.getByRole("combobox", { name: label }) as HTMLSelectElement;
+      expect(control.disabled).toBe(true);
+      expect(control.getAttribute("aria-describedby")).toBe("undated-availability-help");
+    }
+  });
+
+  it.each([
+    ["availability", "Available"],
+    ["availability", "OnRequest"],
+    ["bookingMode", "instant"],
+    ["bookingMode", "request"],
+  ])("keeps dated %s=%s filtering and card status unchanged", async (key, value) => {
+    searchParams = new URLSearchParams({ checkIn: "2026-10-14", checkOut: "2026-10-16", [key]: value });
+    const status = value === "Available" || value === "instant" ? "Available" : "OnRequest";
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, availabilityStatusSummary: status, availabilitySummary: "وضعیت تاریخ انتخابی" },
+        { ...resultProperty, id: 2, name: "نامتناسب با فیلتر", availabilityStatusSummary: "Unknown" },
+      ]),
+    );
+    render(<PropertiesPage />);
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    expect(screen.queryByText("نامتناسب با فیلتر")).toBeNull();
+    expect(screen.getByText("وضعیت تاریخ انتخابی")).toBeTruthy();
+    expect(screen.getByText("Fits")).toBeTruthy();
+    expect((screen.getByRole("combobox", { name: "موجودی" }) as HTMLSelectElement).disabled).toBe(false);
+    expect((screen.getByRole("combobox", { name: "نوع رزرو" }) as HTMLSelectElement).disabled).toBe(false);
+  });
+
+  it.each([0, 1, 2])("uses actual matching count %s without falling back to all RoomTypes", async (count) => {
+    mocks.fetchPublicApi.mockImplementation((path: string) =>
+      Promise.resolve(path === "/property-settings" ? settings : [
+        { ...resultProperty, matchingRoomTypesCount: count, roomTypes: [{ id: 1 }, { id: 2 }, { id: 3 }] },
+      ]),
+    );
+    render(<PropertiesPage />);
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    expect(screen.queryByText("3 نوع اتاق مناسب جست‌وجوی شما")).toBeNull();
+    if (count > 0) {
+      expect(screen.getByText(`${count} نوع اتاق مناسب جست‌وجوی شما`)).toBeTruthy();
+      expect(screen.getByText("متناسب با تعداد مهمانان")).toBeTruthy();
+    } else {
+      expect(screen.queryByText(/نوع اتاق مناسب جست‌وجوی شما/)).toBeNull();
+      expect(screen.queryByText("متناسب با تعداد مهمانان")).toBeNull();
+      expect(screen.queryByText("Fits")).toBeNull();
+    }
   });
 
   it("loads options from the catalog and omits an empty filter", async () => {

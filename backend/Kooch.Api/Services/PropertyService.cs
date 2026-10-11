@@ -778,6 +778,7 @@ public class PropertyService(
         var requestedChildren = Math.Max(0, children ?? 0);
         var parsedChildAges = ParseChildAges(childAges, requestedChildren);
         var hasGuestFilter = minAdults > 0 || requestedChildren > 0 || rooms.HasValue;
+        var requestedRooms = Math.Max(1, rooms ?? 1);
         var requestedSettingSlugs = (settingSlugs ?? string.Empty)
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(EnglishSlugGenerator.NormalizeLookup)
@@ -818,8 +819,9 @@ public class PropertyService(
         {
             query = query.Where(property => property.RoomTypes.Any(roomType =>
                 roomType.IsActive &&
-                roomType.TotalInventory > 0 &&
-                roomType.MaxAdults >= minAdults &&
+                roomType.TotalInventory >= requestedRooms &&
+                roomType.MaxAdults >= 1 &&
+                (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * requestedRooms >= minAdults &&
                 roomType.MaxChildren >= 0));
         }
 
@@ -873,9 +875,10 @@ public class PropertyService(
             var effectiveChildren = occupancy.ChargeableChildren;
             var matchingRoomTypes = property.RoomTypes
                 .Where(roomType =>
-                    roomType.TotalInventory > 0 &&
-                    (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) >= effectiveAdults &&
-                    roomType.MaxChildren >= effectiveChildren)
+                    roomType.TotalInventory >= requestedRooms &&
+                    roomType.MaxAdults >= 1 &&
+                    (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * requestedRooms >= effectiveAdults &&
+                    roomType.MaxChildren * requestedRooms >= effectiveChildren)
                 .Select(roomType => new PublicRoomTypeSummaryResponse
                 {
                     Id = roomType.Id,
@@ -892,9 +895,12 @@ public class PropertyService(
 
             property.MatchingRoomTypes = matchingRoomTypes;
             property.MatchingRoomTypesCount = matchingRoomTypes.Count;
-            property.GuestFitStatus = matchingRoomTypes.Count > 0 ? "مناسب ظرفیت" : property.RoomTypes.Count == 0 ? "ظرفیت نامشخص" : "نامناسب";
-            property.AvailabilitySummary = "فعلاً همه موجود فرض شده‌اند";
-            property.AvailabilityStatusSummary = matchingRoomTypes.Count > 0 ? "Available" : "Unknown";
+            property.GuestFitStatus = hasGuestFilter && matchingRoomTypes.Count > 0
+                ? "متناسب با تعداد مهمانان"
+                : "ظرفیت نامشخص";
+            property.AvailabilitySummary = "برای بررسی موجودی، تاریخ را انتخاب کنید";
+            property.AvailabilityStatusSummary = "Unknown";
+            property.IsInstantBooking = false;
         }
 
         return hasGuestFilter

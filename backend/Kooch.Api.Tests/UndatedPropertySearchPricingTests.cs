@@ -204,7 +204,7 @@ public sealed class UndatedPropertySearchPricingTests
         await fixture.Db.SaveChangesAsync();
 
         var result = Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
-            rooms: 2, adults: 3, children: 1, childAges: "7"));
+            rooms: 2, adults: 5, children: 1, childAges: "7"));
 
         Assert.DoesNotContain(result.MatchingRoomTypes, room => room.Id == 10);
         Assert.Equal(1_000_000m, result.StartingPrice);

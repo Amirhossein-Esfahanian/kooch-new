@@ -260,14 +260,15 @@ function PropertiesContent() {
         !propertyTypes.includes(property.propertyType)
       )
         return false;
-      if (bookingMode === "instant" && !isInstantAvailable(property))
+      if (hasDatedSearch && bookingMode === "instant" && !isInstantAvailable(property))
         return false;
-      if (bookingMode === "request" && !isOnRequest(property)) return false;
-      if (availability && property.availabilityStatusSummary !== availability)
+      if (hasDatedSearch && bookingMode === "request" && !isOnRequest(property)) return false;
+      if (hasDatedSearch && availability && property.availabilityStatusSummary !== availability)
         return false;
       return true;
     });
   }, [
+    hasDatedSearch,
     availability,
     bookingMode,
     maxPrice,
@@ -409,7 +410,9 @@ function PropertiesContent() {
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               نوع رزرو
               <select
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                disabled={!hasDatedSearch}
+                aria-describedby={!hasDatedSearch ? "undated-availability-help" : undefined}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 onChange={(event) =>
                   updateUrlParam("bookingMode", event.target.value)
                 }
@@ -423,7 +426,9 @@ function PropertiesContent() {
             <label className="grid gap-2 text-sm font-bold text-slate-700">
               موجودی
               <select
-                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                disabled={!hasDatedSearch}
+                aria-describedby={!hasDatedSearch ? "undated-availability-help" : undefined}
+                className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50"
                 onChange={(event) =>
                   updateUrlParam("availability", event.target.value)
                 }
@@ -436,6 +441,11 @@ function PropertiesContent() {
               </select>
             </label>
           </div>
+          {!hasDatedSearch && (
+            <p id="undated-availability-help" className="mt-2 text-xs text-muted-foreground">
+              برای بررسی موجودی و نوع رزرو، تاریخ را انتخاب کنید.
+            </p>
+          )}
           <div className="mt-4 flex flex-wrap gap-2">
             {Object.entries(typeLabels).map(([value, label]) => (
               <label
@@ -536,9 +546,7 @@ function PropertiesContent() {
             ) : (
               <div className="grid gap-5">
                 {visibleProperties.map((property) => {
-                  const roomCount =
-                    property.matchingRoomTypesCount ||
-                    property.roomTypes.length;
+                  const roomCount = property.matchingRoomTypesCount;
                   const detailHref = `/properties/${property.slug}${detailQueryText ? `?${detailQueryText}` : ""}`;
 
                   return (
@@ -568,15 +576,19 @@ function PropertiesContent() {
                             {propertyBadge(property.propertyType)}
                           </span>
                           <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-600">
-                            {property.availabilitySummary ||
+                            {!hasDatedSearch
+                              ? "برای بررسی موجودی، تاریخ را انتخاب کنید"
+                              : property.availabilitySummary ||
                               availabilityLabels[
                                 property.availabilityStatusSummary
                               ] ||
                               availabilityLabels.Unknown}
                           </span>
-                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
-                            {property.guestFitStatus}
-                          </span>
+                          {(hasDatedSearch || roomCount > 0) && (
+                            <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-bold text-emerald-700">
+                              {hasDatedSearch ? property.guestFitStatus : "متناسب با تعداد مهمانان"}
+                            </span>
+                          )}
                         </div>
                         <h2 className="mt-3 text-2xl font-bold">
                           {property.name}
