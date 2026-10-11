@@ -147,6 +147,14 @@ export function PublicRoomTypeCard({
       </div>
       {ratePlanOption && booking.ratePlans.length > 0 && (
         <div className="border-t border-border px-5 py-2">
+          <p className="pb-2 text-xs text-muted-foreground">
+            ظرفیت این نوع اتاق بین همه نرخ‌ها مشترک است.
+          </p>
+          {ratePlanOption.availableCount > 1 && (
+            <p className="pb-1 text-xs text-muted-foreground" role="status">
+              ظرفیت باقی‌مانده: {booking.availableToAdd.toLocaleString("fa-IR")} واحد
+            </p>
+          )}
           <RateOfferRow
             availableToAdd={booking.availableToAdd}
             currencyLabel={currencyLabel}

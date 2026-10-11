@@ -964,6 +964,8 @@ describe("public property booking integration", () => {
     expect(
       within(card).getAllByText("مبلغ کل اقامت برای یک واحد · ۲ شب"),
     ).toHaveLength(3);
+    expect(within(card).getByText("ظرفیت این نوع اتاق بین همه نرخ‌ها مشترک است.")).toBeTruthy();
+    expect(within(card).getByText("ظرفیت باقی‌مانده: ۳ واحد")).toBeTruthy();
     expect(within(card).queryByText("۱٬۳۵۰٬۰۰۰ تومان")).toBeNull();
     expect(within(card).queryByText("۲٬۳۰۰٬۰۰۰ تومان")).toBeNull();
     expect(
@@ -1061,6 +1063,19 @@ describe("public property booking integration", () => {
     expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
     expect(within(card).getByText("صبحانه شامل قیمت")).toBeTruthy();
     expect(within(card).queryByText("نرخ‌های جایگزین")).toBeNull();
+    expect(within(card).queryByText("ظرفیت این نوع اتاق بین همه نرخ‌ها مشترک است.")).toBeNull();
+  });
+
+  it("shows current RoomType capacity before any offer is selected", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{ ...availableWithRatePlans.roomTypes[0], availableCount: 5 }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /بررسی موجودی/ }));
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(within(card).getByText("ظرفیت باقی‌مانده: ۵ واحد")).toBeTruthy();
   });
 
   it("labels standard-only dated quotes as the unchanged total stay price for one unit", async () => {
@@ -1246,6 +1261,7 @@ describe("public property booking integration", () => {
       expect(saved.items).toHaveLength(5);
       expect(saved.items.filter((item: { ratePlanId: number | null }) => item.ratePlanId === firstRatePlanId)).toHaveLength(4);
       expect(saved.items.filter((item: { ratePlanId: number | null }) => item.ratePlanId === secondRatePlanId)).toHaveLength(1);
+      expect(within(card).getByText("ظرفیت باقی‌مانده: ۰ واحد")).toBeTruthy();
     });
     fireEvent.click(within(card).getByRole("button", { name: `کاهش تعداد ${firstName}` }));
     expect(quantity(firstName)).toBe("۳");
@@ -1254,6 +1270,39 @@ describe("public property booking integration", () => {
     expect(quantity(firstName)).toBe("۴");
     expect(quantity(secondName)).toBe("۱");
     expect(within(card).queryByRole("button", { name: `حذف انتخاب ${secondName}` })).toBeNull();
+  });
+
+  it("shows one unit remaining for a 3 + 1 sibling-offer selection", async () => {
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableWithRatePlans,
+      roomTypes: [{ ...availableWithRatePlans.roomTypes[0], availableCount: 5 }],
+    });
+    render(<PublicPropertyPage />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /بررسی موجودی/ }));
+    const card = await screen.findByTestId("room-type-card-10");
+    const chooseButtons = () => within(card).getAllByRole("button").filter(
+      (button) => button.textContent?.trim() === "انتخاب",
+    );
+    fireEvent.click(chooseButtons()[0]);
+
+    const offerGroups = () => card.querySelectorAll('[role="group"]');
+    const increase = (groupIndex: number) => {
+      const groupButtons = offerGroups()[groupIndex]?.querySelectorAll("button");
+      if (!groupButtons || groupButtons.length < 2) throw new Error("Offer stepper was not rendered");
+      fireEvent.click(groupButtons[1]);
+    };
+    fireEvent.click(chooseButtons()[0]);
+    increase(0);
+    increase(0);
+    expect(Array.from(offerGroups()).map((group) => group.querySelector("output")?.textContent)).toEqual(["۳", "۱"]);
+    expect(within(card).getByText("ظرفیت باقی‌مانده: ۱ واحد")).toBeTruthy();
+
+    increase(1);
+    expect(within(card).getByText("ظرفیت باقی‌مانده: ۰ واحد")).toBeTruthy();
+    const steppers = offerGroups();
+    expect((steppers[0].querySelectorAll("button")[1] as HTMLButtonElement).disabled).toBe(true);
+    expect((steppers[1].querySelectorAll("button")[0] as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("increments and decrements a multi-unit selection through zero", async () => {
