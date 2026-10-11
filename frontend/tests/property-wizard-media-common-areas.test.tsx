@@ -66,6 +66,7 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 
 import { PropertyWizard } from "@/components/owner/PropertyWizard";
 import { PropertyCashbackSettings } from "@/components/admin/PropertyCashbackSettings";
+import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
 
 const property: PropertyResponse = {
   id: 17,
@@ -548,6 +549,48 @@ describe("PropertyWizard media and common areas", () => {
     });
   });
 
+  it("keeps English name optional in the basic step and permits create without it", async () => {
+    window.history.replaceState({}, "", "?step=0");
+    render(<PropertyWizard mode="create" />);
+    const englishName = await screen.findByLabelText("نام انگلیسی") as HTMLInputElement;
+    expect(englishName.required).toBe(false);
+    expect(englishName.value).toBe("");
+    fireEvent.change(screen.getByLabelText("نام فارسی"), { target: { value: "اقامتگاه آزمایشی" } });
+    expect(screen.getByRole("button", { name: /اطلاعات پایه/ }).textContent).toContain("پیشنهاد");
+    expect(screen.getByRole("button", { name: /اطلاعات پایه/ }).textContent).not.toContain("ناقص");
+
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره و ادامه" }));
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(([path, init]) => path === "/owner/properties" && init?.method === "POST");
+      expect(JSON.parse(String(call?.[1]?.body)).englishName).toBeNull();
+    });
+    expect(screen.queryByText("نام فارسی و انگلیسی را وارد کنید.")).toBeNull();
+  });
+
+  it("treats empty amenities as a recommendation, not an incomplete wizard step", async () => {
+    window.history.replaceState({}, "", "?step=3");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+    await screen.findByRole("heading", { name: "امکانات" });
+    const section = screen.getByRole("button", { name: /امکانات/ });
+    expect(section.textContent).toContain("پیشنهاد");
+    expect(section.textContent).not.toContain("ناقص");
+    expect(section.getAttribute("title")).toContain("حداقل یک امکان");
+  });
+
+  it("shows optional-content warnings in the existing completion card", () => {
+    render(<PropertyCompletionCard completion={{
+      ...completion,
+      completionPercentage: 100,
+      healthStatus: "Ready",
+      canActivate: true,
+      sections: [],
+      missingSections: [],
+      warnings: ["نام انگلیسی اقامتگاه ثبت نشده است.", "امکانات اقامتگاه ثبت نشده است."],
+    }} />);
+    expect(screen.getByText("نام انگلیسی اقامتگاه ثبت نشده است.")).toBeTruthy();
+    expect(screen.getByText("امکانات اقامتگاه ثبت نشده است.")).toBeTruthy();
+  });
+
   it.each([false, true])("round-trips the selected MealPlan through %s full update and permits clearing", async (isAdmin) => {
     window.history.replaceState({}, "", "?step=7");
     loadedProperty = { ...property, defaultMealPlanId: 7, defaultMealPlanName: "صبحانه شامل قیمت" };
@@ -809,7 +852,7 @@ describe("PropertyWizard media and common areas", () => {
     expect(card.getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("keeps PropertySetting out of completion while Amenities alone complete their sidebar step", async () => {
+  it("keeps PropertySetting out of amenities while selection clears its recommendation", async () => {
     loadedAmenityCategories = [amenityCategory];
     loadedAmenities = [wifiAmenity];
     window.history.replaceState({}, "", "?step=1");
@@ -823,7 +866,7 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
     expect(
       screen.getByRole("button", { name: /^امکانات/ }).textContent,
-    ).toContain("ناقص");
+    ).toContain("پیشنهاد");
 
     fireEvent.click(screen.getByRole("button", { name: /^امکانات/ }));
     fireEvent.click(
@@ -1230,13 +1273,29 @@ describe("PropertyWizard media and common areas", () => {
     await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
   });
 
+  it("submits approval with empty English name and amenities when backend permits it", async () => {
+    loadedProperty = { ...property, englishName: null };
+    window.history.replaceState({}, "", "?step=10");
+    render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
+    fireEvent.click(await screen.findByRole("button", { name: "تایید شده" }));
+    fireEvent.click(await screen.findByRole("button", { name: "تأیید و تغییر وضعیت" }));
+
+    await waitFor(() => {
+      expect(api.request.mock.calls.some(([path, init]) =>
+        path === "/admin/properties/17/status" && init?.method === "PUT" &&
+        JSON.parse(String(init.body)).status === "Approved")).toBe(true);
+      expect(screen.getByRole("button", { name: "تایید شده" }).getAttribute("aria-pressed")).toBe("true");
+    });
+    expect(screen.queryByRole("dialog", { name: "فعال‌سازی انجام نشد" })).toBeNull();
+  });
+
   it("shows every incomplete backend section after rejected approval without changing status", async () => {
     const rejectedCompletion: PropertyCompletionResponse = {
       ...completion,
-      completionPercentage: 56,
+      completionPercentage: 50,
       sections: [
-        { key: "basic", label: "اطلاعات پایه", status: "Incomplete", missingItems: ["نام انگلیسی"], actionTarget: "basic" },
-        { key: "amenities", label: "امکانات", status: "NotStarted", missingItems: ["حداقل یک امکان"], actionTarget: "amenities" },
+        { key: "basic", label: "اطلاعات پایه", status: "Incomplete", missingItems: ["نام فارسی"], actionTarget: "basic" },
+        { key: "amenities", label: "امکانات", status: "Complete", missingItems: [], actionTarget: "amenities" },
         { key: "financial", label: "تنظیمات مالی", status: "Incomplete", missingItems: ["قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه"], actionTarget: "financial" },
         { key: "availability", label: "موجودی", status: "Incomplete", missingItems: ["حداقل یک روز موجود"], actionTarget: "availability" },
         { key: "complete", label: "بخش کامل", status: "Complete", missingItems: [], actionTarget: "complete" },
@@ -1252,13 +1311,14 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(await screen.findByRole("button", { name: "تأیید و تغییر وضعیت" }));
     const dialog = await screen.findByRole("dialog", { name: "فعال‌سازی انجام نشد" });
     expect(within(dialog).getByText("اطلاعات اقامتگاه برای فعال‌سازی کامل نیست.")).toBeTruthy();
-    expect(within(dialog).getByText("56% تکمیل شده")).toBeTruthy();
-    for (const label of ["اطلاعات پایه", "امکانات", "تنظیمات مالی", "موجودی"]) {
+    expect(within(dialog).getByText("50% تکمیل شده")).toBeTruthy();
+    for (const label of ["اطلاعات پایه", "تنظیمات مالی", "موجودی"]) {
       expect(within(dialog).getByText(label)).toBeTruthy();
     }
-    for (const missing of ["نام انگلیسی", "حداقل یک امکان", "قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه", "حداقل یک روز موجود"]) {
+    for (const missing of ["نام فارسی", "قانون قیمت کودک", "قیمت کودک", "قیمت نفر اضافه", "حداقل یک روز موجود"]) {
       expect(within(dialog).getByText(new RegExp(missing))).toBeTruthy();
     }
+    expect(within(dialog).queryByText("امکانات")).toBeNull();
     expect(within(dialog).queryByText("بخش کامل")).toBeNull();
     expect(dialog.textContent).not.toContain('"completionPercentage"');
     expect(within(dialog).getByRole("link", { name: "تکمیل" }).getAttribute("href")).toBe("/admin/properties/17/inventory");

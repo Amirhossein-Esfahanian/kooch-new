@@ -545,12 +545,12 @@ export function PropertyWizard({
         key: "basic",
         label: "اطلاعات پایه",
         targetStepIndex: 0,
-        isComplete: Boolean(data.name.trim() && data.englishName.trim()),
+        isComplete: Boolean(data.name.trim()),
         missingItems: required([
           [Boolean(data.name.trim()), "نام فارسی"],
-          [Boolean(data.englishName.trim()), "نام انگلیسی"],
         ]),
         recommendedMissingItems: recommended([
+          [Boolean(data.englishName.trim()), "نام انگلیسی"],
           [Boolean(data.seoTitle.trim()), "عنوان سئو"],
           [Boolean(data.seoDescription.trim()), "توضیحات سئو"],
         ]),
@@ -580,11 +580,11 @@ export function PropertyWizard({
         key: "amenities",
         label: "امکانات",
         targetStepIndex: 3,
-        isComplete: data.selectedAmenityIds.length > 0,
-        missingItems: required([
+        isComplete: true,
+        missingItems: [],
+        recommendedMissingItems: recommended([
           [data.selectedAmenityIds.length > 0, "حداقل یک امکان"],
         ]),
-        recommendedMissingItems: [],
       },
       {
         key: "images",
@@ -914,9 +914,9 @@ export function PropertyWizard({
     if (
       mode === "create" &&
       index === 0 &&
-      (!data.name.trim() || !data.englishName.trim())
+      !data.name.trim()
     )
-      return "نام فارسی و انگلیسی را وارد کنید.";
+      return "نام فارسی را وارد کنید.";
     if (index === 2 && data.floors !== "" && Number(data.floors) < 1)
       return "تعداد طبقات باید حداقل ۱ باشد.";
     return "";

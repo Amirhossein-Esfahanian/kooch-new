@@ -72,10 +72,9 @@ public class PropertyCompletionService(
                 "basic",
                 [
                     (state.BasicName, "نام فارسی"),
-                    (state.BasicEnglishName, "نام انگلیسی"),
                     (state.BasicDescription, "توضیحات اقامتگاه")
                 ],
-                started: state.BasicName || state.BasicEnglishName || state.BasicDescription),
+                started: state.BasicName || state.BasicDescription),
             Section(
                 "location",
                 "نشانی و موقعیت",
@@ -95,8 +94,8 @@ public class PropertyCompletionService(
                 "amenities",
                 "امکانات",
                 "amenities",
-                [(state.Amenities, "حداقل یک امکان")],
-                started: state.Amenities),
+                [],
+                started: true),
             Section(
                 "policies",
                 "قوانین و زمان‌ها",
@@ -158,7 +157,7 @@ public class PropertyCompletionService(
                     ? PropertyHealthStatus.NeedsAttention
                     : PropertyHealthStatus.Incomplete,
             Sections = sections,
-            Warnings = BuildWarnings(state.Images, state.Rooms, state.Pricing, state.Availability, state.ChildPriceSettings, state.ChildPrice, state.ExtraGuestPrice),
+            Warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images, state.Rooms, state.Pricing, state.Availability, state.ChildPriceSettings, state.ChildPrice, state.ExtraGuestPrice),
             CompletedSections = completedSections,
             MissingSections = missingSections,
             CanActivate = missingSections.Length == 0
@@ -192,6 +191,8 @@ public class PropertyCompletionService(
     }
 
     private static IReadOnlyList<string> BuildWarnings(
+        bool hasEnglishName,
+        bool hasAmenities,
         bool hasImages,
         bool hasRooms,
         bool hasPricing,
@@ -201,6 +202,8 @@ public class PropertyCompletionService(
         bool hasExtraGuestPrice)
     {
         var warnings = new List<string>();
+        if (!hasEnglishName) warnings.Add("نام انگلیسی اقامتگاه ثبت نشده است.");
+        if (!hasAmenities) warnings.Add("امکانات اقامتگاه ثبت نشده است.");
         if (!hasImages) warnings.Add("تصویری برای اقامتگاه ثبت نشده است.");
         if (!hasRooms) warnings.Add("هیچ اتاق فعالی ثبت نشده است.");
         if (!hasPricing) warnings.Add("قیمت‌گذاری اقامتگاه کامل نیست.");
