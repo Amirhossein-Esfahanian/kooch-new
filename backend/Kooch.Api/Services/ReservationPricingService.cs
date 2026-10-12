@@ -96,12 +96,13 @@ public class ReservationPricingService(
             EnsureCompleteDailyPricing(request, prices);
 
         var childRules = effectiveRules.ChildPricingRules;
+        ValidateOccupancy(roomType, childRules, request);
+        // Phase A aligns eligibility only; retain the existing monetary classification until Phase B.
         var occupancy = childPricingRuleResolver.ResolveOccupancy(
             request.ChildAges,
             request.Children,
             childRules);
         var pricedAdults = request.Adults + occupancy.AdultEquivalentGuests;
-        ValidateOccupancy(effectiveRules, request, pricedAdults);
         var nightSnapshots = new List<ReservationNightPriceSnapshot>();
 
         foreach (var night in nights)
@@ -198,44 +199,44 @@ public class ReservationPricingService(
             throw new ArgumentException("بازه تاریخ نامعتبر است");
         }
 
-        if (request.RoomCount <= 0 || request.Adults <= 0 || request.Children < 0)
+        if (request.RoomCount <= 0 || request.Adults < 0 || request.Children < 0)
         {
             throw new ArgumentException("اطلاعات مهمان یا تعداد اتاق معتبر نیست.");
         }
-        if (request.ChildAges.Count != request.Children)
+        if (request.ChildAges is null || request.ChildAges.Count != request.Children)
         {
             throw new ArgumentException("سن همه کودکان باید مشخص شود.");
         }
-        if (request.ChildAges.Any(age => age < 1 || age > 120))
+        if (request.ChildAges.Any(age => age is < 0 or > 17))
         {
-            throw new ArgumentException("سن کودک باید حداقل یک سال باشد.");
+            throw new ArgumentException("سن کودک باید بین صفر و ۱۷ سال باشد.");
         }
     }
 
     private static void ValidateOccupancy(
-        EffectiveReservationRules rules,
-        ReservationPricePreviewRequest request,
-        int adultEquivalentGuests)
+        RoomType roomType,
+        ChildPricingRules childRules,
+        ReservationPricePreviewRequest request)
     {
-        var baseAdultCapacity = rules.BaseAdultCapacity * request.RoomCount;
-        var extraAdultCapacity = rules.ExtraGuestAllowed
-            ? rules.MaxExtraGuests * request.RoomCount
-            : 0;
-        var maxAdultCapacity = baseAdultCapacity + extraAdultCapacity;
-        var maxDeclaredChildren = rules.MaxDeclaredChildren * request.RoomCount;
+        var occupancy = ChildOccupancyEvaluator.Evaluate(ChildOccupancyRules.FromResolved(childRules),
+            new RoomTypeOccupancyCapacity(roomType.MaxAdults, roomType.MaxChildren,
+                roomType.AllowExtraGuest, roomType.MaxExtraGuests),
+            request.Adults, request.ChildAges, request.RoomCount);
 
-        if (request.Children > maxDeclaredChildren)
+        if (occupancy.FailureReasons.Contains(ChildOccupancyFailureReason.ChildCapacityExceeded))
         {
             throw new InvalidOperationException("تعداد کودکان از حد مجاز این اتاق بیشتر است.");
         }
 
-        if (adultEquivalentGuests > maxAdultCapacity)
+        if (occupancy.FailureReasons.Contains(ChildOccupancyFailureReason.AdultCapacityExceeded))
         {
             throw new InvalidOperationException(
-                rules.ExtraGuestAllowed
+                roomType.AllowExtraGuest
                     ? "تعداد مهمانان معادل بزرگسال از ظرفیت اتاق و نفرات اضافه بیشتر است."
                     : "تعداد مهمانان معادل بزرگسال از ظرفیت پایه اتاق بیشتر است.");
         }
+        if (!occupancy.IsEligible)
+            throw new ArgumentException("قوانین ظرفیت اتاق معتبر نیست.");
     }
 
     private static IEnumerable<DateOnly> GetReservationNights(DateOnly checkInDate, DateOnly checkOutDate)

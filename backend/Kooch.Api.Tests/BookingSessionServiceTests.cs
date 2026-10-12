@@ -1595,6 +1595,38 @@ public sealed class BookingSessionServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    public async Task RealPricing_EnforcesV2ChildCapacityDuringReservationCreation(int maxChildren, bool accepted)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            (await setup.Properties.SingleAsync(item => item.Id == 1)).FreeChildAgeLimit = 5;
+            (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).MaxChildren = maxChildren;
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService(useAuthoritativePricing: true);
+        var item = CreateItem(10, 100);
+        item.Adults = 2;
+        item.Children = 2;
+        item.ChildAges = [0, 5];
+        if (accepted)
+        {
+            var result = await scope.Service.CreateAsync(CreateRequest(item));
+            Assert.Equal(200m, Assert.Single(result.Reservations).FinalAmount);
+            await using var verification = harness.CreateContext();
+            Assert.Equal(2, (await verification.Reservations.SingleAsync()).ChildCount);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => scope.Service.CreateAsync(CreateRequest(item)));
+            await using var verification = harness.CreateContext();
+            Assert.Empty(await verification.Reservations.ToListAsync());
+        }
+    }
+
     private static BookingSessionCreateRequest CreateRequest(
         params BookingSessionReservationCreateItem[] items) =>
         new()

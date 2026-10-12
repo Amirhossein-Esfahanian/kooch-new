@@ -565,6 +565,37 @@ public sealed class ReservationServiceHardeningTests
                 harness.SuperAdmin));
     }
 
+    [Theory]
+    [InlineData(1, false)]
+    [InlineData(2, true)]
+    public async Task CreationWithRealPricing_UsesV2ChildCapacity(int maxChildren, bool accepted)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync(useAuthoritativePricing: true);
+        (await harness.DbContext.Properties.SingleAsync()).FreeChildAgeLimit = 5;
+        var room = await harness.DbContext.RoomTypes.SingleAsync(item => item.Id == 20);
+        room.MaxChildren = maxChildren;
+        room.BasePrice = 100;
+        await harness.DbContext.SaveChangesAsync();
+        var request = new ReservationCreateRequest
+        {
+            PropertyId = 10, RoomTypeId = 20, RoomId = 30, GuestId = 40,
+            CheckInDate = harness.CheckIn, CheckOutDate = harness.CheckOut,
+            Adults = 2, Children = 2, ChildAges = [0, 5]
+        };
+        if (accepted)
+        {
+            var result = await harness.Service.CreateAsync(request, harness.SuperAdmin);
+            Assert.Equal(200m, result.FinalAmount);
+            Assert.Equal(2, (await harness.DbContext.Reservations.SingleAsync()).ChildCount);
+        }
+        else
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                harness.Service.CreateAsync(request, harness.SuperAdmin));
+            Assert.Empty(await harness.DbContext.Reservations.ToListAsync());
+        }
+    }
+
     private static async Task<IReadOnlyList<BookingSessionReservationDetailsResponse>>
         LoadSummaryReservationsAsync(
             ReservationTestHarness harness,
@@ -595,16 +626,23 @@ public sealed class ReservationServiceHardeningTests
 
 internal sealed class ReservationTestHarness : IAsyncDisposable
 {
-    private ReservationTestHarness(KoochDbContext dbContext, bool permissionGranted)
+    private ReservationTestHarness(KoochDbContext dbContext, bool permissionGranted, bool useAuthoritativePricing)
     {
         DbContext = dbContext;
         var permissions = new StubPermissionService(permissionGranted);
         EffectiveAvailability = new EffectiveAvailabilityService(dbContext);
         AuditLogService = new RecordingAuditLogService();
+        var childRules = new ChildPricingRuleResolver(dbContext);
+        IReservationPricingService pricing = useAuthoritativePricing
+            ? new ReservationPricingService(dbContext, new PricingService(), childRules,
+                new ReservationRulesResolver(dbContext, childRules))
+            : new StubReservationPricingService();
         Service = new ReservationService(
             dbContext,
-            new StubReservationAvailabilityService(),
-            new StubReservationPricingService(),
+            useAuthoritativePricing
+                ? new ReservationAvailabilityService(dbContext, EffectiveAvailability)
+                : new StubReservationAvailabilityService(),
+            pricing,
             new StubReservationNumberGenerator(),
             new RecordingNotificationService(),
             new RecordingReservationNotificationDispatcher(),
@@ -630,7 +668,8 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
         int? paymentWindowMinutes = 10,
         string? paymentWindowValue = null,
         int? ownerApprovalWindowMinutes = 10,
-        string? ownerApprovalWindowValue = null)
+        string? ownerApprovalWindowValue = null,
+        bool useAuthoritativePricing = false)
     {
         var options = new DbContextOptionsBuilder<KoochDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString("N"))
@@ -638,7 +677,7 @@ internal sealed class ReservationTestHarness : IAsyncDisposable
                 warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
         var dbContext = new KoochDbContext(options);
-        var harness = new ReservationTestHarness(dbContext, permissionGranted);
+        var harness = new ReservationTestHarness(dbContext, permissionGranted, useAuthoritativePricing);
 
         dbContext.Users.AddRange(
             CreateUser(1, UserRole.SuperAdmin, "admin"),

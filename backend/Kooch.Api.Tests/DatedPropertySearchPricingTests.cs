@@ -235,6 +235,92 @@ public sealed class DatedPropertySearchPricingTests
         Assert.Equal(2, result.MatchingRoomTypesCount);
     }
 
+    [Theory]
+    [InlineData(2, "4", 2, 0, false, 0, 1, false)]
+    [InlineData(2, "4", 2, 1, false, 0, 1, true)]
+    [InlineData(2, "8", 2, 0, false, 0, 1, false)]
+    [InlineData(2, "8", 2, 1, false, 0, 1, true)]
+    [InlineData(2, "4,5", 3, 1, false, 0, 1, false)]
+    [InlineData(2, "4,8", 3, 1, false, 0, 1, false)]
+    [InlineData(2, "4,8", 3, 2, false, 0, 1, true)]
+    [InlineData(1, "15", 2, 0, false, 0, 1, true)]
+    [InlineData(2, "15", 2, 0, false, 1, 1, false)]
+    [InlineData(2, "15", 2, 0, true, 1, 1, true)]
+    [InlineData(4, "4,8", 2, 1, false, 0, 2, true)]
+    [InlineData(4, "15,17", 2, 0, true, 1, 2, true)]
+    public async Task StructuralPrecheck_UsesV2BeforeAuthoritativePricing(
+        int adults, string agesCsv, int maxAdults, int maxChildren,
+        bool allowExtra, int extra, int rooms, bool included)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture.Db);
+        var room = await fixture.Db.RoomTypes.SingleAsync();
+        room.MaxAdults = maxAdults;
+        room.MaxChildren = maxChildren;
+        room.AllowExtraGuest = allowExtra;
+        room.MaxExtraGuests = extra;
+        await fixture.Db.SaveChangesAsync();
+        var ages = agesCsv.Split(',').Select(int.Parse).ToArray();
+        var results = await fixture.FindAsync(rooms: rooms, adults: adults,
+            children: ages.Length, childAges: agesCsv);
+        Assert.Equal(included ? 1 : 0, results.Count);
+        if (included)
+        {
+            var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(new()
+            {
+                PropertyId = 1, RoomTypeId = 10, CheckInDate = CheckIn, CheckOutDate = CheckOut,
+                Adults = adults, Children = ages.Length, ChildAges = ages, RoomCount = rooms
+            });
+            Assert.Equal(quote.FinalAmount / 2, Assert.Single(results).StartingPrice);
+        }
+    }
+
+    [Theory]
+    [InlineData(null, 1)]
+    [InlineData(0, 1)]
+    [InlineData(1, 1)]
+    [InlineData(1, 2)]
+    public async Task FreeQuota_DoesNotExemptChildrenFromStructuralCapacity(int? quota, int rooms)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture.Db);
+        (await fixture.Db.Properties.SingleAsync()).MaxFreeChildren = quota;
+        (await fixture.Db.RoomTypes.SingleAsync()).MaxChildren = 0;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Empty(await fixture.FindAsync(rooms: rooms, children: 1, childAges: "4"));
+        (await fixture.Db.RoomTypes.SingleAsync()).MaxChildren = 1;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Single(await fixture.FindAsync(rooms: rooms, children: 1, childAges: "4"));
+    }
+
+    [Fact]
+    public async Task V2AcceptedParty_NoLongerDisappearsDueToLegacyDeclaredChildLimit()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture.Db);
+        (await fixture.Db.RoomTypes.SingleAsync()).MaxChildren = 2;
+        await fixture.Db.SaveChangesAsync();
+        Assert.True(ChildOccupancyEvaluator.Evaluate(new(5, 6, 12, null),
+            new(2, 2, false, 0), 2, [4, 5]).IsEligible);
+        var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(new()
+            {
+                PropertyId = 1, RoomTypeId = 10, CheckInDate = CheckIn, CheckOutDate = CheckOut,
+                Adults = 2, Children = 2, ChildAges = [4, 5], RoomCount = 1
+            });
+        Assert.Equal(4_400_000m, quote.FinalAmount);
+        Assert.Equal(quote.FinalAmount / 2,
+            Assert.Single(await fixture.FindAsync(children: 2, childAges: "4,5")).StartingPrice);
+    }
+
+    private static async Task ConfigureChildRulesAsync(KoochDbContext db)
+    {
+        db.SiteSettings.AddRange(
+            new SiteSetting { Key = ChildPricingRuleResolver.FreeChildMaxAgeKey, Value = "5", IsActive = true },
+            new SiteSetting { Key = ChildPricingRuleResolver.HalfPriceChildMinAgeKey, Value = "6", IsActive = true },
+            new SiteSetting { Key = ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, Value = "12", IsActive = true });
+        await db.SaveChangesAsync();
+    }
+
     private static RatePlan Plan(int id, decimal modifier) => new()
     {
         Id = id, RoomTypeId = 10, Name = "Alternative", IsActive = true,
@@ -270,7 +356,7 @@ public sealed class DatedPropertySearchPricingTests
             Pricing = new ReservationPricingService(db, new PricingService(), childRules,
                 new ReservationRulesResolver(db, childRules));
             var availability = new EffectiveAvailabilityService(db);
-            Options = new PublicBookingOptionsService(db, availability, Pricing);
+            Options = new PublicBookingOptionsService(db, availability, Pricing, childRules);
             Search = new PropertyService(db, null!, null!, null!, null!, childRules,
                 new DatedPropertyStartingPriceService(db, availability, childRules, Pricing));
         }

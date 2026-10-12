@@ -23,7 +23,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService());
+            new RangePricingService(), new ChildPricingRuleResolver(context));
 
         var result = await service.GetAsync(
             "public-property",
@@ -179,7 +179,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService());
+            new RangePricingService(), new ChildPricingRuleResolver(context));
 
         var result = await service.GetAsync(
             "public-property",
@@ -217,7 +217,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService());
+            new RangePricingService(), new ChildPricingRuleResolver(context));
 
         var result = await service.GetAsync(
             "public-property",
@@ -254,7 +254,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService());
+            new RangePricingService(), new ChildPricingRuleResolver(context));
 
         var result = await service.GetAsync(
             "public-property",
@@ -281,7 +281,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new IncompleteRangePricingService());
+            new IncompleteRangePricingService(), new ChildPricingRuleResolver(context));
 
         var result = await service.GetAsync(
             "public-property",
@@ -325,6 +325,99 @@ public sealed class PublicBookingOptionsTests
 
         Assert.Equal([5, 8], bookingOptions.ChildAges);
         Assert.Equal(2, bookingOptions.Children);
+    }
+
+    [Theory]
+    [InlineData(2, "4", 0, false, 0, null, false)]
+    [InlineData(2, "4", 1, false, 0, null, true)]
+    [InlineData(2, "8", 0, false, 0, null, false)]
+    [InlineData(2, "8", 1, false, 0, null, true)]
+    [InlineData(2, "4,5", 1, false, 0, 1, false)]
+    [InlineData(2, "4,8", 1, false, 0, 0, false)]
+    [InlineData(2, "4,5", 2, false, 0, null, true)]
+    [InlineData(2, "4,5", 2, false, 0, 0, true)]
+    [InlineData(2, "4,5", 2, false, 0, 1, true)]
+    [InlineData(1, "15", 0, false, 0, null, true)]
+    [InlineData(2, "15", 0, false, 1, null, false)]
+    [InlineData(2, "15", 0, true, 1, null, true)]
+    [InlineData(4, "", 2, false, 0, null, false)]
+    public async Task StructuralPrecheck_UsesV2AndKeepsOneRoomPricingRequest(
+        int adults, string agesCsv, int maxChildren, bool allowExtra, int extra,
+        int? quota, bool included)
+    {
+        await using var context = await CreatePricedContextAsync();
+        await ConfigureChildRulesAsync(context);
+        (await context.RoomTypes.SingleAsync(item => item.Id == 20)).IsActive = false;
+        var room = await context.RoomTypes.SingleAsync(item => item.Id == 10);
+        room.MaxChildren = maxChildren;
+        room.AllowExtraGuest = allowExtra;
+        room.MaxExtraGuests = extra;
+        (await context.Properties.SingleAsync()).MaxFreeChildren = quota;
+        await context.SaveChangesAsync();
+        int[] ages = agesCsv.Length == 0 ? [] : agesCsv.Split(',').Select(int.Parse).ToArray();
+        var pricing = new RecordingPricingService();
+        var service = new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
+            pricing, new ChildPricingRuleResolver(context));
+        var result = await service.GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 3),
+            adults, ages.Length, ages);
+        Assert.Equal(included ? 1 : 0, result.RoomTypes.Count);
+        if (included)
+        {
+            var request = Assert.Single(pricing.Requests);
+            Assert.Equal(1, request.RoomCount);
+            Assert.Equal(adults, request.Adults);
+            Assert.Equal(ages.Length, request.Children);
+            Assert.Equal(ages, request.ChildAges);
+            var option = Assert.Single(result.RoomTypes);
+            Assert.Equal(1234, option.FinalAmount);
+            Assert.Equal(1, option.AvailableCount);
+            Assert.Single(option.Rooms);
+        }
+        else
+        {
+            Assert.Empty(pricing.Requests);
+            Assert.Equal(PublicBookingUnavailableReason.GuestCapacityExceeded,
+                Assert.Single(result.UnavailableRoomTypes).Reason);
+        }
+    }
+
+    [Fact]
+    public async Task V2AcceptedParty_NoLongerFailsLegacyDeclaredChildLimit()
+    {
+        await using var context = await CreatePricedContextAsync();
+        await ConfigureChildRulesAsync(context);
+        Assert.True(ChildOccupancyEvaluator.Evaluate(new(5, 6, 12, null),
+            new(2, 2, false, 0), 2, [4, 5]).IsEligible);
+        var response = await AuthoritativeService(context).GetAsync("public-property",
+            new(2035, 2, 1), new(2035, 2, 3), 2, 2, [4, 5]);
+        var option = Assert.Single(response.RoomTypes);
+        Assert.Equal(10, option.RoomTypeId);
+        Assert.Equal(300m, option.FinalAmount);
+    }
+
+    private static async Task ConfigureChildRulesAsync(KoochDbContext db)
+    {
+        db.SiteSettings.AddRange(
+            new SiteSetting { Key = ChildPricingRuleResolver.FreeChildMaxAgeKey, Value = "5", IsActive = true },
+            new SiteSetting { Key = ChildPricingRuleResolver.HalfPriceChildMinAgeKey, Value = "6", IsActive = true },
+            new SiteSetting { Key = ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, Value = "12", IsActive = true });
+        await db.SaveChangesAsync();
+    }
+
+    private sealed class RecordingPricingService : IReservationPricingService
+    {
+        public List<ReservationPricePreviewRequest> Requests { get; } = [];
+        public Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
+            ReservationPricePreviewRequest request, CancellationToken cancellationToken = default)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new ReservationPricePreviewResponse
+            {
+                PropertyId = request.PropertyId, RoomTypeId = request.RoomTypeId,
+                CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
+                NightsCount = 2, FinalAmount = 1234, Currency = "IRR"
+            });
+        }
     }
 
     private static async Task SeedAsync(KoochDbContext context)
@@ -427,7 +520,7 @@ public sealed class PublicBookingOptionsTests
         var childRules = new ChildPricingRuleResolver(context);
         return new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
             new ReservationPricingService(context, new PricingService(), childRules,
-                new ReservationRulesResolver(context, childRules)));
+                new ReservationRulesResolver(context, childRules)), childRules);
     }
 
     private static RatePlan Plan(int id, string name, decimal modifier, bool isActive = true,

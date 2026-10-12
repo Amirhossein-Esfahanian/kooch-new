@@ -10,7 +10,8 @@ namespace Kooch.Api.Services;
 public sealed class PublicBookingOptionsService(
     KoochDbContext dbContext,
     IEffectiveAvailabilityService effectiveAvailabilityService,
-    IReservationPricingService pricingService) : IPublicBookingOptionsService
+    IReservationPricingService pricingService,
+    IChildPricingRuleResolver childPricingRuleResolver) : IPublicBookingOptionsService
 {
     public async Task<PublicBookingOptionsResponse> GetAsync(
         string slug,
@@ -59,9 +60,15 @@ public sealed class PublicBookingOptionsService(
             cancellationToken: cancellationToken);
         var options = new List<PublicBookingRoomTypeOption>();
         var unavailableRoomTypes = new List<PublicBookingUnavailableRoomType>();
+        var globalChildRules = await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken);
+        var occupancyRules = ChildOccupancyRules.FromResolved(childPricingRuleResolver.Resolve(
+            property.FreeChildAgeLimit, property.MaxFreeChildren, property.ChildPrice, globalChildRules));
         foreach (var roomType in roomTypes)
         {
-            if (!CanAccommodate(roomType, adults, children))
+            if (!ChildOccupancyEvaluator.Evaluate(occupancyRules,
+                new RoomTypeOccupancyCapacity(roomType.MaxAdults, roomType.MaxChildren,
+                    roomType.AllowExtraGuest, roomType.MaxExtraGuests),
+                adults, childAges, roomCount: 1).IsEligible)
             {
                 unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.GuestCapacityExceeded));
                 continue;
@@ -134,13 +141,6 @@ public sealed class PublicBookingOptionsService(
             RoomKind = roomType.RoomKind,
             Reason = reason
         };
-
-    internal static bool CanAccommodate(RoomType roomType, int adults, int children, int roomCount = 1)
-    {
-        var maximumAdults = (roomType.MaxAdults +
-                             (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * roomCount;
-        return adults <= maximumAdults && children <= roomType.MaxChildren * roomCount;
-    }
 
     private static void ValidateRequest(
         DateOnly checkInDate,

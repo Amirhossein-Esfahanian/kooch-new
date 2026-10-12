@@ -65,14 +65,17 @@ public sealed class DatedPropertyStartingPriceService(
 
         foreach (var roomType in roomTypes)
         {
-            if (!PublicBookingOptionsService.CanAccommodate(roomType, adults, children, rooms) ||
+            var rules = ReservationRulesResolver.ResolveFromLoadedRoomType(
+                roomType, globalChildRules, childPricingRuleResolver);
+            if (!ChildOccupancyEvaluator.Evaluate(ChildOccupancyRules.FromResolved(rules.ChildPricingRules),
+                    new RoomTypeOccupancyCapacity(roomType.MaxAdults, roomType.MaxChildren,
+                        roomType.AllowExtraGuest, roomType.MaxExtraGuests),
+                    adults, childAges, rooms).IsEligible ||
                 !availability.TryGetValue(roomType.Id, out var available) ||
                 !available.HasCapacityForFullRange(rooms) ||
                 !pricesByRoomType.TryGetValue(roomType.Id, out var prices))
                 continue;
 
-            var rules = ReservationRulesResolver.ResolveFromLoadedRoomType(
-                roomType, globalChildRules, childPricingRuleResolver);
             var applicablePromotions = promotions.Where(promotion =>
                 (promotion.PropertyId is null || promotion.PropertyId == roomType.PropertyId) &&
                 promotion.PromotionRoomTypes.Any(join => join.RoomTypeId == roomType.Id)).ToArray();
