@@ -1677,29 +1677,6 @@ public class PropertyService(
         return ages;
     }
 
-    private static int CountCapacityChildren(
-        IReadOnlyList<int> childAges,
-        int requestedChildren,
-        int? freeChildAgeLimit,
-        int? maxFreeChildren)
-    {
-        if (requestedChildren <= 0)
-        {
-            return 0;
-        }
-
-        if (!freeChildAgeLimit.HasValue || !maxFreeChildren.HasValue || maxFreeChildren.Value <= 0)
-        {
-            return requestedChildren;
-        }
-
-        var freeChildren = childAges
-            .Take(requestedChildren)
-            .Count(age => age <= freeChildAgeLimit.Value);
-
-        return Math.Max(0, requestedChildren - Math.Min(freeChildren, maxFreeChildren.Value));
-    }
-
     private static UserIdentityInput CreateUserIdentity(
         string firstName,
         string lastName,

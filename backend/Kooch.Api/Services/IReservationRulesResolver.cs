@@ -19,7 +19,6 @@ public sealed class EffectiveReservationRules
     public int PropertyId { get; init; }
     public int RoomTypeId { get; init; }
     public int BaseCapacity { get; init; }
-    public int MaxDeclaredChildren { get; init; }
     public bool ExtraGuestAllowed { get; init; }
     public int MaxExtraGuests { get; init; }
     public decimal ExtraGuestPrice { get; init; }
