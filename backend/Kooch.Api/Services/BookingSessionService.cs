@@ -22,7 +22,8 @@ public sealed class BookingSessionService(
     IReservationStatusWorkflow statusWorkflow,
     IReservationNumberGenerator reservationNumberGenerator,
     IBookingSessionCodeGenerator sessionCodeGenerator,
-    IReservationNotificationDispatcher notificationDispatcher) : IBookingSessionService
+    IReservationNotificationDispatcher notificationDispatcher,
+    IPropertySameNightBookingPolicyService sameNightPolicyService) : IBookingSessionService
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> LocalResourceLocks = new();
 
@@ -150,6 +151,7 @@ public sealed class BookingSessionService(
 
         var preparedItems = await PrepareItemsAsync(
             request,
+            property,
             creationKind,
             cancellationToken);
         ValidateAccountBookingMode(preparedItems, creationKind);
@@ -919,6 +921,7 @@ public sealed class BookingSessionService(
 
     private async Task<IReadOnlyList<PreparedBookingItem>> PrepareItemsAsync(
         BookingSessionCreateRequest request,
+        Property property,
         BookingSessionCreationKind creationKind,
         CancellationToken cancellationToken)
     {
@@ -982,6 +985,34 @@ public sealed class BookingSessionService(
                         throw CapacityChangedException();
                     }
                 }
+            }
+        }
+
+        if (creationKind == BookingSessionCreationKind.Account)
+        {
+            var policies = new Dictionary<DateOnly, SameNightBookingPolicyResult>();
+            foreach (var entry in indexedItems)
+            {
+                var checkIn = entry.Item.CheckInDate;
+                if (!policies.TryGetValue(checkIn, out var policy))
+                {
+                    policy = sameNightPolicyService.Evaluate(property, checkIn);
+                    policies.Add(checkIn, policy);
+                }
+
+                // All stay nights and named-room claims were rechecked above under the creation locks.
+                var availability = new PublicBookingAvailability(
+                    onRequestByIndex[entry.Index] ? AvailabilityStatus.OnRequest : AvailabilityStatus.Available,
+                    IsClosed: false,
+                    HasCapacity: true);
+                var decision = PublicBookingModeComposer.Compose(availability, policy);
+                if (decision.Status == AvailabilityStatus.Unavailable)
+                {
+                    throw new InvalidOperationException(
+                        "The same-night final booking cutoff has been reached for the requested check-in date.");
+                }
+
+                onRequestByIndex[entry.Index] = decision.Status == AvailabilityStatus.OnRequest;
             }
         }
 

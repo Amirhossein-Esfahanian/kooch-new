@@ -14,7 +14,7 @@ using Xunit;
 
 namespace Kooch.Api.Tests;
 
-public sealed class BookingSessionServiceTests
+public sealed partial class BookingSessionServiceTests
 {
     [Fact]
     public async Task OneItem_CreatesOneSessionAndOneIndependentReservation()
@@ -1842,7 +1842,8 @@ public sealed class BookingSessionServiceTests
 
         public KoochDbContext CreateContext() => new(options);
 
-        public ServiceScope CreateService(TestReservationPricingService? pricing = null, bool useAuthoritativePricing = false)
+        public ServiceScope CreateService(TestReservationPricingService? pricing = null, bool useAuthoritativePricing = false,
+            IPropertySameNightBookingPolicyService? sameNightPolicy = null)
         {
             var context = CreateContext();
             var notificationDispatcher = new RecordingReservationNotificationDispatcher();
@@ -1858,7 +1859,8 @@ public sealed class BookingSessionServiceTests
                 new ReservationStatusWorkflow(),
                 new ReservationNumberGenerator(context),
                 new BookingSessionCodeGenerator(context),
-                notificationDispatcher);
+                notificationDispatcher,
+                sameNightPolicy ?? new PropertySameNightBookingPolicyService(TimeProvider.System));
             return new ServiceScope(context, service, notificationDispatcher);
         }
 
