@@ -1,5 +1,7 @@
 using Kooch.Api.Entities;
 using Kooch.Api.Catalogs;
+using Kooch.Api.Services;
+using System.Text.Json.Serialization;
 
 namespace Kooch.Api.Dtos.Properties;
 
@@ -35,6 +37,8 @@ public class PublicPropertyResponse
     public string GuestFitStatus { get; set; } = "ظرفیت نامشخص";
     public string AvailabilitySummary { get; set; } = "فعلاً همه موجود فرض شده‌اند";
     public string AvailabilityStatusSummary { get; set; } = "Unknown";
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public PublicBookingDecisionReason? BookingDecisionReason { get; set; }
     public int? FreeChildAgeLimit { get; set; }
     public int? MaxFreeChildren { get; set; }
     public IReadOnlyList<PublicPromotionResponse> Promotions { get; set; } = [];

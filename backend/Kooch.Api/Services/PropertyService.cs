@@ -911,7 +911,9 @@ public class PropertyService(
                     }).ToList();
                 property.MatchingRoomTypesCount = property.MatchingRoomTypes.Count;
                 property.GuestFitStatus = "مناسب ظرفیت";
-                property.AvailabilityStatusSummary = "Available";
+                property.AvailabilityStatusSummary = price.BookingDecision.Status.ToString();
+                property.IsInstantBooking = price.BookingDecision.Status == AvailabilityStatus.Available;
+                property.BookingDecisionReason = price.BookingDecision.Reason;
             }
             return properties.Where(property => datedPrices.ContainsKey(property.Id)).ToList();
         }

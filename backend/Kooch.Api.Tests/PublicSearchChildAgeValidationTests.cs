@@ -189,7 +189,8 @@ public sealed class PublicSearchChildAgeValidationTests
             var pricing = new ReservationPricingService(db, new PricingService(), childRules,
                 new ReservationRulesResolver(db, childRules));
             var service = new PropertyService(db, null!, null!, null!, null!, childRules,
-                new DatedPropertyStartingPriceService(db, availability, childRules, pricing));
+                new DatedPropertyStartingPriceService(db, availability, childRules, pricing,
+                    new PropertySameNightBookingPolicyService(TimeProvider.System)));
             return new(db, service, checkIn);
         }
 

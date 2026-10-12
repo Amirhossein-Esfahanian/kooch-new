@@ -5,13 +5,17 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed record DatedPropertyPrice(decimal StartingPrice, IReadOnlySet<int> MatchingRoomTypeIds);
+public sealed record DatedPropertyPrice(
+    decimal StartingPrice,
+    IReadOnlySet<int> MatchingRoomTypeIds,
+    PublicBookingDecision BookingDecision);
 
 public sealed class DatedPropertyStartingPriceService(
     KoochDbContext dbContext,
     IEffectiveAvailabilityService availabilityService,
     IChildPricingRuleResolver childPricingRuleResolver,
-    ReservationPricingService pricingService)
+    ReservationPricingService pricingService,
+    IPropertySameNightBookingPolicyService sameNightPolicyService)
 {
     public async Task<IReadOnlyDictionary<int, DatedPropertyPrice>> GetAsync(
         IReadOnlyCollection<int> propertyIds,
@@ -61,7 +65,10 @@ public sealed class DatedPropertyStartingPriceService(
         var globalChildRules = await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken);
         var bookingDate = DateOnly.FromDateTime(DateTime.UtcNow);
         var nights = checkOut.DayNumber - checkIn.DayNumber;
-        var matches = new Dictionary<int, (decimal Price, HashSet<int> RoomTypeIds)>();
+        var policies = roomTypes.GroupBy(roomType => roomType.PropertyId)
+            .ToDictionary(group => group.Key,
+                group => sameNightPolicyService.Evaluate(group.First().Property, checkIn));
+        var matches = new Dictionary<int, (decimal Price, HashSet<int> RoomTypeIds, PublicBookingDecision Decision)>();
 
         foreach (var roomType in roomTypes)
         {
@@ -75,6 +82,14 @@ public sealed class DatedPropertyStartingPriceService(
                 !available.HasCapacityForFullRange(rooms) ||
                 !pricesByRoomType.TryGetValue(roomType.Id, out var prices))
                 continue;
+
+            // Capacity/closure was checked for the whole stay above; any OnRequest night governs the stay.
+            var decision = PublicBookingModeComposer.Compose(new PublicBookingAvailability(
+                available.Nights.Values.Any(night => night.EffectiveStatus == AvailabilityStatus.OnRequest)
+                    ? AvailabilityStatus.OnRequest : AvailabilityStatus.Available,
+                IsClosed: false,
+                HasCapacity: true), policies[roomType.PropertyId]);
+            if (decision.Status == AvailabilityStatus.Unavailable) continue;
 
             var applicablePromotions = promotions.Where(promotion =>
                 (promotion.PropertyId is null || promotion.PropertyId == roomType.PropertyId) &&
@@ -103,12 +118,13 @@ public sealed class DatedPropertyStartingPriceService(
                     var average = quote.FinalAmount / nights;
                     if (!matches.TryGetValue(roomType.PropertyId, out var current))
                     {
-                        matches[roomType.PropertyId] = (average, [roomType.Id]);
+                        matches[roomType.PropertyId] = (average, [roomType.Id], decision);
                     }
                     else
                     {
                         current.RoomTypeIds.Add(roomType.Id);
-                        matches[roomType.PropertyId] = (Math.Min(current.Price, average), current.RoomTypeIds);
+                        matches[roomType.PropertyId] = (Math.Min(current.Price, average), current.RoomTypeIds,
+                            CombineDecisions(current.Decision, decision));
                     }
                 }
                 catch (Exception error) when (error is IncompleteDailyPricingException or
@@ -120,6 +136,14 @@ public sealed class DatedPropertyStartingPriceService(
         }
 
         return matches.ToDictionary(pair => pair.Key,
-            pair => new DatedPropertyPrice(pair.Value.Price, pair.Value.RoomTypeIds));
+            pair => new DatedPropertyPrice(pair.Value.Price, pair.Value.RoomTypeIds, pair.Value.Decision));
+    }
+
+    private static PublicBookingDecision CombineDecisions(PublicBookingDecision current, PublicBookingDecision next)
+    {
+        if (current.Status == AvailabilityStatus.Available) return current;
+        if (next.Status == AvailabilityStatus.Available) return next;
+        // Report the policy as the sole reason only when no qualifying offer was already OnRequest.
+        return current.Reason == PublicBookingDecisionReason.ExistingOnRequest ? current : next;
     }
 }

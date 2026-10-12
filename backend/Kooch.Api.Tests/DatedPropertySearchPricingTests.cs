@@ -8,7 +8,7 @@ using Xunit;
 
 namespace Kooch.Api.Tests;
 
-public sealed class DatedPropertySearchPricingTests
+public sealed partial class DatedPropertySearchPricingTests
 {
     private static readonly DateOnly CheckIn = new(2035, 2, 1);
     private static readonly DateOnly CheckOut = new(2035, 2, 3);
@@ -384,20 +384,21 @@ public sealed class DatedPropertySearchPricingTests
         public ReservationPricingService Pricing { get; }
         public PublicBookingOptionsService Options { get; }
 
-        private Fixture(KoochDbContext db)
+        private Fixture(KoochDbContext db, IPropertySameNightBookingPolicyService? policy = null)
         {
             Db = db;
             var childRules = new ChildPricingRuleResolver(db);
             Pricing = new ReservationPricingService(db, new PricingService(), childRules,
                 new ReservationRulesResolver(db, childRules));
             var availability = new EffectiveAvailabilityService(db);
+            policy ??= new PropertySameNightBookingPolicyService(TimeProvider.System);
             Options = new PublicBookingOptionsService(db, availability, Pricing, childRules,
-                new PropertySameNightBookingPolicyService(TimeProvider.System));
+                policy);
             Search = new PropertyService(db, null!, null!, null!, null!, childRules,
-                new DatedPropertyStartingPriceService(db, availability, childRules, Pricing));
+                new DatedPropertyStartingPriceService(db, availability, childRules, Pricing, policy));
         }
 
-        public static async Task<Fixture> CreateAsync()
+        public static async Task<Fixture> CreateAsync(IPropertySameNightBookingPolicyService? policy = null)
         {
             var db = new KoochDbContext(new DbContextOptionsBuilder<KoochDbContext>()
                 .UseInMemoryDatabase(Guid.NewGuid().ToString("N")).Options);
@@ -413,7 +414,7 @@ public sealed class DatedPropertySearchPricingTests
                 Daily(10, CheckIn.AddDays(1), 2_400_000),
                 Daily(10, CheckOut.AddDays(10), 1_000_000));
             await db.SaveChangesAsync();
-            return new Fixture(db);
+            return new Fixture(db, policy);
         }
 
         public Task<IReadOnlyList<PublicPropertyResponse>> FindAsync(
