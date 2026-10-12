@@ -1,6 +1,7 @@
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Catalogs;
+using Kooch.Api.Services;
 
 namespace Kooch.Api.Dtos.Properties;
 
@@ -32,7 +33,8 @@ public enum PublicBookingUnavailableReason
     GuestCapacityExceeded,
     NoActiveNamedRooms,
     InsufficientAvailability,
-    IncompleteDailyPricing
+    IncompleteDailyPricing,
+    SameNightFinalCutoff
 }
 
 public sealed class PublicBookingRoomTypeOption
@@ -45,6 +47,7 @@ public sealed class PublicBookingRoomTypeOption
     public InventoryMode InventoryMode { get; set; }
     public int AvailableCount { get; set; }
     public ReservationBookingModeFilter BookingMode { get; set; }
+    public PublicBookingDecisionReason BookingDecisionReason { get; set; }
     public int MaxAdults { get; set; }
     public int MaxChildren { get; set; }
     public bool AllowExtraGuest { get; set; }

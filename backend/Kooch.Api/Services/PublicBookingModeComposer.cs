@@ -16,6 +16,11 @@ public readonly record struct PublicBookingDecision(
     AvailabilityStatus Status,
     PublicBookingDecisionReason Reason);
 
+public readonly record struct PublicBookingAvailability(
+    AvailabilityStatus EffectiveStatus,
+    bool IsClosed,
+    bool HasCapacity);
+
 public static class PublicBookingModeComposer
 {
     public static PublicBookingDecision Compose(
@@ -24,11 +29,21 @@ public static class PublicBookingModeComposer
     {
         ArgumentNullException.ThrowIfNull(availability);
 
+        return Compose(new PublicBookingAvailability(
+            availability.EffectiveStatus,
+            availability.IsClosed,
+            availability.RemainingCapacity > 0), policy);
+    }
+
+    public static PublicBookingDecision Compose(
+        PublicBookingAvailability availability,
+        SameNightBookingPolicyResult policy)
+    {
         if (availability.IsClosed)
             return new(AvailabilityStatus.Unavailable, PublicBookingDecisionReason.ExistingClosed);
 
         if (availability.EffectiveStatus == AvailabilityStatus.Unavailable ||
-            availability.RemainingCapacity <= 0)
+            !availability.HasCapacity)
             return new(AvailabilityStatus.Unavailable, PublicBookingDecisionReason.ExistingUnavailable);
 
         return (availability.EffectiveStatus, policy) switch

@@ -391,7 +391,8 @@ public sealed class DatedPropertySearchPricingTests
             Pricing = new ReservationPricingService(db, new PricingService(), childRules,
                 new ReservationRulesResolver(db, childRules));
             var availability = new EffectiveAvailabilityService(db);
-            Options = new PublicBookingOptionsService(db, availability, Pricing, childRules);
+            Options = new PublicBookingOptionsService(db, availability, Pricing, childRules,
+                new PropertySameNightBookingPolicyService(TimeProvider.System));
             Search = new PropertyService(db, null!, null!, null!, null!, childRules,
                 new DatedPropertyStartingPriceService(db, availability, childRules, Pricing));
         }

@@ -23,7 +23,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService(), new ChildPricingRuleResolver(context));
+            new RangePricingService(), new ChildPricingRuleResolver(context), DefaultPolicy());
 
         var result = await service.GetAsync(
             "public-property",
@@ -179,7 +179,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService(), new ChildPricingRuleResolver(context));
+            new RangePricingService(), new ChildPricingRuleResolver(context), DefaultPolicy());
 
         var result = await service.GetAsync(
             "public-property",
@@ -217,7 +217,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService(), new ChildPricingRuleResolver(context));
+            new RangePricingService(), new ChildPricingRuleResolver(context), DefaultPolicy());
 
         var result = await service.GetAsync(
             "public-property",
@@ -254,7 +254,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new RangePricingService(), new ChildPricingRuleResolver(context));
+            new RangePricingService(), new ChildPricingRuleResolver(context), DefaultPolicy());
 
         var result = await service.GetAsync(
             "public-property",
@@ -281,7 +281,7 @@ public sealed class PublicBookingOptionsTests
         var service = new PublicBookingOptionsService(
             context,
             new EffectiveAvailabilityService(context),
-            new IncompleteRangePricingService(), new ChildPricingRuleResolver(context));
+            new IncompleteRangePricingService(), new ChildPricingRuleResolver(context), DefaultPolicy());
 
         var result = await service.GetAsync(
             "public-property",
@@ -408,7 +408,7 @@ public sealed class PublicBookingOptionsTests
         int[] ages = agesCsv.Length == 0 ? [] : agesCsv.Split(',').Select(int.Parse).ToArray();
         var pricing = new RecordingPricingService();
         var service = new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
-            pricing, new ChildPricingRuleResolver(context));
+            pricing, new ChildPricingRuleResolver(context), DefaultPolicy());
         var result = await service.GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 3),
             adults, ages.Length, ages);
         Assert.Equal(included ? 1 : 0, result.RoomTypes.Count);
@@ -462,6 +462,188 @@ public sealed class PublicBookingOptionsTests
         Assert.Equal(400m, option.FinalAmount);
         Assert.Equal(360m, Assert.Single(option.RatePlans).FinalAmount);
         Assert.Equal(1, option.AvailableCount);
+    }
+
+    [Theory]
+    [InlineData(1, 19, 29, ReservationBookingModeFilter.Instant, PublicBookingDecisionReason.None)]
+    [InlineData(1, 19, 30, ReservationBookingModeFilter.OnRequest, PublicBookingDecisionReason.SameNightApprovalRequired)]
+    [InlineData(1, 20, 0, ReservationBookingModeFilter.OnRequest, PublicBookingDecisionReason.SameNightApprovalRequired)]
+    [InlineData(1, 21, 30, ReservationBookingModeFilter.OnRequest, PublicBookingDecisionReason.SameNightApprovalRequired)]
+    public async Task SameNightDeadline_DowngradesAvailableOfferAtTehranBoundaries(
+        int utcDay, int utcHour, int utcMinute,
+        ReservationBookingModeFilter expectedMode, PublicBookingDecisionReason expectedReason)
+    {
+        await using var context = await CreatePricedContextAsync();
+        await ConfigureSameNightPolicyAsync(context);
+        var service = AuthoritativeService(context, PolicyAt(utcDay, utcHour, utcMinute));
+
+        var response = await service.GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 2), 1, 0, []);
+
+        var room = Assert.Single(response.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(expectedMode, room.BookingMode);
+        Assert.Equal(expectedReason, room.BookingDecisionReason);
+        Assert.Equal(1, room.AvailableCount);
+        Assert.Equal(120m, room.FinalAmount);
+        Assert.Equal(1, room.NightsCount);
+    }
+
+    [Theory]
+    [InlineData(1, 22, 30)]
+    [InlineData(1, 22, 31)]
+    public async Task SameNightFinalCutoff_OmitsBookableOfferWithSpecificReason(int utcDay, int utcHour, int utcMinute)
+    {
+        await using var context = await CreatePricedContextAsync();
+        await ConfigureSameNightPolicyAsync(context);
+
+        var response = await AuthoritativeService(context, PolicyAt(utcDay, utcHour, utcMinute))
+            .GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 0, []);
+
+        Assert.DoesNotContain(response.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(PublicBookingUnavailableReason.SameNightFinalCutoff,
+            Assert.Single(response.UnavailableRoomTypes, option => option.RoomTypeId == 10).Reason);
+    }
+
+    [Fact]
+    public async Task FutureCheckIn_IsNotDowngradedByTodaysDeadline()
+    {
+        await using var context = await CreatePricedContextAsync();
+        await ConfigureSameNightPolicyAsync(context);
+
+        var response = await AuthoritativeService(context, PolicyAt(1, 20, 0))
+            .GetAsync("public-property", new(2035, 2, 2), new(2035, 2, 3), 1, 0, []);
+
+        var room = Assert.Single(response.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(ReservationBookingModeFilter.Instant, room.BookingMode);
+        Assert.Equal(PublicBookingDecisionReason.None, room.BookingDecisionReason);
+    }
+
+    [Theory]
+    [InlineData(SameNightBookingPolicyResult.InstantEligible, true)]
+    [InlineData(SameNightBookingPolicyResult.RequiresApproval, true)]
+    [InlineData(SameNightBookingPolicyResult.Closed, false)]
+    public async Task ExistingCalendarOnRequest_IsNeverUpgraded(
+        SameNightBookingPolicyResult policy, bool bookable)
+    {
+        await using var context = await CreatePricedContextAsync();
+        var service = new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
+            new RangePricingService(), new ChildPricingRuleResolver(context), new CountingPolicy(policy));
+
+        var response = await service.GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 0, []);
+
+        if (bookable)
+        {
+            var room = Assert.Single(response.RoomTypes, option => option.RoomTypeId == 20);
+            Assert.Equal(ReservationBookingModeFilter.OnRequest, room.BookingMode);
+            Assert.Equal(PublicBookingDecisionReason.ExistingOnRequest, room.BookingDecisionReason);
+            Assert.Equal(2, room.AvailableCount);
+        }
+        else
+        {
+            Assert.DoesNotContain(response.RoomTypes, option => option.RoomTypeId == 20);
+            Assert.Equal(PublicBookingUnavailableReason.SameNightFinalCutoff,
+                Assert.Single(response.UnavailableRoomTypes, option => option.RoomTypeId == 20).Reason);
+        }
+    }
+
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public async Task CalendarClosureAndConsumedCapacity_RemainUnavailableUnderApprovalPolicy(
+        bool calendarClosed, bool consumedCapacity)
+    {
+        await using var context = await CreatePricedContextAsync();
+        if (calendarClosed)
+            context.Availabilities.Add(new Availability
+            {
+                RoomTypeId = 10, Date = new(2035, 2, 2), AvailableCount = 2,
+                Status = AvailabilityStatus.Available, IsClosed = true
+            });
+        if (consumedCapacity)
+            (await context.RoomTypes.SingleAsync(roomType => roomType.Id == 10)).TotalInventory = 1;
+        await context.SaveChangesAsync();
+
+        var response = await AuthoritativeService(context,
+            new CountingPolicy(SameNightBookingPolicyResult.RequiresApproval))
+            .GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 0, []);
+
+        Assert.DoesNotContain(response.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(PublicBookingUnavailableReason.InsufficientAvailability,
+            Assert.Single(response.UnavailableRoomTypes, option => option.RoomTypeId == 10).Reason);
+    }
+
+    [Fact]
+    public async Task PolicyIsEvaluatedOnceAndSharedByStandardAndRatePlanOffers()
+    {
+        await using var context = await CreatePricedContextAsync();
+        context.RatePlans.Add(Plan(51, "Two-night alternative", -20, minimumNights: 2));
+        await context.SaveChangesAsync();
+        var policy = new CountingPolicy(SameNightBookingPolicyResult.RequiresApproval);
+
+        var response = await AuthoritativeService(context, policy).GetAsync(
+            "public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 0, []);
+
+        Assert.Equal(1, policy.CallCount);
+        Assert.Equal(1, policy.PropertyId);
+        Assert.Equal(new DateOnly(2035, 2, 1), policy.CheckIn);
+        var room = Assert.Single(response.RoomTypes, option => option.RoomTypeId == 10);
+        Assert.Equal(ReservationBookingModeFilter.OnRequest, room.BookingMode);
+        Assert.Equal(PublicBookingDecisionReason.SameNightApprovalRequired, room.BookingDecisionReason);
+        Assert.Equal(1, room.AvailableCount);
+        Assert.Equal(300m, room.FinalAmount);
+        var plan = Assert.Single(room.RatePlans);
+        Assert.Equal(51, plan.RatePlanId);
+        Assert.Equal(2, plan.MinimumNights);
+        Assert.Equal(260m, plan.FinalAmount);
+    }
+
+    [Fact]
+    public async Task UnconfiguredProperty_PreservesExistingAvailableAndOnRequestModes()
+    {
+        await using var context = await CreatePricedContextAsync();
+        var service = new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
+            new RangePricingService(), new ChildPricingRuleResolver(context), DefaultPolicy());
+
+        var response = await service.GetAsync("public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 0, []);
+
+        Assert.Equal(ReservationBookingModeFilter.Instant,
+            Assert.Single(response.RoomTypes, option => option.RoomTypeId == 10).BookingMode);
+        var onRequest = Assert.Single(response.RoomTypes, option => option.RoomTypeId == 20);
+        Assert.Equal(ReservationBookingModeFilter.OnRequest, onRequest.BookingMode);
+        Assert.Equal(PublicBookingDecisionReason.ExistingOnRequest, onRequest.BookingDecisionReason);
+    }
+
+    private static async Task ConfigureSameNightPolicyAsync(KoochDbContext context)
+    {
+        var property = await context.Properties.SingleAsync();
+        property.SameNightInstantBookingTime = new TimeOnly(23, 0);
+        property.SameNightInstantBookingDayOffset = 0;
+        property.SameNightFinalBookingTime = new TimeOnly(2, 0);
+        property.SameNightFinalBookingDayOffset = 1;
+        await context.SaveChangesAsync();
+    }
+
+    private static IPropertySameNightBookingPolicyService PolicyAt(int day, int hour, int minute) =>
+        new PropertySameNightBookingPolicyService(new FixedClock(
+            new DateTimeOffset(2035, 2, day, hour, minute, 0, TimeSpan.Zero)));
+
+    private sealed class FixedClock(DateTimeOffset nowUtc) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => nowUtc;
+    }
+
+    private sealed class CountingPolicy(SameNightBookingPolicyResult result) : IPropertySameNightBookingPolicyService
+    {
+        public int CallCount { get; private set; }
+        public int PropertyId { get; private set; }
+        public DateOnly CheckIn { get; private set; }
+
+        public SameNightBookingPolicyResult Evaluate(Property property, DateOnly requestedCheckIn)
+        {
+            CallCount++;
+            PropertyId = property.Id;
+            CheckIn = requestedCheckIn;
+            return result;
+        }
     }
 
     private static async Task ConfigureChildRulesAsync(KoochDbContext db)
@@ -584,13 +766,17 @@ public sealed class PublicBookingOptionsTests
         return context;
     }
 
-    private static PublicBookingOptionsService AuthoritativeService(KoochDbContext context)
+    private static PublicBookingOptionsService AuthoritativeService(
+        KoochDbContext context, IPropertySameNightBookingPolicyService? policy = null)
     {
         var childRules = new ChildPricingRuleResolver(context);
         return new PublicBookingOptionsService(context, new EffectiveAvailabilityService(context),
             new ReservationPricingService(context, new PricingService(), childRules,
-                new ReservationRulesResolver(context, childRules)), childRules);
+                new ReservationRulesResolver(context, childRules)), childRules, policy ?? DefaultPolicy());
     }
+
+    private static IPropertySameNightBookingPolicyService DefaultPolicy() =>
+        new PropertySameNightBookingPolicyService(TimeProvider.System);
 
     private static RatePlan Plan(int id, string name, decimal modifier, bool isActive = true,
         bool isDeleted = false, PriceModifierType type = PriceModifierType.FixedAmount,

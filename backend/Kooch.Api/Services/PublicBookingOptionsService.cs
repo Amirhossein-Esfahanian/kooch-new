@@ -11,7 +11,8 @@ public sealed class PublicBookingOptionsService(
     KoochDbContext dbContext,
     IEffectiveAvailabilityService effectiveAvailabilityService,
     IReservationPricingService pricingService,
-    IChildPricingRuleResolver childPricingRuleResolver) : IPublicBookingOptionsService
+    IChildPricingRuleResolver childPricingRuleResolver,
+    IPropertySameNightBookingPolicyService sameNightPolicyService) : IPublicBookingOptionsService
 {
     public async Task<PublicBookingOptionsResponse> GetAsync(
         string slug,
@@ -35,6 +36,7 @@ public sealed class PublicBookingOptionsService(
                         item.Status == PropertyStatus.Approved,
                 cancellationToken)
             ?? throw new KeyNotFoundException("Property not found.");
+        var sameNightPolicy = sameNightPolicyService.Evaluate(property, checkInDate);
 
         var roomTypes = property.RoomTypes
             .OrderBy(roomType => roomType.Name)
@@ -74,10 +76,28 @@ public sealed class PublicBookingOptionsService(
                 continue;
             }
 
-            if (!availability.TryGetValue(roomType.Id, out var effective) ||
-                !effective.HasCapacityForFullRange(1))
+            if (!availability.TryGetValue(roomType.Id, out var effective))
             {
                 unavailableRoomTypes.Add(Unavailable(roomType, PublicBookingUnavailableReason.InsufficientAvailability));
+                continue;
+            }
+
+            var hasCapacity = effective.HasCapacityForFullRange(1);
+            var existingStatus = !hasCapacity
+                ? AvailabilityStatus.Unavailable
+                : effective.Nights.Values.Any(night => night.ConfiguredStatus == AvailabilityStatus.OnRequest)
+                    ? AvailabilityStatus.OnRequest
+                    : AvailabilityStatus.Available;
+            var decision = PublicBookingModeComposer.Compose(
+                new PublicBookingAvailability(existingStatus,
+                    effective.Nights.Values.Any(night => night.IsClosed), hasCapacity),
+                sameNightPolicy);
+            if (decision.Status == AvailabilityStatus.Unavailable)
+            {
+                unavailableRoomTypes.Add(Unavailable(roomType,
+                    decision.Reason == PublicBookingDecisionReason.SameNightFinalCutoff
+                        ? PublicBookingUnavailableReason.SameNightFinalCutoff
+                        : PublicBookingUnavailableReason.InsufficientAvailability));
                 continue;
             }
 
@@ -88,6 +108,7 @@ public sealed class PublicBookingOptionsService(
                     property,
                     roomType,
                     effective,
+                    decision,
                     checkInDate,
                     checkOutDate,
                     adults,
@@ -164,6 +185,7 @@ public sealed class PublicBookingOptionsService(
         Property property,
         RoomType roomType,
         EffectiveRoomTypeAvailability availability,
+        PublicBookingDecision decision,
         DateOnly checkInDate,
         DateOnly checkOutDate,
         int adults,
@@ -187,8 +209,7 @@ public sealed class PublicBookingOptionsService(
             cancellationToken);
         var availableCount = availability.Nights.Values
             .Min(night => night.RemainingCapacity);
-        var bookingMode = availability.Nights.Values.Any(night =>
-                night.ConfiguredStatus == AvailabilityStatus.OnRequest)
+        var bookingMode = decision.Status == AvailabilityStatus.OnRequest
             ? ReservationBookingModeFilter.OnRequest
             : ReservationBookingModeFilter.Instant;
         var physicalRoomMetadata = roomType.Rooms
@@ -213,6 +234,7 @@ public sealed class PublicBookingOptionsService(
             InventoryMode = roomType.InventoryMode,
             AvailableCount = availableCount,
             BookingMode = bookingMode,
+            BookingDecisionReason = decision.Reason,
             MaxAdults = roomType.MaxAdults,
             MaxChildren = roomType.MaxChildren,
             AllowExtraGuest = roomType.AllowExtraGuest,
