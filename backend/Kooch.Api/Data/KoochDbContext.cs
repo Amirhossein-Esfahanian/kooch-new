@@ -1064,6 +1064,12 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(property => property.LandAreaM2).HasPrecision(12, 2);
             entity.Property(property => property.ChildPrice).HasPrecision(18, 2);
             entity.Property(property => property.ExtraGuestPrice).HasPrecision(18, 2);
+            entity.Property(property => property.RegularReceptionFrom).HasColumnType("time");
+            entity.Property(property => property.RegularReceptionUntil).HasColumnType("time");
+            entity.Property(property => property.SameNightInstantBookingTime).HasColumnType("time");
+            entity.Property(property => property.SameNightInstantBookingDayOffset).HasColumnType("smallint");
+            entity.Property(property => property.SameNightFinalBookingTime).HasColumnType("time");
+            entity.Property(property => property.SameNightFinalBookingDayOffset).HasColumnType("smallint");
             entity.HasIndex(property => property.Slug).IsUnique();
             entity.HasOne(property => property.Owner)
                 .WithMany(user => user.OwnedProperties)

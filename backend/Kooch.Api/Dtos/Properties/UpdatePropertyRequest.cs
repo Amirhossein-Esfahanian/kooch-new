@@ -3,7 +3,7 @@ using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Properties;
 
-public class UpdatePropertyRequest : PropertyCoordinatesRequest
+public class UpdatePropertyRequest : PropertyBookingSettingsUpdateRequest
 {
     [Range(1, int.MaxValue)]
     public int DestinationId { get; set; }

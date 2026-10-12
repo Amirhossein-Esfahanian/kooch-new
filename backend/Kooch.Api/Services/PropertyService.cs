@@ -39,6 +39,10 @@ public class PropertyService(
         }
 
         PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
+        PropertyBookingSettingsValidator.Validate(
+            request.RegularReceptionFrom, request.RegularReceptionUntil,
+            request.SameNightInstantBookingTime, request.SameNightInstantBookingDayOffset,
+            request.SameNightFinalBookingTime, request.SameNightFinalBookingDayOffset);
 
         if (!request.OwnerId.HasValue)
         {
@@ -73,6 +77,12 @@ public class PropertyService(
             InventoryMode = CanonicalPublicInventoryMode,
             CheckInTime = request.CheckInTime,
             CheckOutTime = request.CheckOutTime,
+            RegularReceptionFrom = request.RegularReceptionFrom,
+            RegularReceptionUntil = request.RegularReceptionUntil,
+            SameNightInstantBookingTime = request.SameNightInstantBookingTime,
+            SameNightInstantBookingDayOffset = request.SameNightInstantBookingDayOffset,
+            SameNightFinalBookingTime = request.SameNightFinalBookingTime,
+            SameNightFinalBookingDayOffset = request.SameNightFinalBookingDayOffset,
             DefaultMealPlanId = request.DefaultMealPlanId,
             HasElevator = request.HasElevator,
             IsWheelchairAccessible = request.IsWheelchairAccessible,
@@ -141,7 +151,14 @@ public class PropertyService(
         }
 
         PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
-
+        var receptionFrom = request.HasRegularReceptionFrom ? request.RegularReceptionFrom : property.RegularReceptionFrom;
+        var receptionUntil = request.HasRegularReceptionUntil ? request.RegularReceptionUntil : property.RegularReceptionUntil;
+        var instantTime = request.HasSameNightInstantBookingTime ? request.SameNightInstantBookingTime : property.SameNightInstantBookingTime;
+        var instantOffset = request.HasSameNightInstantBookingDayOffset ? request.SameNightInstantBookingDayOffset : property.SameNightInstantBookingDayOffset;
+        var finalTime = request.HasSameNightFinalBookingTime ? request.SameNightFinalBookingTime : property.SameNightFinalBookingTime;
+        var finalOffset = request.HasSameNightFinalBookingDayOffset ? request.SameNightFinalBookingDayOffset : property.SameNightFinalBookingDayOffset;
+        PropertyBookingSettingsValidator.Validate(
+            receptionFrom, receptionUntil, instantTime, instantOffset, finalTime, finalOffset);
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
         var englishName = request.EnglishName is null
@@ -164,6 +181,12 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.RegularReceptionFrom = receptionFrom;
+        property.RegularReceptionUntil = receptionUntil;
+        property.SameNightInstantBookingTime = instantTime;
+        property.SameNightInstantBookingDayOffset = instantOffset;
+        property.SameNightFinalBookingTime = finalTime;
+        property.SameNightFinalBookingDayOffset = finalOffset;
         property.DefaultMealPlanId = request.DefaultMealPlanId;
         property.TotalAreaM2 = request.TotalAreaM2;
         property.LandAreaM2 = request.LandAreaM2;
@@ -256,12 +279,26 @@ public class PropertyService(
             await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
         }
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        var receptionFrom = request.HasRegularReceptionFrom ? request.RegularReceptionFrom : property.RegularReceptionFrom;
+        var receptionUntil = request.HasRegularReceptionUntil ? request.RegularReceptionUntil : property.RegularReceptionUntil;
+        var instantTime = request.HasSameNightInstantBookingTime ? request.SameNightInstantBookingTime : property.SameNightInstantBookingTime;
+        var instantOffset = request.HasSameNightInstantBookingDayOffset ? request.SameNightInstantBookingDayOffset : property.SameNightInstantBookingDayOffset;
+        var finalTime = request.HasSameNightFinalBookingTime ? request.SameNightFinalBookingTime : property.SameNightFinalBookingTime;
+        var finalOffset = request.HasSameNightFinalBookingDayOffset ? request.SameNightFinalBookingDayOffset : property.SameNightFinalBookingDayOffset;
+        PropertyBookingSettingsValidator.Validate(
+            receptionFrom, receptionUntil, instantTime, instantOffset, finalTime, finalOffset);
         if (request is AdminUpdatePropertyRulesSectionRequest { ShowGuestPhoneToPropertyUsers: { } showGuestPhone })
         {
             property.ShowGuestPhoneToPropertyUsers = showGuestPhone;
         }
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.RegularReceptionFrom = receptionFrom;
+        property.RegularReceptionUntil = receptionUntil;
+        property.SameNightInstantBookingTime = instantTime;
+        property.SameNightInstantBookingDayOffset = instantOffset;
+        property.SameNightFinalBookingTime = finalTime;
+        property.SameNightFinalBookingDayOffset = finalOffset;
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -343,6 +380,15 @@ public class PropertyService(
             throw new InvalidOperationException("Use the transfer ownership action to change a property owner.");
         }
 
+        var receptionFrom = request.HasRegularReceptionFrom ? request.RegularReceptionFrom : property.RegularReceptionFrom;
+        var receptionUntil = request.HasRegularReceptionUntil ? request.RegularReceptionUntil : property.RegularReceptionUntil;
+        var instantTime = request.HasSameNightInstantBookingTime ? request.SameNightInstantBookingTime : property.SameNightInstantBookingTime;
+        var instantOffset = request.HasSameNightInstantBookingDayOffset ? request.SameNightInstantBookingDayOffset : property.SameNightInstantBookingDayOffset;
+        var finalTime = request.HasSameNightFinalBookingTime ? request.SameNightFinalBookingTime : property.SameNightFinalBookingTime;
+        var finalOffset = request.HasSameNightFinalBookingDayOffset ? request.SameNightFinalBookingDayOffset : property.SameNightFinalBookingDayOffset;
+        PropertyBookingSettingsValidator.Validate(
+            receptionFrom, receptionUntil, instantTime, instantOffset, finalTime, finalOffset);
+
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         await ValidateDefaultMealPlanAsync(request.DefaultMealPlanId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
@@ -367,6 +413,12 @@ public class PropertyService(
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
         property.CheckOutTime = request.CheckOutTime;
+        property.RegularReceptionFrom = receptionFrom;
+        property.RegularReceptionUntil = receptionUntil;
+        property.SameNightInstantBookingTime = instantTime;
+        property.SameNightInstantBookingDayOffset = instantOffset;
+        property.SameNightFinalBookingTime = finalTime;
+        property.SameNightFinalBookingDayOffset = finalOffset;
         property.DefaultMealPlanId = request.DefaultMealPlanId;
         property.Latitude = request.Latitude;
         property.Longitude = request.Longitude;
@@ -1368,6 +1420,12 @@ public class PropertyService(
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
             CheckOutTime = property.CheckOutTime,
+            RegularReceptionFrom = property.RegularReceptionFrom,
+            RegularReceptionUntil = property.RegularReceptionUntil,
+            SameNightInstantBookingTime = property.SameNightInstantBookingTime,
+            SameNightInstantBookingDayOffset = property.SameNightInstantBookingDayOffset,
+            SameNightFinalBookingTime = property.SameNightFinalBookingTime,
+            SameNightFinalBookingDayOffset = property.SameNightFinalBookingDayOffset,
             DefaultMealPlanId = property.DefaultMealPlanId,
             DefaultMealPlanName = property.DefaultMealPlan != null ? property.DefaultMealPlan.Name : null,
             DefaultMealPlanSlug = property.DefaultMealPlan != null ? property.DefaultMealPlan.Slug : null,

@@ -41,6 +41,12 @@ public class CreatePropertyRequest : PropertyCoordinatesRequest
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public TimeOnly? RegularReceptionFrom { get; set; }
+    public TimeOnly? RegularReceptionUntil { get; set; }
+    public TimeOnly? SameNightInstantBookingTime { get; set; }
+    public short? SameNightInstantBookingDayOffset { get; set; }
+    public TimeOnly? SameNightFinalBookingTime { get; set; }
+    public short? SameNightFinalBookingDayOffset { get; set; }
     public int? DefaultMealPlanId { get; set; }
     public PropertyStatus? Status { get; set; }
     public bool? IsWheelchairAccessible { get; set; }

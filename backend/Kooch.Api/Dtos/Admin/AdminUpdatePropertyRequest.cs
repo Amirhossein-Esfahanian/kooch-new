@@ -4,7 +4,7 @@ using Kooch.Api.Entities;
 
 namespace Kooch.Api.Dtos.Admin;
 
-public class AdminUpdatePropertyRequest : PropertyCoordinatesRequest
+public class AdminUpdatePropertyRequest : PropertyBookingSettingsUpdateRequest
 {
     [Range(1, int.MaxValue)]
     public int OwnerId { get; set; }

@@ -2777,6 +2777,24 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("OwnerId")
                         .HasColumnType("int");
 
+                    b.Property<TimeOnly?>("RegularReceptionFrom")
+                        .HasColumnType("time");
+
+                    b.Property<TimeOnly?>("RegularReceptionUntil")
+                        .HasColumnType("time");
+
+                    b.Property<short?>("SameNightFinalBookingDayOffset")
+                        .HasColumnType("smallint");
+
+                    b.Property<TimeOnly?>("SameNightFinalBookingTime")
+                        .HasColumnType("time");
+
+                    b.Property<short?>("SameNightInstantBookingDayOffset")
+                        .HasColumnType("smallint");
+
+                    b.Property<TimeOnly?>("SameNightInstantBookingTime")
+                        .HasColumnType("time");
+
                     b.Property<string>("SeoDescription")
                         .HasMaxLength(500)
                         .HasColumnType("nvarchar(500)");
