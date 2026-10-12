@@ -168,7 +168,7 @@ public sealed class UndatedPropertySearchEligibilityTests
     }
 
     [Fact]
-    public async Task MissingAges_StillUseTheExistingSearchFallback()
+    public async Task MissingAges_AreRejectedInsteadOfUsingTheSearchFallback()
     {
         await using var fixture = await Fixture.CreateAsync();
         await ConfigureChildRulesAsync(fixture);
@@ -177,10 +177,11 @@ public sealed class UndatedPropertySearchEligibilityTests
         room.AllowExtraGuest = true;
         room.MaxExtraGuests = 1;
         await fixture.Db.SaveChangesAsync();
-        var missing = await fixture.Service.GetPublicPropertiesAsync(adults: 2, children: 1);
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            fixture.Service.GetPublicPropertiesAsync(adults: 2, children: 1));
         var explicitFallback = await fixture.Service.GetPublicPropertiesAsync(
             adults: 2, children: 1, childAges: "17");
-        Assert.Equal(Assert.Single(explicitFallback).Id, Assert.Single(missing).Id);
+        Assert.Single(explicitFallback);
     }
 
     private static async Task ConfigureChildRulesAsync(Fixture fixture)

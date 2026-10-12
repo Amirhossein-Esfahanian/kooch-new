@@ -775,7 +775,7 @@ public class PropertyService(
     {
         var hasDatedSearch = checkIn.HasValue && checkOut.HasValue && checkIn < checkOut;
         var minAdults = Math.Max(0, adults ?? 0);
-        var requestedChildren = Math.Max(0, children ?? 0);
+        var requestedChildren = children ?? 0;
         var parsedChildAges = ParseChildAges(childAges, requestedChildren);
         var hasGuestFilter = minAdults > 0 || requestedChildren > 0 || rooms.HasValue;
         var requestedRooms = Math.Max(1, rooms ?? 1);
@@ -1658,22 +1658,23 @@ public class PropertyService(
         });
     }
 
-    private static IReadOnlyList<int> ParseChildAges(string? childAges, int requestedChildren)
+    internal static IReadOnlyList<int> ParseChildAges(string? childAges, int requestedChildren)
     {
-        var ages = string.IsNullOrWhiteSpace(childAges)
-            ? new List<int>()
-            : childAges.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-                .Select(value => int.TryParse(value, out var age) ? Math.Clamp(age, 0, 17) : (int?)null)
-                .Where(age => age.HasValue)
-                .Select(age => age!.Value)
-                .ToList();
-
-        while (ages.Count < requestedChildren)
+        if (requestedChildren < 0)
+            throw new ArgumentException("Children must not be negative.");
+        string[] values = string.IsNullOrWhiteSpace(childAges)
+            ? []
+            : childAges.Split(',', StringSplitOptions.TrimEntries);
+        if (values.Length != requestedChildren)
+            throw new ArgumentException("A child age must be supplied for every child.");
+        var ages = new int[values.Length];
+        for (var index = 0; index < values.Length; index++)
         {
-            ages.Add(17);
+            if (!int.TryParse(values[index], out var age) || age is < 0 or > 17)
+                throw new ArgumentException("Child ages must be integers between 0 and 17.");
+            ages[index] = age;
         }
-
-        return ages.Take(requestedChildren).ToList();
+        return ages;
     }
 
     private static int CountCapacityChildren(
