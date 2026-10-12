@@ -25,8 +25,16 @@ public class PublicPropertiesController(
         [FromQuery] int? children,
         [FromQuery] string? childAges,
         [FromQuery] string? settingSlugs,
-        CancellationToken cancellationToken) =>
-        Ok(await propertyService.GetPublicPropertiesAsync(
+        CancellationToken cancellationToken)
+    {
+        var query = HttpContext?.Request.Query;
+        if (query is not null &&
+            (query.ContainsKey("checkIn") && !checkIn.HasValue ||
+             query.ContainsKey("checkOut") && !checkOut.HasValue))
+        {
+            throw new ArgumentException("تاریخ ورود و خروج باید تاریخ معتبر و غیرخالی باشند.");
+        }
+        return Ok(await propertyService.GetPublicPropertiesAsync(
             q,
             city,
             checkIn,
@@ -37,6 +45,7 @@ public class PublicPropertiesController(
             childAges,
             settingSlugs,
             cancellationToken));
+    }
 
     [HttpGet("suggestions")]
     [ProducesResponseType<IReadOnlyList<PublicPropertySuggestionResponse>>(StatusCodes.Status200OK)]

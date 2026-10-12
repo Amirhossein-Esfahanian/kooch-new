@@ -228,7 +228,7 @@ public sealed class UndatedPropertySearchPricingTests
     [InlineData("EndOnly")]
     [InlineData("Equal")]
     [InlineData("Reversed")]
-    public async Task PartialOrInvalidRange_UsesTheUndatedContract(string range)
+    public async Task PartialOrInvalidRange_IsRejectedInsteadOfReturningAnUndatedTeaser(string range)
     {
         await using var fixture = await Fixture.CreateAsync();
         fixture.Db.RoomDailyPrices.AddRange(
@@ -242,8 +242,8 @@ public sealed class UndatedPropertySearchPricingTests
             _ => fixture.Today.AddDays(2)
         };
 
-        Assert.Equal(1_000_000m, Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
-            checkIn: checkIn, checkOut: checkOut)).StartingPrice);
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Search.GetPublicPropertiesAsync(
+            checkIn: checkIn, checkOut: checkOut));
     }
 
     [Fact]

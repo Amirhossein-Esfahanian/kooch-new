@@ -9,8 +9,10 @@ import { KoochCheckbox } from "@/components/KoochFormControls";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { isBeforeLocalIsoDate } from "@/lib/date-utils";
+import { getPublicSearchDateError } from "@/lib/public-search-dates";
 import {
   fetchPublicApi,
+  PublicApiError,
   formatPrice,
   PublicProperty,
   PublicPropertySettingOption,
@@ -153,6 +155,7 @@ function PropertiesContent() {
   const [properties, setProperties] = useState<ResultProperty[]>([]);
   const [loading, setLoading] = useState(true);
   const [usingSamples, setUsingSamples] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [settingOptions, setSettingOptions] = useState<
     PublicPropertySettingOption[]
@@ -162,6 +165,7 @@ function PropertiesContent() {
   const city = searchParams.get("city") ?? "";
   const checkIn = searchParams.get("checkIn") ?? "";
   const checkOut = searchParams.get("checkOut") ?? "";
+  const dateInputError = getPublicSearchDateError(searchParams.get("checkIn"), searchParams.get("checkOut"));
   const hasDatedSearch = Boolean(
     checkIn && checkOut && isBeforeLocalIsoDate(checkIn, checkOut),
   );
@@ -210,6 +214,14 @@ function PropertiesContent() {
 
   useEffect(() => {
     const query = new URLSearchParams();
+    setSearchError(dateInputError);
+    if (dateInputError) {
+      setProperties([]);
+      setUsingSamples(false);
+      setLoading(false);
+      return;
+    }
+    let active = true;
     if (q) query.set("q", q);
     if (city) query.set("city", city);
     if (checkIn) query.set("checkIn", checkIn);
@@ -225,14 +237,25 @@ function PropertiesContent() {
     setLoading(true);
     fetchPublicApi<PublicProperty[]>(`/properties?${query.toString()}`)
       .then((items) => {
+        if (!active) return;
         setProperties(items);
         setUsingSamples(false);
       })
-      .catch(() => {
+      .catch((error: unknown) => {
+        if (!active) return;
+        if (error instanceof PublicApiError && error.status === 400) {
+          setProperties([]);
+          setUsingSamples(false);
+          setSearchError(error.message);
+          return;
+        }
         setProperties(sampleProperties);
         setUsingSamples(true);
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => { active = false; };
   }, [
     adults,
     checkIn,
@@ -242,6 +265,7 @@ function PropertiesContent() {
     city,
     q,
     rooms,
+    dateInputError,
     settingSlugs.join(","),
   ]);
 
@@ -380,6 +404,11 @@ function PropertiesContent() {
         {usingSamples && (
           <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
             اتصال به API برقرار نشد؛ کارت‌های نمونه نمایش داده شده‌اند.
+          </p>
+        )}
+        {searchError && (
+          <p role="alert" className="mt-5 rounded-lg border border-border bg-card p-3 text-sm text-destructive">
+            {searchError}
           </p>
         )}
 

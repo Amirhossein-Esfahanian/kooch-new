@@ -273,12 +273,12 @@ public sealed class UndatedPropertySearchEligibilityTests
     [InlineData("StartOnly")]
     [InlineData("Equal")]
     [InlineData("Reversed")]
-    public async Task InvalidOrPartialRange_RemainsUndated(string mode)
+    public async Task InvalidOrPartialRange_IsRejected(string mode)
     {
         await using var fixture = await Fixture.CreateAsync(inventory: 1);
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
         DateOnly? end = mode == "StartOnly" ? null : mode == "Equal" ? today : today.AddDays(-1);
-        Assert.Empty(await fixture.Service.GetPublicPropertiesAsync(
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Service.GetPublicPropertiesAsync(
             checkIn: today, checkOut: end, rooms: 2, adults: 2));
     }
 

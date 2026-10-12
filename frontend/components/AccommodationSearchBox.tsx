@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useId, useState } from "react";
+import { getPublicSearchDateError } from "@/lib/public-search-dates";
 import { useRouter } from "next/navigation";
 import { GuestSelector, GuestSelectorValue } from "@/components/GuestSelector";
 import { KoochCompactDateRangePicker } from "@/components/KoochCompactDateRangePicker";
@@ -125,6 +126,8 @@ export function AccommodationSearchBox({
   searchButtonText = "جستجوی اقامتگاه",
 }: AccommodationSearchBoxProps) {
   const router = useRouter();
+  const dateErrorId = useId();
+  const [dateError, setDateError] = useState<string | null>(null);
 
   const [values, setValues] = useState(() => normalizeValues(initialValues));
 
@@ -197,6 +200,7 @@ export function AccommodationSearchBox({
           ? "rounded-xl  border border-slate-200 bg-[#f8f7f9] p-4 shadow-sm"
           : "rounded-xl border border-slate-200 bg-[#f8f7f9] p-4 shadow-sm";
   function update(next: Partial<AccommodationSearchValues>) {
+    setDateError(null);
     setValues((current) =>
       normalizeValues({
         ...current,
@@ -212,6 +216,9 @@ export function AccommodationSearchBox({
     event.preventDefault();
 
     const normalized = normalizeValues(values);
+    const error = getPublicSearchDateError(normalized.checkIn, normalized.checkOut);
+    setDateError(error);
+    if (error) return;
 
     onSearch?.(normalized);
 
@@ -297,7 +304,13 @@ export function AccommodationSearchBox({
   );
 
   const datePicker = (
-    <KoochCompactDateRangePicker
+    <div
+      role="group"
+      aria-label="تاریخ اقامت"
+      aria-invalid={Boolean(dateError)}
+      aria-describedby={dateError ? dateErrorId : undefined}
+    >
+      <KoochCompactDateRangePicker
       calendarType="jalali"
       disablePastDates
       fieldSize={variant === "band" ? "compact" : "standard"}
@@ -312,6 +325,12 @@ export function AccommodationSearchBox({
         endDate: values.checkOut,
       }}
     />
+      {dateError && (
+        <p id={dateErrorId} role="alert" className="mt-2 text-sm text-destructive">
+          {dateError}
+        </p>
+      )}
+    </div>
   );
 
   const guestSelector = (

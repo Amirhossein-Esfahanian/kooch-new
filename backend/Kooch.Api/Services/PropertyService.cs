@@ -773,7 +773,12 @@ public class PropertyService(
         string? settingSlugs = null,
         CancellationToken cancellationToken = default)
     {
-        var hasDatedSearch = checkIn.HasValue && checkOut.HasValue && checkIn < checkOut;
+        if (checkIn.HasValue != checkOut.HasValue ||
+            checkIn.HasValue && checkOut <= checkIn)
+        {
+            throw new ArgumentException("تاریخ ورود و خروج را کامل انتخاب کنید؛ تاریخ خروج باید بعد از تاریخ ورود باشد.");
+        }
+        var hasDatedSearch = checkIn.HasValue && checkOut.HasValue;
         var minAdults = Math.Max(0, adults ?? 0);
         var requestedChildren = children ?? 0;
         var parsedChildAges = ParseChildAges(childAges, requestedChildren);

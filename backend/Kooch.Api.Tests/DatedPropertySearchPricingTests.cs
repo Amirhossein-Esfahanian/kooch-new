@@ -13,16 +13,36 @@ public sealed class DatedPropertySearchPricingTests
     private static readonly DateOnly CheckIn = new(2035, 2, 1);
     private static readonly DateOnly CheckOut = new(2035, 2, 3);
 
+    [Theory]
+    [InlineData(1, 2000000)]
+    [InlineData(2, 2200000)]
+    public async Task CompleteRange_KeepsAuthoritativeDatedPrice(int nights, decimal expected)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var result = Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
+            checkIn: CheckIn, checkOut: CheckIn.AddDays(nights), rooms: 1, adults: 2));
+        Assert.Equal(expected, result.StartingPrice);
+    }
+
     [Fact]
-    public async Task UndatedAndIncompleteRanges_ExcludePricesOutsideTheNinetyDayHorizon()
+    public async Task HistoricalAscendingRange_IsNotRejectedByPhaseOne()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var past = new DateOnly(2000, 1, 1);
+        fixture.Db.RoomDailyPrices.Add(Daily(10, past, 123));
+        await fixture.Db.SaveChangesAsync();
+        Assert.Equal(123m, Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
+            checkIn: past, checkOut: past.AddDays(1), rooms: 1, adults: 2)).StartingPrice);
+    }
+
+    [Fact]
+    public async Task UndatedSearch_ExcludesPricesOutsideTheNinetyDayHorizon_AndInvalidRangesFail()
     {
         await using var fixture = await Fixture.CreateAsync();
 
         Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync()).StartingPrice);
-        Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
-            checkIn: CheckIn)).StartingPrice);
-        Assert.Null(Assert.Single(await fixture.Search.GetPublicPropertiesAsync(
-            checkIn: CheckOut, checkOut: CheckIn)).StartingPrice);
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Search.GetPublicPropertiesAsync(checkIn: CheckIn));
+        await Assert.ThrowsAsync<ArgumentException>(() => fixture.Search.GetPublicPropertiesAsync(checkIn: CheckOut, checkOut: CheckIn));
     }
 
     [Fact]

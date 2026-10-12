@@ -9,14 +9,83 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.Filters;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.ModelBinding.Binders;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using System.Globalization;
 using Xunit;
 
 namespace Kooch.Api.Tests;
 
 public sealed class PublicSearchChildAgeValidationTests
 {
+    [Theory]
+    [InlineData("checkIn", "not-a-date")]
+    [InlineData("checkOut", "2026-02-30")]
+    public async Task MalformedDate_RemainsAModelBindingValidationError(string field, string value)
+    {
+        var http = new DefaultHttpContext();
+        http.Request.QueryString = QueryString.Create(field, value);
+        var action = new ActionContext(http, new RouteData(), new ActionDescriptor());
+        var binding = DefaultModelBindingContext.CreateBindingContext(action,
+            new QueryStringValueProvider(BindingSource.Query, http.Request.Query, CultureInfo.InvariantCulture),
+            new EmptyModelMetadataProvider().GetMetadataForType(typeof(DateOnly?)), null, field);
+        await new SimpleTypeModelBinder(typeof(DateOnly?), NullLoggerFactory.Instance).BindModelAsync(binding);
+        Assert.False(action.ModelState.IsValid);
+        Assert.False(binding.Result.IsModelSet);
+        Assert.NotEmpty(action.ModelState[field]!.Errors);
+        Assert.NotNull(Attribute.GetCustomAttribute(typeof(PublicPropertiesController), typeof(ApiControllerAttribute)));
+    }
+
+    [Theory]
+    [InlineData(true, false, 1)]
+    [InlineData(false, true, 1)]
+    [InlineData(true, true, 0)]
+    [InlineData(true, true, -1)]
+    public async Task InvalidDatePair_FailsBeforeUndatedProjection_AndUsesExisting400(
+        bool hasCheckIn, bool hasCheckOut, int nights)
+    {
+        // No provider: reaching the search query would fail instead of returning validation.
+        using var db = new KoochDbContext(new DbContextOptionsBuilder<KoochDbContext>().Options);
+        var service = new PropertyService(db, null!, null!, null!, null!, null!);
+        var controller = new PublicPropertiesController(service, null!, null!);
+        var date = new DateOnly(2026, 10, 12);
+        var error = await Assert.ThrowsAsync<ArgumentException>(() => controller.Get(null, null,
+            hasCheckIn ? date : null, hasCheckOut ? date.AddDays(nights) : null,
+            null, null, null, null, null, CancellationToken.None));
+        AssertExisting400(error);
+    }
+
+    [Theory]
+    [InlineData("?checkIn=")]
+    [InlineData("?checkOut=")]
+    [InlineData("?checkIn=&checkOut=")]
+    [InlineData("?checkIn=%20")]
+    public async Task ExplicitEmptyDate_IsRejectedBeforeService(string query)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.QueryString = new QueryString(query);
+        var controller = new PublicPropertiesController(null!, null!, null!)
+        {
+            ControllerContext = new ControllerContext { HttpContext = context }
+        };
+        var error = await Assert.ThrowsAsync<ArgumentException>(() => controller.Get(null, null,
+            null, null, null, null, null, null, null, CancellationToken.None));
+        AssertExisting400(error);
+    }
+
+    private static void AssertExisting400(Exception error)
+    {
+        var context = new ExceptionContext(new ActionContext(new DefaultHttpContext(),
+            new RouteData(), new ActionDescriptor()), []) { Exception = error };
+        new ApiExceptionFilter().OnException(context);
+        var response = Assert.IsType<ObjectResult>(context.Result);
+        Assert.Equal(400, response.StatusCode);
+        Assert.Equal("message", Assert.Single(JsonSerializer.SerializeToElement(response.Value).EnumerateObject()).Name);
+    }
+
     public static IEnumerable<object?[]> InvalidRequests()
     {
         (int Children, string? Ages)[] requests =

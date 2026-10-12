@@ -39,6 +39,7 @@ vi.mock("@/lib/public-properties", async (importOriginal) => {
 });
 
 import PropertiesPage from "@/app/properties/page";
+import { PublicApiError } from "@/lib/public-properties";
 
 const settings = [
   { id: 1, name: "بافت تاریخی", slug: "historic-district" },
@@ -66,6 +67,38 @@ const resultProperty = {
 };
 
 describe("public PropertySetting search filter", () => {
+  it.each([
+    "checkIn=2026-10-14", "checkOut=2026-10-16",
+    "checkIn=2026-10-14&checkOut=2026-10-14",
+    "checkIn=2026-10-16&checkOut=2026-10-14",
+    "checkIn=", "checkOut=", "checkIn=bad&checkOut=2026-10-16",
+  ])("does not fetch or show undated/sample results for invalid URL %s", async (query) => {
+    searchParams = new URLSearchParams(query);
+    render(<PropertiesPage />);
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(mocks.fetchPublicApi.mock.calls.some(([path]) => path.startsWith("/properties?"))).toBe(false);
+    expect(document.querySelector('a[href^="/properties/"]')).toBeNull();
+    expect(screen.queryByText(/کارت‌های نمونه/)).toBeNull();
+    expect(searchParams.toString()).toBe(query);
+  });
+
+  it("shows an API 400 message without sample cards", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) => path === "/property-settings"
+      ? Promise.resolve(settings) : Promise.reject(new PublicApiError(400, "تاریخ‌ها را اصلاح کنید.")));
+    render(<PropertiesPage />);
+    expect((await screen.findByRole("alert")).textContent).toBe("تاریخ‌ها را اصلاح کنید.");
+    expect(document.querySelector('a[href^="/properties/"]')).toBeNull();
+    expect(screen.queryByText(/کارت‌های نمونه/)).toBeNull();
+  });
+
+  it("retains the existing labeled sample fallback for unrelated failures", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) => path === "/property-settings"
+      ? Promise.resolve(settings) : Promise.reject(new PublicApiError(500, "Could not load properties.")));
+    render(<PropertiesPage />);
+    expect(await screen.findByText(/کارت‌های نمونه/)).toBeTruthy();
+    expect(document.querySelector('a[href^="/properties/"]')).not.toBeNull();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.currencyLabel = "تومان";
@@ -176,10 +209,6 @@ describe("public PropertySetting search filter", () => {
   it.each([
     "",
     "rooms=2",
-    "checkIn=2026-10-14",
-    "checkOut=2026-10-16",
-    "checkIn=2026-10-14&checkOut=2026-10-14",
-    "checkIn=2026-10-16&checkOut=2026-10-14&rooms=2",
   ])("labels the generic standard teaser for an undated range: %s", async (query) => {
     searchParams = new URLSearchParams(query);
     mocks.fetchPublicApi.mockImplementation((path: string) =>
@@ -258,7 +287,7 @@ describe("public PropertySetting search filter", () => {
     "checkIn=2026-10-14&availability=Available",
     "checkIn=2026-10-14&checkOut=2026-10-14&bookingMode=request",
     "checkIn=2026-10-16&checkOut=2026-10-14&availability=OnRequest",
-  ])("disables and ignores stale availability filters without valid dates: %s", async (query) => {
+  ])("disables stale availability filters and rejects explicitly invalid dates: %s", async (query) => {
     searchParams = new URLSearchParams(query);
     mocks.fetchPublicApi.mockImplementation((path: string) =>
       Promise.resolve(path === "/property-settings" ? settings : [
@@ -266,7 +295,12 @@ describe("public PropertySetting search filter", () => {
       ]),
     );
     render(<PropertiesPage />);
-    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    if (searchParams.has("checkIn")) {
+      expect(await screen.findByRole("alert")).toBeTruthy();
+      expect(screen.queryByText("خانه آزمون")).toBeNull();
+    } else {
+      expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+    }
     for (const label of ["نوع رزرو", "موجودی"]) {
       const control = screen.getByRole("combobox", { name: label }) as HTMLSelectElement;
       expect(control.disabled).toBe(true);

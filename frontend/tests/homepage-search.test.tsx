@@ -32,6 +32,29 @@ function findDay(date: string) {
 }
 
 describe("homepage accommodation search", () => {
+  it.each([
+    ["2030-08-20", null], [null, "2030-08-22"],
+    ["2030-08-20", "2030-08-20"], ["2030-08-22", "2030-08-20"],
+    ["2030-02-30", "2030-03-02"], ["", ""],
+  ])("preserves invalid dates %s / %s for correction and blocks submission", (checkIn, checkOut) => {
+    const onSearch = vi.fn();
+    render(<AccommodationSearchBox initialValues={{ checkIn, checkOut }} onSearch={onSearch} redirectToResults />);
+    const dateControl = screen.getByRole("button", { name: /تاریخ ورود/ });
+    const originalDates = dateControl.getAttribute("aria-label");
+    fireEvent.click(screen.getByRole("button", { name: "جستجوی اقامتگاه" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/تاریخ/);
+    expect(onSearch).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+    expect(dateControl.getAttribute("aria-label")).toBe(originalDates);
+  });
+
+  it("allows undated search without adding date query parameters", () => {
+    const onSearch = vi.fn();
+    render(<AccommodationSearchBox onSearch={onSearch} redirectToResults />);
+    fireEvent.click(screen.getByRole("button", { name: "جستجوی اقامتگاه" }));
+    expect(onSearch).toHaveBeenCalledWith(expect.objectContaining({ checkIn: null, checkOut: null }));
+    expect(mocks.push).toHaveBeenCalledWith("/properties?rooms=1&adults=2&children=0");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     Object.defineProperty(window, "matchMedia", {

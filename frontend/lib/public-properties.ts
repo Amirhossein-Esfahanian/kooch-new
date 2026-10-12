@@ -163,10 +163,21 @@ export interface PublicProperty {
   roomTypes: PublicRoomType[];
 }
 
+export class PublicApiError extends Error {
+  constructor(public readonly status: number, message: string) {
+    super(message);
+  }
+}
+
 export async function fetchPublicApi<T>(path: string): Promise<T> {
   const response = await fetch(`/api/backend${path}`);
   if (!response.ok) {
-    throw new Error(response.status === 404 ? "Property not found." : "Could not load properties.");
+    let message = response.status === 404 ? "Property not found." : "Could not load properties.";
+    if (response.status === 400) {
+      const body = await response.json().catch(() => null);
+      message = typeof body?.message === "string" ? body.message : "اطلاعات جستجو را اصلاح کنید.";
+    }
+    throw new PublicApiError(response.status, message);
   }
   return response.json();
 }
