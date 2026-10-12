@@ -4,6 +4,8 @@ internal static class IranSiteTime
 {
     private static readonly TimeZoneInfo Zone = ResolveZone();
 
+    internal static TimeZoneInfo BusinessTimeZone => Zone;
+
     internal static DateTime ToUtc(DateOnly date, TimeOnly time)
     {
         var local = date.ToDateTime(time, DateTimeKind.Unspecified);

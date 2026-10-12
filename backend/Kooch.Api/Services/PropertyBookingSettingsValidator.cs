@@ -20,7 +20,7 @@ internal static class PropertyBookingSettingsValidator
         SameNightBookingPolicyEvaluator.Validate(instant, final);
     }
 
-    private static SameNightBookingDeadline? ToDeadline(
+    internal static SameNightBookingDeadline? ToDeadline(
         TimeOnly? time,
         short? dayOffset,
         string settingName)

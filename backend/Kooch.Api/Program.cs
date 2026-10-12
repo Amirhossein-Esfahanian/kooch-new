@@ -75,6 +75,7 @@ builder.Services.AddScoped<IPropertyAccessService>(serviceProvider =>
     serviceProvider.GetRequiredService<PropertyAccessService>());
 builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<IPropertyService, PropertyService>();
+builder.Services.AddScoped<IPropertySameNightBookingPolicyService, PropertySameNightBookingPolicyService>();
 builder.Services.AddScoped<IAdminPropertyOwnerAccountService, AdminPropertyOwnerAccountService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<IAdminPropertyMemberDirectoryService, AdminPropertyMemberDirectoryService>();
