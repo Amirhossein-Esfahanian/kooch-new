@@ -1627,6 +1627,47 @@ public sealed class BookingSessionServiceTests
         }
     }
 
+    [Theory]
+    [InlineData(1, null, 300)]
+    [InlineData(2, null, 300)]
+    [InlineData(1, 0, 400)]
+    [InlineData(1, 1, 300)]
+    public async Task RealPricing_V2ChildChargesPersistAndRemainAuthoritativeForWalletAllocation(
+        int adults, int? quota, int total)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            var property = await setup.Properties.SingleAsync(item => item.Id == 1);
+            property.FreeChildAgeLimit = 5;
+            property.MaxFreeChildren = quota;
+            property.ChildPrice = 50;
+            (await setup.RoomTypes.SingleAsync(item => item.Id == 10)).MaxChildren = 2;
+            setup.SiteSettings.Add(new SiteSetting
+            {
+                Key = ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, Value = "12", IsActive = true
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService(useAuthoritativePricing: true);
+        var item = CreateItem(10, 100);
+        item.Adults = adults;
+        item.Children = 2;
+        item.ChildAges = [4, 8];
+        var result = await scope.Service.CreateAsync(CreateRequest(item));
+        Assert.Equal(total, Assert.Single(result.Reservations).FinalAmount);
+        await using var verification = harness.CreateContext();
+        var saved = await verification.Reservations.SingleAsync();
+        Assert.Equal(total, saved.FinalAmount);
+        Assert.Equal(total, saved.TotalPrice);
+        Assert.Equal(adults, saved.AdultCount);
+        Assert.Equal(2, saved.ChildCount);
+        var funding = Assert.Single(BookingWalletFunding.Allocate([saved], total - 50m));
+        Assert.Equal(total, funding.GuestPayable);
+        Assert.Equal(total - 50m, funding.WalletAmount);
+        Assert.Equal(50m, funding.GuestPayable - funding.WalletAmount);
+    }
+
     private static BookingSessionCreateRequest CreateRequest(
         params BookingSessionReservationCreateItem[] items) =>
         new()

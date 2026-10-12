@@ -96,13 +96,8 @@ public class ReservationPricingService(
             EnsureCompleteDailyPricing(request, prices);
 
         var childRules = effectiveRules.ChildPricingRules;
-        ValidateOccupancy(roomType, childRules, request);
-        // Phase A aligns eligibility only; retain the existing monetary classification until Phase B.
-        var occupancy = childPricingRuleResolver.ResolveOccupancy(
-            request.ChildAges,
-            request.Children,
-            childRules);
-        var pricedAdults = request.Adults + occupancy.AdultEquivalentGuests;
+        var occupancy = ValidateOccupancy(roomType, childRules, request);
+        var pricedAdults = checked(request.Adults + occupancy.AdultEquivalentChildren);
         var nightSnapshots = new List<ReservationNightPriceSnapshot>();
 
         foreach (var night in nights)
@@ -113,14 +108,13 @@ public class ReservationPricingService(
             var effectiveRoomBase = basePrice + (ratePlan?.PriceModifierValue ?? 0);
             if (ratePlan is not null && effectiveRoomBase <= 0)
                 throw new ArgumentException($"Rate plan produces a non-positive room price for {night:yyyy-MM-dd}.");
-            var calculation = pricingService.CalculateNightPrice(
+            var calculation = pricingService.CalculateClassifiedNightPrice(
                 roomType.MaxAdults * request.RoomCount,
-                0,
                 effectiveRoomBase * request.RoomCount,
                 childPricingRuleResolver.ResolveChildPrice(basePrice, childRules),
                 effectiveRules.ExtraGuestPrice,
                 pricedAdults,
-                occupancy.ChargeableChildren);
+                occupancy.ChildRateChildren);
             nightSnapshots.Add(new ReservationNightPriceSnapshot
             {
                 Date = night,
@@ -152,7 +146,7 @@ public class ReservationPricingService(
             CheckOutDate = request.CheckOutDate,
             NightsCount = nightSnapshots.Count,
             Adults = pricedAdults,
-            Children = occupancy.CountedChildren,
+            Children = occupancy.NonAdultEquivalentChildren,
             RoomCount = request.RoomCount,
             BaseAmount = nightSnapshots.Sum(item => item.BasePrice),
             ChildAmount = nightSnapshots.Sum(item => item.ChildAmount),
@@ -213,7 +207,7 @@ public class ReservationPricingService(
         }
     }
 
-    private static void ValidateOccupancy(
+    private static ChildOccupancyResult ValidateOccupancy(
         RoomType roomType,
         ChildPricingRules childRules,
         ReservationPricePreviewRequest request)
@@ -237,6 +231,7 @@ public class ReservationPricingService(
         }
         if (!occupancy.IsEligible)
             throw new ArgumentException("قوانین ظرفیت اتاق معتبر نیست.");
+        return occupancy;
     }
 
     private static IEnumerable<DateOnly> GetReservationNights(DateOnly checkInDate, DateOnly checkOutDate)

@@ -236,6 +236,21 @@ public sealed class DatedPropertySearchPricingTests
     }
 
     [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task ChildRateCharge_IsIncludedInDatedStartingPriceEvenWithSpareAdultCapacity(int adults)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture.Db);
+        (await fixture.Db.Properties.SingleAsync()).ChildPrice = 100_000;
+        await fixture.Db.SaveChangesAsync();
+        var result = Assert.Single(await fixture.FindAsync(adults: adults, children: 1, childAges: "8"));
+        Assert.Equal(2_300_000m, result.StartingPrice);
+        var options = await fixture.Options.GetAsync("priced-property", CheckIn, CheckOut, adults, 1, [8]);
+        Assert.Equal(4_600_000m, Assert.Single(options.RoomTypes).FinalAmount);
+    }
+
+    [Theory]
     [InlineData(2, "4", 2, 0, false, 0, 1, false)]
     [InlineData(2, "4", 2, 1, false, 0, 1, true)]
     [InlineData(2, "8", 2, 0, false, 0, 1, false)]

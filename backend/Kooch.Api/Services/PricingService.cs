@@ -213,6 +213,33 @@ public sealed class PricingService
         // adult allocation are exceeded. All other excess occupants are counted children.
         var extraAdultCount = Math.Min(excessGuestCount, Math.Max(0, adults - maxAdults));
         var extraChildCount = excessGuestCount - extraAdultCount;
+        return BuildNightPrice(baseCapacity, guestCount, basePrice, childPrice, extraGuestPrice,
+            extraAdultCount, extraChildCount);
+    }
+
+    /// <summary>
+    /// Prices an eligible V2 party: every classified child-rate guest is charged,
+    /// while only adult-like guests above base adult capacity receive the extra-guest rate.
+    /// Counts cover the whole party; basePrice and maxAdults already cover all requested rooms.
+    /// </summary>
+    public ReservationPriceCalculation CalculateClassifiedNightPrice(
+        int maxAdults,
+        decimal basePrice,
+        decimal childPrice,
+        decimal extraGuestPrice,
+        int effectiveAdults,
+        int childRateChildren)
+    {
+        ValidateInputs(maxAdults, 0, basePrice, childPrice, extraGuestPrice, effectiveAdults, childRateChildren);
+        return BuildNightPrice(maxAdults, checked(effectiveAdults + childRateChildren),
+            basePrice, childPrice, extraGuestPrice,
+            Math.Max(0, effectiveAdults - maxAdults), childRateChildren);
+    }
+
+    private static ReservationPriceCalculation BuildNightPrice(
+        int baseCapacity, int guestCount, decimal basePrice, decimal childPrice,
+        decimal extraGuestPrice, int extraAdultCount, int extraChildCount)
+    {
         var extraGuestCharge = extraAdultCount * extraGuestPrice;
         var childCharge = extraChildCount * childPrice;
 

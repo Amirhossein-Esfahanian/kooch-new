@@ -154,7 +154,7 @@ public sealed class PublicBookingOptionsService(
             adults <= 0 ||
             children < 0 ||
             childAges.Count != children ||
-            childAges.Any(age => age is < 1 or > 120))
+            childAges.Any(age => age is < 0 or > 17))
         {
             throw new ArgumentException(nameof(PublicBookingOptionsResponse));
         }

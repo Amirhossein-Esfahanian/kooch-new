@@ -596,6 +596,37 @@ public sealed class ReservationServiceHardeningTests
         }
     }
 
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task CreationWithRealPricing_PersistsV2ChildChargeEvenWithSpareAdultCapacity(int adults)
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync(useAuthoritativePricing: true);
+        var property = await harness.DbContext.Properties.SingleAsync();
+        property.FreeChildAgeLimit = 5;
+        property.ChildPrice = 50;
+        var room = await harness.DbContext.RoomTypes.SingleAsync(item => item.Id == 20);
+        room.MaxChildren = 1;
+        room.BasePrice = 100;
+        harness.DbContext.SiteSettings.Add(new SiteSetting
+        {
+            Key = ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, Value = "12", IsActive = true
+        });
+        await harness.DbContext.SaveChangesAsync();
+        var result = await harness.Service.CreateAsync(new ReservationCreateRequest
+        {
+            PropertyId = 10, RoomTypeId = 20, RoomId = 30, GuestId = 40,
+            CheckInDate = harness.CheckIn, CheckOutDate = harness.CheckOut,
+            Adults = adults, Children = 1, ChildAges = [8]
+        }, harness.SuperAdmin);
+        Assert.Equal(300m, result.FinalAmount);
+        var saved = await harness.DbContext.Reservations.SingleAsync();
+        Assert.Equal(300m, saved.FinalAmount);
+        Assert.Equal(300m, saved.TotalPrice);
+        Assert.Equal(adults, saved.AdultCount);
+        Assert.Equal(1, saved.ChildCount);
+    }
+
     private static async Task<IReadOnlyList<BookingSessionReservationDetailsResponse>>
         LoadSummaryReservationsAsync(
             ReservationTestHarness harness,

@@ -328,6 +328,57 @@ public sealed class PublicBookingOptionsTests
     }
 
     [Theory]
+    [InlineData(0)]
+    [InlineData(17)]
+    public async Task BookingOptions_AcceptsPublicChildAgeBoundariesAndPricesTheRequest(int age)
+    {
+        await using var context = await CreatePricedContextAsync();
+
+        var response = await AuthoritativeService(context).GetAsync(
+            "public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 1, [age]);
+
+        var option = Assert.Single(response.RoomTypes, item => item.RoomTypeId == 10);
+        Assert.Equal([age], response.ChildAges);
+        Assert.True(option.FinalAmount > 0);
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(18)]
+    public async Task BookingOptions_RejectsChildAgesOutsidePublicRange(int age)
+    {
+        await using var context = await CreatePricedContextAsync();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => AuthoritativeService(context).GetAsync(
+            "public-property", new(2035, 2, 1), new(2035, 2, 3), 1, 1, [age]));
+    }
+
+    [Theory]
+    [InlineData(1, "")]
+    [InlineData(1, "0,17")]
+    [InlineData(2, "0")]
+    public async Task BookingOptions_RejectsChildAgeCountMismatch(int children, string agesCsv)
+    {
+        await using var context = await CreatePricedContextAsync();
+        var ages = agesCsv.Length == 0 ? Array.Empty<int>() : agesCsv.Split(',').Select(int.Parse).ToArray();
+
+        await Assert.ThrowsAsync<ArgumentException>(() => AuthoritativeService(context).GetAsync(
+            "public-property", new(2035, 2, 1), new(2035, 2, 3), 1, children, ages));
+    }
+
+    [Fact]
+    public async Task PublicController_MalformedChildAgeIsRejectedByBookingOptionsBoundary()
+    {
+        await using var context = await CreatePricedContextAsync();
+        var controller = new PublicPropertiesController(
+            null!, AuthoritativeService(context), null!);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => controller.GetBookingOptions(
+            "public-property", new(2035, 2, 1), new(2035, 2, 3), adults: 1, children: 1,
+            childAges: "not-an-age", cancellationToken: CancellationToken.None));
+    }
+
+    [Theory]
     [InlineData(2, "4", 0, false, 0, null, false)]
     [InlineData(2, "4", 1, false, 0, null, true)]
     [InlineData(2, "8", 0, false, 0, null, false)]
@@ -393,6 +444,24 @@ public sealed class PublicBookingOptionsTests
         var option = Assert.Single(response.RoomTypes);
         Assert.Equal(10, option.RoomTypeId);
         Assert.Equal(300m, option.FinalAmount);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task ChildRateCharge_IsIncludedInStandardAndRatePlanQuotesEvenWithSpareAdultCapacity(int adults)
+    {
+        await using var context = await CreatePricedContextAsync();
+        await ConfigureChildRulesAsync(context);
+        (await context.Properties.SingleAsync()).ChildPrice = 50;
+        context.RatePlans.Add(Plan(51, "Alternative", -20));
+        await context.SaveChangesAsync();
+        var response = await AuthoritativeService(context).GetAsync("public-property",
+            new(2035, 2, 1), new(2035, 2, 3), adults, 1, [8]);
+        var option = Assert.Single(response.RoomTypes);
+        Assert.Equal(400m, option.FinalAmount);
+        Assert.Equal(360m, Assert.Single(option.RatePlans).FinalAmount);
+        Assert.Equal(1, option.AvailableCount);
     }
 
     private static async Task ConfigureChildRulesAsync(KoochDbContext db)

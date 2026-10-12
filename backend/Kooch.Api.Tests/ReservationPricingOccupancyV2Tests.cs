@@ -87,17 +87,18 @@ public sealed class ReservationPricingOccupancyV2Tests
     }
 
     [Theory]
-    [InlineData(null)]
-    [InlineData(0)]
-    [InlineData(1)]
-    public async Task FreeQuota_DoesNotChangeOccupancyOrMoneyInPhaseA(int? quota)
+    [InlineData(null, 0)]
+    [InlineData(0, 200)]
+    [InlineData(1, 100)]
+    public async Task FreeQuota_ChangesChildChargeWithoutChangingOccupancy(int? quota, int childAmount)
     {
         await using var fixture = await Fixture.CreateAsync();
         fixture.Property.MaxFreeChildren = quota;
         await fixture.Db.SaveChangesAsync();
         var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(fixture.Request(2, [4, 5]));
-        Assert.Equal(200m, quote.FinalAmount);
-        Assert.Equal(0m, quote.ChildAmount);
+        Assert.Equal(200m + childAmount, quote.FinalAmount);
+        Assert.Equal(childAmount, quote.ChildAmount);
+        Assert.Equal(2, quote.Children);
         fixture.Room.MaxChildren = 1;
         await fixture.Db.SaveChangesAsync();
         await Assert.ThrowsAsync<InvalidOperationException>(() =>
@@ -129,11 +130,11 @@ public sealed class ReservationPricingOccupancyV2Tests
     }
 
     [Theory]
-    [InlineData(1, 0, 200, 0, 0)]
+    [InlineData(1, 0, 300, 100, 0)]
     [InlineData(2, 0, 300, 100, 0)]
     [InlineData(3, 0, 360, 100, 60)]
     [InlineData(2, -10, 280, 100, 0)]
-    public async Task ExistingChildExtraAndRatePlanMoney_RemainsUnchanged(
+    public async Task ChildCharge_IsIndependentOfSpareAdultCapacityWithExistingExtraAndRatePlanRates(
         int adults, int modifier, int total, int childAmount, int extraAmount)
     {
         await using var fixture = await Fixture.CreateAsync();
@@ -175,6 +176,114 @@ public sealed class ReservationPricingOccupancyV2Tests
         Assert.Equal(36m, quote.DiscountAmount);
         Assert.Equal(100m, quote.ChildAmount);
         Assert.Equal(60m, quote.ExtraGuestAmount);
+    }
+
+    [Theory]
+    [InlineData(2, "", 0, 0, 2, 0)]
+    [InlineData(2, "4", 0, 0, 2, 1)]
+    [InlineData(1, "8", 100, 0, 1, 1)]
+    [InlineData(2, "8", 100, 0, 2, 1)]
+    [InlineData(2, "8,9", 200, 0, 2, 2)]
+    [InlineData(1, "15", 0, 0, 2, 0)]
+    [InlineData(2, "15", 0, 60, 3, 0)]
+    [InlineData(2, "4,8,15", 100, 60, 3, 2)]
+    public async Task ClassifiedChildren_ReceiveOnlyTheirApplicableChargeAndPreserveGuestCounts(
+        int adults, string agesCsv, int childAmount, int extraAmount, int persistedAdults, int persistedChildren)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Room.AllowExtraGuest = true;
+        fixture.Room.MaxExtraGuests = 1;
+        await fixture.Db.SaveChangesAsync();
+        int[] ages = agesCsv.Length == 0 ? [] : agesCsv.Split(',').Select(int.Parse).ToArray();
+        var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(fixture.Request(adults, ages));
+        Assert.Equal(childAmount, quote.ChildAmount);
+        Assert.Equal(extraAmount, quote.ExtraGuestAmount);
+        Assert.Equal(200m + childAmount + extraAmount, quote.FinalAmount);
+        Assert.Equal(persistedAdults, quote.Adults);
+        Assert.Equal(persistedChildren, quote.Children);
+    }
+
+    [Theory]
+    [InlineData(null, 75)]
+    [InlineData(0, 0)]
+    [InlineData(37, 74)]
+    public async Task ChildRateResolution_RetainsExplicitOverrideAndDailyGlobalFallback(int? overridePrice, int childAmount)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Property.ChildPrice = overridePrice;
+        fixture.Db.SiteSettings.Add(new SiteSetting
+        {
+            Key = ChildPricingRuleResolver.HalfPriceChildRateKey, Value = "25", IsActive = true
+        });
+        (await fixture.Db.RoomDailyPrices.SingleAsync(item => item.Date == Fixture.CheckIn.AddDays(1))).BasePrice = 200;
+        fixture.Db.RatePlans.Add(new RatePlan
+        {
+            Id = 50, RoomTypeId = 10, Name = "Alternative", IsActive = true,
+            PriceModifierType = PriceModifierType.FixedAmount, PriceModifierValue = -10
+        });
+        await fixture.Db.SaveChangesAsync();
+        var request = fixture.Request(1, [8]);
+        request.RatePlanId = 50;
+        var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(request);
+        Assert.Equal(childAmount, quote.ChildAmount);
+        Assert.Equal(280m, quote.BaseAmount);
+        Assert.Equal(280m + childAmount, quote.FinalAmount);
+    }
+
+    [Theory]
+    [InlineData(1, 2, "4,5", 2, 0)]
+    [InlineData(1, 2, "4,5,4", 3, 150)]
+    [InlineData(null, 2, "8,9", 3, 300)]
+    [InlineData(0, 2, "4,5", 3, 300)]
+    [InlineData(1, 1, "4,5", 3, 150)]
+    public async Task ChildCharges_ScaleByNightsAndActualPartyWhileFreeQuotaScalesByRooms(
+        int? quota, int rooms, string agesCsv, int nights, int childAmount)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Property.MaxFreeChildren = quota;
+        fixture.Db.RoomDailyPrices.Add(new RoomDailyPrice
+        {
+            RoomTypeId = 10, Date = Fixture.CheckIn.AddDays(2), GuestType = PricingGuestType.Iranian, BasePrice = 100
+        });
+        await fixture.Db.SaveChangesAsync();
+        var request = fixture.Request(2, agesCsv.Split(',').Select(int.Parse).ToArray());
+        request.RoomCount = rooms;
+        request.CheckOutDate = Fixture.CheckIn.AddDays(nights);
+        var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(request);
+        Assert.Equal(childAmount, quote.ChildAmount);
+        Assert.Equal(100m * nights * rooms, quote.BaseAmount);
+        Assert.Equal(quote.BaseAmount + childAmount, quote.FinalAmount);
+        Assert.Equal(request.Children, quote.Children);
+        Assert.All(quote.Nights, night => Assert.Equal((decimal)childAmount / nights, night.ChildAmount));
+    }
+
+    [Theory]
+    [InlineData(null, 0)]
+    [InlineData(0, 0)]
+    [InlineData(30, 60)]
+    public async Task AdultEquivalentExtraGuest_RetainsNullZeroAndPositiveRatePolicy(int? price, int extraAmount)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        fixture.Property.ExtraGuestPrice = price;
+        fixture.Room.AllowExtraGuest = true;
+        fixture.Room.MaxExtraGuests = 1;
+        await fixture.Db.SaveChangesAsync();
+        var quote = await fixture.Pricing.PreviewPublicBookingPriceAsync(fixture.Request(2, [15]));
+        Assert.Equal(0m, quote.ChildAmount);
+        Assert.Equal(extraAmount, quote.ExtraGuestAmount);
+        Assert.Equal(200m + extraAmount, quote.FinalAmount);
+    }
+
+    [Fact]
+    public void GenericCalculator_RetainsItsExistingCapacityBasedContract()
+    {
+        var calculator = new PricingService();
+        var legacy = calculator.CalculateNightPrice(2, 0, 100, 50, 30, 1, 1);
+        var classified = calculator.CalculateClassifiedNightPrice(2, 100, 50, 30, 1, 1);
+        Assert.Equal(0m, legacy.ChildCharge);
+        Assert.Equal(100m, legacy.TotalPrice);
+        Assert.Equal(50m, classified.ChildCharge);
+        Assert.Equal(150m, classified.TotalPrice);
     }
 
     private static async Task AssertEligibilityAsync(Fixture fixture, ReservationPricePreviewRequest request, bool accepted)
