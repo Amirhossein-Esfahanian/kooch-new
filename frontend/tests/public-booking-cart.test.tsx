@@ -726,12 +726,37 @@ describe("public booking cart", () => {
     expect(payload).not.toHaveProperty("guestId");
   });
 
-  it("uses repeated childAges query parameters", async () => {
+  it("serializes one child age as one CSV query parameter", async () => {
     const originalFetch = global.fetch;
     global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roomTypes: [] }) }) as typeof fetch;
-    await fetchBookingOptions("خانه", { checkIn: "2026-08-10", checkOut: "2026-08-12", adults: 2, children: 2, childAges: [4, 7] });
-    const url = String(vi.mocked(global.fetch).mock.calls[0][0]);
-    expect(url).toContain("childAges=4&childAges=7");
+    await fetchBookingOptions("خانه", { checkIn: "2026-08-10", checkOut: "2026-08-12", adults: 2, children: 1, childAges: [5] });
+    const url = new URL(String(vi.mocked(global.fetch).mock.calls[0][0]), "http://localhost");
+    expect(url.searchParams.getAll("childAges")).toEqual(["5"]);
+    expect(url.searchParams.get("checkIn")).toBe("2026-08-10");
+    expect(url.searchParams.get("checkOut")).toBe("2026-08-12");
+    expect(url.searchParams.get("adults")).toBe("2");
+    expect(url.searchParams.get("children")).toBe("1");
+    global.fetch = originalFetch;
+  });
+
+  it("serializes multiple child ages once in order and preserves the decoded comma", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roomTypes: [] }) }) as typeof fetch;
+    await fetchBookingOptions("خانه", { checkIn: "2026-08-10", checkOut: "2026-08-12", adults: 2, children: 3, childAges: [5, 8, 12] });
+    const url = new URL(String(vi.mocked(global.fetch).mock.calls[0][0]), "http://localhost");
+    expect(url.searchParams.getAll("childAges")).toEqual(["5,8,12"]);
+    expect(url.search).toContain("childAges=5%2C8%2C12");
+    expect(url.searchParams.get("children")).toBe("3");
+    global.fetch = originalFetch;
+  });
+
+  it("omits childAges when there are no children", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ roomTypes: [] }) }) as typeof fetch;
+    await fetchBookingOptions("خانه", { checkIn: "2026-08-10", checkOut: "2026-08-12", adults: 2, children: 0, childAges: [] });
+    const url = new URL(String(vi.mocked(global.fetch).mock.calls[0][0]), "http://localhost");
+    expect(url.searchParams.has("childAges")).toBe(false);
+    expect(url.searchParams.get("children")).toBe("0");
     global.fetch = originalFetch;
   });
 

@@ -234,7 +234,9 @@ export async function fetchBookingOptions(
     adults: String(query.adults),
     children: String(query.children),
   });
-  query.childAges.forEach((age) => params.append("childAges", String(age)));
+  if (query.childAges.length > 0) {
+    params.set("childAges", query.childAges.join(","));
+  }
 
   return fetchPublicApi<PublicBookingOptions>(
     `/properties/${encodeURIComponent(slug)}/booking-options?${params.toString()}`,

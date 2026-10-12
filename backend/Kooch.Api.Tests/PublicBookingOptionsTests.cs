@@ -308,6 +308,25 @@ public sealed class PublicBookingOptionsTests
         Assert.Equal("{slug}/booking-options", route.Template);
     }
 
+    [Fact]
+    public async Task PublicController_ParsesCsvChildAgesIntoOneOrderedAgeList()
+    {
+        var bookingOptions = new RecordingBookingOptionsService();
+        var controller = new PublicPropertiesController(null!, bookingOptions, null!);
+
+        await controller.GetBookingOptions(
+            "public-property",
+            new DateOnly(2035, 2, 1),
+            new DateOnly(2035, 2, 3),
+            adults: 2,
+            children: 2,
+            childAges: "5,8",
+            cancellationToken: CancellationToken.None);
+
+        Assert.Equal([5, 8], bookingOptions.ChildAges);
+        Assert.Equal(2, bookingOptions.Children);
+    }
+
     private static async Task SeedAsync(KoochDbContext context)
     {
         context.Users.Add(new User
@@ -367,6 +386,26 @@ public sealed class PublicBookingOptionsTests
             Status = ReservationStatus.ApprovedAwaitingPayment
         });
         await context.SaveChangesAsync();
+    }
+
+    private sealed class RecordingBookingOptionsService : IPublicBookingOptionsService
+    {
+        public int Children { get; private set; }
+        public IReadOnlyList<int> ChildAges { get; private set; } = [];
+
+        public Task<PublicBookingOptionsResponse> GetAsync(
+            string slug,
+            DateOnly checkInDate,
+            DateOnly checkOutDate,
+            int adults,
+            int children,
+            IReadOnlyList<int> childAges,
+            CancellationToken cancellationToken = default)
+        {
+            Children = children;
+            ChildAges = childAges;
+            return Task.FromResult(new PublicBookingOptionsResponse());
+        }
     }
 
     private static async Task<KoochDbContext> CreatePricedContextAsync()
