@@ -52,7 +52,7 @@ public sealed class UndatedPropertySearchEligibilityTests
     [InlineData(3, "8,8,8", 2, false)]
     [InlineData(1, "15", 1, false)]
     [InlineData(1, "15", 2, true)]
-    [InlineData(3, "3,3,3", 1, true)]
+    [InlineData(3, "3,3,3", 1, false)]
     public async Task Children_ReuseAgeClassificationAndScaleCapacity(
         int children, string ages, int rooms, bool included)
     {
@@ -62,7 +62,7 @@ public sealed class UndatedPropertySearchEligibilityTests
             Setting(ChildPricingRuleResolver.HalfPriceChildMinAgeKey, "6"),
             Setting(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, "12"));
         var property = await fixture.Db.Properties.SingleAsync();
-        property.MaxFreeChildren = 1; // Classification remains unchanged; this task adds no limit enforcement.
+        property.MaxFreeChildren = 1;
         await fixture.Db.SaveChangesAsync();
         Assert.Equal(included ? 1 : 0, (await fixture.Service.GetPublicPropertiesAsync(
             rooms: rooms, adults: 2, children: children, childAges: ages)).Count);
@@ -76,11 +76,120 @@ public sealed class UndatedPropertySearchEligibilityTests
             Setting(ChildPricingRuleResolver.FreeChildMaxAgeKey, "5"),
             Setting(ChildPricingRuleResolver.HalfPriceChildMinAgeKey, "6"),
             Setting(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, "12"));
-        (await fixture.Db.Properties.SingleAsync()).FreeChildAgeLimit = 9;
-        (await fixture.Db.RoomTypes.SingleAsync()).MaxChildren = 0;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Empty(await fixture.Service.GetPublicPropertiesAsync(
+            rooms: 1, adults: 2, children: 1, childAges: "15"));
+        (await fixture.Db.Properties.SingleAsync()).FreeChildAgeLimit = 16;
         await fixture.Db.SaveChangesAsync();
         Assert.Single(await fixture.Service.GetPublicPropertiesAsync(
-            rooms: 1, adults: 2, children: 1, childAges: "8"));
+            rooms: 1, adults: 2, children: 1, childAges: "15"));
+    }
+
+    [Theory]
+    [InlineData("0", 0, false)]
+    [InlineData("4", 0, false)]
+    [InlineData("4", 1, true)]
+    [InlineData("8", 0, false)]
+    [InlineData("8", 1, true)]
+    [InlineData("4,5", 1, false)]
+    [InlineData("4,8", 1, false)]
+    [InlineData("4,8", 2, true)]
+    public async Task AllNonAdultEquivalentChildren_ConsumeMaxChildren(
+        string ages, int childCapacity, bool included)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture);
+        (await fixture.Db.RoomTypes.SingleAsync()).MaxChildren = childCapacity;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Equal(included ? 1 : 0, (await fixture.Service.GetPublicPropertiesAsync(
+            adults: 2, children: ages.Split(',').Length, childAges: ages)).Count);
+    }
+
+    [Theory]
+    [InlineData(1, false, 1, true)]
+    [InlineData(2, false, 1, false)]
+    [InlineData(2, true, 1, true)]
+    [InlineData(2, true, 0, false)]
+    public async Task AdultEquivalentChildren_UseAdultCapacityInsteadOfChildCapacity(
+        int adults, bool allowExtra, int extra, bool included)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture);
+        var room = await fixture.Db.RoomTypes.SingleAsync();
+        room.MaxChildren = 0;
+        room.AllowExtraGuest = allowExtra;
+        room.MaxExtraGuests = extra;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Equal(included ? 1 : 0, (await fixture.Service.GetPublicPropertiesAsync(
+            adults: adults, children: 1, childAges: "15")).Count);
+    }
+
+    [Theory]
+    [InlineData(null, 1, "4", true)]
+    [InlineData(0, 1, "4", true)]
+    [InlineData(1, 1, "4", true)]
+    [InlineData(null, 1, "4,5", false)]
+    [InlineData(0, 1, "4,5", false)]
+    [InlineData(1, 1, "4,5", false)]
+    [InlineData(1, 2, "4,5", true)]
+    [InlineData(1, 2, "4,5,6", false)]
+    public async Task FreeQuota_DoesNotChangeStructuralChildCapacity(
+        int? quota, int rooms, string ages, bool included)
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture);
+        (await fixture.Db.Properties.SingleAsync()).MaxFreeChildren = quota;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Equal(included ? 1 : 0, (await fixture.Service.GetPublicPropertiesAsync(
+            rooms: rooms, adults: 2, children: ages.Split(',').Length, childAges: ages)).Count);
+    }
+
+    [Fact]
+    public async Task CoarsePrefilter_DoesNotRejectEnabledExtraCapacityWithZeroBaseCapacity()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        var room = await fixture.Db.RoomTypes.SingleAsync();
+        room.MaxAdults = 0;
+        room.AllowExtraGuest = true;
+        room.MaxExtraGuests = 2;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Single(await fixture.Service.GetPublicPropertiesAsync(adults: 1));
+        var broad = Assert.Single(await fixture.Service.GetPublicPropertiesAsync());
+        Assert.Empty(broad.MatchingRoomTypes);
+    }
+
+    [Fact]
+    public async Task RoomsOnlyFilter_DoesNotIntroduceAdultSupervisionRequirement()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        (await fixture.Db.RoomTypes.SingleAsync()).MaxAdults = 0;
+        await fixture.Db.SaveChangesAsync();
+        Assert.Single(await fixture.Service.GetPublicPropertiesAsync(rooms: 1));
+    }
+
+    [Fact]
+    public async Task MissingAges_StillUseTheExistingSearchFallback()
+    {
+        await using var fixture = await Fixture.CreateAsync();
+        await ConfigureChildRulesAsync(fixture);
+        var room = await fixture.Db.RoomTypes.SingleAsync();
+        room.MaxChildren = 0;
+        room.AllowExtraGuest = true;
+        room.MaxExtraGuests = 1;
+        await fixture.Db.SaveChangesAsync();
+        var missing = await fixture.Service.GetPublicPropertiesAsync(adults: 2, children: 1);
+        var explicitFallback = await fixture.Service.GetPublicPropertiesAsync(
+            adults: 2, children: 1, childAges: "17");
+        Assert.Equal(Assert.Single(explicitFallback).Id, Assert.Single(missing).Id);
+    }
+
+    private static async Task ConfigureChildRulesAsync(Fixture fixture)
+    {
+        fixture.Db.SiteSettings.AddRange(
+            Setting(ChildPricingRuleResolver.FreeChildMaxAgeKey, "5"),
+            Setting(ChildPricingRuleResolver.HalfPriceChildMinAgeKey, "6"),
+            Setting(ChildPricingRuleResolver.HalfPriceChildMaxAgeKey, "12"));
+        await fixture.Db.SaveChangesAsync();
     }
 
     [Theory]
@@ -96,7 +205,7 @@ public sealed class UndatedPropertySearchEligibilityTests
         {
             case "Inactive": room.IsActive = false; break;
             case "Deleted": room.IsDeleted = true; break;
-            case "NoAdultCapacity": room.MaxAdults = 0; room.AllowExtraGuest = true; room.MaxExtraGuests = 2; break;
+            case "NoAdultCapacity": room.MaxAdults = 0; room.AllowExtraGuest = false; room.MaxExtraGuests = 0; break;
             case "NoInventory": room.TotalInventory = 0; break;
         }
         await fixture.Db.SaveChangesAsync();

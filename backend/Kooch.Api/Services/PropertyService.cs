@@ -819,10 +819,7 @@ public class PropertyService(
         {
             query = query.Where(property => property.RoomTypes.Any(roomType =>
                 roomType.IsActive &&
-                roomType.TotalInventory >= requestedRooms &&
-                roomType.MaxAdults >= 1 &&
-                (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * requestedRooms >= minAdults &&
-                roomType.MaxChildren >= 0));
+                roomType.TotalInventory >= requestedRooms));
         }
 
         var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0,
@@ -870,15 +867,20 @@ public class PropertyService(
                 property.MaxFreeChildren,
                 null,
                 globalChildRules);
-            var occupancy = childPricingRuleResolver.ResolveOccupancy(parsedChildAges, requestedChildren, childRules);
-            var effectiveAdults = minAdults + occupancy.AdultEquivalentGuests;
-            var effectiveChildren = occupancy.ChargeableChildren;
-            var matchingRoomTypes = property.RoomTypes
-                .Where(roomType =>
-                    roomType.TotalInventory >= requestedRooms &&
+            var occupancyRules = ChildOccupancyRules.FromResolved(childRules);
+            var candidates = property.RoomTypes
+                .Where(roomType => roomType.TotalInventory >= requestedRooms);
+            candidates = hasGuestFilter
+                ? candidates.Where(roomType => ChildOccupancyEvaluator.Evaluate(
+                    occupancyRules,
+                    new RoomTypeOccupancyCapacity(roomType.MaxAdults, roomType.MaxChildren,
+                        roomType.AllowExtraGuest, roomType.MaxExtraGuests),
+                    minAdults, parsedChildAges, requestedRooms).IsEligible)
+                : candidates.Where(roomType =>
                     roomType.MaxAdults >= 1 &&
-                    (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * requestedRooms >= effectiveAdults &&
-                    roomType.MaxChildren * requestedRooms >= effectiveChildren)
+                    (roomType.MaxAdults + (roomType.AllowExtraGuest ? roomType.MaxExtraGuests : 0)) * requestedRooms >= minAdults &&
+                    roomType.MaxChildren >= 0);
+            var matchingRoomTypes = candidates
                 .Select(roomType => new PublicRoomTypeSummaryResponse
                 {
                     Id = roomType.Id,
