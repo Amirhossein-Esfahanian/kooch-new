@@ -614,6 +614,7 @@ describe("public booking cart", () => {
         email: "guest@example.test",
       },
       expectedArrivalTime: "14:30:00",
+      expectedArrivalDayOffset: 0 as const,
       specialRequest: "اتاق آرام لطفاً",
     };
     await createBookingSessionFromCart(items, "same-key", stayDetails, create);
@@ -628,6 +629,7 @@ describe("public booking cart", () => {
       expect(payload.primaryGuest).toEqual(stayDetails.primaryGuest);
       expect(payload.primaryGuest).not.toHaveProperty("nationalCode");
       expect(payload.expectedArrivalTime).toBe("14:30:00");
+      expect(payload.expectedArrivalDayOffset).toBe(0);
       expect(payload.specialRequest).toBe("اتاق آرام لطفاً");
       expect(payload.items[0]).not.toHaveProperty("status");
       expect(payload.items[0]).not.toHaveProperty("roomId");
@@ -645,7 +647,7 @@ describe("public booking cart", () => {
 
   it("sends only explicit RatePlan identity, never modifier or meal metadata", async () => {
     const create = vi.fn().mockResolvedValue({ sessionCode: "O-123456" });
-    const stayDetails = { bookingForSelf: true, primaryGuest: null, expectedArrivalTime: null, specialRequest: null };
+    const stayDetails = { bookingForSelf: true, primaryGuest: null, expectedArrivalTime: null, expectedArrivalDayOffset: null, specialRequest: null };
     await createBookingSessionFromCart([item({ ratePlanId: 12 })], "key", stayDetails, create);
     const [payload] = create.mock.calls[0];
     expect(payload.items[0].ratePlanId).toBe(12);
@@ -666,6 +668,7 @@ describe("public booking cart", () => {
         nationalCode: "  ۱۲۳۴۵۶۷۸۹۰  ",
       },
       expectedArrivalTime: null,
+      expectedArrivalDayOffset: null,
       specialRequest: null,
     };
 
@@ -691,6 +694,7 @@ describe("public booking cart", () => {
       bookingForSelf: true,
       primaryGuest,
       expectedArrivalTime: null,
+      expectedArrivalDayOffset: null,
       specialRequest: null,
     }, create);
 
@@ -714,6 +718,7 @@ describe("public booking cart", () => {
       bookingForSelf: true,
       primaryGuest,
       expectedArrivalTime: null,
+      expectedArrivalDayOffset: null,
       specialRequest: null,
     }, create);
 

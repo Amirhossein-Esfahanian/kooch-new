@@ -500,6 +500,9 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("DeletedByUserId")
                         .HasColumnType("int");
 
+                    b.Property<byte?>("ExpectedArrivalDayOffset")
+                        .HasColumnType("tinyint");
+
                     b.Property<TimeOnly?>("ExpectedArrivalTime")
                         .HasColumnType("time");
 

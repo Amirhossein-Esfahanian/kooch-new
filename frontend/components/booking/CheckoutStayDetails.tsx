@@ -10,7 +10,7 @@ import type { BookingCheckoutStayDetails } from "@/components/booking/booking-ch
 
 export const checkoutStayDetailsStorageKey =
   "kooch_booking_checkout_stay_details_v1";
-const checkoutStayDetailsVersion = 2;
+const checkoutStayDetailsVersion = 3;
 
 export interface CheckoutGuestDraft {
   firstName: string;
@@ -26,6 +26,7 @@ export interface CheckoutStayDetailsDraft {
   selfGuest?: CheckoutGuestDraft;
   otherGuest?: CheckoutGuestDraft;
   expectedArrivalTime: string;
+  expectedArrivalDayOffset: 0 | 1 | null;
   specialRequest: string;
 }
 
@@ -37,7 +38,8 @@ export type CheckoutStayDetailsErrors = Partial<
     | "email"
     | "contact"
     | "nationalCode"
-    | "specialRequest",
+    | "specialRequest"
+    | "expectedArrivalTime",
     string
   >
 >;
@@ -54,6 +56,7 @@ export const emptyCheckoutStayDetailsDraft: CheckoutStayDetailsDraft = {
   bookingForSelf: true,
   primaryGuest: emptyCheckoutGuestDraft,
   expectedArrivalTime: "",
+  expectedArrivalDayOffset: null,
   specialRequest: "",
 };
 
@@ -85,10 +88,11 @@ export function restoreCheckoutStayDetailsDraft(
       selfGuest?: unknown;
       otherGuest?: unknown;
       expectedArrivalTime?: unknown;
+      expectedArrivalDayOffset?: unknown;
       specialRequest?: unknown;
     };
     if (
-      (parsed.version !== 1 && parsed.version !== checkoutStayDetailsVersion) ||
+      (parsed.version !== 1 && parsed.version !== 2 && parsed.version !== checkoutStayDetailsVersion) ||
       typeof parsed.bookingForSelf !== "boolean" ||
       !isSafeText(parsed.primaryGuest?.firstName, 100) ||
       !isSafeText(parsed.primaryGuest?.lastName, 100) ||
@@ -97,10 +101,10 @@ export function restoreCheckoutStayDetailsDraft(
       !isSafeText(parsed.primaryGuest?.nationalCode ?? "", 20) ||
       !isSafeText(parsed.specialRequest, 2000) ||
       typeof parsed.expectedArrivalTime !== "string" ||
-      (parsed.expectedArrivalTime !== "" &&
-        !arrivalOptions.some(
-          (option) => option.value === parsed.expectedArrivalTime,
-        ))
+      (parsed.version === checkoutStayDetailsVersion
+        ? !isValidStoredArrival(parsed.expectedArrivalTime, parsed.expectedArrivalDayOffset)
+        : parsed.expectedArrivalTime !== "" &&
+          !arrivalOptions.some((option) => option.value === parsed.expectedArrivalTime))
     ) {
       return emptyCheckoutStayDetailsDraft;
     }
@@ -117,6 +121,9 @@ export function restoreCheckoutStayDetailsDraft(
       selfGuest: restoreGuestDraft(parsed.selfGuest),
       otherGuest: restoreGuestDraft(parsed.otherGuest),
       expectedArrivalTime: parsed.expectedArrivalTime,
+      expectedArrivalDayOffset: parsed.version === checkoutStayDetailsVersion
+        ? parsed.expectedArrivalDayOffset as 0 | 1 | null
+        : parsed.expectedArrivalTime ? 0 : null,
       specialRequest: parsed.specialRequest as string,
     };
   } catch {
@@ -136,6 +143,15 @@ export function validateCheckoutStayDetailsDraft(
   const errors: CheckoutStayDetailsErrors = {};
   if (draft.specialRequest.length > 2000) {
     errors.specialRequest = "درخواست ویژه نمی‌تواند بیشتر از ۲۰۰۰ نویسه باشد.";
+  }
+  if (draft.expectedArrivalDayOffset === 1 && !isValidClockTime(draft.expectedArrivalTime)) {
+    errors.expectedArrivalTime = "ساعت تقریبی ورود در بامداد روز بعد را وارد کنید.";
+  } else if (
+    (draft.expectedArrivalDayOffset === null && draft.expectedArrivalTime !== "") ||
+    (draft.expectedArrivalDayOffset === 0 &&
+      !arrivalOptions.some((option) => option.value === draft.expectedArrivalTime))
+  ) {
+    errors.expectedArrivalTime = "زمان تقریبی ورود را دوباره انتخاب کنید.";
   }
   if (!draft.primaryGuest.firstName.trim()) {
     errors.firstName = "نام مهمان اصلی را وارد کنید.";
@@ -174,7 +190,12 @@ export function toBookingCheckoutStayDetails(
       email: draft.primaryGuest.email.trim().toLowerCase() || null,
       nationalCode: draft.primaryGuest.nationalCode.trim() || null,
     },
-    expectedArrivalTime: draft.expectedArrivalTime || null,
+    expectedArrivalTime: draft.expectedArrivalTime
+      ? draft.expectedArrivalDayOffset === 1
+        ? `${draft.expectedArrivalTime}:00`
+        : draft.expectedArrivalTime
+      : null,
+    expectedArrivalDayOffset: draft.expectedArrivalTime ? draft.expectedArrivalDayOffset : null,
     specialRequest: draft.specialRequest.trim() || null,
   };
 }
@@ -218,6 +239,10 @@ export function CheckoutStayDetails({
       primaryGuest: { ...(draft.selfGuest ?? emptyCheckoutGuestDraft) },
     });
   };
+
+  const arrivalSelectValue = draft.expectedArrivalDayOffset === 1
+    ? "next-day"
+    : draft.expectedArrivalTime;
 
   return (
     <div className="min-w-0">
@@ -353,13 +378,21 @@ export function CheckoutStayDetails({
         >
           زمان تقریبی ورود
         </h3>
-        <KoochField className="mt-3 max-w-sm">
+        <KoochField
+          className="mt-3 max-w-sm"
+          error={draft.expectedArrivalDayOffset === 1 ? undefined : errors.expectedArrivalTime}
+        >
           <KoochSelect
             aria-label="زمان تقریبی ورود"
-            onChange={(event) =>
-              onChange({ ...draft, expectedArrivalTime: event.target.value })
-            }
-            value={draft.expectedArrivalTime}
+            onChange={(event) => {
+              const value = event.target.value;
+              onChange({
+                ...draft,
+                expectedArrivalTime: value === "next-day" ? "" : value,
+                expectedArrivalDayOffset: value === "next-day" ? 1 : value ? 0 : null,
+              });
+            }}
+            value={arrivalSelectValue}
           >
             <option value="">هنوز مشخص نیست</option>
             {arrivalOptions.map((option) => (
@@ -367,9 +400,24 @@ export function CheckoutStayDetails({
                 {option.label}
               </option>
             ))}
-            <option value="later midnight">بعد از نیمه شب</option>
+            <option value="next-day">بعد از نیمه شب</option>
           </KoochSelect>
         </KoochField>
+        {draft.expectedArrivalDayOffset === 1 ? (
+          <KoochField
+            className="mt-3 max-w-sm"
+            error={errors.expectedArrivalTime}
+            label="ساعت تقریبی ورود در بامداد روز بعد"
+            required
+          >
+            <KoochInput
+              dir="ltr"
+              onChange={(event) => onChange({ ...draft, expectedArrivalTime: event.target.value })}
+              type="time"
+              value={draft.expectedArrivalTime}
+            />
+          </KoochField>
+        ) : null}
       </section>
     </div>
   );
@@ -456,6 +504,16 @@ function ReviewValue({
 
 function isSafeText(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
+}
+
+function isValidClockTime(value: string): boolean {
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function isValidStoredArrival(time: string, offset: unknown): boolean {
+  if (offset === null) return time === "";
+  if (offset === 0) return arrivalOptions.some((option) => option.value === time);
+  return offset === 1 && isValidClockTime(time);
 }
 
 function restoreGuestDraft(value: unknown): CheckoutGuestDraft | undefined {

@@ -24,6 +24,8 @@ public class PublicPropertyResponse
     public InventoryMode InventoryMode { get; set; }
     public TimeOnly? CheckInTime { get; set; }
     public TimeOnly? CheckOutTime { get; set; }
+    public TimeOnly? RegularReceptionFrom { get; set; }
+    public TimeOnly? RegularReceptionUntil { get; set; }
     public decimal? Latitude { get; set; }
     public decimal? Longitude { get; set; }
     public bool HasElevator { get; set; }

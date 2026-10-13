@@ -25,6 +25,7 @@ export interface BookingCheckoutStayDetails {
   bookingForSelf: boolean;
   primaryGuest: AccountBookingSessionPrimaryGuestRequest | null;
   expectedArrivalTime: string | null;
+  expectedArrivalDayOffset: 0 | 1 | null;
   specialRequest: string | null;
 }
 
@@ -143,6 +144,7 @@ export function createBookingSessionFromCart(
     bookingForSelf: stayDetails.bookingForSelf,
     primaryGuest: stayDetails.primaryGuest,
     expectedArrivalTime: stayDetails.expectedArrivalTime,
+    expectedArrivalDayOffset: stayDetails.expectedArrivalDayOffset,
     specialRequest: stayDetails.specialRequest,
     items: items.map((item) => ({
       roomTypeId: item.roomTypeId,

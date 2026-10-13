@@ -88,6 +88,7 @@ export interface AccountBookingSessionCreateRequest {
   bookingForSelf: boolean;
   primaryGuest: AccountBookingSessionPrimaryGuestRequest | null;
   expectedArrivalTime: string | null;
+  expectedArrivalDayOffset: 0 | 1 | null;
   specialRequest: string | null;
   items: AccountBookingSessionItemRequest[];
 }
@@ -153,6 +154,7 @@ export interface AccountBookingSession {
   primaryGuest?: AccountBookingSessionPrimaryGuestResponse | null;
   currency: string;
   expectedArrivalTime?: string | null;
+  expectedArrivalDayOffset?: 0 | 1 | null;
   specialRequest?: string | null;
   totalAmount: number;
   summary: AccountBookingSessionSummary;

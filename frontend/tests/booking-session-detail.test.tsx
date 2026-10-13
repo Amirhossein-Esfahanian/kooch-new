@@ -59,6 +59,7 @@ function response(): AccountBookingSession {
     },
     currency: "IRR",
     expectedArrivalTime: "14:30:00",
+    expectedArrivalDayOffset: 0,
     specialRequest: "اتاق آرام لطفاً",
     totalAmount: 4_000_000,
     summary: {
@@ -690,5 +691,16 @@ describe("account booking session detail", () => {
 
     expect(await screen.findByText("مشخص نشده")).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "درخواست ویژه" })).toBeNull();
+  });
+
+  it("identifies a specified arrival on the following calendar day", async () => {
+    const nextDay = response();
+    nextDay.expectedArrivalTime = "01:30:00";
+    nextDay.expectedArrivalDayOffset = 1;
+    bookingApi.fetch.mockResolvedValue(nextDay);
+
+    render(<AccountBookingSessionPage />);
+
+    expect(await screen.findByText("روز بعد، ۰۱:۳۰")).toBeTruthy();
   });
 });

@@ -20,6 +20,7 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
     public bool BookingForSelf { get; set; } = true;
     public AccountBookingSessionPrimaryGuestRequest? PrimaryGuest { get; set; }
     public TimeOnly? ExpectedArrivalTime { get; set; }
+    public byte? ExpectedArrivalDayOffset { get; set; }
 
     [MaxLength(2000)]
     public string? SpecialRequest { get; set; }
@@ -28,6 +29,14 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
+        if (ExpectedArrivalTime.HasValue != ExpectedArrivalDayOffset.HasValue ||
+            ExpectedArrivalDayOffset is > 1)
+        {
+            yield return new ValidationResult(
+                "Expected arrival time and day offset must be supplied together, with day offset 0 or 1.",
+                [nameof(ExpectedArrivalTime), nameof(ExpectedArrivalDayOffset)]);
+        }
+
         if (BookingForSelf)
         {
             if (PrimaryGuest is not null)

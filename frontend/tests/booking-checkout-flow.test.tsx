@@ -74,6 +74,8 @@ import {
 import {
   checkoutStayDetailsStorageKey,
   emptyCheckoutStayDetailsDraft,
+  restoreCheckoutStayDetailsDraft,
+  toBookingCheckoutStayDetails,
   validateCheckoutStayDetailsDraft,
 } from "@/components/booking/CheckoutStayDetails";
 import { ApiRequestError } from "@/lib/owner-api";
@@ -359,6 +361,7 @@ describe("multi-step booking checkout skeleton", () => {
       {
         bookingForSelf: true,
         expectedArrivalTime: null,
+        expectedArrivalDayOffset: null,
         primaryGuest: {
           firstName: "سارا",
           lastName: "احمدی",
@@ -804,11 +807,56 @@ describe("multi-step booking checkout skeleton", () => {
         nationalCode: null,
       },
       expectedArrivalTime: "15:00:00",
+      expectedArrivalDayOffset: 0,
       specialRequest: "تخت کودک",
     });
     expect(details).not.toHaveProperty("userId");
     expect(details).not.toHaveProperty("guestId");
     expect(items.every((item) => item.notes === null)).toBe(true);
+  });
+
+  it("requires a guest-supplied next-day time and restores the structured arrival", async () => {
+    persistCart();
+    signIn();
+    const view = render(<BookingCheckoutFlow />);
+    const arrival = await screen.findByLabelText("زمان تقریبی ورود", { selector: "select" });
+    fireEvent.change(arrival, { target: { value: "next-day" } });
+
+    expect((screen.getByLabelText(/ساعت تقریبی ورود در بامداد روز بعد/, { selector: "input" }) as HTMLInputElement).value).toBe("");
+    expect(validateCheckoutStayDetailsDraft({
+      ...emptyCheckoutStayDetailsDraft,
+      expectedArrivalTime: "",
+      expectedArrivalDayOffset: 1,
+    }).expectedArrivalTime).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
+    expect(navigation.push).not.toHaveBeenCalledWith("/booking/checkout?step=review");
+
+    fireEvent.change(screen.getByLabelText(/ساعت تقریبی ورود در بامداد روز بعد/, { selector: "input" }), {
+      target: { value: "01:30" },
+    });
+    expect(JSON.parse(sessionStorage.getItem(checkoutStayDetailsStorageKey)!).expectedArrivalDayOffset).toBe(1);
+    expect(JSON.parse(sessionStorage.getItem(checkoutStayDetailsStorageKey)!).expectedArrivalTime).toBe("01:30");
+    view.unmount();
+    render(<BookingCheckoutFlow />);
+    expect((await screen.findByLabelText(/ساعت تقریبی ورود در بامداد روز بعد/, { selector: "input" }) as HTMLInputElement).value).toBe("01:30");
+    expect((screen.getByLabelText("زمان تقریبی ورود", { selector: "select" }) as HTMLSelectElement).value).toBe("next-day");
+    const restored = restoreCheckoutStayDetailsDraft(sessionStorage.getItem(checkoutStayDetailsStorageKey));
+    expect(toBookingCheckoutStayDetails(restored)).toMatchObject({
+      expectedArrivalTime: "01:30:00",
+      expectedArrivalDayOffset: 1,
+    });
+  });
+
+  it("discards a legacy after-midnight sentinel rather than submitting it", () => {
+    const restored = restoreCheckoutStayDetailsDraft(JSON.stringify({
+      version: 2,
+      bookingForSelf: true,
+      primaryGuest: { firstName: "", lastName: "", mobile: "", email: "", nationalCode: "" },
+      expectedArrivalTime: "later midnight",
+      specialRequest: "",
+    }));
+    expect(restored.expectedArrivalTime).toBe("");
+    expect(restored.expectedArrivalDayOffset).toBeNull();
   });
 
   it("keeps cart and stay draft when final creation fails", async () => {

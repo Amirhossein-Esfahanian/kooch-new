@@ -8,6 +8,26 @@ namespace Kooch.Api.Tests;
 
 public sealed class PublicPropertyVisibilityTests
 {
+    [Theory]
+    [InlineData(14, 0, 23, 0)]
+    [InlineData(22, 0, 6, 0)]
+    public async Task PublicDetail_ProjectsReceptionHoursWithoutReordering(
+        int fromHour, int fromMinute, int untilHour, int untilMinute)
+    {
+        await using var context = CreateContext();
+        var property = Property(1, "Property", "property", "کاشان");
+        property.RegularReceptionFrom = new TimeOnly(fromHour, fromMinute);
+        property.RegularReceptionUntil = new TimeOnly(untilHour, untilMinute);
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).GetPublicPropertyBySlugAsync("property");
+
+        Assert.NotNull(result);
+        Assert.Equal(property.RegularReceptionFrom, result.RegularReceptionFrom);
+        Assert.Equal(property.RegularReceptionUntil, result.RegularReceptionUntil);
+    }
+
     [Fact]
     public async Task PublicLists_DoNotApplyAnImplicitCityFilter()
     {

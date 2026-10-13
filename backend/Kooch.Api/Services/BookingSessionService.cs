@@ -188,6 +188,7 @@ public sealed class BookingSessionService(
             PropertyId = request.PropertyId,
             Currency = currency,
             ExpectedArrivalTime = accountContext?.ExpectedArrivalTime,
+            ExpectedArrivalDayOffset = accountContext?.ExpectedArrivalDayOffset,
             IdempotencyKey = normalizedIdempotencyKey,
             RequestHash = requestHash
         };
@@ -321,6 +322,7 @@ public sealed class BookingSessionService(
         if (accountContext.BookingForSelf &&
             accountContext.PrimaryGuest is null &&
             accountContext.ExpectedArrivalTime is null &&
+            accountContext.ExpectedArrivalDayOffset is null &&
             accountContext.SpecialRequest is null)
         {
             var legacyPayload = Encoding.UTF8.GetBytes(
@@ -336,6 +338,7 @@ public sealed class BookingSessionService(
                 canonicalHash,
                 accountContext.BookingForSelf,
                 expectedArrivalTime,
+                accountContext.ExpectedArrivalDayOffset,
                 accountContext.SpecialRequest,
                 accountContext.PrimaryGuest is null
                     ? null
@@ -348,6 +351,7 @@ public sealed class BookingSessionService(
                 canonicalHash,
                 accountContext.BookingForSelf,
                 expectedArrivalTime,
+                accountContext.ExpectedArrivalDayOffset,
                 accountContext.SpecialRequest,
                 new CanonicalPrimaryGuestWithNationalCode(
                     accountContext.PrimaryGuest.FirstName,
@@ -430,6 +434,7 @@ public sealed class BookingSessionService(
             request.BookingForSelf,
             primaryGuest,
             request.ExpectedArrivalTime,
+            request.ExpectedArrivalDayOffset,
             specialRequest);
     }
 
@@ -1257,6 +1262,7 @@ public sealed class BookingSessionService(
         string BookingHash,
         bool BookingForSelf,
         string? ExpectedArrivalTime,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] byte? ExpectedArrivalDayOffset,
         string? SpecialRequest,
         CanonicalPrimaryGuest? PrimaryGuest);
 
@@ -1264,6 +1270,7 @@ public sealed class BookingSessionService(
         string BookingHash,
         bool BookingForSelf,
         string? ExpectedArrivalTime,
+        [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] byte? ExpectedArrivalDayOffset,
         string? SpecialRequest,
         CanonicalPrimaryGuestWithNationalCode PrimaryGuest);
 
@@ -1297,6 +1304,7 @@ public sealed class BookingSessionService(
         bool BookingForSelf,
         NormalizedPrimaryGuest? PrimaryGuest,
         TimeOnly? ExpectedArrivalTime,
+        byte? ExpectedArrivalDayOffset,
         string? SpecialRequest);
 
     private sealed record NormalizedPrimaryGuest(

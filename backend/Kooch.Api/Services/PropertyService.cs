@@ -1481,6 +1481,8 @@ public class PropertyService(
             InventoryMode = property.InventoryMode,
             CheckInTime = property.CheckInTime,
             CheckOutTime = property.CheckOutTime,
+            RegularReceptionFrom = property.RegularReceptionFrom,
+            RegularReceptionUntil = property.RegularReceptionUntil,
             Latitude = property.Latitude,
             Longitude = property.Longitude,
             HasElevator = property.HasElevator,

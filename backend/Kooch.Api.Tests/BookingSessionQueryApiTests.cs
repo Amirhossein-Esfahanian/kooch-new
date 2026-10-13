@@ -109,6 +109,7 @@ public sealed class BookingSessionQueryApiTests
         Assert.Equal(1, result.Guest.GuestId);
         Assert.Equal("1234567890", result.Guest.NationalCode);
         Assert.Equal(new TimeOnly(18, 30), result.ExpectedArrivalTime);
+        Assert.Equal((byte)0, result.ExpectedArrivalDayOffset);
         Assert.Equal("اتاق آرام باشد", result.SpecialRequest);
         Assert.Equal(2, result.Reservations.Count);
         Assert.Contains(
@@ -166,6 +167,7 @@ public sealed class BookingSessionQueryApiTests
         Assert.Equal("09120000000", result.PrimaryGuest.Mobile);
         Assert.Equal("1234567890", result.PrimaryGuest.NationalCode);
         Assert.Equal(new TimeOnly(18, 30), result.ExpectedArrivalTime);
+        Assert.Equal((byte)0, result.ExpectedArrivalDayOffset);
         Assert.Equal("اتاق آرام باشد", result.SpecialRequest);
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
@@ -621,6 +623,7 @@ public sealed class BookingSessionQueryApiTests
                 PropertyId = 1,
                 Currency = "IRR",
                 ExpectedArrivalTime = new TimeOnly(18, 30),
+                ExpectedArrivalDayOffset = 0,
                 RequestHash = new string('A', 64)
             };
             session.Reservations.Add(CreateReservation(

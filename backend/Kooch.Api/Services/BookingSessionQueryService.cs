@@ -169,6 +169,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             {
                 SessionCode = session.SessionCode,
                 ExpectedArrivalTime = session.ExpectedArrivalTime,
+                ExpectedArrivalDayOffset = session.ExpectedArrivalDayOffset,
                 Property = new BookingSessionPropertyResponse
                 {
                     PropertyId = session.PropertyId,
@@ -243,6 +244,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 SessionCode = session.SessionCode,
                 Currency = session.Currency,
                 ExpectedArrivalTime = session.ExpectedArrivalTime,
+                ExpectedArrivalDayOffset = session.ExpectedArrivalDayOffset,
                 Property = new BookingSessionPropertyResponse
                 {
                     PropertyId = session.PropertyId,

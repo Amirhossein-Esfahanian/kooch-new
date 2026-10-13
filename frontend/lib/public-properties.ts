@@ -119,6 +119,8 @@ export interface PublicProperty {
   inventoryMode: PublicInventoryMode;
   checkInTime: string | null;
   checkOutTime: string | null;
+  regularReceptionFrom: string | null;
+  regularReceptionUntil: string | null;
   latitude: number | null;
   longitude: number | null;
   hasElevator: boolean;

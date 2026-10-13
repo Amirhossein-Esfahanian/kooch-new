@@ -775,7 +775,7 @@ export default function AccountBookingSessionPage() {
             </h3>
             <p className="mt-4 text-sm font-bold text-foreground">
               {session.expectedArrivalTime
-                ? toPersianDigits(session.expectedArrivalTime.slice(0, 5))
+                ? `${session.expectedArrivalDayOffset === 1 ? "روز بعد، " : ""}${toPersianDigits(session.expectedArrivalTime.slice(0, 5))}`
                 : "مشخص نشده"}
             </p>
           </KoochCard>

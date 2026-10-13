@@ -1187,6 +1187,7 @@ public sealed partial class BookingSessionServiceTests
             CreateAccountItem(10, 100),
             CreateAccountItem(20, 200));
         request.ExpectedArrivalTime = new TimeOnly(18, 30);
+        request.ExpectedArrivalDayOffset = 0;
         request.SpecialRequest = "  اتاق آرام باشد  ";
         request.Items[0].Notes = "یادداشت قدیمی";
 
@@ -1195,6 +1196,7 @@ public sealed partial class BookingSessionServiceTests
         await using var verification = harness.CreateContext();
         var session = await verification.BookingSessions.Include(item => item.Reservations).SingleAsync();
         Assert.Equal(new TimeOnly(18, 30), session.ExpectedArrivalTime);
+        Assert.Equal((byte)0, session.ExpectedArrivalDayOffset);
         Assert.All(session.Reservations, reservation => Assert.Equal("اتاق آرام باشد", reservation.GuestNote));
     }
 
@@ -1209,7 +1211,9 @@ public sealed partial class BookingSessionServiceTests
         await scope.Service.CreateForAccountAsync(1, CreateAccountRequest(item));
 
         await using var verification = harness.CreateContext();
-        Assert.Null((await verification.BookingSessions.SingleAsync()).ExpectedArrivalTime);
+        var session = await verification.BookingSessions.SingleAsync();
+        Assert.Null(session.ExpectedArrivalTime);
+        Assert.Null(session.ExpectedArrivalDayOffset);
         Assert.Equal("یادداشت آیتم", (await verification.Reservations.SingleAsync()).GuestNote);
     }
 
@@ -1253,6 +1257,7 @@ public sealed partial class BookingSessionServiceTests
         var request = CreateOtherGuestAccountRequest(CreateAccountItem(10, 100));
         request.IdempotencyKey = "stay-details-1";
         request.ExpectedArrivalTime = new TimeOnly(17, 0);
+        request.ExpectedArrivalDayOffset = 0;
         request.SpecialRequest = "بالش اضافه";
 
         var first = await scope.Service.CreateForAccountAsync(1, request);
@@ -1265,6 +1270,63 @@ public sealed partial class BookingSessionServiceTests
         request.ExpectedArrivalTime = new TimeOnly(18, 0);
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => scope.Service.CreateForAccountAsync(1, request));
+    }
+
+    [Theory]
+    [InlineData(null, null, true)]
+    [InlineData("18:30", 0, true)]
+    [InlineData("01:30", 1, true)]
+    [InlineData("18:30", null, false)]
+    [InlineData(null, 1, false)]
+    [InlineData("18:30", 2, false)]
+    public async Task AccountStayDetails_ValidatesArrivalPair(
+        string? time, int? dayOffset, bool valid)
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.ExpectedArrivalTime = time is null ? null : TimeOnly.Parse(time);
+        request.ExpectedArrivalDayOffset = dayOffset is null ? null : (byte)dayOffset.Value;
+
+        if (!valid)
+        {
+            await Assert.ThrowsAsync<ArgumentException>(
+                () => scope.Service.CreateForAccountAsync(1, request));
+            return;
+        }
+
+        await scope.Service.CreateForAccountAsync(1, request);
+        await using var verification = harness.CreateContext();
+        var persisted = await verification.BookingSessions.SingleAsync();
+        Assert.Equal(request.ExpectedArrivalTime, persisted.ExpectedArrivalTime);
+        Assert.Equal(request.ExpectedArrivalDayOffset, persisted.ExpectedArrivalDayOffset);
+    }
+
+    [Fact]
+    public async Task AccountStayDetails_DayOffsetChangesIdempotencyIdentity()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.IdempotencyKey = "arrival-day-offset";
+        request.ExpectedArrivalTime = new TimeOnly(1, 30);
+        request.ExpectedArrivalDayOffset = 0;
+
+        var created = await scope.Service.CreateForAccountAsync(1, request);
+        var replay = await scope.Service.CreateForAccountAsync(1, request);
+        Assert.Equal(created.BookingSessionId, replay.BookingSessionId);
+
+        request.ExpectedArrivalDayOffset = 1;
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => scope.Service.CreateForAccountAsync(1, request));
+    }
+
+    [Fact]
+    public void AccountStayDetails_NegativeDayOffsetIsRejectedByRequestDeserialization()
+    {
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<AccountBookingSessionCreateRequest>(
+            "{\"expectedArrivalTime\":\"01:30:00\",\"expectedArrivalDayOffset\":-1}",
+            new JsonSerializerOptions(JsonSerializerDefaults.Web)));
     }
 
     [Fact]
