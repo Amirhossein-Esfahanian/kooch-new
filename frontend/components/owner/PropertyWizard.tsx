@@ -145,6 +145,15 @@ interface WizardData {
   nearbyPlaces: NearbyPlaceDraft[];
   checkInTime: string;
   checkOutTime: string;
+  regularReceptionEnabled: boolean;
+  regularReceptionFrom: string;
+  regularReceptionUntil: string;
+  sameNightInstantEnabled: boolean;
+  sameNightInstantBookingTime: string;
+  sameNightInstantBookingDayOffset: 0 | 1 | null;
+  sameNightFinalEnabled: boolean;
+  sameNightFinalBookingTime: string;
+  sameNightFinalBookingDayOffset: 0 | 1 | null;
   defaultMealPlanId: number | null;
   freeChildAgeLimit: string;
   maxFreeChildren: string;
@@ -181,6 +190,15 @@ const initialData: WizardData = {
   ],
   checkInTime: "14:00",
   checkOutTime: "12:00",
+  regularReceptionEnabled: false,
+  regularReceptionFrom: "",
+  regularReceptionUntil: "",
+  sameNightInstantEnabled: false,
+  sameNightInstantBookingTime: "",
+  sameNightInstantBookingDayOffset: null,
+  sameNightFinalEnabled: false,
+  sameNightFinalBookingTime: "",
+  sameNightFinalBookingDayOffset: null,
   defaultMealPlanId: null,
   freeChildAgeLimit: "",
   maxFreeChildren: "",
@@ -198,6 +216,47 @@ const cardClass =
   "rounded-xl border border-border bg-card p-5 text-card-foreground shadow-sm";
 const choiceClass =
   "flex items-center gap-2 rounded-xl border border-border bg-background p-3 text-sm font-bold text-foreground transition hover:bg-muted";
+
+type RulesErrorKey = "receptionFrom" | "receptionUntil" | "instantTime" | "instantDay" | "finalTime" | "finalDay" | "deadlineOrder";
+type RulesErrors = Partial<Record<RulesErrorKey, string>>;
+const validTime = (value: string) => /^([01]\d|2[0-3]):[0-5]\d$/.test(value);
+
+function bookingSettingsPayload(data: WizardData) {
+  return {
+    regularReceptionFrom: data.regularReceptionEnabled ? data.regularReceptionFrom : null,
+    regularReceptionUntil: data.regularReceptionEnabled ? data.regularReceptionUntil : null,
+    sameNightInstantBookingTime: data.sameNightInstantEnabled ? data.sameNightInstantBookingTime : null,
+    sameNightInstantBookingDayOffset: data.sameNightInstantEnabled ? data.sameNightInstantBookingDayOffset : null,
+    sameNightFinalBookingTime: data.sameNightFinalEnabled ? data.sameNightFinalBookingTime : null,
+    sameNightFinalBookingDayOffset: data.sameNightFinalEnabled ? data.sameNightFinalBookingDayOffset : null,
+  };
+}
+
+function validateBookingSettings(data: WizardData): RulesErrors {
+  const errors: RulesErrors = {};
+  if (data.regularReceptionEnabled) {
+    if (!validTime(data.regularReceptionFrom)) errors.receptionFrom = "ساعت شروع پذیرش را وارد کنید.";
+    if (!validTime(data.regularReceptionUntil)) errors.receptionUntil = "ساعت پایان پذیرش را وارد کنید.";
+    if (!errors.receptionFrom && !errors.receptionUntil && data.regularReceptionFrom === data.regularReceptionUntil)
+      errors.receptionUntil = "ساعت پایان پذیرش باید با ساعت شروع متفاوت باشد.";
+  }
+  if (data.sameNightInstantEnabled) {
+    if (!validTime(data.sameNightInstantBookingTime)) errors.instantTime = "ساعت مهلت رزرو قطعی را وارد کنید.";
+    if (data.sameNightInstantBookingDayOffset !== 0 && data.sameNightInstantBookingDayOffset !== 1)
+      errors.instantDay = "روز مهلت رزرو قطعی را انتخاب کنید.";
+  }
+  if (data.sameNightFinalEnabled) {
+    if (!validTime(data.sameNightFinalBookingTime)) errors.finalTime = "ساعت آخرین مهلت ثبت رزرو را وارد کنید.";
+    if (data.sameNightFinalBookingDayOffset !== 0 && data.sameNightFinalBookingDayOffset !== 1)
+      errors.finalDay = "روز آخرین مهلت ثبت رزرو را انتخاب کنید.";
+  }
+  if (data.sameNightInstantEnabled && data.sameNightFinalEnabled &&
+      !errors.instantTime && !errors.instantDay && !errors.finalTime && !errors.finalDay &&
+      `${data.sameNightInstantBookingDayOffset}:${data.sameNightInstantBookingTime}` >
+      `${data.sameNightFinalBookingDayOffset}:${data.sameNightFinalBookingTime}`)
+    errors.deadlineOrder = "مهلت رزرو قطعی نمی‌تواند بعد از آخرین مهلت ثبت رزرو باشد.";
+  return errors;
+}
 const linkButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-center text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 interface PropertyWizardProps {
@@ -303,6 +362,8 @@ export function PropertyWizard({
   const [savingSection, setSavingSection] = useState<string | null>(null);
   const [booting, setBooting] = useState(mode === "edit");
   const [error, setError] = useState("");
+  const [showRulesErrors, setShowRulesErrors] = useState(false);
+  const rulesErrors = showRulesErrors ? validateBookingSettings(data) : {};
 
   useEffect(() => {
     const requestedStep = Number(
@@ -482,6 +543,15 @@ export function PropertyWizard({
                 ],
             checkInTime: propertyResult.checkInTime ?? "14:00",
             checkOutTime: propertyResult.checkOutTime ?? "12:00",
+            regularReceptionEnabled: propertyResult.regularReceptionFrom != null || propertyResult.regularReceptionUntil != null,
+            regularReceptionFrom: propertyResult.regularReceptionFrom?.slice(0, 5) ?? "",
+            regularReceptionUntil: propertyResult.regularReceptionUntil?.slice(0, 5) ?? "",
+            sameNightInstantEnabled: propertyResult.sameNightInstantBookingTime != null || propertyResult.sameNightInstantBookingDayOffset != null,
+            sameNightInstantBookingTime: propertyResult.sameNightInstantBookingTime?.slice(0, 5) ?? "",
+            sameNightInstantBookingDayOffset: propertyResult.sameNightInstantBookingDayOffset as 0 | 1 | null,
+            sameNightFinalEnabled: propertyResult.sameNightFinalBookingTime != null || propertyResult.sameNightFinalBookingDayOffset != null,
+            sameNightFinalBookingTime: propertyResult.sameNightFinalBookingTime?.slice(0, 5) ?? "",
+            sameNightFinalBookingDayOffset: propertyResult.sameNightFinalBookingDayOffset as 0 | 1 | null,
             defaultMealPlanId: propertyResult.defaultMealPlanId ?? null,
             freeChildAgeLimit:
               propertyResult.freeChildAgeLimit == null
@@ -709,6 +779,7 @@ export function PropertyWizard({
       inventoryMode: data.inventoryMode,
       checkInTime: data.checkInTime || null,
       checkOutTime: data.checkOutTime || null,
+      ...bookingSettingsPayload(data),
       defaultMealPlanId: data.defaultMealPlanId,
       freeChildAgeLimit:
         data.freeChildAgeLimit === "" ? null : Number(data.freeChildAgeLimit),
@@ -904,6 +975,11 @@ export function PropertyWizard({
   }
 
   function validateStep(index = step) {
+    if (index === 7) {
+      setShowRulesErrors(true);
+      const firstError = Object.values(validateBookingSettings(data))[0];
+      if (firstError) return firstError;
+    }
     if (
       mode === "create" &&
       index === 0 &&
@@ -916,6 +992,11 @@ export function PropertyWizard({
   }
 
   async function saveCurrentStep() {
+    if (step === 7) {
+      setShowRulesErrors(true);
+      const firstError = Object.values(validateBookingSettings(data))[0];
+      if (firstError) throw new Error(firstError);
+    }
     if (!property) {
       const created = await saveProperty(data.propertyDescription.trim());
       if (step === 1) await savePropertySettings(created.id);
@@ -970,6 +1051,7 @@ export function PropertyWizard({
               : {}),
             checkInTime: data.checkInTime || null,
             checkOutTime: data.checkOutTime || null,
+            ...bookingSettingsPayload(data),
           });
     if (step === 8)
       saved = await updatePropertySection("financial", {
@@ -1703,6 +1785,174 @@ export function PropertyWizard({
                   value={data.checkOutTime}
                 />
               </label>
+            </div>
+            <div className="grid gap-3 border-t border-border pt-4">
+              <h3 className="text-base font-bold">ساعات معمول پذیرش</h3>
+              <label className={choiceClass}>
+                <input
+                  aria-describedby="reception-help"
+                  checked={data.regularReceptionEnabled}
+                  className="h-4 w-4 accent-[var(--theme-primary)]"
+                  onChange={(event) => setData((current) => ({
+                    ...current,
+                    regularReceptionEnabled: event.target.checked,
+                    ...(!event.target.checked ? { regularReceptionFrom: "", regularReceptionUntil: "" } : {}),
+                  }))}
+                  type="checkbox"
+                />
+                تعیین ساعات معمول پذیرش
+              </label>
+              {data.regularReceptionEnabled && (
+                <div className="grid gap-4 md:grid-cols-2">
+                  <label className="grid gap-1 text-sm font-bold">
+                    شروع ساعت معمول پذیرش
+                    <input
+                      aria-label="شروع ساعت معمول پذیرش"
+                      aria-describedby={rulesErrors.receptionFrom ? "reception-from-error" : undefined}
+                      aria-invalid={Boolean(rulesErrors.receptionFrom)}
+                      className={inputClass}
+                      onChange={(event) => update("regularReceptionFrom", event.target.value)}
+                      type="time"
+                      value={data.regularReceptionFrom}
+                    />
+                    {rulesErrors.receptionFrom && <span className="text-xs text-destructive" id="reception-from-error" role="alert">{rulesErrors.receptionFrom}</span>}
+                  </label>
+                  <label className="grid gap-1 text-sm font-bold">
+                    پایان ساعت معمول پذیرش
+                    <input
+                      aria-label="پایان ساعت معمول پذیرش"
+                      aria-describedby={rulesErrors.receptionUntil ? "reception-until-error" : undefined}
+                      aria-invalid={Boolean(rulesErrors.receptionUntil)}
+                      className={inputClass}
+                      onChange={(event) => update("regularReceptionUntil", event.target.value)}
+                      type="time"
+                      value={data.regularReceptionUntil}
+                    />
+                    {rulesErrors.receptionUntil && <span className="text-xs text-destructive" id="reception-until-error" role="alert">{rulesErrors.receptionUntil}</span>}
+                  </label>
+                </div>
+              )}
+              <p className="text-sm text-muted-foreground" id="reception-help">
+                اگر مهمان خارج از این بازه برسد، لازم است پیش از ورود با پشتیبانی کوچ هماهنگ کند.
+                {data.regularReceptionEnabled && " اگر ساعت پایان از شروع کمتر باشد، بازه تا روز بعد ادامه دارد."}
+              </p>
+            </div>
+            <div className="grid gap-4 border-t border-border pt-4">
+              <h3 className="text-base font-bold">رزرو شب جاری</h3>
+              <div className="grid gap-2">
+                <label className={choiceClass}>
+                  <input
+                    aria-describedby="instant-deadline-help"
+                    checked={data.sameNightInstantEnabled}
+                    className="h-4 w-4 accent-[var(--theme-primary)]"
+                    onChange={(event) => setData((current) => ({
+                      ...current,
+                      sameNightInstantEnabled: event.target.checked,
+                      ...(!event.target.checked ? {
+                        sameNightInstantBookingTime: "",
+                        sameNightInstantBookingDayOffset: null,
+                      } : {}),
+                    }))}
+                    type="checkbox"
+                  />
+                  مهلت رزرو قطعی برای امشب
+                </label>
+                <p className="text-sm text-muted-foreground" id="instant-deadline-help">
+                  تا این زمان، رزرو جدید برای همین شب می‌تواند بدون تأیید اقامتگاه ثبت شود. بعد از آن، تا پیش از مهلت نهایی، رزرو نیازمند تأیید اقامتگاه است.
+                </p>
+                {data.sameNightInstantEnabled && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-bold">
+                      ساعت مهلت رزرو قطعی
+                      <input
+                        aria-label="ساعت مهلت رزرو قطعی"
+                        aria-describedby={rulesErrors.instantTime ? "instant-time-error" : undefined}
+                        aria-invalid={Boolean(rulesErrors.instantTime)}
+                        className={inputClass}
+                        onChange={(event) => update("sameNightInstantBookingTime", event.target.value)}
+                        type="time"
+                        value={data.sameNightInstantBookingTime}
+                      />
+                      {rulesErrors.instantTime && <span className="text-xs text-destructive" id="instant-time-error" role="alert">{rulesErrors.instantTime}</span>}
+                    </label>
+                    <label className="grid gap-1 text-sm font-bold">
+                      روز مهلت رزرو قطعی
+                      <select
+                        aria-label="روز مهلت رزرو قطعی"
+                        aria-describedby={rulesErrors.instantDay ? "instant-day-error" : undefined}
+                        aria-invalid={Boolean(rulesErrors.instantDay)}
+                        className={inputClass}
+                        onChange={(event) => update("sameNightInstantBookingDayOffset", event.target.value === "" ? null : Number(event.target.value) as 0 | 1)}
+                        value={data.sameNightInstantBookingDayOffset ?? ""}
+                      >
+                        <option value="">انتخاب روز</option>
+                        <option value="0">همان روز</option>
+                        <option value="1">روز بعد</option>
+                      </select>
+                      {rulesErrors.instantDay && <span className="text-xs text-destructive" id="instant-day-error" role="alert">{rulesErrors.instantDay}</span>}
+                    </label>
+                  </div>
+                )}
+              </div>
+              <div className="grid gap-2">
+                <label className={choiceClass}>
+                  <input
+                    aria-describedby="final-deadline-help"
+                    checked={data.sameNightFinalEnabled}
+                    className="h-4 w-4 accent-[var(--theme-primary)]"
+                    onChange={(event) => setData((current) => ({
+                      ...current,
+                      sameNightFinalEnabled: event.target.checked,
+                      ...(!event.target.checked ? {
+                        sameNightFinalBookingTime: "",
+                        sameNightFinalBookingDayOffset: null,
+                      } : {}),
+                    }))}
+                    type="checkbox"
+                  />
+                  آخرین مهلت ثبت رزرو برای امشب
+                </label>
+                <p className="text-sm text-muted-foreground" id="final-deadline-help">
+                  بعد از این زمان، رزرو جدید برای این شب پذیرفته نمی‌شود.
+                </p>
+                {data.sameNightFinalEnabled && (
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <label className="grid gap-1 text-sm font-bold">
+                      ساعت آخرین مهلت ثبت رزرو
+                      <input
+                        aria-label="ساعت آخرین مهلت ثبت رزرو"
+                        aria-describedby={rulesErrors.finalTime ? "final-time-error" : rulesErrors.deadlineOrder ? "deadline-order-error" : undefined}
+                        aria-invalid={Boolean(rulesErrors.finalTime || rulesErrors.deadlineOrder)}
+                        className={inputClass}
+                        onChange={(event) => update("sameNightFinalBookingTime", event.target.value)}
+                        type="time"
+                        value={data.sameNightFinalBookingTime}
+                      />
+                      {rulesErrors.finalTime && <span className="text-xs text-destructive" id="final-time-error" role="alert">{rulesErrors.finalTime}</span>}
+                    </label>
+                    <label className="grid gap-1 text-sm font-bold">
+                      روز آخرین مهلت ثبت رزرو
+                      <select
+                        aria-label="روز آخرین مهلت ثبت رزرو"
+                        aria-describedby={rulesErrors.finalDay ? "final-day-error" : rulesErrors.deadlineOrder ? "deadline-order-error" : undefined}
+                        aria-invalid={Boolean(rulesErrors.finalDay || rulesErrors.deadlineOrder)}
+                        className={inputClass}
+                        onChange={(event) => update("sameNightFinalBookingDayOffset", event.target.value === "" ? null : Number(event.target.value) as 0 | 1)}
+                        value={data.sameNightFinalBookingDayOffset ?? ""}
+                      >
+                        <option value="">انتخاب روز</option>
+                        <option value="0">همان روز</option>
+                        <option value="1">روز بعد</option>
+                      </select>
+                      {rulesErrors.finalDay && <span className="text-xs text-destructive" id="final-day-error" role="alert">{rulesErrors.finalDay}</span>}
+                    </label>
+                  </div>
+                )}
+                {rulesErrors.deadlineOrder && <p className="text-sm text-destructive" id="deadline-order-error" role="alert">{rulesErrors.deadlineOrder}</p>}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                نمونه: رزرو قطعی تا ۲۳:۰۰ همان روز؛ سپس نیازمند تأیید تا ۰۲:۰۰ روز بعد، و پس از آن ثبت رزرو برای آن شب بسته است.
+              </p>
             </div>
             <div className="grid gap-1 text-sm font-bold">
               <label htmlFor="property-default-meal-plan">وعده غذایی پیش‌فرض نرخ استاندارد</label>

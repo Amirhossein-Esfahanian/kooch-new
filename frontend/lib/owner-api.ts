@@ -75,6 +75,12 @@ export interface PropertyResponse {
   inventoryMode: InventoryMode;
   checkInTime: string | null;
   checkOutTime: string | null;
+  regularReceptionFrom: string | null;
+  regularReceptionUntil: string | null;
+  sameNightInstantBookingTime: string | null;
+  sameNightInstantBookingDayOffset: number | null;
+  sameNightFinalBookingTime: string | null;
+  sameNightFinalBookingDayOffset: number | null;
   defaultMealPlanId: number | null;
   defaultMealPlanName: string | null;
   defaultMealPlanSlug: string | null;

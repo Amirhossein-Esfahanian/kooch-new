@@ -93,6 +93,12 @@ const property: PropertyResponse = {
   inventoryMode: "NamedRooms",
   checkInTime: "14:00",
   checkOutTime: "12:00",
+  regularReceptionFrom: null,
+  regularReceptionUntil: null,
+  sameNightInstantBookingTime: null,
+  sameNightInstantBookingDayOffset: null,
+  sameNightFinalBookingTime: null,
+  sameNightFinalBookingDayOffset: null,
   defaultMealPlanId: null,
   defaultMealPlanName: null,
   defaultMealPlanSlug: null,
@@ -307,6 +313,169 @@ let resolveStatusUpdate: (() => void) | null = null;
 let statusUpdateError: Error | null = null;
 
 describe("PropertyWizard media and common areas", () => {
+  async function renderBookingSettings(isAdmin = false, mode: "create" | "edit" = "edit") {
+    window.history.replaceState({}, "", "?step=7");
+    render(<PropertyWizard isAdmin={isAdmin} mode={mode} propertyId={mode === "edit" ? 17 : undefined} />);
+    await screen.findByRole("heading", { name: "قوانین و زمان‌ها" });
+  }
+
+  function lastBookingSettingsPayload(isAdmin = false, full = false) {
+    const base = isAdmin ? "/admin" : "/owner";
+    const path = full ? `${base}/properties/17` : `${base}/properties/17/sections/rules`;
+    const call = api.request.mock.calls.findLast(([url, init]) => url === path && init?.method === "PUT");
+    return call ? JSON.parse(String(call[1]?.body)) as Record<string, unknown> : null;
+  }
+
+  function enableReception(from: string, until: string) {
+    fireEvent.click(screen.getByRole("checkbox", { name: "تعیین ساعات معمول پذیرش" }));
+    fireEvent.change(screen.getByLabelText("شروع ساعت معمول پذیرش"), { target: { value: from } });
+    fireEvent.change(screen.getByLabelText("پایان ساعت معمول پذیرش"), { target: { value: until } });
+  }
+
+  function enableDeadline(kind: "instant" | "final", time: string, day: string) {
+    const instant = kind === "instant";
+    fireEvent.click(screen.getByRole("checkbox", {
+      name: instant ? "مهلت رزرو قطعی برای امشب" : "آخرین مهلت ثبت رزرو برای امشب",
+    }));
+    fireEvent.change(screen.getByLabelText(instant ? "ساعت مهلت رزرو قطعی" : "ساعت آخرین مهلت ثبت رزرو"),
+      { target: { value: time } });
+    fireEvent.change(screen.getByLabelText(instant ? "روز مهلت رزرو قطعی" : "روز آخرین مهلت ثبت رزرو"),
+      { target: { value: day } });
+  }
+
+  it.each([false, true])("hydrates unconfigured %s Owner/Admin rules and sends null pairs", async (isAdmin) => {
+    await renderBookingSettings(isAdmin);
+    expect((screen.getByRole("checkbox", { name: "تعیین ساعات معمول پذیرش" }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("checkbox", { name: "مهلت رزرو قطعی برای امشب" }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("checkbox", { name: "آخرین مهلت ثبت رزرو برای امشب" }) as HTMLInputElement).checked).toBe(false);
+    expect(screen.queryByLabelText("شروع ساعت معمول پذیرش")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => expect(lastBookingSettingsPayload(isAdmin)).toMatchObject({
+      regularReceptionFrom: null, regularReceptionUntil: null,
+      sameNightInstantBookingTime: null, sameNightInstantBookingDayOffset: null,
+      sameNightFinalBookingTime: null, sameNightFinalBookingDayOffset: null,
+    }));
+  });
+
+  it.each([["14:00", "23:00"], ["22:00", "06:00"]])(
+    "accepts regular reception %s–%s including overnight", async (from, until) => {
+      await renderBookingSettings();
+      enableReception(from, until);
+      expect(screen.getByText(/اگر مهمان خارج از این بازه برسد/)).toBeTruthy();
+      fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+      await waitFor(() => expect(lastBookingSettingsPayload()).toMatchObject({
+        regularReceptionFrom: from, regularReceptionUntil: until,
+      }));
+    },
+  );
+
+  it("rejects incomplete or equal reception times with associated inline errors", async () => {
+    await renderBookingSettings();
+    fireEvent.click(screen.getByRole("checkbox", { name: "تعیین ساعات معمول پذیرش" }));
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    expect(screen.getByLabelText(/شروع ساعت معمول پذیرش/).getAttribute("aria-invalid")).toBe("true");
+    expect(screen.getByLabelText(/پایان ساعت معمول پذیرش/).getAttribute("aria-describedby")).toBe("reception-until-error");
+    expect(lastBookingSettingsPayload()).toBeNull();
+    await waitFor(() => expect((screen.getByRole("button", { name: "ذخیره" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText(/شروع ساعت معمول پذیرش/), { target: { value: "22:00" } });
+    fireEvent.change(screen.getByLabelText(/پایان ساعت معمول پذیرش/), { target: { value: "22:00" } });
+    expect(screen.getAllByText("ساعت پایان پذیرش باید با ساعت شروع متفاوت باشد.").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    expect(lastBookingSettingsPayload()).toBeNull();
+  });
+
+  it("requires time and day for both enabled deadlines", async () => {
+    await renderBookingSettings();
+    fireEvent.click(screen.getByRole("checkbox", { name: "مهلت رزرو قطعی برای امشب" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "آخرین مهلت ثبت رزرو برای امشب" }));
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    for (const label of ["ساعت مهلت رزرو قطعی", "روز مهلت رزرو قطعی", "ساعت آخرین مهلت ثبت رزرو", "روز آخرین مهلت ثبت رزرو"])
+      expect(screen.getByLabelText(new RegExp(label)).getAttribute("aria-invalid")).toBe("true");
+    expect(lastBookingSettingsPayload()).toBeNull();
+  });
+
+  it.each([false, true])("serializes same-day instant and next-day final for %s Owner/Admin", async (isAdmin) => {
+    await renderBookingSettings(isAdmin);
+    enableDeadline("instant", "23:00", "0");
+    enableDeadline("final", "02:00", "1");
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => expect(lastBookingSettingsPayload(isAdmin)).toMatchObject({
+      sameNightInstantBookingTime: "23:00", sameNightInstantBookingDayOffset: 0,
+      sameNightFinalBookingTime: "02:00", sameNightFinalBookingDayOffset: 1,
+    }));
+  });
+
+  it("rejects instant after final, then accepts equal deadlines", async () => {
+    await renderBookingSettings();
+    enableDeadline("instant", "23:00", "1");
+    enableDeadline("final", "02:00", "1");
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    expect(screen.getAllByText("مهلت رزرو قطعی نمی‌تواند بعد از آخرین مهلت ثبت رزرو باشد.").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText(/ساعت آخرین مهلت ثبت رزرو/).getAttribute("aria-invalid")).toBe("true");
+    expect(lastBookingSettingsPayload()).toBeNull();
+    await waitFor(() => expect((screen.getByRole("button", { name: "ذخیره" }) as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText(/ساعت آخرین مهلت ثبت رزرو/), { target: { value: "23:00" } });
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => expect(lastBookingSettingsPayload()).toMatchObject({
+      sameNightInstantBookingTime: "23:00", sameNightInstantBookingDayOffset: 1,
+      sameNightFinalBookingTime: "23:00", sameNightFinalBookingDayOffset: 1,
+    }));
+  });
+
+  it.each([false, true])("hydrates existing settings and clears disabled groups for %s Owner/Admin", async (isAdmin) => {
+    loadedProperty = {
+      ...property, regularReceptionFrom: "22:00:00", regularReceptionUntil: "06:00:00",
+      sameNightInstantBookingTime: "23:00:00", sameNightInstantBookingDayOffset: 0,
+      sameNightFinalBookingTime: "02:00:00", sameNightFinalBookingDayOffset: 1,
+    };
+    await renderBookingSettings(isAdmin);
+    expect((screen.getByLabelText("شروع ساعت معمول پذیرش") as HTMLInputElement).value).toBe("22:00");
+    expect((screen.getByLabelText("روز مهلت رزرو قطعی") as HTMLSelectElement).value).toBe("0");
+    expect((screen.getByLabelText("روز آخرین مهلت ثبت رزرو") as HTMLSelectElement).value).toBe("1");
+    fireEvent.click(screen.getByRole("checkbox", { name: "تعیین ساعات معمول پذیرش" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "مهلت رزرو قطعی برای امشب" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "آخرین مهلت ثبت رزرو برای امشب" }));
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => expect(lastBookingSettingsPayload(isAdmin)).toMatchObject({
+      regularReceptionFrom: null, regularReceptionUntil: null,
+      sameNightInstantBookingTime: null, sameNightInstantBookingDayOffset: null,
+      sameNightFinalBookingTime: null, sameNightFinalBookingDayOffset: null,
+    }));
+  });
+
+  it.each([false, true])("preserves configured settings through unrelated full %s update", async (isAdmin) => {
+    loadedProperty = {
+      ...property, defaultMealPlanId: 7,
+      regularReceptionFrom: "14:00:00", regularReceptionUntil: "23:00:00",
+      sameNightInstantBookingTime: "23:00:00", sameNightInstantBookingDayOffset: 0,
+      sameNightFinalBookingTime: "02:00:00", sameNightFinalBookingDayOffset: 1,
+    };
+    await renderBookingSettings(isAdmin);
+    fireEvent.change(screen.getByLabelText("وعده غذایی پیش‌فرض نرخ استاندارد"), { target: { value: "8" } });
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => expect(lastBookingSettingsPayload(isAdmin, true)).toMatchObject({
+      defaultMealPlanId: 8,
+      regularReceptionFrom: "14:00", regularReceptionUntil: "23:00",
+      sameNightInstantBookingTime: "23:00", sameNightInstantBookingDayOffset: 0,
+      sameNightFinalBookingTime: "02:00", sameNightFinalBookingDayOffset: 1,
+    }));
+  });
+
+  it("creates with every optional booking setting null by default", async () => {
+    window.history.replaceState({}, "", "?step=0");
+    render(<PropertyWizard mode="create" />);
+    fireEvent.change(await screen.findByLabelText("نام فارسی"), { target: { value: "اقامتگاه آزمایشی" } });
+    fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
+    await waitFor(() => {
+      const call = api.request.mock.calls.find(([url, init]) => url === "/owner/properties" && init?.method === "POST");
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({
+        regularReceptionFrom: null, regularReceptionUntil: null,
+        sameNightInstantBookingTime: null, sameNightInstantBookingDayOffset: null,
+        sameNightFinalBookingTime: null, sameNightFinalBookingDayOffset: null,
+      });
+    });
+  });
+
   it("places the Admin Cashback slot in rules, never in Location", async () => {
     window.history.replaceState({}, "", "?step=1");
     render(<PropertyWizard isAdmin mode="edit" propertyId={17}
