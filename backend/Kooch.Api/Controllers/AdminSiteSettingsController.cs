@@ -74,7 +74,9 @@ public class AdminSiteSettingsController(
             .SingleOrDefaultAsync(setting => setting.Key == key, cancellationToken)
             ?? throw new KeyNotFoundException("Site setting was not found.");
 
-        var value = request.Value?.Trim() ?? string.Empty;
+        var value = setting.Key == BookingSupportPhoneSetting.Key
+            ? BookingSupportPhoneSetting.Normalize(request.Value)
+            : request.Value?.Trim() ?? string.Empty;
         SettlementPolicy.ValidateSetting(setting.Key, value);
         if (setting.Key is "image.maxFileSizeMb" or "image.minWidth" or "image.minHeight" or "image.maxImagesPerProperty")
         {

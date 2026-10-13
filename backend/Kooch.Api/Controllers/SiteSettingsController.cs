@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Data;
+using Kooch.Api.Services.SiteSettings;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,6 +15,7 @@ public class SiteSettingsController(KoochDbContext dbContext) : ControllerBase
         "site.name",
         "site.logoUrl",
         "site.footerText",
+        BookingSupportPhoneSetting.Key,
         "home.heroTitle",
         "home.heroSubtitle",
         "home.heroBackgroundUrl",
@@ -40,7 +42,8 @@ public class SiteSettingsController(KoochDbContext dbContext) : ControllerBase
     public async Task<ActionResult<Dictionary<string, string>>> GetPublic(CancellationToken cancellationToken)
     {
         var settings = await dbContext.SiteSettings.AsNoTracking()
-            .Where(setting => setting.IsActive && PublicKeys.Contains(setting.Key))
+            .Where(setting => setting.IsActive && PublicKeys.Contains(setting.Key) &&
+                (setting.Key != BookingSupportPhoneSetting.Key || setting.Value != ""))
             .OrderBy(setting => setting.Group)
             .ThenBy(setting => setting.SortOrder)
             .ToDictionaryAsync(setting => setting.Key, setting => setting.Value, cancellationToken);

@@ -63,7 +63,7 @@ const siteSettingsSections = [
     id: "identity-and-brand",
     title: "هویت و برند",
     description: "نام، لوگو و اطلاعات پایه نمایش سایت",
-    settingKeys: ["site.name", "site.logoUrl", "site.footerText"],
+    settingKeys: ["site.name", "site.logoUrl", "site.footerText", "site.bookingSupportPhone"],
   },
   {
     id: "homepage",
@@ -939,7 +939,7 @@ export default function AdminSiteSettingsPage() {
     const numberInput = (
       <KoochInput
         aria-describedby={accessibility?.describedBy}
-        dir="rtl"
+        dir={setting.key === "site.bookingSupportPhone" ? "ltr" : "rtl"}
         error={accessibility?.error}
         id={accessibility?.controlId}
         onChange={(event) =>
@@ -948,7 +948,7 @@ export default function AdminSiteSettingsPage() {
             [setting.key]: event.target.value,
           }))
         }
-        type={inputType(setting.type)}
+        type={setting.key === "site.bookingSupportPhone" ? "tel" : inputType(setting.type)}
         max={
           reservationDeadlineSettingKeys.includes(
             setting.key as (typeof reservationDeadlineSettingKeys)[number],
@@ -1159,6 +1159,7 @@ export default function AdminSiteSettingsPage() {
           <div className="grid content-start gap-7">
             {renderSettingByKey(items, "site.name")}
             {renderSettingByKey(items, "site.footerText")}
+            {renderSettingByKey(items, "site.bookingSupportPhone")}
           </div>
           <div className="min-w-0">
             {renderSettingByKey(items, "site.logoUrl")}

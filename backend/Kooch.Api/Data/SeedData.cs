@@ -3,6 +3,7 @@ using System.Text.Json;
 using Kooch.Api.Dtos.PropertyUsers;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
+using Kooch.Api.Services.SiteSettings;
 using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Data;
@@ -91,6 +92,7 @@ public static class SeedData
             SiteSettingSeed("site.name", "کوچ", SiteSettingType.Text, "Brand", "نام سایت", null, 10),
             SiteSettingSeed("site.logoUrl", "", SiteSettingType.ImageUrl, "Brand", "آدرس لوگو", "اگر خالی باشد نام سایت نمایش داده می‌شود.", 20),
             SiteSettingSeed("site.footerText", "اقامتگاه‌های سنتی و میزبانی محلی در کاشان", SiteSettingType.Text, "Footer", "متن فوتر", null, 10),
+            SiteSettingSeed(BookingSupportPhoneSetting.Key, "", SiteSettingType.Text, "Brand", "شماره تماس پشتیبانی رزرو", "این شماره برای هماهنگی مهمانان با پشتیبانی کوچ، از جمله ورود خارج از ساعات معمول پذیرش، نمایش داده می‌شود.", 30),
             SiteSettingSeed("home.heroTitle", "اقامتگاه بعدی خود را پیدا کنید", SiteSettingType.Text, "Homepage", "عنوان هیرو", null, 10),
             SiteSettingSeed("home.heroSubtitle", "رزرو اقامتگاه‌های سنتی، بوتیک‌هتل‌ها و خانه‌های خاص", SiteSettingType.LongText, "Homepage", "زیرعنوان هیرو", null, 20),
             SiteSettingSeed("home.heroBackgroundUrl", "/images/hero.jpg", SiteSettingType.ImageUrl, "Homepage", "تصویر پس‌زمینه هیرو", null, 30),

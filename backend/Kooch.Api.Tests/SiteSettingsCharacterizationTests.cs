@@ -9,6 +9,7 @@ using Kooch.Api.Dtos.SiteSettings;
 using Kooch.Api.Entities;
 using Kooch.Api.Filters;
 using Kooch.Api.Services;
+using Kooch.Api.Services.SiteSettings;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -25,6 +26,102 @@ public sealed class SiteSettingsCharacterizationTests
 {
     private const int SuperAdminId = 1;
     private const int AdminAssistantId = 2;
+
+    [Fact]
+    public async Task BookingSupportPhone_AbsentOrBlank_IsNotPublished()
+    {
+        await using var dbContext = CreateContext();
+        var publicController = new SiteSettingsController(dbContext);
+        Assert.DoesNotContain(BookingSupportPhoneSetting.Key, await GetPublicAsync(publicController));
+
+        dbContext.SiteSettings.Add(Setting(BookingSupportPhoneSetting.Key, "", "Brand", 30));
+        await dbContext.SaveChangesAsync();
+        Assert.DoesNotContain(BookingSupportPhoneSetting.Key, await GetPublicAsync(publicController));
+    }
+
+    [Fact]
+    public async Task BookingSupportPhone_AdminUpdate_NormalizesAndPublishesOnlyTheWhitelistedKey()
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.AddRange(
+            Setting(BookingSupportPhoneSetting.Key, "", "Brand", 30),
+            Setting("private.supportNote", "internal", "Brand", 40));
+        await dbContext.SaveChangesAsync();
+        var admin = CreateAdminController(dbContext, null!, SuperAdminId, UserRole.SuperAdmin);
+
+        var saved = GetSiteSetting(await admin.Update(
+            BookingSupportPhoneSetting.Key,
+            new UpdateSiteSettingRequest("  +98 (21) 1234-5678  "),
+            CancellationToken.None));
+        dbContext.ChangeTracker.Clear();
+        var publicSettings = await GetPublicAsync(new SiteSettingsController(dbContext));
+
+        Assert.Equal("+982112345678", saved.Value);
+        Assert.Equal("+982112345678", publicSettings[BookingSupportPhoneSetting.Key]);
+        Assert.DoesNotContain("private.supportNote", publicSettings.Keys);
+        Assert.Equal("internal", (await dbContext.SiteSettings.SingleAsync(
+            setting => setting.Key == "private.supportNote")).Value);
+    }
+
+    [Theory]
+    [InlineData("abc")]
+    [InlineData("123")]
+    [InlineData("+98<script>")]
+    [InlineData("12+3456789")]
+    public async Task BookingSupportPhone_InvalidValue_IsRejectedWithoutMutation(string value)
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.Add(Setting(BookingSupportPhoneSetting.Key, "02112345678", "Brand", 30));
+        await dbContext.SaveChangesAsync();
+        var admin = CreateAdminController(dbContext, null!, SuperAdminId, UserRole.SuperAdmin);
+
+        await Assert.ThrowsAsync<ArgumentException>(() => admin.Update(
+            BookingSupportPhoneSetting.Key,
+            new UpdateSiteSettingRequest(value),
+            CancellationToken.None));
+        Assert.Equal("02112345678", (await dbContext.SiteSettings.SingleAsync(
+            setting => setting.Key == BookingSupportPhoneSetting.Key)).Value);
+    }
+
+    [Fact]
+    public async Task BookingSupportPhone_CanBeClearedWithoutChangingOtherSettings()
+    {
+        await using var dbContext = CreateContext();
+        dbContext.SiteSettings.AddRange(
+            Setting(BookingSupportPhoneSetting.Key, "+982112345678", "Brand", 30),
+            Setting("site.name", "کوچ", "Brand", 10));
+        await dbContext.SaveChangesAsync();
+        var admin = CreateAdminController(dbContext, null!, SuperAdminId, UserRole.SuperAdmin);
+
+        var saved = GetSiteSetting(await admin.Update(
+            BookingSupportPhoneSetting.Key,
+            new UpdateSiteSettingRequest("   "),
+            CancellationToken.None));
+
+        Assert.Equal("", saved.Value);
+        Assert.DoesNotContain(BookingSupportPhoneSetting.Key,
+            await GetPublicAsync(new SiteSettingsController(dbContext)));
+        Assert.Equal("کوچ", (await dbContext.SiteSettings.SingleAsync(
+            setting => setting.Key == "site.name")).Value);
+    }
+
+    [Fact]
+    public async Task BookingSupportPhone_PropertyManagementDoesNotGrantAdminEditPermission()
+    {
+        await using var dbContext = CreateContext();
+        await SeedAdminAssistantAsync(dbContext, hasManageSettings: false);
+        dbContext.SiteSettings.Add(Setting(BookingSupportPhoneSetting.Key, "", "Brand", 30));
+        await dbContext.SaveChangesAsync();
+        var admin = CreateAdminController(
+            dbContext, CreatePermissionService(dbContext), AdminAssistantId, UserRole.AdminAssistant);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => admin.Update(
+            BookingSupportPhoneSetting.Key,
+            new UpdateSiteSettingRequest("+982112345678"),
+            CancellationToken.None));
+        Assert.Equal("", (await dbContext.SiteSettings.SingleAsync(
+            setting => setting.Key == BookingSupportPhoneSetting.Key)).Value);
+    }
 
     [Fact]
     public void AdminEndpoints_UseTheCanonicalAdminRolePolicy()

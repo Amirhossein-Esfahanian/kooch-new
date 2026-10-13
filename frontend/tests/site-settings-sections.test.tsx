@@ -397,6 +397,35 @@ describe("Admin Site Settings information architecture", () => {
       ),
     ).toBeNull();
   });
+
+  it("edits the canonical booking Support phone in Admin Site Settings", async () => {
+    const supportSetting = {
+      ...setting(21, "site.bookingSupportPhone", "", "Text", "Brand", "شماره تماس پشتیبانی رزرو"),
+      description: "این شماره برای هماهنگی مهمانان با پشتیبانی کوچ، از جمله ورود خارج از ساعات معمول پذیرش، نمایش داده می‌شود.",
+    };
+    ownerApi.request.mockImplementation(async (path: string, options?: { body?: string }) => {
+      if (path === "/admin/cashback/settings?currency=IRR") return cashbackPolicy;
+      if (path === "/admin/site-settings/pricing-bounds") return { minPrice: 100, maxPrice: 1000 };
+      if (path === "/admin/site-settings") return [...standardSettings, supportSetting];
+      if (path === "/admin/site-settings/site.bookingSupportPhone") {
+        return { ...supportSetting, value: JSON.parse(options?.body ?? "{}").value };
+      }
+      return null;
+    });
+
+    render(<AdminSiteSettingsPage />);
+    const input = await screen.findByLabelText("شماره تماس پشتیبانی رزرو");
+    expect(input.getAttribute("type")).toBe("tel");
+    expect(input.getAttribute("dir")).toBe("ltr");
+    expect(screen.getByText(/ورود خارج از ساعات معمول پذیرش/)).toBeTruthy();
+
+    fireEvent.change(input, { target: { value: "+982112345678" } });
+    fireEvent.click(within(section("identity-and-brand")).getByRole("button", { name: "ذخیره تغییرات" }));
+    await waitFor(() => expect(ownerApi.request).toHaveBeenCalledWith(
+      "/admin/site-settings/site.bookingSupportPhone",
+      { method: "PUT", body: JSON.stringify({ value: "+982112345678" }) },
+    ));
+  });
 });
 
 function section(id: string) {

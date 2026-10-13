@@ -1,5 +1,12 @@
 export type SiteSettingsMap = Record<string, string>;
 
+export const bookingSupportPhoneKey = "site.bookingSupportPhone";
+
+export function bookingSupportPhone(settings: SiteSettingsMap | null | undefined): string | null {
+  const value = settings?.[bookingSupportPhoneKey];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
 export const defaultSiteSettings: SiteSettingsMap = {
   "pricing.currencyLabel": "تومان",
   "site.name": "کوچ",
