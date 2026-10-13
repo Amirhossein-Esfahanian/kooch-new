@@ -25,6 +25,10 @@ public sealed class BookingSessionPersistenceTests
         Assert.Equal("time", entityType.FindProperty(nameof(BookingSession.ExpectedArrivalTime))?.GetColumnType());
         Assert.True(entityType.FindProperty(nameof(BookingSession.ExpectedArrivalDayOffset))?.IsNullable);
         Assert.Equal("tinyint", entityType.FindProperty(nameof(BookingSession.ExpectedArrivalDayOffset))?.GetColumnType());
+        Assert.False(entityType.FindProperty(nameof(BookingSession.ReceptionCoordinationRequired))?.IsNullable);
+        Assert.Equal(false, entityType.FindProperty(nameof(BookingSession.ReceptionCoordinationRequired))?.GetDefaultValue());
+        Assert.True(entityType.FindProperty(nameof(BookingSession.ReceptionCoordinationAcknowledgedAtUtc))?.IsNullable);
+        Assert.Equal("datetime2", entityType.FindProperty(nameof(BookingSession.ReceptionCoordinationAcknowledgedAtUtc))?.GetColumnType());
         Assert.Null(entityType.FindProperty("Status"));
         Assert.Null(entityType.FindProperty("ExpiresAtUtc"));
         Assert.Null(entityType.FindProperty("LeadReservationId"));

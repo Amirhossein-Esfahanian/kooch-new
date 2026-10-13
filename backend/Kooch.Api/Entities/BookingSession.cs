@@ -9,6 +9,8 @@ public class BookingSession : BaseEntity
     public string Currency { get; set; } = string.Empty;
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }
+    public bool ReceptionCoordinationRequired { get; set; }
+    public DateTime? ReceptionCoordinationAcknowledgedAtUtc { get; set; }
     public string? IdempotencyKey { get; set; }
     public string? RequestHash { get; set; }
     public byte[] RowVersion { get; set; } = [];

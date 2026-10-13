@@ -144,6 +144,11 @@ public sealed class BookingSessionService(
             request.PropertyId,
             creationKind,
             cancellationToken);
+        var receptionCoordinationRequired = creationKind == BookingSessionCreationKind.Account &&
+            ReceptionCoordinationEvaluator.Evaluate(
+                property.RegularReceptionFrom,
+                property.RegularReceptionUntil,
+                accountContext?.ExpectedArrivalTime) == ReceptionCoordinationResult.CoordinationRequired;
         var roomTypes = await LockRoomTypesAsync(lockOrder.RoomTypeIds, cancellationToken);
         var rooms = await LockRoomsAsync(lockOrder.RoomIds, cancellationToken);
         ValidateRoomRelationships(request, roomTypes, rooms);
@@ -189,6 +194,7 @@ public sealed class BookingSessionService(
             Currency = currency,
             ExpectedArrivalTime = accountContext?.ExpectedArrivalTime,
             ExpectedArrivalDayOffset = accountContext?.ExpectedArrivalDayOffset,
+            ReceptionCoordinationRequired = receptionCoordinationRequired,
             IdempotencyKey = normalizedIdempotencyKey,
             RequestHash = requestHash
         };

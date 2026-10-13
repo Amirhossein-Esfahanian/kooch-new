@@ -11,6 +11,9 @@ public sealed class BookingSessionDetailsResponse
     public string Currency { get; set; } = string.Empty;
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }
+    public bool ReceptionCoordinationRequired { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
+    public DateTime? ReceptionCoordinationAcknowledgedAtUtc { get; set; }
     public string? SpecialRequest { get; set; }
     public BookingSessionPropertyResponse Property { get; set; } = new();
     public BookingSessionClientResponse Client { get; set; } = new();
@@ -107,6 +110,9 @@ public sealed class AccountBookingSessionResponse
     public string Currency { get; set; } = string.Empty;
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }
+    public bool ReceptionCoordinationRequired { get; set; }
+    [JsonConverter(typeof(UtcDateTimeJsonConverter))]
+    public DateTime? ReceptionCoordinationAcknowledgedAtUtc { get; set; }
     public string? SpecialRequest { get; set; }
     public decimal TotalAmount { get; set; }
     public BookingSessionDerivedSummaryResponse Summary { get; set; } = new();

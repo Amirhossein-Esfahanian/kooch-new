@@ -519,6 +519,14 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("PropertyId")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("ReceptionCoordinationAcknowledgedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("ReceptionCoordinationRequired")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bit")
+                        .HasDefaultValue(false);
+
                     b.Property<string>("RequestHash")
                         .HasMaxLength(128)
                         .HasColumnType("nvarchar(128)");

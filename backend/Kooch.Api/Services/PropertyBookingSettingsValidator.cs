@@ -10,14 +10,19 @@ internal static class PropertyBookingSettingsValidator
         TimeOnly? finalTime,
         short? finalDayOffset)
     {
-        if (regularReceptionFrom.HasValue != regularReceptionUntil.HasValue)
-            throw new ArgumentException("Regular reception hours must be configured together.");
-        if (regularReceptionFrom.HasValue && regularReceptionFrom == regularReceptionUntil)
-            throw new ArgumentException("Regular reception hours cannot have equal endpoints.");
+        ValidateReceptionWindow(regularReceptionFrom, regularReceptionUntil);
 
         var instant = ToDeadline(instantTime, instantDayOffset, "Instant booking deadline");
         var final = ToDeadline(finalTime, finalDayOffset, "Final booking cutoff");
         SameNightBookingPolicyEvaluator.Validate(instant, final);
+    }
+
+    internal static void ValidateReceptionWindow(TimeOnly? from, TimeOnly? until)
+    {
+        if (from.HasValue != until.HasValue)
+            throw new ArgumentException("Regular reception hours must be configured together.");
+        if (from.HasValue && from == until)
+            throw new ArgumentException("Regular reception hours cannot have equal endpoints.");
     }
 
     internal static SameNightBookingDeadline? ToDeadline(
