@@ -36,6 +36,7 @@ const authApi = vi.hoisted(() => ({
   setToken: vi.fn(),
 }));
 const currency = vi.hoisted(() => ({ label: "تومان" }));
+const propertyApi = vi.hoisted(() => ({ fetch: vi.fn() }));
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: navigation.push }),
@@ -59,6 +60,10 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 vi.mock("@/lib/currency", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/currency")>();
   return { ...actual, useSiteCurrencyLabel: () => currency.label };
+});
+vi.mock("@/lib/public-properties", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/public-properties")>();
+  return { ...actual, fetchPublicApi: propertyApi.fetch };
 });
 
 import {
@@ -175,6 +180,11 @@ describe("multi-step booking checkout skeleton", () => {
     }));
     checkout.create.mockResolvedValue({ sessionCode: "BS-100" });
     auth.refreshSession.mockResolvedValue(null);
+    propertyApi.fetch.mockResolvedValue({
+      id: 1,
+      regularReceptionFrom: null,
+      regularReceptionUntil: null,
+    });
   });
 
   it("restores Step 2 from the persisted cart and shows its read-only summary", async () => {
@@ -712,7 +722,7 @@ describe("multi-step booking checkout skeleton", () => {
     expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=review");
   });
 
-  it("keeps optional arrival time in the draft without rendering it in Step 3", async () => {
+  it("keeps optional arrival time in the draft and shows it in Step 3", async () => {
     persistCart();
     signIn();
     const view = render(<BookingCheckoutFlow />);
@@ -721,7 +731,7 @@ describe("multi-step booking checkout skeleton", () => {
     fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
     navigation.step = "review";
     view.rerender(<BookingCheckoutFlow />);
-    expect(screen.queryByText("۱۴:۰۰")).toBeNull();
+    expect(screen.getByText("۱۴:۰۰")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "بازگشت به اطلاعات" }));
     navigation.step = "information";
     view.rerender(<BookingCheckoutFlow />);
@@ -813,6 +823,38 @@ describe("multi-step booking checkout skeleton", () => {
     expect(details).not.toHaveProperty("userId");
     expect(details).not.toHaveProperty("guestId");
     expect(items.every((item) => item.notes === null)).toBe(true);
+  });
+
+  it("loads public reception hours and keeps outside-hours guidance non-blocking", async () => {
+    propertyApi.fetch.mockResolvedValue({
+      id: 1,
+      regularReceptionFrom: "14:00:00",
+      regularReceptionUntil: "23:00:00",
+    });
+    const items = bookingItems();
+    persistCart(items);
+    signIn();
+    const view = render(<BookingCheckoutFlow />);
+
+    expect(await screen.findByText(/۱۴:۰۰ تا ۲۳:۰۰/)).toBeTruthy();
+    expect(propertyApi.fetch).toHaveBeenCalledWith("/properties/kashan-house");
+    fireEvent.change(screen.getByLabelText("زمان تقریبی ورود", { selector: "select" }), {
+      target: { value: "23:59:00" },
+    });
+    expect(screen.getByRole("alert").textContent).toContain("پشتیبانی کوچ");
+    fireEvent.click(screen.getByRole("button", { name: "ادامه به نهایی‌سازی" }));
+    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=review");
+    navigation.step = "review";
+    view.rerender(<BookingCheckoutFlow />);
+    expect(screen.getByText("۲۳:۵۹")).toBeTruthy();
+    expect(screen.getByRole("alert").textContent).toContain("پشتیبانی کوچ");
+
+    fireEvent.click(screen.getByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    await waitFor(() => expect(checkout.create).toHaveBeenCalledWith(
+      items,
+      expect.any(String),
+      expect.objectContaining({ expectedArrivalTime: "23:59:00", expectedArrivalDayOffset: 0 }),
+    ));
   });
 
   it("requires a guest-supplied next-day time and restores the structured arrival", async () => {

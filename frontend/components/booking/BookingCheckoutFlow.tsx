@@ -37,6 +37,8 @@ import {
   type CheckoutStayDetailsDraft,
 } from "@/components/booking/CheckoutStayDetails";
 import { bookingModePresentation } from "@/components/booking/booking-display";
+import { fetchPublicApi, type PublicProperty } from "@/lib/public-properties";
+import type { ReceptionHours } from "@/lib/reception-hours";
 
 export function BookingCheckoutFlow() {
   return (
@@ -61,6 +63,11 @@ function BookingCheckoutContent() {
   const [stayDetailsDraft, setStayDetailsDraft] =
     useState<CheckoutStayDetailsDraft>(emptyCheckoutStayDetailsDraft);
   const [stayDetailsHydrated, setStayDetailsHydrated] = useState(false);
+  const [receptionData, setReceptionData] = useState<{
+    propertyId: number;
+    hours: ReceptionHours;
+  } | null>(null);
+  const [receptionLoadFailed, setReceptionLoadFailed] = useState(false);
   const [showStayDetailsErrors, setShowStayDetailsErrors] = useState(false);
   const requestedReview = searchParams.get("step") === "review";
   const identityComplete = hasCompleteCheckoutIdentity(auth);
@@ -69,6 +76,11 @@ function BookingCheckoutContent() {
     [stayDetailsDraft],
   );
   const stayDetailsComplete = Object.keys(stayDetailsErrors).length === 0;
+  const checkoutPropertyId = cart.items[0]?.propertyId;
+  const checkoutPropertySlug = cart.items[0]?.propertySlug;
+  const receptionHours = receptionData && receptionData.propertyId === checkoutPropertyId
+    ? receptionData.hours
+    : null;
   const currentStep: BookingCheckoutStep =
     requestedReview &&
     identityComplete &&
@@ -89,6 +101,33 @@ function BookingCheckoutContent() {
     );
     setStayDetailsHydrated(true);
   }, []);
+
+  useEffect(() => {
+    if (!cart.hydrated || !checkoutPropertySlug || !checkoutPropertyId) return;
+    let cancelled = false;
+    setReceptionData(null);
+    setReceptionLoadFailed(false);
+    fetchPublicApi<Pick<PublicProperty, "id" | keyof ReceptionHours>>(
+      `/properties/${encodeURIComponent(checkoutPropertySlug)}`,
+    ).then((property) => {
+      if (cancelled) return;
+      if (property.id !== checkoutPropertyId) throw new Error("Property mismatch.");
+      setReceptionData({
+        propertyId: property.id,
+        hours: {
+          regularReceptionFrom: property.regularReceptionFrom,
+          regularReceptionUntil: property.regularReceptionUntil,
+        },
+      });
+      setReceptionLoadFailed(false);
+    }).catch(() => {
+      if (!cancelled) {
+        setReceptionData(null);
+        setReceptionLoadFailed(true);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [cart.hydrated, checkoutPropertyId, checkoutPropertySlug]);
 
   useEffect(() => {
     if (
@@ -282,11 +321,13 @@ function BookingCheckoutContent() {
                     draft={stayDetailsDraft}
                     errors={showStayDetailsErrors ? stayDetailsErrors : {}}
                     onChange={updateStayDetails}
+                    receptionHours={receptionHours}
+                    receptionLoadFailed={receptionLoadFailed}
                   />
                 ) : null}
               </>
             ) : (
-              <ReviewStep draft={stayDetailsDraft} items={cart.items} />
+              <ReviewStep draft={stayDetailsDraft} items={cart.items} receptionHours={receptionHours} />
             )}
 
             {currentStep === "review" && finalizationMessage ? (
@@ -361,9 +402,11 @@ function BookingCheckoutContent() {
 function ReviewStep({
   draft,
   items,
+  receptionHours,
 }: {
   draft: CheckoutStayDetailsDraft;
   items: BookingCartItem[];
+  receptionHours: ReceptionHours | null;
 }) {
   const mode = bookingModePresentation(items[0].bookingMode);
   const isOnRequest = items[0].bookingMode === "OnRequest";
@@ -373,7 +416,7 @@ function ReviewStep({
       <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
         پیش از ادامه، اطلاعات اقامت، مهمانان و مبلغ سفارش را بررسی کنید.
       </p>
-      <CheckoutStayDetailsReview draft={draft} />
+      <CheckoutStayDetailsReview draft={draft} receptionHours={receptionHours} />
       <div className="mt-5 divide-y divide-border border-y border-border">
         <section className="py-4" aria-labelledby="checkout-booking-mode-title">
           <div className="flex flex-wrap items-center justify-between gap-2">

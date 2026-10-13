@@ -6,7 +6,13 @@ import {
   KoochSelect,
   KoochTextarea,
 } from "@/components/KoochFormControls";
+import { KoochAlert } from "@/components/KoochAlert";
 import type { BookingCheckoutStayDetails } from "@/components/booking/booking-checkout";
+import {
+  isArrivalWithinReceptionWindow,
+  isOvernightReceptionWindow,
+  type ReceptionHours,
+} from "@/lib/reception-hours";
 
 export const checkoutStayDetailsStorageKey =
   "kooch_booking_checkout_stay_details_v1";
@@ -204,11 +210,17 @@ export function CheckoutStayDetails({
   draft,
   errors,
   onChange,
+  receptionHours = null,
+  receptionLoadFailed = false,
 }: {
   draft: CheckoutStayDetailsDraft;
   errors: CheckoutStayDetailsErrors;
   onChange: (draft: CheckoutStayDetailsDraft) => void;
+  receptionHours?: ReceptionHours | null;
+  receptionLoadFailed?: boolean;
 }) {
+  const reception = describeReceptionWindow(receptionHours);
+  const outsideReception = isOutsideReceptionHours(draft.expectedArrivalTime, receptionHours);
   const updateGuest = (
     field: keyof CheckoutStayDetailsDraft["primaryGuest"],
     value: string,
@@ -418,6 +430,25 @@ export function CheckoutStayDetails({
             />
           </KoochField>
         ) : null}
+        {reception ? (
+          <KoochAlert
+            className="mt-4"
+            role={outsideReception ? "alert" : "status"}
+            title={outsideReception ? "ورود خارج از ساعت پذیرش معمول" : "ساعت پذیرش معمول اقامتگاه"}
+            variant={outsideReception ? "warning" : "info"}
+          >
+            {reception}
+            {outsideReception
+              ? " پیش از پرداخت، لطفاً با پشتیبانی کوچ هماهنگ کنید."
+              : !draft.expectedArrivalTime
+                ? " اگر خارج از این بازه می‌رسید، لطفاً زمان تقریبی ورود را مشخص کنید."
+                : null}
+          </KoochAlert>
+        ) : receptionLoadFailed ? (
+          <KoochAlert className="mt-4" role="status" variant="info">
+            ساعت پذیرش اقامتگاه فعلاً در دسترس نیست. پیش از پرداخت، شرایط پذیرش را بررسی کنید.
+          </KoochAlert>
+        ) : null}
       </section>
     </div>
   );
@@ -425,10 +456,13 @@ export function CheckoutStayDetails({
 
 export function CheckoutStayDetailsReview({
   draft,
+  receptionHours = null,
 }: {
   draft: CheckoutStayDetailsDraft;
+  receptionHours?: ReceptionHours | null;
 }) {
   const guest = toBookingCheckoutStayDetails(draft).primaryGuest;
+  const outsideReception = isOutsideReceptionHours(draft.expectedArrivalTime, receptionHours);
 
   return (
     <div className="mt-5 divide-y divide-border border-y border-border">
@@ -449,6 +483,20 @@ export function CheckoutStayDetailsReview({
           </ReviewGrid>
         ) : null}
       </ReviewSection>
+
+      {draft.expectedArrivalTime ? (
+        <ReviewSection title="زمان تقریبی ورود">
+          <p className="text-sm font-bold text-foreground">
+            {toPersianDigits(draft.expectedArrivalTime.slice(0, 5))}
+            {draft.expectedArrivalDayOffset === 1 ? " روز بعد" : null}
+          </p>
+          {outsideReception ? (
+            <KoochAlert className="mt-3" variant="warning">
+              پیش از پرداخت، برای ورود خارج از ساعت پذیرش معمول با پشتیبانی کوچ هماهنگ کنید.
+            </KoochAlert>
+          ) : null}
+        </ReviewSection>
+      ) : null}
 
       {draft.specialRequest.trim() ? (
         <ReviewSection title="درخواست ویژه">
@@ -504,6 +552,23 @@ function ReviewValue({
 
 function isSafeText(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
+}
+
+function describeReceptionWindow(hours: ReceptionHours | null): string | null {
+  const from = hours?.regularReceptionFrom;
+  const until = hours?.regularReceptionUntil;
+  if (!from || !until) return null;
+  const overnight = isOvernightReceptionWindow(from, until);
+  if (overnight === null) return null;
+
+  return `ساعت پذیرش معمول این اقامتگاه از ${toPersianDigits(from.slice(0, 5))} تا ${toPersianDigits(until.slice(0, 5))}${overnight ? " روز بعد" : ""} است.`;
+}
+
+function isOutsideReceptionHours(time: string, hours: ReceptionHours | null): boolean {
+  const from = hours?.regularReceptionFrom;
+  const until = hours?.regularReceptionUntil;
+  return Boolean(time && from && until &&
+    isArrivalWithinReceptionWindow(time, from, until) === false);
 }
 
 function isValidClockTime(value: string): boolean {
