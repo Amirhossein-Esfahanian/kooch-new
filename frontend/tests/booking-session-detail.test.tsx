@@ -12,6 +12,8 @@ const bookingApi = vi.hoisted(() => ({
   fetch: vi.fn(),
   fetchProviders: vi.fn(),
   initiate: vi.fn(),
+  acknowledge: vi.fn(),
+  settings: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -36,8 +38,13 @@ vi.mock("@/lib/booking-sessions", async (importOriginal) => {
     fetchAccountBookingSession: bookingApi.fetch,
     fetchAccountPaymentProviders: bookingApi.fetchProviders,
     initiateAccountBookingSessionPayment: bookingApi.initiate,
+    acknowledgeReceptionCoordination: bookingApi.acknowledge,
   };
 });
+vi.mock("@/lib/site-settings", async (importOriginal) => ({
+  ...await importOriginal<typeof import("@/lib/site-settings")>(),
+  fetchPublicSiteSettings: bookingApi.settings,
+}));
 vi.mock("@/lib/currency", () => ({
   formatCurrency: (value: number) => `${value.toLocaleString("fa-IR")} تومان`,
   useSiteCurrencyLabel: () => "تومان",
@@ -137,6 +144,7 @@ describe("account booking session detail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     sessionStorage.clear();
+    bookingApi.settings.mockResolvedValue({ "site.bookingSupportPhone": "+982112345678" });
     bookingApi.fetch.mockResolvedValue(response());
     bookingApi.fetchProviders.mockResolvedValue([
       { value: "saman", label: "درگاه سامان" },
@@ -161,6 +169,88 @@ describe("account booking session detail", () => {
     expect(within(section!).getByText("R-001")).toBeTruthy();
     expect(within(section!).getByText("R-002")).toBeTruthy();
     expect(bookingApi.fetch).toHaveBeenCalledWith("BS-1405-001");
+  });
+
+  it("blocks desktop/mobile payment until the server acknowledges and preserves Instant presentation", async () => {
+    const required = { ...instantReadyResponse(), receptionCoordinationRequired: true, receptionCoordinationAcknowledgedAtUtc: null };
+    bookingApi.fetch.mockResolvedValue(required);
+    let complete!: (value: AccountBookingSession) => void;
+    bookingApi.acknowledge.mockImplementation(() => new Promise<AccountBookingSession>((resolve) => { complete = resolve; }));
+    render(<AccountBookingSessionPage />);
+    expect(await screen.findByText("هماهنگی ورود با پشتیبانی کوچ")).toBeTruthy();
+    expect((await screen.findByRole("link", { name: /تماس با پشتیبانی کوچ/ })).getAttribute("href")).toBe("tel:+982112345678");
+    const buttons = await screen.findAllByRole("button", { name: "پرداخت" });
+    expect(buttons.every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+    fireEvent.click(buttons[0]);
+    expect(bookingApi.initiate).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("checkbox", { name: "برای ورود در این ساعت با پشتیبانی کوچ هماهنگ کرده‌ام." }));
+    fireEvent.click(screen.getByRole("button", { name: "ثبت هماهنگی" }));
+    expect(bookingApi.acknowledge).toHaveBeenCalledExactlyOnceWith("BS-1405-001");
+    expect((screen.getByRole("button", { name: "در حال ثبت هماهنگی..." }) as HTMLButtonElement).disabled).toBe(true);
+    expect(buttons.every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+    complete({ ...required, receptionCoordinationAcknowledgedAtUtc: "2026-10-13T12:00:00Z" });
+    expect(await screen.findByText(/اعلام هماهنگی شما ثبت شد/)).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "پرداخت" }).every(button => !(button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.getByText("رزرو ثبت شد؛ پرداخت را تکمیل کنید")).toBeTruthy();
+    expect(screen.queryByText("اقامتگاه درخواست شما را تأیید کرد")).toBeNull();
+  });
+
+  it("keeps payment blocked after acknowledgement failure and offers retry", async () => {
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), receptionCoordinationRequired: true });
+    bookingApi.acknowledge.mockRejectedValue(new Error("ثبت هماهنگی انجام نشد"));
+    render(<AccountBookingSessionPage />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /هماهنگ کرده‌ام/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ثبت هماهنگی" }));
+    expect(await screen.findByText("ثبت هماهنگی انجام نشد")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "پرداخت" }).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText(/اعلام هماهنگی شما ثبت شد/)).toBeNull();
+  });
+
+  it.each([{}, { "property.phone": "02199999999" }])("has no fake contact or acknowledgement path without platform support: %j", async (settings) => {
+    bookingApi.settings.mockResolvedValue(settings);
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), receptionCoordinationRequired: true });
+    render(<AccountBookingSessionPage />);
+    expect(await screen.findByText(/شماره تماس پشتیبانی کوچ فعلاً در دسترس نیست/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /تماس با پشتیبانی/ })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: /هماهنگ کرده‌ام/ })).toBeNull();
+    expect((await screen.findAllByRole("button", { name: "پرداخت" })).every(button => (button as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it("handles public settings load failure without unlocking acknowledgement or payment", async () => {
+    bookingApi.settings.mockRejectedValue(new Error("offline"));
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), receptionCoordinationRequired: true });
+    render(<AccountBookingSessionPage />);
+    expect(await screen.findByText(/شماره تماس پشتیبانی کوچ فعلاً در دسترس نیست/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "ثبت هماهنگی" })).toBeNull();
+  });
+
+  it("uses persisted acknowledgement after reload even when support phone is unavailable", async () => {
+    bookingApi.settings.mockResolvedValue({});
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), receptionCoordinationRequired: true, receptionCoordinationAcknowledgedAtUtc: "2026-10-13T12:00:00Z" });
+    render(<AccountBookingSessionPage />);
+    expect(await screen.findByText(/اعلام هماهنگی شما ثبت شد/)).toBeTruthy();
+    expect((await screen.findAllByRole("button", { name: "پرداخت" })).every(button => !(button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByRole("checkbox", { name: /هماهنگ کرده‌ام/ })).toBeNull();
+    expect(bookingApi.acknowledge).not.toHaveBeenCalled();
+  });
+
+  it("can acknowledge while PendingApproval without enabling payment or changing approval UX", async () => {
+    const pending = { ...response(), receptionCoordinationRequired: true };
+    bookingApi.fetch.mockResolvedValue(pending);
+    bookingApi.acknowledge.mockResolvedValue({ ...pending, receptionCoordinationAcknowledgedAtUtc: "2026-10-13T12:00:00Z" });
+    render(<AccountBookingSessionPage />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /هماهنگ کرده‌ام/ }));
+    fireEvent.click(screen.getByRole("button", { name: "ثبت هماهنگی" }));
+    expect(await screen.findByText(/اعلام هماهنگی شما ثبت شد/)).toBeTruthy();
+    expect(screen.getByText("در انتظار تأیید اقامتگاه")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "پرداخت" })).toBeNull();
+  });
+
+  it("does not show coordination for a session that does not require it", async () => {
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), receptionCoordinationRequired: false });
+    render(<AccountBookingSessionPage />);
+    expect((await screen.findAllByRole("button", { name: "پرداخت" })).every(button => !(button as HTMLButtonElement).disabled)).toBe(true);
+    expect(screen.queryByText("هماهنگی ورود با پشتیبانی کوچ")).toBeNull();
   });
 
   it("shows the OnRequest waiting state without a payment action", async () => {

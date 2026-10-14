@@ -8,12 +8,21 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 });
 
 import {
+  acknowledgeReceptionCoordination,
   fetchAccountPaymentProviders,
   initiateAccountBookingSessionPayment,
   simulateMockBookingSessionPayment,
 } from "@/lib/booking-sessions";
 
 describe("booking-session payment API contract", () => {
+  it("acknowledges through the owning Account action without a client timestamp or requirement flag", async () => {
+    ownerApi.apiRequest.mockResolvedValue({ receptionCoordinationAcknowledgedAtUtc: "2026-10-13T12:00:00Z" });
+    await acknowledgeReceptionCoordination("O/123456");
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith(
+      "/account/booking-sessions/O%2F123456/reception-coordination/acknowledge",
+      { method: "POST" },
+    );
+  });
   beforeEach(() => {
     ownerApi.apiRequest.mockReset();
   });

@@ -39,6 +39,7 @@ import {
 import { bookingModePresentation } from "@/components/booking/booking-display";
 import { fetchPublicApi, type PublicProperty } from "@/lib/public-properties";
 import type { ReceptionHours } from "@/lib/reception-hours";
+import { useBookingSupportPhone } from "@/components/booking/BookingSupportContact";
 
 export function BookingCheckoutFlow() {
   return (
@@ -49,6 +50,7 @@ export function BookingCheckoutFlow() {
 }
 
 function BookingCheckoutContent() {
+  const support = useBookingSupportPhone();
   const router = useRouter();
   const searchParams = useSearchParams();
   const auth = useAuthSession();
@@ -323,11 +325,13 @@ function BookingCheckoutContent() {
                     onChange={updateStayDetails}
                     receptionHours={receptionHours}
                     receptionLoadFailed={receptionLoadFailed}
+                    supportPhone={support.phone}
+                    supportLoading={support.loading}
                   />
                 ) : null}
               </>
             ) : (
-              <ReviewStep draft={stayDetailsDraft} items={cart.items} receptionHours={receptionHours} />
+              <ReviewStep draft={stayDetailsDraft} items={cart.items} receptionHours={receptionHours} support={support} />
             )}
 
             {currentStep === "review" && finalizationMessage ? (
@@ -403,10 +407,12 @@ function ReviewStep({
   draft,
   items,
   receptionHours,
+  support,
 }: {
   draft: CheckoutStayDetailsDraft;
   items: BookingCartItem[];
   receptionHours: ReceptionHours | null;
+  support: { phone: string | null; loading: boolean };
 }) {
   const mode = bookingModePresentation(items[0].bookingMode);
   const isOnRequest = items[0].bookingMode === "OnRequest";
@@ -416,7 +422,7 @@ function ReviewStep({
       <p className="max-w-2xl text-sm leading-7 text-muted-foreground">
         پیش از ادامه، اطلاعات اقامت، مهمانان و مبلغ سفارش را بررسی کنید.
       </p>
-      <CheckoutStayDetailsReview draft={draft} receptionHours={receptionHours} />
+      <CheckoutStayDetailsReview draft={draft} receptionHours={receptionHours} supportPhone={support.phone} supportLoading={support.loading} />
       <div className="mt-5 divide-y divide-border border-y border-border">
         <section className="py-4" aria-labelledby="checkout-booking-mode-title">
           <div className="flex flex-wrap items-center justify-between gap-2">

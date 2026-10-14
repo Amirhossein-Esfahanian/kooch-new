@@ -55,19 +55,38 @@ public sealed class AccountBookingSessionPaymentService : IAccountBookingSession
         }
 
         var provider = walletAmount > 0 && string.IsNullOrWhiteSpace(providerKey) ? null : ResolveSelectableProvider(providerKey);
-        var sessionId = await dbContext.BookingSessions.AsNoTracking()
+        var session = await dbContext.BookingSessions.AsNoTracking()
             .Where(session =>
                 session.ClientId == userId &&
                 session.SessionCode == normalizedSessionCode)
-            .Select(session => (int?)session.Id)
+            .Select(session => new
+            {
+                session.Id,
+                session.ReceptionCoordinationRequired,
+                session.ReceptionCoordinationAcknowledgedAtUtc
+            })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Booking session not found.");
+        if (session.ReceptionCoordinationRequired && session.ReceptionCoordinationAcknowledgedAtUtc is null)
+        {
+            // Existing attempts still replay through the normal payload checks; callbacks are unaffected.
+            var key = (idempotencyKey ?? string.Empty).Trim();
+            var existingAttempt = await dbContext.Payments.AnyAsync(payment =>
+                    payment.BookingSessionId == session.Id && payment.IdempotencyKey == key,
+                    cancellationToken) ||
+                await dbContext.BookingFundingAttempts.AnyAsync(attempt =>
+                    attempt.BookingSessionId == session.Id && attempt.IdempotencyKey == key,
+                    cancellationToken);
+            if (!existingAttempt)
+                throw new InvalidOperationException(
+                    "پیش از پرداخت، هماهنگی ورود با پشتیبانی کوچ را ثبت کنید.");
+        }
         var result = await paymentService.InitiateBookingSessionPaymentAsync(
             new BookingSessionPaymentInitiationRequest
             {
-                BookingSessionId = sessionId,
+                BookingSessionId = session.Id,
                 Provider = provider?.ProviderKey ?? string.Empty,
-                IdempotencyKey = idempotencyKey,
+                IdempotencyKey = idempotencyKey ?? string.Empty,
                 WalletAmount = walletAmount
             },
             cancellationToken);

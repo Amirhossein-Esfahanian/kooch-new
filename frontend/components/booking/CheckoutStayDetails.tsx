@@ -7,6 +7,7 @@ import {
   KoochTextarea,
 } from "@/components/KoochFormControls";
 import { KoochAlert } from "@/components/KoochAlert";
+import { BookingSupportContact } from "@/components/booking/BookingSupportContact";
 import type { BookingCheckoutStayDetails } from "@/components/booking/booking-checkout";
 import {
   isArrivalWithinReceptionWindow,
@@ -212,12 +213,16 @@ export function CheckoutStayDetails({
   onChange,
   receptionHours = null,
   receptionLoadFailed = false,
+  supportPhone = null,
+  supportLoading = false,
 }: {
   draft: CheckoutStayDetailsDraft;
   errors: CheckoutStayDetailsErrors;
   onChange: (draft: CheckoutStayDetailsDraft) => void;
   receptionHours?: ReceptionHours | null;
   receptionLoadFailed?: boolean;
+  supportPhone?: string | null;
+  supportLoading?: boolean;
 }) {
   const reception = describeReceptionWindow(receptionHours);
   const outsideReception = isOutsideReceptionHours(draft.expectedArrivalTime, receptionHours);
@@ -443,6 +448,9 @@ export function CheckoutStayDetails({
               : !draft.expectedArrivalTime
                 ? " اگر خارج از این بازه می‌رسید، لطفاً زمان تقریبی ورود را مشخص کنید."
                 : null}
+            {outsideReception && (
+              <div className="mt-2"><BookingSupportContact phone={supportPhone} loading={supportLoading} /></div>
+            )}
           </KoochAlert>
         ) : receptionLoadFailed ? (
           <KoochAlert className="mt-4" role="status" variant="info">
@@ -457,9 +465,13 @@ export function CheckoutStayDetails({
 export function CheckoutStayDetailsReview({
   draft,
   receptionHours = null,
+  supportPhone = null,
+  supportLoading = false,
 }: {
   draft: CheckoutStayDetailsDraft;
   receptionHours?: ReceptionHours | null;
+  supportPhone?: string | null;
+  supportLoading?: boolean;
 }) {
   const guest = toBookingCheckoutStayDetails(draft).primaryGuest;
   const outsideReception = isOutsideReceptionHours(draft.expectedArrivalTime, receptionHours);
@@ -493,6 +505,7 @@ export function CheckoutStayDetailsReview({
           {outsideReception ? (
             <KoochAlert className="mt-3" variant="warning">
               پیش از پرداخت، برای ورود خارج از ساعت پذیرش معمول با پشتیبانی کوچ هماهنگ کنید.
+              <div className="mt-2"><BookingSupportContact phone={supportPhone} loading={supportLoading} /></div>
             </KoochAlert>
           ) : null}
         </ReviewSection>

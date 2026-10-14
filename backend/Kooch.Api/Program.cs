@@ -141,6 +141,7 @@ builder.Services.AddScoped<IAdminManualPaymentService, AdminManualPaymentService
 builder.Services.AddWriterHostedServices(automaticDatabaseMutationsEnabled);
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 builder.Services.AddScoped<IAccountBookingSessionPaymentService, AccountBookingSessionPaymentService>();
+builder.Services.AddScoped<BookingSessionReceptionCoordinationService>();
 builder.Services.AddScoped<IPaymentDomainApplicationHandler, PaymentDomainApplicationHandler>();
 builder.Services.AddScoped<IPaymentCallbackService, PaymentCallbackService>();
 if (internalTestPaymentsEnabled)

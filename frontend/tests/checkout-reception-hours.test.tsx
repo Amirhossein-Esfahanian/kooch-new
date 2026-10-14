@@ -33,6 +33,18 @@ function chooseNextDay(time: string) {
 }
 
 describe("Guest checkout reception guidance", () => {
+  it("shows the real normalized Support telephone action only for outside-hours arrival without an acknowledgement control", () => {
+    const draft = { ...emptyCheckoutStayDetailsDraft, expectedArrivalTime: "23:59:00", expectedArrivalDayOffset: 0 as const };
+    render(<CheckoutStayDetails draft={draft} errors={{}} onChange={() => {}} receptionHours={sameDay} supportPhone="+98 (21) 1234-5678" />);
+    expect(screen.getByRole("link", { name: /تماس با پشتیبانی کوچ/ }).getAttribute("href")).toBe("tel:+982112345678");
+    expect(screen.queryByRole("checkbox", { name: /هماهنگ کرده‌ام/ })).toBeNull();
+    expect(screen.queryByRole("link", { name: /تماس با اقامتگاه/ })).toBeNull();
+  });
+
+  it("keeps support contact in the review warning", () => {
+    render(<CheckoutStayDetailsReview draft={{ ...emptyCheckoutStayDetailsDraft, expectedArrivalTime: "01:30", expectedArrivalDayOffset: 1 }} receptionHours={sameDay} supportPhone="02112345678" />);
+    expect(screen.getByRole("link", { name: /تماس با پشتیبانی کوچ/ }).getAttribute("href")).toBe("tel:02112345678");
+  });
   it("omits guidance when reception hours are not configured", () => {
     render(<ArrivalForm hours={null} />);
     expect(screen.queryByText(/ساعت پذیرش معمول این اقامتگاه/)).toBeNull();

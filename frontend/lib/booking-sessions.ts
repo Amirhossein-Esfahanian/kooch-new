@@ -155,6 +155,8 @@ export interface AccountBookingSession {
   currency: string;
   expectedArrivalTime?: string | null;
   expectedArrivalDayOffset?: 0 | 1 | null;
+  receptionCoordinationRequired?: boolean;
+  receptionCoordinationAcknowledgedAtUtc?: string | null;
   specialRequest?: string | null;
   totalAmount: number;
   summary: AccountBookingSessionSummary;
@@ -257,6 +259,13 @@ export function createAccountBookingSession(
 export function fetchAccountBookingSession(sessionCode: string) {
   return apiRequest<AccountBookingSession>(
     `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+  );
+}
+
+export function acknowledgeReceptionCoordination(sessionCode: string) {
+  return apiRequest<AccountBookingSession>(
+    `/account/booking-sessions/${encodeURIComponent(sessionCode)}/reception-coordination/acknowledge`,
+    { method: "POST" },
   );
 }
 

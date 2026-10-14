@@ -67,6 +67,20 @@ public sealed class AccountBookingSessionsController(
             cancellationToken));
     }
 
+    [HttpPost("{sessionCode}/reception-coordination/acknowledge")]
+    [ProducesResponseType<AccountBookingSessionResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AccountBookingSessionResponse>> AcknowledgeReceptionCoordination(
+        string sessionCode,
+        [FromServices] BookingSessionReceptionCoordinationService coordinationService,
+        CancellationToken cancellationToken)
+    {
+        var currentUser = GetCurrentUser();
+        await coordinationService.AcknowledgeAsync(currentUser.UserId, sessionCode, cancellationToken);
+        return Ok(await bookingSessionQueryService.GetBySessionCodeForClientAsync(
+            currentUser.UserId, sessionCode, cancellationToken));
+    }
+
     [HttpGet("payment-providers")]
     [ProducesResponseType<IReadOnlyList<AccountPaymentProviderOptionResponse>>(
         StatusCodes.Status200OK)]

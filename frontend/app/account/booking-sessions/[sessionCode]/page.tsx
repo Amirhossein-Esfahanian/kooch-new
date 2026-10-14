@@ -3,12 +3,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { KoochCheckbox } from "@/components/KoochFormControls";
+import { BookingSupportContact, useBookingSupportPhone } from "@/components/booking/BookingSupportContact";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import {
   bookingModePresentation,
@@ -19,6 +21,7 @@ import {
 } from "@/components/booking/booking-display";
 import {
   fetchAccountBookingSession,
+  acknowledgeReceptionCoordination,
   fetchAccountPaymentProviders,
   initiateAccountBookingSessionPayment,
   type AccountBookingSession,
@@ -38,6 +41,11 @@ export default function AccountBookingSessionPage() {
   const router = useRouter();
   const auth = useAuthSession();
   const currencyLabel = useSiteCurrencyLabel();
+  const support = useBookingSupportPhone();
+  const acknowledgementLock = useRef(false);
+  const [coordinationChecked, setCoordinationChecked] = useState(false);
+  const [savingCoordination, setSavingCoordination] = useState(false);
+  const [coordinationError, setCoordinationError] = useState("");
   const [session, setSession] = useState<AccountBookingSession | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -49,6 +57,8 @@ export default function AccountBookingSessionPage() {
   const [providersError, setProvidersError] = useState("");
   const [selectedProviderKey, setSelectedProviderKey] = useState("");
   const [boundProviderKey, setBoundProviderKey] = useState<string | null>(null);
+  const coordinationPending = Boolean(session?.receptionCoordinationRequired &&
+    !session.receptionCoordinationAcknowledgedAtUtc);
   const paymentEligibility = session
     ? getBookingSessionPaymentEligibility(session)
     : null;
@@ -136,6 +146,7 @@ export default function AccountBookingSessionPage() {
     if (
       !session ||
       initiatingPayment ||
+      coordinationPending ||
       !canInitiatePayment ||
       !selectedProviderAvailable
     ) {
@@ -169,6 +180,23 @@ export default function AccountBookingSessionPage() {
     }
   }
 
+  async function saveCoordination() {
+    if (!session || !coordinationPending || !coordinationChecked || !support.phone ||
+      acknowledgementLock.current) return;
+    acknowledgementLock.current = true;
+    setSavingCoordination(true);
+    setCoordinationError("");
+    try {
+      const updated = await acknowledgeReceptionCoordination(session.sessionCode);
+      setSession(updated);
+    } catch (caught) {
+      setCoordinationError(caught instanceof Error ? caught.message : "ثبت هماهنگی انجام نشد. دوباره تلاش کنید.");
+    } finally {
+      acknowledgementLock.current = false;
+      setSavingCoordination(false);
+    }
+  }
+
   useEffect(() => {
     if (auth.loading) return;
     if (!auth.authenticated) {
@@ -179,6 +207,8 @@ export default function AccountBookingSessionPage() {
     }
     let active = true;
     setLoading(true);
+    setCoordinationChecked(false);
+    setCoordinationError("");
     fetchAccountBookingSession(sessionCode)
       .then((result) => active && setSession(result))
       .catch((caught: Error) => active && setError(caught.message))
@@ -436,6 +466,36 @@ export default function AccountBookingSessionPage() {
 
       {error && <KoochAlert variant="destructive">{error}</KoochAlert>}
 
+      {session.receptionCoordinationRequired && (
+        <KoochAlert title="هماهنگی ورود با پشتیبانی کوچ" variant={coordinationPending ? "warning" : "success"} role="status">
+          <div className="grid gap-3">
+            <p>زمان ورود انتخاب‌شده خارج از ساعت پذیرش معمول اقامتگاه است.</p>
+            {coordinationPending ? (
+              <>
+                <p>پیش از شروع پرداخت، با پشتیبانی کوچ هماهنگ کنید و سپس هماهنگی را ثبت کنید. مهلت پرداخت تغییر نمی‌کند.</p>
+                <BookingSupportContact phone={support.phone} loading={support.loading} />
+                {support.phone && !support.loading && (
+                  <>
+                    <KoochCheckbox
+                      checked={coordinationChecked}
+                      disabled={savingCoordination}
+                      containerClassName="min-h-11 items-center"
+                      label="برای ورود در این ساعت با پشتیبانی کوچ هماهنگ کرده‌ام."
+                      onChange={(event) => setCoordinationChecked(event.target.checked)}
+                    />
+                    <KoochButton className="justify-self-start" disabled={!coordinationChecked} loading={savingCoordination} onClick={saveCoordination}>
+                      {savingCoordination ? "در حال ثبت هماهنگی..." : "ثبت هماهنگی"}
+                    </KoochButton>
+                  </>
+                )}
+                {coordinationError && <p role="alert">{coordinationError}</p>}
+              </>
+            ) : <p>اعلام هماهنگی شما ثبت شد. ادامه پرداخت تابع وضعیت رزرو و مهلت پرداخت است.</p>}
+            <p className="text-sm">این اعلام شماست؛ به معنی تأیید پشتیبانی یا اقامتگاه نیست.</p>
+          </div>
+        </KoochAlert>
+      )}
+
       {session.summary.hasPendingApprovals && (
         <KoochAlert variant="info" title="در انتظار تأیید اقامتگاه">
           <div className="grid gap-3">
@@ -474,7 +534,7 @@ export default function AccountBookingSessionPage() {
             {canRenderPaymentAction && canInitiateContinuation && (
               <KoochButton
                 className="hidden sm:inline-flex"
-                disabled={!selectedProviderAvailable}
+                disabled={!selectedProviderAvailable || coordinationPending}
                 loading={initiatingPayment}
                 onClick={beginPayment}
               >
@@ -551,7 +611,7 @@ export default function AccountBookingSessionPage() {
             {canRenderPaymentAction && (
               <KoochButton
                 className="hidden shrink-0 sm:inline-flex"
-                disabled={!selectedProviderAvailable}
+                disabled={!selectedProviderAvailable || coordinationPending}
                 loading={initiatingPayment}
                 onClick={beginPayment}
               >
@@ -857,7 +917,7 @@ export default function AccountBookingSessionPage() {
               )}
             </div>
             <KoochButton
-              disabled={!selectedProviderAvailable}
+              disabled={!selectedProviderAvailable || coordinationPending}
               loading={initiatingPayment}
               onClick={beginPayment}
             >
