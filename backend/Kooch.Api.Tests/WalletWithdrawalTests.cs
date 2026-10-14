@@ -1,4 +1,7 @@
 using Kooch.Api.Data;
+using Kooch.Api.Authentication;
+using Kooch.Api.Controllers;
+using Kooch.Api.Dtos.Wallet;
 using Kooch.Api.Entities;
 using Kooch.Api.Migrations;
 using Kooch.Api.Services.Wallet;
@@ -7,6 +10,9 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 using Xunit;
 
 namespace Kooch.Api.Tests;
@@ -14,6 +20,86 @@ namespace Kooch.Api.Tests;
 public sealed class WalletWithdrawalTests
 {
     private static readonly DateTime Now = new(2026, 10, 2, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void AdminCreationAndLookupKeepManagePaymentsAuthorization()
+    {
+        var controller = typeof(AdminWalletWithdrawalsController);
+        Assert.NotNull(Attribute.GetCustomAttribute(controller, typeof(AdminAuthorizeAttribute)));
+        var permission = (PermissionAuthorizeAttribute)Attribute.GetCustomAttribute(
+            controller, typeof(PermissionAuthorizeAttribute))!;
+        Assert.Equal(new PermissionAuthorizeAttribute(PermissionKey.ManagePayments).Policy, permission.Policy);
+        Assert.Contains(controller.GetMethods(), method => method.Name == "Create");
+        Assert.Contains(controller.GetMethods(), method => method.Name == "SearchUsers");
+        Assert.Contains(controller.GetMethods(), method => method.Name == "UserBalances");
+    }
+
+    [Fact]
+    public async Task AdminCreationUsesGuestReservationRulesAndRecordsActorWithoutDebit()
+    {
+        using var db = new Database();
+        await db.Credit(100, userId: 1);
+        await db.Credit(40, promotional: true, userId: 1);
+        var entriesBefore = await db.Context.WalletEntries.CountAsync();
+        var created = await db.Service.CreateAdminWithdrawalAsync(1, 2, "IRR", 70);
+        var request = await db.Context.WalletWithdrawalRequests.SingleAsync();
+        Assert.Equal(WalletWithdrawalStatus.Pending, created.Status);
+        Assert.Equal(2, request.CreatedByUserId);
+        Assert.Equal(70, request.Amount);
+        Assert.Equal(entriesBefore, await db.Context.WalletEntries.CountAsync());
+        Assert.Equal(30, (await db.Service.GetBalanceAsync(1, "IRR")).WithdrawableBalance);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            db.Service.CreateAdminWithdrawalAsync(1, 2, "IRR", 31));
+        await Assert.ThrowsAsync<ArgumentException>(() =>
+            db.Service.CreateAdminWithdrawalAsync(1, 2, "IRR", 0));
+        Assert.Single(await db.Context.WalletWithdrawalRequests.ToListAsync());
+    }
+
+    [Fact]
+    public async Task AdminCreateEndpointUsesAuthenticatedActorAndReturnsCreatedPendingRequest()
+    {
+        using var db = new Database();
+        await db.Credit(100);
+        var controller = new AdminWalletWithdrawalsController(db.Service)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity([
+                        new Claim(ClaimTypes.NameIdentifier, "2"),
+                        new Claim(ClaimTypes.Role, UserRole.SuperAdmin.ToString())
+                    ], "test"))
+                }
+            }
+        };
+        var response = await controller.Create(new AdminCreateWalletWithdrawalRequest(1, "IRR", 25), default);
+        var created = Assert.IsType<ObjectResult>(response.Result);
+        Assert.Equal(StatusCodes.Status201Created, created.StatusCode);
+        var withdrawal = Assert.IsType<AdminWalletWithdrawalResponse>(created.Value);
+        Assert.Equal(WalletWithdrawalStatus.Pending, withdrawal.Status);
+        Assert.Equal(2, (await db.Context.WalletWithdrawalRequests.SingleAsync()).CreatedByUserId);
+    }
+
+    [Fact]
+    public async Task AdminUserLookupAndBalanceExposeOnlySelectedUsersAvailableFunds()
+    {
+        using var db = new Database();
+        var owner = await db.Context.Users.SingleAsync(user => user.Id == 1);
+        owner.FirstName = "Sample";
+        owner.LastName = "Guest";
+        await db.Context.SaveChangesAsync();
+        await db.Credit(100, userId: 1);
+        await db.Credit(40, promotional: true, userId: 1);
+        var user = Assert.Single(await db.Service.SearchWithdrawalUsersAsync("Sample"));
+        Assert.Equal(1, user.Id);
+        var balance = Assert.Single(await db.Service.GetAdminUserBalancesAsync(user.Id));
+        Assert.Equal("IRR", balance.Currency);
+        Assert.Equal(100, balance.WithdrawableBalance);
+        await db.Service.CreateAdminWithdrawalAsync(user.Id, 2, "IRR", 30);
+        Assert.Equal(70, Assert.Single(await db.Service.GetAdminUserBalancesAsync(user.Id)).WithdrawableBalance);
+        Assert.Empty(await db.Service.SearchWithdrawalUsersAsync("missing"));
+    }
 
     [Fact]
     public void MigrationIsAdditiveAndUsesNoActionOwnership()

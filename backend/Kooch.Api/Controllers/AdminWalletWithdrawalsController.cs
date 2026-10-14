@@ -13,6 +13,26 @@ namespace Kooch.Api.Controllers;
 [Route("api/admin/wallet/withdrawals")]
 public sealed class AdminWalletWithdrawalsController(WalletService walletService) : AuthenticatedControllerBase
 {
+    [HttpGet("users")]
+    public async Task<ActionResult<IReadOnlyList<WalletWithdrawalUserOption>>> SearchUsers(
+        [FromQuery] string query, CancellationToken cancellationToken) =>
+        Ok(await walletService.SearchWithdrawalUsersAsync(query, cancellationToken));
+
+    [HttpGet("users/{userId:int}/balances")]
+    public async Task<ActionResult<IReadOnlyList<WalletBalanceResponse>>> UserBalances(
+        int userId, CancellationToken cancellationToken) =>
+        Ok(await walletService.GetAdminUserBalancesAsync(userId, cancellationToken));
+
+    [HttpPost]
+    [ProducesResponseType<AdminWalletWithdrawalResponse>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<AdminWalletWithdrawalResponse>> Create(
+        AdminCreateWalletWithdrawalRequest request, CancellationToken cancellationToken)
+    {
+        var created = await walletService.CreateAdminWithdrawalAsync(
+            request.UserId, GetCurrentUser().UserId, request.Currency, request.Amount, cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, created);
+    }
+
     [HttpGet]
     public async Task<ActionResult<PagedResult<AdminWalletWithdrawalResponse>>> List(
         [FromQuery] int page = 1, [FromQuery] int pageSize = 20,

@@ -9,6 +9,52 @@ public sealed partial class WalletService
 {
     public Task<WalletWithdrawalResponse> CreateWithdrawalAsync(int userId, string currency, decimal amount,
         CancellationToken cancellationToken = default)
+        => CreateWithdrawalCoreAsync(userId, currency, amount, null, cancellationToken);
+
+    public async Task<AdminWalletWithdrawalResponse> CreateAdminWithdrawalAsync(int userId, int actorUserId,
+        string currency, decimal amount, CancellationToken cancellationToken = default)
+    {
+        if (actorUserId <= 0 || !await context.Users.AnyAsync(user => user.Id == actorUserId, cancellationToken))
+            throw new KeyNotFoundException("Withdrawal creator was not found.");
+        var created = await CreateWithdrawalCoreAsync(userId, currency, amount, actorUserId, cancellationToken);
+        return await GetAdminWithdrawalAsync(created.Id, cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<WalletWithdrawalUserOption>> SearchWithdrawalUsersAsync(string query,
+        CancellationToken cancellationToken = default)
+    {
+        query = query?.Trim() ?? string.Empty;
+        if (query.Length < 2 || query.Length > 100)
+            throw new ArgumentException("Search at least two and at most 100 characters.");
+        return await context.Users.AsNoTracking()
+            .Where(user => context.WalletAccounts.Any(account => account.UserId == user.Id) &&
+                ((user.FirstName + " " + user.LastName).Contains(query) ||
+                 (user.Email != null && user.Email.Contains(query)) ||
+                 (user.PhoneNumber != null && user.PhoneNumber.Contains(query))))
+            .OrderBy(user => user.LastName).ThenBy(user => user.FirstName).ThenBy(user => user.Id)
+            .Take(20)
+            .Select(user => new WalletWithdrawalUserOption(user.Id,
+                user.FirstName + " " + user.LastName, user.Email, user.PhoneNumber))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<WalletBalanceResponse>> GetAdminUserBalancesAsync(int userId,
+        CancellationToken cancellationToken = default)
+    {
+        if (!await context.Users.AnyAsync(user => user.Id == userId, cancellationToken))
+            throw new KeyNotFoundException("Wallet owner was not found.");
+        var currencies = await context.WalletAccounts.AsNoTracking()
+            .Where(account => account.UserId == userId)
+            .OrderBy(account => account.Currency)
+            .Select(account => account.Currency).ToListAsync(cancellationToken);
+        var balances = new List<WalletBalanceResponse>(currencies.Count);
+        foreach (var currency in currencies)
+            balances.Add(await GetBalanceAsync(userId, currency, cancellationToken));
+        return balances;
+    }
+
+    private Task<WalletWithdrawalResponse> CreateWithdrawalCoreAsync(int userId, string currency, decimal amount,
+        int? actorUserId, CancellationToken cancellationToken)
     {
         if (amount <= 0 || amount > 9999999999999999.99m || amount != decimal.Round(amount, 2))
             throw new ArgumentException("Wallet withdrawal must have a positive decimal(18,2) amount.");
@@ -24,7 +70,8 @@ public sealed partial class WalletService
             var request = new WalletWithdrawalRequest
             {
                 WalletAccountId = account.Id, Amount = amount,
-                Status = WalletWithdrawalStatus.Pending, RequestedAtUtc = now
+                Status = WalletWithdrawalStatus.Pending, RequestedAtUtc = now,
+                CreatedByUserId = actorUserId
             };
             var remaining = amount;
             foreach (var lot in ordered)

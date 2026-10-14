@@ -30,6 +30,8 @@ type Withdrawal = {
   payoutNote: string | null;
 };
 type Page<T> = { items: T[]; totalCount: number; page: number; pageSize: number; totalPages: number };
+type WalletUser = { id: number; name: string; email: string | null; phoneNumber: string | null };
+type WalletBalance = { currency: string; withdrawableBalance: number };
 type DialogStep = "detail" | "approve" | "reject" | "paidForm" | "paidConfirm";
 const statusLabels: Record<WithdrawalStatus, string> = {
   Pending: "در انتظار بررسی", Approved: "تأییدشده", Paid: "پرداخت‌شده",
@@ -64,6 +66,100 @@ function WithdrawalManagement() {
   const [paidAtLocal, setPaidAtLocal] = useState("");
   const [note, setNote] = useState("");
   const [formError, setFormError] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [userQuery, setUserQuery] = useState("");
+  const [users, setUsers] = useState<WalletUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(false);
+  const [searchError, setSearchError] = useState("");
+  const [selectedUser, setSelectedUser] = useState<WalletUser | null>(null);
+  const [balances, setBalances] = useState<WalletBalance[]>([]);
+  const [balanceLoading, setBalanceLoading] = useState(false);
+  const [balanceError, setBalanceError] = useState("");
+  const [currency, setCurrency] = useState("");
+  const [amount, setAmount] = useState("");
+  const [createError, setCreateError] = useState("");
+  const [creating, setCreating] = useState(false);
+  const creatingRef = useRef(false);
+  const balanceRequestRef = useRef(0);
+
+  useEffect(() => {
+    if (!createOpen || selectedUser || userQuery.trim().length < 2) {
+      setUsers([]);
+      setUsersLoading(false);
+      setSearchError("");
+      return;
+    }
+    let active = true;
+    const timer = setTimeout(() => {
+      setUsersLoading(true);
+      setSearchError("");
+      void apiRequest<WalletUser[]>(`/admin/wallet/withdrawals/users?query=${encodeURIComponent(userQuery.trim())}`)
+        .then(result => { if (active) setUsers(result); })
+        .catch(error => { if (active) setSearchError(errorText(error)); })
+        .finally(() => { if (active) setUsersLoading(false); });
+    }, 250);
+    return () => { active = false; clearTimeout(timer); };
+  }, [createOpen, selectedUser, userQuery]);
+
+  const selectUser = async (user: WalletUser, preserveError = false) => {
+    const requestId = ++balanceRequestRef.current;
+    setSelectedUser(user);
+    setUsers([]);
+    setBalances([]);
+    setCurrency("");
+    setAmount("");
+    setBalanceError("");
+    if (!preserveError) setCreateError("");
+    setBalanceLoading(true);
+    try {
+      const result = await apiRequest<WalletBalance[]>(`/admin/wallet/withdrawals/users/${user.id}/balances`);
+      if (requestId !== balanceRequestRef.current) return;
+      setBalances(result);
+      setCurrency(result[0]?.currency ?? "");
+    } catch (error) {
+      if (requestId === balanceRequestRef.current) setBalanceError(errorText(error));
+    } finally {
+      if (requestId === balanceRequestRef.current) setBalanceLoading(false);
+    }
+  };
+
+  const closeCreate = () => {
+    if (creatingRef.current) return;
+    balanceRequestRef.current += 1;
+    setCreateOpen(false);
+  };
+
+  const submitCreate = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (creatingRef.current || !selectedUser || balanceLoading || balanceError) return;
+    const available = balances.find(balance => balance.currency === currency)?.withdrawableBalance ?? 0;
+    const parsedAmount = Number(amount);
+    if (!/^\d+(?:\.\d{1,2})?$/.test(amount.trim()) || !Number.isFinite(parsedAmount) ||
+        parsedAmount <= 0 || parsedAmount > available || parsedAmount > 9999999999999999.99) {
+      setCreateError("مبلغ باید مثبت، حداکثر با دو رقم اعشار و حداکثر برابر موجودی قابل برداشت باشد.");
+      return;
+    }
+    creatingRef.current = true;
+    setCreating(true);
+    setCreateError("");
+    try {
+      const created = await apiRequest<Withdrawal>("/admin/wallet/withdrawals", {
+        method: "POST",
+        body: JSON.stringify({ userId: selectedUser.id, currency, amount: parsedAmount }),
+      });
+      toast.success("درخواست برداشت در وضعیت انتظار بررسی ثبت شد.");
+      setCreateOpen(false);
+      setPage(1);
+      setRefresh(value => value + 1);
+      openDetail(created.id);
+    } catch (error) {
+      setCreateError(errorText(error));
+      void selectUser(selectedUser, true);
+    } finally {
+      creatingRef.current = false;
+      setCreating(false);
+    }
+  };
 
   useEffect(() => {
     let active = true;
@@ -177,7 +273,10 @@ function WithdrawalManagement() {
             {statuses.map(value => <option key={value} value={value}>{statusLabels[value]}</option>)}
           </KoochSelect>
         </KoochField>
-        <span className="text-sm text-muted-foreground">{formatNumber(list?.totalCount ?? 0)} درخواست</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-muted-foreground">{formatNumber(list?.totalCount ?? 0)} درخواست</span>
+          <KoochButton onClick={() => { setUserQuery(""); setSelectedUser(null); setBalances([]); setCurrency(""); setAmount(""); setCreateError(""); setCreateOpen(true); }}>ثبت درخواست برای کاربر</KoochButton>
+        </div>
       </div>
       {listError && <p role="alert" className="text-sm text-destructive">{listError} <KoochButton size="sm" variant="outline" onClick={() => setRefresh(value => value + 1)}>تلاش دوباره</KoochButton></p>}
       <KoochTable>
@@ -205,6 +304,30 @@ function WithdrawalManagement() {
         <KoochButton size="sm" variant="outline" disabled={listLoading || page >= (list?.totalPages ?? 0)} onClick={() => setPage(value => value + 1)}>بعدی</KoochButton>
       </nav>}
     </KoochCard>
+
+    <KoochDialog open={createOpen} onOpenChange={open => { if (!open) closeCreate(); }} title="ثبت درخواست برداشت برای کاربر" size="sm" closeDisabled={creating}
+      footer={<div className="flex justify-end gap-2"><KoochButton variant="outline" disabled={creating} onClick={closeCreate}>انصراف</KoochButton><KoochButton form="admin-wallet-withdrawal-create" type="submit" loading={creating} disabled={!selectedUser || !currency || balanceLoading || !!balanceError}>ثبت درخواست</KoochButton></div>}>
+      <form id="admin-wallet-withdrawal-create" className="grid gap-4" onSubmit={event => void submitCreate(event)}>
+        <KoochField label="جستجوی کاربر" helperText="نام، ایمیل یا شماره تماس را وارد کنید.">
+          <KoochInput value={userQuery} onChange={event => { balanceRequestRef.current += 1; setSelectedUser(null); setBalances([]); setCurrency(""); setUserQuery(event.target.value); }} />
+        </KoochField>
+        {usersLoading && <p role="status" className="text-sm text-muted-foreground">در حال جستجو...</p>}
+        {searchError && <p role="alert" className="text-sm text-destructive">{searchError}</p>}
+        {!selectedUser && users.length > 0 && <div className="max-h-48 overflow-y-auto rounded-lg border border-border" aria-label="نتایج جستجوی کاربران">
+          {users.map(user => <KoochButton key={user.id} type="button" variant="ghost" className="h-auto w-full justify-start text-start" onClick={() => void selectUser(user)}>{user.name} {user.phoneNumber || user.email ? `— ${user.phoneNumber ?? user.email}` : ""}</KoochButton>)}
+        </div>}
+        {selectedUser && <p className="text-sm">کاربر انتخاب‌شده: <strong>{selectedUser.name}</strong></p>}
+        {balanceLoading && <p role="status" className="text-sm text-muted-foreground">در حال دریافت موجودی قابل برداشت...</p>}
+        {balanceError && <p role="alert" className="text-sm text-destructive">{balanceError} <KoochButton size="sm" variant="outline" onClick={() => selectedUser && void selectUser(selectedUser)}>تلاش دوباره</KoochButton></p>}
+        {selectedUser && !balanceLoading && !balanceError && balances.length === 0 && <p className="text-sm text-muted-foreground">کیف پولی برای این کاربر موجود نیست.</p>}
+        {balances.length > 0 && !balanceLoading && <>
+          <KoochField label="واحد پول"><KoochSelect value={currency} onChange={event => { setCurrency(event.target.value); setAmount(""); setCreateError(""); }}>{balances.map(balance => <option key={balance.currency} value={balance.currency}>{balance.currency}</option>)}</KoochSelect></KoochField>
+          <p className="text-sm text-muted-foreground">موجودی قابل برداشت: <strong className="text-foreground">{formatCurrency(balances.find(balance => balance.currency === currency)?.withdrawableBalance ?? 0, { showCurrency: false })} <bdi dir="ltr">{currency}</bdi></strong></p>
+          <KoochField label="مبلغ درخواستی" required error={createError || undefined}><KoochInput type="number" inputMode="decimal" min="0" step="0.01" value={amount} onChange={event => { setAmount(event.target.value); setCreateError(""); }} /></KoochField>
+        </>}
+        <p className="text-xs text-muted-foreground">ثبت درخواست فقط وجه قابل برداشت را رزرو می‌کند؛ پرداخت و کسر از کیف پول پس از تأیید و ثبت پرداخت انجام می‌شود.</p>
+      </form>
+    </KoochDialog>
 
     <KoochDialog open={selectedId !== null} onOpenChange={open => { if (!open && !busy) { detailRequestRef.current += 1; setSelectedId(null); } }} title={dialogTitle} size="sm" closeDisabled={busy}
       footer={<div className="flex flex-wrap justify-end gap-2">

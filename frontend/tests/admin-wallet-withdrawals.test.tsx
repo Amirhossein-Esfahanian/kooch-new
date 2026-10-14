@@ -25,6 +25,12 @@ beforeEach(() => {
   current = { ...pending };
   api.mockReset();
   api.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path.startsWith("/admin/wallet/withdrawals/users?")) return [{ id: 7, name: "کاربر نمونه", email: null, phoneNumber: "09120000000" }];
+    if (path === "/admin/wallet/withdrawals/users/7/balances") return [{ currency: "IRR", withdrawableBalance: 100, balance: 150, nonWithdrawableBalance: 50 }];
+    if (path === "/admin/wallet/withdrawals" && init?.method === "POST") {
+      current = { ...current, id: 42, guestName: "کاربر نمونه", amount: JSON.parse(String(init.body)).amount };
+      return current;
+    }
     if (init?.method === "PUT") {
       const action = path.split("/").at(-1);
       current = { ...current, status: action === "approve" ? "Approved" : action === "reject" ? "Rejected" : "Paid" };
@@ -33,6 +39,7 @@ beforeEach(() => {
       return current;
     }
     if (path === "/admin/wallet/withdrawals/41") return current;
+    if (path === "/admin/wallet/withdrawals/42") return current;
     if (path.startsWith("/admin/wallet/withdrawals?")) return paged([current], Number(new URLSearchParams(path.split("?")[1]).get("page")), 2);
     throw new Error(`Unexpected API: ${path}`);
   });
@@ -45,6 +52,35 @@ async function openDetails() {
 }
 
 describe("Admin wallet withdrawals", () => {
+  it("searches wallet users, shows withdrawable balance, and creates a Pending request", async () => {
+    render(<Page />);
+    fireEvent.click(screen.getByRole("button", { name: "ثبت درخواست برای کاربر" }));
+    const dialog = await screen.findByRole("dialog", { name: "ثبت درخواست برداشت برای کاربر" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "جستجوی کاربر" }), { target: { value: "کاربر" } });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /کاربر نمونه/ }));
+    expect(await within(dialog).findByRole("spinbutton", { name: /مبلغ درخواستی/ })).not.toBeNull();
+    expect(within(dialog).getByText(/۱۰۰/)).not.toBeNull();
+    expect(within(dialog).queryByText(/۱۵۰/)).toBeNull();
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: /مبلغ درخواستی/ }), { target: { value: "70" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/wallet/withdrawals", {
+      method: "POST", body: JSON.stringify({ userId: 7, currency: "IRR", amount: 70 }),
+    }));
+    expect(await screen.findByRole("dialog", { name: "جزئیات درخواست برداشت" })).not.toBeNull();
+  });
+
+  it("blocks amounts above withdrawable balance without submitting", async () => {
+    render(<Page />);
+    fireEvent.click(screen.getByRole("button", { name: "ثبت درخواست برای کاربر" }));
+    const dialog = await screen.findByRole("dialog", { name: "ثبت درخواست برداشت برای کاربر" });
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "جستجوی کاربر" }), { target: { value: "کاربر" } });
+    fireEvent.click(await within(dialog).findByRole("button", { name: /کاربر نمونه/ }));
+    await within(dialog).findByRole("spinbutton", { name: /مبلغ درخواستی/ });
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: /مبلغ درخواستی/ }), { target: { value: "101" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست" }));
+    expect(within(dialog).getByRole("alert").textContent).toContain("موجودی قابل برداشت");
+    expect(api.mock.calls.filter(([path, init]) => path === "/admin/wallet/withdrawals" && init?.method === "POST")).toHaveLength(0);
+  });
   it("loads list, uses ManagePayments, and does not expose internal wallet IDs", async () => {
     render(<Page />);
     expect(await screen.findByText("مهمان نمونه")).not.toBeNull();

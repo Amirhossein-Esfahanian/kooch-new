@@ -5,6 +5,10 @@ namespace Kooch.Api.Dtos.Wallet;
 
 public sealed record CreateWalletWithdrawalRequest(string Currency, decimal Amount);
 
+public sealed record AdminCreateWalletWithdrawalRequest(int UserId, string Currency, decimal Amount);
+
+public sealed record WalletWithdrawalUserOption(int Id, string Name, string? Email, string? PhoneNumber);
+
 public sealed record WalletWithdrawalResponse(
     int Id,
     string Currency,
