@@ -1476,17 +1476,21 @@ namespace Kooch.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("NationalCode");
+                    b.HasIndex("NationalCode")
+                        .IsUnique()
+                        .HasFilter("[NationalCode] IS NOT NULL");
 
                     b.HasIndex("NormalizedEmail");
 
                     b.HasIndex("NormalizedMobile");
 
-                    b.HasIndex("PassportNumber");
-
                     b.HasIndex("UserId")
                         .IsUnique()
                         .HasFilter("[UserId] IS NOT NULL");
+
+                    b.HasIndex("Nationality", "PassportNumber")
+                        .IsUnique()
+                        .HasFilter("[Nationality] IS NOT NULL AND [PassportNumber] IS NOT NULL");
 
                     b.ToTable("Guests");
                 });

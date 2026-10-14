@@ -66,6 +66,7 @@ type WalletTransactionPage = { items: WalletTransaction[] };
 
 type GuestForm = {
   id: number | null;
+  identityMode: "Iranian" | "Foreign";
   firstName: string;
   lastName: string;
   mobile: string;
@@ -81,13 +82,14 @@ type GuestForm = {
 
 const emptyForm: GuestForm = {
   id: null,
+  identityMode: "Iranian",
   firstName: "",
   lastName: "",
   mobile: "",
   email: "",
   nationalCode: "",
   passportNumber: "",
-  nationality: "",
+  nationality: "ایران",
   birthDate: "",
   gender: "",
   address: "",
@@ -107,9 +109,9 @@ function toPayload(form: GuestForm) {
     lastName: form.lastName.trim() || null,
     mobile: form.mobile.trim() || null,
     email: form.email.trim() || null,
-    nationalCode: form.nationalCode.trim() || null,
-    passportNumber: form.passportNumber.trim() || null,
-    nationality: form.nationality.trim() || null,
+    nationalCode: form.identityMode === "Iranian" ? form.nationalCode.trim() || null : null,
+    passportNumber: form.identityMode === "Foreign" ? form.passportNumber.trim() || null : null,
+    nationality: form.identityMode === "Iranian" ? "ایران" : form.nationality.trim() || null,
     birthDate: form.birthDate || null,
     gender: form.gender || null,
     address: form.address.trim() || null,
@@ -118,15 +120,18 @@ function toPayload(form: GuestForm) {
 }
 
 function toForm(guest: GuestResponse): GuestForm {
+  const identityMode = guest.passportNumber || (guest.nationality && !["ایران", "Iran", "IR"].includes(guest.nationality))
+    ? "Foreign" : "Iranian";
   return {
     id: guest.id,
+    identityMode,
     firstName: guest.firstName ?? "",
     lastName: guest.lastName ?? "",
     mobile: guest.mobile ?? "",
     email: guest.email ?? "",
     nationalCode: guest.nationalCode ?? "",
     passportNumber: guest.passportNumber ?? "",
-    nationality: guest.nationality ?? "",
+    nationality: identityMode === "Iranian" ? "ایران" : guest.nationality ?? "",
     birthDate: guest.birthDate ?? "",
     gender: guest.gender ?? "",
     address: guest.address ?? "",
@@ -170,7 +175,8 @@ export function GuestManagement() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<GuestForm>(emptyForm);
-  const [walletUserId, setWalletUserId] = useState<number | null>(null);
+  const [walletGuest, setWalletGuest] = useState<GuestResponse | null>(null);
+  const walletUserId = walletGuest?.userId ?? null;
   const [walletBalances, setWalletBalances] = useState<AdminWalletBalance[]>([]);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState("");
@@ -184,7 +190,7 @@ export function GuestManagement() {
     setWalletError("");
     setWalletTransactions({});
     setWalletTransactionsError("");
-    if (!dialogOpen || !form.id || !walletUserId || !canViewWallet) {
+    if (!walletGuest || !walletUserId || !canViewWallet) {
       setWalletLoading(false);
       setWalletTransactionsLoading(false);
       return;
@@ -211,7 +217,7 @@ export function GuestManagement() {
       .catch(error => { if (active) setWalletError(error instanceof Error ? error.message : "موجودی کیف پول بارگذاری نشد."); })
       .finally(() => { if (active) { setWalletLoading(false); setWalletTransactionsLoading(false); } });
     return () => { active = false; };
-  }, [canViewWallet, dialogOpen, form.id, walletUserId, walletRefresh]);
+  }, [canViewWallet, walletGuest, walletUserId, walletRefresh]);
 
   const basePath = "/admin/guests";
   const visibleGuests = useMemo(
@@ -242,18 +248,26 @@ export function GuestManagement() {
 
   function openCreateDialog() {
     setForm(emptyForm);
-    setWalletUserId(null);
     setDialogOpen(true);
   }
 
   function openEditDialog(guest: GuestResponse) {
     setForm(toForm(guest));
-    setWalletUserId(guest.userId ?? null);
     setDialogOpen(true);
   }
 
   function updateForm(field: keyof GuestForm, value: string) {
     setForm((current) => ({ ...current, [field]: value }));
+  }
+
+  function setIdentityMode(identityMode: GuestForm["identityMode"]) {
+    setForm((current) => ({
+      ...current,
+      identityMode,
+      nationalCode: identityMode === "Iranian" ? current.nationalCode : "",
+      passportNumber: identityMode === "Foreign" ? current.passportNumber : "",
+      nationality: identityMode === "Iranian" ? "ایران" : current.identityMode === "Foreign" ? current.nationality : "",
+    }));
   }
 
   async function handleSearch(event: FormEvent<HTMLFormElement>) {
@@ -271,6 +285,15 @@ export function GuestManagement() {
 
     if (!form.mobile.trim() && !form.email.trim()) {
       toast.error("شماره موبایل یا ایمیل مهمان را وارد کنید.");
+      return;
+    }
+
+    if (form.identityMode === "Iranian" && !form.nationalCode.trim()) {
+      toast.error("کد ملی مهمان ایرانی الزامی است.");
+      return;
+    }
+    if (form.identityMode === "Foreign" && (!form.nationality.trim() || !form.passportNumber.trim())) {
+      toast.error("کشور تابعیت و شماره پاسپورت مهمان خارجی الزامی است.");
       return;
     }
 
@@ -339,17 +362,15 @@ export function GuestManagement() {
             <KoochTableHead>نام مهمان</KoochTableHead>
             <KoochTableHead>موبایل</KoochTableHead>
             <KoochTableHead>ایمیل</KoochTableHead>
-            <KoochTableHead>کد ملی</KoochTableHead>
-            <KoochTableHead>پاسپورت</KoochTableHead>
-            <KoochTableHead>ملیت</KoochTableHead>
+            <KoochTableHead>هویت</KoochTableHead>
             <KoochTableHead>عملیات</KoochTableHead>
           </KoochTableRow>
         </KoochTableHeader>
         <KoochTableBody>
           {loading ? (
-            <KoochTableEmpty colSpan={8}>در حال بارگذاری...</KoochTableEmpty>
+            <KoochTableEmpty colSpan={6}>در حال بارگذاری...</KoochTableEmpty>
           ) : visibleGuests.length === 0 ? (
-            <KoochTableEmpty colSpan={8}>مهمانی پیدا نشد.</KoochTableEmpty>
+            <KoochTableEmpty colSpan={6}>مهمانی پیدا نشد.</KoochTableEmpty>
           ) : (
             visibleGuests.map((guest, index) => (
               <KoochTableRow key={guest.id}>
@@ -361,9 +382,11 @@ export function GuestManagement() {
                 </KoochTableCell>
                 <KoochTableCell>{guest.mobile ?? "-"}</KoochTableCell>
                 <KoochTableCell>{guest.email ?? "-"}</KoochTableCell>
-                <KoochTableCell>{guest.nationalCode ?? "-"}</KoochTableCell>
-                <KoochTableCell>{guest.passportNumber ?? "-"}</KoochTableCell>
-                <KoochTableCell>{guest.nationality ?? "-"}</KoochTableCell>
+                <KoochTableCell>
+                  {guest.passportNumber
+                    ? <>{guest.nationality ?? "-"} · <bdi dir="ltr">{guest.passportNumber}</bdi></>
+                    : guest.nationalCode ?? "-"}
+                </KoochTableCell>
                 <KoochTableCell>
                   <div className="flex flex-wrap gap-2">
                     <KoochButton
@@ -373,6 +396,9 @@ export function GuestManagement() {
                     >
                       ویرایش
                     </KoochButton>
+                    {canViewWallet && <KoochButton onClick={() => setWalletGuest(guest)} size="sm" variant="outline" aria-label={`کیف پول ${guest.fullName || `${guest.firstName ?? ""} ${guest.lastName ?? ""}`.trim() || "مهمان"}`}>
+                      کیف پول
+                    </KoochButton>}
                     <KoochConfirmDialog
                       cancelText="انصراف"
                       confirmText="حذف"
@@ -451,25 +477,26 @@ export function GuestManagement() {
                   value={form.email}
                 />
               </KoochField>
-              <KoochField label="کد ملی">
-                <KoochInput
-                  onChange={(event) => updateForm("nationalCode", event.target.value)}
-                  value={form.nationalCode}
-                />
+              <KoochField label="نوع هویت" required>
+                <KoochSelect value={form.identityMode} onChange={(event) => setIdentityMode(event.target.value as GuestForm["identityMode"])}>
+                  <option value="Iranian">ایرانی</option>
+                  <option value="Foreign">خارجی</option>
+                </KoochSelect>
               </KoochField>
-              <KoochField label="شماره پاسپورت">
-                <KoochInput
-                  dir="ltr"
-                  onChange={(event) => updateForm("passportNumber", event.target.value)}
-                  value={form.passportNumber}
-                />
-              </KoochField>
-              <KoochField label="ملیت">
-                <KoochInput
-                  onChange={(event) => updateForm("nationality", event.target.value)}
-                  value={form.nationality}
-                />
-              </KoochField>
+              {form.identityMode === "Iranian" ? (
+                <KoochField label="کد ملی" required>
+                  <KoochInput inputMode="numeric" required onChange={(event) => updateForm("nationalCode", event.target.value)} value={form.nationalCode} />
+                </KoochField>
+              ) : (
+                <>
+                  <KoochField label="کشور تابعیت" required>
+                    <KoochInput required onChange={(event) => updateForm("nationality", event.target.value)} value={form.nationality} />
+                  </KoochField>
+                  <KoochField label="شماره پاسپورت" required>
+                    <KoochInput dir="ltr" required onChange={(event) => updateForm("passportNumber", event.target.value)} value={form.passportNumber} />
+                  </KoochField>
+                </>
+              )}
               <KoochField label="تاریخ تولد">
                 <KoochInput
                   onChange={(event) => updateForm("birthDate", event.target.value)}
@@ -506,8 +533,15 @@ export function GuestManagement() {
               />
             </KoochField>
         </form>
-        {form.id !== null && canViewWallet && (
-          <section aria-label="خلاصه کیف پول" className="mt-5 space-y-3 border-t border-border pt-5">
+      </KoochDialog>
+
+      <KoochDialog open={walletGuest !== null} onOpenChange={open => { if (!open) setWalletGuest(null); }} title="کیف پول مهمان" size="sm">
+        {walletGuest && <div className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            مهمان: <strong className="text-foreground">{walletGuest.fullName || `${walletGuest.firstName ?? ""} ${walletGuest.lastName ?? ""}`.trim() || "—"}</strong>
+            {walletGuest.mobile && <> · <bdi dir="ltr">{walletGuest.mobile}</bdi></>}
+          </p>
+          <section aria-label="خلاصه کیف پول" className="space-y-3 border-t border-border pt-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 className="text-base font-bold text-foreground">خلاصه کیف پول</h3>
               {walletUserId !== null && <KoochButton size="sm" variant="outline" onClick={() => router.push(`/admin/wallet/withdrawals?userId=${walletUserId}`)}>ثبت درخواست برداشت</KoochButton>}
@@ -519,7 +553,7 @@ export function GuestManagement() {
                 {walletBalances.map(wallet => (
                   <div key={wallet.currency} className="space-y-2 rounded-lg border border-border p-3 text-sm">
                     <h4 className="font-semibold text-foreground">واحد پول: <bdi dir="ltr">{wallet.currency}</bdi></h4>
-                    <dl className="grid gap-2 sm:grid-cols-2">
+                    <dl className="grid gap-2">
                       {([
                         ["قابل استفاده", wallet.balance],
                         ["قابل برداشت", wallet.withdrawableBalance],
@@ -554,7 +588,7 @@ export function GuestManagement() {
                 ))}
               </div>}
           </section>
-        )}
+        </div>}
       </KoochDialog>
     </div>
   );

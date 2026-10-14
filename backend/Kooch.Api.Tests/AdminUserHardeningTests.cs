@@ -768,6 +768,7 @@ public sealed class AdminUserHardeningTests
         {
             this.interceptor = interceptor;
             connection.Open();
+            SqliteTestFunctions.RegisterLen(connection);
         }
 
         public static async Task<TestDatabase> CreateAsync(

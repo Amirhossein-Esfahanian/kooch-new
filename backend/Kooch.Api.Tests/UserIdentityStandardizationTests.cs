@@ -236,6 +236,7 @@ public sealed class UserIdentityStandardizationTests
     {
         var connection = new SqliteConnection("Data Source=:memory:");
         await connection.OpenAsync();
+        SqliteTestFunctions.RegisterLen(connection);
         var options = new DbContextOptionsBuilder<KoochDbContext>()
             .UseSqlite(connection)
             .Options;

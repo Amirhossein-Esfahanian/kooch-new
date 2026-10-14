@@ -59,7 +59,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
             guests = guests.Where(guest => guest.NationalCode == nationalCode);
         }
 
-        var passportNumber = NormalizePassportNumber(query.PassportNumber);
+        var passportNumber = GuestNormalization.NormalizePassportNumber(query.PassportNumber);
         if (passportNumber is not null)
         {
             guests = guests.Where(guest => guest.PassportNumber == passportNumber);
@@ -80,6 +80,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         GuestCreateRequest request,
         CancellationToken cancellationToken = default)
     {
+        ValidateIdentity(request.Nationality, request.NationalCode, request.PassportNumber);
         var normalized = Normalize(request);
         await EnsureNoDuplicateAsync(normalized, null, cancellationToken);
 
@@ -102,6 +103,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
             .SingleOrDefaultAsync(item => item.Id == id, cancellationToken)
             ?? throw new KeyNotFoundException("Guest not found.");
 
+        ValidateIdentity(request.Nationality, request.NationalCode, request.PassportNumber);
         var normalized = Normalize(request);
         await EnsureNoDuplicateAsync(normalized, id, cancellationToken);
 
@@ -143,7 +145,7 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
                     ((input.NormalizedMobile != null && guest.NormalizedMobile == input.NormalizedMobile) ||
                      (input.NormalizedEmail != null && guest.NormalizedEmail == input.NormalizedEmail) ||
                      (input.NationalCode != null && guest.NationalCode == input.NationalCode) ||
-                     (input.PassportNumber != null && guest.PassportNumber == input.PassportNumber)),
+                     (input.PassportNumber != null && guest.PassportNumber == input.PassportNumber && guest.Nationality == input.Nationality)),
                 cancellationToken);
 
         if (duplicateExists)
@@ -170,8 +172,8 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         GuestNormalization.NormalizeMobile(request.Mobile),
         GuestNormalization.NormalizeEmail(request.Email),
         GuestNormalization.NormalizeNationalCode(request.NationalCode),
-        NormalizePassportNumber(request.PassportNumber),
-        GuestNormalization.NormalizeText(request.Nationality),
+        GuestNormalization.NormalizePassportNumber(request.PassportNumber),
+        NormalizeNationality(request.Nationality),
         request.BirthDate,
         GuestNormalization.NormalizeText(request.Gender),
         GuestNormalization.NormalizeText(request.Address),
@@ -184,8 +186,8 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         GuestNormalization.NormalizeMobile(request.Mobile),
         GuestNormalization.NormalizeEmail(request.Email),
         GuestNormalization.NormalizeNationalCode(request.NationalCode),
-        NormalizePassportNumber(request.PassportNumber),
-        GuestNormalization.NormalizeText(request.Nationality),
+        GuestNormalization.NormalizePassportNumber(request.PassportNumber),
+        NormalizeNationality(request.Nationality),
         request.BirthDate,
         GuestNormalization.NormalizeText(request.Gender),
         GuestNormalization.NormalizeText(request.Address),
@@ -231,8 +233,23 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
             : (parts[0], parts[1]);
     }
 
-    private static string? NormalizePassportNumber(string? passportNumber) =>
-        GuestNormalization.NormalizeText(passportNumber)?.ToUpperInvariant();
+    private static string? NormalizeNationality(string? nationality)
+    {
+        var value = GuestNormalization.NormalizeText(nationality);
+        if (value is null) return null;
+        return value.Equals("Iran", StringComparison.OrdinalIgnoreCase) ||
+               value.Equals("IR", StringComparison.OrdinalIgnoreCase) || value == DefaultNationality
+            ? DefaultNationality
+            : value;
+    }
+
+    private static void ValidateIdentity(string? nationality, string? nationalCode, string? passportNumber)
+    {
+        var error = GuestCreateRequest.ValidateIdentityFields(
+            nationality, nationalCode, passportNumber).FirstOrDefault();
+        if (error is not null)
+            throw new ArgumentException(error.ErrorMessage);
+    }
 
     private static GuestResponse Map(Guest guest) => new()
     {

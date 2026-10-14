@@ -43,21 +43,34 @@ beforeEach(() => {
   });
 });
 
-async function openGuest() {
+async function openWallet() {
   render(<GuestManagement />);
-  fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
-  return screen.findByRole("dialog", { name: "ویرایش مهمان" });
+  fireEvent.click(await screen.findByRole("button", { name: "کیف پول مهمان نمونه" }));
+  return screen.findByRole("dialog", { name: "کیف پول مهمان" });
 }
 
 describe("Admin Guest wallet summary", () => {
+  it("keeps Wallet viewing separate from Guest editing", async () => {
+    render(<GuestManagement />);
+    fireEvent.click(await screen.findByRole("button", { name: "ویرایش" }));
+    const edit = await screen.findByRole("dialog", { name: "ویرایش مهمان" });
+    expect(within(edit).queryByText("خلاصه کیف پول")).toBeNull();
+    expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/balances"));
+    fireEvent.click(within(edit).getByRole("button", { name: "بستن" }));
+    fireEvent.click(screen.getByRole("button", { name: "کیف پول مهمان نمونه" }));
+    const wallet = await screen.findByRole("dialog", { name: "کیف پول مهمان" });
+    expect(within(wallet).getByText("مهمان نمونه")).not.toBeNull();
+    expect(within(wallet).queryByRole("button", { name: "ذخیره" })).toBeNull();
+    expect(within(wallet).queryByRole("textbox", { name: "نام" })).toBeNull();
+  });
   it("links a canonical User to the existing Admin withdrawal flow", async () => {
-    const dialog = await openGuest();
+    const dialog = await openWallet();
     fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست برداشت" }));
     expect(mocks.push).toHaveBeenCalledWith("/admin/wallet/withdrawals?userId=7");
     expect(mocks.api.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
   });
   it("shows recent backend-signed transactions only for the linked User and keeps currencies separate", async () => {
-    const dialog = await openGuest();
+    const dialog = await openWallet();
     expect(await within(dialog).findByText("افزایش موجودی")).not.toBeNull();
     expect(within(dialog).getByText("کاهش موجودی")).not.toBeNull();
     expect(within(dialog).getByText((text) => text.startsWith("+") && text.endsWith("IRR"))).not.toBeNull();
@@ -68,7 +81,7 @@ describe("Admin Guest wallet summary", () => {
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("users/12/transactions"));
   });
   it("shows canonical User balances per currency with no frontend aggregation or wallet actions", async () => {
-    const dialog = await openGuest();
+    const dialog = await openWallet();
     expect(await within(dialog).findByText("خلاصه کیف پول")).not.toBeNull();
     await waitFor(() => expect(within(dialog).getAllByText("رزروشده برای برداشت")).toHaveLength(2));
     expect(mocks.api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/balances");
@@ -84,7 +97,7 @@ describe("Admin Guest wallet summary", () => {
 
   it("shows an empty state for an unlinked Guest without querying another user's wallet", async () => {
     mocks.userId = null;
-    const dialog = await openGuest();
+    const dialog = await openWallet();
     expect(within(dialog).getByText(/این مهمان به حساب کاربری متصل نیست/)).not.toBeNull();
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/balances"));
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/transactions"));
@@ -97,16 +110,16 @@ describe("Admin Guest wallet summary", () => {
       if (path === "/admin/wallet/withdrawals/users/7/balances") return [];
       throw new Error(`Unexpected API: ${path}`);
     });
-    const dialog = await openGuest();
+    const dialog = await openWallet();
     expect(await within(dialog).findByText("کیف پولی برای این کاربر ثبت نشده است.")).not.toBeNull();
   });
 
   it("does not expose wallet data without ManagePayments", async () => {
     mocks.role = "AdminAssistant";
-    const dialog = await openGuest();
-    expect(within(dialog).queryByText("خلاصه کیف پول")).toBeNull();
+    render(<GuestManagement />);
+    expect(await screen.findByRole("button", { name: "ویرایش" })).not.toBeNull();
+    expect(screen.queryByRole("button", { name: "کیف پول مهمان نمونه" })).toBeNull();
     expect(mocks.api).not.toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/balances");
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/transactions"));
-    expect(within(dialog).queryByRole("button", { name: "ثبت درخواست برداشت" })).toBeNull();
   });
 });

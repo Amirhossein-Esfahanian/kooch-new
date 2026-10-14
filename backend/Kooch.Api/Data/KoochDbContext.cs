@@ -1650,8 +1650,12 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .HasFilter("[UserId] IS NOT NULL");
             entity.HasIndex(guest => guest.NormalizedMobile);
             entity.HasIndex(guest => guest.NormalizedEmail);
-            entity.HasIndex(guest => guest.NationalCode);
-            entity.HasIndex(guest => guest.PassportNumber);
+            entity.HasIndex(guest => guest.NationalCode)
+                .IsUnique()
+                .HasFilter("[NationalCode] IS NOT NULL");
+            entity.HasIndex(guest => new { guest.Nationality, guest.PassportNumber })
+                .IsUnique()
+                .HasFilter("[Nationality] IS NOT NULL AND [PassportNumber] IS NOT NULL");
             entity.HasOne(guest => guest.User)
                 .WithOne(user => user.Guest)
                 .HasForeignKey<Guest>(guest => guest.UserId)

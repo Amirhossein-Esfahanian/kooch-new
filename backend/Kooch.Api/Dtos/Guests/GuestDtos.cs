@@ -81,6 +81,37 @@ public class GuestCreateRequest : IValidatableObject
         {
             yield return result;
         }
+
+        foreach (var result in ValidateIdentityFields(Nationality, NationalCode, PassportNumber))
+        {
+            yield return result;
+        }
+    }
+
+    public static IEnumerable<ValidationResult> ValidateIdentityFields(
+        string? nationality, string? nationalCode, string? passportNumber)
+    {
+        var country = GuestNormalization.NormalizeText(nationality);
+        if (country is null && GuestNormalization.NormalizePassportNumber(passportNumber) is not null)
+        {
+            yield return new ValidationResult("کشور تابعیت مهمان خارجی الزامی است.", new[] { nameof(Nationality) });
+            yield break;
+        }
+        var isIranian = country is null || country is "ایران" or "Iran" or "IR";
+        if (isIranian)
+        {
+            if (!GuestNormalization.IsValidIranianNationalCode(nationalCode))
+                yield return new ValidationResult("کد ملی معتبر ده‌رقمی الزامی است.", new[] { nameof(NationalCode) });
+            if (GuestNormalization.NormalizePassportNumber(passportNumber) is not null)
+                yield return new ValidationResult("برای مهمان ایرانی شماره پاسپورت وارد نکنید.", new[] { nameof(PassportNumber) });
+        }
+        else
+        {
+            if (GuestNormalization.NormalizePassportNumber(passportNumber) is null)
+                yield return new ValidationResult("شماره پاسپورت مهمان خارجی الزامی است.", new[] { nameof(PassportNumber) });
+            if (GuestNormalization.NormalizeNationalCode(nationalCode) is not null)
+                yield return new ValidationResult("برای مهمان خارجی کد ملی وارد نکنید.", new[] { nameof(NationalCode) });
+        }
     }
 
     public static IEnumerable<ValidationResult> ValidateContactFields(string? email, string? mobile)
@@ -150,6 +181,11 @@ public class GuestUpdateRequest : IValidatableObject
         }
 
         foreach (var result in GuestCreateRequest.ValidateContactFields(Email, Mobile))
+        {
+            yield return result;
+        }
+
+        foreach (var result in GuestCreateRequest.ValidateIdentityFields(Nationality, NationalCode, PassportNumber))
         {
             yield return result;
         }

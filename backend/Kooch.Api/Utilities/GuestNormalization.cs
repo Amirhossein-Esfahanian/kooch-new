@@ -66,6 +66,39 @@ public static class GuestNormalization
         return builder.Length == 0 ? null : builder.ToString();
     }
 
+    public static bool IsValidIranianNationalCode(string? nationalCode)
+    {
+        if (nationalCode is null || nationalCode.Any(character =>
+                !char.IsWhiteSpace(character) && character != '-' &&
+                (NormalizeDigit(character) < '0' || NormalizeDigit(character) > '9')))
+        {
+            return false;
+        }
+
+        var value = NormalizeNationalCode(nationalCode);
+        if (value is null || value.Length != 10 || value.Any(digit => digit < '0' || digit > '9') ||
+            value.All(digit => digit == value[0]))
+        {
+            return false;
+        }
+
+        var sum = 0;
+        for (var index = 0; index < 9; index++)
+        {
+            sum += (value[index] - '0') * (10 - index);
+        }
+
+        var remainder = sum % 11;
+        var checkDigit = value[9] - '0';
+        return checkDigit == (remainder < 2 ? remainder : 11 - remainder);
+    }
+
+    public static string? NormalizePassportNumber(string? passportNumber)
+    {
+        var value = NormalizeText(passportNumber);
+        return value is null ? null : string.Concat(value.Where(character => !char.IsWhiteSpace(character))).ToUpperInvariant();
+    }
+
     public static bool IsValidEmail(string? email)
     {
         var normalized = NormalizeEmail(email);
