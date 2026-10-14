@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
@@ -159,6 +160,7 @@ function guestMatchesSearch(guest: GuestResponse, search: string) {
 }
 
 export function GuestManagement() {
+  const router = useRouter();
   const session = useAuthSession();
   const canViewWallet = session.platformRole === "SuperAdmin" || session.platformPermissions.includes("ManagePayments");
   const [guests, setGuests] = useState<GuestResponse[]>([]);
@@ -506,7 +508,10 @@ export function GuestManagement() {
         </form>
         {form.id !== null && canViewWallet && (
           <section aria-label="خلاصه کیف پول" className="mt-5 space-y-3 border-t border-border pt-5">
-            <h3 className="text-base font-bold text-foreground">خلاصه کیف پول</h3>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h3 className="text-base font-bold text-foreground">خلاصه کیف پول</h3>
+              {walletUserId !== null && <KoochButton size="sm" variant="outline" onClick={() => router.push(`/admin/wallet/withdrawals?userId=${walletUserId}`)}>ثبت درخواست برداشت</KoochButton>}
+            </div>
             {walletLoading ? <p role="status" className="text-sm text-muted-foreground">در حال دریافت موجودی کیف پول...</p> :
               walletError ? <p role="alert" className="text-sm text-destructive">{walletError} <KoochButton size="sm" variant="outline" onClick={() => setWalletRefresh(value => value + 1)}>تلاش دوباره</KoochButton></p> :
               walletBalances.length === 0 ? <p className="text-sm text-muted-foreground">{walletUserId ? "کیف پولی برای این کاربر ثبت نشده است." : "این مهمان به حساب کاربری متصل نیست؛ کیف پولی برای نمایش وجود ندارد."}</p> :

@@ -38,6 +38,15 @@ public sealed partial class WalletService
             .ToListAsync(cancellationToken);
     }
 
+    public async Task<WalletWithdrawalUserOption> GetWithdrawalUserAsync(int userId,
+        CancellationToken cancellationToken = default) =>
+        await context.Users.AsNoTracking()
+            .Where(user => user.Id == userId)
+            .Select(user => new WalletWithdrawalUserOption(user.Id,
+                user.FirstName + " " + user.LastName, user.Email, user.PhoneNumber))
+            .SingleOrDefaultAsync(cancellationToken)
+        ?? throw new KeyNotFoundException("Wallet owner was not found.");
+
     public async Task<IReadOnlyList<AdminWalletBalanceResponse>> GetAdminUserBalancesAsync(int userId,
         CancellationToken cancellationToken = default)
     {

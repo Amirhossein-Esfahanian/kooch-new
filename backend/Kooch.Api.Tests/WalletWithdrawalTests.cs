@@ -32,6 +32,21 @@ public sealed class WalletWithdrawalTests
         Assert.Contains(controller.GetMethods(), method => method.Name == "Create");
         Assert.Contains(controller.GetMethods(), method => method.Name == "SearchUsers");
         Assert.Contains(controller.GetMethods(), method => method.Name == "UserBalances");
+        Assert.Contains(controller.GetMethods(), method => method.Name == "GetUser");
+    }
+
+    [Fact]
+    public async Task AdminPreselectionReadsCanonicalUserWithoutRequiringWalletOrWriting()
+    {
+        using var db = new Database();
+        var user = await db.Service.GetWithdrawalUserAsync(1);
+        Assert.Equal(1, user.Id);
+        Assert.Empty(await db.Service.GetAdminUserBalancesAsync(1));
+        var controller = new AdminWalletWithdrawalsController(db.Service);
+        var response = Assert.IsType<OkObjectResult>((await controller.GetUser(1, default)).Result);
+        Assert.Equal(1, Assert.IsType<WalletWithdrawalUserOption>(response.Value).Id);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => db.Service.GetWithdrawalUserAsync(999));
+        Assert.Empty(await db.Context.WalletWithdrawalRequests.ToListAsync());
     }
 
     [Fact]

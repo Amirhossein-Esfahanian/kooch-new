@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochBadge } from "@/components/KoochBadge";
@@ -47,6 +48,10 @@ const localDateTimeValue = (date: Date) =>
 const errorText = (error: unknown) => error instanceof Error ? error.message : "عملیات انجام نشد؛ دوباره تلاش کنید.";
 
 function WithdrawalManagement() {
+  const searchParams = useSearchParams();
+  const linkedUserId = searchParams.get("userId");
+  const preselectedUserId = linkedUserId && /^[1-9]\d*$/.test(linkedUserId) && Number.isSafeInteger(Number(linkedUserId))
+    ? Number(linkedUserId) : null;
   const [status, setStatus] = useState<WithdrawalStatus | "">("");
   const [page, setPage] = useState(1);
   const [refresh, setRefresh] = useState(0);
@@ -81,6 +86,8 @@ function WithdrawalManagement() {
   const [creating, setCreating] = useState(false);
   const creatingRef = useRef(false);
   const balanceRequestRef = useRef(0);
+  const preselectionRequestRef = useRef(0);
+  const [preselectionLoading, setPreselectionLoading] = useState(false);
 
   useEffect(() => {
     if (!createOpen || selectedUser || userQuery.trim().length < 2) {
@@ -101,7 +108,7 @@ function WithdrawalManagement() {
     return () => { active = false; clearTimeout(timer); };
   }, [createOpen, selectedUser, userQuery]);
 
-  const selectUser = async (user: WalletUser, preserveError = false) => {
+  const selectUser = useCallback(async (user: WalletUser, preserveError = false) => {
     const requestId = ++balanceRequestRef.current;
     setSelectedUser(user);
     setUsers([]);
@@ -121,10 +128,29 @@ function WithdrawalManagement() {
     } finally {
       if (requestId === balanceRequestRef.current) setBalanceLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    if (preselectedUserId === null) return;
+    const requestId = ++preselectionRequestRef.current;
+    setUserQuery("");
+    setSelectedUser(null);
+    setBalances([]);
+    setCurrency("");
+    setAmount("");
+    setSearchError("");
+    setCreateOpen(true);
+    setPreselectionLoading(true);
+    void apiRequest<WalletUser>(`/admin/wallet/withdrawals/users/${preselectedUserId}`)
+      .then(user => { if (requestId === preselectionRequestRef.current) void selectUser(user); })
+      .catch(error => { if (requestId === preselectionRequestRef.current) setSearchError(errorText(error)); })
+      .finally(() => { if (requestId === preselectionRequestRef.current) setPreselectionLoading(false); });
+    return () => { preselectionRequestRef.current += 1; };
+  }, [preselectedUserId, selectUser]);
 
   const closeCreate = () => {
     if (creatingRef.current) return;
+    preselectionRequestRef.current += 1;
     balanceRequestRef.current += 1;
     setCreateOpen(false);
   };
@@ -275,7 +301,7 @@ function WithdrawalManagement() {
         </KoochField>
         <div className="flex items-center gap-3">
           <span className="text-sm text-muted-foreground">{formatNumber(list?.totalCount ?? 0)} درخواست</span>
-          <KoochButton onClick={() => { setUserQuery(""); setSelectedUser(null); setBalances([]); setCurrency(""); setAmount(""); setCreateError(""); setCreateOpen(true); }}>ثبت درخواست برای کاربر</KoochButton>
+          <KoochButton onClick={() => { preselectionRequestRef.current += 1; setPreselectionLoading(false); setUserQuery(""); setSelectedUser(null); setBalances([]); setCurrency(""); setAmount(""); setCreateError(""); setCreateOpen(true); }}>ثبت درخواست برای کاربر</KoochButton>
         </div>
       </div>
       {listError && <p role="alert" className="text-sm text-destructive">{listError} <KoochButton size="sm" variant="outline" onClick={() => setRefresh(value => value + 1)}>تلاش دوباره</KoochButton></p>}
@@ -308,8 +334,9 @@ function WithdrawalManagement() {
     <KoochDialog open={createOpen} onOpenChange={open => { if (!open) closeCreate(); }} title="ثبت درخواست برداشت برای کاربر" size="sm" closeDisabled={creating}
       footer={<div className="flex justify-end gap-2"><KoochButton variant="outline" disabled={creating} onClick={closeCreate}>انصراف</KoochButton><KoochButton form="admin-wallet-withdrawal-create" type="submit" loading={creating} disabled={!selectedUser || !currency || balanceLoading || !!balanceError}>ثبت درخواست</KoochButton></div>}>
       <form id="admin-wallet-withdrawal-create" className="grid gap-4" onSubmit={event => void submitCreate(event)}>
+        {preselectionLoading && <p role="status" className="text-sm text-muted-foreground">در حال دریافت کاربر...</p>}
         <KoochField label="جستجوی کاربر" helperText="نام، ایمیل یا شماره تماس را وارد کنید.">
-          <KoochInput value={userQuery} onChange={event => { balanceRequestRef.current += 1; setSelectedUser(null); setBalances([]); setCurrency(""); setUserQuery(event.target.value); }} />
+          <KoochInput value={userQuery} onChange={event => { preselectionRequestRef.current += 1; setPreselectionLoading(false); balanceRequestRef.current += 1; setSelectedUser(null); setBalances([]); setCurrency(""); setUserQuery(event.target.value); }} />
         </KoochField>
         {usersLoading && <p role="status" className="text-sm text-muted-foreground">در حال جستجو...</p>}
         {searchError && <p role="alert" className="text-sm text-destructive">{searchError}</p>}
@@ -367,5 +394,5 @@ function WithdrawalManagement() {
 }
 
 export default function AdminWalletWithdrawalsPage() {
-  return <AdminLayout requiredPlatformPermission="ManagePayments"><WithdrawalManagement /></AdminLayout>;
+  return <AdminLayout requiredPlatformPermission="ManagePayments"><Suspense fallback={null}><WithdrawalManagement /></Suspense></AdminLayout>;
 }

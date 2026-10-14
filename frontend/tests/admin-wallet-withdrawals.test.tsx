@@ -2,7 +2,8 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const api = vi.hoisted(() => vi.fn());
+const { api, navigation } = vi.hoisted(() => ({ api: vi.fn(), navigation: { query: "" } }));
+vi.mock("next/navigation", () => ({ useSearchParams: () => new URLSearchParams(navigation.query) }));
 vi.mock("@/lib/owner-api", () => ({ apiRequest: api }));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children, requiredPlatformPermission }: { children: ReactNode; requiredPlatformPermission: string }) =>
@@ -22,9 +23,11 @@ let current = { ...pending };
 const mutationCalls = () => api.mock.calls.filter(([, init]) => init?.method === "PUT");
 
 beforeEach(() => {
+  navigation.query = "";
   current = { ...pending };
   api.mockReset();
   api.mockImplementation(async (path: string, init?: RequestInit) => {
+    if (path === "/admin/wallet/withdrawals/users/7") return { id: 7, name: "کاربر نمونه", email: null, phoneNumber: "09120000000" };
     if (path.startsWith("/admin/wallet/withdrawals/users?")) return [{ id: 7, name: "کاربر نمونه", email: null, phoneNumber: "09120000000" }];
     if (path === "/admin/wallet/withdrawals/users/7/balances") return [{ currency: "IRR", withdrawableBalance: 100, balance: 150, nonWithdrawableBalance: 50 }];
     if (path === "/admin/wallet/withdrawals" && init?.method === "POST") {
@@ -52,6 +55,28 @@ async function openDetails() {
 }
 
 describe("Admin wallet withdrawals", () => {
+  it("preselects the authoritative linked User and reuses the existing balance and creation form", async () => {
+    navigation.query = "userId=7";
+    render(<Page />);
+    const dialog = await screen.findByRole("dialog", { name: "ثبت درخواست برداشت برای کاربر" });
+    expect(await within(dialog).findByText(/کاربر انتخاب‌شده:/)).not.toBeNull();
+    expect(within(dialog).getByText("کاربر نمونه")).not.toBeNull();
+    expect(api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7");
+    expect(api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/balances");
+    fireEvent.change(within(dialog).getByRole("spinbutton", { name: /مبلغ درخواستی/ }), { target: { value: "70" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/admin/wallet/withdrawals", {
+      method: "POST", body: JSON.stringify({ userId: 7, currency: "IRR", amount: 70 }),
+    }));
+  });
+
+  it("ignores malformed deep-link IDs instead of selecting a User", async () => {
+    navigation.query = "userId=7oops";
+    render(<Page />);
+    expect(await screen.findByText("مهمان نمونه")).not.toBeNull();
+    expect(screen.queryByRole("dialog", { name: "ثبت درخواست برداشت برای کاربر" })).toBeNull();
+    expect(api).not.toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7");
+  });
   it("searches wallet users, shows withdrawable balance, and creates a Pending request", async () => {
     render(<Page />);
     fireEvent.click(screen.getByRole("button", { name: "ثبت درخواست برای کاربر" }));

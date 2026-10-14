@@ -7,7 +7,9 @@ const mocks = vi.hoisted(() => ({
   role: "SuperAdmin" as string,
   permissions: [] as string[],
   userId: 7 as number | null,
+  push: vi.fn(),
 }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock("@/lib/owner-api", () => ({ apiRequest: mocks.api }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({ platformRole: mocks.role, platformPermissions: mocks.permissions }),
@@ -25,6 +27,7 @@ beforeEach(() => {
   mocks.role = "SuperAdmin";
   mocks.permissions = [];
   mocks.userId = 7;
+  mocks.push.mockReset();
   mocks.api.mockImplementation(async (path: string) => {
     if (path === "/admin/guests") return [{ ...guest, userId: mocks.userId }];
     if (path === "/admin/wallet/withdrawals/users/7/balances") return [
@@ -47,6 +50,12 @@ async function openGuest() {
 }
 
 describe("Admin Guest wallet summary", () => {
+  it("links a canonical User to the existing Admin withdrawal flow", async () => {
+    const dialog = await openGuest();
+    fireEvent.click(within(dialog).getByRole("button", { name: "ثبت درخواست برداشت" }));
+    expect(mocks.push).toHaveBeenCalledWith("/admin/wallet/withdrawals?userId=7");
+    expect(mocks.api.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+  });
   it("shows recent backend-signed transactions only for the linked User and keeps currencies separate", async () => {
     const dialog = await openGuest();
     expect(await within(dialog).findByText("افزایش موجودی")).not.toBeNull();
@@ -69,7 +78,8 @@ describe("Admin Guest wallet summary", () => {
     expect(within(dialog).getAllByText("قابل استفاده")).toHaveLength(2);
     expect(within(dialog).getAllByText("IRR").length).toBeGreaterThan(0);
     expect(within(dialog).getAllByText("USD").length).toBeGreaterThan(0);
-    expect(within(dialog).queryByRole("button", { name: /برداشت|اعتبار|واریز/ })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "ثبت درخواست برداشت" })).not.toBeNull();
+    expect(within(dialog).queryByRole("button", { name: /اعتبار|واریز/ })).toBeNull();
   });
 
   it("shows an empty state for an unlinked Guest without querying another user's wallet", async () => {
@@ -78,6 +88,7 @@ describe("Admin Guest wallet summary", () => {
     expect(within(dialog).getByText(/این مهمان به حساب کاربری متصل نیست/)).not.toBeNull();
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/balances"));
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/transactions"));
+    expect(within(dialog).queryByRole("button", { name: "ثبت درخواست برداشت" })).toBeNull();
   });
 
   it("shows an empty state when a linked User has no wallet account", async () => {
@@ -96,5 +107,6 @@ describe("Admin Guest wallet summary", () => {
     expect(within(dialog).queryByText("خلاصه کیف پول")).toBeNull();
     expect(mocks.api).not.toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/balances");
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/transactions"));
+    expect(within(dialog).queryByRole("button", { name: "ثبت درخواست برداشت" })).toBeNull();
   });
 });

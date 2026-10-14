@@ -18,6 +18,12 @@ public sealed class AdminWalletWithdrawalsController(WalletService walletService
         [FromQuery] string query, CancellationToken cancellationToken) =>
         Ok(await walletService.SearchWithdrawalUsersAsync(query, cancellationToken));
 
+    [HttpGet("users/{userId:int}")]
+    [ProducesResponseType<WalletWithdrawalUserOption>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<WalletWithdrawalUserOption>> GetUser(
+        int userId, CancellationToken cancellationToken) =>
+        Ok(await walletService.GetWithdrawalUserAsync(userId, cancellationToken));
+
     [HttpGet("users/{userId:int}/balances")]
     public async Task<ActionResult<IReadOnlyList<AdminWalletBalanceResponse>>> UserBalances(
         int userId, CancellationToken cancellationToken) =>
