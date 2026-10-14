@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using Kooch.Api.Controllers;
+using Kooch.Api.Authentication;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Dtos.Wallet;
@@ -16,6 +17,27 @@ namespace Kooch.Api.Tests;
 public sealed class WalletTransactionHistoryTests
 {
     private static readonly DateTime Now = new(2026, 10, 3, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public async Task AdminRouteReusesUserScopedCurrencyHistoryWithoutExposingOtherUsers()
+    {
+        using var db = new Database();
+        await db.Credit(12m, userId: 1);
+        await db.Credit(34m, userId: 2);
+        await db.Credit(56m, currency: "USD", userId: 1);
+        var controller = new AdminWalletWithdrawalsController(db.Service);
+        var result = Assert.IsType<OkObjectResult>((await controller.UserTransactions(1, "IRR")).Result);
+        var page = Assert.IsType<PagedResult<WalletTransactionResponse>>(result.Value);
+        Assert.Equal(12m, Assert.Single(page.Items).Amount);
+        Assert.Equal("IRR", page.Items[0].Currency);
+        Assert.Equal(1, page.TotalCount);
+        var method = typeof(AdminWalletWithdrawalsController).GetMethod(nameof(AdminWalletWithdrawalsController.UserTransactions))!;
+        Assert.Equal("users/{userId:int}/transactions", method.GetCustomAttributes(typeof(HttpGetAttribute), false)
+            .Cast<HttpGetAttribute>().Single().Template);
+        Assert.NotNull(Attribute.GetCustomAttribute(typeof(AdminWalletWithdrawalsController), typeof(AdminAuthorizeAttribute)));
+        Assert.Equal(new PermissionAuthorizeAttribute(PermissionKey.ManagePayments).Policy,
+            ((PermissionAuthorizeAttribute)Attribute.GetCustomAttribute(typeof(AdminWalletWithdrawalsController), typeof(PermissionAuthorizeAttribute))!).Policy);
+    }
 
     [Fact]
     public async Task AuthenticatedRouteUsesClaimsAndExposesOnlySafeLedgerFields()

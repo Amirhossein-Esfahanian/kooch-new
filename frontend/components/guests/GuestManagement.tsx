@@ -4,6 +4,7 @@ import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
+import { KoochBadge } from "@/components/KoochBadge";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
@@ -24,6 +25,7 @@ import {
 } from "@/components/KoochTable";
 import { apiRequest } from "@/lib/owner-api";
 import { formatCurrency } from "@/lib/currency";
+import { formatDateTime } from "@/lib/account-reservations";
 
 export type GuestResponse = {
   id: number;
@@ -50,6 +52,16 @@ type AdminWalletBalance = {
   heldBalance: number;
   reservedBalance: number;
 };
+
+type WalletTransaction = {
+  id: number;
+  amount: number;
+  direction: "Credit" | "Debit";
+  currency: string;
+  createdAtUtc: string;
+};
+
+type WalletTransactionPage = { items: WalletTransaction[] };
 
 type GuestForm = {
   id: number | null;
@@ -160,21 +172,42 @@ export function GuestManagement() {
   const [walletBalances, setWalletBalances] = useState<AdminWalletBalance[]>([]);
   const [walletLoading, setWalletLoading] = useState(false);
   const [walletError, setWalletError] = useState("");
+  const [walletTransactions, setWalletTransactions] = useState<Record<string, WalletTransaction[]>>({});
+  const [walletTransactionsLoading, setWalletTransactionsLoading] = useState(false);
+  const [walletTransactionsError, setWalletTransactionsError] = useState("");
   const [walletRefresh, setWalletRefresh] = useState(0);
 
   useEffect(() => {
     setWalletBalances([]);
     setWalletError("");
+    setWalletTransactions({});
+    setWalletTransactionsError("");
     if (!dialogOpen || !form.id || !walletUserId || !canViewWallet) {
       setWalletLoading(false);
+      setWalletTransactionsLoading(false);
       return;
     }
     let active = true;
     setWalletLoading(true);
+    setWalletTransactionsLoading(true);
     void apiRequest<AdminWalletBalance[]>(`/admin/wallet/withdrawals/users/${walletUserId}/balances`)
-      .then(data => { if (active) setWalletBalances(data); })
+      .then(async data => {
+        if (!active) return;
+        setWalletBalances(data);
+        setWalletLoading(false);
+        try {
+          const pages = await Promise.all(data.map(wallet =>
+            apiRequest<WalletTransactionPage>(`/admin/wallet/withdrawals/users/${walletUserId}/transactions?currency=${encodeURIComponent(wallet.currency)}&page=1&pageSize=5`)
+          ));
+          if (active) setWalletTransactions(Object.fromEntries(data.map((wallet, index) => [wallet.currency, pages[index].items])));
+        } catch (error) {
+          if (active) setWalletTransactionsError(error instanceof Error ? error.message : "تراکنش‌های کیف پول بارگذاری نشدند.");
+        } finally {
+          if (active) setWalletTransactionsLoading(false);
+        }
+      })
       .catch(error => { if (active) setWalletError(error instanceof Error ? error.message : "موجودی کیف پول بارگذاری نشد."); })
-      .finally(() => { if (active) setWalletLoading(false); });
+      .finally(() => { if (active) { setWalletLoading(false); setWalletTransactionsLoading(false); } });
     return () => { active = false; };
   }, [canViewWallet, dialogOpen, form.id, walletUserId, walletRefresh]);
 
@@ -495,6 +528,23 @@ export function GuestManagement() {
                         </div>
                       ))}
                     </dl>
+                    <div className="border-t border-border pt-3">
+                      <h5 className="mb-2 font-semibold text-foreground">تراکنش‌های اخیر</h5>
+                      {walletTransactionsLoading ? <p role="status" className="text-muted-foreground">در حال بارگذاری تراکنش‌ها...</p> :
+                        walletTransactionsError ? <p role="alert" className="text-destructive">{walletTransactionsError} <KoochButton size="sm" variant="outline" onClick={() => setWalletRefresh(value => value + 1)}>تلاش دوباره</KoochButton></p> :
+                        !walletTransactions[wallet.currency]?.length ? <p className="text-muted-foreground">هنوز تراکنشی در این کیف پول ثبت نشده است.</p> :
+                        <ul className="divide-y divide-border">
+                          {walletTransactions[wallet.currency].map(transaction => (
+                            <li key={transaction.id} className="flex flex-wrap items-center justify-between gap-2 py-2">
+                              <span className="flex items-center gap-2">
+                                <KoochBadge variant={transaction.direction === "Credit" ? "success" : "destructive"}>{transaction.direction === "Credit" ? "افزایش موجودی" : "کاهش موجودی"}</KoochBadge>
+                                <time dateTime={transaction.createdAtUtc} className="text-muted-foreground">{formatDateTime(transaction.createdAtUtc)}</time>
+                              </span>
+                              <span className="font-semibold tabular-nums text-foreground" dir="ltr">{transaction.direction === "Credit" ? "+" : "−"}{formatCurrency(transaction.amount, { showCurrency: false })} {transaction.currency}</span>
+                            </li>
+                          ))}
+                        </ul>}
+                    </div>
                   </div>
                 ))}
               </div>}

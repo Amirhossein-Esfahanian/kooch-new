@@ -31,6 +31,11 @@ beforeEach(() => {
       { currency: "IRR", balance: 85, withdrawableBalance: 70, nonWithdrawableBalance: 15, heldBalance: 25, reservedBalance: 30 },
       { currency: "USD", balance: 50, withdrawableBalance: 50, nonWithdrawableBalance: 0, heldBalance: 0, reservedBalance: 0 },
     ];
+    if (path === "/admin/wallet/withdrawals/users/7/transactions?currency=IRR&page=1&pageSize=5") return { items: [
+      { id: 1, amount: 20, direction: "Credit", currency: "IRR", createdAtUtc: "2026-10-01T12:00:00Z" },
+      { id: 2, amount: 5, direction: "Debit", currency: "IRR", createdAtUtc: "2026-09-30T12:00:00Z" },
+    ] };
+    if (path === "/admin/wallet/withdrawals/users/7/transactions?currency=USD&page=1&pageSize=5") return { items: [] };
     throw new Error(`Unexpected API: ${path}`);
   });
 });
@@ -42,6 +47,17 @@ async function openGuest() {
 }
 
 describe("Admin Guest wallet summary", () => {
+  it("shows recent backend-signed transactions only for the linked User and keeps currencies separate", async () => {
+    const dialog = await openGuest();
+    expect(await within(dialog).findByText("افزایش موجودی")).not.toBeNull();
+    expect(within(dialog).getByText("کاهش موجودی")).not.toBeNull();
+    expect(within(dialog).getByText((text) => text.startsWith("+") && text.endsWith("IRR"))).not.toBeNull();
+    expect(within(dialog).getByText((text) => text.startsWith("−") && text.endsWith("IRR"))).not.toBeNull();
+    expect(within(dialog).getByText("هنوز تراکنشی در این کیف پول ثبت نشده است.")).not.toBeNull();
+    expect(mocks.api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/transactions?currency=IRR&page=1&pageSize=5");
+    expect(mocks.api).toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/transactions?currency=USD&page=1&pageSize=5");
+    expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("users/12/transactions"));
+  });
   it("shows canonical User balances per currency with no frontend aggregation or wallet actions", async () => {
     const dialog = await openGuest();
     expect(await within(dialog).findByText("خلاصه کیف پول")).not.toBeNull();
@@ -61,6 +77,7 @@ describe("Admin Guest wallet summary", () => {
     const dialog = await openGuest();
     expect(within(dialog).getByText(/این مهمان به حساب کاربری متصل نیست/)).not.toBeNull();
     expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/balances"));
+    expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/transactions"));
   });
 
   it("shows an empty state when a linked User has no wallet account", async () => {
@@ -78,5 +95,6 @@ describe("Admin Guest wallet summary", () => {
     const dialog = await openGuest();
     expect(within(dialog).queryByText("خلاصه کیف پول")).toBeNull();
     expect(mocks.api).not.toHaveBeenCalledWith("/admin/wallet/withdrawals/users/7/balances");
+    expect(mocks.api).not.toHaveBeenCalledWith(expect.stringContaining("/transactions"));
   });
 });

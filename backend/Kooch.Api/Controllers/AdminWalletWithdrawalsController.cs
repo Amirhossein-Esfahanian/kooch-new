@@ -23,6 +23,13 @@ public sealed class AdminWalletWithdrawalsController(WalletService walletService
         int userId, CancellationToken cancellationToken) =>
         Ok(await walletService.GetAdminUserBalancesAsync(userId, cancellationToken));
 
+    [HttpGet("users/{userId:int}/transactions")]
+    [ProducesResponseType<PagedResult<WalletTransactionResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<WalletTransactionResponse>>> UserTransactions(
+        int userId, [FromQuery] string currency, [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 5, CancellationToken cancellationToken = default) =>
+        Ok(await walletService.ListTransactionsAsync(userId, currency, page, pageSize, cancellationToken));
+
     [HttpPost]
     [ProducesResponseType<AdminWalletWithdrawalResponse>(StatusCodes.Status201Created)]
     public async Task<ActionResult<AdminWalletWithdrawalResponse>> Create(
