@@ -879,7 +879,7 @@ public class PropertyService(
                 roomType.TotalInventory >= requestedRooms));
         }
 
-        var properties = await ProjectPublic(query.OrderBy(property => property.Name), minAdults, 0,
+        var properties = await ProjectPublicSearch(query.OrderBy(property => property.Name),
                 useUndatedSearchStartingPrice: !hasDatedSearch)
             .ToListAsync(cancellationToken);
         if (hasDatedSearch)
@@ -1446,6 +1446,100 @@ public class PropertyService(
             HasSeparateForeignPricing = property.HasSeparateForeignPricing,
             ShowGuestPhoneToPropertyUsers = property.ShowGuestPhoneToPropertyUsers,
         });
+
+    private static IQueryable<PublicPropertyResponse> ProjectPublicSearch(
+        IQueryable<Property> query,
+        bool useUndatedSearchStartingPrice)
+    {
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var undatedStartingPriceEndExclusive = today.AddDays(UndatedStartingPriceHorizonDays);
+        return query.Select(property => new PublicPropertyResponse
+        {
+            Id = property.Id,
+            Name = property.Name,
+            EnglishName = property.EnglishName,
+            Slug = property.Slug,
+            SeoTitle = property.SeoTitle,
+            SeoDescription = property.SeoDescription,
+            City = property.City,
+            Country = property.Country,
+            Address = property.Address,
+            Description = property.Description,
+            ShortDescription = property.Description.Length > 180
+                ? property.Description.Substring(0, 180) + "..."
+                : property.Description,
+            Status = property.Status,
+            PropertyType = property.Type,
+            InventoryMode = property.InventoryMode,
+            CheckInTime = property.CheckInTime,
+            CheckOutTime = property.CheckOutTime,
+            RegularReceptionFrom = property.RegularReceptionFrom,
+            RegularReceptionUntil = property.RegularReceptionUntil,
+            Latitude = property.Latitude,
+            Longitude = property.Longitude,
+            HasElevator = property.HasElevator,
+            IsWheelchairAccessible = property.IsWheelchairAccessible,
+            HasGroundFloorRoom = property.HasGroundFloorRoom,
+            HasAccessibleBathroom = property.HasAccessibleBathroom,
+            FreeChildAgeLimit = property.FreeChildAgeLimit,
+            MaxFreeChildren = property.MaxFreeChildren,
+            CoverImageUrl = property.Images
+                .Where(image => image.RoomTypeId == null && image.RoomId == null)
+                .OrderByDescending(image => image.IsCover)
+                .ThenBy(image => image.SortOrder)
+                .Select(image => image.Url)
+                .FirstOrDefault(),
+            Promotions = property.Promotions
+                .Where(promotion => promotion.IsActive)
+                .OrderBy(promotion => promotion.SortOrder)
+                .ThenByDescending(promotion => promotion.CreatedAtUtc)
+                .Select(promotion => new PublicPromotionResponse
+                {
+                    Id = promotion.Id,
+                    Title = promotion.Title,
+                    PublicDescription = promotion.PublicDescription,
+                    OptionalIcon = promotion.OptionalIcon,
+                    BadgeColor = promotion.BadgeColor,
+                    MinimumStayNights = promotion.MinimumStayNights,
+                    MinimumGuests = promotion.MinimumGuests,
+                    Type = promotion.Type,
+                    SortOrder = promotion.SortOrder,
+                    IsActive = promotion.IsActive
+                })
+                .ToList(),
+            StartingPrice = useUndatedSearchStartingPrice
+                ? property.RoomTypes
+                    .Where(roomType => roomType.IsActive &&
+                        roomType.TotalInventory > 0 && roomType.MaxAdults >= 1)
+                    .SelectMany(roomType => roomType.DailyPrices)
+                    .Where(price => price.Date >= today &&
+                        price.Date < undatedStartingPriceEndExclusive &&
+                        price.GuestType == PricingGuestType.Iranian && price.BasePrice > 0)
+                    .Select(price => (decimal?)price.BasePrice)
+                    .Min()
+                : null,
+            RoomTypes = property.RoomTypes
+                .Where(roomType => roomType.IsActive)
+                .OrderBy(roomType => roomType.Name)
+                .Select(roomType => new PublicRoomTypeResponse
+                {
+                    Id = roomType.Id,
+                    Name = roomType.Name,
+                    RoomKind = roomType.RoomKind,
+                    MaxAdults = roomType.MaxAdults,
+                    MaxChildren = roomType.MaxChildren,
+                    AllowExtraGuest = roomType.AllowExtraGuest,
+                    MaxExtraGuests = roomType.MaxExtraGuests,
+                    TotalInventory = roomType.TotalInventory,
+                    DisplayPrice = roomType.DailyPrices
+                        .Where(price => price.Date >= today &&
+                            price.GuestType == PricingGuestType.Iranian && price.BasePrice > 0)
+                        .Select(price => (decimal?)price.BasePrice)
+                        .Min()
+                })
+                .ToList()
+        });
+    }
 
     private static IQueryable<PublicPropertyResponse> ProjectPublic(
         IQueryable<Property> query,
