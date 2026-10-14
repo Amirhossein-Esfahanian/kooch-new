@@ -102,6 +102,32 @@ public sealed class WalletWithdrawalTests
     }
 
     [Fact]
+    public async Task AdminWalletSummaryUsesAuthoritativeAvailableHeldAndWithdrawalReservationsPerCurrency()
+    {
+        using var db = new Database();
+        await db.Credit(100);
+        await db.Credit(40, promotional: true);
+        await db.Hold(25);
+        await db.Withdraw(30);
+        await db.Service.CreateCreditAsync(new(1, "USD", 50, WalletSourceType.CashReceived, null));
+
+        var balances = await db.Service.GetAdminUserBalancesAsync(1);
+        Assert.Equal(new[] { "IRR", "USD" }, balances.Select(balance => balance.Currency));
+        var irr = balances[0];
+        Assert.Equal(85, irr.Balance);
+        Assert.Equal(70, irr.WithdrawableBalance);
+        Assert.Equal(15, irr.NonWithdrawableBalance);
+        Assert.Equal(25, irr.HeldBalance);
+        Assert.Equal(30, irr.ReservedBalance);
+        var usd = balances[1];
+        Assert.Equal(50, usd.Balance);
+        Assert.Equal(50, usd.WithdrawableBalance);
+        Assert.Equal(0, usd.HeldBalance);
+        Assert.Equal(0, usd.ReservedBalance);
+        Assert.Empty(await db.Service.GetAdminUserBalancesAsync(2));
+    }
+
+    [Fact]
     public void MigrationIsAdditiveAndUsesNoActionOwnership()
     {
         var operations = new AddWalletWithdrawalRequests().UpOperations;

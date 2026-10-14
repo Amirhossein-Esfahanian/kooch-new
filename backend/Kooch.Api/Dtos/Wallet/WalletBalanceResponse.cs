@@ -5,3 +5,11 @@ public sealed record WalletBalanceResponse(
     decimal Balance,
     decimal WithdrawableBalance,
     decimal NonWithdrawableBalance);
+
+public sealed record AdminWalletBalanceResponse(
+    string Currency,
+    decimal Balance,
+    decimal WithdrawableBalance,
+    decimal NonWithdrawableBalance,
+    decimal HeldBalance,
+    decimal ReservedBalance);

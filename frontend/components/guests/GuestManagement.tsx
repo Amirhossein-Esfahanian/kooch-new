@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
@@ -22,9 +23,11 @@ import {
   KoochTableRow,
 } from "@/components/KoochTable";
 import { apiRequest } from "@/lib/owner-api";
+import { formatCurrency } from "@/lib/currency";
 
 export type GuestResponse = {
   id: number;
+  userId?: number | null;
   firstName: string | null;
   lastName: string | null;
   fullName: string;
@@ -37,6 +40,15 @@ export type GuestResponse = {
   gender: string | null;
   address: string | null;
   notes: string | null;
+};
+
+type AdminWalletBalance = {
+  currency: string;
+  balance: number;
+  withdrawableBalance: number;
+  nonWithdrawableBalance: number;
+  heldBalance: number;
+  reservedBalance: number;
 };
 
 type GuestForm = {
@@ -135,6 +147,8 @@ function guestMatchesSearch(guest: GuestResponse, search: string) {
 }
 
 export function GuestManagement() {
+  const session = useAuthSession();
+  const canViewWallet = session.platformRole === "SuperAdmin" || session.platformPermissions.includes("ManagePayments");
   const [guests, setGuests] = useState<GuestResponse[]>([]);
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
@@ -142,6 +156,27 @@ export function GuestManagement() {
   const [deleteLoading, setDeleteLoading] = useState(false);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [form, setForm] = useState<GuestForm>(emptyForm);
+  const [walletUserId, setWalletUserId] = useState<number | null>(null);
+  const [walletBalances, setWalletBalances] = useState<AdminWalletBalance[]>([]);
+  const [walletLoading, setWalletLoading] = useState(false);
+  const [walletError, setWalletError] = useState("");
+  const [walletRefresh, setWalletRefresh] = useState(0);
+
+  useEffect(() => {
+    setWalletBalances([]);
+    setWalletError("");
+    if (!dialogOpen || !form.id || !walletUserId || !canViewWallet) {
+      setWalletLoading(false);
+      return;
+    }
+    let active = true;
+    setWalletLoading(true);
+    void apiRequest<AdminWalletBalance[]>(`/admin/wallet/withdrawals/users/${walletUserId}/balances`)
+      .then(data => { if (active) setWalletBalances(data); })
+      .catch(error => { if (active) setWalletError(error instanceof Error ? error.message : "موجودی کیف پول بارگذاری نشد."); })
+      .finally(() => { if (active) setWalletLoading(false); });
+    return () => { active = false; };
+  }, [canViewWallet, dialogOpen, form.id, walletUserId, walletRefresh]);
 
   const basePath = "/admin/guests";
   const visibleGuests = useMemo(
@@ -172,11 +207,13 @@ export function GuestManagement() {
 
   function openCreateDialog() {
     setForm(emptyForm);
+    setWalletUserId(null);
     setDialogOpen(true);
   }
 
   function openEditDialog(guest: GuestResponse) {
     setForm(toForm(guest));
+    setWalletUserId(guest.userId ?? null);
     setDialogOpen(true);
   }
 
@@ -434,6 +471,35 @@ export function GuestManagement() {
               />
             </KoochField>
         </form>
+        {form.id !== null && canViewWallet && (
+          <section aria-label="خلاصه کیف پول" className="mt-5 space-y-3 border-t border-border pt-5">
+            <h3 className="text-base font-bold text-foreground">خلاصه کیف پول</h3>
+            {walletLoading ? <p role="status" className="text-sm text-muted-foreground">در حال دریافت موجودی کیف پول...</p> :
+              walletError ? <p role="alert" className="text-sm text-destructive">{walletError} <KoochButton size="sm" variant="outline" onClick={() => setWalletRefresh(value => value + 1)}>تلاش دوباره</KoochButton></p> :
+              walletBalances.length === 0 ? <p className="text-sm text-muted-foreground">{walletUserId ? "کیف پولی برای این کاربر ثبت نشده است." : "این مهمان به حساب کاربری متصل نیست؛ کیف پولی برای نمایش وجود ندارد."}</p> :
+              <div className="grid gap-3">
+                {walletBalances.map(wallet => (
+                  <div key={wallet.currency} className="space-y-2 rounded-lg border border-border p-3 text-sm">
+                    <h4 className="font-semibold text-foreground">واحد پول: <bdi dir="ltr">{wallet.currency}</bdi></h4>
+                    <dl className="grid gap-2 sm:grid-cols-2">
+                      {([
+                        ["قابل استفاده", wallet.balance],
+                        ["قابل برداشت", wallet.withdrawableBalance],
+                        ["غیرقابل برداشت", wallet.nonWithdrawableBalance],
+                        ["در نگه‌داشت", wallet.heldBalance],
+                        ["رزروشده برای برداشت", wallet.reservedBalance],
+                      ] as const).map(([label, value]) => (
+                        <div key={label} className="flex items-baseline justify-between gap-3">
+                          <dt className="text-muted-foreground">{label}</dt>
+                          <dd className="font-semibold tabular-nums text-foreground">{formatCurrency(value, { showCurrency: false })} <bdi dir="ltr">{wallet.currency}</bdi></dd>
+                        </div>
+                      ))}
+                    </dl>
+                  </div>
+                ))}
+              </div>}
+          </section>
+        )}
       </KoochDialog>
     </div>
   );

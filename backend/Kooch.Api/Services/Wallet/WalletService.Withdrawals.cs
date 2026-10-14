@@ -38,18 +38,33 @@ public sealed partial class WalletService
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<WalletBalanceResponse>> GetAdminUserBalancesAsync(int userId,
+    public async Task<IReadOnlyList<AdminWalletBalanceResponse>> GetAdminUserBalancesAsync(int userId,
         CancellationToken cancellationToken = default)
     {
         if (!await context.Users.AnyAsync(user => user.Id == userId, cancellationToken))
             throw new KeyNotFoundException("Wallet owner was not found.");
-        var currencies = await context.WalletAccounts.AsNoTracking()
+        var accounts = await context.WalletAccounts.AsNoTracking()
             .Where(account => account.UserId == userId)
             .OrderBy(account => account.Currency)
-            .Select(account => account.Currency).ToListAsync(cancellationToken);
-        var balances = new List<WalletBalanceResponse>(currencies.Count);
-        foreach (var currency in currencies)
-            balances.Add(await GetBalanceAsync(userId, currency, cancellationToken));
+            .Select(account => new { account.Id, account.Currency }).ToListAsync(cancellationToken);
+        var balances = new List<AdminWalletBalanceResponse>(accounts.Count);
+        var now = timeProvider.GetUtcNow().UtcDateTime;
+        foreach (var account in accounts)
+        {
+            var available = await GetBalanceAsync(userId, account.Currency, cancellationToken);
+            var held = await context.WalletHoldAllocations.AsNoTracking()
+                .Where(allocation => allocation.WalletAccountId == account.Id &&
+                    allocation.WalletHold.Status == WalletHoldStatus.Active &&
+                    allocation.WalletHold.ExpiresAtUtc > now)
+                .SumAsync(allocation => (decimal?)allocation.Amount, cancellationToken) ?? 0m;
+            var reserved = await context.WalletWithdrawalAllocations.AsNoTracking()
+                .Where(allocation => allocation.WalletAccountId == account.Id &&
+                    (allocation.WalletWithdrawalRequest.Status == WalletWithdrawalStatus.Pending ||
+                     allocation.WalletWithdrawalRequest.Status == WalletWithdrawalStatus.Approved))
+                .SumAsync(allocation => (decimal?)allocation.Amount, cancellationToken) ?? 0m;
+            balances.Add(new(account.Currency, available.Balance, available.WithdrawableBalance,
+                available.NonWithdrawableBalance, held, reserved));
+        }
         return balances;
     }
 
