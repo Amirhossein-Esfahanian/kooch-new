@@ -6195,6 +6195,81 @@ namespace Kooch.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.WelcomeGiftCampaign", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("Amount")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<int>("GrantedCount")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int")
+                        .HasDefaultValue(0);
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("MaxRecipients")
+                        .HasColumnType("int");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(150)
+                        .HasColumnType("nvarchar(150)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ValidityDays")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsActive", "StartDate", "EndDate");
+
+                    b.ToTable("WelcomeGiftCampaigns", t =>
+                        {
+                            t.HasCheckConstraint("CK_WelcomeGiftCampaigns_Amount", "[Amount] > 0");
+
+                            t.HasCheckConstraint("CK_WelcomeGiftCampaigns_DateRange", "[StartDate] <= [EndDate]");
+
+                            t.HasCheckConstraint("CK_WelcomeGiftCampaigns_Quota", "[MaxRecipients] > 0 AND [GrantedCount] >= 0 AND [GrantedCount] <= [MaxRecipients]");
+
+                            t.HasCheckConstraint("CK_WelcomeGiftCampaigns_ValidityDays", "[ValidityDays] >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.Amenity", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.AmenityCategory", "AmenityCategory")

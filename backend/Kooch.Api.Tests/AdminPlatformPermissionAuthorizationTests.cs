@@ -15,7 +15,8 @@ public sealed class AdminPlatformPermissionAuthorizationTests
     [
         [typeof(AdminDashboardController), PermissionKey.ViewDashboard],
         [typeof(AdminGuestsController), PermissionKey.ManageGuests],
-        [typeof(AdminPromotionsController), PermissionKey.ManagePromotions]
+        [typeof(AdminPromotionsController), PermissionKey.ManagePromotions],
+        [typeof(AdminWelcomeGiftCampaignsController), PermissionKey.ManagePromotions]
     ];
 
     public static IEnumerable<object[]> PermissionRoleCases =>

@@ -51,6 +51,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<PropertyCommissionRate> PropertyCommissionRates => Set<PropertyCommissionRate>();
     public DbSet<ReservationCashbackEntitlement> ReservationCashbackEntitlements => Set<ReservationCashbackEntitlement>();
     public DbSet<CashbackSetting> CashbackSettings => Set<CashbackSetting>();
+    public DbSet<WelcomeGiftCampaign> WelcomeGiftCampaigns => Set<WelcomeGiftCampaign>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -130,6 +131,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigurePoliciesAndPricing(modelBuilder);
         ConfigureSiteSettings(modelBuilder);
         ConfigureCashbackSettings(modelBuilder);
+        ConfigureWelcomeGiftCampaigns(modelBuilder);
         ConfigureReservationCashbackEntitlements(modelBuilder);
         ApplySoftDeleteFilters(modelBuilder);
     }
@@ -2249,6 +2251,24 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(setting => setting.IsActive).HasDefaultValue(true);
             entity.HasIndex(setting => setting.Key).IsUnique();
             entity.HasIndex(setting => new { setting.Group, setting.SortOrder });
+        });
+    }
+
+    private static void ConfigureWelcomeGiftCampaigns(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WelcomeGiftCampaign>(entity =>
+        {
+            entity.Property(campaign => campaign.Title).HasMaxLength(150).IsRequired();
+            entity.Property(campaign => campaign.Amount).HasPrecision(18, 2);
+            entity.Property(campaign => campaign.GrantedCount).HasDefaultValue(0).IsConcurrencyToken();
+            entity.HasIndex(campaign => new { campaign.IsActive, campaign.StartDate, campaign.EndDate });
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_WelcomeGiftCampaigns_Amount", "[Amount] > 0");
+                table.HasCheckConstraint("CK_WelcomeGiftCampaigns_Quota", "[MaxRecipients] > 0 AND [GrantedCount] >= 0 AND [GrantedCount] <= [MaxRecipients]");
+                table.HasCheckConstraint("CK_WelcomeGiftCampaigns_ValidityDays", "[ValidityDays] >= 1");
+                table.HasCheckConstraint("CK_WelcomeGiftCampaigns_DateRange", "[StartDate] <= [EndDate]");
+            });
         });
     }
 

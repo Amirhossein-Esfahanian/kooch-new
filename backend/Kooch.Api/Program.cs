@@ -88,6 +88,7 @@ builder.Services.AddScoped<IPropertyImageService, PropertyImageService>();
 builder.Services.AddScoped<ISiteSettingUploadService, SiteSettingUploadService>();
 builder.Services.AddScoped<IPricingBoundsService, PricingBoundsService>();
 builder.Services.AddScoped<ICashbackSettingsService, CashbackSettingsService>();
+builder.Services.AddScoped<IWelcomeGiftCampaignService, WelcomeGiftCampaignService>();
 builder.Services.AddScoped<IReservationCashbackEntitlementService, ReservationCashbackEntitlementService>();
 builder.Services.AddSingleton<CashbackGrantProcessor>();
 builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
