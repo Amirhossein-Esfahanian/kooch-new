@@ -512,6 +512,35 @@ public sealed partial class BookingSessionServiceTests
     }
 
     [Fact]
+    public async Task AccountSelfBooking_NewNationalIdentity_GrantsWelcomeGiftOnceBeforeCommit()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTime(
+                DateTimeOffset.UtcNow, IranSiteTime.BusinessTimeZone).DateTime);
+            setup.WelcomeGiftCampaigns.Add(new WelcomeGiftCampaign
+            {
+                Title = "Welcome", Amount = 100m, StartDate = today,
+                EndDate = today, MaxRecipients = 2, ValidityDays = 30, IsActive = true
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using var scope = harness.CreateService();
+        var request = CreateAccountRequest(CreateAccountItem(10, 100));
+        request.PrimaryGuest = new AccountBookingSessionPrimaryGuestRequest { NationalCode = "1234567891" };
+        var first = await scope.Service.CreateForAccountAsync(1, request);
+        var replay = await scope.Service.CreateForAccountAsync(1, request);
+
+        Assert.Equal(first.BookingSessionId, replay.BookingSessionId);
+        await using var verify = harness.CreateContext();
+        Assert.Single(await verify.WelcomeGiftGrants.ToListAsync());
+        Assert.Single(await verify.WalletEntries.ToListAsync());
+        Assert.Equal(1, (await verify.WelcomeGiftCampaigns.SingleAsync()).GrantedCount);
+    }
+
+    [Fact]
     public async Task AccountOnRequestSession_StartsPendingWithoutPaymentDeadline()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();

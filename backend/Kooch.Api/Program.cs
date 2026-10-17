@@ -105,6 +105,7 @@ builder.Services.AddScoped<IPropertyUserService, PropertyUserService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IPromotionService, PromotionService>();
 builder.Services.AddScoped<IGuestService, GuestService>();
+builder.Services.AddScoped<IWelcomeGiftGrantService, WelcomeGiftGrantService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
 builder.Services.AddScoped<AccountNotificationInboxService>();
 builder.Services.AddScoped<IReservationNotificationRecipientResolver, ReservationNotificationRecipientResolver>();

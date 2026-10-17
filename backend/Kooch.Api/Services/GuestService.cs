@@ -6,8 +6,10 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class GuestService(KoochDbContext dbContext) : IGuestService
+public class GuestService(KoochDbContext dbContext, IWelcomeGiftGrantService? welcomeGiftGrantService = null) : IGuestService
 {
+    private readonly IWelcomeGiftGrantService giftGrantService =
+        welcomeGiftGrantService ?? new WelcomeGiftGrantService(dbContext, TimeProvider.System);
     private const string DuplicateGuestMessage = "مهمانی با این اطلاعات قبلاً ثبت شده است.";
 
     private const string DefaultNationality = "ایران";
@@ -89,7 +91,13 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
         guest.UserId = await FindLinkablePassengerUserIdAsync(normalized, null, cancellationToken);
 
         dbContext.Guests.Add(guest);
+        var newIdentity = giftGrantService.IsNewIdentity(guest);
+        await using var transaction = newIdentity && dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
+            : null;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (newIdentity) await giftGrantService.TryGrantAsync(guest, cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         return Map(guest);
     }
@@ -109,7 +117,13 @@ public class GuestService(KoochDbContext dbContext) : IGuestService
 
         Apply(guest, normalized);
         guest.UserId = await FindLinkablePassengerUserIdAsync(normalized, id, cancellationToken);
+        var newIdentity = giftGrantService.IsNewIdentity(guest);
+        await using var transaction = newIdentity && dbContext.Database.IsRelational()
+            ? await dbContext.Database.BeginTransactionAsync(System.Data.IsolationLevel.Serializable, cancellationToken)
+            : null;
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (newIdentity) await giftGrantService.TryGrantAsync(guest, cancellationToken);
+        if (transaction is not null) await transaction.CommitAsync(cancellationToken);
 
         return Map(guest);
     }

@@ -52,6 +52,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<ReservationCashbackEntitlement> ReservationCashbackEntitlements => Set<ReservationCashbackEntitlement>();
     public DbSet<CashbackSetting> CashbackSettings => Set<CashbackSetting>();
     public DbSet<WelcomeGiftCampaign> WelcomeGiftCampaigns => Set<WelcomeGiftCampaign>();
+    public DbSet<WelcomeGiftGrant> WelcomeGiftGrants => Set<WelcomeGiftGrant>();
     public DbSet<Review> Reviews => Set<Review>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -132,6 +133,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureSiteSettings(modelBuilder);
         ConfigureCashbackSettings(modelBuilder);
         ConfigureWelcomeGiftCampaigns(modelBuilder);
+        ConfigureWelcomeGiftGrants(modelBuilder);
         ConfigureReservationCashbackEntitlements(modelBuilder);
         ApplySoftDeleteFilters(modelBuilder);
     }
@@ -141,6 +143,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
+        EnsureWelcomeGiftGrantHistory();
         var now = DateTime.UtcNow;
 
         foreach (var entry in ChangeTracker.Entries<BaseEntity>())
@@ -174,6 +177,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
+        EnsureWelcomeGiftGrantHistory();
         return base.SaveChanges();
     }
 
@@ -182,6 +186,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
+        EnsureWelcomeGiftGrantHistory();
         return base.SaveChanges(acceptAllChangesOnSuccess);
     }
 
@@ -192,6 +197,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
+        EnsureWelcomeGiftGrantHistory();
         return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
     }
 
@@ -2270,6 +2276,45 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 table.HasCheckConstraint("CK_WelcomeGiftCampaigns_DateRange", "[StartDate] <= [EndDate]");
             });
         });
+    }
+
+    private static void ConfigureWelcomeGiftGrants(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WelcomeGiftGrant>(entity =>
+        {
+            entity.Property(grant => grant.NationalCodeSnapshot).HasMaxLength(10).IsRequired();
+            entity.Property(grant => grant.AmountSnapshot).HasPrecision(18, 2);
+            entity.HasIndex(grant => new { grant.CampaignId, grant.UserId }).IsUnique();
+            entity.HasIndex(grant => new { grant.CampaignId, grant.NationalCodeSnapshot }).IsUnique();
+            entity.HasIndex(grant => grant.WalletLotId).IsUnique();
+            entity.HasIndex(grant => grant.WalletEntryId).IsUnique();
+            entity.HasOne(grant => grant.Campaign).WithMany().HasForeignKey(grant => grant.CampaignId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(grant => grant.User).WithMany().HasForeignKey(grant => grant.UserId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(grant => grant.WalletLot).WithMany().HasForeignKey(grant => grant.WalletLotId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(grant => grant.WalletEntry).WithMany().HasForeignKey(grant => grant.WalletEntryId)
+                .OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_WelcomeGiftGrants_Amount", "[AmountSnapshot] > 0");
+                table.HasCheckConstraint("CK_WelcomeGiftGrants_ValidityDays", "[ValidityDaysSnapshot] >= 1");
+                table.HasCheckConstraint("CK_WelcomeGiftGrants_Expiry", "[ExpiresAtUtc] > [GrantedAtUtc]");
+                table.HasCheckConstraint("CK_WelcomeGiftGrants_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+    }
+
+    private void EnsureWelcomeGiftGrantHistory()
+    {
+        if (ChangeTracker.Entries<WelcomeGiftGrant>().Any(entry =>
+                entry.State is EntityState.Modified or EntityState.Deleted ||
+                entry.State == EntityState.Added && (entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)))
+            throw new InvalidOperationException("Welcome Gift grants are immutable.");
+        if (ChangeTracker.Entries<WelcomeGiftCampaign>().Any(entry =>
+                entry.State == EntityState.Deleted && entry.Entity.GrantedCount > 0))
+            throw new InvalidOperationException("A campaign with grants cannot be hard-deleted.");
     }
 
     private static void ConfigureCashbackSettings(ModelBuilder modelBuilder)

@@ -23,8 +23,11 @@ public sealed class BookingSessionService(
     IReservationNumberGenerator reservationNumberGenerator,
     IBookingSessionCodeGenerator sessionCodeGenerator,
     IReservationNotificationDispatcher notificationDispatcher,
-    IPropertySameNightBookingPolicyService sameNightPolicyService) : IBookingSessionService
+    IPropertySameNightBookingPolicyService sameNightPolicyService,
+    IWelcomeGiftGrantService? welcomeGiftGrantService = null) : IBookingSessionService
 {
+    private readonly IWelcomeGiftGrantService giftGrantService =
+        welcomeGiftGrantService ?? new WelcomeGiftGrantService(dbContext, TimeProvider.System);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> LocalResourceLocks = new();
 
     public Task<BookingSessionCreateResult> CreateAsync(
@@ -244,8 +247,14 @@ public sealed class BookingSessionService(
             });
         }
 
+        var newlyEstablishedIdentities = dbContext.ChangeTracker.Entries<Guest>()
+            .Select(entry => entry.Entity)
+            .Where(giftGrantService.IsNewIdentity)
+            .ToArray();
         dbContext.BookingSessions.Add(session);
         await sessionCodeGenerator.SaveWithSessionCodeRetryAsync(dbContext, reservationNumberGenerator, cancellationToken);
+        foreach (var guest in newlyEstablishedIdentities)
+            await giftGrantService.TryGrantAsync(guest, cancellationToken);
         var pendingApprovalIds = session.Reservations
             .Where(reservation => reservation.Status == ReservationStatus.PendingApproval)
             .Select(reservation => reservation.Id)

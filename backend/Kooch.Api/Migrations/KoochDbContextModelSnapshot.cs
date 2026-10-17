@@ -6270,6 +6270,93 @@ namespace Kooch.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.WelcomeGiftGrant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<decimal>("AmountSnapshot")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<int>("CampaignId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("ExpiresAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime>("GrantedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("NationalCodeSnapshot")
+                        .IsRequired()
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ValidityDaysSnapshot")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WalletEntryId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("WalletLotId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("WalletEntryId")
+                        .IsUnique();
+
+                    b.HasIndex("WalletLotId")
+                        .IsUnique();
+
+                    b.HasIndex("CampaignId", "NationalCodeSnapshot")
+                        .IsUnique();
+
+                    b.HasIndex("CampaignId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("WelcomeGiftGrants", t =>
+                        {
+                            t.HasCheckConstraint("CK_WelcomeGiftGrants_Amount", "[AmountSnapshot] > 0");
+
+                            t.HasCheckConstraint("CK_WelcomeGiftGrants_Expiry", "[ExpiresAtUtc] > [GrantedAtUtc]");
+
+                            t.HasCheckConstraint("CK_WelcomeGiftGrants_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+
+                            t.HasCheckConstraint("CK_WelcomeGiftGrants_ValidityDays", "[ValidityDaysSnapshot] >= 1");
+                        });
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.Amenity", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.AmenityCategory", "AmenityCategory")
@@ -7707,6 +7794,41 @@ namespace Kooch.Api.Migrations
                         .IsRequired();
 
                     b.Navigation("WalletAccount");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.WelcomeGiftGrant", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.WelcomeGiftCampaign", "Campaign")
+                        .WithMany()
+                        .HasForeignKey("CampaignId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Kooch.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Kooch.Api.Entities.WalletEntry", "WalletEntry")
+                        .WithMany()
+                        .HasForeignKey("WalletEntryId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Kooch.Api.Entities.WalletLot", "WalletLot")
+                        .WithMany()
+                        .HasForeignKey("WalletLotId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Campaign");
+
+                    b.Navigation("User");
+
+                    b.Navigation("WalletEntry");
+
+                    b.Navigation("WalletLot");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Amenity", b =>
