@@ -101,6 +101,12 @@ const adminMenuItems: DashboardMenuItem[] = [
   },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
   {
+    label: "کمپین هدیه خوش‌آمدگویی",
+    icon: "/svgs/tags.svg",
+    href: "/admin/welcome-gifts",
+    platformPermission: "ManagePromotions",
+  },
+  {
     label: "گزارش‌ها",
     icon: "/svgs/list.svg",
     href: "/admin/reports",
