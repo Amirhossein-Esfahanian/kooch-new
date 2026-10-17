@@ -63,4 +63,5 @@ public class Reservation : BaseEntity
     public ICollection<ReservationPaymentLinkToken> PaymentLinkTokens { get; set; } = [];
     public ICollection<Review> Reviews { get; set; } = [];
     public ICollection<NotificationLog> NotificationLogs { get; set; } = [];
+    public ICollection<ReservationActivity> Activities { get; set; } = [];
 }

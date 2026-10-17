@@ -3934,6 +3934,89 @@ namespace Kooch.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.ReservationActivity", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("ActivityType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("ActorDisplayName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<int?>("ActorUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Details")
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("RelatedEntityId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RelatedEntityType")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<int>("ReservationId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(250)
+                        .HasColumnType("nvarchar(250)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Visibility")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("ReservationId", "OccurredAtUtc", "Id");
+
+                    b.ToTable("ReservationActivities", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReservationActivities_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+
+                            t.HasCheckConstraint("CK_ReservationActivities_RelatedEntityPair", "([RelatedEntityType] IS NULL AND [RelatedEntityId] IS NULL) OR ([RelatedEntityType] IS NOT NULL AND [RelatedEntityId] > 0)");
+
+                            t.HasCheckConstraint("CK_ReservationActivities_Visibility", "[Visibility] IN (0, 1)");
+                        });
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.ReservationCancellationRequestRecord", b =>
                 {
                     b.Property<int>("Id")
@@ -7239,6 +7322,24 @@ namespace Kooch.Api.Migrations
                     b.Navigation("RoomType");
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.ReservationActivity", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.User", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Kooch.Api.Entities.Reservation", "Reservation")
+                        .WithMany("Activities")
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("ActorUser");
+
+                    b.Navigation("Reservation");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.ReservationCancellationRequestRecord", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.User", "RequestedByUser")
@@ -7993,6 +8094,8 @@ namespace Kooch.Api.Migrations
 
             modelBuilder.Entity("Kooch.Api.Entities.Reservation", b =>
                 {
+                    b.Navigation("Activities");
+
                     b.Navigation("NotificationLogs");
 
                     b.Navigation("PaymentItems");

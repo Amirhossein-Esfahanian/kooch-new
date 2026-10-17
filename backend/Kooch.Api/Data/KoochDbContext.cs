@@ -22,6 +22,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<Guest> Guests => Set<Guest>();
     public DbSet<BookingSession> BookingSessions => Set<BookingSession>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
+    public DbSet<ReservationActivity> ReservationActivities => Set<ReservationActivity>();
     public DbSet<ReservationCancellationRequestRecord> ReservationCancellationRequests => Set<ReservationCancellationRequestRecord>();
     public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
@@ -117,6 +118,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureGuests(modelBuilder);
         ConfigureBookingSessions(modelBuilder);
         ConfigureReservations(modelBuilder);
+        ConfigureReservationActivities(modelBuilder);
         ConfigureReservationCancellationRequests(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
@@ -141,6 +143,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureReservationActivitiesAreAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -175,6 +178,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public override int SaveChanges()
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureReservationActivitiesAreAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -184,6 +188,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public override int SaveChanges(bool acceptAllChangesOnSuccess)
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureReservationActivitiesAreAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -195,6 +200,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         CancellationToken cancellationToken = default)
     {
         EnsureFinancialHistoryIsAppendOnly();
+        EnsureReservationActivitiesAreAppendOnly();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -214,6 +220,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             if (entry.OriginalValues.GetValue<DateTime?>(nameof(NotificationLog.ReadAtUtc)).HasValue ||
                 !entry.Entity.ReadAtUtc.HasValue)
                 throw new InvalidOperationException("Notification read state may only change from unread to read.");
+        }
+    }
+
+    private void EnsureReservationActivitiesAreAppendOnly()
+    {
+        foreach (var entry in ChangeTracker.Entries<ReservationActivity>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted ||
+                entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Reservation activities are append-only.");
         }
     }
 
@@ -1768,6 +1784,31 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(payment => payment.CallbackReceipts)
                 .HasForeignKey(receipt => receipt.PaymentId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureReservationActivities(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<ReservationActivity>(entity =>
+        {
+            entity.Property(row => row.ActorDisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(row => row.ActivityType).HasMaxLength(100).IsRequired();
+            entity.Property(row => row.Title).HasMaxLength(250).IsRequired();
+            entity.Property(row => row.Details).HasMaxLength(4000);
+            entity.Property(row => row.RelatedEntityType).HasMaxLength(100);
+            entity.HasIndex(row => new { row.ReservationId, row.OccurredAtUtc, row.Id });
+            entity.HasOne(row => row.Reservation).WithMany(reservation => reservation.Activities)
+                .HasForeignKey(row => row.ReservationId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.ActorUser).WithMany()
+                .HasForeignKey(row => row.ActorUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_ReservationActivities_Visibility", "[Visibility] IN (0, 1)");
+                table.HasCheckConstraint("CK_ReservationActivities_RelatedEntityPair",
+                    "([RelatedEntityType] IS NULL AND [RelatedEntityId] IS NULL) OR ([RelatedEntityType] IS NOT NULL AND [RelatedEntityId] > 0)");
+                table.HasCheckConstraint("CK_ReservationActivities_NotDeleted",
+                    "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
         });
     }
 
