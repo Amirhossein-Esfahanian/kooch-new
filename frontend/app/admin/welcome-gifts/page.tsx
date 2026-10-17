@@ -230,10 +230,13 @@ export default function AdminWelcomeGiftsPage() {
           <form id="welcome-gift-form" onSubmit={(event) => void save(event)} className="grid gap-4">
             <KoochField className={compactFieldLabel} label="عنوان" required><KoochInput required maxLength={150} disabled={saving} value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></KoochField>
             <KoochField className={compactFieldLabel} label={`مبلغ (${currencyLabel})`} required><KoochInput required type="number" min="0.01" step="0.01" inputMode="decimal" disabled={saving} value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.target.value })} /></KoochField>
-            <KoochField className={compactFieldLabel} label="بازه اجرای کمپین" required>
-              <KoochDatePicker mode="range" calendarType="jalali" openOnDialog autoCommit labels={{ start: "تاریخ شروع", end: "تاریخ پایان", rangeTitle: "بازه اجرای کمپین" }} controlClassName="grid px-4 py-3 text-right transition [&>span:first-child]:font-medium" value={{ startDate: draft.startDate, endDate: draft.endDate }} onChange={({ startDate, endDate }) => setDraft({ ...draft, startDate, endDate })} />
-            </KoochField>
             <div className="grid gap-4 sm:grid-cols-2">
+              <KoochField className={compactFieldLabel} label="تاریخ شروع" required>
+                <KoochDatePicker mode="single" calendarType="jalali" size="compact" autoConfirmOnSelect label={null} placeholder="انتخاب تاریخ" value={draft.startDate} onChange={(startDate) => setDraft({ ...draft, startDate })} />
+              </KoochField>
+              <KoochField className={compactFieldLabel} label="تاریخ پایان" required>
+                <KoochDatePicker mode="single" calendarType="jalali" size="compact" autoConfirmOnSelect label={null} placeholder="انتخاب تاریخ" value={draft.endDate} onChange={(endDate) => setDraft({ ...draft, endDate })} />
+              </KoochField>
               <KoochField className={compactFieldLabel} label="حداکثر دریافت‌کنندگان" required><KoochInput required type="number" min="1" step="1" inputMode="numeric" disabled={saving} value={draft.maxRecipients} onChange={(event) => setDraft({ ...draft, maxRecipients: event.target.value })} /></KoochField>
               <KoochField className={compactFieldLabel} label="مدت اعتبار (روز)" required><KoochInput required type="number" min="1" step="1" inputMode="numeric" disabled={saving} value={draft.validityDays} onChange={(event) => setDraft({ ...draft, validityDays: event.target.value })} /></KoochField>
             </div>

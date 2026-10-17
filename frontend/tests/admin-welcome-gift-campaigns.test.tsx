@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   success: vi.fn(),
   session: { platformRole: "SuperAdmin", platformPermissions: [] as string[] },
+  dateSelections: 0,
 }));
 
 vi.mock("@/lib/owner-api", () => ({ apiRequest: mocks.request }));
@@ -23,8 +24,8 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children, requiredPlatformPermission }: { children: React.ReactNode; requiredPlatformPermission: string }) => <div data-permission={requiredPlatformPermission}>{children}</div>,
 }));
 vi.mock("@/components/KoochDatePicker", () => ({
-  KoochDatePicker: ({ onChange, labels }: { onChange: (value: { startDate: string; endDate: string }) => void; labels: { start: string; end: string; rangeTitle: string } }) =>
-    <button type="button" data-start-label={labels.start} data-end-label={labels.end} data-range-title={labels.rangeTitle} onClick={() => onChange({ startDate: "2026-10-18", endDate: "2026-10-20" })}>انتخاب بازه</button>,
+  KoochDatePicker: ({ onChange, label, placeholder, size, value }: { onChange: (value: string) => void; label: string | null; placeholder: string; size: string; value: string | null }) =>
+    <button type="button" data-picker-size={size} data-internal-label={label ?? "hidden"} onClick={() => { const selection = mocks.dateSelections++ === 0 ? "2026-10-18" : "2026-10-20"; onChange(selection); }}>{value ?? placeholder}</button>,
 }));
 vi.mock("@/components/KoochDialog", () => ({
   KoochDialog: ({ children, open, title }: { children: React.ReactNode; open: boolean; title: string }) => open ? <div role="dialog" aria-label={title}>{children}</div> : null,
@@ -48,6 +49,7 @@ describe("Admin Welcome Gift campaigns", () => {
     mocks.success.mockReset();
     mocks.session.platformRole = "SuperAdmin";
     mocks.session.platformPermissions = [];
+    mocks.dateSelections = 0;
     mocks.request.mockImplementation(async (path: string) => {
       if (path === "/admin/welcome-gift-campaigns") return [campaign];
       throw new Error(`Unexpected request: ${path}`);
@@ -66,10 +68,14 @@ describe("Admin Welcome Gift campaigns", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByLabelText(/مبلغ \(تومان\)/)).toBeTruthy();
     expect(within(dialog).queryByLabelText("ارز")).toBeNull();
-    const dateControl = within(dialog).getByRole("button", { name: "انتخاب بازه" });
-    expect(dateControl.getAttribute("data-start-label")).toBe("تاریخ شروع");
-    expect(dateControl.getAttribute("data-end-label")).toBe("تاریخ پایان");
-    expect(dateControl.getAttribute("data-range-title")).toBe("بازه اجرای کمپین");
+    expect(within(dialog).getByText("تاریخ شروع")).toBeTruthy();
+    expect(within(dialog).getByText("تاریخ پایان")).toBeTruthy();
+    const dateControls = within(dialog).getAllByRole("button", { name: "انتخاب تاریخ" });
+    expect(dateControls).toHaveLength(2);
+    for (const control of dateControls) {
+      expect(control.getAttribute("data-picker-size")).toBe("compact");
+      expect(control.getAttribute("data-internal-label")).toBe("hidden");
+    }
     expect(within(dialog).getByLabelText(/عنوان/).closest(".grid")?.className).toContain("[&>label]:font-medium");
   });
 
@@ -96,7 +102,7 @@ describe("Admin Welcome Gift campaigns", () => {
     fireEvent.click(screen.getByRole("button", { name: "ایجاد کمپین" }));
     fireEvent.change(screen.getByLabelText(/عنوان/), { target: { value: "هدیه جدید" } });
     fireEvent.change(screen.getByLabelText(/مبلغ \(تومان\)/), { target: { value: "200000" } });
-    fireEvent.click(screen.getByRole("button", { name: "انتخاب بازه" }));
+    screen.getAllByRole("button", { name: "انتخاب تاریخ" }).forEach((control) => fireEvent.click(control));
     fireEvent.change(screen.getByLabelText(/حداکثر دریافت‌کنندگان/), { target: { value: "50" } });
     fireEvent.change(screen.getByLabelText(/مدت اعتبار \(روز\)/), { target: { value: "90" } });
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
