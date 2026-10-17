@@ -232,10 +232,10 @@ export default function AdminWelcomeGiftsPage() {
             <KoochField className={compactFieldLabel} label={`مبلغ (${currencyLabel})`} required><KoochInput required type="number" min="0.01" step="0.01" inputMode="decimal" disabled={saving} value={draft.amount} onChange={(event) => setDraft({ ...draft, amount: event.target.value })} /></KoochField>
             <div className="grid gap-4 sm:grid-cols-2">
               <KoochField className={compactFieldLabel} label="تاریخ شروع" required>
-                <KoochDatePicker mode="single" calendarType="jalali" size="compact" autoConfirmOnSelect label={null} placeholder="انتخاب تاریخ" value={draft.startDate} onChange={(startDate) => setDraft({ ...draft, startDate })} />
+                <KoochDatePicker mode="single" calendarType="jalali" size="compact" portal autoConfirmOnSelect label={null} placeholder="انتخاب تاریخ" value={draft.startDate} onChange={(startDate) => setDraft({ ...draft, startDate })} />
               </KoochField>
               <KoochField className={compactFieldLabel} label="تاریخ پایان" required>
-                <KoochDatePicker mode="single" calendarType="jalali" size="compact" autoConfirmOnSelect label={null} placeholder="انتخاب تاریخ" value={draft.endDate} onChange={(endDate) => setDraft({ ...draft, endDate })} />
+                <KoochDatePicker mode="single" calendarType="jalali" size="compact" portal autoConfirmOnSelect label={null} placeholder="انتخاب تاریخ" value={draft.endDate} onChange={(endDate) => setDraft({ ...draft, endDate })} />
               </KoochField>
               <KoochField className={compactFieldLabel} label="حداکثر دریافت‌کنندگان" required><KoochInput required type="number" min="1" step="1" inputMode="numeric" disabled={saving} value={draft.maxRecipients} onChange={(event) => setDraft({ ...draft, maxRecipients: event.target.value })} /></KoochField>
               <KoochField className={compactFieldLabel} label="مدت اعتبار (روز)" required><KoochInput required type="number" min="1" step="1" inputMode="numeric" disabled={saving} value={draft.validityDays} onChange={(event) => setDraft({ ...draft, validityDays: event.target.value })} /></KoochField>

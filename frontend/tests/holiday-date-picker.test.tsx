@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SharedDateRangePicker } from "@/components/SharedDateRangePicker";
 import { SharedSingleDatePicker } from "@/components/SharedSingleDatePicker";
+import { KoochDatePicker } from "@/components/KoochDatePicker";
 import type { HolidayCalendarDay } from "@/lib/holiday-calendar";
 
 function setDesktopViewport(matches: boolean) {
@@ -118,6 +119,43 @@ describe("holiday date-picker presentation", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it("portals a compact single-date calendar above dialogs and keeps right alignment", async () => {
+    installHolidayFetch([]);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      return this.className.includes("z-[80]")
+        ? { top: 0, right: 300, bottom: 320, left: 0, width: 300, height: 320 } as DOMRect
+        : { top: 100, right: 500, bottom: 140, left: 300, width: 200, height: 40 } as DOMRect;
+    });
+    const onChange = vi.fn();
+    const { container } = render(<KoochDatePicker mode="single" size="compact" portal autoConfirmOnSelect value="2026-03-21" onChange={onChange} />);
+    fireEvent.click(container.querySelector("button")!);
+    const day = await findCalendarDay("2026-03-21");
+    const popup = day.closest(".z-\\[80\\]") as HTMLElement;
+    expect(popup.parentElement).toBe(document.body);
+    expect(popup.style.left).toBe("200px");
+    expect(popup.style.top).toBe("148px");
+    fireEvent.pointerDown(day);
+    expect(document.body.contains(day)).toBe(true);
+    fireEvent.click(day);
+    expect(onChange).toHaveBeenCalledWith("2026-03-21");
+    expect(document.body.contains(popup)).toBe(false);
+  });
+
+  it("keeps inline popup by default and closes portaled popup on outside pointerdown", async () => {
+    installHolidayFetch([]);
+    const inline = openSinglePicker({ size: "compact" });
+    const inlineDay = await findCalendarDay("2026-03-21");
+    expect(inline.container.contains(inlineDay)).toBe(true);
+    inline.unmount();
+
+    const portaled = openSinglePicker({ size: "compact", portal: true });
+    const portalDay = await findCalendarDay("2026-03-21");
+    expect(portaled.container.contains(portalDay)).toBe(false);
+    fireEvent.pointerDown(document.body);
+    expect(document.body.contains(portalDay)).toBe(false);
+    expect(portaled.onChange).not.toHaveBeenCalled();
   });
 
   it("keeps an official holiday selectable", async () => {

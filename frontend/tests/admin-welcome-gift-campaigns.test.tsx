@@ -24,8 +24,8 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children, requiredPlatformPermission }: { children: React.ReactNode; requiredPlatformPermission: string }) => <div data-permission={requiredPlatformPermission}>{children}</div>,
 }));
 vi.mock("@/components/KoochDatePicker", () => ({
-  KoochDatePicker: ({ onChange, label, placeholder, size, value }: { onChange: (value: string) => void; label: string | null; placeholder: string; size: string; value: string | null }) =>
-    <button type="button" data-picker-size={size} data-internal-label={label ?? "hidden"} onClick={() => { const selection = mocks.dateSelections++ === 0 ? "2026-10-18" : "2026-10-20"; onChange(selection); }}>{value ?? placeholder}</button>,
+  KoochDatePicker: ({ onChange, label, placeholder, size, portal, value }: { onChange: (value: string) => void; label: string | null; placeholder: string; size: string; portal?: boolean; value: string | null }) =>
+    <button type="button" data-picker-size={size} data-picker-portal={String(portal)} data-internal-label={label ?? "hidden"} onClick={() => { const selection = mocks.dateSelections++ === 0 ? "2026-10-18" : "2026-10-20"; onChange(selection); }}>{value ?? placeholder}</button>,
 }));
 vi.mock("@/components/KoochDialog", () => ({
   KoochDialog: ({ children, open, title }: { children: React.ReactNode; open: boolean; title: string }) => open ? <div role="dialog" aria-label={title}>{children}</div> : null,
@@ -74,6 +74,7 @@ describe("Admin Welcome Gift campaigns", () => {
     expect(dateControls).toHaveLength(2);
     for (const control of dateControls) {
       expect(control.getAttribute("data-picker-size")).toBe("compact");
+      expect(control.getAttribute("data-picker-portal")).toBe("true");
       expect(control.getAttribute("data-internal-label")).toBe("hidden");
     }
     expect(within(dialog).getByLabelText(/عنوان/).closest(".grid")?.className).toContain("[&>label]:font-medium");

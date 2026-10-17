@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
+import { createPortal } from "react-dom";
 import dayjs, { Dayjs } from "dayjs";
 import jalaliday from "jalaliday/dayjs";
 import "dayjs/locale/fa";
@@ -50,6 +58,8 @@ export interface SharedSingleDatePickerProps {
    * Clicking outside closes the popover without changing the confirmed value.
    */
   autoConfirmOnSelect?: boolean;
+  /** Render the popup in document.body, positioned beside the trigger. */
+  portal?: boolean;
   /** Persian label overrides. */
   labels?: SharedSingleDateLabels;
   /** Confirm button text. */
@@ -166,6 +176,12 @@ function isDisabled(
   return false;
 }
 
+function PopupHost({ portal, children }: { portal: boolean; children: ReactNode }) {
+  return portal && typeof document !== "undefined"
+    ? createPortal(children, document.body)
+    : children;
+}
+
 export function SharedSingleDatePicker({
   value,
   onChange,
@@ -178,6 +194,7 @@ export function SharedSingleDatePicker({
   label = "تاریخ",
   size = "default",
   autoConfirmOnSelect = false,
+  portal = false,
   labels,
   confirmText = "تایید",
   cancelText = "انصراف",
@@ -199,6 +216,12 @@ export function SharedSingleDatePicker({
   );
   const holidayDetails = useHolidayCalendarDetails();
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const [portalPosition, setPortalPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const buttonClass = `kooch-form-control ${
     controlClassName ??
     (size === "compact"
@@ -209,6 +232,10 @@ export function SharedSingleDatePicker({
     size === "compact"
       ? "absolute right-0 top-full z-50 mt-2 max-h-[min(72vh,360px)] w-[300px] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
       : "absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl sm:w-[360px]";
+  const portalPopoverClass =
+    size === "compact"
+      ? "fixed z-[80] max-h-[min(72vh,360px)] w-[300px] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-xl border border-slate-200 bg-white p-3 shadow-xl"
+      : "fixed z-[80] w-[360px] max-w-[calc(100vw-2rem)] rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl";
   const { holidayByDate } = useHolidayCalendarMonths({
     visibleMonth,
     calendarType: activeCalendar,
@@ -222,11 +249,46 @@ export function SharedSingleDatePicker({
   );
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
-      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
+      if (
+        !wrapperRef.current?.contains(event.target as Node) &&
+        !popoverRef.current?.contains(event.target as Node)
+      ) setOpen(false);
     }
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, []);
+  const updatePortalPosition = useCallback(() => {
+    const trigger = triggerRef.current;
+    const popup = popoverRef.current;
+    if (!trigger || !popup) return;
+    const triggerRect = trigger.getBoundingClientRect();
+    const popupRect = popup.getBoundingClientRect();
+    const margin = 16;
+    const gap = size === "compact" ? 8 : 12;
+    const left = Math.max(
+      margin,
+      Math.min(triggerRect.right - popupRect.width, window.innerWidth - popupRect.width - margin),
+    );
+    const below = triggerRect.bottom + gap;
+    const above = triggerRect.top - popupRect.height - gap;
+    const top = below + popupRect.height <= window.innerHeight - margin || above < margin
+      ? Math.max(margin, Math.min(below, window.innerHeight - popupRect.height - margin))
+      : above;
+    setPortalPosition((previous) =>
+      previous?.top === top && previous.left === left ? previous : { top, left },
+    );
+  }, [size]);
+
+  useLayoutEffect(() => {
+    if (!open || !portal) return;
+    updatePortalPosition();
+    window.addEventListener("resize", updatePortalPosition);
+    window.addEventListener("scroll", updatePortalPosition, true);
+    return () => {
+      window.removeEventListener("resize", updatePortalPosition);
+      window.removeEventListener("scroll", updatePortalPosition, true);
+    };
+  }, [open, portal, updatePortalPosition, visibleMonth, activeCalendar]);
 
   return (
     <div
@@ -246,9 +308,11 @@ export function SharedSingleDatePicker({
         </span>
       )}
       <button
+        ref={triggerRef}
         className={buttonClass}
         data-control-active={open ? "true" : undefined}
         onClick={() => {
+          if (portal) setPortalPosition(null);
           setTempDate(value);
           setVisibleMonth(
             asCalendar(value ? dayjs(value) : dayjs(), activeCalendar).startOf(
@@ -267,7 +331,24 @@ export function SharedSingleDatePicker({
       </button>
 
       {open && (
-        <div className={popoverClass}>
+        <PopupHost portal={portal}>
+        <div
+          ref={popoverRef}
+          dir="rtl"
+          className={portal ? portalPopoverClass : popoverClass}
+          onKeyDown={portal ? (event) => {
+            if (event.key === "Escape") {
+              event.stopPropagation();
+              setOpen(false);
+              triggerRef.current?.focus();
+            }
+          } : undefined}
+          style={portal ? {
+            top: portalPosition?.top ?? 0,
+            left: portalPosition?.left ?? 0,
+            visibility: portalPosition ? "visible" : "hidden",
+          } : undefined}
+        >
           <div
             className={`flex flex-wrap items-center justify-between ${
               size === "compact" ? "mb-3 gap-2" : "mb-4 gap-3"
@@ -519,6 +600,7 @@ export function SharedSingleDatePicker({
             </div>
           )}
         </div>
+        </PopupHost>
       )}
     </div>
   );
