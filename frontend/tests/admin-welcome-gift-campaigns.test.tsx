@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   request: vi.fn(),
   success: vi.fn(),
+  session: { platformRole: "SuperAdmin", platformPermissions: [] as string[] },
 }));
 
 vi.mock("@/lib/owner-api", () => ({ apiRequest: mocks.request }));
@@ -12,12 +13,18 @@ vi.mock("@/lib/currency", () => ({
   formatCurrency: (value: number, options: { currencyLabel: string }) => `${value.toLocaleString("fa-IR")} ${options.currencyLabel}`,
 }));
 vi.mock("sonner", () => ({ toast: { success: mocks.success } }));
+vi.mock("@/components/auth/AuthSessionProvider", () => ({
+  useAuthSession: () => mocks.session,
+}));
+vi.mock("@/components/promotions/PromotionWorkspace", () => ({
+  PromotionWorkspace: () => <div>فهرست پروموشن‌ها</div>,
+}));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children, requiredPlatformPermission }: { children: React.ReactNode; requiredPlatformPermission: string }) => <div data-permission={requiredPlatformPermission}>{children}</div>,
 }));
 vi.mock("@/components/KoochDatePicker", () => ({
-  KoochDatePicker: ({ onChange }: { onChange: (value: { startDate: string; endDate: string }) => void }) =>
-    <button type="button" onClick={() => onChange({ startDate: "2026-10-18", endDate: "2026-10-20" })}>انتخاب بازه</button>,
+  KoochDatePicker: ({ onChange, labels }: { onChange: (value: { startDate: string; endDate: string }) => void; labels: { start: string; end: string; rangeTitle: string } }) =>
+    <button type="button" data-start-label={labels.start} data-end-label={labels.end} data-range-title={labels.rangeTitle} onClick={() => onChange({ startDate: "2026-10-18", endDate: "2026-10-20" })}>انتخاب بازه</button>,
 }));
 vi.mock("@/components/KoochDialog", () => ({
   KoochDialog: ({ children, open, title }: { children: React.ReactNode; open: boolean; title: string }) => open ? <div role="dialog" aria-label={title}>{children}</div> : null,
@@ -27,6 +34,7 @@ vi.mock("@/components/KoochConfirmDialog", () => ({
 }));
 
 import AdminWelcomeGiftsPage from "@/app/admin/welcome-gifts/page";
+import AdminPromotionsPage from "@/app/admin/promotions/page";
 
 const campaign = {
   id: 7, title: "هدیه پاییز", amount: 100000, startDate: "2026-10-15",
@@ -38,6 +46,8 @@ describe("Admin Welcome Gift campaigns", () => {
   beforeEach(() => {
     mocks.request.mockReset();
     mocks.success.mockReset();
+    mocks.session.platformRole = "SuperAdmin";
+    mocks.session.platformPermissions = [];
     mocks.request.mockImplementation(async (path: string) => {
       if (path === "/admin/welcome-gift-campaigns") return [campaign];
       throw new Error(`Unexpected request: ${path}`);
@@ -56,6 +66,25 @@ describe("Admin Welcome Gift campaigns", () => {
     const dialog = screen.getByRole("dialog");
     expect(within(dialog).getByLabelText(/مبلغ \(تومان\)/)).toBeTruthy();
     expect(within(dialog).queryByLabelText("ارز")).toBeNull();
+    const dateControl = within(dialog).getByRole("button", { name: "انتخاب بازه" });
+    expect(dateControl.getAttribute("data-start-label")).toBe("تاریخ شروع");
+    expect(dateControl.getAttribute("data-end-label")).toBe("تاریخ پایان");
+    expect(dateControl.getAttribute("data-range-title")).toBe("بازه اجرای کمپین");
+    expect(within(dialog).getByLabelText(/عنوان/).closest(".grid")?.className).toContain("[&>label]:font-medium");
+  });
+
+  it("links from Promotions only for ManagePromotions users", () => {
+    const { rerender } = render(<AdminPromotionsPage />);
+    expect(screen.getByRole("link", { name: /هدیه خوش‌آمدگویی/ }).getAttribute("href")).toBe("/admin/welcome-gifts");
+
+    mocks.session.platformRole = "AdminAssistant";
+    mocks.session.platformPermissions = [];
+    rerender(<AdminPromotionsPage />);
+    expect(screen.queryByRole("link", { name: /هدیه خوش‌آمدگویی/ })).toBeNull();
+
+    mocks.session.platformPermissions = ["ManagePromotions"];
+    rerender(<AdminPromotionsPage />);
+    expect(screen.getByRole("link", { name: /هدیه خوش‌آمدگویی/ })).toBeTruthy();
   });
 
   it("creates with backend field names and displays overlap errors without closing", async () => {
