@@ -1287,6 +1287,10 @@ function AdminReservationsContent() {
         <ReservationDetailsDialog
           showAdminActivities
           canAddInternalNote={canManageReservations}
+          onAssignTask={canManageReservations ? (reservation) => {
+            const id = reservation.reservationId ?? reservation.id;
+            if (id) router.push(`/admin/tasks?reservationId=${id}`);
+          } : undefined}
           onViewVoucher={canManagePayments ? (reservation) => {
             const id = reservation.reservationId ?? reservation.id;
             if (id) router.push(`/admin/reservations/${id}/voucher`);

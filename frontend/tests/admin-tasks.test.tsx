@@ -28,11 +28,33 @@ const assignees = [{ id: 4, displayName: "مدیر آزمون" }, { id: 6, displ
 
 describe("Admin tasks", () => {
   beforeEach(() => {
+    window.history.replaceState({}, "", "/admin/tasks");
     mocks.request.mockReset();
     mocks.success.mockReset();
     mocks.session.platformRole = "SuperAdmin";
     mocks.session.platformPermissions = [];
     mocks.request.mockImplementation(async (path: string) => path === "/admin/tasks" ? tasks : path === "/admin/tasks/assignees" ? assignees : path === "/admin/tasks/7" ? detail : (() => { throw new Error(path); })());
+  });
+
+  it("opens creation from a reservation link and preselects the verified reservation", async () => {
+    window.history.replaceState({}, "", "/admin/tasks?reservationId=12");
+    mocks.request.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/admin/tasks/assignees") return assignees;
+      if (path === "/admin/tasks" && init?.method === "POST") return tasks[0];
+      if (path === "/admin/tasks") return tasks;
+      if (path === "/admin/reservations/12") return { id: 12, reservationNumber: "R-123456", propertyName: "اقامتگاه آزمون" };
+      throw new Error(path);
+    });
+    render(<AdminTasksPage />);
+    const dialog = await screen.findByRole("dialog", { name: "ایجاد کار" });
+    await waitFor(() => expect((within(dialog).getByLabelText("رزرو مرتبط") as HTMLSelectElement).value).toBe("12"));
+    expect(mocks.request).toHaveBeenCalledWith("/admin/reservations/12");
+    fireEvent.change(within(dialog).getByLabelText(/عنوان/), { target: { value: "پیگیری رزرو" } });
+    fireEvent.change(within(dialog).getByLabelText(/مسئول کار/), { target: { value: "4" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "ایجاد کار" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledWith("/admin/tasks", {
+      method: "POST", body: expect.stringContaining('"reservationId":12'),
+    }));
   });
 
   it("shows assigned and created scopes with status filtering and linked reservation", async () => {

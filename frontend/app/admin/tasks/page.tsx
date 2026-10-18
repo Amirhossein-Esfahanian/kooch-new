@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { toast } from "sonner";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
@@ -46,6 +46,7 @@ type AdminTask = {
 };
 type TaskAssignee = { id: number; displayName: string };
 type ReservationOption = { reservationId: number; reservationNumber: string; propertyName: string };
+type ReservationDetailOption = { id?: number; reservationId?: number; reservationNumber: string; propertyName?: string | null };
 type ReservationSearchResult = { items: ReservationOption[] };
 type CreateDraft = {
   title: string;
@@ -98,6 +99,7 @@ export default function AdminTasksPage() {
   const [reservationSearching, setReservationSearching] = useState(false);
   const [reservationSearched, setReservationSearched] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
+  const handledReservationLink = useRef(false);
   const [nextAssigneeId, setNextAssigneeId] = useState("");
   const [reassigning, setReassigning] = useState(false);
   const [reassignError, setReassignError] = useState<string | null>(null);
@@ -165,6 +167,28 @@ export default function AdminTasksPage() {
     setReservationSearched(false);
     setCreateOpen(true);
   }
+
+  useEffect(() => {
+    if (!canReadTasks || handledReservationLink.current) return;
+    const rawId = new URLSearchParams(window.location.search).get("reservationId");
+    if (rawId === null) return;
+    handledReservationLink.current = true;
+    if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(Number(rawId))) return;
+    openCreate();
+    setReservationSearching(true);
+    void apiRequest<ReservationDetailOption>(`/admin/reservations/${rawId}`)
+      .then((reservation) => {
+        if ((reservation.reservationId ?? reservation.id) !== Number(rawId)) throw new Error("رزرو انتخاب‌شده معتبر نیست.");
+        setReservationOptions([{ reservationId: Number(rawId), reservationNumber: reservation.reservationNumber, propertyName: reservation.propertyName ?? "" }]);
+        setCreateDraft((current) => ({ ...current, reservationId: rawId }));
+      })
+      .catch((error) => {
+        setReservationError(errorText(error));
+      })
+      .finally(() => {
+        setReservationSearching(false);
+      });
+  }, [canReadTasks]);
 
   async function searchReservations() {
     const query = reservationSearch.trim();

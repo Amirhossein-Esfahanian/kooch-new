@@ -32,6 +32,15 @@ beforeEach(() => { request.mockReset(); });
 afterEach(() => { cleanup(); });
 
 describe("Admin reservation activity timeline", () => {
+  it("offers an Admin-only task handoff for the selected reservation", async () => {
+    const onAssignTask = vi.fn();
+    const view = render(<ReservationDetailsDialog onAssignTask={onAssignTask}
+      onOpenChange={vi.fn()} open reservation={reservation} />);
+    fireEvent.click(await screen.findByRole("button", { name: "ارجاع کار" }));
+    expect(onAssignTask).toHaveBeenCalledWith(reservation);
+    view.rerender(<ReservationDetailsDialog onOpenChange={vi.fn()} open reservation={reservation} />);
+    expect(screen.queryByRole("button", { name: "ارجاع کار" })).toBeNull();
+  });
   it("loads persisted activities and renders title, details, system actor, Persian time and type", async () => {
     request.mockResolvedValue([activity]);
     renderDialog();

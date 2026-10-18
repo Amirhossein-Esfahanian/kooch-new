@@ -35,6 +35,7 @@ import { apiRequest } from "@/lib/owner-api";
 interface ReservationDetailsDialogProps {
   showAdminActivities?: boolean;
   canAddInternalNote?: boolean;
+  onAssignTask?: (reservation: ReservationTableItem) => void;
   loading?: boolean;
   onAdjustPrice?: (
     reservation: ReservationTableItem,
@@ -1439,6 +1440,7 @@ function ManualPaymentRejectDialog({
 export function ReservationDetailsDialog({
   showAdminActivities = false,
   canAddInternalNote = false,
+  onAssignTask,
   loading = false,
   manualPayments = [],
   manualPaymentsLoading = false,
@@ -1619,6 +1621,11 @@ export function ReservationDetailsDialog({
         description={reservation?.reservationNumber ?? undefined}
         footer={
           <>
+            {reservation && onAssignTask && (
+              <KoochButton variant="outline" onClick={() => onAssignTask(reservation)}>
+                ارجاع کار
+              </KoochButton>
+            )}
             {reservation && onViewVoucher && (
               <KoochButton variant="outline" onClick={() => onViewVoucher(reservation)}>
                 مشاهده ووچر
