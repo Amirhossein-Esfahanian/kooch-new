@@ -23,6 +23,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<BookingSession> BookingSessions => Set<BookingSession>();
     public DbSet<Reservation> Reservations => Set<Reservation>();
     public DbSet<ReservationActivity> ReservationActivities => Set<ReservationActivity>();
+    public DbSet<AdminTask> AdminTasks => Set<AdminTask>();
+    public DbSet<AdminTaskChange> AdminTaskChanges => Set<AdminTaskChange>();
     public DbSet<ReservationCancellationRequestRecord> ReservationCancellationRequests => Set<ReservationCancellationRequestRecord>();
     public DbSet<ReservationPaymentLinkToken> ReservationPaymentLinkTokens => Set<ReservationPaymentLinkToken>();
     public DbSet<Payment> Payments => Set<Payment>();
@@ -119,6 +121,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureBookingSessions(modelBuilder);
         ConfigureReservations(modelBuilder);
         ConfigureReservationActivities(modelBuilder);
+        ConfigureAdminTasks(modelBuilder);
         ConfigureReservationCancellationRequests(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
@@ -144,6 +147,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAdminTaskHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -179,6 +183,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAdminTaskHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -189,6 +194,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAdminTaskHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -201,6 +207,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAdminTaskHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -230,6 +237,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             if (entry.State is EntityState.Modified or EntityState.Deleted ||
                 entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
                 throw new InvalidOperationException("Reservation activities are append-only.");
+        }
+    }
+
+    private void EnsureAdminTaskHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<AdminTaskChange>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted ||
+                entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Admin task changes are append-only.");
+        }
+        foreach (var entry in ChangeTracker.Entries<AdminTask>())
+        {
+            if (entry.State == EntityState.Deleted || entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Admin tasks cannot be deleted.");
         }
     }
 
@@ -1808,6 +1830,47 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                     "([RelatedEntityType] IS NULL AND [RelatedEntityId] IS NULL) OR ([RelatedEntityType] IS NOT NULL AND [RelatedEntityId] > 0)");
                 table.HasCheckConstraint("CK_ReservationActivities_NotDeleted",
                     "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+    }
+
+    private static void ConfigureAdminTasks(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AdminTask>(entity =>
+        {
+            entity.Property(row => row.Title).HasMaxLength(250).IsRequired();
+            entity.Property(row => row.CreatedByUserId).IsRequired();
+            entity.Property(row => row.Description).HasMaxLength(4000);
+            entity.Property(row => row.ResolutionNote).HasMaxLength(4000);
+            entity.HasIndex(row => new { row.AssignedToUserId, row.Status, row.DueAtUtc });
+            entity.HasIndex(row => row.ReservationId);
+            entity.HasOne(row => row.CreatedByUser).WithMany()
+                .HasForeignKey(row => row.CreatedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.AssignedToUser).WithMany()
+                .HasForeignKey(row => row.AssignedToUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.Reservation).WithMany()
+                .HasForeignKey(row => row.ReservationId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_AdminTasks_Priority", "[Priority] IN (0, 1, 2)");
+                table.HasCheckConstraint("CK_AdminTasks_Status", "[Status] IN (0, 1, 2, 3)");
+                table.HasCheckConstraint("CK_AdminTasks_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+
+        modelBuilder.Entity<AdminTaskChange>(entity =>
+        {
+            entity.Property(row => row.ActorDisplayName).HasMaxLength(200).IsRequired();
+            entity.Property(row => row.ResolutionNote).HasMaxLength(4000);
+            entity.HasIndex(row => new { row.AdminTaskId, row.OccurredAtUtc, row.Id });
+            entity.HasOne(row => row.AdminTask).WithMany(task => task.Changes)
+                .HasForeignKey(row => row.AdminTaskId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.ActorUser).WithMany()
+                .HasForeignKey(row => row.ActorUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_AdminTaskChanges_Type", "[ChangeType] IN (0, 1, 2)");
+                table.HasCheckConstraint("CK_AdminTaskChanges_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
             });
         });
     }
