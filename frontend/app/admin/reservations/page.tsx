@@ -203,6 +203,7 @@ function AdminReservationsContent() {
   const searchParams = useSearchParams();
   const deepLinkQuery = searchParams.toString();
   const deepLinkReservationNumber = searchParams.get("reservationNumber")?.trim() ?? "";
+  const deepLinkReservationId = Number(searchParams.get("reservationId"));
   const deepLinkAttemptRef = useRef<string | null>(null);
   const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<PropertyResponse[]>([]);
@@ -394,7 +395,7 @@ function AdminReservationsContent() {
   }, [canManagePayments]);
 
   useEffect(() => {
-    if (!deepLinkReservationNumber) {
+    if (!deepLinkReservationNumber && !(Number.isInteger(deepLinkReservationId) && deepLinkReservationId > 0)) {
       deepLinkAttemptRef.current = null;
       return;
     }
@@ -404,10 +405,15 @@ function AdminReservationsContent() {
     let active = true;
     const cleanParams = new URLSearchParams(deepLinkQuery);
     cleanParams.delete("reservationNumber");
+    cleanParams.delete("reservationId");
     const cleanUrl = `/admin/reservations${cleanParams.size ? `?${cleanParams.toString()}` : ""}`;
 
     const openTarget = async () => {
       try {
+        if (!deepLinkReservationNumber && deepLinkReservationId > 0) {
+          await viewReservation({ id: deepLinkReservationId } as ReservationTableItem, true);
+          return;
+        }
         const lookup = await apiRequest<PagedResult<ReservationTableItem>>(
           buildReservationsPath({ ...initialFilters, reservationNumber: deepLinkReservationNumber }, 1),
         );
@@ -426,7 +432,7 @@ function AdminReservationsContent() {
     };
     void openTarget();
     return () => { active = false; };
-  }, [deepLinkQuery, deepLinkReservationNumber, router, viewReservation]);
+  }, [deepLinkQuery, deepLinkReservationNumber, deepLinkReservationId, router, viewReservation]);
 
   async function refreshReservationAndPayments(reservationId: number) {
     const [details, payments] = await Promise.all([

@@ -99,6 +99,12 @@ const adminMenuItems: DashboardMenuItem[] = [
     icon: "/svgs/address-card.svg",
     href: "/admin/reservations",
   },
+  {
+    label: "کارهای من",
+    icon: "/svgs/list.svg",
+    href: "/admin/tasks",
+    platformPermission: "ManageReservations",
+  },
   { label: "پروموشن‌ها", icon: "/svgs/tags.svg", href: "/admin/promotions" },
   {
     label: "گزارش‌ها",
