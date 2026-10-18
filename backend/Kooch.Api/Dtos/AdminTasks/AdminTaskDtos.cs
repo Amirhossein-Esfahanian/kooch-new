@@ -7,6 +7,7 @@ public sealed record CreateAdminTaskRequest(
     int AssignedToUserId, int? ReservationId);
 
 public sealed record ReassignAdminTaskRequest(int AssignedToUserId);
+public sealed record AdminTaskAssigneeResponse(int Id, string DisplayName);
 public sealed record UpdateAdminTaskStatusRequest(AdminTaskStatus Status, string? ResolutionNote);
 
 public sealed record AdminTaskChangeResponse(

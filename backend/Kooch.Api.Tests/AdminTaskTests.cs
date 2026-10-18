@@ -82,6 +82,26 @@ public sealed class AdminTaskTests
         Assert.Empty(db.ReservationActivities);
     }
 
+    [Fact]
+    public async Task AssigneeLookup_UsesTaskPermissionAndReturnsOnlyActiveAdmins()
+    {
+        await using var db = CreateDb();
+        await SeedAsync(db);
+        db.Users.Add(new User { Id = 4, FirstName = "Inactive", Role = UserRole.AdminAssistant, IsActive = false });
+        db.Users.Add(new User { Id = 5, Role = UserRole.AdminAssistant });
+        await db.SaveChangesAsync();
+        var permissions = new TestPermissions();
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+
+        Assert.Equal([(5, "Admin 5"), (1, "Ada Admin"), (2, "Bea Assistant")],
+            (await service.ListAssigneesAsync(1)).Select(user => (user.Id, user.DisplayName)).ToArray());
+        permissions.PlatformAllowed = false;
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListAssigneesAsync(1));
+        Assert.Equal("assignees", typeof(AdminTasksController).GetMethod(nameof(AdminTasksController.ListAssignees))!
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpGetAttribute), true)
+            .Cast<Microsoft.AspNetCore.Mvc.HttpGetAttribute>().Single().Template);
+    }
+
     [Theory]
     [InlineData(0)]
     [InlineData(3)]

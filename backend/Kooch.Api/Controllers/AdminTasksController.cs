@@ -16,6 +16,11 @@ public sealed class AdminTasksController(AdminTaskService tasks) : Authenticated
     public async Task<ActionResult<IReadOnlyList<AdminTaskResponse>>> List(CancellationToken cancellationToken) =>
         Ok(await tasks.ListAsync(GetCurrentUser().UserId, cancellationToken));
 
+    [HttpGet("assignees")]
+    public async Task<ActionResult<IReadOnlyList<AdminTaskAssigneeResponse>>> ListAssignees(
+        CancellationToken cancellationToken) =>
+        Ok(await tasks.ListAssigneesAsync(GetCurrentUser().UserId, cancellationToken));
+
     [HttpGet("{id:int}")]
     public async Task<ActionResult<AdminTaskResponse>> Get(int id, CancellationToken cancellationToken) =>
         Ok(await tasks.GetAsync(GetCurrentUser().UserId, id, cancellationToken));

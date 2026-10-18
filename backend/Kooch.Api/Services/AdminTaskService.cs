@@ -9,6 +9,24 @@ namespace Kooch.Api.Services;
 public sealed class AdminTaskService(
     KoochDbContext context, IPermissionService permissions, ReservationActivityService activities)
 {
+    public async Task<IReadOnlyList<AdminTaskAssigneeResponse>> ListAssigneesAsync(
+        int actorUserId, CancellationToken cancellationToken = default)
+    {
+        await RequireGlobalPermissionAsync(actorUserId, cancellationToken);
+        var users = await ActiveAdminUsers().OrderBy(user => user.LastName)
+            .ThenBy(user => user.FirstName).ThenBy(user => user.Id)
+            .Select(user => new { user.Id, user.FirstName, user.LastName, user.Username, user.Email })
+            .ToListAsync(cancellationToken);
+        return users.Select(user =>
+        {
+            var name = $"{user.FirstName} {user.LastName}".Trim();
+            if (name.Length == 0) name = user.Username?.Trim() ?? string.Empty;
+            if (name.Length == 0) name = user.Email?.Trim() ?? string.Empty;
+            if (name.Length == 0) name = $"Admin {user.Id}";
+            return new AdminTaskAssigneeResponse(user.Id, name);
+        }).ToArray();
+    }
+
     public async Task<IReadOnlyList<AdminTaskResponse>> ListAsync(int actorUserId, CancellationToken cancellationToken = default)
     {
         await RequireGlobalPermissionAsync(actorUserId, cancellationToken);
@@ -183,11 +201,13 @@ public sealed class AdminTaskService(
 
     private async Task RequireAdminAssigneeAsync(int userId, CancellationToken cancellationToken)
     {
-        if (userId <= 0 || !await context.Users.AsNoTracking().AnyAsync(user =>
-                user.Id == userId && user.IsActive &&
-                (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant), cancellationToken))
+        if (userId <= 0 || !await ActiveAdminUsers().AnyAsync(user => user.Id == userId, cancellationToken))
             throw new ArgumentException("Assignee must be an active Admin user.");
     }
+
+    private IQueryable<User> ActiveAdminUsers() => context.Users.AsNoTracking()
+        .Where(user => user.IsActive &&
+            (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant));
 
     private async Task<string> ActorNameAsync(int userId, CancellationToken cancellationToken)
     {
