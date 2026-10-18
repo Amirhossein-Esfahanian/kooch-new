@@ -1,8 +1,12 @@
+using System.Security.Claims;
 using Kooch.Api.Authentication;
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
@@ -12,6 +16,86 @@ namespace Kooch.Api.Tests;
 
 public sealed class ReservationActivityTests
 {
+    [Fact]
+    public async Task InternalNote_UsesCurrentUserAndReturnsCreatedActivity()
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db);
+        var permissions = new TestPermissions(true);
+        var controller = new AdminReservationActivitiesController(new ReservationActivityService(db, permissions))
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+        controller.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, "20"),
+             new Claim(ClaimTypes.Role, UserRole.SuperAdmin.ToString())], "test"));
+
+        var result = await controller.CreateInternalNote(10,
+            new CreateReservationInternalNoteRequest { Details = "  Guest called support.  " }, default);
+
+        var created = Assert.IsType<ObjectResult>(result.Result);
+        Assert.Equal(StatusCodes.Status201Created, created.StatusCode);
+        var response = Assert.IsType<ReservationActivityResponse>(created.Value);
+        Assert.Equal(10, response.ReservationId);
+        Assert.Equal(20, response.ActorUserId);
+        Assert.Equal("Ada Lovelace", response.ActorDisplayName);
+        Assert.Equal("InternalNote", response.ActivityType);
+        Assert.Equal(ReservationActivityVisibility.Internal, response.Visibility);
+        Assert.Equal("Guest called support.", response.Details);
+        Assert.Null(response.RelatedEntityId);
+        Assert.Equal((20, 11, "bookings.edit"), permissions.LastCheck);
+        Assert.Equal(PermissionKey.ManageReservations, permissions.LastPlatformPermission);
+        Assert.Single(await db.ReservationActivities.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData(" \t ")]
+    public async Task InternalNote_RejectsMissingOrWhitespaceDetails(string? details)
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db);
+        var service = new ReservationActivityService(db, new TestPermissions(true));
+
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateInternalNoteAsync(10, 20, details));
+        Assert.Empty(db.ReservationActivities);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task InternalNote_RequiresPlatformAndPropertyWritePermission(
+        bool platformAllowed, bool propertyAllowed)
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db);
+        var permissions = new TestPermissions(propertyAllowed) { PlatformAllowed = platformAllowed };
+        var service = new ReservationActivityService(db, permissions);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.CreateInternalNoteAsync(10, 20, "Private note"));
+        Assert.Empty(db.ReservationActivities);
+    }
+
+    [Fact]
+    public async Task InternalNote_RemainsUnchangedAfterActorRenameAndCannotBeEdited()
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db);
+        var service = new ReservationActivityService(db, new TestPermissions(true));
+        await service.CreateInternalNoteAsync(10, 20, "Original note");
+        var actor = await db.Users.SingleAsync(user => user.Id == 20);
+        actor.FirstName = "Changed";
+        await db.SaveChangesAsync();
+        db.ChangeTracker.Clear();
+
+        var note = await db.ReservationActivities.SingleAsync();
+        Assert.Equal("Ada Lovelace", note.ActorDisplayName);
+        note.Details = "Changed note";
+        await Assert.ThrowsAsync<InvalidOperationException>(() => db.SaveChangesAsync());
+    }
+
     [Fact]
     public async Task Append_SnapshotsActorNameAndKeepsItAfterUserRename()
     {
@@ -121,11 +205,18 @@ public sealed class ReservationActivityTests
     }
 
     [Fact]
-    public void AdminRoute_IsReadOnlyAndRequiresAdminWorkspace()
+    public void AdminRoute_RequiresAdminAndExistingReservationWritePermissionForNotes()
     {
         var controller = typeof(AdminReservationActivitiesController);
         Assert.NotNull(Assert.Single(controller.GetCustomAttributes(typeof(AdminAuthorizeAttribute), true)));
-        Assert.Single(controller.GetMethods(), method => method.DeclaringType == controller);
+        var create = controller.GetMethod(nameof(AdminReservationActivitiesController.CreateInternalNote))!;
+        var permission = Assert.Single(create.GetCustomAttributes(typeof(PermissionAuthorizeAttribute), true))
+            as PermissionAuthorizeAttribute;
+        Assert.Equal($"{AuthorizationPolicies.PermissionPrefix}{PermissionKey.ManageReservations}", permission?.Policy);
+        Assert.DoesNotContain(controller.GetMethods(), method => method.DeclaringType == controller &&
+            method.Name is "Update" or "Delete");
+        Assert.Equal([nameof(CreateReservationInternalNoteRequest.Details)],
+            typeof(CreateReservationInternalNoteRequest).GetProperties().Select(property => property.Name).ToArray());
     }
 
     private static KoochDbContext CreateContext() => new(
@@ -142,7 +233,9 @@ public sealed class ReservationActivityTests
     private sealed class TestPermissions(bool allowed) : IPermissionService
     {
         public bool Allowed { get; set; } = allowed;
+        public bool PlatformAllowed { get; set; } = true;
         public (int UserId, int PropertyId, string Key) LastCheck { get; private set; }
+        public PermissionKey? LastPlatformPermission { get; private set; }
 
         public Task<bool> CanAsync(int userId, int propertyId, string permissionKey,
             CancellationToken cancellationToken = default)
@@ -152,6 +245,10 @@ public sealed class ReservationActivityTests
         }
 
         public Task<bool> HasPermissionAsync(int userId, PermissionKey permissionKey, int? propertyId = null,
-            CancellationToken cancellationToken = default) => Task.FromResult(false);
+            CancellationToken cancellationToken = default)
+        {
+            LastPlatformPermission = permissionKey;
+            return Task.FromResult(PlatformAllowed);
+        }
     }
 }

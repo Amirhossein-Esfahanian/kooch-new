@@ -16,3 +16,8 @@ public sealed class ReservationActivityResponse
     public string? RelatedEntityType { get; set; }
     public int? RelatedEntityId { get; set; }
 }
+
+public sealed class CreateReservationInternalNoteRequest
+{
+    public string? Details { get; set; }
+}

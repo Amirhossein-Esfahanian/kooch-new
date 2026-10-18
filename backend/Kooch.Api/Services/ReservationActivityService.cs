@@ -7,6 +7,39 @@ namespace Kooch.Api.Services;
 
 public sealed class ReservationActivityService(KoochDbContext context, IPermissionService permissions)
 {
+    public async Task<ReservationActivityResponse> CreateInternalNoteAsync(
+        int reservationId, int actorUserId, string? details, CancellationToken cancellationToken = default)
+    {
+        var propertyId = await context.Reservations.AsNoTracking()
+            .Where(row => row.Id == reservationId)
+            .Select(row => (int?)row.PropertyId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new KeyNotFoundException("Reservation not found.");
+        if (!await permissions.HasPermissionAsync(actorUserId, PermissionKey.ManageReservations,
+                cancellationToken: cancellationToken) ||
+            !await permissions.CanAsync(actorUserId, propertyId, "bookings.edit", cancellationToken))
+            throw new UnauthorizedAccessException("You cannot manage this property's reservations.");
+        if (string.IsNullOrWhiteSpace(details))
+            throw new ArgumentException("Internal note details are required.", nameof(details));
+
+        var activity = await AppendAsync(reservationId, actorUserId, "InternalNote",
+            ReservationActivityVisibility.Internal, "یادداشت داخلی", details, cancellationToken: cancellationToken);
+        return new ReservationActivityResponse
+        {
+            Id = activity.Id,
+            ReservationId = activity.ReservationId,
+            ActorUserId = activity.ActorUserId,
+            ActorDisplayName = activity.ActorDisplayName,
+            ActivityType = activity.ActivityType,
+            Visibility = activity.Visibility,
+            Title = activity.Title,
+            Details = activity.Details,
+            OccurredAtUtc = activity.OccurredAtUtc,
+            RelatedEntityType = activity.RelatedEntityType,
+            RelatedEntityId = activity.RelatedEntityId
+        };
+    }
+
     public async Task<ReservationActivity> AppendAsync(
         int reservationId,
         int? actorUserId,

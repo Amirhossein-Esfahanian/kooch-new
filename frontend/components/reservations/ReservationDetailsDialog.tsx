@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -30,8 +30,11 @@ import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 import { bookedRatePlanLabel } from "@/lib/booked-rate-plan";
 import { toPersianDigits } from "@/lib/persian-digits";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
+import { apiRequest } from "@/lib/owner-api";
 
 interface ReservationDetailsDialogProps {
+  showAdminActivities?: boolean;
+  canAddInternalNote?: boolean;
   loading?: boolean;
   onAdjustPrice?: (
     reservation: ReservationTableItem,
@@ -544,6 +547,106 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
             );
           })}
         </ol>
+      )}
+    </KoochCard>
+  );
+}
+
+interface ReservationActivity {
+  id: number;
+  actorUserId: number | null;
+  actorDisplayName: string;
+  activityType: string;
+  title: string;
+  details: string | null;
+  occurredAtUtc: string;
+}
+
+function AdminActivitySection({ reservationId, canAddNote }: { reservationId: number; canAddNote: boolean }) {
+  const [activities, setActivities] = useState<ReservationActivity[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const [note, setNote] = useState("");
+  const [noteError, setNoteError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const submittingRef = useRef(false);
+  const [reload, setReload] = useState(0);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    setLoadError("");
+    setActivities([]);
+    setNote("");
+    setNoteError("");
+    apiRequest<ReservationActivity[]>(`/admin/reservations/${reservationId}/activities`)
+      .then((result) => { if (active) setActivities(result); })
+      .catch((error: unknown) => {
+        if (active) setLoadError(error instanceof Error ? error.message : "دریافت تاریخچه فعالیت‌ها انجام نشد.");
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, [reservationId, reload]);
+
+  async function submitNote(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const details = note.trim();
+    if (!details) {
+      setNoteError("متن یادداشت را وارد کنید.");
+      return;
+    }
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    setSaving(true);
+    setNoteError("");
+    try {
+      const created = await apiRequest<ReservationActivity>(
+        `/admin/reservations/${reservationId}/activities/internal-notes`,
+        { method: "POST", body: JSON.stringify({ details }) },
+      );
+      setActivities((current) => [...current, created].sort((a, b) =>
+        Date.parse(a.occurredAtUtc) - Date.parse(b.occurredAtUtc) || a.id - b.id));
+      setNote("");
+    } catch (error) {
+      setNoteError(error instanceof Error ? error.message : "ثبت یادداشت انجام نشد.");
+    } finally {
+      submittingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  return (
+    <KoochCard className="grid gap-3" padding="sm" variant="elevated">
+      <h3 className="text-sm font-bold text-foreground">تاریخچه فعالیت‌ها</h3>
+      {loading ? <p className="text-sm text-muted-foreground" role="status">در حال دریافت فعالیت‌ها...</p> :
+        loadError ? <div className="grid justify-items-start gap-2" role="alert">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <KoochButton onClick={() => setReload((value) => value + 1)} size="sm" variant="outline">تلاش دوباره</KoochButton>
+        </div> : activities.length === 0 ?
+          <p className="text-sm text-muted-foreground">هنوز فعالیتی ثبت نشده است.</p> :
+          <ol className="grid gap-0">
+            {activities.map((activity) => (
+              <li className="relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1" key={activity.id}>
+                <span aria-hidden="true" className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary/70" />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <strong className="text-sm text-foreground">{activity.title}</strong>
+                  <time className="text-xs text-muted-foreground" dateTime={activity.occurredAtUtc}>{formatDateTime(activity.occurredAtUtc)}</time>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                  <span>{activity.actorUserId === null ? "سیستم" : activity.actorDisplayName}</span>
+                  <span aria-label="نوع فعالیت" className="rounded-md border border-border px-1.5 py-0.5">{activity.activityType === "InternalNote" ? "یادداشت داخلی" : "فعالیت"}</span>
+                </div>
+                {activity.details && <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{activity.details}</p>}
+              </li>
+            ))}
+          </ol>}
+      {canAddNote && (
+        <form className="grid gap-2 border-t border-border pt-3" onSubmit={submitNote}>
+          <KoochField error={noteError || undefined} helperText="این یادداشت فقط برای مدیران است و به اقامتگاه یا مهمان نمایش داده نمی‌شود." label="یادداشت داخلی">
+            <KoochTextarea maxLength={4000} onChange={(event) => { setNote(event.target.value); if (noteError) setNoteError(""); }} rows={2} value={note} />
+          </KoochField>
+          <KoochButton className="justify-self-start" loading={saving} size="sm" type="submit">افزودن یادداشت داخلی</KoochButton>
+        </form>
       )}
     </KoochCard>
   );
@@ -1334,6 +1437,8 @@ function ManualPaymentRejectDialog({
 }
 
 export function ReservationDetailsDialog({
+  showAdminActivities = false,
+  canAddInternalNote = false,
   loading = false,
   manualPayments = [],
   manualPaymentsLoading = false,
@@ -2048,6 +2153,13 @@ export function ReservationDetailsDialog({
             )}
 
             <TimelineSection events={timelineEvents} />
+            {showAdminActivities && typeof (reservation.reservationId ?? reservation.id) === "number" && (
+              <AdminActivitySection
+                canAddNote={canAddInternalNote}
+                key={reservation.reservationId ?? reservation.id}
+                reservationId={(reservation.reservationId ?? reservation.id)!}
+              />
+            )}
 
             <DetailSection title="مهلت پرداخت">
               <DetailItem

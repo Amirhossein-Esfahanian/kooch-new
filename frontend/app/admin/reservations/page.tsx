@@ -230,6 +230,8 @@ function AdminReservationsContent() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const canManagePayments =
     platformRole === "SuperAdmin" || platformPermissions.includes("ManagePayments");
+  const canManageReservations =
+    platformRole === "SuperAdmin" || platformPermissions.includes("ManageReservations");
   const propertyOptions = useMemo(
     () =>
       properties.map((property) => ({
@@ -1277,6 +1279,8 @@ function AdminReservationsContent() {
         />
 
         <ReservationDetailsDialog
+          showAdminActivities
+          canAddInternalNote={canManageReservations}
           onViewVoucher={canManagePayments ? (reservation) => {
             const id = reservation.reservationId ?? reservation.id;
             if (id) router.push(`/admin/reservations/${id}/voucher`);
