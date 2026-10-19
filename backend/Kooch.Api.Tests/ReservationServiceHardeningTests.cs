@@ -110,6 +110,7 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(
             ReservationStatus.PendingApproval,
             (await harness.DbContext.Reservations.FindAsync(pending.Id))!.Status);
+        Assert.Empty(await harness.DbContext.ReservationActivities.ToListAsync());
     }
 
     [Fact]
@@ -142,6 +143,26 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, approved.Status);
         Assert.NotNull(approved.PaymentExpiresAtUtc);
         Assert.InRange(approved.PaymentExpiresAtUtc.Value, before, after);
+    }
+
+    [Fact]
+    public async Task Approval_AppendsOnePropertyVisibleActivityForAuthenticatedActor()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync();
+        var pending = await harness.AddReservationAsync(ReservationStatus.PendingApproval);
+
+        await harness.Service.ApproveAsync(pending.Id, harness.Owner);
+
+        var activity = Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
+        Assert.Equal(pending.Id, activity.ReservationId);
+        Assert.Equal("Approved", activity.ActivityType);
+        Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+        Assert.Equal(harness.Owner.UserId, activity.ActorUserId);
+        Assert.Equal("owner user", activity.ActorDisplayName);
+        Assert.Null(activity.Details);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            harness.Service.ApproveAsync(pending.Id, harness.Owner));
+        Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
     }
 
     [Fact]
@@ -178,6 +199,12 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(ReservationStatus.Rejected, expired.Status);
         Assert.Equal(ReservationStatus.PendingApproval, stillPending.Status);
         Assert.Null(stillPending.PaymentExpiresAtUtc);
+        var activity = Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
+        Assert.Equal(expired.Id, activity.ReservationId);
+        Assert.Equal("Rejected", activity.ActivityType);
+        Assert.Null(activity.ActorUserId);
+        Assert.False(await harness.Service.ExpireApprovalWindowAsync(expired.Id));
+        Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
     }
 
     [Fact]
@@ -198,6 +225,15 @@ public sealed class ReservationServiceHardeningTests
         Assert.Equal(0, await harness.Service.ExpirePendingApprovalReservationsAsync(100));
         Assert.Equal(ReservationStatus.Rejected, first.Status);
         Assert.Equal(ReservationStatus.Rejected, second.Status);
+        var activities = await harness.DbContext.ReservationActivities.ToListAsync();
+        Assert.Equal(2, activities.Count);
+        Assert.All(activities, activity =>
+        {
+            Assert.Equal("Rejected", activity.ActivityType);
+            Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+            Assert.Null(activity.ActorUserId);
+            Assert.Equal("System", activity.ActorDisplayName);
+        });
     }
 
     [Fact]
@@ -228,6 +264,15 @@ public sealed class ReservationServiceHardeningTests
         Assert.DoesNotContain(
             harness.AuditLogService.Entries,
             entry => entry.EntityId == manuallyRejected.Id);
+        var activities = await harness.DbContext.ReservationActivities.ToListAsync();
+        var timeoutActivity = Assert.Single(activities, item => item.ReservationId == expired.Id);
+        Assert.Equal("Rejected", timeoutActivity.ActivityType);
+        Assert.Null(timeoutActivity.ActorUserId);
+        Assert.Equal(ReservationActivityVisibility.PropertyVisible, timeoutActivity.Visibility);
+        var manualActivity = Assert.Single(activities, item => item.ReservationId == manuallyRejected.Id);
+        Assert.Equal("Rejected", manualActivity.ActivityType);
+        Assert.Equal(harness.Owner.UserId, manualActivity.ActorUserId);
+        Assert.Null(manualActivity.Details);
     }
 
     [Theory]
@@ -293,6 +338,10 @@ public sealed class ReservationServiceHardeningTests
         Assert.True(BookingSessionQueryService.BuildSummary(completed).IsPaymentReady);
         Assert.All(completed, item =>
             Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, item.Status));
+        var activities = await harness.DbContext.ReservationActivities.ToListAsync();
+        Assert.Equal(2, activities.Count);
+        Assert.Contains(activities, item => item.ReservationId == first.Id && item.ActivityType == "Approved");
+        Assert.Contains(activities, item => item.ReservationId == second.Id && item.ActivityType == "Approved");
     }
 
     [Theory]
@@ -311,6 +360,7 @@ public sealed class ReservationServiceHardeningTests
             harness.Service.ApproveAsync(pending.Id, harness.Owner));
 
         Assert.Contains("reservation.paymentWindowMinutes", error.Message);
+        Assert.Empty(await harness.DbContext.ReservationActivities.ToListAsync());
     }
 
     [Fact]
@@ -412,6 +462,43 @@ public sealed class ReservationServiceHardeningTests
 
         Assert.Equal(ReservationStatus.Rejected, rejected.Status);
         Assert.Empty(rejected.AllowedStatusTransitions);
+        var activity = Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
+        Assert.Equal("Rejected", activity.ActivityType);
+        Assert.Equal(harness.Owner.UserId, activity.ActorUserId);
+        Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            harness.Service.UpdateStatusAsync(pending.Id,
+                new ReservationStatusUpdateRequest { Status = ReservationStatus.Rejected }, harness.Owner));
+        Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
+    }
+
+    [Fact]
+    public async Task FullUpdateRejection_AppendsOneActivityWithAdminActor()
+    {
+        await using var harness = await ReservationTestHarness.CreateAsync(useAuthoritativePricing: true);
+        var pending = await harness.AddReservationAsync(ReservationStatus.PendingApproval);
+        harness.DbContext.RoomDailyPrices.AddRange(
+            new RoomDailyPrice { RoomTypeId = 20, Date = harness.CheckIn, BasePrice = 100 },
+            new RoomDailyPrice { RoomTypeId = 20, Date = harness.CheckIn.AddDays(1), BasePrice = 100 });
+        await harness.DbContext.SaveChangesAsync();
+
+        await harness.Service.UpdateAsync(pending.Id, new ReservationUpdateRequest
+        {
+            Status = ReservationStatus.Rejected,
+            GuestId = 40,
+            RoomTypeId = 20,
+            RoomIds = [30],
+            CheckInDate = harness.CheckIn,
+            CheckOutDate = harness.CheckOut,
+            Adults = 1
+        }, harness.SuperAdmin);
+
+        var activity = Assert.Single(await harness.DbContext.ReservationActivities.ToListAsync());
+        Assert.Equal(pending.Id, activity.ReservationId);
+        Assert.Equal("Rejected", activity.ActivityType);
+        Assert.Equal(harness.SuperAdmin.UserId, activity.ActorUserId);
+        Assert.Equal("admin user", activity.ActorDisplayName);
+        Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
     }
 
     [Fact]
@@ -427,6 +514,7 @@ public sealed class ReservationServiceHardeningTests
                 pending.Id,
                 new ReservationStatusUpdateRequest { Status = ReservationStatus.Rejected },
                 harness.Owner));
+        Assert.Empty(await harness.DbContext.ReservationActivities.ToListAsync());
     }
 
     [Fact]

@@ -550,6 +550,10 @@ public class ReservationService(
             cancellationToken);
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (reservation.Status == ReservationStatus.Rejected)
+        {
+            await AppendManualRejectionActivityAsync(reservation.Id, currentUser.UserId, cancellationToken);
+        }
         await SendStatusNotificationAsync(reservation, statusNotification, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
@@ -608,7 +612,7 @@ public class ReservationService(
 
         if (IsApprovalExpired(reservation, DateTime.UtcNow))
         {
-            ApplyOwnerApprovalTimeout(reservation, DateTime.UtcNow);
+            await ApplyOwnerApprovalTimeoutAsync(reservation, DateTime.UtcNow, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             await notificationDispatcher.NotifyOwnerApprovalTimeoutAsync(
                 reservation.Id,
@@ -662,7 +666,7 @@ public class ReservationService(
             ?? throw new KeyNotFoundException("Reservation not found.");
         if (IsApprovalExpired(reservation, DateTime.UtcNow))
         {
-            ApplyOwnerApprovalTimeout(reservation, DateTime.UtcNow);
+            await ApplyOwnerApprovalTimeoutAsync(reservation, DateTime.UtcNow, cancellationToken);
             await dbContext.SaveChangesAsync(cancellationToken);
             await notificationDispatcher.NotifyOwnerApprovalTimeoutAsync(
                 reservation.Id,
@@ -1091,7 +1095,7 @@ public class ReservationService(
             return false;
         }
 
-        ApplyOwnerApprovalTimeout(reservation, now);
+        await ApplyOwnerApprovalTimeoutAsync(reservation, now, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         await notificationDispatcher.NotifyOwnerApprovalTimeoutAsync(
             reservation.Id,
@@ -1396,6 +1400,10 @@ public class ReservationService(
             reservation.PropertyId,
             reservation.ReservationNumber,
             $"Reservation {reservation.ReservationNumber} was approved and is awaiting payment.");
+        await new ReservationActivityService(dbContext).AppendAsync(
+            reservation.Id, currentUser.UserId, "Approved",
+            ReservationActivityVisibility.PropertyVisible, "درخواست رزرو تأیید شد",
+            cancellationToken: cancellationToken);
 
         return TryGetStatusNotification(
                 ReservationStatus.ApprovedAwaitingPayment,
@@ -1468,6 +1476,10 @@ public class ReservationService(
 
         await using var transaction = await dbContext.Database.BeginTransactionAsync(cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
+        if (reservation.Status == ReservationStatus.Rejected)
+        {
+            await AppendManualRejectionActivityAsync(reservation.Id, currentUser.UserId, cancellationToken);
+        }
         await SendStatusNotificationAsync(reservation, statusNotification, cancellationToken);
 
         await transaction.CommitAsync(cancellationToken);
@@ -1727,9 +1739,10 @@ public class ReservationService(
     private static InvalidOperationException CapacityChangedException() =>
         new("Availability changed. There is no longer enough capacity for the selected dates.");
 
-    private void ApplyOwnerApprovalTimeout(
+    private async Task ApplyOwnerApprovalTimeoutAsync(
         Reservation reservation,
-        DateTime now)
+        DateTime now,
+        CancellationToken cancellationToken)
     {
         reservation.Status = ReservationStatus.Rejected;
         reservation.ExpiredAtUtc = now;
@@ -1743,7 +1756,20 @@ public class ReservationService(
             reservation.PropertyId,
             reservation.ReservationNumber,
             $"{ReservationRejectionReasons.OwnerApprovalTimeout}: reservation {reservation.ReservationNumber} was automatically rejected.");
+        await new ReservationActivityService(dbContext).AppendAsync(
+            reservation.Id, null, "Rejected",
+            ReservationActivityVisibility.PropertyVisible, "درخواست رزرو به‌دلیل پایان مهلت تأیید رد شد",
+            cancellationToken: cancellationToken);
     }
+
+    private Task AppendManualRejectionActivityAsync(
+        int reservationId,
+        int actorUserId,
+        CancellationToken cancellationToken) =>
+        new ReservationActivityService(dbContext).AppendAsync(
+            reservationId, actorUserId, "Rejected",
+            ReservationActivityVisibility.PropertyVisible, "درخواست رزرو رد شد",
+            cancellationToken: cancellationToken);
 
     private static bool IsApprovalExpired(Reservation reservation, DateTime now) =>
         ReservationStatusNormalizer.Normalize(reservation.Status) == ReservationStatus.PendingApproval &&
