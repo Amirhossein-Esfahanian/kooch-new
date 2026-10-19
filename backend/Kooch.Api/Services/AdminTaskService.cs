@@ -1,4 +1,5 @@
 using System.Data;
+using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.AdminTasks;
 using Kooch.Api.Entities;
@@ -7,7 +8,8 @@ using Microsoft.EntityFrameworkCore;
 namespace Kooch.Api.Services;
 
 public sealed class AdminTaskService(
-    KoochDbContext context, IPermissionService permissions, ReservationActivityService activities)
+    KoochDbContext context, IPermissionService permissions, ReservationActivityService activities,
+    INotificationService notifications)
 {
     public async Task<IReadOnlyList<AdminTaskAssigneeResponse>> ListAssigneesAsync(
         int actorUserId, CancellationToken cancellationToken = default)
@@ -76,7 +78,7 @@ public sealed class AdminTaskService(
         var description = Optional(request.Description, 4000, nameof(request.Description));
         if (!Enum.IsDefined(request.Priority)) throw new ArgumentOutOfRangeException(nameof(request.Priority));
         var actorName = await ActorNameAsync(actorUserId, cancellationToken);
-        await RequireAdminAssigneeAsync(request.AssignedToUserId, cancellationToken);
+        await RequireAdminAssigneeAsync(request.AssignedToUserId, request.ReservationId, cancellationToken);
         if (request.ReservationId.HasValue && !await context.Reservations.AsNoTracking()
                 .AnyAsync(row => row.Id == request.ReservationId.Value, cancellationToken))
             throw new KeyNotFoundException("Reservation not found.");
@@ -104,6 +106,7 @@ public sealed class AdminTaskService(
         await context.SaveChangesAsync(cancellationToken);
         if (task.ReservationId.HasValue)
             await AppendActivityAsync(task, actorUserId, "AdminTaskCreated", "وظیفه ایجاد شد", cancellationToken);
+        await NotifyAssigneeAsync(task, actorName, $"admin-task-assigned:create:{task.Id}", cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return Map(task, task.Changes.OrderBy(row => row.OccurredAtUtc).ThenBy(row => row.Id).ToArray());
     }
@@ -113,26 +116,28 @@ public sealed class AdminTaskService(
     {
         await RequireGlobalPermissionAsync(actorUserId, cancellationToken);
         var actorName = await ActorNameAsync(actorUserId, cancellationToken);
-        await RequireAdminAssigneeAsync(request.AssignedToUserId, cancellationToken);
         await using var transaction = context.Database.IsRelational()
             ? await context.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
             : null;
         var task = await GetForWriteAsync(actorUserId, id, cancellationToken);
         if (task.AssignedToUserId == request.AssignedToUserId)
             throw new ArgumentException("The task is already assigned to this user.");
+        await RequireAdminAssigneeAsync(request.AssignedToUserId, task.ReservationId, cancellationToken);
         var previous = task.AssignedToUserId;
         task.AssignedToUserId = request.AssignedToUserId;
         task.UpdatedByUserId = actorUserId;
-        task.Changes.Add(new AdminTaskChange
+        var change = new AdminTaskChange
         {
             ActorUserId = actorUserId, ActorDisplayName = actorName,
             ChangeType = AdminTaskChangeType.Reassigned, OccurredAtUtc = DateTime.UtcNow,
             PreviousAssigneeUserId = previous, NewAssigneeUserId = request.AssignedToUserId,
             CreatedByUserId = actorUserId
-        });
+        };
+        task.Changes.Add(change);
         await context.SaveChangesAsync(cancellationToken);
         if (task.ReservationId.HasValue)
             await AppendActivityAsync(task, actorUserId, "AdminTaskReassigned", "وظیفه واگذار شد", cancellationToken);
+        await NotifyAssigneeAsync(task, actorName, $"admin-task-assigned:change:{change.Id}", cancellationToken);
         if (transaction is not null) await transaction.CommitAsync(cancellationToken);
         return Map(task, task.Changes.OrderBy(row => row.OccurredAtUtc).ThenBy(row => row.Id).ToArray());
     }
@@ -199,11 +204,28 @@ public sealed class AdminTaskService(
             throw new UnauthorizedAccessException("You cannot access this property's reservation tasks.");
     }
 
-    private async Task RequireAdminAssigneeAsync(int userId, CancellationToken cancellationToken)
+    private async Task RequireAdminAssigneeAsync(int userId, int? reservationId, CancellationToken cancellationToken)
     {
         if (userId <= 0 || !await ActiveAdminUsers().AnyAsync(user => user.Id == userId, cancellationToken))
             throw new ArgumentException("Assignee must be an active Admin user.");
+        if (!await permissions.HasPermissionAsync(userId, PermissionKey.ManageReservations,
+                cancellationToken: cancellationToken))
+            throw new ArgumentException("Assignee cannot access Admin tasks.");
+        await RequireReservationPermissionAsync(userId, reservationId, "bookings.view", cancellationToken);
     }
+
+    private Task NotifyAssigneeAsync(AdminTask task, string actorName, string dedupeKey,
+        CancellationToken cancellationToken) => notifications.SendAsync(new NotificationRequest
+    {
+        EventType = NotificationEventType.AdminTaskAssigned,
+        RecipientUserId = task.AssignedToUserId,
+        ReservationId = task.ReservationId,
+        Subject = "کار جدید ارجاع شد",
+        Message = $"{actorName} کار «{task.Title}» را به شما ارجاع داد.",
+        DataJson = JsonSerializer.Serialize(new { taskId = task.Id, internalLink = "/admin/tasks" }),
+        DedupeKey = dedupeKey,
+        Channels = NotificationChannel.InApp
+    }, cancellationToken);
 
     private IQueryable<User> ActiveAdminUsers() => context.Users.AsNoTracking()
         .Where(user => user.IsActive &&

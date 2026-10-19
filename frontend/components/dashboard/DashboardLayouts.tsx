@@ -690,6 +690,12 @@ function DashboardShell({
     router.push(`/admin/reservations?reservationNumber=${encodeURIComponent(item.reservationNumber)}`);
   };
 
+  const handleOpenTask = async (item: AccountNotification) => {
+    if (!item.isRead) await handleMarkRead(item.id);
+    setDrawerType(null);
+    router.push("/admin/tasks");
+  };
+
   const handleMarkAllRead = async () => {
     if (mutationInFlightRef.current) return;
     mutationInFlightRef.current = true;
@@ -792,6 +798,7 @@ function DashboardShell({
         markingAll={markingAll}
         onMarkRead={handleMarkRead}
         onOpenReservation={enableAdminReservationLinks ? handleOpenReservation : undefined}
+        onOpenTask={enableAdminReservationLinks ? handleOpenTask : undefined}
         onMarkAllRead={handleMarkAllRead}
         onRetry={() => { void refreshUnreadCount(); setInboxReload((value) => value + 1); }}
         onClose={() => setDrawerType(null)}
@@ -1304,6 +1311,7 @@ function DashboardSideDrawer({
   markingAll,
   onMarkRead,
   onOpenReservation,
+  onOpenTask,
   onMarkAllRead,
   onRetry,
 }: {
@@ -1320,6 +1328,7 @@ function DashboardSideDrawer({
   markingAll: boolean;
   onMarkRead: (id: number) => void;
   onOpenReservation?: (item: AccountNotification) => void;
+  onOpenTask?: (item: AccountNotification) => void;
   onMarkAllRead: () => void;
   onRetry: () => void;
 }) {
@@ -1382,6 +1391,7 @@ function DashboardSideDrawer({
                 markingAll={markingAll}
                 onMarkRead={onMarkRead}
                 onOpenReservation={onOpenReservation}
+                onOpenTask={onOpenTask}
                 onMarkAllRead={onMarkAllRead}
                 onRetry={onRetry}
               />
@@ -1518,6 +1528,7 @@ function NotificationInbox({
   markingAll,
   onMarkRead,
   onOpenReservation,
+  onOpenTask,
   onMarkAllRead,
   onRetry,
 }: {
@@ -1531,6 +1542,7 @@ function NotificationInbox({
   markingAll: boolean;
   onMarkRead: (id: number) => void;
   onOpenReservation?: (item: AccountNotification) => void;
+  onOpenTask?: (item: AccountNotification) => void;
   onMarkAllRead: () => void;
   onRetry: () => void;
 }) {
@@ -1569,9 +1581,8 @@ function NotificationInbox({
         <ul className="space-y-2">
           {items.map((item) => {
             const navigable = Boolean(
-              onOpenReservation &&
-              item.eventType === "ReservationCancellationRequested" &&
-              item.reservationNumber,
+              (onOpenReservation && item.eventType === "ReservationCancellationRequested" && item.reservationNumber) ||
+              (onOpenTask && item.eventType === "AdminTaskAssigned"),
             );
             const content = (
               <>
@@ -1596,9 +1607,10 @@ function NotificationInbox({
                     className={`w-full rounded-lg border border-border p-3 text-start transition-colors hover:border-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${item.isRead ? "bg-card" : "bg-[var(--theme-primary-soft)]"}`}
                     disabled={actionPending}
                     aria-label={navigable
-                      ? `مشاهده رزرو ${item.reservationNumber}`
+                      ? item.eventType === "AdminTaskAssigned" ? "مشاهده کارهای من" : `مشاهده رزرو ${item.reservationNumber}`
                       : `علامت‌گذاری اعلان ${item.subject || item.message} به‌عنوان خوانده‌شده`}
-                    onClick={() => navigable ? onOpenReservation?.(item) : onMarkRead(item.id)}
+                    onClick={() => item.eventType === "AdminTaskAssigned" && onOpenTask
+                      ? onOpenTask(item) : navigable ? onOpenReservation?.(item) : onMarkRead(item.id)}
                   >
                     {content}
                     {markingId === item.id && <span className="mt-2 block text-xs text-muted-foreground">در حال ثبت...</span>}

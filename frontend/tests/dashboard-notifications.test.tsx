@@ -42,6 +42,7 @@ const read = {
   readAtUtc: "2026-10-02T10:00:00Z",
 };
 const cancellation = { ...unread, eventType: "ReservationCancellationRequested" };
+const taskAssignment = { ...unread, eventType: "AdminTaskAssigned", subject: "کار جدید ارجاع شد", message: "مدیر کار «پیگیری رزرو» را به شما ارجاع داد.", reservationNumber: null };
 
 function response(body: unknown, status = 200) {
   return {
@@ -61,6 +62,16 @@ function openInbox() {
 }
 
 describe("Dashboard notification inbox", () => {
+  it("opens an assigned task alert in the existing Admin tasks page", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) =>
+      String(input).endsWith("/unread-count") ? response({ unreadCount: 0 })
+        : response({ items: [{ ...taskAssignment, isRead: true }], totalCount: 1, page: 1, pageSize: 20, totalPages: 1 })));
+    renderShell();
+    openInbox();
+    expect(await screen.findByText("مدیر کار «پیگیری رزرو» را به شما ارجاع داد.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده کارهای من" }));
+    expect(navigation.push).toHaveBeenCalledWith("/admin/tasks");
+  });
   afterEach(() => vi.unstubAllGlobals());
   beforeEach(() => {
     vi.clearAllMocks();

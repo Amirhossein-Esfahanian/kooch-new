@@ -152,7 +152,8 @@ public sealed class NotificationInboxTests
     private sealed class Store(string path) : IAsyncDisposable
     {
         public KoochDbContext Open() => new TestContext(new DbContextOptionsBuilder<KoochDbContext>()
-            .UseSqlite($"Data Source={path};Foreign Keys=False;Pooling=False").Options);
+            .UseSqlite($"Data Source={path};Foreign Keys=False;Pooling=False")
+            .AddInterceptors(SqliteTestFunctions.LenInterceptor).Options);
 
         public static async Task<Store> CreateAsync()
         {

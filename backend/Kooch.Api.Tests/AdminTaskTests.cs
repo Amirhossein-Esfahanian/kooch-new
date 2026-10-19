@@ -19,7 +19,7 @@ public sealed class AdminTaskTests
         await using var db = CreateDb();
         await SeedAsync(db);
         var permissions = new TestPermissions();
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
 
         var created = await service.CreateAsync(1, Request(reservationId: 10));
         Assert.Equal(AdminTaskStatus.Open, created.Status);
@@ -28,7 +28,20 @@ public sealed class AdminTaskTests
         Assert.Equal("Ada Admin", created.Changes[0].ActorDisplayName);
         Assert.Equal(AdminTaskChangeType.Created, created.Changes[0].ChangeType);
         var reassigned = await service.ReassignAsync(1, created.Id, new ReassignAdminTaskRequest(2));
+        var alerts = await db.NotificationLogs.OrderBy(log => log.Id).ToListAsync();
+        Assert.Equal(2, alerts.Count);
+        Assert.Equal([1, 2], alerts.Select(log => log.RecipientUserId).ToArray());
+        Assert.All(alerts, log =>
+        {
+            Assert.Equal(NotificationEventType.AdminTaskAssigned, log.EventType);
+            Assert.Equal(NotificationChannel.InApp, log.Channels);
+            Assert.Contains("Follow up", log.Message);
+            Assert.Contains("Ada Admin", log.Message);
+            Assert.Contains("/admin/tasks", log.DataJson);
+        });
         Assert.Equal(2, reassigned.AssignedToUserId);
+        await Assert.ThrowsAsync<ArgumentException>(() => service.ReassignAsync(1, created.Id,
+            new ReassignAdminTaskRequest(2)));
         Assert.Equal((1, 2), (reassigned.Changes[1].PreviousAssigneeUserId,
             reassigned.Changes[1].NewAssigneeUserId));
         await service.UpdateStatusAsync(1, created.Id,
@@ -70,7 +83,7 @@ public sealed class AdminTaskTests
         await using var db = CreateDb();
         await SeedAsync(db);
         var permissions = new TestPermissions();
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
         var created = await service.CreateAsync(1, Request());
         var listed = await service.ListAsync(1);
         Assert.Single(listed);
@@ -80,6 +93,7 @@ public sealed class AdminTaskTests
         Assert.Equal(AdminTaskStatus.Cancelled, cancelled.Status);
         Assert.Equal(2, cancelled.Changes.Count);
         Assert.Empty(db.ReservationActivities);
+        Assert.Single(db.NotificationLogs);
     }
 
     [Fact]
@@ -91,7 +105,7 @@ public sealed class AdminTaskTests
         db.Users.Add(new User { Id = 5, Role = UserRole.AdminAssistant });
         await db.SaveChangesAsync();
         var permissions = new TestPermissions();
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
 
         Assert.Equal([(5, "Admin 5"), (1, "Ada Admin"), (2, "Bea Assistant")],
             (await service.ListAssigneesAsync(1)).Select(user => (user.Id, user.DisplayName)).ToArray());
@@ -111,10 +125,25 @@ public sealed class AdminTaskTests
         await using var db = CreateDb();
         await SeedAsync(db);
         var permissions = new TestPermissions();
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
         await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync(1,
             Request() with { AssignedToUserId = assignee }));
         Assert.Empty(db.AdminTasks);
+        Assert.Empty(db.NotificationLogs);
+    }
+
+    [Fact]
+    public async Task Create_RejectsAssigneeWithoutTaskPermissionBeforeWritingAlert()
+    {
+        await using var db = CreateDb();
+        await SeedAsync(db);
+        var permissions = new TestPermissions { DeniedUserId = 2 };
+        var service = new AdminTaskService(db, permissions,
+            new ReservationActivityService(db, permissions), new NotificationService(db));
+        await Assert.ThrowsAsync<ArgumentException>(() => service.CreateAsync(1,
+            Request() with { AssignedToUserId = 2 }));
+        Assert.Empty(db.AdminTasks);
+        Assert.Empty(db.NotificationLogs);
     }
 
     [Fact]
@@ -123,7 +152,7 @@ public sealed class AdminTaskTests
         await using var db = CreateDb();
         await SeedAsync(db);
         var permissions = new TestPermissions { PropertyAllowed = false };
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.CreateAsync(1, Request(reservationId: 10)));
         Assert.Empty(db.AdminTasks);
         permissions.PropertyAllowed = true;
@@ -134,6 +163,7 @@ public sealed class AdminTaskTests
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ReassignAsync(1,
             created.Id, new ReassignAdminTaskRequest(2)));
         Assert.Single(db.AdminTaskChanges);
+        Assert.Single(db.NotificationLogs);
     }
 
     [Fact]
@@ -142,7 +172,7 @@ public sealed class AdminTaskTests
         await using var db = CreateDb();
         await SeedAsync(db);
         var permissions = new TestPermissions { PlatformAllowed = false };
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.CreateAsync(1, Request()));
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListAsync(1));
         permissions.PlatformAllowed = true;
@@ -164,7 +194,7 @@ public sealed class AdminTaskTests
         await using var db = CreateDb();
         await SeedAsync(db);
         var permissions = new TestPermissions();
-        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+        var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
         var created = await service.CreateAsync(1, Request());
         var change = await db.AdminTaskChanges.SingleAsync();
         change.ActorDisplayName = "Other";
@@ -188,7 +218,7 @@ public sealed class AdminTaskTests
             await db.Database.EnsureCreatedAsync();
             await SeedAsync(db);
             var permissions = new TestPermissions();
-            var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions));
+            var service = new AdminTaskService(db, permissions, new ReservationActivityService(db, permissions), new NotificationService(db));
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, Request(reservationId: 10)));
         }
         await using var verify = new TaskSqliteDbContext(new DbContextOptionsBuilder<KoochDbContext>()
@@ -196,6 +226,32 @@ public sealed class AdminTaskTests
         Assert.Empty(await verify.AdminTasks.ToListAsync());
         Assert.Empty(await verify.AdminTaskChanges.ToListAsync());
         Assert.Empty(await verify.ReservationActivities.ToListAsync());
+        Assert.Empty(await verify.NotificationLogs.ToListAsync());
+    }
+
+    [Fact]
+    public async Task RelationalTransaction_RollsBackAssignmentWhenNotificationWriteFails()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        SqliteTestFunctions.RegisterLen(connection);
+        var options = new DbContextOptionsBuilder<KoochDbContext>()
+            .UseSqlite(connection).AddInterceptors(new RejectNotificationInterceptor()).Options;
+        await using (var db = new TaskSqliteDbContext(options))
+        {
+            await db.Database.EnsureCreatedAsync();
+            await SeedAsync(db);
+            var permissions = new TestPermissions();
+            var service = new AdminTaskService(db, permissions,
+                new ReservationActivityService(db, permissions), new NotificationService(db));
+            await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(1, Request(reservationId: 10)));
+        }
+        await using var verify = new TaskSqliteDbContext(new DbContextOptionsBuilder<KoochDbContext>()
+            .UseSqlite(connection).Options);
+        Assert.Empty(await verify.AdminTasks.ToListAsync());
+        Assert.Empty(await verify.AdminTaskChanges.ToListAsync());
+        Assert.Empty(await verify.ReservationActivities.ToListAsync());
+        Assert.Empty(await verify.NotificationLogs.ToListAsync());
     }
 
     [Fact]
@@ -249,13 +305,27 @@ public sealed class AdminTaskTests
         }
     }
 
+    private sealed class RejectNotificationInterceptor : SaveChangesInterceptor
+    {
+        public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+            DbContextEventData eventData, InterceptionResult<int> result,
+            CancellationToken cancellationToken = default)
+        {
+            if (eventData.Context?.ChangeTracker.Entries<NotificationLog>()
+                .Any(entry => entry.State == EntityState.Added) == true)
+                throw new InvalidOperationException("Simulated notification write failure.");
+            return base.SavingChangesAsync(eventData, result, cancellationToken);
+        }
+    }
+
     private sealed class TestPermissions : IPermissionService
     {
         public bool PlatformAllowed { get; set; } = true;
+        public int? DeniedUserId { get; set; }
         public bool PropertyAllowed { get; set; } = true;
         public Task<bool> HasPermissionAsync(int userId, PermissionKey permissionKey,
             int? propertyId = null, CancellationToken cancellationToken = default) =>
-            Task.FromResult(PlatformAllowed && permissionKey == PermissionKey.ManageReservations);
+            Task.FromResult(PlatformAllowed && userId != DeniedUserId && permissionKey == PermissionKey.ManageReservations);
         public Task<bool> CanAsync(int userId, int propertyId, string permissionKey,
             CancellationToken cancellationToken = default) => Task.FromResult(PropertyAllowed);
     }

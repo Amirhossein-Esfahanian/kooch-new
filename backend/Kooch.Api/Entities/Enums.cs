@@ -189,7 +189,8 @@ public enum NotificationEventType
     ReservationOwnerApprovalTimedOut = 15,
     ReservationRejected = 16,
     ReservationApprovalReminder = 17,
-    ReservationCancellationRequested = 18
+    ReservationCancellationRequested = 18,
+    AdminTaskAssigned = 19
 }
 [Flags]
 public enum NotificationChannel
