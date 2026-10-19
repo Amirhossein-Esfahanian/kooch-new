@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Controller, useForm } from "react-hook-form";
 import { z } from "zod";
@@ -34,6 +34,7 @@ import { apiRequest } from "@/lib/owner-api";
 
 interface ReservationDetailsDialogProps {
   showAdminActivities?: boolean;
+  ownerActivityPropertyId?: number;
   canAddInternalNote?: boolean;
   onAssignTask?: (reservation: ReservationTableItem) => void;
   loading?: boolean;
@@ -553,14 +554,48 @@ function TimelineSection({ events }: { events: ReservationTimelineEvent[] }) {
   );
 }
 
-interface ReservationActivity {
-  id: number;
-  actorUserId: number | null;
+interface ActivityDisplay {
+  id?: number;
+  actorUserId?: number | null;
   actorDisplayName: string;
   activityType: string;
   title: string;
   details: string | null;
   occurredAtUtc: string;
+}
+
+interface ReservationActivity extends ActivityDisplay {
+  id: number;
+  actorUserId: number | null;
+}
+
+interface OwnerActivityPage {
+  items: ActivityDisplay[];
+  totalCount: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+function ActivityEntries({ activities }: { activities: ActivityDisplay[] }) {
+  return (
+    <ol className="grid gap-0">
+      {activities.map((activity, index) => (
+        <li className="relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1" key={activity.id ?? index}>
+          <span aria-hidden="true" className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary/70" />
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <strong className="text-sm text-foreground">{activity.title}</strong>
+            <time className="text-xs text-muted-foreground" dateTime={activity.occurredAtUtc}>{formatDateTime(activity.occurredAtUtc)}</time>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+            <span>{activity.actorUserId === null || (activity.actorUserId === undefined && activity.actorDisplayName === "System") ? "سیستم" : activity.actorDisplayName}</span>
+            <span aria-label="نوع فعالیت" className="rounded-md border border-border px-1.5 py-0.5">{activity.activityType === "InternalNote" ? "یادداشت داخلی" : "فعالیت"}</span>
+          </div>
+          {activity.details && <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{activity.details}</p>}
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function AdminActivitySection({ reservationId, canAddNote }: { reservationId: number; canAddNote: boolean }) {
@@ -625,22 +660,7 @@ function AdminActivitySection({ reservationId, canAddNote }: { reservationId: nu
           <KoochButton onClick={() => setReload((value) => value + 1)} size="sm" variant="outline">تلاش دوباره</KoochButton>
         </div> : activities.length === 0 ?
           <p className="text-sm text-muted-foreground">هنوز فعالیتی ثبت نشده است.</p> :
-          <ol className="grid gap-0">
-            {activities.map((activity) => (
-              <li className="relative grid gap-1 border-r-2 border-border py-3 pr-5 first:pt-1 last:border-transparent last:pb-1" key={activity.id}>
-                <span aria-hidden="true" className="absolute -right-[5px] top-4 h-2 w-2 rounded-full bg-primary/70" />
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <strong className="text-sm text-foreground">{activity.title}</strong>
-                  <time className="text-xs text-muted-foreground" dateTime={activity.occurredAtUtc}>{formatDateTime(activity.occurredAtUtc)}</time>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span>{activity.actorUserId === null ? "سیستم" : activity.actorDisplayName}</span>
-                  <span aria-label="نوع فعالیت" className="rounded-md border border-border px-1.5 py-0.5">{activity.activityType === "InternalNote" ? "یادداشت داخلی" : "فعالیت"}</span>
-                </div>
-                {activity.details && <p className="whitespace-pre-wrap break-words text-sm leading-6 text-muted-foreground">{activity.details}</p>}
-              </li>
-            ))}
-          </ol>}
+          <ActivityEntries activities={activities} />}
       {canAddNote && (
         <form className="grid gap-2 border-t border-border pt-3" onSubmit={submitNote}>
           <KoochField error={noteError || undefined} helperText="این یادداشت فقط برای مدیران است و به اقامتگاه یا مهمان نمایش داده نمی‌شود." label="یادداشت داخلی">
@@ -648,6 +668,78 @@ function AdminActivitySection({ reservationId, canAddNote }: { reservationId: nu
           </KoochField>
           <KoochButton className="justify-self-start" loading={saving} size="sm" type="submit">افزودن یادداشت داخلی</KoochButton>
         </form>
+      )}
+    </KoochCard>
+  );
+}
+
+function OwnerActivitySection({ propertyId, reservationId }: { propertyId: number; reservationId: number }) {
+  const [pages, setPages] = useState<Record<number, ActivityDisplay[]>>({});
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  const generationRef = useRef(0);
+  const requestInFlightRef = useRef(false);
+
+  const loadPage = useCallback(async (nextPage: number, generation: number) => {
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    setLoading(true);
+    setLoadError("");
+    try {
+      const result = await apiRequest<OwnerActivityPage>(
+        `/owner/properties/${propertyId}/reservations/${reservationId}/activities?page=${nextPage}&pageSize=20`,
+      );
+      if (generationRef.current !== generation) return;
+      setPages((current) => ({ ...current, [nextPage]: result.items }));
+      setPage(nextPage);
+      setTotalPages(result.totalPages);
+    } catch (error) {
+      if (generationRef.current === generation) {
+        setLoadError(error instanceof Error ? error.message : "دریافت تاریخچه فعالیت‌ها انجام نشد.");
+      }
+    } finally {
+      if (generationRef.current === generation) {
+        requestInFlightRef.current = false;
+        setLoading(false);
+      }
+    }
+  }, [propertyId, reservationId]);
+
+  useEffect(() => {
+    const generation = ++generationRef.current;
+    requestInFlightRef.current = false;
+    setPages({});
+    setPage(0);
+    setTotalPages(0);
+    void loadPage(1, generation);
+    return () => { generationRef.current += 1; };
+  }, [loadPage]);
+
+  const activities = Object.keys(pages)
+    .map(Number)
+    .sort((left, right) => left - right)
+    .flatMap((loadedPage) => pages[loadedPage]);
+
+  return (
+    <KoochCard className="grid gap-3" padding="sm" variant="elevated">
+      <h3 className="text-sm font-bold text-foreground">تاریخچه فعالیت‌ها</h3>
+      {loading && page === 0 && <p className="text-sm text-muted-foreground" role="status">در حال دریافت فعالیت‌ها...</p>}
+      {activities.length > 0 && <ActivityEntries activities={activities} />}
+      {!loading && page > 0 && activities.length === 0 && !loadError && (
+        <p className="text-sm text-muted-foreground">هنوز فعالیتی ثبت نشده است.</p>
+      )}
+      {loadError && (
+        <div className="grid justify-items-start gap-2" role="alert">
+          <p className="text-sm text-destructive">{loadError}</p>
+          <KoochButton onClick={() => void loadPage(page + 1, generationRef.current)} size="sm" variant="outline">تلاش دوباره</KoochButton>
+        </div>
+      )}
+      {page > 0 && page < totalPages && !loadError && (
+        <KoochButton className="justify-self-start" loading={loading} onClick={() => void loadPage(page + 1, generationRef.current)} size="sm" variant="outline">
+          نمایش فعالیت‌های بیشتر
+        </KoochButton>
       )}
     </KoochCard>
   );
@@ -1439,6 +1531,7 @@ function ManualPaymentRejectDialog({
 
 export function ReservationDetailsDialog({
   showAdminActivities = false,
+  ownerActivityPropertyId,
   canAddInternalNote = false,
   onAssignTask,
   loading = false,
@@ -2164,6 +2257,13 @@ export function ReservationDetailsDialog({
               <AdminActivitySection
                 canAddNote={canAddInternalNote}
                 key={reservation.reservationId ?? reservation.id}
+                reservationId={(reservation.reservationId ?? reservation.id)!}
+              />
+            )}
+            {ownerActivityPropertyId && typeof (reservation.reservationId ?? reservation.id) === "number" && (
+              <OwnerActivitySection
+                key={`${ownerActivityPropertyId}-${reservation.reservationId ?? reservation.id}`}
+                propertyId={ownerActivityPropertyId}
                 reservationId={(reservation.reservationId ?? reservation.id)!}
               />
             )}

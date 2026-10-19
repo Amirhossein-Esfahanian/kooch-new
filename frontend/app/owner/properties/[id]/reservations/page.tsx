@@ -358,6 +358,7 @@ export default function OwnerReservationsPage() {
         />
 
         <ReservationDetailsDialog
+          ownerActivityPropertyId={propertyId}
           onViewVoucher={canViewOwnerMenuItem(effectivePermissions, "Financial")
             ? (reservation) => {
                 const reservationId = reservation.reservationId ?? reservation.id;
