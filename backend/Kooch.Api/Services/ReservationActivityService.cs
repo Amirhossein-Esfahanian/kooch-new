@@ -7,6 +7,9 @@ namespace Kooch.Api.Services;
 
 public sealed class ReservationActivityService(KoochDbContext context, IPermissionService? permissions = null)
 {
+    private static readonly string[] OwnerVisibleActivityTypes =
+        ["Created", "Cancelled", "PaymentConfirmed", "Approved", "Rejected"];
+
     public Task<ReservationActivity> AppendPaymentConfirmedAsync(
         int reservationId, int? actorUserId, CancellationToken cancellationToken = default) =>
         AppendAsync(reservationId, actorUserId, "PaymentConfirmed",
@@ -140,6 +143,49 @@ public sealed class ReservationActivityService(KoochDbContext context, IPermissi
                 RelatedEntityId = row.RelatedEntityId
             })
             .ToListAsync(cancellationToken);
+    }
+
+    public async Task<PagedResult<OwnerReservationActivityResponse>> ListForOwnerAsync(
+        int propertyId, int reservationId, int userId, OwnerReservationActivityQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        var permissionService = permissions ?? throw new InvalidOperationException("Activity permissions are not configured.");
+        if (!await permissionService.CanAsync(userId, propertyId, "bookings.view", cancellationToken))
+            throw new UnauthorizedAccessException("You cannot access this property's reservations.");
+        if (!await context.Reservations.AsNoTracking()
+                .AnyAsync(row => row.Id == reservationId && row.PropertyId == propertyId, cancellationToken))
+            throw new KeyNotFoundException("Reservation not found.");
+
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize, 1, 50);
+        var visible = context.ReservationActivities.AsNoTracking()
+            .Where(row => row.ReservationId == reservationId &&
+                row.Visibility == ReservationActivityVisibility.PropertyVisible &&
+                OwnerVisibleActivityTypes.Contains(row.ActivityType) &&
+                row.RelatedEntityType == null);
+        var totalCount = await visible.CountAsync(cancellationToken);
+        var items = await visible
+            .OrderBy(row => row.OccurredAtUtc)
+            .ThenBy(row => row.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(row => new OwnerReservationActivityResponse
+            {
+                ActivityType = row.ActivityType,
+                Title = row.Title,
+                Details = row.Details,
+                ActorDisplayName = row.ActorDisplayName,
+                OccurredAtUtc = row.OccurredAtUtc
+            })
+            .ToListAsync(cancellationToken);
+        return new PagedResult<OwnerReservationActivityResponse>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize)
+        };
     }
 
     private static string Required(string value, int maxLength, string name) =>

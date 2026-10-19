@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Kooch.Api.Authentication;
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;
@@ -171,6 +172,123 @@ public sealed class ReservationActivityTests
         Assert.Contains(items, item => item.Visibility == ReservationActivityVisibility.Internal);
         await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ListForAdminAsync(99, 20));
     }
+
+    [Fact]
+    public async Task OwnerList_ReturnsOnlySafePropertyActivitiesInChronologicalPages()
+    {
+        await using var db = CreateContext();
+        await SeedAsync(db);
+        db.ReservationActivities.AddRange(
+            Activity(1, "Created", ReservationActivityVisibility.PropertyVisible, "Created", 1),
+            Activity(2, "InternalNote", ReservationActivityVisibility.Internal, "Private note", 2),
+            Activity(3, "AdminTaskCreated", ReservationActivityVisibility.Internal, "Private task", 3),
+            Activity(4, "AdminTaskCreated", ReservationActivityVisibility.PropertyVisible, "Misclassified task", 4),
+            Activity(5, "InternalNote", ReservationActivityVisibility.PropertyVisible, "Misclassified note", 5),
+            Activity(6, "Approved", ReservationActivityVisibility.PropertyVisible, "Approved", 6),
+            new ReservationActivity
+            {
+                Id = 7, ReservationId = 10, ActivityType = "Approved",
+                Visibility = ReservationActivityVisibility.PropertyVisible,
+                Title = "Misclassified linked task", Details = "Private task detail",
+                ActorDisplayName = "Admin", OccurredAtUtc = new DateTime(2026, 1, 7, 0, 0, 0, DateTimeKind.Utc),
+                RelatedEntityType = nameof(AdminTask), RelatedEntityId = 100
+            });
+        await db.SaveChangesAsync();
+        var permissions = new TestPermissions(true);
+        var service = new ReservationActivityService(db, permissions);
+        var controller = new OwnerReservationActivitiesController(service)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
+        };
+        controller.HttpContext.User = new ClaimsPrincipal(new ClaimsIdentity(
+            [new Claim(ClaimTypes.NameIdentifier, "20"),
+             new Claim(ClaimTypes.Role, UserRole.Client.ToString())], "test"));
+
+        var firstResult = await controller.List(11, 10,
+            new OwnerReservationActivityQuery { Page = 1, PageSize = 1 }, default);
+        var first = Assert.IsType<PagedResult<OwnerReservationActivityResponse>>(
+            Assert.IsType<OkObjectResult>(firstResult.Result).Value);
+        Assert.Equal(2, first.TotalCount);
+        Assert.Equal(2, first.TotalPages);
+        Assert.Equal("Created", Assert.Single(first.Items).ActivityType);
+        Assert.Equal((20, 11, "bookings.view"), permissions.LastCheck);
+
+        var second = await service.ListForOwnerAsync(11, 10, 20,
+            new OwnerReservationActivityQuery { Page = 2, PageSize = 1 });
+        var activity = Assert.Single(second.Items);
+        Assert.Equal("Approved", activity.ActivityType);
+        Assert.Equal("Approved", activity.Title);
+        Assert.Equal("Safe detail", activity.Details);
+        Assert.Equal("Owner", activity.ActorDisplayName);
+        Assert.Equal(new DateTime(2026, 1, 6, 0, 0, 0, DateTimeKind.Utc), activity.OccurredAtUtc);
+        Assert.Equal(["ActivityType", "Title", "Details", "ActorDisplayName", "OccurredAtUtc"],
+            typeof(OwnerReservationActivityResponse).GetProperties().Select(property => property.Name).ToArray());
+    }
+
+    [Fact]
+    public async Task OwnerList_EnforcesMembershipPermissionAndReservationProperty()
+    {
+        await using var db = CreateContext();
+        db.Users.AddRange(
+            new User { Id = 20, IsActive = true, Role = UserRole.Client },
+            new User { Id = 21, IsActive = true, Role = UserRole.Client },
+            new User { Id = 22, IsActive = true, Role = UserRole.Client },
+            new User { Id = 23, IsActive = true, Role = UserRole.Client });
+        db.Properties.AddRange(
+            new Property { Id = 11, OwnerId = 20 },
+            new Property { Id = 12, OwnerId = 23 });
+        db.Reservations.AddRange(
+            new Reservation { Id = 10, PropertyId = 11, ClientId = 20 },
+            new Reservation { Id = 12, PropertyId = 12, ClientId = 23 });
+        db.UserPropertyAccesses.AddRange(
+            new UserPropertyAccess
+            {
+                UserId = 20, PropertyId = 11, PropertyRole = PropertyUserRole.PropertyOwner,
+                PermissionMatrixJson = JsonSerializer.Serialize(PropertyPermissionMatrixDefaults.CreateOwner())
+            },
+            new UserPropertyAccess
+            {
+                UserId = 21, PropertyId = 11, PropertyRole = PropertyUserRole.Manager,
+                PermissionMatrixJson = "{\"Bookings\":{\"View\":false}}"
+            });
+        await db.SaveChangesAsync();
+        var service = new ReservationActivityService(db,
+            new PermissionService(db, new PropertyAccessService(db)));
+        var query = new OwnerReservationActivityQuery();
+
+        Assert.Empty((await service.ListForOwnerAsync(11, 10, 20, query)).Items);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListForOwnerAsync(11, 10, 21, query));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListForOwnerAsync(11, 10, 22, query));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ListForOwnerAsync(12, 12, 20, query));
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => service.ListForOwnerAsync(11, 12, 20, query));
+    }
+
+    [Fact]
+    public void OwnerActivityRoute_IsAuthenticatedReadOnlyAndPropertyScoped()
+    {
+        var controller = typeof(OwnerReservationActivitiesController);
+        Assert.NotNull(Assert.Single(controller.GetCustomAttributes(typeof(OwnerAuthorizeAttribute), true)));
+        var route = Assert.Single(controller.GetCustomAttributes(typeof(RouteAttribute), true)) as RouteAttribute;
+        Assert.Equal("api/owner/properties/{propertyId:int}/reservations/{reservationId:int}/activities",
+            route?.Template);
+        Assert.NotNull(Assert.Single(controller.GetMethod(nameof(OwnerReservationActivitiesController.List))!
+            .GetCustomAttributes(typeof(HttpGetAttribute), true)));
+        Assert.DoesNotContain(controller.GetMethods(), method => method.DeclaringType == controller &&
+            method.GetCustomAttributes(typeof(HttpPostAttribute), true).Length > 0);
+    }
+
+    private static ReservationActivity Activity(int id, string type, ReservationActivityVisibility visibility,
+        string title, int day, int reservationId = 10) => new()
+    {
+        Id = id,
+        ReservationId = reservationId,
+        ActivityType = type,
+        Visibility = visibility,
+        Title = title,
+        Details = "Safe detail",
+        ActorDisplayName = "Owner",
+        OccurredAtUtc = new DateTime(2026, 1, day, 0, 0, 0, DateTimeKind.Utc)
+    };
 
     [Fact]
     public async Task DbContext_RejectsUpdateDeleteAndSoftDelete()

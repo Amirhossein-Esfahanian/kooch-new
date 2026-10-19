@@ -21,3 +21,18 @@ public sealed class CreateReservationInternalNoteRequest
 {
     public string? Details { get; set; }
 }
+
+public sealed class OwnerReservationActivityQuery
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+}
+
+public sealed class OwnerReservationActivityResponse
+{
+    public string ActivityType { get; set; } = string.Empty;
+    public string Title { get; set; } = string.Empty;
+    public string? Details { get; set; }
+    public string ActorDisplayName { get; set; } = string.Empty;
+    public DateTime OccurredAtUtc { get; set; }
+}
