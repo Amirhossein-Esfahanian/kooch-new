@@ -62,6 +62,22 @@ function openInbox() {
 }
 
 describe("Dashboard notification inbox", () => {
+  it("offers announcement management from the inbox only with ManageNotifications", () => {
+    adminSession.role = "AdminAssistant";
+    adminSession.permissions = ["ManageNotifications"];
+    renderShell();
+    openInbox();
+    expect(screen.getByRole("link", { name: "مدیریت اعلان‌های مدیریتی" }).getAttribute("href")).toBe("/admin/announcements");
+  });
+
+  it("does not offer announcement management without ManageNotifications", () => {
+    adminSession.role = "AdminAssistant";
+    adminSession.permissions = [];
+    renderShell();
+    openInbox();
+    expect(screen.queryByRole("link", { name: "مدیریت اعلان‌های مدیریتی" })).toBeNull();
+  });
+
   it("opens an assigned task alert in the existing Admin tasks page", async () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) =>
       String(input).endsWith("/unread-count") ? response({ unreadCount: 0 })

@@ -440,7 +440,7 @@ export function AdminLayout({
   }
 
   return (
-    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems} enableAdminReservationLinks>
+    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems} enableAdminReservationLinks canManageAnnouncements={platformRole === "SuperAdmin" || platformPermissions.includes("ManageNotifications")}>
       {children}
     </DashboardShell>
   );
@@ -591,6 +591,7 @@ export function DashboardHomeContent({
 
 function DashboardShell({
   children,
+  canManageAnnouncements = false,
   currentWorkspaceId,
   enableAdminReservationLinks = false,
   integratedHeader = false,
@@ -600,6 +601,7 @@ function DashboardShell({
   workspaceOptions = [],
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
+  canManageAnnouncements?: boolean;
   currentWorkspaceId?: string;
   enableAdminReservationLinks?: boolean;
   integratedHeader?: boolean;
@@ -786,6 +788,7 @@ function DashboardShell({
         </div>
       </div>
       <DashboardSideDrawer
+        canManageAnnouncements={canManageAnnouncements}
         darkMode={darkMode}
         type={drawerType}
         notificationItems={notificationItems}
@@ -1298,6 +1301,7 @@ function MessageRail() {
 }
 
 function DashboardSideDrawer({
+  canManageAnnouncements,
   darkMode,
   onClose,
   type,
@@ -1315,6 +1319,7 @@ function DashboardSideDrawer({
   onMarkAllRead,
   onRetry,
 }: {
+  canManageAnnouncements: boolean;
   darkMode: boolean;
   onClose: () => void;
   type: "messages" | "notifications" | null;
@@ -1379,6 +1384,11 @@ function DashboardSideDrawer({
           </div>
 
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-4">
+            {type === "notifications" && canManageAnnouncements && (
+              <Link href="/admin/announcements" onClick={onClose} className="block rounded-lg border border-border bg-card px-3 py-2 text-sm font-medium text-foreground hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                مدیریت اعلان‌های مدیریتی
+              </Link>
+            )}
             {type === "notifications" ? (
               <NotificationInbox
                 items={notificationItems}

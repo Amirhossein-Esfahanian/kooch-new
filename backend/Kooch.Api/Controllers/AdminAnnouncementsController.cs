@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Announcements;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -13,6 +14,11 @@ namespace Kooch.Api.Controllers;
 public sealed class AdminAnnouncementsController(AdminAnnouncementService announcements)
     : AuthenticatedControllerBase
 {
+    [HttpGet("recipients")]
+    public async Task<ActionResult<PagedResult<AdminAnnouncementRecipientOption>>> SearchRecipients(
+        [FromQuery] AdminAnnouncementRecipientSearchQuery query, CancellationToken cancellationToken) =>
+        Ok(await announcements.SearchRecipientsAsync(GetCurrentUser().UserId, query, cancellationToken));
+
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<AdminAnnouncementResponse>>> List(
         CancellationToken cancellationToken) =>

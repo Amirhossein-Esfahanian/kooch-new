@@ -7,12 +7,78 @@ using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using System.Reflection;
 using Xunit;
 
 namespace Kooch.Api.Tests;
 
 public sealed class AdminAnnouncementTests
 {
+    [Fact]
+    public async Task RecipientLookup_UsesManageNotificationsAndReturnsOnlyActiveEligibleUsers()
+    {
+        await using var db = CreateMemoryDb();
+        await SeedAsync(db);
+        db.Properties.AddRange(
+            new Property { Id = 10, OwnerId = 3, Name = "One", Slug = "one" },
+            new Property { Id = 11, OwnerId = 3, Name = "Two", Slug = "two" },
+            new Property { Id = 12, OwnerId = 8, Name = "Deleted", Slug = "deleted", IsDeleted = true });
+        db.Users.AddRange(
+            new User { Id = 7, FirstName = "Suspended", Role = UserRole.Client },
+            new User { Id = 8, FirstName = "Former", Role = UserRole.Client });
+        db.UserPropertyAccesses.AddRange(
+            OwnerAccess(3, 10), OwnerAccess(3, 11),
+            OwnerAccess(4, 10),
+            OwnerAccess(7, 10, PropertyUserStatus.Suspended),
+            OwnerAccess(8, 12),
+            new UserPropertyAccess { UserId = 5, PropertyId = 10,
+                PropertyRole = PropertyUserRole.Manager, Status = PropertyUserStatus.Active, IsActive = true });
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var admins = await service.SearchRecipientsAsync(2, new()
+        {
+            Target = AdminAnnouncementTarget.SelectedAdmins, PageSize = 1
+        });
+        Assert.Equal(2, admins.TotalCount);
+        Assert.Equal(2, admins.TotalPages);
+        Assert.Equal(1, Assert.Single(admins.Items).Id);
+        var next = await service.SearchRecipientsAsync(2, new()
+        {
+            Target = AdminAnnouncementTarget.SelectedAdmins, Page = 2, PageSize = 1, Search = "Bea"
+        });
+        Assert.Empty(next.Items);
+        var owner = await service.SearchRecipientsAsync(2, new()
+        {
+            Target = AdminAnnouncementTarget.SelectedPropertyOwners, Search = "Owner"
+        });
+        Assert.Equal(1, owner.TotalCount);
+        Assert.Equal(3, Assert.Single(owner.Items).Id);
+        Assert.Equal("Owner", owner.Items[0].DisplayName);
+        Assert.Equal([nameof(AdminAnnouncementRecipientOption.Id), nameof(AdminAnnouncementRecipientOption.DisplayName)],
+            typeof(AdminAnnouncementRecipientOption).GetProperties().Select(property => property.Name).ToArray());
+    }
+
+    [Fact]
+    public async Task RecipientLookup_RejectsUnauthorizedActorsAndAllRecipientTargets()
+    {
+        await using var db = CreateMemoryDb();
+        await SeedAsync(db);
+        var denied = CreateService(db, new TestPermissions { Allowed = false });
+        var query = new AdminAnnouncementRecipientSearchQuery
+        {
+            Target = AdminAnnouncementTarget.SelectedAdmins
+        };
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => denied.SearchRecipientsAsync(2, query));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => CreateService(db).SearchRecipientsAsync(3, query));
+        await Assert.ThrowsAsync<ArgumentException>(() => CreateService(db).SearchRecipientsAsync(2,
+            new() { Target = AdminAnnouncementTarget.AllAdmins }));
+        var endpoint = typeof(AdminAnnouncementsController).GetMethod(nameof(AdminAnnouncementsController.SearchRecipients))!;
+        Assert.Equal("recipients", endpoint.GetCustomAttribute<Microsoft.AspNetCore.Mvc.HttpGetAttribute>()?.Template);
+        Assert.Equal(new PermissionAuthorizeAttribute(PermissionKey.ManageNotifications).Policy,
+            typeof(AdminAnnouncementsController).GetCustomAttribute<PermissionAuthorizeAttribute>()?.Policy);
+    }
+
     [Fact]
     public async Task SelectedAdmins_DeduplicatesSnapshotsAndReplaysWithoutAnotherDelivery()
     {
@@ -147,6 +213,9 @@ public sealed class AdminAnnouncementTests
             await SeedAsync(db);
             var service = new AdminAnnouncementService(db, new TestPermissions(),
                 new FailSecondNotification(new NotificationService(db)));
+            var recipients = await service.SearchRecipientsAsync(2,
+                new() { Target = AdminAnnouncementTarget.SelectedAdmins });
+            Assert.Equal([1, 2], recipients.Items.Select(item => item.Id).ToArray());
             await Assert.ThrowsAsync<InvalidOperationException>(() => service.SendAsync(1,
                 Request(AdminAnnouncementTarget.AllAdmins)));
         }

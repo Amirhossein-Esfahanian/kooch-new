@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.Announcements;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -12,6 +13,42 @@ namespace Kooch.Api.Services;
 public sealed class AdminAnnouncementService(
     KoochDbContext context, IPermissionService permissions, INotificationService notifications)
 {
+    public async Task<PagedResult<AdminAnnouncementRecipientOption>> SearchRecipientsAsync(
+        int actorUserId, AdminAnnouncementRecipientSearchQuery query,
+        CancellationToken cancellationToken = default)
+    {
+        await RequirePermissionAsync(actorUserId, cancellationToken);
+        if (query.Target is not (AdminAnnouncementTarget.SelectedAdmins or
+            AdminAnnouncementTarget.SelectedPropertyOwners))
+            throw new ArgumentException("A selected-recipient target is required.", nameof(query));
+        if (query.Page < 1 || query.PageSize is < 1 or > 100)
+            throw new ArgumentOutOfRangeException(nameof(query));
+        var search = query.Search?.Trim();
+        if (search?.Length > 200)
+            throw new ArgumentException("Search is too long.", nameof(query));
+
+        var users = EligibleRecipientUsers(query.Target);
+        if (!string.IsNullOrEmpty(search))
+            users = users.Where(user => user.FirstName.Contains(search) ||
+                user.LastName.Contains(search) ||
+                (user.FirstName + " " + user.LastName).Contains(search));
+        var totalCount = await users.CountAsync(cancellationToken);
+        var items = await users.OrderBy(user => user.LastName)
+            .ThenBy(user => user.FirstName).ThenBy(user => user.Id)
+            .Skip((query.Page - 1) * query.PageSize).Take(query.PageSize)
+            .Select(user => new AdminAnnouncementRecipientOption(
+                user.Id, (user.FirstName + " " + user.LastName).Trim()))
+            .ToArrayAsync(cancellationToken);
+        return new PagedResult<AdminAnnouncementRecipientOption>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = query.Page,
+            PageSize = query.PageSize,
+            TotalPages = (int)Math.Ceiling(totalCount / (double)query.PageSize)
+        };
+    }
+
     public async Task<IReadOnlyList<AdminAnnouncementResponse>> ListAsync(
         int actorUserId, CancellationToken cancellationToken = default)
     {
@@ -116,16 +153,7 @@ public sealed class AdminAnnouncementService(
     private async Task<int[]> ResolveRecipientsAsync(
         AdminAnnouncementTarget target, int[] selectedIds, CancellationToken cancellationToken)
     {
-        IQueryable<int> eligible = target is AdminAnnouncementTarget.SelectedAdmins or AdminAnnouncementTarget.AllAdmins
-            ? context.Users.AsNoTracking()
-                .Where(user => user.IsActive &&
-                    (user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant))
-                .Select(user => user.Id)
-            : context.UserPropertyAccesses.AsNoTracking()
-                .Where(access => access.IsActive && access.Status == PropertyUserStatus.Active &&
-                    access.PropertyRole == PropertyUserRole.PropertyOwner &&
-                    access.User.IsActive && !access.Property.IsDeleted)
-                .Select(access => access.UserId);
+        IQueryable<int> eligible = EligibleRecipientUsers(target).Select(user => user.Id);
         if (target is AdminAnnouncementTarget.SelectedAdmins or AdminAnnouncementTarget.SelectedPropertyOwners)
             eligible = eligible.Where(id => selectedIds.Contains(id));
         var result = await eligible.Distinct().OrderBy(id => id).ToArrayAsync(cancellationToken);
@@ -134,6 +162,18 @@ public sealed class AdminAnnouncementService(
             !result.SequenceEqual(selectedIds))
             throw new ArgumentException("One or more selected recipients are not eligible.");
         return result;
+    }
+
+    private IQueryable<User> EligibleRecipientUsers(AdminAnnouncementTarget target)
+    {
+        var users = context.Users.AsNoTracking().Where(user => user.IsActive);
+        return target is AdminAnnouncementTarget.SelectedAdmins or AdminAnnouncementTarget.AllAdmins
+            ? users.Where(user => user.Role == UserRole.SuperAdmin || user.Role == UserRole.AdminAssistant)
+            : users.Where(user => context.UserPropertyAccesses.Any(access =>
+                access.UserId == user.Id && access.IsActive &&
+                access.Status == PropertyUserStatus.Active &&
+                access.PropertyRole == PropertyUserRole.PropertyOwner &&
+                !access.Property.IsDeleted));
     }
 
     private async Task RequirePermissionAsync(int actorUserId, CancellationToken cancellationToken)
