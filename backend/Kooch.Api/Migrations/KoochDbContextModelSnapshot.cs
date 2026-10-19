@@ -22,6 +22,130 @@ namespace Kooch.Api.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Kooch.Api.Entities.AdminAnnouncement", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(4000)
+                        .HasColumnType("nvarchar(4000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("IdempotencyKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("RequestFingerprint")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("nvarchar(64)");
+
+                    b.Property<int>("SenderUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("SentAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Target")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdempotencyKey")
+                        .IsUnique();
+
+                    b.HasIndex("SenderUserId");
+
+                    b.HasIndex("SentAtUtc", "Id")
+                        .IsDescending();
+
+                    b.ToTable("AdminAnnouncements", t =>
+                        {
+                            t.HasCheckConstraint("CK_AdminAnnouncements_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+
+                            t.HasCheckConstraint("CK_AdminAnnouncements_Target", "[Target] IN (0, 1, 2, 3)");
+                        });
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.AdminAnnouncementRecipient", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<int>("AnnouncementId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("AnnouncementId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("AdminAnnouncementRecipients", t =>
+                        {
+                            t.HasCheckConstraint("CK_AdminAnnouncementRecipients_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+                        });
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.AdminTask", b =>
                 {
                     b.Property<int>("Id")
@@ -6594,6 +6718,36 @@ namespace Kooch.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.AdminAnnouncement", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.User", "SenderUser")
+                        .WithMany()
+                        .HasForeignKey("SenderUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("SenderUser");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.AdminAnnouncementRecipient", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.AdminAnnouncement", "Announcement")
+                        .WithMany("Recipients")
+                        .HasForeignKey("AnnouncementId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Kooch.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Announcement");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.AdminTask", b =>
                 {
                     b.HasOne("Kooch.Api.Entities.User", "AssignedToUser")
@@ -6605,7 +6759,8 @@ namespace Kooch.Api.Migrations
                     b.HasOne("Kooch.Api.Entities.User", "CreatedByUser")
                         .WithMany()
                         .HasForeignKey("CreatedByUserId")
-                        .OnDelete(DeleteBehavior.NoAction);
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.HasOne("Kooch.Api.Entities.Reservation", "Reservation")
                         .WithMany()
@@ -8128,6 +8283,11 @@ namespace Kooch.Api.Migrations
                     b.Navigation("WalletEntry");
 
                     b.Navigation("WalletLot");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.AdminAnnouncement", b =>
+                {
+                    b.Navigation("Recipients");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.AdminTask", b =>

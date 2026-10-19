@@ -14,6 +14,8 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<UserPropertyAccess> UserPropertyAccesses => Set<UserPropertyAccess>();
     public DbSet<NotificationSubscription> NotificationSubscriptions => Set<NotificationSubscription>();
     public DbSet<NotificationLog> NotificationLogs => Set<NotificationLog>();
+    public DbSet<AdminAnnouncement> AdminAnnouncements => Set<AdminAnnouncement>();
+    public DbSet<AdminAnnouncementRecipient> AdminAnnouncementRecipients => Set<AdminAnnouncementRecipient>();
     public DbSet<PropertyReservationFollowUpRecipient> PropertyReservationFollowUpRecipients => Set<PropertyReservationFollowUpRecipient>();
     public DbSet<Property> Properties => Set<Property>();
     public DbSet<RoomType> RoomTypes => Set<RoomType>();
@@ -122,6 +124,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureReservations(modelBuilder);
         ConfigureReservationActivities(modelBuilder);
         ConfigureAdminTasks(modelBuilder);
+        ConfigureAdminAnnouncements(modelBuilder);
         ConfigureReservationCancellationRequests(modelBuilder);
         ConfigureReservationPaymentLinkTokens(modelBuilder);
         ConfigurePayments(modelBuilder);
@@ -148,6 +151,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
         EnsureAdminTaskHistory();
+        EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -184,6 +188,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
         EnsureAdminTaskHistory();
+        EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -195,6 +200,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
         EnsureAdminTaskHistory();
+        EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -208,6 +214,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
         EnsureAdminTaskHistory();
+        EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
         EnsureNotificationInboxHistory();
         EnsureWelcomeGiftGrantHistory();
@@ -237,6 +244,24 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             if (entry.State is EntityState.Modified or EntityState.Deleted ||
                 entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
                 throw new InvalidOperationException("Reservation activities are append-only.");
+        }
+    }
+
+    private void EnsureAdminAnnouncementHistory()
+    {
+        foreach (var entry in ChangeTracker.Entries<AdminAnnouncement>())
+            if (entry.State is EntityState.Modified or EntityState.Deleted ||
+                entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Admin announcements are append-only.");
+        foreach (var entry in ChangeTracker.Entries<AdminAnnouncementRecipient>())
+        {
+            if (entry.State is EntityState.Modified or EntityState.Deleted ||
+                entry.Entity.IsDeleted || entry.Entity.DeletedAtUtc.HasValue)
+                throw new InvalidOperationException("Announcement recipients are immutable.");
+            if (entry.State == EntityState.Added &&
+                ChangeTracker.Entries<AdminAnnouncement>().All(announcement =>
+                    announcement.Entity != entry.Entity.Announcement || announcement.State != EntityState.Added))
+                throw new InvalidOperationException("Recipients may only be added with a new announcement.");
         }
     }
 
@@ -1831,6 +1856,36 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 table.HasCheckConstraint("CK_ReservationActivities_NotDeleted",
                     "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
             });
+        });
+    }
+
+    private static void ConfigureAdminAnnouncements(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<AdminAnnouncement>(entity =>
+        {
+            entity.Property(row => row.Title).HasMaxLength(200).IsRequired();
+            entity.Property(row => row.Body).HasMaxLength(4000).IsRequired();
+            entity.Property(row => row.IdempotencyKey).HasMaxLength(200).IsRequired();
+            entity.Property(row => row.RequestFingerprint).HasMaxLength(64).IsRequired();
+            entity.HasIndex(row => row.IdempotencyKey).IsUnique();
+            entity.HasIndex(row => new { row.SentAtUtc, row.Id }).IsDescending();
+            entity.HasOne(row => row.SenderUser).WithMany()
+                .HasForeignKey(row => row.SenderUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_AdminAnnouncements_Target", "[Target] IN (0, 1, 2, 3)");
+                table.HasCheckConstraint("CK_AdminAnnouncements_NotDeleted", "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL");
+            });
+        });
+        modelBuilder.Entity<AdminAnnouncementRecipient>(entity =>
+        {
+            entity.HasIndex(row => new { row.AnnouncementId, row.UserId }).IsUnique();
+            entity.HasOne(row => row.Announcement).WithMany(announcement => announcement.Recipients)
+                .HasForeignKey(row => row.AnnouncementId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.User).WithMany()
+                .HasForeignKey(row => row.UserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table => table.HasCheckConstraint("CK_AdminAnnouncementRecipients_NotDeleted",
+                "[IsDeleted] = 0 AND [DeletedAtUtc] IS NULL"));
         });
     }
 

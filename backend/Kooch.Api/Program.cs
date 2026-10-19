@@ -129,6 +129,7 @@ builder.Services.AddScoped<DatedPropertyStartingPriceService>();
 builder.Services.AddScoped<IReservationService, ReservationService>();
 builder.Services.AddScoped<ReservationActivityService>();
 builder.Services.AddScoped<AdminTaskService>();
+builder.Services.AddScoped<AdminAnnouncementService>();
 builder.Services.AddScoped<ReservationCancellationRequestService>();
 builder.Services.AddScoped<ReservationCashbackQueryService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
