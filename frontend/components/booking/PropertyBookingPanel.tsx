@@ -95,18 +95,27 @@ function PropertyBookingPanelContent({
   const router = useRouter();
   const cart = useBookingCart();
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
+  const [optionsContextKey, setOptionsContextKey] = useState<string | null>(null);
   const [loadingOptions, setLoadingOptions] = useState(Boolean(autoCheckInitialContextKey));
   const attemptedAutoCheckKey = useRef<string | null>(null);
+  const availabilityRequestId = useRef(0);
   const [hasSuccessfulAvailabilitySearch, setHasSuccessfulAvailabilitySearch] =
     useState(false);
   const [message, setMessage] = useState<{
     tone: "error" | "info" | "success";
     text: string;
+    retryAvailability?: boolean;
   } | null>(null);
   const [replacementSelection, setReplacementSelection] =
     useState<BookingCartSelection | null>(null);
   const [calendarRoomType, setCalendarRoomType] = useState<PublicRoomType | null>(null);
   const searchBarRef = useRef<HTMLDivElement>(null);
+  const searchContextKey = JSON.stringify([
+    propertySlug, dates.startDate, dates.endDate, guests.rooms,
+    guests.adults, guests.children, guests.childAges,
+  ]);
+  const currentContextKey = useRef(searchContextKey);
+  currentContextKey.current = searchContextKey;
 
   useEffect(() => {
     const searchBar = searchBarRef.current;
@@ -157,17 +166,25 @@ function PropertyBookingPanelContent({
   const currentStayCartItems = cartMatchesCurrentStay ? cart.items : [];
 
   useEffect(() => {
-    if (options && !optionsMatchSearch) setMessage(null);
-  }, [options, optionsMatchSearch]);
+    availabilityRequestId.current += 1;
+    setOptions(null);
+    setOptionsContextKey(null);
+    setHasSuccessfulAvailabilitySearch(false);
+    setMessage(null);
+    setLoadingOptions(false);
+  }, [searchContextKey]);
 
   const checkAvailability = useCallback(async () => {
+    const requestId = ++availabilityRequestId.current;
+    const requestedContextKey = searchContextKey;
+    setOptions(null);
+    setOptionsContextKey(null);
+    setHasSuccessfulAvailabilitySearch(false);
     if (!dates.startDate || !dates.endDate) {
-      setHasSuccessfulAvailabilitySearch(false);
       setMessage({ tone: "error", text: "تاریخ ورود و خروج را انتخاب کنید." });
       return;
     }
     setLoadingOptions(true);
-    setHasSuccessfulAvailabilitySearch(false);
     setMessage(null);
     try {
       const response = await fetchBookingOptions(propertySlug, {
@@ -177,7 +194,9 @@ function PropertyBookingPanelContent({
         children: guests.children,
         childAges: guests.childAges,
       });
+      if (requestId !== availabilityRequestId.current || requestedContextKey !== currentContextKey.current) return;
       setOptions(response);
+      setOptionsContextKey(requestedContextKey);
       setHasSuccessfulAvailabilitySearch(true);
       if (response.roomTypes.length === 0) {
         setMessage({
@@ -190,15 +209,19 @@ function PropertyBookingPanelContent({
         block: "start",
       });
     } catch (error) {
+      if (requestId !== availabilityRequestId.current || requestedContextKey !== currentContextKey.current) return;
       setMessage({
         tone: "error",
         text:
           error instanceof Error ? error.message : "بررسی موجودی انجام نشد.",
+        retryAvailability: true,
       });
     } finally {
-      setLoadingOptions(false);
+      if (requestId === availabilityRequestId.current && requestedContextKey === currentContextKey.current) {
+        setLoadingOptions(false);
+      }
     }
-  }, [dates.startDate, dates.endDate, guests.adults, guests.children, guests.childAges, propertySlug]);
+  }, [dates.startDate, dates.endDate, guests.adults, guests.children, guests.childAges, propertySlug, searchContextKey]);
 
   useEffect(() => {
     if (!autoCheckInitialContextKey || attemptedAutoCheckKey.current === autoCheckInitialContextKey) return;
@@ -269,15 +292,31 @@ function PropertyBookingPanelContent({
   }
 
   function continueCheckout() {
-    if (cart.items.length === 0) return;
+    if (!canCheckout) return;
     cart.setCheckoutRequested(false);
     router.push("/booking/checkout?step=information");
   }
 
-  const hasSearchResults = Boolean(optionsMatchSearch && options);
+  const hasSearchResults = Boolean(
+    !loadingOptions && hasSuccessfulAvailabilitySearch && options &&
+    optionsContextKey === searchContextKey && optionsMatchSearch &&
+    options.propertyId === propertyId && options.propertySlug === propertySlug,
+  );
+  const canCheckout = Boolean(
+    hasSearchResults && cartMatchesCurrentStay && cart.items.length > 0 && options &&
+    cart.items.every((item) => {
+      const option = options.roomTypes.find((candidate) => candidate.roomTypeId === item.roomTypeId);
+      if (!option || option.bookingMode !== item.bookingMode ||
+          cart.items.filter((selected) => selected.roomTypeId === item.roomTypeId).length > option.availableCount) return false;
+      if (item.roomId !== null && !option.rooms.some((room) => room.roomId === item.roomId)) return false;
+      const offer = item.ratePlanId === null
+        ? option
+        : option.ratePlans?.find((plan) => plan.ratePlanId === item.ratePlanId);
+      return offer?.finalAmount === item.displayAmount && offer.currency === item.currency;
+    }),
+  );
   const searchContextDiffersFromCart = Boolean(
-    hasSuccessfulAvailabilitySearch &&
-    optionsMatchSearch &&
+    hasSearchResults &&
     options &&
     cart.items.length > 0 &&
     !bookingCartSelectionMatchesItems(cart.items, {
@@ -289,7 +328,7 @@ function PropertyBookingPanelContent({
       childAges: options.childAges,
     }),
   );
-  const showCartSummary = hasSearchResults || cart.items.length > 0;
+  const showCartSummary = hasSearchResults && (cart.items.length === 0 || canCheckout);
   const cartSummary = (
     <BookingCartSummary
       className={
@@ -380,6 +419,11 @@ function PropertyBookingPanelContent({
               variant={message.tone === "error" ? "destructive" : message.tone}
             >
               {message.text}
+              {message.retryAvailability && (
+                <KoochButton className="mt-2" onClick={() => void checkAvailability()} size="sm" variant="outline">
+                  تلاش دوباره
+                </KoochButton>
+              )}
             </KoochAlert>
           )}
 
@@ -401,9 +445,15 @@ function PropertyBookingPanelContent({
           می‌توانید انتخاب‌های فعلی را جایگزین کنید.
         </KoochAlert>
       )}
+      {cart.items.length > 0 && !canCheckout && !searchContextDiffersFromCart && (
+        <KoochAlert className="mt-4" variant="info">
+          انتخاب‌های قبلی در سبد حفظ شده‌اند، اما قیمت و موجودی آن‌ها برای این جست‌وجو تأیید نشده است.
+          برای ادامه رزرو، موجودی را دوباره بررسی کنید یا انتخاب‌ها را اصلاح کنید.
+        </KoochAlert>
+      )}
 
       <div
-        className={`grid items-start gap-5 ${searchContextDiffersFromCart ? "mt-4" : ""} ${cart.items.length > 0 ? "pb-24 sm:pb-0" : ""} ${hasSearchResults ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : ""}`}
+        className={`grid items-start gap-5 ${searchContextDiffersFromCart ? "mt-4" : ""} ${canCheckout ? "pb-24 sm:pb-0" : ""} ${showCartSummary ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : ""}`}
         data-testid="room-selection-region"
       >
         <div
@@ -473,10 +523,10 @@ function PropertyBookingPanelContent({
       </div>
 
       <BookingCartMobileActionBar
-        count={cart.items.length}
+        count={canCheckout ? cart.items.length : 0}
         loading={false}
         onContinue={continueCheckout}
-        total={cart.total}
+        total={canCheckout ? cart.total : 0}
       />
       <PublicRoomTypeCalendarDialog
         onClose={() => setCalendarRoomType(null)}

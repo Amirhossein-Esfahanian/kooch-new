@@ -516,6 +516,84 @@ describe("public property booking integration", () => {
     expect(api.fetchOptions).toHaveBeenCalledTimes(2);
   });
 
+  it("blocks stale offers and checkout after a failed same-context recheck, then restores them on retry", async () => {
+    render(<PublicPropertyPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    expect(screen.getByTestId("booking-choices-summary")).toBeTruthy();
+
+    api.fetchOptions.mockRejectedValueOnce(new Error("بررسی موجودی ناموفق بود"));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(screen.queryByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین" })).toBeNull();
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
+    expect(await screen.findByText("بررسی موجودی ناموفق بود")).toBeTruthy();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
+    expect(await screen.findByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین" })).toBeTruthy();
+    expect(screen.getByTestId("booking-choices-summary")).toBeTruthy();
+    expect(screen.getByTestId("booking-mobile-action-bar")).toBeTruthy();
+    expect(navigation.push).not.toHaveBeenCalledWith("/booking/checkout?step=information");
+  });
+
+  it("hides prior offers and checkout during a changed-context recheck while preserving the cart", async () => {
+    let resolveChanged!: (value: typeof availableOptions) => void;
+    render(<PublicPropertyPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
+
+    api.fetchOptions.mockImplementationOnce(() => new Promise((resolve) => { resolveChanged = resolve; }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(screen.queryByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeNull();
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    resolveChanged({ ...availableOptions, checkInDate: "2030-08-20", checkOutDate: "2030-08-22" });
+    expect(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" })).toBeTruthy();
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(1);
+  });
+
+  it("ignores an older availability response after a newer context succeeds", async () => {
+    let resolveOld!: (value: typeof availableOptions) => void;
+    let resolveNew!: (value: typeof availableOptions) => void;
+    api.fetchOptions
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveNew = resolve; }));
+    render(<PublicPropertyPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(screen.getByRole("button", { name: "تغییر تاریخ آزمایشی" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    resolveNew({
+      ...availableOptions, checkInDate: "2030-08-20", checkOutDate: "2030-08-22",
+      roomTypes: [{ ...availableOptions.roomTypes[0], finalAmount: 5_000_000 }],
+    });
+    expect(await screen.findByText("۵٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    resolveOld(availableOptions);
+    await waitFor(() => {
+      expect(screen.getByText("۵٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+      expect(screen.queryByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeNull();
+    });
+    expect(screen.getByTestId("booking-date-value").textContent).toBe("2030-08-20|2030-08-22");
+  });
+
+  it("does not present a preserved cart total as current when a fresh quote changes", async () => {
+    render(<PublicPropertyPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" }));
+    api.fetchOptions.mockResolvedValueOnce({
+      ...availableOptions,
+      roomTypes: [{ ...availableOptions.roomTypes[0], finalAmount: 5_000_000 }],
+    });
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    expect(await screen.findByText("۵٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
+    expect(screen.getByText(/قیمت و موجودی آن‌ها برای این جست‌وجو تأیید نشده است/)).toBeTruthy();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(1);
+  });
+
   it("uses the configured label for booked amounts without Property-wide meal text", async () => {
     api.currencyLabel = "ریال آزمایشی";
 
@@ -1959,7 +2037,9 @@ describe("public property booking integration", () => {
     expect(
       screen.getAllByRole("heading", { name: "اتاق شاه‌نشین" }),
     ).toHaveLength(1);
-    expect(screen.getAllByText(/۲ اتاق/).length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(2);
   });
 
   it("surfaces an actionable state when refreshed availability drops below cart quantity", async () => {
@@ -1994,6 +2074,8 @@ describe("public property booking integration", () => {
         .hasAttribute("disabled"),
     ).toBe(true);
     expect(screen.getByText("۲", { selector: "output" })).toBeTruthy();
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    expect(screen.queryByTestId("booking-mobile-action-bar")).toBeNull();
   });
 
   it("exposes empty and error booking-options states", async () => {
