@@ -868,6 +868,11 @@ public class ReservationService(
             .VoidPendingForReservationAsync(reservationId, cancellationToken);
 
         await dbContext.SaveChangesAsync(cancellationToken);
+        await new ReservationActivityService(dbContext, permissionService).AppendAsync(
+            reservationId, currentUser.UserId, "Cancelled",
+            ReservationActivityVisibility.PropertyVisible, "رزرو لغو شد",
+            $"دلیل لغو: {CancellationActivityReason(request.Reason.Value)}",
+            cancellationToken: cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
         response.CancellationOutcome = await CancellationOutcomeAsync(reservationId, false, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
@@ -879,6 +884,21 @@ public class ReservationService(
             cancellationToken);
         return response;
     }
+
+    private static string CancellationActivityReason(ReservationCancellationReason reason) => reason switch
+    {
+        ReservationCancellationReason.GuestRequest => "درخواست مهمان",
+        ReservationCancellationReason.NonPayment => "عدم پرداخت",
+        ReservationCancellationReason.NoAvailability => "نبود ظرفیت",
+        ReservationCancellationReason.PropertyRuleConflict => "تعارض با قوانین اقامتگاه",
+        ReservationCancellationReason.DuplicateReservation => "رزرو تکراری",
+        ReservationCancellationReason.InvalidGuestInformation => "اطلاعات نامعتبر مهمان",
+        ReservationCancellationReason.PropertyMaintenanceOrForceMajeure => "تعمیرات اقامتگاه / شرایط اضطراری",
+        ReservationCancellationReason.AdministrativeCorrection => "اصلاح اداری",
+        ReservationCancellationReason.Other => "سایر موارد",
+        ReservationCancellationReason.PaymentExpired => "انقضای مهلت پرداخت",
+        _ => throw new ArgumentOutOfRangeException(nameof(reason))
+    };
 
     private static string CancellationFingerprint(ReservationCancellationReason reason, string explanation,
         CancellationFinancialResolutionMode mode, ReservationCancellationFinancialRequest? financial, string? note)

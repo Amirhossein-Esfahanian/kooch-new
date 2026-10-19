@@ -24,6 +24,7 @@ public sealed class BookingSessionService(
     IBookingSessionCodeGenerator sessionCodeGenerator,
     IReservationNotificationDispatcher notificationDispatcher,
     IPropertySameNightBookingPolicyService sameNightPolicyService,
+    ReservationActivityService activityService,
     IWelcomeGiftGrantService? welcomeGiftGrantService = null) : IBookingSessionService
 {
     private readonly IWelcomeGiftGrantService giftGrantService =
@@ -253,6 +254,13 @@ public sealed class BookingSessionService(
             .ToArray();
         dbContext.BookingSessions.Add(session);
         await sessionCodeGenerator.SaveWithSessionCodeRetryAsync(dbContext, reservationNumberGenerator, cancellationToken);
+        if (creationKind == BookingSessionCreationKind.Account)
+        {
+            foreach (var reservation in session.Reservations)
+                await activityService.AppendAsync(reservation.Id, request.ClientId, "Created",
+                    ReservationActivityVisibility.PropertyVisible, "رزرو ایجاد شد",
+                    cancellationToken: cancellationToken);
+        }
         foreach (var guest in newlyEstablishedIdentities)
             await giftGrantService.TryGrantAsync(guest, cancellationToken);
         var pendingApprovalIds = session.Reservations

@@ -50,6 +50,14 @@ public sealed partial class ReservationCancellationOrchestrationTests
         Assert.Equal("cancel-1", (await db.Reservations.SingleAsync()).CancellationIdempotencyKey);
         Assert.Empty(await db.CancellationFinancialResolutions.ToListAsync());
         Assert.Empty(await db.FinancialEntries.ToListAsync());
+        var activity = Assert.Single(await db.ReservationActivities.ToListAsync());
+        Assert.Equal("Cancelled", activity.ActivityType);
+        Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+        Assert.Equal(Actor.UserId, activity.ActorUserId);
+        Assert.Equal("Admin", activity.ActorDisplayName);
+        Assert.Equal("رزرو لغو شد", activity.Title);
+        Assert.Equal("دلیل لغو: درخواست مهمان", activity.Details);
+        Assert.True(activity.OccurredAtUtc > DateTime.MinValue);
         Assert.Single(notifications.Requests);
     }
 
@@ -91,6 +99,9 @@ public sealed partial class ReservationCancellationOrchestrationTests
         Assert.Single(notifications.Requests);
         Assert.Equal(1, await db.CancellationFinancialResolutions.CountAsync());
         Assert.Equal(1, await db.FinancialEntries.CountAsync(e => e.EntryType == FinancialEntryType.Reversal));
+        var activity = Assert.Single(await db.ReservationActivities.ToListAsync());
+        Assert.DoesNotContain("guest requested cancellation", activity.Details);
+        Assert.DoesNotContain("decision", activity.Details);
         await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
             Service(db, paymentsAllowed: false).CancelAsync(1, Auto(), Actor));
     }
@@ -151,7 +162,26 @@ public sealed partial class ReservationCancellationOrchestrationTests
         Assert.Equal(ReservationStatus.Confirmed, (await db.Reservations.SingleAsync()).Status);
         Assert.Empty(await db.CancellationFinancialResolutions.ToListAsync());
         Assert.Single(await db.FinancialEntries.ToListAsync());
+        Assert.Empty(await db.ReservationActivities.ToListAsync());
         Assert.Empty(notifications.Requests);
+    }
+
+    [Fact]
+    public async Task ActivityWriteFailureRollsBackCancellationAndFinance()
+    {
+        await using var store = await Store.CreateAsync();
+        await using var db = store.Open();
+        await db.Database.ExecuteSqlRawAsync("""
+            CREATE TRIGGER RejectCancellationActivity BEFORE INSERT ON ReservationActivities
+            BEGIN SELECT RAISE(ABORT, 'injected activity failure'); END;
+            """);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => Service(db).CancelAsync(1, Auto(), Actor));
+        db.ChangeTracker.Clear();
+        Assert.Equal(ReservationStatus.Confirmed, (await db.Reservations.SingleAsync()).Status);
+        Assert.Empty(await db.ReservationActivities.ToListAsync());
+        Assert.Empty(await db.CancellationFinancialResolutions.ToListAsync());
+        Assert.Equal(0, await db.FinancialEntries.CountAsync(e => e.EntryType == FinancialEntryType.Reversal));
     }
 
     [Fact]

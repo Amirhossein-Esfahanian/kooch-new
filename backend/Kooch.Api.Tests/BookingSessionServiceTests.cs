@@ -49,6 +49,7 @@ public sealed partial class BookingSessionServiceTests
         Assert.Null(persistedReservation.MealPlanSlugSnapshot);
         Assert.Null(persistedReservation.RatePlanPriceModifierTypeSnapshot);
         Assert.Null(persistedReservation.RatePlanPriceModifierValueSnapshot);
+        Assert.Empty(await verification.ReservationActivities.ToListAsync());
     }
 
     [Theory]
@@ -502,6 +503,19 @@ public sealed partial class BookingSessionServiceTests
         Assert.InRange(deadline.Value, before, after);
         Assert.All(persisted, reservation => Assert.NotNull(reservation.ApprovedAtUtc));
         Assert.All(persisted, reservation => Assert.Null(reservation.ApprovalExpiresAtUtc));
+        var activities = await verification.ReservationActivities.OrderBy(activity => activity.ReservationId).ToListAsync();
+        Assert.Equal(2, activities.Count);
+        Assert.Equal(persisted.Select(reservation => reservation.Id), activities.Select(activity => activity.ReservationId));
+        Assert.All(activities, activity =>
+        {
+            Assert.Equal("Created", activity.ActivityType);
+            Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+            Assert.Equal(1, activity.ActorUserId);
+            Assert.Equal("Booking Client", activity.ActorDisplayName);
+            Assert.Equal("رزرو ایجاد شد", activity.Title);
+            Assert.Null(activity.Details);
+            Assert.True(activity.OccurredAtUtc > DateTime.MinValue);
+        });
 
         var availability = await new EffectiveAvailabilityService(verification).GetRangeAsync(
             [10],
@@ -665,6 +679,8 @@ public sealed partial class BookingSessionServiceTests
                 CreateAccountRequest(
                     CreateAccountItem(10, 100),
                     CreateAccountItem(30, 300))));
+        await using var verification = harness.CreateContext();
+        Assert.Empty(await verification.ReservationActivities.ToListAsync());
     }
 
     [Fact]
@@ -684,6 +700,14 @@ public sealed partial class BookingSessionServiceTests
         Assert.Equal(
             Assert.Single(first.Reservations).ReservationId,
             Assert.Single(replay.Reservations).ReservationId);
+        await using var verification = harness.CreateContext();
+        var activity = Assert.Single(await verification.ReservationActivities.ToListAsync());
+        Assert.Equal("Created", activity.ActivityType);
+        var actor = await verification.Users.SingleAsync(user => user.Id == 1);
+        actor.FirstName = "Changed";
+        await verification.SaveChangesAsync();
+        verification.ChangeTracker.Clear();
+        Assert.Equal("Booking Client", (await verification.ReservationActivities.SingleAsync()).ActorDisplayName);
     }
 
     [Fact]
@@ -1951,7 +1975,8 @@ public sealed partial class BookingSessionServiceTests
                 new ReservationNumberGenerator(context),
                 new BookingSessionCodeGenerator(context),
                 notificationDispatcher,
-                sameNightPolicy ?? new PropertySameNightBookingPolicyService(TimeProvider.System));
+                sameNightPolicy ?? new PropertySameNightBookingPolicyService(TimeProvider.System),
+                new ReservationActivityService(context, new StubPermissionService(true)));
             return new ServiceScope(context, service, notificationDispatcher);
         }
 
