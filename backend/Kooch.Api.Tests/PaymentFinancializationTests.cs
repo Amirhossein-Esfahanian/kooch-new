@@ -45,6 +45,11 @@ public sealed class PaymentFinancializationTests
         Assert.Equal(snapshot.GrossAmount, voucher.GrossAmount);
         Assert.Equal(snapshot.CommissionAmount, voucher.CommissionAmount);
         Assert.Equal(snapshot.PropertyPayableAmount, voucher.PropertyPayableAmount);
+        var activity = Assert.Single(await harness.Context.ReservationActivities.ToListAsync());
+        Assert.Equal("PaymentConfirmed", activity.ActivityType);
+        Assert.Null(activity.ActorUserId);
+        Assert.Equal("System", activity.ActorDisplayName);
+        Assert.Null(activity.Details);
     }
 
     [Fact]

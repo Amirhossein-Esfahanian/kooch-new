@@ -228,6 +228,8 @@ public sealed class AdminManualPaymentService(
         }
 
         await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
+        await new ReservationActivityService(dbContext)
+            .AppendPaymentConfirmedAsync(reservation.Id, actorUserId, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return ToResponse(payment, details, reservation, capacityExists);
     }

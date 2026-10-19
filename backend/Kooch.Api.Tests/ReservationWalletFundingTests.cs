@@ -213,7 +213,37 @@ public sealed partial class ReservationWalletFundingTests
         Assert.Equal(2, await db.Context.FinancialEntries.CountAsync());
         Assert.Equal(2, await db.Context.ReservationVouchers.CountAsync());
         Assert.Equal(2, await db.Context.NotificationLogs.CountAsync());
+        var activities = await db.Context.ReservationActivities.OrderBy(activity => activity.ReservationId).ToListAsync();
+        Assert.Equal(new[] { 10, 11 }, activities.Select(activity => activity.ReservationId));
+        Assert.All(activities, activity =>
+        {
+            Assert.Equal("PaymentConfirmed", activity.ActivityType);
+            Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+            Assert.Equal(wallet == 300 ? 1 : null, activity.ActorUserId);
+            Assert.Equal(wallet == 300 ? "Wallet Guest" : "System", activity.ActorDisplayName);
+            Assert.Null(activity.Details);
+        });
         await Assert.ThrowsAsync<InvalidOperationException>(() => db.Checkout(wallet - 1));
+    }
+
+    [Fact]
+    public async Task ActivityInsertFailureRollsBackWalletOnlyConfirmation()
+    {
+        using var db = new Database();
+        await db.Credit(300);
+        await db.Context.Database.ExecuteSqlRawAsync("""
+            CREATE TRIGGER RejectPaymentActivity BEFORE INSERT ON ReservationActivities
+            BEGIN SELECT RAISE(ABORT, 'injected activity failure'); END;
+            """);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => db.Checkout(300));
+        db.Context.ChangeTracker.Clear();
+        Assert.Empty(await db.Context.ReservationActivities.ToListAsync());
+        Assert.Empty(await db.Context.ReservationFinancialSnapshots.ToListAsync());
+        Assert.Empty(await db.Context.ReservationVouchers.ToListAsync());
+        Assert.Empty(await db.Debits());
+        Assert.All(await db.Context.Reservations.ToListAsync(), reservation =>
+            Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status));
     }
 
     [Fact]
@@ -227,6 +257,7 @@ public sealed partial class ReservationWalletFundingTests
         Assert.Equal(WalletHoldStatus.Released, (await db.Context.WalletHolds.SingleAsync()).Status);
         Assert.Empty(await db.Debits());
         Assert.Equal(150, (await db.Wallet.GetBalanceAsync(1, "IRR")).Balance);
+        Assert.Empty(await db.Context.ReservationActivities.ToListAsync());
         var second = await db.Checkout(100, "next-attempt");
         Assert.Equal(2, await db.Context.BookingFundingAttempts.CountAsync());
         Assert.Equal(2, await db.Context.WalletHolds.CountAsync());

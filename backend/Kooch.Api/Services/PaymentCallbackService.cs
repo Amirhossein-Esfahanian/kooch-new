@@ -178,6 +178,12 @@ public sealed class PaymentCallbackService(
             payment.FailedAtUtc = null;
             payment.ProcessingError = null;
             await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
+            var reservationIds = await AppliedReservationIdsAsync(payment, cancellationToken);
+            if (reservationIds.Length == 0)
+                throw new InvalidOperationException("Applied payment has no reservations for its activity history.");
+            foreach (var reservationId in reservationIds)
+                await new ReservationActivityService(dbContext)
+                    .AppendPaymentConfirmedAsync(reservationId, null, cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return ToResult(payment, receiptId, isDuplicate);
         }
@@ -195,6 +201,27 @@ public sealed class PaymentCallbackService(
                 exception,
                 cancellationToken);
         }
+    }
+
+    private async Task<int[]> AppliedReservationIdsAsync(Payment payment, CancellationToken cancellationToken)
+    {
+        if (payment.ReservationId is int reservationId) return [reservationId];
+
+        var fundingAttemptId = await dbContext.BookingFundingAttempts.AsNoTracking()
+            .Where(attempt => attempt.PaymentId == payment.Id)
+            .Select(attempt => (int?)attempt.Id)
+            .SingleOrDefaultAsync(cancellationToken);
+        return fundingAttemptId is int attemptId
+            ? await dbContext.BookingFundingItems.AsNoTracking()
+                .Where(item => item.BookingFundingAttemptId == attemptId)
+                .OrderBy(item => item.ReservationId)
+                .Select(item => item.ReservationId)
+                .ToArrayAsync(cancellationToken)
+            : await dbContext.PaymentItems.AsNoTracking()
+                .Where(item => item.PaymentId == payment.Id)
+                .OrderBy(item => item.ReservationId)
+                .Select(item => item.ReservationId)
+                .ToArrayAsync(cancellationToken);
     }
 
     private async Task<PaymentCallbackResult> RecordProcessingFailureAsync(

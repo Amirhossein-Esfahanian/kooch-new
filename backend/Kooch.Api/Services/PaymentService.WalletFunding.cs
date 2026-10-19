@@ -62,6 +62,9 @@ public partial class PaymentService
         {
             await handler.ApplyWalletOnlyAsync(attempt, ct);
             await dbContext.SaveWithVoucherNumberRetryAsync(ct);
+            foreach (var reservationId in attempt.Items.Select(item => item.ReservationId))
+                await new ReservationActivityService(dbContext)
+                    .AppendPaymentConfirmedAsync(reservationId, session.ClientId, ct);
         }
         return FundingResult(attempt, false);
     }

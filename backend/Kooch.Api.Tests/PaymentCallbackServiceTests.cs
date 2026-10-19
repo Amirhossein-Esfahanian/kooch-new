@@ -36,6 +36,16 @@ public sealed class PaymentCallbackServiceTests
                 reservation.Status));
         Assert.Equal(2, await harness.Context.AuditLogs.CountAsync());
         Assert.Equal(2, await harness.Context.NotificationLogs.CountAsync());
+        var activities = await harness.Context.ReservationActivities.OrderBy(activity => activity.ReservationId).ToListAsync();
+        Assert.Equal(new[] { 10, 11 }, activities.Select(activity => activity.ReservationId));
+        Assert.All(activities, activity =>
+        {
+            Assert.Equal("PaymentConfirmed", activity.ActivityType);
+            Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+            Assert.Null(activity.ActorUserId);
+            Assert.Equal("System", activity.ActorDisplayName);
+            Assert.Null(activity.Details);
+        });
         var snapshots = await harness.Context.ReservationFinancialSnapshots
             .OrderBy(snapshot => snapshot.ReservationId)
             .ToListAsync();
@@ -90,6 +100,7 @@ public sealed class PaymentCallbackServiceTests
         Assert.DoesNotContain(
             await harness.Context.NotificationLogs.ToListAsync(),
             notification => notification.ReservationId == 11);
+        Assert.Equal(10, Assert.Single(await harness.Context.ReservationActivities.ToListAsync()).ReservationId);
     }
 
     [Fact]
@@ -325,6 +336,7 @@ public sealed class PaymentCallbackServiceTests
         Assert.Equal(PaymentCallbackApplicationState.Applied, retried.ApplicationState);
         Assert.Equal(failed.ReceiptId, retried.ReceiptId);
         Assert.Single(await harness.Context.PaymentCallbackReceipts.ToListAsync());
+        Assert.Equal(2, await harness.Context.ReservationActivities.CountAsync());
         Assert.All(
             await harness.Context.Reservations.Where(reservation => reservation.BookingSessionId == 1).ToListAsync(),
             reservation => Assert.Equal(ReservationStatus.Confirmed, reservation.Status));
@@ -539,6 +551,7 @@ public sealed class PaymentCallbackServiceTests
                 .OrderBy(voucher => voucher.ReservationId)
                 .Select(voucher => voucher.VoucherNumber)
                 .ToListAsync());
+        Assert.Equal(2, await harness.Context.ReservationActivities.CountAsync());
     }
 
     [Fact]
@@ -582,6 +595,7 @@ public sealed class PaymentCallbackServiceTests
             reservation => Assert.Equal(
                 ReservationStatus.ApprovedAwaitingPayment,
                 reservation.Status));
+        Assert.Empty(await verification.ReservationActivities.ToListAsync());
     }
 
     [Fact]

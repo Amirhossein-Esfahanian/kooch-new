@@ -33,6 +33,7 @@ public sealed class AdminManualPaymentServiceTests
         Assert.NotEqual(default, payment.ManualDetails.SubmittedAtUtc);
         Assert.Equal(ReservationStatus.ApprovedAwaitingPayment, reservation.Status);
         Assert.Null(reservation.ConfirmedAtUtc);
+        Assert.Empty(await harness.Context.ReservationActivities.ToListAsync());
     }
 
     [Fact]
@@ -155,6 +156,12 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Equal(snapshot.Id, voucher.ReservationFinancialSnapshotId);
         Assert.Equal(snapshot.GrossAmount, voucher.GrossAmount);
         Assert.True(result.CapacityClaimed);
+        var activity = Assert.Single(await harness.Context.ReservationActivities.ToListAsync());
+        Assert.Equal("PaymentConfirmed", activity.ActivityType);
+        Assert.Equal(ReservationActivityVisibility.PropertyVisible, activity.Visibility);
+        Assert.Equal(ManualPaymentHarness.AdminUserId, activity.ActorUserId);
+        Assert.Equal("Admin User", activity.ActorDisplayName);
+        Assert.Null(activity.Details);
     }
 
     [Fact]
@@ -250,6 +257,7 @@ public sealed class AdminManualPaymentServiceTests
         Assert.Equal(1, await harness.Context.ReservationFinancialSnapshots.CountAsync());
         Assert.Equal(1, await harness.Context.FinancialEntries.CountAsync());
         Assert.Equal(1, await harness.Context.ReservationVouchers.CountAsync());
+        Assert.Equal(1, await harness.Context.ReservationActivities.CountAsync());
     }
 
     [Fact]

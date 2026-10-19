@@ -5,19 +5,26 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class ReservationActivityService(KoochDbContext context, IPermissionService permissions)
+public sealed class ReservationActivityService(KoochDbContext context, IPermissionService? permissions = null)
 {
+    public Task<ReservationActivity> AppendPaymentConfirmedAsync(
+        int reservationId, int? actorUserId, CancellationToken cancellationToken = default) =>
+        AppendAsync(reservationId, actorUserId, "PaymentConfirmed",
+            ReservationActivityVisibility.PropertyVisible, "پرداخت تأیید شد",
+            cancellationToken: cancellationToken);
+
     public async Task<ReservationActivityResponse> CreateInternalNoteAsync(
         int reservationId, int actorUserId, string? details, CancellationToken cancellationToken = default)
     {
+        var permissionService = permissions ?? throw new InvalidOperationException("Activity permissions are not configured.");
         var propertyId = await context.Reservations.AsNoTracking()
             .Where(row => row.Id == reservationId)
             .Select(row => (int?)row.PropertyId)
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
-        if (!await permissions.HasPermissionAsync(actorUserId, PermissionKey.ManageReservations,
+        if (!await permissionService.HasPermissionAsync(actorUserId, PermissionKey.ManageReservations,
                 cancellationToken: cancellationToken) ||
-            !await permissions.CanAsync(actorUserId, propertyId, "bookings.edit", cancellationToken))
+            !await permissionService.CanAsync(actorUserId, propertyId, "bookings.edit", cancellationToken))
             throw new UnauthorizedAccessException("You cannot manage this property's reservations.");
         if (string.IsNullOrWhiteSpace(details))
             throw new ArgumentException("Internal note details are required.", nameof(details));
@@ -105,12 +112,13 @@ public sealed class ReservationActivityService(KoochDbContext context, IPermissi
     public async Task<IReadOnlyList<ReservationActivityResponse>> ListForAdminAsync(
         int reservationId, int userId, CancellationToken cancellationToken = default)
     {
+        var permissionService = permissions ?? throw new InvalidOperationException("Activity permissions are not configured.");
         var propertyId = await context.Reservations.AsNoTracking()
             .Where(row => row.Id == reservationId)
             .Select(row => (int?)row.PropertyId)
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");
-        if (!await permissions.CanAsync(userId, propertyId, "bookings.view", cancellationToken))
+        if (!await permissionService.CanAsync(userId, propertyId, "bookings.view", cancellationToken))
             throw new UnauthorizedAccessException("You cannot access this property's reservations.");
 
         return await context.ReservationActivities.AsNoTracking()

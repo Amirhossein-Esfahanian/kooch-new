@@ -324,6 +324,8 @@ public partial class PaymentService : IPaymentService
         }
 
         await dbContext.SaveWithVoucherNumberRetryAsync(cancellationToken);
+        await new ReservationActivityService(dbContext)
+            .AppendPaymentConfirmedAsync(reservation.Id, null, cancellationToken);
         await transaction.CommitAsync(cancellationToken);
 
         return new PaymentConfirmationResponse
