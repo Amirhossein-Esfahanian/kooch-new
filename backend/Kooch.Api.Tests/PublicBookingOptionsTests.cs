@@ -10,7 +10,7 @@ using Xunit;
 
 namespace Kooch.Api.Tests;
 
-public sealed class PublicBookingOptionsTests
+public sealed partial class PublicBookingOptionsTests
 {
     [Fact]
     public async Task Options_UseEffectiveRangeAvailabilityPricingAndNamedRooms()
@@ -734,6 +734,10 @@ public sealed class PublicBookingOptionsTests
 
     private sealed class RecordingBookingOptionsService : IPublicBookingOptionsService
     {
+        public Task<PublicBookingQuoteResponse> QuoteAsync(
+            string slug, PublicBookingQuoteRequest request, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PublicBookingQuoteResponse());
+
         public int Children { get; private set; }
         public IReadOnlyList<int> ChildAges { get; private set; } = [];
 

@@ -1,4 +1,5 @@
 using Kooch.Api.Dtos.BookingSessions;
+using Kooch.Api.Dtos.Properties;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -8,6 +9,37 @@ namespace Kooch.Api.Tests;
 
 public sealed partial class BookingSessionServiceTests
 {
+    [Fact]
+    public async Task StayGuests_PublicQuoteMatchesAccountBookingSessionPrices()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await AddPublicDailyPricesAsync(harness, 10);
+        await using var quoteContext = harness.CreateContext();
+        var childRules = new ChildPricingRuleResolver(quoteContext);
+        var quoteService = new PublicBookingOptionsService(
+            quoteContext, new EffectiveAvailabilityService(quoteContext),
+            new ReservationPricingService(quoteContext, new PricingService(), childRules,
+                new ReservationRulesResolver(quoteContext, childRules)), childRules,
+            new PropertySameNightBookingPolicyService(TimeProvider.System));
+        var quote = await quoteService.QuoteAsync("property-one", new PublicBookingQuoteRequest
+        {
+            CheckInDate = new DateOnly(2035, 2, 1),
+            CheckOutDate = new DateOnly(2035, 2, 3),
+            Adults = 4,
+            Selections = [new PublicBookingQuoteSelection { RoomTypeId = 10, Quantity = 2 }]
+        });
+
+        await using var scope = harness.CreateService(useAuthoritativePricing: true);
+        await scope.Service.CreateForAccountAsync(1,
+            StayRequest(4, [], CreateAccountItem(10, 100), CreateAccountItem(10, null)));
+        await using var verification = harness.CreateContext();
+        var reservations = await verification.Reservations.OrderBy(item => item.Id).ToArrayAsync();
+
+        Assert.Equal(reservations.Select(item => item.AdultCount), quote.Rooms.Select(room => room.Adults));
+        Assert.Equal(reservations.Select(item => item.FinalAmount), quote.Rooms.Select(room => room.FinalAmount));
+        Assert.Equal(reservations.Sum(item => item.FinalAmount), quote.TotalAmount);
+    }
+
     [Fact]
     public async Task StayGuests_FourAdultsFitTwoTwoPersonRooms()
     {

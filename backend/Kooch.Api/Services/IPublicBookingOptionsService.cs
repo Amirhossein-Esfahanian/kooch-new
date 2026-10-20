@@ -4,6 +4,11 @@ namespace Kooch.Api.Services;
 
 public interface IPublicBookingOptionsService
 {
+    Task<PublicBookingQuoteResponse> QuoteAsync(
+        string slug,
+        PublicBookingQuoteRequest request,
+        CancellationToken cancellationToken = default);
+
     Task<PublicBookingOptionsResponse> GetAsync(
         string slug,
         DateOnly checkInDate,

@@ -111,6 +111,16 @@ public class PublicPropertiesController(
             cancellationToken));
     }
 
+    [HttpPost("{slug}/booking-quote")]
+    [ProducesResponseType<PublicBookingQuoteResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PublicBookingQuoteResponse>> QuoteBooking(
+        string slug,
+        [FromBody] PublicBookingQuoteRequest request,
+        CancellationToken cancellationToken) =>
+        Ok(await bookingOptionsService.QuoteAsync(slug, request, cancellationToken));
+
     private static IReadOnlyList<int> ParseChildAges(string? value, int children)
     {
         if (children is 0 && string.IsNullOrWhiteSpace(value))

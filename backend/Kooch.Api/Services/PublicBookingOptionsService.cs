@@ -14,6 +14,131 @@ public sealed class PublicBookingOptionsService(
     IChildPricingRuleResolver childPricingRuleResolver,
     IPropertySameNightBookingPolicyService sameNightPolicyService) : IPublicBookingOptionsService
 {
+    public async Task<PublicBookingQuoteResponse> QuoteAsync(
+        string slug,
+        PublicBookingQuoteRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+        if (request.CheckInDate >= request.CheckOutDate || request.Adults <= 0 ||
+            request.ChildAges is null || request.ChildAges.Any(age => age is < 0 or > 17) ||
+            request.Selections is null || request.Selections.Count == 0 ||
+            request.Selections.Any(selection => selection is null || selection.RoomTypeId <= 0 ||
+                selection.Quantity <= 0 || selection.RatePlanId is <= 0) ||
+            request.Selections.Sum(selection => (long)selection.Quantity) > int.MaxValue)
+            throw new ArgumentException("Invalid booking quote request.", nameof(request));
+
+        var normalizedSlug = EnglishSlugGenerator.NormalizeLookup(slug);
+        var property = await dbContext.Properties.AsNoTracking().SingleOrDefaultAsync(
+            item => item.Slug == normalizedSlug && item.Status == PropertyStatus.Approved,
+            cancellationToken) ?? throw new KeyNotFoundException("Property not found.");
+        var roomTypeIds = request.Selections.Select(selection => selection.RoomTypeId).Distinct().ToArray();
+        var roomTypes = await dbContext.RoomTypes.AsNoTracking()
+            .Where(roomType => roomType.PropertyId == property.Id && roomType.IsActive &&
+                roomTypeIds.Contains(roomType.Id))
+            .ToDictionaryAsync(roomType => roomType.Id, cancellationToken);
+        if (roomTypes.Count != roomTypeIds.Length)
+            throw new ArgumentException("A selected room type is not available.", nameof(request));
+
+        var globalChildRules = await childPricingRuleResolver.GetGlobalDefaultsAsync(cancellationToken);
+        var rules = ChildOccupancyRules.FromResolved(childPricingRuleResolver.Resolve(
+            property.FreeChildAgeLimit, property.MaxFreeChildren, property.ChildPrice, globalChildRules));
+        var availability = await effectiveAvailabilityService.GetRangeAsync(
+            roomTypeIds, request.CheckInDate, request.CheckOutDate,
+            cancellationToken: cancellationToken);
+        var sameNightPolicy = sameNightPolicyService.Evaluate(property, request.CheckInDate);
+        var modes = new Dictionary<int, ReservationBookingModeFilter>();
+        foreach (var group in request.Selections.GroupBy(selection => selection.RoomTypeId))
+        {
+            var quantity = group.Sum(selection => (long)selection.Quantity);
+            if (!availability.TryGetValue(group.Key, out var effective) ||
+                quantity > int.MaxValue || !effective.HasCapacityForFullRange((int)quantity))
+                throw new InvalidOperationException("The selected rooms are no longer available.");
+
+            var status = effective.Nights.Values.Any(night => night.ConfiguredStatus == AvailabilityStatus.OnRequest)
+                ? AvailabilityStatus.OnRequest : AvailabilityStatus.Available;
+            var decision = PublicBookingModeComposer.Compose(
+                new PublicBookingAvailability(status,
+                    effective.Nights.Values.Any(night => night.IsClosed), true), sameNightPolicy);
+            if (decision.Status == AvailabilityStatus.Unavailable)
+                throw new InvalidOperationException("The selected rooms are no longer available.");
+            modes[group.Key] = decision.Status == AvailabilityStatus.OnRequest
+                ? ReservationBookingModeFilter.OnRequest : ReservationBookingModeFilter.Instant;
+        }
+        if (modes.Values.Distinct().Skip(1).Any())
+            throw new InvalidOperationException(
+                "Instant and on-request reservations cannot be combined in one booking session.");
+
+        var selections = request.Selections.Select(selection =>
+        {
+            var roomType = roomTypes[selection.RoomTypeId];
+            return new GuestRoomTypeSelection(roomType.Id,
+                new RoomTypeOccupancyCapacity(roomType.MaxAdults, roomType.MaxChildren,
+                    roomType.AllowExtraGuest, roomType.MaxExtraGuests), selection.Quantity);
+        }).ToArray();
+        var allocation = GuestRoomAllocator.Allocate(rules, request.Adults, request.ChildAges, selections);
+        if (!allocation.IsValid || allocation.Rooms.Any(room => room.Adults <= 0))
+            throw new InvalidOperationException(
+                "The stay-level guests cannot be accommodated in the selected rooms.");
+
+        var selectedRatePlans = request.Selections
+            .SelectMany(selection => Enumerable.Repeat(selection.RatePlanId, selection.Quantity))
+            .ToArray();
+        var rooms = new List<PublicBookingQuotedRoom>(allocation.Rooms.Count);
+        string? currency = null;
+        decimal total = 0;
+        foreach (var room in allocation.Rooms)
+        {
+            var ratePlanId = selectedRatePlans[room.SelectedRoomIndex];
+            var price = await pricingService.PreviewPublicBookingPriceAsync(
+                new ReservationPricePreviewRequest
+                {
+                    PropertyId = property.Id,
+                    RoomTypeId = room.RoomTypeId,
+                    RatePlanId = ratePlanId,
+                    CheckInDate = request.CheckInDate,
+                    CheckOutDate = request.CheckOutDate,
+                    Adults = room.Adults,
+                    Children = room.ChildAges.Count,
+                    ChildAges = room.ChildAges,
+                    RoomCount = 1,
+                    GuestType = PricingGuestType.Iranian
+                }, cancellationToken);
+            if (price.PropertyId != property.Id || price.RoomTypeId != room.RoomTypeId)
+                throw new InvalidOperationException("Pricing result does not match the selected room.");
+            var roomCurrency = price.Currency?.Trim().ToUpperInvariant();
+            if (string.IsNullOrEmpty(roomCurrency) || roomCurrency.Length > 3)
+                throw new InvalidOperationException("Pricing returned an invalid currency.");
+            if (currency is not null && currency != roomCurrency)
+                throw new InvalidOperationException("All rooms in a booking quote must use the same currency.");
+            currency = roomCurrency;
+            total = checked(total + price.FinalAmount);
+            rooms.Add(new PublicBookingQuotedRoom
+            {
+                SelectedRoomIndex = room.SelectedRoomIndex,
+                RoomTypeId = room.RoomTypeId,
+                RatePlanId = ratePlanId,
+                Adults = room.Adults,
+                ChildAges = room.ChildAges,
+                BookingMode = modes[room.RoomTypeId],
+                FinalAmount = price.FinalAmount,
+                Currency = roomCurrency
+            });
+        }
+
+        return new PublicBookingQuoteResponse
+        {
+            PropertyId = property.Id,
+            CheckInDate = request.CheckInDate,
+            CheckOutDate = request.CheckOutDate,
+            Adults = request.Adults,
+            ChildAges = request.ChildAges.ToArray(),
+            Rooms = rooms,
+            TotalAmount = total,
+            Currency = currency!
+        };
+    }
+
     public async Task<PublicBookingOptionsResponse> GetAsync(
         string slug,
         DateOnly checkInDate,
