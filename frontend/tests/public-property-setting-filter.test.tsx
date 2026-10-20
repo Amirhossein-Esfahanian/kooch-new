@@ -86,18 +86,63 @@ describe("public PropertySetting search filter", () => {
     mocks.fetchPublicApi.mockImplementation((path: string) => path === "/property-settings"
       ? Promise.resolve(settings) : Promise.reject(new PublicApiError(400, "تاریخ‌ها را اصلاح کنید.")));
     render(<PropertiesPage />);
-    expect((await screen.findByRole("alert")).textContent).toBe("تاریخ‌ها را اصلاح کنید.");
+    expect((await screen.findByRole("alert")).textContent).toContain("تاریخ‌ها را اصلاح کنید.");
     expect(document.querySelector('a[href^="/properties/"]')).toBeNull();
     expect(screen.queryByText(/کارت‌های نمونه/)).toBeNull();
   });
 
-  it("retains the existing labeled sample fallback for unrelated failures", async () => {
+  it("shows a retryable error without sample cards or fabricated prices on API failure", async () => {
     mocks.fetchPublicApi.mockImplementation((path: string) => path === "/property-settings"
       ? Promise.resolve(settings) : Promise.reject(new PublicApiError(500, "Could not load properties.")));
     render(<PropertiesPage />);
-    expect(await screen.findByText(/کارت‌های نمونه/)).toBeTruthy();
-    expect(document.querySelector('a[href^="/properties/"]')).not.toBeNull();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "تلاش دوباره" })).toBeTruthy();
+    expect(document.querySelector('a[href^="/properties/"]')).toBeNull();
+    expect(screen.queryByText("هیچ اقامتگاهی با این شرایط پیدا نشد.")).toBeNull();
+    expect(screen.queryByText(/۳٬۰۰۰٬۰۰۰/)).toBeNull();
+  });
+
+  it("retries the same search without losing URL filters", async () => {
+    searchParams = new URLSearchParams("q=کاشان&rooms=2&adults=4&minPrice=1000000&propertyType=Villa&settingSlugs=historic-district");
+    let attempts = 0;
+    mocks.fetchPublicApi.mockImplementation((path: string) => {
+      if (path === "/property-settings") return Promise.resolve(settings);
+      attempts += 1;
+      return attempts === 1 ? Promise.reject(new Error("offline")) : Promise.resolve([resultProperty]);
+    });
+    render(<PropertiesPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "تلاش دوباره" }));
+    await waitFor(() => expect(mocks.fetchPublicApi.mock.calls.filter(([path]) => path.startsWith("/properties?"))).toHaveLength(2));
+    const searches = mocks.fetchPublicApi.mock.calls.filter(([path]) => path.startsWith("/properties?"));
+    expect(searches[1][0]).toBe(searches[0][0]);
+    expect(searches[1][0]).toContain("rooms=2&adults=4");
+    expect(searchParams.get("minPrice")).toBe("1000000");
+    expect(searchParams.get("propertyType")).toBe("Villa");
+    expect(mocks.replace).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
+  });
+
+  it("clears earlier cards after a changed search fails", async () => {
+    mocks.fetchPublicApi.mockImplementation((path: string) => path === "/property-settings"
+      ? Promise.resolve(settings) : Promise.resolve([resultProperty]));
+    const view = render(<PropertiesPage />);
+    expect(await screen.findByText("خانه آزمون")).toBeTruthy();
+
+    searchParams = new URLSearchParams("q=ناموجود&rooms=2");
+    mocks.fetchPublicApi.mockImplementation((path: string) => path === "/property-settings"
+      ? Promise.resolve(settings) : Promise.reject(new Error("offline")));
+    view.rerender(<PropertiesPage />);
+
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.queryByText("خانه آزمون")).toBeNull();
+    expect(document.querySelector('a[href^="/properties/"]')).toBeNull();
+  });
+
+  it("keeps a successful empty response distinct from an API error", async () => {
+    render(<PropertiesPage />);
+    expect(await screen.findByText("هیچ اقامتگاهی با این شرایط پیدا نشد.")).toBeTruthy();
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByRole("button", { name: "تلاش دوباره" })).toBeNull();
   });
   beforeEach(() => {
     vi.clearAllMocks();

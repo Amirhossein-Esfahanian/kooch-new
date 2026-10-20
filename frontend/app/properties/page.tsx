@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { AccommodationSearchBox } from "@/components/AccommodationSearchBox";
+import { KoochAlert } from "@/components/KoochAlert";
+import { KoochButton } from "@/components/KoochButton";
 import { KoochCheckbox } from "@/components/KoochFormControls";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
@@ -39,66 +41,6 @@ type ResultProperty = Pick<
   | "availabilityStatusSummary"
   | "promotions"
 >;
-
-const sampleProperties: ResultProperty[] = [
-  {
-    id: -1,
-    name: "خانه حیاط‌دار کاشان",
-    slug: "kashan-courtyard-house",
-    city: "کاشان",
-    address: "بافت تاریخی کاشان",
-    description: "خانه‌ای آرام با اتاق‌های سنتی دور یک حیاط مرکزی.",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80",
-    startingPrice: 3000000,
-    propertyType: "TraditionalHouse",
-    roomTypes: [],
-    matchingRoomTypesCount: 1,
-    matchingRoomTypes: [],
-    guestFitStatus: "مناسب ظرفیت",
-    availabilitySummary: "فعلاً همه موجود فرض شده‌اند",
-    availabilityStatusSummary: "Unknown",
-    shortDescription: "خانه‌ای آرام با اتاق‌های سنتی دور یک حیاط مرکزی.",
-  },
-  {
-    id: -2,
-    name: "اقامت بوتیک باغ فین",
-    slug: "fin-garden-boutique-stay",
-    city: "کاشان",
-    address: "جاده فین، کاشان",
-    description: "اقامتگاهی ساده و تمیز نزدیک باغ فین و دیدنی‌های تاریخی.",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1566073771259-6a8506099945?auto=format&fit=crop&w=1200&q=80",
-    startingPrice: 2400000,
-    propertyType: "BoutiqueHotel",
-    roomTypes: [],
-    matchingRoomTypesCount: 1,
-    matchingRoomTypes: [],
-    guestFitStatus: "مناسب ظرفیت",
-    availabilitySummary: "فعلاً همه موجود فرض شده‌اند",
-    availabilityStatusSummary: "Unknown",
-    shortDescription: "اقامتگاهی ساده و تمیز نزدیک باغ فین و دیدنی‌های تاریخی.",
-  },
-  {
-    id: -3,
-    name: "مهمان‌خانه مسیر کویر",
-    slug: "desert-road-guesthouse",
-    city: "کاشان",
-    address: "مسیر آران و بیدگل",
-    description: "اقامتی راحت برای شب‌های آرام و سفر کوتاه به کویر.",
-    coverImageUrl:
-      "https://images.unsplash.com/photo-1542718610-a1d656d1884c?auto=format&fit=crop&w=1200&q=80",
-    startingPrice: 2100000,
-    propertyType: "EcoLodge",
-    roomTypes: [],
-    matchingRoomTypesCount: 1,
-    matchingRoomTypes: [],
-    guestFitStatus: "مناسب ظرفیت",
-    availabilitySummary: "فعلاً همه موجود فرض شده‌اند",
-    availabilityStatusSummary: "Unknown",
-    shortDescription: "اقامتی راحت برای شب‌های آرام و سفر کوتاه به کویر.",
-  },
-];
 
 const filterGroups = [
   {
@@ -154,8 +96,8 @@ function PropertiesContent() {
   const currencyLabel = useSiteCurrencyLabel();
   const [properties, setProperties] = useState<ResultProperty[]>([]);
   const [loading, setLoading] = useState(true);
-  const [usingSamples, setUsingSamples] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [settingOptions, setSettingOptions] = useState<
     PublicPropertySettingOption[]
@@ -217,7 +159,6 @@ function PropertiesContent() {
     setSearchError(dateInputError);
     if (dateInputError) {
       setProperties([]);
-      setUsingSamples(false);
       setLoading(false);
       return;
     }
@@ -234,23 +175,20 @@ function PropertiesContent() {
       query.set("settingSlugs", settingSlugs.join(","));
     }
 
+    setProperties([]);
+    setSearchError(null);
     setLoading(true);
     fetchPublicApi<PublicProperty[]>(`/properties?${query.toString()}`)
       .then((items) => {
         if (!active) return;
         setProperties(items);
-        setUsingSamples(false);
       })
       .catch((error: unknown) => {
         if (!active) return;
-        if (error instanceof PublicApiError && error.status === 400) {
-          setProperties([]);
-          setUsingSamples(false);
-          setSearchError(error.message);
-          return;
-        }
-        setProperties(sampleProperties);
-        setUsingSamples(true);
+        setProperties([]);
+        setSearchError(error instanceof PublicApiError && error.status === 400
+          ? error.message
+          : "دریافت نتایج جست‌وجو انجام نشد. اتصال خود را بررسی کنید و دوباره تلاش کنید.");
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -265,6 +203,7 @@ function PropertiesContent() {
     city,
     q,
     rooms,
+    retryCount,
     dateInputError,
     settingSlugs.join(","),
   ]);
@@ -389,7 +328,7 @@ function PropertiesContent() {
             <span className="text-sm font-semibold text-slate-500">
               {loading
                 ? "در حال بارگذاری..."
-                : `${visibleProperties.length} اقامتگاه`}
+                : searchError ? "نتایج در دسترس نیست" : `${visibleProperties.length} اقامتگاه`}
             </span>
             <button
               className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-bold lg:hidden"
@@ -400,17 +339,6 @@ function PropertiesContent() {
             </button>
           </div>
         </div>
-
-        {usingSamples && (
-          <p className="mt-5 rounded-xl bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-            اتصال به API برقرار نشد؛ کارت‌های نمونه نمایش داده شده‌اند.
-          </p>
-        )}
-        {searchError && (
-          <p role="alert" className="mt-5 rounded-lg border border-border bg-card p-3 text-sm text-destructive">
-            {searchError}
-          </p>
-        )}
 
         <section className="mt-7 rounded-xl border border-slate-200 bg-white p-4">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -568,6 +496,15 @@ function PropertiesContent() {
           <section>
             {loading ? (
               <PageLoading compact />
+            ) : searchError ? (
+              <KoochAlert title="نتایج جست‌وجو در دسترس نیست" variant="destructive">
+                <p>{searchError}</p>
+                {!dateInputError && (
+                  <KoochButton className="mt-3" onClick={() => setRetryCount((count) => count + 1)} variant="outline">
+                    تلاش دوباره
+                  </KoochButton>
+                )}
+              </KoochAlert>
             ) : visibleProperties.length === 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center text-sm font-bold text-slate-600">
                 هیچ اقامتگاهی با این شرایط پیدا نشد.
@@ -585,17 +522,17 @@ function PropertiesContent() {
                     >
                       <Image
                         alt={property.name}
-                        className="h-full min-h-52 w-full object-cover"
+                        className={property.coverImageUrl
+                          ? "h-full min-h-52 w-full object-cover"
+                          : "h-full min-h-52 w-full bg-muted p-16 object-contain"}
                         height={624}
                         loading="lazy"
                         sizes="(max-width: 767px) calc(100vw - 2.5rem), 260px"
                         src={
-                          property.coverImageUrl ??
-                          sampleProperties[0].coverImageUrl!
+                          property.coverImageUrl ?? "/svgs/hotel.svg"
                         }
                         unoptimized={shouldBypassImageOptimization(
-                          property.coverImageUrl ??
-                            sampleProperties[0].coverImageUrl!,
+                          property.coverImageUrl ?? "/svgs/hotel.svg",
                         )}
                         width={780}
                       />
