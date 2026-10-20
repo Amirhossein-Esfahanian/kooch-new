@@ -84,7 +84,8 @@ public sealed class BookingSessionService(
             PropertyId = propertyIds[0],
             IdempotencyKey = request.IdempotencyKey,
             Items = request.Items
-                .Select(item => ToInternalItem(item, accountContext.SpecialRequest))
+                .Select(item => ToInternalItem(item, accountContext.SpecialRequest,
+                    accountContext.StayGuests is not null))
                 .ToArray()
         };
         return await CreateCoreAsync(
@@ -156,6 +157,9 @@ public sealed class BookingSessionService(
         var roomTypes = await LockRoomTypesAsync(lockOrder.RoomTypeIds, cancellationToken);
         var rooms = await LockRoomsAsync(lockOrder.RoomIds, cancellationToken);
         ValidateRoomRelationships(request, roomTypes, rooms);
+        if (accountContext?.StayGuests is { } stayGuests)
+            request = await AllocateStayGuestsAsync(
+                request, property, roomTypes, stayGuests, cancellationToken);
         var ratePlans = await LoadSelectedRatePlansAsync(request.Items, cancellationToken);
 
         var preparedItems = await PrepareItemsAsync(
@@ -285,7 +289,8 @@ public sealed class BookingSessionService(
 
     private static BookingSessionReservationCreateItem ToInternalItem(
         AccountBookingSessionReservationCreateItem item,
-        string? specialRequest) =>
+        string? specialRequest,
+        bool useStayGuests) =>
         new()
         {
             RoomTypeId = item.RoomTypeId,
@@ -293,9 +298,9 @@ public sealed class BookingSessionService(
             RoomId = item.RoomId,
             CheckInDate = item.CheckInDate,
             CheckOutDate = item.CheckOutDate,
-            Adults = item.Adults,
-            Children = item.Children,
-            ChildAges = item.ChildAges,
+            Adults = useStayGuests ? 1 : item.Adults,
+            Children = useStayGuests ? 0 : item.Children,
+            ChildAges = useStayGuests ? [] : item.ChildAges,
             GuestType = PricingGuestType.Iranian,
             Status = null,
             Notes = specialRequest ?? item.Notes
@@ -341,6 +346,22 @@ public sealed class BookingSessionService(
         BookingSessionCreateRequest request,
         AccountBookingContext accountContext)
     {
+        if (accountContext.StayGuests is { } stayGuests)
+        {
+            var legacyAccountHash = ComputeAccountRequestHash(
+                request, accountContext with { StayGuests = null });
+            var stayPayload = JsonSerializer.SerializeToUtf8Bytes(new CanonicalStayGuestBookingRequest(
+                legacyAccountHash,
+                stayGuests.Adults,
+                stayGuests.ChildAges,
+                request.Items.Select(item => new CanonicalStayGuestItem(
+                    item.RoomTypeId, item.RatePlanId, item.RoomId,
+                    item.CheckInDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    item.CheckOutDate.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+                    NormalizeOptionalText(item.Notes))).ToArray()));
+            return Convert.ToHexString(SHA256.HashData(stayPayload));
+        }
+
         var canonicalHash = ComputeRequestHash(request);
         if (accountContext.BookingForSelf &&
             accountContext.PrimaryGuest is null &&
@@ -420,6 +441,12 @@ public sealed class BookingSessionService(
                 validationResults[0].ErrorMessage ?? "Invalid account booking details.",
                 nameof(request));
         }
+        if (request.StayGuests is { } stayGuestInput &&
+            (stayGuestInput.Adults <= 0 || stayGuestInput.ChildAges is null ||
+             stayGuestInput.ChildAges.Any(age => age is < 0 or > 17)))
+        {
+            throw new ArgumentException("Invalid stay-level guest counts or child ages.", nameof(request));
+        }
 
         var specialRequest = NormalizeOptionalText(request.SpecialRequest);
         if (specialRequest?.Length > 2000)
@@ -458,7 +485,10 @@ public sealed class BookingSessionService(
             primaryGuest,
             request.ExpectedArrivalTime,
             request.ExpectedArrivalDayOffset,
-            specialRequest);
+            specialRequest,
+            request.StayGuests is { } stayGuests
+                ? new AccountStayGuests(stayGuests.Adults, stayGuests.ChildAges.ToArray())
+                : null);
     }
 
     private async Task<PrimaryGuestAssignment> ResolvePrimaryGuestAsync(
@@ -923,6 +953,55 @@ public sealed class BookingSessionService(
         }
     }
 
+    private async Task<BookingSessionCreateRequest> AllocateStayGuestsAsync(
+        BookingSessionCreateRequest request,
+        Property property,
+        IReadOnlyDictionary<int, RoomType> roomTypes,
+        AccountStayGuests stayGuests,
+        CancellationToken cancellationToken)
+    {
+        var first = request.Items[0];
+        if (request.Items.Any(item => item.CheckInDate != first.CheckInDate ||
+                                      item.CheckOutDate != first.CheckOutDate))
+            throw new ArgumentException("Stay-level guests require one shared date range.", nameof(request));
+
+        var childRuleResolver = new ChildPricingRuleResolver(dbContext);
+        var rules = ChildOccupancyRules.FromResolved(childRuleResolver.Resolve(
+            property.FreeChildAgeLimit,
+            property.MaxFreeChildren,
+            property.ChildPrice,
+            await childRuleResolver.GetGlobalDefaultsAsync(cancellationToken)));
+        var selections = request.Items.Select(item =>
+        {
+            var roomType = roomTypes[item.RoomTypeId];
+            return new GuestRoomTypeSelection(item.RoomTypeId,
+                new RoomTypeOccupancyCapacity(roomType.MaxAdults, roomType.MaxChildren,
+                    roomType.AllowExtraGuest, roomType.MaxExtraGuests), 1);
+        }).ToArray();
+        var allocation = GuestRoomAllocator.Allocate(
+            rules, stayGuests.Adults, stayGuests.ChildAges, selections);
+        if (!allocation.IsValid || allocation.Rooms.Any(room => room.Adults <= 0))
+            throw new InvalidOperationException(
+                "The stay-level guests cannot be accommodated in the selected rooms.");
+
+        request.Items = request.Items.Select((item, index) => new BookingSessionReservationCreateItem
+        {
+            RoomTypeId = item.RoomTypeId,
+            RatePlanId = item.RatePlanId,
+            RoomId = item.RoomId,
+            CheckInDate = item.CheckInDate,
+            CheckOutDate = item.CheckOutDate,
+            Adults = allocation.Rooms[index].Adults,
+            Children = allocation.Rooms[index].ChildAges.Count,
+            ChildAges = allocation.Rooms[index].ChildAges,
+            GuestType = item.GuestType,
+            Status = item.Status,
+            Notes = item.Notes
+        }).ToArray();
+        ValidateRequest(request);
+        return request;
+    }
+
     private async Task<IReadOnlyDictionary<int, RatePlan>> LoadSelectedRatePlansAsync(
         IReadOnlyList<BookingSessionReservationCreateItem> items,
         CancellationToken cancellationToken)
@@ -1289,6 +1368,20 @@ public sealed class BookingSessionService(
         string? SpecialRequest,
         CanonicalPrimaryGuest? PrimaryGuest);
 
+    private sealed record CanonicalStayGuestBookingRequest(
+        string AccountHash,
+        int Adults,
+        IReadOnlyList<int> ChildAges,
+        IReadOnlyList<CanonicalStayGuestItem> Items);
+
+    private sealed record CanonicalStayGuestItem(
+        int RoomTypeId,
+        int? RatePlanId,
+        int? RoomId,
+        string CheckInDate,
+        string CheckOutDate,
+        string? Notes);
+
     private sealed record CanonicalAccountBookingRequestWithNationalCode(
         string BookingHash,
         bool BookingForSelf,
@@ -1328,7 +1421,10 @@ public sealed class BookingSessionService(
         NormalizedPrimaryGuest? PrimaryGuest,
         TimeOnly? ExpectedArrivalTime,
         byte? ExpectedArrivalDayOffset,
-        string? SpecialRequest);
+        string? SpecialRequest,
+        AccountStayGuests? StayGuests);
+
+    private sealed record AccountStayGuests(int Adults, IReadOnlyList<int> ChildAges);
 
     private sealed record NormalizedPrimaryGuest(
         string? FirstName,

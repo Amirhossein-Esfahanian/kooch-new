@@ -25,6 +25,7 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
     [MaxLength(2000)]
     public string? SpecialRequest { get; set; }
 
+    public AccountBookingSessionStayGuests? StayGuests { get; set; }
     public IReadOnlyList<AccountBookingSessionReservationCreateItem> Items { get; set; } = [];
 
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
@@ -89,6 +90,12 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
             yield return result;
         }
     }
+}
+
+public sealed class AccountBookingSessionStayGuests
+{
+    public int Adults { get; set; }
+    public IReadOnlyList<int> ChildAges { get; set; } = [];
 }
 
 public sealed class AccountBookingSessionPrimaryGuestRequest
