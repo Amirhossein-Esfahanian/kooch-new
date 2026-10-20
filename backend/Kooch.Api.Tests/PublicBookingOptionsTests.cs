@@ -734,6 +734,12 @@ public sealed partial class PublicBookingOptionsTests
 
     private sealed class RecordingBookingOptionsService : IPublicBookingOptionsService
     {
+        public Task<PublicBookingCandidatesResponse> GetCandidatesAsync(
+            string slug, DateOnly checkInDate, DateOnly checkOutDate, int rooms,
+            int adults, int children, IReadOnlyList<int> childAges,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(new PublicBookingCandidatesResponse());
+
         public Task<PublicBookingQuoteResponse> QuoteAsync(
             string slug, PublicBookingQuoteRequest request, CancellationToken cancellationToken = default) =>
             Task.FromResult(new PublicBookingQuoteResponse());

@@ -14,6 +14,59 @@ public sealed class PublicBookingOptionsService(
     IChildPricingRuleResolver childPricingRuleResolver,
     IPropertySameNightBookingPolicyService sameNightPolicyService) : IPublicBookingOptionsService
 {
+    public async Task<PublicBookingCandidatesResponse> GetCandidatesAsync(
+        string slug,
+        DateOnly checkInDate,
+        DateOnly checkOutDate,
+        int rooms,
+        int adults,
+        int children,
+        IReadOnlyList<int> childAges,
+        CancellationToken cancellationToken = default)
+    {
+        ValidateRequest(checkInDate, checkOutDate, adults, children, childAges);
+        if (rooms <= 1 || adults < rooms)
+            throw new ArgumentException(
+                "Multi-room discovery requires at least two rooms and one adult per room.", nameof(rooms));
+
+        // Eligibility is checked for one adult in each offer. The stay-level party is
+        // allocated and priced only after the selected combination reaches booking-quote.
+        var baseline = await GetAsync(slug, checkInDate, checkOutDate, 1, 0, [], cancellationToken);
+        return new PublicBookingCandidatesResponse
+        {
+            PropertyId = baseline.PropertyId,
+            CheckInDate = checkInDate,
+            CheckOutDate = checkOutDate,
+            Rooms = rooms,
+            Adults = adults,
+            ChildAges = childAges.ToArray(),
+            RoomTypes = baseline.RoomTypes.Select(option => new PublicBookingRoomTypeCandidate
+            {
+                RoomTypeId = option.RoomTypeId,
+                Name = option.Name,
+                RoomKind = option.RoomKind,
+                InventoryMode = option.InventoryMode,
+                AvailableCount = option.AvailableCount,
+                BookingMode = option.BookingMode,
+                MaxAdults = option.MaxAdults,
+                MaxChildren = option.MaxChildren,
+                AllowExtraGuest = option.AllowExtraGuest,
+                MaxExtraGuests = option.MaxExtraGuests,
+                DefaultMealPlanName = option.DefaultMealPlanName,
+                DefaultMealPlanSlug = option.DefaultMealPlanSlug,
+                Rooms = option.Rooms,
+                RatePlans = option.RatePlans.Select(plan => new PublicBookingRatePlanCandidate
+                {
+                    RatePlanId = plan.RatePlanId,
+                    Name = plan.Name,
+                    MealPlanName = plan.MealPlanName,
+                    MealPlanSlug = plan.MealPlanSlug,
+                    MinimumNights = plan.MinimumNights
+                }).ToArray()
+            }).ToArray()
+        };
+    }
+
     public async Task<PublicBookingQuoteResponse> QuoteAsync(
         string slug,
         PublicBookingQuoteRequest request,

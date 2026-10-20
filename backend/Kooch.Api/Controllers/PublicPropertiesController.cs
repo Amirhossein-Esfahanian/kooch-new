@@ -111,6 +111,23 @@ public class PublicPropertiesController(
             cancellationToken));
     }
 
+    [HttpGet("{slug}/booking-options/candidates")]
+    [ProducesResponseType<PublicBookingCandidatesResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<PublicBookingCandidatesResponse>> GetBookingCandidates(
+        string slug,
+        [FromQuery] DateOnly checkIn,
+        [FromQuery] DateOnly checkOut,
+        [FromQuery] int rooms,
+        [FromQuery] int adults,
+        [FromQuery] int children,
+        [FromQuery] string? childAges,
+        CancellationToken cancellationToken) =>
+        Ok(await bookingOptionsService.GetCandidatesAsync(
+            slug, checkIn, checkOut, rooms, adults, children,
+            ParseChildAges(childAges, children), cancellationToken));
+
     [HttpPost("{slug}/booking-quote")]
     [ProducesResponseType<PublicBookingQuoteResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
