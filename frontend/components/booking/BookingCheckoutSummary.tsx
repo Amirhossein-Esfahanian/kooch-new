@@ -73,6 +73,15 @@ export function BookingCheckoutSummary({
                 <span className="text-xs font-bold text-muted-foreground">
                   <span aria-hidden="true">{mode.icon}</span> {mode.label}
                 </span>
+                {line.item.stayRooms && line.item.stayRooms > 1 &&
+                  line.item.allocatedAdults !== undefined && (
+                    <span className="text-xs text-muted-foreground">
+                      تخصیص هر واحد: {line.item.allocatedAdults.toLocaleString("fa-IR")} بزرگسال
+                      {line.item.allocatedChildAges?.length
+                        ? ` · ${line.item.allocatedChildAges.length.toLocaleString("fa-IR")} کودک`
+                        : ""}
+                    </span>
+                  )}
               </li>
             );
           })}

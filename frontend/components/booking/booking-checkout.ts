@@ -4,17 +4,22 @@ import {
 } from "@/components/booking/BookingCartProvider";
 import {
   createAccountBookingSession,
+  fetchBookingQuote,
   fetchBookingOptions,
+  validateBookingQuote,
   type AccountBookingSessionCreateResponse,
   type AccountBookingSessionPrimaryGuestRequest,
   type BookingOptionsQuery,
   type PublicBookingOptions,
+  type PublicBookingQuote,
+  type PublicBookingQuoteRequest,
 } from "@/lib/booking-sessions";
 
 type BookingOptionsFetcher = (
   slug: string,
   query: BookingOptionsQuery,
 ) => Promise<PublicBookingOptions>;
+type BookingQuoteFetcher = (slug: string, request: PublicBookingQuoteRequest) => Promise<PublicBookingQuote>;
 
 export interface RevalidatedBookingCart {
   items: BookingCartItem[];
@@ -42,10 +47,41 @@ function queryKey(item: BookingCartItem) {
 export async function revalidateBookingCart(
   items: BookingCartItem[],
   fetcher: BookingOptionsFetcher = fetchBookingOptions,
+  quoteFetcher: BookingQuoteFetcher = fetchBookingQuote,
 ): Promise<RevalidatedBookingCart> {
   if (items.length === 0) throw new Error("سبد رزرو خالی است.");
   if (!bookingCartItemsShareContext(items)) {
     throw new Error("همه اتاق‌های سبد باید تاریخ اقامت و ترکیب مهمان یکسان داشته باشند.");
+  }
+  if (items[0].stayRooms && items[0].stayRooms > 1) {
+    const first = items[0];
+    if (items.length !== first.stayRooms || items.some((item) =>
+      item.stayRooms !== first.stayRooms || item.propertySlug !== first.propertySlug ||
+      item.allocatedAdults === undefined || item.allocatedChildAges === undefined)) {
+      throw new Error("ترکیب اتاق‌های سبد کامل نیست؛ دوباره اتاق‌ها را انتخاب کنید.");
+    }
+    const request: PublicBookingQuoteRequest = {
+      checkInDate: first.checkIn,
+      checkOutDate: first.checkOut,
+      adults: first.adults,
+      childAges: first.childAges,
+      selections: items.map((item) => ({ roomTypeId: item.roomTypeId,
+        ratePlanId: item.ratePlanId, quantity: 1 })),
+    };
+    const quote = validateBookingQuote(await quoteFetcher(first.propertySlug, request), request, first.propertyId);
+    const refreshedItems = items.map((item, index) => {
+      const room = quote.rooms[index];
+      if (room.bookingMode !== item.bookingMode) {
+        throw new Error("شرایط رزرو این اتاق تغییر کرده است؛ اتاق‌ها را دوباره انتخاب کنید.");
+      }
+      return { ...item, displayAmount: room.finalAmount, currency: room.currency,
+        allocatedAdults: room.adults, allocatedChildAges: [...room.childAges] };
+    });
+    return { items: refreshedItems, priceChanged: refreshedItems.some((item, index) =>
+      item.displayAmount !== items[index].displayAmount || item.currency !== items[index].currency) };
+  }
+  if (items.some((item) => item.stayRooms && item.stayRooms > 1)) {
+    throw new Error("ترکیب اتاق‌های سبد یکسان نیست.");
   }
   const propertySlug = items[0].propertySlug;
   const groups = new Map<string, BookingCartItem[]>();
@@ -139,6 +175,12 @@ export function createBookingSessionFromCart(
   if (!bookingCartItemsShareContext(items)) {
     throw new Error("همه اتاق‌های سبد باید تاریخ اقامت و ترکیب مهمان یکسان داشته باشند.");
   }
+  const multiRoom = Boolean(items[0]?.stayRooms && items[0].stayRooms > 1);
+  if (multiRoom && (items.length !== items[0].stayRooms || items.some((item) =>
+    item.stayRooms !== items[0].stayRooms || item.allocatedAdults === undefined ||
+    item.allocatedChildAges === undefined))) {
+    throw new Error("ترکیب اتاق‌های سبد کامل نیست؛ دوباره اتاق‌ها را انتخاب کنید.");
+  }
   return create({
     idempotencyKey,
     bookingForSelf: stayDetails.bookingForSelf,
@@ -146,14 +188,15 @@ export function createBookingSessionFromCart(
     expectedArrivalTime: stayDetails.expectedArrivalTime,
     expectedArrivalDayOffset: stayDetails.expectedArrivalDayOffset,
     specialRequest: stayDetails.specialRequest,
+    ...(multiRoom ? { stayGuests: { adults: items[0].adults, childAges: items[0].childAges } } : {}),
     items: items.map((item) => ({
       roomTypeId: item.roomTypeId,
       ratePlanId: item.ratePlanId ?? null,
       checkInDate: item.checkIn,
       checkOutDate: item.checkOut,
-      adults: item.adults,
-      children: item.children,
-      childAges: item.childAges,
+      adults: multiRoom ? 1 : item.adults,
+      children: multiRoom ? 0 : item.children,
+      childAges: multiRoom ? [] : item.childAges,
       notes: item.notes,
     })),
   });

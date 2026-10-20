@@ -13,6 +13,8 @@ const api = vi.hoisted(() => ({
   currencyLabel: "تومان",
   fetchProperty: vi.fn(),
   fetchOptions: vi.fn(),
+  fetchCandidates: vi.fn(),
+  fetchQuote: vi.fn(),
   fetchCalendar: vi.fn(),
 }));
 const navigation = vi.hoisted(() => ({
@@ -156,7 +158,8 @@ vi.mock("@/lib/public-properties", async (importOriginal) => {
 vi.mock("@/lib/booking-sessions", async (importOriginal) => {
   const actual =
     await importOriginal<typeof import("@/lib/booking-sessions")>();
-  return { ...actual, fetchBookingOptions: api.fetchOptions };
+  return { ...actual, fetchBookingOptions: api.fetchOptions,
+    fetchBookingCandidates: api.fetchCandidates, fetchBookingQuote: api.fetchQuote };
 });
 vi.mock("@/components/property/PropertyLocationMap", async (importOriginal) => {
   const actual =
@@ -340,6 +343,35 @@ const availableWithRatePlans = {
   ],
 };
 
+const multiCandidates = {
+  propertyId: 1, checkInDate: "2030-08-10", checkOutDate: "2030-08-12",
+  rooms: 2, adults: 4, childAges: [], requiresBookingQuote: true,
+  roomTypes: [{
+    roomTypeId: 10, name: "اتاق شاه‌نشین", roomKind: "Room", inventoryMode: "TypeBasedInventory",
+    availableCount: 3, bookingMode: "Instant", maxAdults: 2, maxChildren: 1,
+    allowExtraGuest: false, maxExtraGuests: 0, defaultMealPlanName: "صبحانه",
+    defaultMealPlanSlug: "breakfast", rooms: [],
+    ratePlans: [{ ratePlanId: 12, name: "بدون صبحانه", mealPlanName: null,
+      mealPlanSlug: null, minimumNights: null }],
+  }],
+};
+
+function multiQuote(selections: Array<{ roomTypeId: number; quantity: number; ratePlanId: number | null }>,
+  childAges: number[] = [], amounts = [4_000_000, 4_000_000]) {
+  const rooms = selections.flatMap((selection) => Array.from({ length: selection.quantity }, () => selection));
+  return {
+    propertyId: 1, checkInDate: "2030-08-10", checkOutDate: "2030-08-12",
+    adults: 4, childAges,
+    rooms: rooms.map((selection, index) => ({
+      selectedRoomIndex: index, roomTypeId: selection.roomTypeId,
+      ratePlanId: selection.ratePlanId, adults: 2,
+      childAges: index === 0 ? childAges : [], bookingMode: "Instant",
+      finalAmount: amounts[index], currency: "IRR",
+    })),
+    totalAmount: amounts.reduce((sum, amount) => sum + amount, 0), currency: "IRR",
+  };
+}
+
 const changedStayHint =
   "این نتایج برای تاریخ یا مهمان‌های متفاوتی است. با انتخاب اتاق جدید می‌توانید انتخاب‌های فعلی را جایگزین کنید.";
 
@@ -404,12 +436,164 @@ describe("public property booking integration", () => {
     });
     api.fetchProperty.mockResolvedValue(property);
     api.fetchOptions.mockResolvedValue(availableOptions);
+    api.fetchCandidates.mockResolvedValue(multiCandidates);
+    api.fetchQuote.mockImplementation((_slug, request) => Promise.resolve(multiQuote(request.selections, request.childAges)));
     api.fetchCalendar.mockResolvedValue({
       roomTypeId: 10,
       from: "2026-09-23",
       to: "2026-11-21",
       days: [],
     });
+  });
+
+  it("uses candidate-only offers and an authoritative quote for four adults in two double rooms", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "0");
+    render(<PublicPropertyPage />);
+    const card = await screen.findByTestId("room-type-card-10");
+    await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" });
+    expect(api.fetchCandidates).toHaveBeenCalledWith("kashan-house", expect.objectContaining({
+      rooms: 2, adults: 4, childAges: [],
+    }));
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+    expect(within(card).queryByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeNull();
+    expect(within(card).getAllByText("قیمت پس از انتخاب همه اتاق‌ها")).toHaveLength(2);
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    expect(api.fetchQuote).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
+    expect(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }).hasAttribute("disabled")).toBe(true);
+    expect(api.fetchQuote.mock.calls[0][1]).toEqual({
+      checkInDate: "2030-08-10", checkOutDate: "2030-08-12", adults: 4,
+      childAges: [], selections: [{ roomTypeId: 10, ratePlanId: null, quantity: 2 }],
+    });
+    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(screen.getAllByText("۸٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
+    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+  });
+
+  it("fails closed on quote error and restores checkout only after retry", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "0");
+    api.fetchQuote.mockRejectedValueOnce(new Error("ظرفیت ترکیب انتخابی کافی نیست"));
+    render(<PublicPropertyPage />);
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    expect(await screen.findByText("ظرفیت ترکیب انتخابی کافی نیست")).toBeTruthy();
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
+    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(api.fetchQuote).toHaveBeenCalledTimes(2);
+  });
+
+  it("combines different room types without a standalone candidate price", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "0");
+    const secondRoom = { ...property.roomTypes[0], id: 20, name: "سوئیت بزرگ", maxAdults: 4 };
+    api.fetchProperty.mockResolvedValue({ ...property, roomTypes: [...property.roomTypes, secondRoom] });
+    api.fetchCandidates.mockResolvedValue({ ...multiCandidates, roomTypes: [
+      multiCandidates.roomTypes[0],
+      { ...multiCandidates.roomTypes[0], roomTypeId: 20, name: "سوئیت بزرگ",
+        maxAdults: 4, availableCount: 1, ratePlans: [] },
+    ] });
+    render(<PublicPropertyPage />);
+    const doubleCard = await screen.findByTestId("room-type-card-10");
+    const suiteCard = await screen.findByTestId("room-type-card-20");
+    fireEvent.click(await within(doubleCard).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(suiteCard).getByRole("button", { name: "انتخاب سوئیت بزرگ" }));
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
+    expect(api.fetchQuote.mock.calls[0][1].selections).toEqual([
+      { roomTypeId: 10, ratePlanId: null, quantity: 1 },
+      { roomTypeId: 20, ratePlanId: null, quantity: 1 },
+    ]);
+    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(within(suiteCard).queryByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeNull();
+  });
+
+  it("explains an incompatible booking-mode combination without requesting a quote", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "0");
+    const secondRoom = { ...property.roomTypes[0], id: 20, name: "سوئیت درخواستی" };
+    api.fetchProperty.mockResolvedValue({ ...property, roomTypes: [...property.roomTypes, secondRoom] });
+    api.fetchCandidates.mockResolvedValue({ ...multiCandidates, roomTypes: [
+      multiCandidates.roomTypes[0],
+      { ...multiCandidates.roomTypes[0], roomTypeId: 20, name: "سوئیت درخواستی",
+        bookingMode: "OnRequest", ratePlans: [] },
+    ] });
+    render(<PublicPropertyPage />);
+    const doubleCard = await screen.findByTestId("room-type-card-10");
+    const requestCard = await screen.findByTestId("room-type-card-20");
+    fireEvent.click(await within(doubleCard).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(requestCard).getByRole("button", { name: "انتخاب سوئیت درخواستی" }));
+    expect(screen.getByText("رزرو آنی و رزرو نیازمند تأیید را نمی‌توان در یک انتخاب ترکیب کرد.")).toBeTruthy();
+    expect(api.fetchQuote).not.toHaveBeenCalled();
+  });
+
+  it("ignores an old quote after the selected offers change", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "0");
+    let resolveOld: (value: ReturnType<typeof multiQuote>) => void = () => undefined;
+    api.fetchQuote.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    render(<PublicPropertyPage />);
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
+    fireEvent.click(within(card).getByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، بدون صبحانه" }));
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledTimes(2));
+    resolveOld(multiQuote([{ roomTypeId: 10, ratePlanId: null, quantity: 2 }]));
+    const summary = await screen.findByTestId("booking-choices-summary");
+    expect(within(summary).getByText(/بدون صبحانه/)).toBeTruthy();
+    expect(within(summary).getAllByText(/تخصیص هر واحد/)).toHaveLength(2);
+  });
+
+  it("passes discounted children once as stay-level ages without computing their price", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "1");
+    searchParams.set("childAges", "7");
+    api.fetchCandidates.mockResolvedValue({ ...multiCandidates, childAges: [7] });
+    render(<PublicPropertyPage />);
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
+    expect(api.fetchQuote.mock.calls[0][1].childAges).toEqual([7]);
+    const summary = await screen.findByTestId("booking-choices-summary");
+    expect(within(summary).getByText(/۴ بزرگسال · ۱ کودک/)).toBeTruthy();
+    expect(within(summary).getAllByText(/تخصیص هر واحد/)).toHaveLength(2);
+  });
+
+  it("keeps the cart idempotency key when refreshing the same quoted selection", async () => {
+    searchParams.set("adults", "4");
+    searchParams.set("rooms", "2");
+    searchParams.set("children", "0");
+    const items = expandBookingCartSelection({
+      propertyId: 1, propertyName: property.name, propertySlug: property.slug,
+      bookingMode: "Instant", roomTypeId: 10, roomTypeName: "اتاق شاه‌نشین",
+      ratePlanId: null, checkIn: "2030-08-10", checkOut: "2030-08-12",
+      adults: 4, children: 0, childAges: [], stayRooms: 2,
+      allocatedAdults: 2, allocatedChildAges: [], notes: null,
+      displayAmount: 4_000_000, currency: "IRR", quantity: 2,
+    });
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
+      propertyId: 1, propertyName: property.name, propertySlug: property.slug,
+      bookingMode: "Instant", idempotencyKey: "existing-multi-key",
+      checkoutRequested: false, items,
+    }));
+    render(<PublicPropertyPage />);
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
+    await screen.findByTestId("booking-choices-summary");
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey)
+      .toBe("existing-multi-key");
   });
 
   it("offers a lazy informational calendar without changing the booking search or selected offer", async () => {
@@ -451,7 +635,7 @@ describe("public property booking integration", () => {
       children: 0,
       childAges: [],
     });
-    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(await within(card).findByText("نرخ استاندارد")).toBeTruthy();
     expect(within(card).getByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
     expect(within(card).getByText("بدون صبحانه")).toBeTruthy();
     expect(within(card).getByText("۲٬۷۰۰٬۰۰۰ تومان")).toBeTruthy();
@@ -1192,7 +1376,7 @@ describe("public property booking integration", () => {
       await screen.findByRole("button", { name: "بررسی موجودی" }),
     );
     const card = await screen.findByTestId("room-type-card-10");
-    const planLabel = within(card).getByText("بدون صبحانه");
+    const planLabel = await within(card).findByText("بدون صبحانه");
     const planRow = planLabel.parentElement?.parentElement;
 
     expect(within(planRow as HTMLElement).getByText("حداقل اقامت: ۳ شب")).toBeTruthy();
@@ -1414,7 +1598,7 @@ describe("public property booking integration", () => {
       await screen.findByRole("button", { name: "بررسی موجودی" }),
     );
     const card = await screen.findByTestId("room-type-card-10");
-    expect(within(card).getByText("نرخ استاندارد")).toBeTruthy();
+    expect(await within(card).findByText("نرخ استاندارد")).toBeTruthy();
     expect(within(card).queryByText("صبحانه شامل قیمت")).toBeNull();
     expect(within(card).queryByText("بدون صبحانه")).toBeNull();
     expect(

@@ -388,6 +388,28 @@ describe("multi-step booking checkout skeleton", () => {
     expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/BS-100");
   });
 
+  it("requires price-change confirmation before submitting a multi-room quote", async () => {
+    const items = bookingItems().slice(0, 2).map((item, index) => ({
+      ...item, adults: 4, children: 1, childAges: [7], stayRooms: 2,
+      allocatedAdults: 2, allocatedChildAges: index === 0 ? [7] : [],
+    }));
+    const updated = items.map((item, index) => ({
+      ...item, displayAmount: item.displayAmount + (index === 0 ? 500_000 : 0),
+    }));
+    checkout.revalidate.mockResolvedValueOnce({ items: updated, priceChanged: true });
+    persistCart(items);
+    signIn();
+    navigation.step = "review";
+    render(<BookingCheckoutFlow />);
+    const submit = await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" });
+    fireEvent.click(submit);
+    expect(await screen.findByText(/قیمت به‌روز شده است/)).toBeTruthy();
+    expect(checkout.create).not.toHaveBeenCalled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(checkout.create).toHaveBeenCalledOnce());
+    expect(checkout.create).toHaveBeenCalledWith(updated, "checkout-stable-key", expect.anything());
+  });
+
   it("creates an OnRequest session and routes to canonical detail without initiating payment", async () => {
     const items = onRequestBookingItems();
     persistCart(items);

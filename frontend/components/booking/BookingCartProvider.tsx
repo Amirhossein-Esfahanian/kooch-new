@@ -32,6 +32,9 @@ export interface BookingCartItem {
   adults: number;
   children: number;
   childAges: number[];
+  stayRooms?: number;
+  allocatedAdults?: number;
+  allocatedChildAges?: number[];
   notes: string | null;
   displayAmount: number;
   currency: string;
@@ -73,6 +76,7 @@ export interface BookingCartStayContext {
   adults: number;
   children: number;
   childAges: number[];
+  stayRooms?: number;
 }
 
 interface CartAwareAvailabilityInput {
@@ -205,6 +209,9 @@ export function expandBookingCartSelection(
     roomId: null,
     roomName: null,
     childAges: [...selection.childAges],
+    allocatedChildAges: selection.allocatedChildAges
+      ? [...selection.allocatedChildAges]
+      : undefined,
     notes: selection.notes?.trim() || null,
   }));
 }
@@ -221,6 +228,7 @@ export function getBookingCartStayContext(
     adults: first.adults,
     children: first.children,
     childAges: [...first.childAges],
+    stayRooms: first.stayRooms ?? 1,
   };
 }
 
@@ -234,6 +242,7 @@ export function bookingCartContextMatches(
     context.adults === candidate.adults &&
     context.children === candidate.children &&
     context.childAges.length === candidate.childAges.length &&
+    (context.stayRooms ?? 1) === (candidate.stayRooms ?? 1) &&
     context.childAges.every((age, index) => age === candidate.childAges[index]);
 }
 
@@ -371,6 +380,13 @@ function isBookingCartItem(value: unknown): value is BookingCartItem {
     typeof item.children === "number" &&
     Array.isArray(item.childAges) &&
     item.childAges.every((age) => typeof age === "number") &&
+    (item.stayRooms === undefined ||
+      (Number.isInteger(item.stayRooms) && item.stayRooms > 1)) &&
+    (item.allocatedAdults === undefined ||
+      (Number.isInteger(item.allocatedAdults) && item.allocatedAdults > 0)) &&
+    (item.allocatedChildAges === undefined ||
+      (Array.isArray(item.allocatedChildAges) &&
+        item.allocatedChildAges.every((age) => Number.isInteger(age) && age >= 0 && age <= 17))) &&
     (item.notes === null || typeof item.notes === "string") &&
     typeof item.displayAmount === "number" &&
     typeof item.currency === "string";
@@ -380,6 +396,7 @@ interface BookingCartContextValue extends BookingCartState {
   total: number;
   addSelection: (selection: BookingCartSelection) => void;
   replaceWithSelection: (selection: BookingCartSelection) => void;
+  replaceWithSelections: (selections: BookingCartSelection[]) => void;
   removeItem: (itemId: string) => void;
   setCheckoutRequested: (value: boolean) => void;
   renewIdempotencyKey: () => void;
@@ -424,8 +441,8 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "replace", payload: { ...state, items: items.map(normalizeBookingCartItem) } });
   }, [state]);
 
-  const replaceWithSelection = useCallback((selection: BookingCartSelection) => {
-    const additions = expandBookingCartSelection(selection);
+  const replaceWithSelections = useCallback((selections: BookingCartSelection[]) => {
+    const additions = selections.flatMap(expandBookingCartSelection);
     dispatch({
       type: "replace",
       payload: addItemsToBookingCart(
@@ -434,6 +451,9 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
       ),
     });
   }, []);
+  const replaceWithSelection = useCallback((selection: BookingCartSelection) => {
+    replaceWithSelections([selection]);
+  }, [replaceWithSelections]);
 
   const setCheckoutRequested = useCallback((next: boolean) => {
     const nextState = { ...state, checkoutRequested: next };
@@ -459,13 +479,14 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
       total: state.items.reduce((sum, item) => sum + item.displayAmount, 0),
       addSelection,
       replaceWithSelection,
+      replaceWithSelections,
       removeItem: (itemId) => dispatch({ type: "remove", itemId }),
       setCheckoutRequested,
       renewIdempotencyKey,
       replaceItems,
       clear,
     }),
-    [addSelection, clear, renewIdempotencyKey, replaceItems, replaceWithSelection, setCheckoutRequested, state],
+    [addSelection, clear, renewIdempotencyKey, replaceItems, replaceWithSelection, replaceWithSelections, setCheckoutRequested, state],
   );
 
   return (

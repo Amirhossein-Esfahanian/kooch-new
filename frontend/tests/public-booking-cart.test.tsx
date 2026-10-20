@@ -602,6 +602,75 @@ describe("public booking cart", () => {
     }))).rejects.toThrow(/حداکثر ۱ واحد در دسترس است/);
   });
 
+  it("revalidates a multi-room cart through the combined quote and preserves per-room allocation", async () => {
+    const items = [
+      item({ id: "room-a", adults: 4, stayRooms: 2, allocatedAdults: 2,
+        allocatedChildAges: [], displayAmount: 2_000_000 }),
+      item({ id: "room-b", adults: 4, stayRooms: 2, roomTypeId: 20,
+        ratePlanId: 12, allocatedAdults: 2, allocatedChildAges: [],
+        displayAmount: 3_000_000 }),
+    ];
+    const legacyFetcher = vi.fn();
+    const quoteFetcher = vi.fn().mockResolvedValue({
+      propertyId: 1, checkInDate: "2026-08-10", checkOutDate: "2026-08-12",
+      adults: 4, childAges: [], totalAmount: 5_500_000, currency: "IRR",
+      rooms: [
+        { selectedRoomIndex: 0, roomTypeId: 10, ratePlanId: null, adults: 2,
+          childAges: [], bookingMode: "Instant", finalAmount: 2_500_000, currency: "IRR" },
+        { selectedRoomIndex: 1, roomTypeId: 20, ratePlanId: 12, adults: 2,
+          childAges: [], bookingMode: "Instant", finalAmount: 3_000_000, currency: "IRR" },
+      ],
+    });
+    const result = await revalidateBookingCart(items, legacyFetcher, quoteFetcher);
+    expect(legacyFetcher).not.toHaveBeenCalled();
+    expect(quoteFetcher).toHaveBeenCalledWith("kashan-house", {
+      checkInDate: "2026-08-10", checkOutDate: "2026-08-12", adults: 4,
+      childAges: [], selections: [
+        { roomTypeId: 10, ratePlanId: null, quantity: 1 },
+        { roomTypeId: 20, ratePlanId: 12, quantity: 1 },
+      ],
+    });
+    expect(result.priceChanged).toBe(true);
+    expect(result.items.map((entry) => entry.displayAmount)).toEqual([2_500_000, 3_000_000]);
+    expect(result.items.map((entry) => entry.allocatedAdults)).toEqual([2, 2]);
+  });
+
+  it("sends one stay-level party and repeated rate-plan room items without duplicating children", async () => {
+    const create = vi.fn().mockResolvedValue({ sessionCode: "BS-MULTI" });
+    const items = [
+      item({ id: "first", stayRooms: 2, adults: 4, children: 1, childAges: [7],
+        allocatedAdults: 2, allocatedChildAges: [7], ratePlanId: 12 }),
+      item({ id: "second", stayRooms: 2, adults: 4, children: 1, childAges: [7],
+        allocatedAdults: 2, allocatedChildAges: [], ratePlanId: 12 }),
+    ];
+    await createBookingSessionFromCart(items, "stable-multi-key", {
+      bookingForSelf: true, primaryGuest: null, expectedArrivalTime: null,
+      expectedArrivalDayOffset: null, specialRequest: null,
+    }, create);
+    const [payload] = create.mock.calls[0];
+    expect(payload.idempotencyKey).toBe("stable-multi-key");
+    expect(payload.stayGuests).toEqual({ adults: 4, childAges: [7] });
+    expect(payload.items).toHaveLength(2);
+    expect(payload.items.map((entry: { ratePlanId: number }) => entry.ratePlanId)).toEqual([12, 12]);
+    expect(payload.items.every((entry: { adults: number; children: number; childAges: number[] }) =>
+      entry.adults === 1 && entry.children === 0 && entry.childAges.length === 0)).toBe(true);
+  });
+
+  it("blocks an incomplete multi-room cart before quote or BookingSession creation", async () => {
+    const partial = [item({ stayRooms: 2, adults: 4, allocatedAdults: 2,
+      allocatedChildAges: [] })];
+    const quoteFetcher = vi.fn();
+    await expect(revalidateBookingCart(partial, vi.fn(), quoteFetcher))
+      .rejects.toThrow(/کامل نیست/);
+    expect(quoteFetcher).not.toHaveBeenCalled();
+    const create = vi.fn();
+    expect(() => createBookingSessionFromCart(partial, "key", {
+      bookingForSelf: true, primaryGuest: null, expectedArrivalTime: null,
+      expectedArrivalDayOffset: null, specialRequest: null,
+    }, create)).toThrow(/کامل نیست/);
+    expect(create).not.toHaveBeenCalled();
+  });
+
   it("creates an idempotent safe payload whose independent children share one stay context", async () => {
     const create = vi.fn().mockResolvedValue({ sessionCode: "BS-1" });
     const items = [item({ mealPlanName: "صبحانه شامل قیمت" }), item({ id: "second-room", roomTypeId: 20, roomTypeName: "اتاق دوقلو" })];

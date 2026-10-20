@@ -33,6 +33,8 @@ export function groupBookingCartItems(items: BookingCartItem[]) {
       item.bookingMode,
       item.displayAmount,
       item.currency,
+      ...(item.stayRooms && item.stayRooms > 1
+        ? [item.allocatedAdults, item.allocatedChildAges] : []),
     ]);
     const current = groups.get(key);
     if (current) {
@@ -83,6 +85,14 @@ export function BookingCartItemRow({
         <p className="mt-1 text-xs font-bold text-foreground">
           <span aria-hidden="true">{mode.icon}</span> {mode.label}
         </p>
+        {item.stayRooms && item.stayRooms > 1 && item.allocatedAdults !== undefined && (
+          <p className="mt-1 text-xs text-muted-foreground">
+            تخصیص هر واحد: {item.allocatedAdults.toLocaleString("fa-IR")} بزرگسال
+            {item.allocatedChildAges?.length
+              ? ` · ${item.allocatedChildAges.length.toLocaleString("fa-IR")} کودک`
+              : ""}
+          </p>
+        )}
         <p className="mt-1 font-semibold text-foreground">
           {line.quantity.toLocaleString("fa-IR")} اتاق ·{" "}
           {formatCurrency(line.total, { currencyLabel })}

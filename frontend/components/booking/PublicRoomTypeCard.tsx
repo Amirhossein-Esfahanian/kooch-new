@@ -4,7 +4,9 @@ import Image from "next/image";
 import { KoochButton } from "@/components/KoochButton";
 import { bookingModePresentation } from "@/components/booking/booking-display";
 import type {
+  PublicBookingRatePlanCandidate,
   PublicBookingRatePlanOption,
+  PublicBookingRoomTypeCandidate,
   PublicBookingRoomTypeOption,
 } from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
@@ -34,21 +36,38 @@ export interface PublicRoomTypeBookingState {
   >;
 }
 
+export interface PublicRoomTypeCandidateBookingState {
+  option: PublicBookingRoomTypeCandidate | null;
+  availableToAdd: number;
+  selectedQuantity: number;
+  totalSelectedQuantity: number;
+  onAdd: () => void;
+  onRemove: () => void;
+  ratePlans: Array<PublicBookingRatePlanCandidate & {
+    selectedQuantity: number;
+    onAdd: () => void;
+    onRemove: () => void;
+  }>;
+}
+
 export function PublicRoomTypeCard({
   roomType,
   galleryFallback,
   booking,
+  candidateBooking,
   onShowDetails,
   onShowCalendar,
 }: {
   roomType: PublicRoomType;
   galleryFallback: string;
   booking?: PublicRoomTypeBookingState;
+  candidateBooking?: PublicRoomTypeCandidateBookingState;
   onShowDetails: () => void;
   onShowCalendar: () => void;
 }) {
   const currencyLabel = useSiteCurrencyLabel();
   const ratePlanOption = booking?.option;
+  const candidateOption = candidateBooking?.option;
   const details = [
     roomType.floorNumber != null ? `طبقه ${roomType.floorNumber}` : "",
     roomType.stairCount != null ? `${roomType.stairCount} پله` : "",
@@ -124,6 +143,7 @@ export function PublicRoomTypeCard({
         <div className="flex min-w-0 flex-col justify-between gap-5 border-t border-border p-5 md:col-span-2 xl:col-span-1 xl:border-r xl:border-t-0">
           <RoomTypeBookingDetails
             booking={booking}
+            candidateBooking={candidateBooking}
             currencyLabel={currencyLabel}
             roomType={roomType}
           />
@@ -187,6 +207,39 @@ export function PublicRoomTypeCard({
           ))}
         </div>
       )}
+      {candidateOption && candidateBooking.ratePlans.length > 0 && (
+        <div className="border-t border-border px-5 py-2">
+          <p className="pb-2 text-xs text-muted-foreground">
+            ظرفیت این نوع اتاق بین همه نرخ‌ها مشترک است. مبلغ نهایی پس از انتخاب همه اتاق‌ها محاسبه می‌شود.
+          </p>
+          <RateOfferRow
+            availableToAdd={candidateBooking.availableToAdd}
+            controlName={`${roomType.name}، نرخ استاندارد`}
+            currencyLabel={currencyLabel}
+            mealPlanName={candidateOption.defaultMealPlanName}
+            name="نرخ استاندارد"
+            onAdd={candidateBooking.onAdd}
+            onRemove={candidateBooking.onRemove}
+            selectedQuantity={candidateBooking.selectedQuantity}
+            totalAvailable={candidateOption.availableCount}
+          />
+          {candidateBooking.ratePlans.map((plan) => (
+            <RateOfferRow
+              availableToAdd={candidateBooking.availableToAdd}
+              controlName={`${roomType.name}، ${plan.name}`}
+              currencyLabel={currencyLabel}
+              key={plan.ratePlanId}
+              mealPlanName={plan.mealPlanName}
+              minimumNights={plan.minimumNights}
+              name={plan.name}
+              onAdd={plan.onAdd}
+              onRemove={plan.onRemove}
+              selectedQuantity={plan.selectedQuantity}
+              totalAvailable={candidateOption.availableCount}
+            />
+          ))}
+        </div>
+      )}
     </article>
   );
 }
@@ -208,10 +261,10 @@ function RateOfferRow({
   availableToAdd: number;
   controlName: string;
   currencyLabel: string;
-  finalAmount: number;
+  finalAmount?: number;
   mealPlanName?: string | null;
   minimumNights?: number | null;
-  nightsCount: number;
+  nightsCount?: number;
   name: string;
   onAdd: () => void;
   onRemove: () => void;
@@ -232,14 +285,22 @@ function RateOfferRow({
         )}
       </div>
       <div className="flex flex-wrap items-center justify-between gap-3 sm:justify-end">
-        <div className="min-w-0">
-          <p className="break-words font-bold text-foreground">
-            {formatCurrency(finalAmount, { currencyLabel })}
+        {finalAmount === undefined ? (
+          <p className="max-w-40 text-xs leading-6 text-muted-foreground">
+            قیمت پس از انتخاب همه اتاق‌ها
           </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatStayQuoteScope(nightsCount)}
-          </p>
-        </div>
+        ) : (
+          <div className="min-w-0">
+            <p className="break-words font-bold text-foreground">
+              {formatCurrency(finalAmount, { currencyLabel })}
+            </p>
+            {nightsCount !== undefined && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                {formatStayQuoteScope(nightsCount)}
+              </p>
+            )}
+          </div>
+        )}
         <OfferQuantityControl
           availableToAdd={availableToAdd}
           name={controlName}
@@ -255,13 +316,57 @@ function RateOfferRow({
 
 function RoomTypeBookingDetails({
   booking,
+  candidateBooking,
   currencyLabel,
   roomType,
 }: {
   booking?: PublicRoomTypeBookingState;
+  candidateBooking?: PublicRoomTypeCandidateBookingState;
   currencyLabel: string;
   roomType: PublicRoomType;
 }) {
+  if (candidateBooking) {
+    const option = candidateBooking.option;
+    if (!option) {
+      return <p className="text-sm font-bold text-muted-foreground">در این بازه قابل رزرو نیست</p>;
+    }
+    const mode = bookingModePresentation(option.bookingMode);
+    return (
+      <div>
+        <p className="text-xs font-bold text-foreground">
+          {candidateBooking.ratePlans.length === 0 ? "نرخ استاندارد" : "گزینه‌های نرخ"}
+        </p>
+        {candidateBooking.ratePlans.length === 0 && option.defaultMealPlanName && (
+          <p className="mt-1 text-xs text-muted-foreground">{option.defaultMealPlanName}</p>
+        )}
+        <p className="mt-2 text-xs font-bold text-foreground">
+          <span aria-hidden="true">{mode.icon}</span> {mode.label}
+        </p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          {option.availableCount.toLocaleString("fa-IR")} واحد برای این بازه
+        </p>
+        {candidateBooking.ratePlans.length === 0 && (
+          <>
+            <p className="mt-2 text-xs leading-6 text-muted-foreground">
+              قیمت پس از انتخاب همه اتاق‌ها محاسبه می‌شود.
+            </p>
+            <div className="mt-4 flex min-h-11 items-center justify-start md:justify-end">
+              <OfferQuantityControl
+                availableToAdd={candidateBooking.availableToAdd}
+                fullWidth
+                name={option.name}
+                onAdd={candidateBooking.onAdd}
+                onRemove={candidateBooking.onRemove}
+                selectedQuantity={candidateBooking.selectedQuantity}
+                totalAvailable={option.availableCount}
+              />
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+
   if (!booking) {
     return (
       <div>

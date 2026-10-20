@@ -72,6 +72,70 @@ export interface PublicBookingOptions {
   }>;
 }
 
+export interface PublicBookingRatePlanCandidate {
+  ratePlanId: number;
+  name: string;
+  mealPlanName: string | null;
+  mealPlanSlug: string | null;
+  minimumNights: number | null;
+}
+
+export interface PublicBookingRoomTypeCandidate {
+  roomTypeId: number;
+  name: string;
+  roomKind: RoomKind;
+  inventoryMode: BookingInventoryMode;
+  availableCount: number;
+  bookingMode: BookingMode;
+  maxAdults: number;
+  maxChildren: number;
+  allowExtraGuest: boolean;
+  maxExtraGuests: number;
+  defaultMealPlanName: string | null;
+  defaultMealPlanSlug: string | null;
+  rooms: PublicBookingRoom[];
+  ratePlans: PublicBookingRatePlanCandidate[];
+}
+
+export interface PublicBookingCandidates {
+  propertyId: number;
+  checkInDate: string;
+  checkOutDate: string;
+  rooms: number;
+  adults: number;
+  childAges: number[];
+  requiresBookingQuote: true;
+  roomTypes: PublicBookingRoomTypeCandidate[];
+}
+
+export interface PublicBookingQuoteRequest {
+  checkInDate: string;
+  checkOutDate: string;
+  adults: number;
+  childAges: number[];
+  selections: Array<{ roomTypeId: number; quantity: number; ratePlanId: number | null }>;
+}
+
+export interface PublicBookingQuote {
+  propertyId: number;
+  checkInDate: string;
+  checkOutDate: string;
+  adults: number;
+  childAges: number[];
+  rooms: Array<{
+    selectedRoomIndex: number;
+    roomTypeId: number;
+    ratePlanId: number | null;
+    adults: number;
+    childAges: number[];
+    bookingMode: BookingMode;
+    finalAmount: number;
+    currency: string;
+  }>;
+  totalAmount: number;
+  currency: string;
+}
+
 export interface AccountBookingSessionItemRequest {
   roomTypeId: number;
   ratePlanId: number | null;
@@ -90,6 +154,7 @@ export interface AccountBookingSessionCreateRequest {
   expectedArrivalTime: string | null;
   expectedArrivalDayOffset: 0 | 1 | null;
   specialRequest: string | null;
+  stayGuests?: { adults: number; childAges: number[] };
   items: AccountBookingSessionItemRequest[];
 }
 
@@ -245,6 +310,64 @@ export async function fetchBookingOptions(
   return fetchPublicApi<PublicBookingOptions>(
     `/properties/${encodeURIComponent(slug)}/booking-options?${params.toString()}`,
   );
+}
+
+export function fetchBookingCandidates(
+  slug: string,
+  query: BookingOptionsQuery & { rooms: number },
+) {
+  const params = new URLSearchParams({
+    checkIn: query.checkIn,
+    checkOut: query.checkOut,
+    rooms: String(query.rooms),
+    adults: String(query.adults),
+    children: String(query.children),
+  });
+  if (query.childAges.length > 0) params.set("childAges", query.childAges.join(","));
+  return fetchPublicApi<PublicBookingCandidates>(
+    `/properties/${encodeURIComponent(slug)}/booking-options/candidates?${params}`,
+  );
+}
+
+export function fetchBookingQuote(slug: string, request: PublicBookingQuoteRequest) {
+  return apiRequest<PublicBookingQuote>(
+    `/properties/${encodeURIComponent(slug)}/booking-quote`,
+    { method: "POST", body: JSON.stringify(request) },
+  );
+}
+
+export function validateBookingQuote(
+  quote: PublicBookingQuote,
+  request: PublicBookingQuoteRequest,
+  propertyId: number,
+) {
+  const selectedRooms = request.selections.flatMap((selection) =>
+    Array.from({ length: selection.quantity }, () => selection));
+  const allocatedAges = quote.rooms.flatMap((room) => room.childAges).sort((a, b) => a - b);
+  const requestedAges = [...request.childAges].sort((a, b) => a - b);
+  const currency = quote.currency?.trim();
+  if (quote.propertyId !== propertyId || quote.checkInDate !== request.checkInDate ||
+      quote.checkOutDate !== request.checkOutDate || quote.adults !== request.adults ||
+      quote.childAges.length !== request.childAges.length ||
+      quote.childAges.some((age, index) => age !== request.childAges[index]) ||
+      quote.rooms.length !== selectedRooms.length || !currency ||
+      !Number.isFinite(quote.totalAmount) || quote.totalAmount < 0 ||
+      quote.rooms.some((room, index) =>
+        room.selectedRoomIndex !== index ||
+        room.roomTypeId !== selectedRooms[index].roomTypeId ||
+        room.ratePlanId !== selectedRooms[index].ratePlanId ||
+        !Number.isInteger(room.adults) || room.adults <= 0 ||
+        !Number.isFinite(room.finalAmount) || room.finalAmount < 0 ||
+        room.currency !== currency ||
+        (room.bookingMode !== "Instant" && room.bookingMode !== "OnRequest")) ||
+      quote.rooms.reduce((sum, room) => sum + room.adults, 0) !== request.adults ||
+      allocatedAges.length !== requestedAges.length ||
+      allocatedAges.some((age, index) => age !== requestedAges[index]) ||
+      quote.rooms.reduce((sum, room) => sum + room.finalAmount, 0) !== quote.totalAmount ||
+      quote.rooms.some((room) => room.bookingMode !== quote.rooms[0].bookingMode)) {
+    throw new Error("پاسخ قیمت‌گذاری با انتخاب فعلی مطابقت ندارد؛ دوباره تلاش کنید.");
+  }
+  return quote;
 }
 
 export function createAccountBookingSession(
