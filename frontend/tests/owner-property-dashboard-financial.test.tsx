@@ -14,6 +14,9 @@ vi.mock("@/components/auth/AuthSessionProvider", () => ({
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   OwnerLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
+vi.mock("@/components/owner/OwnerPropertyProvider", () => ({
+  useOwnerProperty: () => ({ routePropertyIsValid: true, effectivePermissions: {} }),
+}));
 vi.mock("@/components/property/PropertyCompletionCard", () => ({
   PropertyCompletionCard: () => null,
 }));
