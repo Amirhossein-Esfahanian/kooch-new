@@ -94,6 +94,7 @@ builder.Services.AddSingleton<CashbackGrantProcessor>();
 builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
 builder.Services.AddScoped<IPropertyCommonAreaService, PropertyCommonAreaService>();
 builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
+builder.Services.AddScoped<PropertyVisitService>();
 builder.Services.AddScoped<IPropertySettingService, PropertySettingService>();
 builder.Services.AddScoped<INearbyPlaceService, NearbyPlaceService>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();
@@ -252,6 +253,9 @@ builder.Services.AddRateLimiter(options =>
     options.AddPolicy<string>(
         PaymentCallbackRateLimitPolicy.Name,
         PaymentCallbackRateLimitPolicy.CreatePartition);
+    options.AddPolicy<string>(
+        PropertyVisitRateLimitPolicy.Name,
+        PropertyVisitRateLimitPolicy.CreatePartition);
     if (internalTestPaymentsEnabled)
     {
         options.AddPolicy<string>(

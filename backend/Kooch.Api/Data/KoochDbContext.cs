@@ -71,6 +71,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<DefaultNearbyPlace> DefaultNearbyPlaces => Set<DefaultNearbyPlace>();
     public DbSet<PropertyCommonArea> PropertyCommonAreas => Set<PropertyCommonArea>();
     public DbSet<PropertyView> PropertyViews => Set<PropertyView>();
+    public DbSet<PropertyVisit> PropertyVisits => Set<PropertyVisit>();
     public DbSet<PropertySetting> PropertySettings => Set<PropertySetting>();
     public DbSet<PropertySettingAssignment> PropertySettingAssignments => Set<PropertySettingAssignment>();
     public DbSet<PropertyDescriptionSection> PropertyDescriptionSections => Set<PropertyDescriptionSection>();
@@ -108,6 +109,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureProperties(modelBuilder);
         ConfigurePropertyCommonAreas(modelBuilder);
         ConfigurePropertyViews(modelBuilder);
+        ConfigurePropertyVisits(modelBuilder);
         ConfigurePropertySettings(modelBuilder);
         ConfigurePropertyDescriptionSections(modelBuilder);
         ConfigureDestinationsAndSeo(modelBuilder);
@@ -1831,6 +1833,18 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(payment => payment.CallbackReceipts)
                 .HasForeignKey(receipt => receipt.PaymentId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigurePropertyVisits(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<PropertyVisit>(entity =>
+        {
+            entity.Property(visit => visit.SessionHash).HasMaxLength(64).IsUnicode(false).IsRequired();
+            entity.Property(visit => visit.OccurredAtUtc).IsRequired();
+            entity.HasIndex(visit => new { visit.PropertyId, visit.BusinessDate, visit.SessionHash }).IsUnique();
+            entity.HasOne(visit => visit.Property).WithMany()
+                .HasForeignKey(visit => visit.PropertyId).OnDelete(DeleteBehavior.NoAction);
         });
     }
 

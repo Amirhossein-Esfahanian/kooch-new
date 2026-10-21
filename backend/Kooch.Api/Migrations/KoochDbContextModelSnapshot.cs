@@ -3733,6 +3733,37 @@ namespace Kooch.Api.Migrations
                     b.ToTable("PropertyViews");
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.PropertyVisit", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateOnly>("BusinessDate")
+                        .HasColumnType("date");
+
+                    b.Property<DateTime>("OccurredAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("PropertyId")
+                        .HasColumnType("int");
+
+                    b.Property<string>("SessionHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .IsUnicode(false)
+                        .HasColumnType("varchar(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PropertyId", "BusinessDate", "SessionHash")
+                        .IsUnique();
+
+                    b.ToTable("PropertyVisits");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.PropertyWarning", b =>
                 {
                     b.Property<int>("Id")
@@ -7518,6 +7549,17 @@ namespace Kooch.Api.Migrations
                         .WithMany("Views")
                         .HasForeignKey("PropertyId")
                         .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Property");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.PropertyVisit", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.Property", "Property")
+                        .WithMany()
+                        .HasForeignKey("PropertyId")
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.Navigation("Property");
