@@ -448,8 +448,10 @@ export function AdminLayout({
 
 export function OwnerLayout({
   children,
+  allowEmptyMemberships = false,
 }: {
   children: ReactNode | ((darkMode: boolean) => ReactNode);
+  allowEmptyMemberships?: boolean;
 }) {
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
@@ -506,7 +508,7 @@ export function OwnerLayout({
     loading ||
     !authenticated ||
     !hasOwnerWorkspace ||
-    activeMemberships.length === 0 ||
+    (!allowEmptyMemberships && activeMemberships.length === 0) ||
     !routePropertyIsValid
   ) {
     return <DashboardAuthorizationLoading />;

@@ -444,6 +444,34 @@ describe("property workspace authorization", () => {
     expect(screen.queryByTestId("suspended-content")).toBeNull();
   });
 
+  it("allows only the Owner home to show its no-membership state", async () => {
+    const ownerSession = session({
+      workspaces: ["owner"],
+      propertyMemberships: [],
+      defaultWorkspace: "owner",
+    });
+    const view = renderWithSession(
+      ownerSession,
+      <OwnerLayout allowEmptyMemberships>
+        <div data-testid="empty-owner-home">No active properties</div>
+      </OwnerLayout>,
+      { pathname: "/owner" },
+    );
+
+    expect(await screen.findByTestId("empty-owner-home")).toBeTruthy();
+    view.unmount();
+
+    renderWithSession(
+      ownerSession,
+      <OwnerLayout>
+        <div data-testid="guarded-owner-route">Guarded</div>
+      </OwnerLayout>,
+      { pathname: "/owner/properties/11", params: { id: "11" } },
+    );
+    await waitForSession();
+    expect(screen.queryByTestId("guarded-owner-route")).toBeNull();
+  });
+
   it("filters the sidebar for a limited property assistant", async () => {
     const assistant = membership(11, {
       propertyRole: "Reception",
