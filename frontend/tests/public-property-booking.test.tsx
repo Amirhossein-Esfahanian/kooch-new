@@ -1,4 +1,5 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -7,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({
   currencyLabel: "تومان",
@@ -18,9 +19,16 @@ const api = vi.hoisted(() => ({
   fetchCalendar: vi.fn(),
 }));
 const navigation = vi.hoisted(() => ({
+  slug: "kashan-house",
   push: vi.fn(),
   replace: vi.fn(),
   scrollIntoView: vi.fn(),
+}));
+const visitAuth = vi.hoisted(() => ({
+  authenticated: false,
+  loading: false,
+  platformRole: null as "SuperAdmin" | "AdminAssistant" | "Client" | null,
+  propertyMemberships: [] as { propertyId: number; isActive: boolean; membershipStatus: "Active" }[],
 }));
 
 let searchParams = new URLSearchParams({
@@ -31,13 +39,13 @@ let searchParams = new URLSearchParams({
 });
 
 vi.mock("next/navigation", () => ({
-  useParams: () => ({ slug: "kashan-house" }),
+  useParams: () => ({ slug: navigation.slug }),
   usePathname: () => "/properties/kashan-house",
   useRouter: () => navigation,
   useSearchParams: () => searchParams,
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
-  useAuthSession: () => ({ authenticated: false, loading: false }),
+  useAuthSession: () => visitAuth,
 }));
 vi.mock("@/lib/currency", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/currency")>();
@@ -422,6 +430,11 @@ function storeExistingCart({
 describe("public property booking integration", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    navigation.slug = "kashan-house";
+    visitAuth.authenticated = false;
+    visitAuth.loading = false;
+    visitAuth.platformRole = null;
+    visitAuth.propertyMemberships = [];
     api.currencyLabel = "تومان";
     sessionStorage.clear();
     searchParams = new URLSearchParams({
@@ -444,6 +457,128 @@ describe("public property booking integration", () => {
       to: "2026-11-21",
       days: [],
     });
+  });
+
+  describe("visit tracking", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  async function renderVisitPage() {
+    render(<PublicPropertyPage />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  }
+
+  async function passVisibleVisitDelay() {
+    await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+  }
+
+  it("records an approved visible property after two seconds and reuses its tab session on refresh", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", post);
+    vi.useFakeTimers();
+    const first = render(<PublicPropertyPage />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(1999); });
+    expect(post).not.toHaveBeenCalled();
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][0]).toBe("/api/backend/properties/kashan-house/visits");
+    const sessionId = JSON.parse(post.mock.calls[0][1].body).sessionId as string;
+    expect(sessionId).toMatch(/^[A-Za-z0-9_-]{32,128}$/);
+    first.unmount();
+    await renderVisitPage();
+    await passVisibleVisitDelay();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem("kooch.propertyVisit.sessionId.v1")).toBe(sessionId);
+  });
+
+  it("waits for a visible tab and restarts the two-second delay after hiding", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", post);
+    let visible = false;
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visible ? "visible" : "hidden");
+    vi.useFakeTimers();
+    await renderVisitPage();
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+    visible = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    visible = false;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+    visible = true;
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await passVisibleVisitDelay();
+    expect(post).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not record failed loads or management previews", async () => {
+    const post = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", post);
+    vi.useFakeTimers();
+    api.fetchProperty.mockRejectedValueOnce(new Error("unavailable"));
+    const failed = render(<PublicPropertyPage />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+    failed.unmount();
+    api.fetchProperty.mockResolvedValueOnce({ ...property, status: "Pending" });
+    const unpublished = render(<PublicPropertyPage />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+    unpublished.unmount();
+    visitAuth.authenticated = true;
+    visitAuth.platformRole = "SuperAdmin";
+    const admin = render(<PublicPropertyPage />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+    admin.unmount();
+    visitAuth.platformRole = "Client";
+    visitAuth.propertyMemberships = [{ propertyId: property.id, isActive: true, membershipStatus: "Active" }];
+    await renderVisitPage();
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("ignores an old Property response after the route changes", async () => {
+    let resolveOld!: (value: typeof property) => void;
+    api.fetchProperty.mockImplementationOnce(() => new Promise((resolve) => { resolveOld = resolve; }));
+    const post = vi.fn().mockResolvedValue({ ok: true });
+    vi.stubGlobal("fetch", post);
+    vi.useFakeTimers();
+    const page = render(<PublicPropertyPage />);
+    navigation.slug = "new-property";
+    api.fetchProperty.mockResolvedValueOnce({ ...property, id: 2, slug: "new-property" });
+    page.rerender(<PublicPropertyPage />);
+    await act(async () => { resolveOld(property); await Promise.resolve(); await Promise.resolve(); });
+    await passVisibleVisitDelay();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(post.mock.calls[0][0]).toBe("/api/backend/properties/new-property/visits");
+  });
+
+  it("keeps tracking failures silent and waits for authentication resolution", async () => {
+    const post = vi.fn().mockRejectedValue(new Error("offline"));
+    vi.stubGlobal("fetch", post);
+    visitAuth.loading = true;
+    vi.useFakeTimers();
+    const page = render(<PublicPropertyPage />);
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+    await passVisibleVisitDelay();
+    expect(post).not.toHaveBeenCalled();
+    visitAuth.loading = false;
+    page.rerender(<PublicPropertyPage />);
+    await passVisibleVisitDelay();
+    expect(post).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("offline")).toBeNull();
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+  });
   });
 
   it("uses candidate-only offers and an authoritative quote for four adults in two double rooms", async () => {

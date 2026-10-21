@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import type { GuestSelectorValue } from "@/components/GuestSelector";
 import {
   PropertyBookingPanel,
@@ -23,6 +24,7 @@ import {
   PublicRoomType,
 } from "@/lib/public-properties";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
+import { getToken } from "@/lib/auth-session";
 import {
   formatLocalIsoDate,
   getExclusiveRangeLength,
@@ -32,6 +34,32 @@ import {
 
 const placeholder =
   "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80";
+
+const visitSessionKey = "kooch.propertyVisit.sessionId.v1";
+const pendingVisits = new Set<string>();
+
+function getVisitSessionId(): string | null {
+  try {
+    const stored = sessionStorage.getItem(visitSessionKey);
+    if (stored && /^[A-Za-z0-9_-]{32,128}$/.test(stored)) return stored;
+    const generated = typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : Array.from(crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+          byte.toString(16).padStart(2, "0")).join("");
+    sessionStorage.setItem(visitSessionKey, generated);
+    return generated;
+  } catch {
+    return null;
+  }
+}
+
+function tehranVisitDate(): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Tehran", year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(new Date());
+  const part = (type: string) => parts.find((item) => item.type === type)?.value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
 
 const propertyTypeLabels: Record<string, string> = {
   TraditionalHouse: "خانه سنتی",
@@ -137,6 +165,7 @@ function initialAvailabilityContextKey(
 export default function PublicPropertyPage() {
   const { slug } = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
+  const auth = useAuthSession();
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -156,11 +185,65 @@ export default function PublicPropertyPage() {
 
   useEffect(() => {
     if (!slug) return;
+    let current = true;
     fetchPublicApi<PublicProperty>(`/properties/${encodeURIComponent(slug)}`)
-      .then(setProperty)
-      .catch((caught: Error) => setError(caught.message))
-      .finally(() => setLoading(false));
+      .then((result) => { if (current) setProperty(result); })
+      .catch((caught: Error) => { if (current) setError(caught.message); })
+      .finally(() => { if (current) setLoading(false); });
+    return () => { current = false; };
   }, [slug]);
+
+  useEffect(() => {
+    if (loading || error || !property || property.status !== "Approved" ||
+        property.slug !== slug || auth.loading) return;
+    if (auth.authenticated && (
+      auth.platformRole === "SuperAdmin" || auth.platformRole === "AdminAssistant" ||
+      auth.propertyMemberships?.some((membership) =>
+        membership.propertyId === property.id && membership.isActive &&
+        membership.membershipStatus === "Active")
+    )) return;
+    let token: string | null;
+    try { token = auth.authenticated ? getToken() : null; }
+    catch { return; }
+    if (auth.authenticated && !token) return;
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const recordVisit = () => {
+      timer = undefined;
+      if (document.visibilityState !== "visible") return;
+      const sessionId = getVisitSessionId();
+      if (!sessionId) return;
+      const visitKey = `kooch.propertyVisit.sent:${property.id}:${tehranVisitDate()}`;
+      try {
+        if (sessionStorage.getItem(visitKey) || pendingVisits.has(visitKey)) return;
+      } catch { return; }
+      pendingVisits.add(visitKey);
+      void Promise.resolve().then(() => fetch(`/api/backend/properties/${encodeURIComponent(slug)}/visits`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ sessionId }),
+      })).then((response) => {
+        if (response.ok) sessionStorage.setItem(visitKey, "1");
+      }).catch(() => {
+        // Visit tracking must never affect the Property page.
+      }).finally(() => pendingVisits.delete(visitKey));
+    };
+    const onVisibilityChange = () => {
+      if (timer) clearTimeout(timer);
+      timer = document.visibilityState === "visible"
+        ? setTimeout(recordVisit, 2000) : undefined;
+    };
+    onVisibilityChange();
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    return () => {
+      if (timer) clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [auth.authenticated, auth.loading, auth.platformRole, auth.propertyMemberships,
+    error, loading, property, slug]);
 
   useEffect(() => {
     if (!property) return;
