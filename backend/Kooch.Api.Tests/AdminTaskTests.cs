@@ -1,10 +1,14 @@
+using System.Security.Claims;
 using Kooch.Api.Authentication;
 using Kooch.Api.Controllers;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.AdminTasks;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.Data.Sqlite;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Xunit;
@@ -94,6 +98,127 @@ public sealed class AdminTaskTests
         Assert.Equal(2, cancelled.Changes.Count);
         Assert.Empty(db.ReservationActivities);
         Assert.Single(db.NotificationLogs);
+    }
+
+    [Fact]
+    public async Task MineUnfinished_FiltersBeforePagingAndOrdersDueThenUndatedTasks()
+    {
+        await using var connection = new SqliteConnection("Data Source=:memory:;Foreign Keys=False");
+        await connection.OpenAsync();
+        SqliteTestFunctions.RegisterLen(connection);
+        await using var db = new TaskSqliteDbContext(new DbContextOptionsBuilder<KoochDbContext>()
+            .UseSqlite(connection).Options);
+        await db.Database.EnsureCreatedAsync();
+        await SeedAsync(db);
+        var due = new DateTime(2026, 10, 21, 12, 0, 0, DateTimeKind.Utc);
+        db.AdminTasks.AddRange(
+            TaskRow("later", 1, AdminTaskStatus.Open, due.AddDays(1)),
+            TaskRow("earlier", 1, AdminTaskStatus.InProgress, due.AddDays(-1)),
+            TaskRow("undated-old", 1, AdminTaskStatus.Open),
+            TaskRow("undated-new", 1, AdminTaskStatus.InProgress),
+            TaskRow("done", 1, AdminTaskStatus.Done, due.AddDays(-2)),
+            TaskRow("cancelled", 1, AdminTaskStatus.Cancelled, due.AddDays(-2)),
+            TaskRow("other-admin", 2, AdminTaskStatus.Open, due.AddDays(-2)));
+        await db.SaveChangesAsync();
+        var service = new AdminTaskService(db, new TestPermissions(),
+            new ReservationActivityService(db, new TestPermissions()), new NotificationService(db));
+
+        var first = await service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery { PageSize = 2 });
+        var second = await service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery { Page = 2, PageSize = 2 });
+
+        Assert.Equal(["earlier", "later"], first.Items.Select(item => item.Title).ToArray());
+        Assert.Equal(["undated-new", "undated-old"], second.Items.Select(item => item.Title).ToArray());
+        Assert.All(first.Items.Concat(second.Items), item => Assert.True(item.Id > 0));
+        Assert.All(first.Items.Concat(second.Items), item =>
+            Assert.True(item.Status is AdminTaskStatus.Open or AdminTaskStatus.InProgress));
+        Assert.Equal((4, 1, 2, 2), (first.TotalCount, first.Page, first.PageSize, first.TotalPages));
+        Assert.Equal((4, 2, 2, 2), (second.TotalCount, second.Page, second.PageSize, second.TotalPages));
+        Assert.Equal(7, (await service.ListAsync(1)).Count);
+    }
+
+    [Fact]
+    public async Task MineUnfinished_BoundsPageSizeAndExcludesInaccessibleLinkedTasks()
+    {
+        await using var db = CreateDb();
+        await SeedAsync(db);
+        db.AdminTasks.AddRange(Enumerable.Range(1, 60)
+            .Select(index => TaskRow($"task-{index}", 1, AdminTaskStatus.Open)));
+        db.AdminTasks.Add(TaskRow("linked", 1, AdminTaskStatus.Open, reservationId: 10));
+        await db.SaveChangesAsync();
+        var permissions = new TestPermissions { PropertyAllowed = false };
+        var service = new AdminTaskService(db, permissions,
+            new ReservationActivityService(db, permissions), new NotificationService(db));
+
+        var first = await service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery { Page = -3, PageSize = 999 });
+        var second = await service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery { Page = 2, PageSize = 999 });
+        var small = await service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery { PageSize = 0 });
+        var defaults = await service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery());
+
+        Assert.Equal((60, 1, 50, 2, 50),
+            (first.TotalCount, first.Page, first.PageSize, first.TotalPages, first.Items.Count));
+        Assert.Equal(10, second.Items.Count);
+        Assert.Empty(first.Items.Select(item => item.Id).Intersect(second.Items.Select(item => item.Id)));
+        Assert.Single(small.Items);
+        Assert.Equal(1, small.PageSize);
+        Assert.Equal(5, defaults.Items.Count);
+        Assert.Equal(5, defaults.PageSize);
+        Assert.DoesNotContain(first.Items.Concat(second.Items), item => item.Title == "linked");
+    }
+
+    [Fact]
+    public async Task MineUnfinished_RequiresManageReservationsAndKeepsExistingListRoute()
+    {
+        await using var db = CreateDb();
+        await SeedAsync(db);
+        var permissions = new TestPermissions { PlatformAllowed = false };
+        var service = new AdminTaskService(db, permissions,
+            new ReservationActivityService(db, permissions), new NotificationService(db));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() =>
+            service.ListMineUnfinishedAsync(1, new AdminTaskUnfinishedQuery()));
+
+        var controller = typeof(AdminTasksController);
+        Assert.Single(controller.GetCustomAttributes(typeof(AdminAuthorizeAttribute), true));
+        var permission = Assert.Single(controller.GetCustomAttributes(typeof(PermissionAuthorizeAttribute), true))
+            as PermissionAuthorizeAttribute;
+        Assert.Equal($"{AuthorizationPolicies.PermissionPrefix}{PermissionKey.ManageReservations}", permission?.Policy);
+        var mine = controller.GetMethod(nameof(AdminTasksController.ListMineUnfinished))!;
+        Assert.Equal("mine/unfinished", Assert.IsType<HttpGetAttribute>(
+            Assert.Single(mine.GetCustomAttributes(typeof(HttpGetAttribute), true))).Template);
+        var list = controller.GetMethod(nameof(AdminTasksController.List))!;
+        Assert.Null(Assert.IsType<HttpGetAttribute>(
+            Assert.Single(list.GetCustomAttributes(typeof(HttpGetAttribute), true))).Template);
+    }
+
+    [Fact]
+    public async Task MineUnfinished_ControllerUsesAuthenticatedUserIdNotQueryInput()
+    {
+        await using var db = CreateDb();
+        await SeedAsync(db);
+        db.AdminTasks.AddRange(
+            TaskRow("first-admin", 1, AdminTaskStatus.Open),
+            TaskRow("second-admin", 2, AdminTaskStatus.Open));
+        await db.SaveChangesAsync();
+        var permissions = new TestPermissions();
+        var service = new AdminTaskService(db, permissions,
+            new ReservationActivityService(db, permissions), new NotificationService(db));
+        var controller = new AdminTasksController(service)
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [new Claim(ClaimTypes.NameIdentifier, "2"),
+                     new Claim(ClaimTypes.Role, nameof(UserRole.AdminAssistant))], "test"))
+                }
+            }
+        };
+
+        var response = await controller.ListMineUnfinished(new AdminTaskUnfinishedQuery(), CancellationToken.None);
+        var result = Assert.IsType<PagedResult<AdminTaskUnfinishedItemResponse>>(
+            Assert.IsType<OkObjectResult>(response.Result).Value);
+        Assert.Equal("second-admin", Assert.Single(result.Items).Title);
+        Assert.Equal(1, result.TotalCount);
     }
 
     [Fact]
@@ -269,6 +394,14 @@ public sealed class AdminTaskTests
     private static CreateAdminTaskRequest Request(int? reservationId = null) =>
         new("  Follow up  ", "  Coordinate shift  ", AdminTaskPriority.High,
             null, 1, reservationId);
+
+    private static AdminTask TaskRow(string title, int assigneeId, AdminTaskStatus status,
+        DateTime? dueAtUtc = null, int? reservationId = null) => new()
+    {
+        Title = title, Priority = AdminTaskPriority.Normal, Status = status,
+        DueAtUtc = dueAtUtc, CreatedByUserId = 1, AssignedToUserId = assigneeId,
+        ReservationId = reservationId
+    };
 
     private static KoochDbContext CreateDb() => new(new DbContextOptionsBuilder<KoochDbContext>()
         .UseInMemoryDatabase($"admin-tasks-{Guid.NewGuid():N}").Options);

@@ -1,5 +1,6 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.AdminTasks;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -15,6 +16,12 @@ public sealed class AdminTasksController(AdminTaskService tasks) : Authenticated
     [HttpGet]
     public async Task<ActionResult<IReadOnlyList<AdminTaskResponse>>> List(CancellationToken cancellationToken) =>
         Ok(await tasks.ListAsync(GetCurrentUser().UserId, cancellationToken));
+
+    [HttpGet("mine/unfinished")]
+    [ProducesResponseType<PagedResult<AdminTaskUnfinishedItemResponse>>(StatusCodes.Status200OK)]
+    public async Task<ActionResult<PagedResult<AdminTaskUnfinishedItemResponse>>> ListMineUnfinished(
+        [FromQuery] AdminTaskUnfinishedQuery query, CancellationToken cancellationToken) =>
+        Ok(await tasks.ListMineUnfinishedAsync(GetCurrentUser().UserId, query, cancellationToken));
 
     [HttpGet("assignees")]
     public async Task<ActionResult<IReadOnlyList<AdminTaskAssigneeResponse>>> ListAssignees(

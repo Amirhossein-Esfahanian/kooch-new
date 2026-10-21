@@ -2,6 +2,7 @@ using System.Data;
 using System.Text.Json;
 using Kooch.Api.Data;
 using Kooch.Api.Dtos.AdminTasks;
+using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Microsoft.EntityFrameworkCore;
 
@@ -57,6 +58,51 @@ public sealed class AdminTaskService(
             visible.Add(Map(task, []));
         }
         return visible;
+    }
+
+    public async Task<PagedResult<AdminTaskUnfinishedItemResponse>> ListMineUnfinishedAsync(
+        int actorUserId, AdminTaskUnfinishedQuery query, CancellationToken cancellationToken = default)
+    {
+        await RequireGlobalPermissionAsync(actorUserId, cancellationToken);
+        var page = Math.Max(1, query.Page);
+        var pageSize = Math.Clamp(query.PageSize, 1, 50);
+        var mine = context.AdminTasks.AsNoTracking().Where(task =>
+            task.AssignedToUserId == actorUserId &&
+            (task.Status == AdminTaskStatus.Open || task.Status == AdminTaskStatus.InProgress));
+
+        // Match the existing task list's property-level visibility before paging.
+        var propertyIds = await mine.Where(task => task.ReservationId != null)
+            .Join(context.Reservations.IgnoreQueryFilters(), task => task.ReservationId,
+                reservation => (int?)reservation.Id, (_, reservation) => reservation.PropertyId)
+            .Distinct().ToListAsync(cancellationToken);
+        var allowedPropertyIds = new List<int>();
+        foreach (var propertyId in propertyIds)
+        {
+            if (await permissions.CanAsync(actorUserId, propertyId, "bookings.view", cancellationToken))
+                allowedPropertyIds.Add(propertyId);
+        }
+
+        var visible = mine.Where(task => task.ReservationId == null ||
+            context.Reservations.IgnoreQueryFilters().Any(reservation =>
+                reservation.Id == task.ReservationId && allowedPropertyIds.Contains(reservation.PropertyId)));
+        var totalCount = await visible.CountAsync(cancellationToken);
+        var skip = (int)Math.Min((long)(page - 1) * pageSize, int.MaxValue);
+        var items = await visible.OrderBy(task => task.DueAtUtc == null)
+            .ThenBy(task => task.DueAtUtc)
+            .ThenByDescending(task => task.CreatedAtUtc)
+            .ThenByDescending(task => task.Id)
+            .Skip(skip).Take(pageSize)
+            .Select(task => new AdminTaskUnfinishedItemResponse(
+                task.Id, task.Title, task.Priority, task.Status, task.DueAtUtc))
+            .ToListAsync(cancellationToken);
+        return new PagedResult<AdminTaskUnfinishedItemResponse>
+        {
+            Items = items,
+            TotalCount = totalCount,
+            Page = page,
+            PageSize = pageSize,
+            TotalPages = totalCount == 0 ? 0 : (int)Math.Ceiling(totalCount / (double)pageSize)
+        };
     }
 
     public async Task<AdminTaskResponse> GetAsync(int actorUserId, int id, CancellationToken cancellationToken = default)

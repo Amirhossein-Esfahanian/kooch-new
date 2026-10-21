@@ -8,6 +8,13 @@ public sealed record CreateAdminTaskRequest(
 
 public sealed record ReassignAdminTaskRequest(int AssignedToUserId);
 public sealed record AdminTaskAssigneeResponse(int Id, string DisplayName);
+public sealed record AdminTaskUnfinishedItemResponse(
+    int Id, string Title, AdminTaskPriority Priority, AdminTaskStatus Status, DateTime? DueAtUtc);
+public sealed class AdminTaskUnfinishedQuery
+{
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 5;
+}
 public sealed record UpdateAdminTaskStatusRequest(AdminTaskStatus Status, string? ResolutionNote);
 
 public sealed record AdminTaskChangeResponse(
