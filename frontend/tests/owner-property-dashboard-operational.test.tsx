@@ -5,6 +5,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   propertyId: "17",
   canViewBookings: true,
+  canViewRooms: true,
+  canViewPricing: true,
+  canViewInventory: true,
   apiRequest: vi.fn(),
 }));
 
@@ -21,7 +24,12 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 vi.mock("@/components/owner/OwnerPropertyProvider", () => ({
   useOwnerProperty: () => ({
     routePropertyIsValid: true,
-    effectivePermissions: { Bookings: { view: mocks.canViewBookings } },
+    effectivePermissions: {
+      Bookings: { view: mocks.canViewBookings },
+      Rooms: { view: mocks.canViewRooms },
+      Pricing: { view: mocks.canViewPricing },
+      Inventory: { view: mocks.canViewInventory },
+    },
   }),
 }));
 vi.mock("@/components/property/PropertyCompletionCard", () => ({
@@ -56,6 +64,9 @@ describe("Owner Property operational dashboard summary", () => {
     vi.clearAllMocks();
     mocks.propertyId = "17";
     mocks.canViewBookings = true;
+    mocks.canViewRooms = true;
+    mocks.canViewPricing = true;
+    mocks.canViewInventory = true;
     setupRequests();
   });
 
@@ -75,6 +86,57 @@ describe("Owner Property operational dashboard summary", () => {
     expect(within(section).getByText(/۱۴۰۵/)).toBeTruthy();
     expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
     expect(screen.getByText("کارهای سریع")).toBeTruthy();
+  });
+
+  it("shows only active RoomTypes and existing permission-gated quick actions", async () => {
+    mocks.apiRequest.mockImplementation((path: string) => {
+      if (path.endsWith("/reservations/operational-summary")) return Promise.resolve(summary);
+      if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 80 });
+      if (path.endsWith("/room-types")) return Promise.resolve([
+        { id: 1, isActive: true }, { id: 2, isActive: false }, { id: 3, isActive: true },
+      ]);
+      return Promise.resolve({ id: 17, name: "خانه سرو", slug: "cedar", status: "Approved", city: "کاشان" });
+    });
+    render(<OwnerPropertyDashboardPage />);
+    expect(within(await screen.findByRole("region", { name: "نوع اتاق‌های فعال" })).getByText("۲")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "خانه سرو" })).toBeTruthy();
+    expect(screen.getByText(/وضعیت: تأیید شده/)).toBeTruthy();
+    expect(screen.getByRole("link", { name: /قیمت‌گذاری/ }).getAttribute("href")).toBe("/owner/properties/17/pricing");
+    expect(screen.getByRole("link", { name: /ظرفیت و موجودی/ }).getAttribute("href")).toBe("/owner/properties/17/inventory");
+    expect(screen.getByRole("link", { name: /رزروها/ }).getAttribute("href")).toBe("/owner/properties/17/reservations");
+    expect(within(screen.getByRole("region", { name: "کارهای سریع" })).getByRole("link", { name: /^اتاق‌ها مدیریت نوع اتاق‌ها$/ }).getAttribute("href")).toBe("/owner/properties/17/rooms");
+    expect(screen.queryByText(/فروش امروز|اتاق فروخته‌شده|ظرفیت قابل فروش/)).toBeNull();
+    expect(document.querySelector("main")?.getAttribute("dir")).toBe("rtl");
+    expect(screen.getByRole("region", { name: "کارهای سریع" }).querySelector(".sm\\:grid-cols-2")).toBeTruthy();
+  });
+
+  it("omits unauthorized metrics and quick actions rather than displaying zero", async () => {
+    mocks.canViewBookings = false;
+    mocks.canViewRooms = false;
+    mocks.canViewPricing = false;
+    mocks.canViewInventory = false;
+    render(<OwnerPropertyDashboardPage />);
+    await screen.findByRole("heading", { name: "خانه سرو" });
+    expect(screen.queryByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "نوع اتاق‌های فعال" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "کارهای سریع" })).toBeNull();
+    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+  });
+
+  it("keeps overview errors distinct and retries without fabricated RoomType counts", async () => {
+    mocks.apiRequest.mockImplementation((path: string) =>
+      path.endsWith("/completion") ? Promise.reject(new Error("offline"))
+        : path.endsWith("/reservations/operational-summary") ? Promise.resolve(summary)
+        : path.endsWith("/room-types") ? Promise.resolve([])
+        : Promise.resolve({ id: 17, name: "خانه سرو" }),
+    );
+    render(<OwnerPropertyDashboardPage />);
+    expect(await screen.findByText("دریافت اطلاعات اقامتگاه انجام نشد")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "نوع اتاق‌های فعال" })).toBeNull();
+    expect(within(screen.getByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).getByText("۵")).toBeTruthy();
+    setupRequests();
+    fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
+    expect(within(await screen.findByRole("region", { name: "نوع اتاق‌های فعال" })).getByText("۰")).toBeTruthy();
   });
 
   it("shows loading without fabricated zero counts", async () => {

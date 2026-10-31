@@ -44,7 +44,7 @@ describe("Owner Property dashboard financial warning", () => {
 
     render(<OwnerPropertyDashboardPage />);
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/owner/properties/17/room-types"));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith("/owner/properties/17/room-types", expect.objectContaining({ signal: expect.any(AbortSignal) })));
     if (warns) {
       expect(await screen.findByText("نرخ نفر اضافه برای این اقامتگاه تعریف نشده است.")).toBeTruthy();
     } else {

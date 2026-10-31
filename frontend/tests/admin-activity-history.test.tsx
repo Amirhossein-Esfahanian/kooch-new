@@ -124,9 +124,12 @@ describe("Admin activity history", () => {
     buttons.forEach((button) => {
       const parent = button.closest("tr")!;
       const detailRow = parent.nextElementSibling!;
-      expect(detailRow.querySelector("td")?.getAttribute("colspan")).toBe("5");
-      expect(detailRow.className).toContain("bg-muted/50");
-      expect(button.querySelector("svg")).toBeTruthy();
+      const detailCell = detailRow.querySelector("td")!;
+      expect(detailCell.getAttribute("colspan")).toBe("5");
+      expect(detailCell.className).toContain("bg-[var(--theme-primary-soft)]");
+      expect(button.querySelector("svg")).toBeNull();
+      expect(button.className).toContain("text-primary");
+      expect(button.className).not.toContain("border");
       expect(button.getAttribute("aria-expanded")).toBe("true");
     });
     fireEvent.click(screen.getAllByRole("button", { name: "بستن تغییرات" })[0]);
@@ -157,6 +160,7 @@ describe("Admin activity history", () => {
     const clear = screen.getByRole("button", { name: "پاک کردن فیلترها" });
     expect(clear.hasAttribute("disabled")).toBe(true);
     expect(clear.getAttribute("title")).toBe("پاک کردن فیلترها");
+    expect(clear.querySelector('svg[data-lucide="eraser"] path')).toBeTruthy();
     fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-30" } });
     fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-30" } });
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));

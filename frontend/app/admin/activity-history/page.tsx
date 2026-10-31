@@ -10,7 +10,6 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochField, KoochSearchableSelect, KoochSelect } from "@/components/KoochFormControls";
-import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
@@ -93,14 +92,14 @@ function AuditRow({ row }: { row: AdminAuditLog }) {
       <KoochTableCell className="whitespace-nowrap"><time dateTime={row.occurredAtUtc} title={row.occurredAtUtc}>{row.hasPriceDetails ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(row.occurredAtUtc)) : formatDateTime(row.occurredAtUtc)}</time></KoochTableCell>
       <KoochTableCell>{auditActionLabels[row.action] ?? "رویداد ثبت‌شده"}</KoochTableCell>
       <KoochTableCell><p>{row.entityName ?? entityLabels[row.entityType] ?? "مورد ثبت‌شده"}{row.entityId ? ` · ${formatNumber(row.entityId)}` : ""}</p><p className="text-sm text-muted-foreground">{row.propertyName ?? "سطح سامانه"}</p>{row.propertyId && <p className="text-xs text-muted-foreground">شناسه اقامتگاه {formatNumber(row.propertyId)}</p>}</KoochTableCell>
-      <KoochTableCell>{hasChanges ? <KoochButton type="button" variant="outline" size="sm"
-        aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => setExpanded((current) => !current)}
-        leftIcon={<KoochIcon name="audit" className="h-4 w-4" />} rightIcon={<svg aria-hidden="true" className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="none"><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}>
+      <KoochTableCell>{hasChanges ? <button type="button"
+        className="text-xs font-medium text-primary underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => setExpanded((current) => !current)}>
         {expanded ? "بستن تغییرات" : "نمایش تغییرات"}
-      </KoochButton> : <span className="text-muted-foreground">مقادیر قبل و بعد ثبت نشده‌اند.</span>}</KoochTableCell>
+      </button> : <span className="text-muted-foreground">مقادیر قبل و بعد ثبت نشده‌اند.</span>}</KoochTableCell>
     </KoochTableRow>
-    {expanded && <KoochTableRow className="bg-muted/50 hover:bg-muted/50">
-      <KoochTableCell colSpan={5} id={detailId} className="border-y border-border px-4 py-4 align-top">
+    {expanded && <KoochTableRow>
+      <KoochTableCell colSpan={5} id={detailId} className="border-y border-border bg-[var(--theme-primary-soft)] px-4 py-4 align-top">
         <div className="min-w-0 max-w-full overflow-x-auto"><Changes row={row} /></div>
       </KoochTableCell>
     </KoochTableRow>}
@@ -163,7 +162,10 @@ export default function AdminActivityHistoryPage() {
             <KoochDatePicker mode="single" label="تا تاریخ" size="compact" autoConfirmOnSelect value={filters.to} onChange={(to) => changeFilters({ to })} />
             <KoochButton type="button" variant="outline" size="icon" aria-label="پاک کردن فیلترها" title="پاک کردن فیلترها" disabled={!hasFilters}
               onClick={() => changeFilters(emptyAuditFilters)} className="sm:justify-self-start xl:justify-self-auto">
-              <KoochIcon name="close" className="h-4 w-4" />
+              <svg aria-hidden="true" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" data-lucide="eraser">
+                <path d="M21 21H8a2 2 0 0 1-1.42-.587l-3.994-3.999a2 2 0 0 1 0-2.828l10-10a2 2 0 0 1 2.829 0l5.999 6a2 2 0 0 1 0 2.828L12.834 21" />
+                <path d="m5.082 11.09 8.828 8.828" />
+              </svg>
             </KoochButton>
           </div>
           {invalidDates && <p className="mt-3 text-sm text-destructive" role="alert">تاریخ پایان نباید پیش از تاریخ شروع باشد.</p>}

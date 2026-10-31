@@ -48,6 +48,11 @@ type SummaryState =
   | { propertyId: number; status: "ready"; data: OwnerOperationalSummary }
   | { propertyId: number; status: "error" | "forbidden" };
 
+type OverviewState =
+  | { propertyId: number; status: "loading" }
+  | { propertyId: number; status: "ready"; property: PropertyResponse; completion: PropertyCompletionResponse; roomTypes: RoomTypeResponse[] }
+  | { propertyId: number; status: "error" | "forbidden" };
+
 interface OwnerVisitAnalytics {
   businessDate: string;
   todayRecordedVisits: number;
@@ -79,67 +84,72 @@ const formatCount = (value: number) => new Intl.NumberFormat("fa-IR").format(val
 const linkButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
 
+const statusLabels: Record<PropertyResponse["status"], string> = {
+  Draft: "پیش‌نویس",
+  PendingReview: "در انتظار بررسی",
+  Approved: "تأیید شده",
+  Rejected: "رد شده",
+  Suspended: "تعلیق شده",
+};
+
 export default function OwnerPropertyDashboardPage() {
   const params = useParams<{ id: string }>();
   const propertyId = Number(params.id);
   const { authenticated, loading, workspaces } = useAuthSession();
+  const isOwnerWorkspace = workspaces.includes("owner");
   const { effectivePermissions, routePropertyIsValid } = useOwnerProperty();
   const canViewBookings = routePropertyIsValid &&
     canViewOwnerMenuItem(effectivePermissions, "Bookings");
   const canViewReports = routePropertyIsValid &&
     canViewOwnerMenuItem(effectivePermissions, "Reports");
-  const [property, setProperty] = useState<PropertyResponse | null>(null);
-  const [completion, setCompletion] =
-    useState<PropertyCompletionResponse | null>(null);
-  const [roomTypes, setRoomTypes] = useState<RoomTypeResponse[]>([]);
-  const [error, setError] = useState("");
+  const canViewRooms = routePropertyIsValid &&
+    canViewOwnerMenuItem(effectivePermissions, "Rooms");
+  const [overviewState, setOverviewState] = useState<OverviewState | null>(null);
+  const [overviewRetry, setOverviewRetry] = useState(0);
 
   useEffect(() => {
-    if (loading || !authenticated || !workspaces.includes("owner")) return;
+    if (loading || !authenticated || !isOwnerWorkspace || !routePropertyIsValid || !Number.isInteger(propertyId) || propertyId <= 0) return;
+    const controller = new AbortController();
+    setOverviewState({ propertyId, status: "loading" });
 
     Promise.all([
-      apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`),
+      apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`, { signal: controller.signal }),
       apiRequest<PropertyCompletionResponse>(
         `/owner/properties/${propertyId}/completion`,
+        { signal: controller.signal },
       ),
       apiRequest<RoomTypeResponse[]>(
         `/owner/properties/${propertyId}/room-types`,
+        { signal: controller.signal },
       ),
     ])
       .then(([propertyResult, completionResult, roomTypesResult]) => {
-        setProperty(propertyResult);
-        setCompletion(completionResult);
-        setRoomTypes(roomTypesResult);
+        if (controller.signal.aborted) return;
+        setOverviewState({ propertyId, status: "ready", property: propertyResult, completion: completionResult, roomTypes: roomTypesResult });
       })
-      .catch((caught: Error) => setError(caught.message));
-  }, [authenticated, loading, propertyId, workspaces]);
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setOverviewState({
+          propertyId,
+          status: reason instanceof ApiRequestError && reason.status === 403 ? "forbidden" : "error",
+        });
+      });
+    return () => controller.abort();
+  }, [authenticated, loading, propertyId, routePropertyIsValid, overviewRetry, isOwnerWorkspace]);
 
-  const cards = [
-    {
-      title: "تکمیل اطلاعات",
-      value: `${completion?.completionPercentage ?? 0}٪`,
-      href: `/owner/properties/${propertyId}`,
-    },
-    {
-      title: "نوع اتاق",
-      value: roomTypes.length.toString(),
-      href: `/owner/properties/${propertyId}/rooms`,
-    },
-    {
-      title: "وضعیت",
-      value: property?.status ?? "-",
-      href: `/owner/properties/${propertyId}/settings`,
-    },
-    {
-      title: "شهر",
-      value: property?.city ?? "-",
-      href: `/owner/properties/${propertyId}/settings`,
-    },
-  ];
+  const currentOverview = overviewState?.propertyId === propertyId ? overviewState : null;
+  const overview = currentOverview?.status === "ready" ? currentOverview : null;
+  const property = overview?.property;
+  const quickActions = [
+    { label: "قیمت‌گذاری", description: "مدیریت قیمت اتاق‌ها", permission: "Pricing" as const, href: `/owner/properties/${propertyId}/pricing` },
+    { label: "ظرفیت و موجودی", description: "تقویم ظرفیت و دسترسی", permission: "Inventory" as const, href: `/owner/properties/${propertyId}/inventory` },
+    { label: "رزروها", description: "بررسی و پیگیری رزروها", permission: "Bookings" as const, href: `/owner/properties/${propertyId}/reservations` },
+    { label: "اتاق‌ها", description: "مدیریت نوع اتاق‌ها", permission: "Rooms" as const, href: `/owner/properties/${propertyId}/rooms` },
+  ].filter((action) => routePropertyIsValid && canViewOwnerMenuItem(effectivePermissions, action.permission));
 
   return (
     <OwnerLayout>
-      <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6">
+      <main className="mx-auto grid max-w-[1480px] gap-6 p-4 lg:p-6" dir="rtl">
         <KoochPageHeader
           actions={
             <>
@@ -159,83 +169,77 @@ export default function OwnerPropertyDashboardPage() {
               )}
             </>
           }
-          description={property?.name ?? "در حال بارگذاری..."}
-          eyebrow="اقامتگاه فعال"
-          title="داشبورد"
+          description={property ? <>{property.city && <span>{property.city} · </span>}<span>وضعیت: {statusLabels[property.status] ?? property.status}</span></> : "نمای کلی اقامتگاه و فعالیت‌های امروز"}
+          eyebrow="داشبورد اقامتگاه"
+          title={property?.name ?? "داشبورد اقامتگاه"}
         />
 
-        {error && (
-          <KoochCard
-            className="border-destructive/30 bg-destructive/10 text-destructive"
-            padding="sm"
-          >
-            <p className="text-sm font-semibold">{error}</p>
+        {currentOverview?.status === "loading" && (
+          <KoochCard aria-label="در حال دریافت اطلاعات اقامتگاه" role="status" padding="sm">
+            <div aria-hidden="true" className="grid gap-3 sm:grid-cols-2">
+              <div className="h-16 rounded-lg bg-muted motion-safe:animate-pulse" />
+              <div className="h-16 rounded-lg bg-muted motion-safe:animate-pulse" />
+            </div>
           </KoochCard>
         )}
-
-        <PricingSettingsWarning
-          editHref={`/owner/properties/${propertyId}?step=7`}
-          warnings={getPropertyFinancialWarnings(property, roomTypes)}
-        />
-
-        {completion && (
-          <PropertyCompletionCard
-            completion={completion}
-            getActionHref={(section) =>
-              propertyCompletionHref("owner", propertyId, section)
-            }
-          />
+        {currentOverview?.status === "forbidden" && (
+          <KoochAlert title="دسترسی به اطلاعات این اقامتگاه ندارید" variant="warning">
+            اطلاعات اقامتگاه و نوع اتاق‌ها نمایش داده نمی‌شود.
+          </KoochAlert>
+        )}
+        {currentOverview?.status === "error" && (
+          <KoochAlert title="دریافت اطلاعات اقامتگاه انجام نشد" variant="destructive">
+            <KoochButton className="mt-3" onClick={() => setOverviewRetry((value) => value + 1)} variant="outline">تلاش دوباره</KoochButton>
+          </KoochAlert>
         )}
 
-        {canViewBookings && authenticated && !loading && workspaces.includes("owner") && (
+        {canViewBookings && authenticated && !loading && isOwnerWorkspace && (
           <OwnerOperationalSummarySection propertyId={propertyId} />
         )}
 
-        {canViewReports && authenticated && !loading && workspaces.includes("owner") && (
-          <OwnerPropertyVisitAnalyticsSection propertyId={propertyId} />
+        {canViewRooms && overview && (
+          <section aria-label="نوع اتاق‌های فعال">
+            <KoochCard className="sm:max-w-xs" padding="sm">
+              <p className="text-sm text-muted-foreground">نوع اتاق‌های فعال</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
+                {formatCount(overview.roomTypes.filter((roomType) => roomType.isActive).length)}
+              </p>
+            </KoochCard>
+          </section>
         )}
 
-        <div className="grid gap-4 md:grid-cols-4">
-          {cards.map((card) => (
-            <Link href={card.href} key={card.title}>
-              <KoochCard
-                className="h-full transition hover:border-primary"
-                variant="elevated"
-              >
-                <p className="text-sm font-bold text-muted-foreground">
-                  {card.title}
-                </p>
-                <p className="mt-3 text-2xl font-bold text-foreground">
-                  {card.value}
-                </p>
-              </KoochCard>
-            </Link>
-          ))}
-        </div>
+        {quickActions.length > 0 && (
+          <section aria-labelledby="owner-quick-actions-title" className="grid gap-3">
+            <h2 id="owner-quick-actions-title" className="text-lg font-semibold text-foreground">کارهای سریع</h2>
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {quickActions.map((action) => (
+                <Link className="group min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" href={action.href} key={action.label}>
+                  <KoochCard className="h-full transition-colors group-hover:border-primary group-focus-visible:border-primary" padding="sm">
+                    <h3 className="text-sm font-semibold text-foreground">{action.label}</h3>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{action.description}</p>
+                  </KoochCard>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
-        <KoochCard className="mt-5" variant="elevated">
-          <h2 className="text-xl font-bold text-foreground">کارهای سریع</h2>
-          <div className="mt-4 flex flex-wrap gap-3">
-            <Link
-              className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`}
-              href={`/owner/properties/${propertyId}/inventory`}
-            >
-              مدیریت ظرفیت
-            </Link>
-            <Link
-              className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-              href={`/owner/properties/${propertyId}/rooms`}
-            >
-              اتاق‌ها
-            </Link>
-            <Link
-              className={`${linkButtonClass} border-border bg-background text-foreground hover:bg-muted`}
-              href={`/owner/properties/${propertyId}`}
-            >
-              ویرایش کامل اقامتگاه
-            </Link>
-          </div>
-        </KoochCard>
+        {overview && (
+          <section aria-label="تکمیل و راه‌اندازی اقامتگاه" className="grid gap-3">
+            <PricingSettingsWarning
+              editHref={`/owner/properties/${propertyId}?step=7`}
+              warnings={getPropertyFinancialWarnings(overview.property, overview.roomTypes)}
+            />
+            <PropertyCompletionCard
+              completion={overview.completion}
+              getActionHref={(section) => propertyCompletionHref("owner", propertyId, section)}
+            />
+          </section>
+        )}
+
+        {canViewReports && authenticated && !loading && isOwnerWorkspace && (
+          <OwnerPropertyVisitAnalyticsSection propertyId={propertyId} />
+        )}
       </main>
     </OwnerLayout>
   );
