@@ -18,6 +18,16 @@ public sealed class AdminAuditLogsController(IAuditLogService auditLogs) : Authe
         [FromQuery] AdminAuditLogQuery query, CancellationToken cancellationToken) =>
         Ok(await auditLogs.GetForAdminAsync(GetCurrentUser().UserId, query, cancellationToken));
 
+    [HttpGet("filter-options/actors")]
+    public async Task<ActionResult<IReadOnlyList<AdminAuditFilterOption>>> GetActorOptions(
+        [FromQuery] AdminAuditFilterOptionQuery query, CancellationToken cancellationToken) =>
+        Ok(await auditLogs.GetActorOptionsForAdminAsync(GetCurrentUser().UserId, query, cancellationToken));
+
+    [HttpGet("filter-options/properties")]
+    public async Task<ActionResult<IReadOnlyList<AdminAuditFilterOption>>> GetPropertyOptions(
+        [FromQuery] AdminAuditFilterOptionQuery query, CancellationToken cancellationToken) =>
+        Ok(await auditLogs.GetPropertyOptionsForAdminAsync(GetCurrentUser().UserId, query, cancellationToken));
+
     [HttpGet("{auditLogId:int}/price-changes")]
     public async Task<ActionResult<AdminPriceChangePage>> GetPriceChanges(int auditLogId,
         [FromQuery] AdminPriceChangeQuery query, CancellationToken cancellationToken) =>

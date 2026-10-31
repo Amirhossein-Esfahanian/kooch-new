@@ -3,11 +3,13 @@ import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AdminAuditPage } from "@/lib/admin-audit-logs";
 
-const mocks = vi.hoisted(() => ({ request: vi.fn(), guard: vi.fn(), permissions: ["ViewReports"] as string[] }));
+const mocks = vi.hoisted(() => ({ request: vi.fn(), lookup: vi.fn(), guard: vi.fn(), permissions: ["ViewReports"] as string[] }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({ useAuthSession: () => ({ authenticated: true,
   loading: false, workspaces: ["admin"], platformRole: "AdminAssistant", platformPermissions: mocks.permissions, user: { userId: 1 } }) }));
 vi.mock("@/lib/owner-api", async (importOriginal) => ({
-  ...await importOriginal<typeof import("@/lib/owner-api")>(), apiRequest: mocks.request,
+  ...await importOriginal<typeof import("@/lib/owner-api")>(),
+  apiRequest: (path: string, options?: unknown) => path.includes("filter-options/")
+    ? mocks.lookup(path, options) : mocks.request(path, options),
 }));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({
   AdminLayout: ({ children, requiredPlatformPermission }: { children: ReactNode; requiredPlatformPermission: string }) => {
@@ -31,15 +33,26 @@ function result(): AdminAuditPage {
 }
 
 describe("Admin activity history", () => {
-  beforeEach(() => { vi.clearAllMocks(); mocks.permissions = ["ViewReports"]; mocks.request.mockResolvedValue(result()); });
+  beforeEach(() => {
+    vi.clearAllMocks(); mocks.permissions = ["ViewReports"]; mocks.request.mockResolvedValue(result());
+    mocks.lookup.mockImplementation((path: string) => Promise.resolve(path.includes("/actors")
+      ? [{ id: 5, displayName: "مدیر آزمون" }, { id: 6, displayName: "مالک آزمون" }]
+      : [{ id: 10, displayName: "اقامتگاه سرو" }, { id: 11, displayName: "اقامتگاه دوم" }]));
+  });
+
+  async function selectFilter(label: string, option: string) {
+    fireEvent.click(screen.getByRole("button", { name: label }));
+    fireEvent.click(await screen.findByRole("button", { name: option }));
+  }
 
   it("uses Admin API and ViewReports, showing actor, target and allowed before/after values", async () => {
     render(<Page />);
-    expect(await screen.findByText("مدیر آزمون")).toBeTruthy();
+    expect(await within(screen.getByRole("table")).findByText("مدیر آزمون")).toBeTruthy();
     expect(mocks.guard).toHaveBeenCalledWith("ViewReports");
     expect(mocks.request).toHaveBeenCalledWith("/admin/audit-logs?page=1&pageSize=25", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(screen.getByText("اقامتگاه سرو")).toBeTruthy();
     expect(within(screen.getByRole("table")).getByText("تغییر ظرفیت اتاق")).toBeTruthy();
+    fireEvent.click(await screen.findByRole("button", { name: "مشاهده تغییرات" }));
     expect(screen.getByText("موجودی کل")).toBeTruthy();
     expect(screen.getByText("قبل:").parentElement?.textContent).toContain("۲");
     expect(screen.getByText("بعد:").parentElement?.textContent).toContain("۳");
@@ -62,8 +75,8 @@ describe("Admin activity history", () => {
 
   it("applies actor, Property, action and inclusive Tehran date filters", async () => {
     render(<Page />); await screen.findByText("مدیر آزمون");
-    fireEvent.change(screen.getByLabelText("شناسه کاربر"), { target: { value: "۵" } });
-    fireEvent.change(screen.getByLabelText("شناسه اقامتگاه"), { target: { value: "10" } });
+    await selectFilter("کاربر", "مدیر آزمون");
+    await selectFilter("اقامتگاه", "اقامتگاه سرو");
     fireEvent.change(screen.getByLabelText("عملیات"), { target: { value: "RoomCapacityChanged" } });
     fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-29" } });
     fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-30" } });
@@ -74,6 +87,51 @@ describe("Admin activity history", () => {
     expect(params.get("action")).toBe("RoomCapacityChanged");
     expect(params.get("fromUtc")).toBe("2026-10-28T20:30:00.000Z");
     expect(params.get("toUtc")).toBe("2026-10-30T20:30:00.000Z");
+  });
+
+  it("searches safe lookup options, sends selected IDs only after Apply, and clears selections", async () => {
+    render(<Page />); await screen.findByText("مدیر آزمون");
+    await waitFor(() => expect(mocks.lookup).toHaveBeenCalledTimes(2));
+    expect(mocks.lookup.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining([
+      "/admin/audit-logs/filter-options/actors?limit=20",
+      "/admin/audit-logs/filter-options/properties?limit=20",
+    ]));
+    fireEvent.click(screen.getByRole("button", { name: "کاربر" }));
+    fireEvent.change(screen.getByPlaceholderText("جست‌وجوی کاربر"), { target: { value: "مالک" } });
+    await waitFor(() => expect(mocks.lookup.mock.calls.some(([path]) => path.includes("/actors?") && path.includes("search=%D9%85"))).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "مالک آزمون" }));
+    await selectFilter("اقامتگاه", "اقامتگاه سرو");
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+    const selected = new URL(mocks.request.mock.calls[1][0], "http://localhost").searchParams;
+    expect(selected.get("actorUserId")).toBe("6");
+    expect(selected.get("propertyId")).toBe("10");
+    fireEvent.keyDown(screen.getByRole("button", { name: "کاربر" }), { key: "Backspace" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "اقامتگاه" }), { key: "Backspace" });
+    expect(mocks.request).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
+    expect(mocks.request).toHaveBeenLastCalledWith("/admin/audit-logs?page=1&pageSize=25", expect.anything());
+  });
+
+  it("renders multiple independent expanded rows directly beneath their parents", async () => {
+    const data = result();
+    data.items.push({ ...data.items[0], id: 2, actorDisplayName: "مالک آزمون",
+      previousValues: { TotalInventory: 4 }, newValues: { TotalInventory: 5 } });
+    mocks.request.mockResolvedValue(data);
+    render(<Page />);
+    const buttons = await screen.findAllByRole("button", { name: "مشاهده تغییرات" });
+    buttons.forEach((button) => fireEvent.click(button));
+    const table = screen.getByRole("table");
+    expect(table.querySelectorAll("tbody > tr > td[colspan='5']")).toHaveLength(2);
+    buttons.forEach((button) => {
+      const parent = button.closest("tr")!;
+      expect(parent.nextElementSibling?.querySelector("td")?.getAttribute("colspan")).toBe("5");
+      expect(button.getAttribute("aria-expanded")).toBe("true");
+    });
+    fireEvent.click(screen.getAllByRole("button", { name: "بستن تغییرات" })[0]);
+    expect(table.querySelectorAll("tbody > tr > td[colspan='5']")).toHaveLength(1);
   });
 
   it("uses Tehran day boundaries independent of device timezone, including historical offset changes", () => {
@@ -121,6 +179,7 @@ describe("Admin activity history", () => {
   it("does not fetch without permission", () => {
     mocks.permissions = []; render(<Page />);
     expect(mocks.request).not.toHaveBeenCalled();
+    expect(mocks.lookup).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toBeTruthy();
   });
 
@@ -136,13 +195,13 @@ describe("Admin activity history", () => {
     const failed = render(<Page />);
     expect(await screen.findByText("تاریخچه بارگذاری نشد")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
-    expect(await screen.findByText("مدیر آزمون")).toBeTruthy();
+    expect(await within(screen.getByRole("table")).findByText("مدیر آزمون")).toBeTruthy();
     failed.unmount();
     mocks.request.mockRejectedValueOnce(new ApiRequestError("Forbidden", 403));
     render(<Page />);
     expect(await screen.findByText("دسترسی به تاریخچه ندارید")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "تلاش دوباره" })).toBeNull();
-    expect(screen.queryByText("مدیر آزمون")).toBeNull();
+    expect(screen.queryByRole("table")).toBeNull();
   });
 
   it("ignores late responses and does not render unknown comparison fields", async () => {
@@ -153,11 +212,11 @@ describe("Admin activity history", () => {
     current.items[0].actorDisplayName = "مدیر جدید";
     current.items[0].newValues = { TotalInventory: 3, Password: "never-render-this" };
     mocks.request.mockResolvedValue(current);
-    fireEvent.change(screen.getByLabelText("شناسه کاربر"), { target: { value: "5" } });
+    await selectFilter("کاربر", "مدیر آزمون");
     fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     expect(await screen.findByText("مدیر جدید")).toBeTruthy();
     await act(async () => old(result()));
-    expect(screen.queryByText("مدیر آزمون")).toBeNull();
+    expect(within(screen.getByRole("table")).queryByText("مدیر آزمون")).toBeNull();
     expect(screen.queryByText("never-render-this")).toBeNull();
   });
 
@@ -184,8 +243,7 @@ describe("Admin activity history", () => {
     render(<Page />);
     expect(await screen.findByText(/اتاق دبل/)).toBeTruthy();
     expect(mocks.request).toHaveBeenCalledTimes(1);
-    const details = screen.getByText("مشاهده تغییرات قیمت").closest("details")!;
-    details.open = true; fireEvent(details, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده تغییرات قیمت" }));
     const table = await screen.findByRole("table", { name: "تغییرات قیمت روزانه" });
     expect(within(table).getAllByRole("row")).toHaveLength(11);
     expect(table.querySelectorAll("time")[0].dateTime).toBe("2026-11-01");
@@ -201,8 +259,8 @@ describe("Admin activity history", () => {
     fireEvent.click(screen.getByRole("button", { name: "نمایش بیشتر" }));
     expect(within(table).getAllByRole("row")).toHaveLength(13);
     expect(mocks.request).toHaveBeenCalledTimes(3);
-    details.open = false; fireEvent(details, new Event("toggle"));
-    details.open = true; fireEvent(details, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "بستن تغییرات" }));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده تغییرات قیمت" }));
     await waitFor(() => expect(within(screen.getByRole("table", { name: "تغییرات قیمت روزانه" })).getAllByRole("row")).toHaveLength(11));
   });
 
@@ -211,6 +269,7 @@ describe("Admin activity history", () => {
     Object.assign(data.items[0], { action: "PriceChanged", entityType: "RoomDailyPrice", hasPriceDetails: false,
       previousValues: null, newValues: { ChangedCellCount: 3, From: "2026-11-01", To: "2026-11-09" } });
     mocks.request.mockResolvedValue(data); render(<Page />);
+    fireEvent.click(await screen.findByRole("button", { name: "مشاهده تغییرات" }));
     expect(await screen.findByText("تعداد خانه تغییرکرده")).toBeTruthy();
     expect(screen.queryByRole("table", { name: "تغییرات قیمت روزانه" })).toBeNull();
     expect(mocks.request).toHaveBeenCalledTimes(1);
@@ -226,8 +285,7 @@ describe("Admin activity history", () => {
       return Promise.resolve({ items: [{ date: "2026-11-03", previousPrice: 50, newPrice: 100, guestType: "Iranian" }], hasMore: false, nextAfter: null });
     });
     render(<Page />);
-    const details = (await screen.findByText("مشاهده تغییرات قیمت")).closest("details")!;
-    details.open = true; fireEvent(details, new Event("toggle"));
+    fireEvent.click(await screen.findByRole("button", { name: "مشاهده تغییرات قیمت" }));
     expect(await screen.findByText("جزئیات قیمت بارگذاری نشد")).toBeTruthy();
     expect(screen.getByText("مدیر آزمون")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));

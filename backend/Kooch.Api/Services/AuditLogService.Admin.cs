@@ -206,6 +206,38 @@ public partial class AuditLogService
         return await ReadAdminLogsAsync(logs, query, cancellationToken);
     }
 
+    public async Task<IReadOnlyList<AdminAuditFilterOption>> GetActorOptionsForAdminAsync(
+        int userId, AdminAuditFilterOptionQuery query, CancellationToken cancellationToken = default)
+    {
+        await EnsureAdminHistoryAccessAsync(userId, cancellationToken);
+        Validator.ValidateObject(query, new ValidationContext(query), validateAllProperties: true);
+        var actors = dbContext.Users.IgnoreQueryFilters().AsNoTracking()
+            .Where(user => dbContext.AuditLogs.Any(log => log.UserId == user.Id));
+        var search = query.Search?.Trim();
+        if (!string.IsNullOrEmpty(search))
+            actors = actors.Where(user => (user.FirstName + " " + user.LastName).Contains(search));
+        return await actors.OrderBy(user => user.FirstName).ThenBy(user => user.LastName).ThenBy(user => user.Id)
+            .Take(query.Limit)
+            .Select(user => new AdminAuditFilterOption(user.Id, (user.FirstName + " " + user.LastName).Trim()))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<AdminAuditFilterOption>> GetPropertyOptionsForAdminAsync(
+        int userId, AdminAuditFilterOptionQuery query, CancellationToken cancellationToken = default)
+    {
+        await EnsureAdminHistoryAccessAsync(userId, cancellationToken);
+        Validator.ValidateObject(query, new ValidationContext(query), validateAllProperties: true);
+        var properties = dbContext.Properties.IgnoreQueryFilters().AsNoTracking()
+            .Where(property => dbContext.AuditLogs.Any(log => log.PropertyId == property.Id));
+        var search = query.Search?.Trim();
+        if (!string.IsNullOrEmpty(search))
+            properties = properties.Where(property => property.Name.Contains(search));
+        return await properties.OrderBy(property => property.Name).ThenBy(property => property.Id)
+            .Take(query.Limit)
+            .Select(property => new AdminAuditFilterOption(property.Id, property.Name))
+            .ToListAsync(cancellationToken);
+    }
+
     private async Task EnsureAdminHistoryAccessAsync(int userId, CancellationToken cancellationToken)
     {
         var role = await dbContext.Users.AsNoTracking().Where(user => user.Id == userId && user.IsActive)

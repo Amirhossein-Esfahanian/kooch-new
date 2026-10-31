@@ -37,6 +37,7 @@ export type AdminPriceChangePage = {
 export type AdminAuditPage = {
   items: AdminAuditLog[]; page: number; pageSize: number; totalCount: number; totalPages: number;
 };
+export type AdminAuditFilterOption = { id: number; displayName: string };
 export type AuditFilters = { actor: string; property: string; action: string; from: string | null; to: string | null };
 export const emptyAuditFilters: AuditFilters = { actor: "", property: "", action: "", from: null, to: null };
 

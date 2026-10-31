@@ -12,7 +12,6 @@ import { auditValue, type AdminAuditLog, type AdminPriceChangePage } from "@/lib
 const stayDate = new Intl.DateTimeFormat("fa-IR", { timeZone: "UTC", year: "numeric", month: "2-digit", day: "2-digit" });
 
 export function PriceAuditDetails({ row }: { row: AdminAuditLog }) {
-  const [open, setOpen] = useState(false);
   const [request, setRequest] = useState({ after: null as string | null, retry: 0 });
   const [data, setData] = useState<AdminPriceChangePage | null>(null);
   const [compact, setCompact] = useState(false);
@@ -20,7 +19,7 @@ export function PriceAuditDetails({ row }: { row: AdminAuditLog }) {
   const [error, setError] = useState(false);
 
   useEffect(() => {
-    if (!open || !row.propertyId) return;
+    if (!row.propertyId) return;
     let active = true;
     const controller = new AbortController();
     setLoading(true); setError(false);
@@ -34,17 +33,10 @@ export function PriceAuditDetails({ row }: { row: AdminAuditLog }) {
       .catch(() => { if (active) setError(true); })
       .finally(() => { if (active) setLoading(false); });
     return () => { active = false; controller.abort(); };
-  }, [open, row.id, row.propertyId, request]);
+  }, [row.id, row.propertyId, request]);
 
   const items = compact ? data?.items.slice(0, 10) : data?.items;
-  return <details onToggle={(event) => {
-    setOpen(event.currentTarget.open);
-    if (!event.currentTarget.open) {
-      setRequest({ after: null, retry: 0 }); setData(null); setCompact(false);
-    }
-  }}>
-    <summary className="cursor-pointer rounded-sm text-primary underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">مشاهده تغییرات قیمت</summary>
-    <div className="mt-3 space-y-3">
+  return <div className="space-y-3">
       <p className="text-sm text-muted-foreground">
         {formatNumber(Number(row.newValues?.ChangedCellCount ?? 0))} تاریخ تغییرکرده
         {row.newValues?.GuestType ? ` · مهمان ${auditValue(row.newValues.GuestType)}` : ""}
@@ -68,6 +60,5 @@ export function PriceAuditDetails({ row }: { row: AdminAuditLog }) {
         }}>نمایش بیشتر</KoochButton>}
         {data && data.items.length > 10 && !compact && <KoochButton size="sm" variant="ghost" disabled={loading} onClick={() => setCompact(true)}>نمایش کمتر</KoochButton>}
       </div>
-    </div>
-  </details>;
+  </div>;
 }

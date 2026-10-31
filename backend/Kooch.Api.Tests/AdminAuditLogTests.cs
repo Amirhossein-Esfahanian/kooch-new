@@ -40,7 +40,7 @@ public sealed partial class AdminAuditLogTests
         Assert.Equal("Permission:ViewReports", typeof(AdminAuditLogsController)
             .GetCustomAttribute<PermissionAuthorizeAttribute>()!.Policy);
         var actions = typeof(AdminAuditLogsController).GetMethods(BindingFlags.DeclaredOnly | BindingFlags.Public | BindingFlags.Instance);
-        Assert.Equal(2, actions.Length);
+        Assert.Equal(4, actions.Length);
         Assert.All(actions, action => Assert.NotNull(action.GetCustomAttribute<Microsoft.AspNetCore.Mvc.HttpGetAttribute>()));
         Assert.Null(typeof(AuditLogResponse).GetProperty("PreviousValuesJson"));
         Assert.Null(typeof(AuditLogResponse).GetProperty("PreviousValues"));
@@ -58,6 +58,57 @@ public sealed partial class AdminAuditLogTests
         await Seed(db);
         if (allowed) Assert.Equal(0, (await Service(db).GetForAdminAsync(actor, new())).TotalCount);
         else await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service(db).GetForAdminAsync(actor, new()));
+    }
+
+    [Fact]
+    public async Task FilterOptions_IncludeOnlyAuditActorsAndProperties_WithSafeBoundedResults()
+    {
+        await using var db = Memory(); await Seed(db);
+        db.Users.Add(new User { Id = 5, FirstName = "Unrelated", Role = UserRole.Client });
+        db.Properties.Add(new Property { Id = 11, OwnerId = 1, DestinationId = 1,
+            Name = "Unrelated Property", Slug = "unrelated", InventoryMode = InventoryMode.TypeBasedInventory });
+        db.AuditLogs.AddRange(
+            new AuditLog { UserId = 3, PropertyId = 10, EntityType = "Property" },
+            new AuditLog { UserId = 2, PropertyId = 10, EntityType = "Property" },
+            new AuditLog { UserId = 3, PropertyId = 10, EntityType = "Property" });
+        await db.SaveChangesAsync();
+        var service = Service(db);
+        var actors = await service.GetActorOptionsForAdminAsync(2, new());
+        Assert.Equal(new[] { 2, 3 }, actors.Select(item => item.Id).ToArray());
+        Assert.Equal("Owner", actors[1].DisplayName);
+        Assert.Equal(new[] { nameof(AdminAuditFilterOption.DisplayName), nameof(AdminAuditFilterOption.Id) },
+            typeof(AdminAuditFilterOption).GetProperties().Select(property => property.Name).Order().ToArray());
+        Assert.Single(await service.GetActorOptionsForAdminAsync(2, new() { Search = "Own" }));
+        Assert.Single(await service.GetActorOptionsForAdminAsync(2, new() { Limit = 1 }));
+        var properties = await service.GetPropertyOptionsForAdminAsync(2, new());
+        Assert.Equal(10, Assert.Single(properties).Id);
+        Assert.Equal("Property", properties[0].DisplayName);
+        Assert.Single(await service.GetPropertyOptionsForAdminAsync(2, new() { Search = "Prop" }));
+        Assert.Empty(await service.GetPropertyOptionsForAdminAsync(2, new() { Search = "Unrelated" }));
+        await Assert.ThrowsAsync<ValidationException>(() => service.GetActorOptionsForAdminAsync(2, new() { Limit = 51 }));
+        await Assert.ThrowsAsync<ValidationException>(() => service.GetPropertyOptionsForAdminAsync(2,
+            new() { Search = new string('x', 101) }));
+    }
+
+    [Theory]
+    [InlineData(1, true)]
+    [InlineData(2, true)]
+    [InlineData(3, false)]
+    [InlineData(4, false)]
+    public async Task FilterOptions_RequireAdminAndViewReports_NotManageUsersOrProperties(int actor, bool allowed)
+    {
+        await using var db = Memory(); await Seed(db);
+        var service = Service(db);
+        if (allowed)
+        {
+            await service.GetActorOptionsForAdminAsync(actor, new());
+            await service.GetPropertyOptionsForAdminAsync(actor, new());
+        }
+        else
+        {
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetActorOptionsForAdminAsync(actor, new()));
+            await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.GetPropertyOptionsForAdminAsync(actor, new()));
+        }
     }
 
     [Fact]

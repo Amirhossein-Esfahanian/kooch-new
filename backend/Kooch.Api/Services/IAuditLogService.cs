@@ -14,6 +14,12 @@ public interface IAuditLogService
     Task<PagedResult<AdminAuditLogResponse>> GetForAdminAsync(
         int userId, AdminAuditLogQuery query, CancellationToken cancellationToken = default) =>
         throw new NotSupportedException();
+    Task<IReadOnlyList<AdminAuditFilterOption>> GetActorOptionsForAdminAsync(
+        int userId, AdminAuditFilterOptionQuery query, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
+    Task<IReadOnlyList<AdminAuditFilterOption>> GetPropertyOptionsForAdminAsync(
+        int userId, AdminAuditFilterOptionQuery query, CancellationToken cancellationToken = default) =>
+        throw new NotSupportedException();
 
     void Add(
         int userId,

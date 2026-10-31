@@ -9,24 +9,22 @@ import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
-import { KoochField, KoochInput, KoochSelect } from "@/components/KoochFormControls";
+import { KoochField, KoochSearchableSelect, KoochSelect } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
 import { formatDateTime, formatNumber } from "@/lib/account-reservations";
-import { toLatinDigits } from "@/lib/persian-digits";
-import { adminAuditPath, auditActionLabels, auditFieldLabels, auditValue, emptyAuditFilters, type AdminAuditPage, type AuditFilters, type AdminAuditLog } from "@/lib/admin-audit-logs";
+import { adminAuditPath, auditActionLabels, auditFieldLabels, auditValue, emptyAuditFilters, type AdminAuditPage, type AuditFilters, type AdminAuditLog, type AdminAuditFilterOption } from "@/lib/admin-audit-logs";
 
 const entityLabels: Record<string, string> = { Property: "اقامتگاه", RoomType: "نوع اتاق", Availability: "موجودی اتاق", RoomDailyPrice: "قیمت روزانه", SiteSetting: "تنظیمات سایت", CashbackSetting: "تنظیمات کش‌بک", Reservation: "رزرو", User: "کاربر" };
 
 function Changes({ row }: { row: AdminAuditLog }) {
-  if (row.hasPriceDetails) return <PriceAuditDetails key={row.id} row={row} />;
+  if (row.hasPriceDetails) return <PriceAuditDetails row={row} />;
   const keys = [...new Set([...Object.keys(row.previousValues ?? {}), ...Object.keys(row.newValues ?? {})])]
     .filter((key) => Object.hasOwn(auditFieldLabels, key));
   if (!keys.length) return <span className="text-muted-foreground">مقادیر قبل و بعد ثبت نشده‌اند.</span>;
-  return <details>
-    <summary className="cursor-pointer rounded-lg py-2 font-medium text-primary focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring">مشاهده تغییرات</summary>
-    <dl className="mt-2 grid min-w-56 gap-3">
+  return <div>
+    <dl className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {keys.map((key) => <div key={key}>
         <dt className="font-medium">{auditFieldLabels[key]}</dt>
         <dd className="mt-1 break-words"><span className="text-muted-foreground">قبل: </span>{auditValue(row.previousValues?.[key])}</dd>
@@ -35,7 +33,76 @@ function Changes({ row }: { row: AdminAuditLog }) {
     </dl>
     {row.action === "PriceChanged" && row.entityType === "RoomDailyPrice" && row.propertyId &&
       <Link href={`/admin/properties/${row.propertyId}/pricing`} className="mt-3 inline-block text-primary underline-offset-4 hover:underline">مشاهده تاریخچه قیمت اتاق‌ها</Link>}
-  </details>;
+  </div>;
+}
+
+function AuditFilterSelect({ kind, label, value, onChange, enabled }: {
+  kind: "actors" | "properties"; label: string; value: string;
+  onChange: (value: string) => void; enabled: boolean;
+}) {
+  const [search, setSearch] = useState("");
+  const [options, setOptions] = useState<AdminAuditFilterOption[]>([]);
+  const [selected, setSelected] = useState<AdminAuditFilterOption | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(false);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    if (!enabled) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      const query = new URLSearchParams({ limit: "20" });
+      if (search.trim()) query.set("search", search.trim());
+      setLoading(true); setError(false);
+      apiRequest<AdminAuditFilterOption[]>(`/admin/audit-logs/filter-options/${kind}?${query}`, { signal: controller.signal })
+        .then((items) => { if (!controller.signal.aborted) setOptions(items); })
+        .catch(() => { if (!controller.signal.aborted) setError(true); })
+        .finally(() => { if (!controller.signal.aborted) setLoading(false); });
+    }, search ? 200 : 0);
+    return () => { window.clearTimeout(timer); controller.abort(); };
+  }, [enabled, kind, search, retry]);
+
+  const choices = selected && !options.some((item) => item.id === selected.id)
+    ? [selected, ...options] : options;
+  return <div className="min-w-0">
+    <KoochField label={label}>
+      <KoochSearchableSelect value={value} options={choices.map((item) => ({ value: item.id, label: item.displayName }))}
+        placeholder={`همه ${label === "کاربر" ? "کاربران" : "اقامتگاه‌ها"}`}
+        searchPlaceholder={`جست‌وجوی ${label}`} emptyText={loading ? "در حال جست‌وجو…" : "موردی پیدا نشد."}
+        onSearchChange={setSearch} onChange={(next) => {
+          setSelected(choices.find((item) => String(item.id) === next) ?? null);
+          setSearch(""); onChange(next);
+        }} />
+    </KoochField>
+    {error && <div className="mt-2 flex items-center gap-2 text-xs text-destructive" role="alert">
+      <span>فهرست {label} بارگذاری نشد.</span>
+      <KoochButton type="button" size="sm" variant="outline" onClick={() => setRetry((current) => current + 1)}>تلاش دوباره</KoochButton>
+    </div>}
+  </div>;
+}
+
+function AuditRow({ row }: { row: AdminAuditLog }) {
+  const [expanded, setExpanded] = useState(false);
+  const hasChanges = row.hasPriceDetails || Object.keys(row.previousValues ?? {}).some((key) => Object.hasOwn(auditFieldLabels, key)) ||
+    Object.keys(row.newValues ?? {}).some((key) => Object.hasOwn(auditFieldLabels, key));
+  const detailId = `audit-details-${row.id}`;
+  return <>
+    <KoochTableRow>
+      <KoochTableCell><p>{row.actorDisplayName}</p><p className="text-xs text-muted-foreground">شناسه {formatNumber(row.userId)}</p></KoochTableCell>
+      <KoochTableCell className="whitespace-nowrap"><time dateTime={row.occurredAtUtc} title={row.occurredAtUtc}>{row.hasPriceDetails ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(row.occurredAtUtc)) : formatDateTime(row.occurredAtUtc)}</time></KoochTableCell>
+      <KoochTableCell>{auditActionLabels[row.action] ?? "رویداد ثبت‌شده"}</KoochTableCell>
+      <KoochTableCell><p>{row.entityName ?? entityLabels[row.entityType] ?? "مورد ثبت‌شده"}{row.entityId ? ` · ${formatNumber(row.entityId)}` : ""}</p><p className="text-sm text-muted-foreground">{row.propertyName ?? "سطح سامانه"}</p>{row.propertyId && <p className="text-xs text-muted-foreground">شناسه اقامتگاه {formatNumber(row.propertyId)}</p>}</KoochTableCell>
+      <KoochTableCell>{hasChanges ? <KoochButton type="button" variant="ghost" size="sm"
+        aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpanded((current) => !current)}>
+        {expanded ? "بستن تغییرات" : row.hasPriceDetails ? "مشاهده تغییرات قیمت" : "مشاهده تغییرات"}
+      </KoochButton> : <span className="text-muted-foreground">مقادیر قبل و بعد ثبت نشده‌اند.</span>}</KoochTableCell>
+    </KoochTableRow>
+    {expanded && <KoochTableRow className="bg-muted/30 hover:bg-muted/30">
+      <KoochTableCell colSpan={5} id={detailId} className="px-4 py-4 align-top">
+        <div className="min-w-0 max-w-full overflow-x-auto"><Changes row={row} /></div>
+      </KoochTableCell>
+    </KoochTableRow>}
+  </>;
 }
 
 export default function AdminActivityHistoryPage() {
@@ -86,8 +153,8 @@ export default function AdminActivityHistoryPage() {
       {!canRead ? <KoochAlert variant="warning">برای مشاهده تاریخچه به دسترسی گزارش‌ها نیاز دارید.</KoochAlert> : <>
         <KoochCard>
           <form onSubmit={apply} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="فیلتر تاریخچه">
-            <KoochField label="شناسه کاربر"><KoochInput inputMode="numeric" value={draft.actor} onChange={(event) => setDraft({ ...draft, actor: toLatinDigits(event.target.value).trim() })} /></KoochField>
-            <KoochField label="شناسه اقامتگاه"><KoochInput inputMode="numeric" value={draft.property} onChange={(event) => setDraft({ ...draft, property: toLatinDigits(event.target.value).trim() })} /></KoochField>
+            <AuditFilterSelect kind="actors" label="کاربر" value={draft.actor} enabled={canRead} onChange={(actor) => setDraft((current) => ({ ...current, actor }))} />
+            <AuditFilterSelect kind="properties" label="اقامتگاه" value={draft.property} enabled={canRead} onChange={(property) => setDraft((current) => ({ ...current, property }))} />
             <KoochField label="عملیات"><KoochSelect value={draft.action} onChange={(event) => setDraft({ ...draft, action: event.target.value })}>
               <option value="">همه عملیات</option>{Object.entries(auditActionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </KoochSelect></KoochField>
@@ -110,13 +177,7 @@ export default function AdminActivityHistoryPage() {
             <KoochTableHead>هدف</KoochTableHead><KoochTableHead>تغییرات</KoochTableHead>
           </KoochTableRow></KoochTableHeader><KoochTableBody>
             {loading ? <KoochTableEmpty colSpan={5}><span role="status">در حال دریافت تاریخچه…</span></KoochTableEmpty> : !result?.items.length ?
-              <KoochTableEmpty colSpan={5}>رویدادی با این فیلترها ثبت نشده است.</KoochTableEmpty> : result.items.map((row) => <KoochTableRow key={row.id}>
-                <KoochTableCell><p>{row.actorDisplayName}</p><p className="text-xs text-muted-foreground">شناسه {formatNumber(row.userId)}</p></KoochTableCell>
-                <KoochTableCell className="whitespace-nowrap"><time dateTime={row.occurredAtUtc} title={row.occurredAtUtc}>{row.hasPriceDetails ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(row.occurredAtUtc)) : formatDateTime(row.occurredAtUtc)}</time></KoochTableCell>
-                <KoochTableCell>{auditActionLabels[row.action] ?? "رویداد ثبت‌شده"}</KoochTableCell>
-                <KoochTableCell><p>{row.entityName ?? entityLabels[row.entityType] ?? "مورد ثبت‌شده"}{row.entityId ? ` · ${formatNumber(row.entityId)}` : ""}</p><p className="text-sm text-muted-foreground">{row.propertyName ?? "سطح سامانه"}</p>{row.propertyId && <p className="text-xs text-muted-foreground">شناسه اقامتگاه {formatNumber(row.propertyId)}</p>}</KoochTableCell>
-                <KoochTableCell><Changes row={row} /></KoochTableCell>
-              </KoochTableRow>)}
+              <KoochTableEmpty colSpan={5}>رویدادی با این فیلترها ثبت نشده است.</KoochTableEmpty> : result.items.map((row) => <AuditRow key={row.id} row={row} />)}
           </KoochTableBody></KoochTable>
           {result && !loading && <nav aria-label="صفحه‌بندی تاریخچه" className="flex flex-wrap items-center justify-between gap-3 border-t border-border p-4">
             <p className="text-sm text-muted-foreground">{formatNumber(result.totalCount)} رویداد · صفحه {formatNumber(result.page)} از {formatNumber(Math.max(1, result.totalPages))}</p>

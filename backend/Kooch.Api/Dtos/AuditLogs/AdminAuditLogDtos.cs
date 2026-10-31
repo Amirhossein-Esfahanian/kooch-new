@@ -23,6 +23,14 @@ public sealed class AdminAuditLogQuery : IValidatableObject
     }
 }
 
+public sealed class AdminAuditFilterOptionQuery
+{
+    [MaxLength(100)] public string? Search { get; set; }
+    [Range(1, 50)] public int Limit { get; set; } = 20;
+}
+
+public sealed record AdminAuditFilterOption(int Id, string DisplayName);
+
 public sealed class AdminAuditLogResponse
 {
     public int Id { get; set; }
