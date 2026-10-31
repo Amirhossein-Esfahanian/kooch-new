@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { PriceAuditDetails } from "./PriceAuditDetails";
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState } from "react";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochAlert } from "@/components/KoochAlert";
@@ -10,6 +10,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
 import { KoochField, KoochSearchableSelect, KoochSelect } from "@/components/KoochFormControls";
+import { KoochIcon } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
@@ -92,13 +93,14 @@ function AuditRow({ row }: { row: AdminAuditLog }) {
       <KoochTableCell className="whitespace-nowrap"><time dateTime={row.occurredAtUtc} title={row.occurredAtUtc}>{row.hasPriceDetails ? new Intl.DateTimeFormat("fa-IR", { dateStyle: "short", timeStyle: "medium" }).format(new Date(row.occurredAtUtc)) : formatDateTime(row.occurredAtUtc)}</time></KoochTableCell>
       <KoochTableCell>{auditActionLabels[row.action] ?? "رویداد ثبت‌شده"}</KoochTableCell>
       <KoochTableCell><p>{row.entityName ?? entityLabels[row.entityType] ?? "مورد ثبت‌شده"}{row.entityId ? ` · ${formatNumber(row.entityId)}` : ""}</p><p className="text-sm text-muted-foreground">{row.propertyName ?? "سطح سامانه"}</p>{row.propertyId && <p className="text-xs text-muted-foreground">شناسه اقامتگاه {formatNumber(row.propertyId)}</p>}</KoochTableCell>
-      <KoochTableCell>{hasChanges ? <KoochButton type="button" variant="ghost" size="sm"
-        aria-expanded={expanded} aria-controls={detailId} onClick={() => setExpanded((current) => !current)}>
-        {expanded ? "بستن تغییرات" : row.hasPriceDetails ? "مشاهده تغییرات قیمت" : "مشاهده تغییرات"}
+      <KoochTableCell>{hasChanges ? <KoochButton type="button" variant="outline" size="sm"
+        aria-expanded={expanded} aria-controls={expanded ? detailId : undefined} onClick={() => setExpanded((current) => !current)}
+        leftIcon={<KoochIcon name="audit" className="h-4 w-4" />} rightIcon={<svg aria-hidden="true" className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} viewBox="0 0 20 20" fill="none"><path d="m5 7.5 5 5 5-5" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" /></svg>}>
+        {expanded ? "بستن تغییرات" : "نمایش تغییرات"}
       </KoochButton> : <span className="text-muted-foreground">مقادیر قبل و بعد ثبت نشده‌اند.</span>}</KoochTableCell>
     </KoochTableRow>
-    {expanded && <KoochTableRow className="bg-muted/30 hover:bg-muted/30">
-      <KoochTableCell colSpan={5} id={detailId} className="px-4 py-4 align-top">
+    {expanded && <KoochTableRow className="bg-muted/50 hover:bg-muted/50">
+      <KoochTableCell colSpan={5} id={detailId} className="border-y border-border px-4 py-4 align-top">
         <div className="min-w-0 max-w-full overflow-x-auto"><Changes row={row} /></div>
       </KoochTableCell>
     </KoochTableRow>}
@@ -109,7 +111,6 @@ export default function AdminActivityHistoryPage() {
   const { authenticated, loading: sessionLoading, workspaces, platformRole, platformPermissions, user } = useAuthSession();
   const canRead = !sessionLoading && authenticated && workspaces.includes("admin") &&
     (platformRole === "SuperAdmin" || platformPermissions.includes("ViewReports"));
-  const [draft, setDraft] = useState<AuditFilters>(emptyAuditFilters);
   const [filters, setFilters] = useState<AuditFilters>(emptyAuditFilters);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -117,58 +118,57 @@ export default function AdminActivityHistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [forbidden, setForbidden] = useState(false);
-  const [validation, setValidation] = useState("");
   const [retry, setRetry] = useState(0);
+  const invalidDates = Boolean(filters.from && filters.to && filters.from > filters.to);
+  const hasFilters = Object.values(filters).some(Boolean);
+
+  function changeFilters(changes: Partial<AuditFilters>) {
+    if (Object.keys(changes).every((key) => filters[key as keyof AuditFilters] === changes[key as keyof AuditFilters])) return;
+    setFilters((current) => ({ ...current, ...changes }));
+    setPage(1);
+    setResult(null);
+    setLoading(true);
+  }
 
   useEffect(() => {
     setResult(null);
-    if (!canRead) return;
+    if (!canRead || invalidDates) { setLoading(false); return; }
     let active = true;
     const controller = new AbortController();
     setLoading(true); setError(""); setForbidden(false);
-    apiRequest<AdminAuditPage>(adminAuditPath(filters, page, pageSize), { signal: controller.signal })
-      .then((response) => { if (active) setResult(response); })
-      .catch((reason: unknown) => {
-        if (!active) return;
-        setForbidden(reason instanceof ApiRequestError && reason.status === 403);
-        setError(reason instanceof Error ? reason.message : "دریافت تاریخچه انجام نشد.");
-      }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; controller.abort(); };
-  }, [canRead, user?.userId, filters, page, pageSize, retry]);
-
-  function apply(event: FormEvent) {
-    event.preventDefault();
-    if ([draft.actor, draft.property].some((value) => value && (!/^[1-9]\d*$/.test(value) || Number(value) > 2147483647))) {
-      setValidation("شناسه باید یک عدد صحیح مثبت باشد."); return;
-    }
-    if (draft.from && draft.to && draft.from > draft.to) {
-      setValidation("تاریخ پایان نباید پیش از تاریخ شروع باشد."); return;
-    }
-    setValidation(""); setPage(1); setFilters({ ...draft });
-  }
+    const timer = window.setTimeout(() => {
+      apiRequest<AdminAuditPage>(adminAuditPath(filters, page, pageSize), { signal: controller.signal })
+        .then((response) => { if (active) setResult(response); })
+        .catch((reason: unknown) => {
+          if (!active) return;
+          setForbidden(reason instanceof ApiRequestError && reason.status === 403);
+          setError(reason instanceof Error ? reason.message : "دریافت تاریخچه انجام نشد.");
+        }).finally(() => { if (active) setLoading(false); });
+    }, hasFilters ? 150 : 0);
+    return () => { active = false; window.clearTimeout(timer); controller.abort(); };
+  }, [canRead, user?.userId, filters, page, pageSize, retry, invalidDates, hasFilters]);
 
   return <AdminLayout requiredPlatformPermission="ViewReports">
     <main className="mx-auto grid max-w-[1480px] gap-5 p-4 lg:p-6" dir="rtl">
       <KoochPageHeader appearance="plain" eyebrow={null} title="تاریخچه فعالیت‌ها" description="رویدادهای ثبت‌شده در سراسر سامانه و مقادیر مجاز قبل و بعد از تغییر" />
       {!canRead ? <KoochAlert variant="warning">برای مشاهده تاریخچه به دسترسی گزارش‌ها نیاز دارید.</KoochAlert> : <>
         <KoochCard>
-          <form onSubmit={apply} className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5" aria-label="فیلتر تاریخچه">
-            <AuditFilterSelect kind="actors" label="کاربر" value={draft.actor} enabled={canRead} onChange={(actor) => setDraft((current) => ({ ...current, actor }))} />
-            <AuditFilterSelect kind="properties" label="اقامتگاه" value={draft.property} enabled={canRead} onChange={(property) => setDraft((current) => ({ ...current, property }))} />
-            <KoochField label="عملیات"><KoochSelect value={draft.action} onChange={(event) => setDraft({ ...draft, action: event.target.value })}>
+          <div className="grid items-end gap-4 sm:grid-cols-2 xl:grid-cols-[repeat(5,minmax(0,1fr))_auto]" aria-label="فیلتر تاریخچه">
+            <AuditFilterSelect kind="actors" label="کاربر" value={filters.actor} enabled={canRead} onChange={(actor) => changeFilters({ actor })} />
+            <AuditFilterSelect kind="properties" label="اقامتگاه" value={filters.property} enabled={canRead} onChange={(property) => changeFilters({ property })} />
+            <KoochField label="عملیات"><KoochSelect value={filters.action} onChange={(event) => changeFilters({ action: event.target.value })}>
               <option value="">همه عملیات</option>{Object.entries(auditActionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </KoochSelect></KoochField>
-            <KoochDatePicker mode="single" label="از تاریخ" size="compact" autoConfirmOnSelect value={draft.from} onChange={(from) => setDraft({ ...draft, from })} />
-            <KoochDatePicker mode="single" label="تا تاریخ" size="compact" autoConfirmOnSelect value={draft.to} onChange={(to) => setDraft({ ...draft, to })} />
-            <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-5">
-              <KoochButton type="submit">اعمال فیلتر</KoochButton>
-              <KoochButton variant="outline" onClick={() => { setDraft(emptyAuditFilters); setFilters(emptyAuditFilters); setPage(1); setValidation(""); }}>پاک کردن فیلترها</KoochButton>
-            </div>
-            {validation && <p className="text-sm text-destructive sm:col-span-2 xl:col-span-5" role="alert">{validation}</p>}
-          </form>
-          <p className="mt-3 text-sm text-muted-foreground">روزهای فیلتر بر اساس ساعت تهران محاسبه می‌شوند. زمان رویداد به وقت دستگاه شما نمایش داده می‌شود.</p>
+            <KoochDatePicker mode="single" label="از تاریخ" size="compact" autoConfirmOnSelect value={filters.from} onChange={(from) => changeFilters({ from })} />
+            <KoochDatePicker mode="single" label="تا تاریخ" size="compact" autoConfirmOnSelect value={filters.to} onChange={(to) => changeFilters({ to })} />
+            <KoochButton type="button" variant="outline" size="icon" aria-label="پاک کردن فیلترها" title="پاک کردن فیلترها" disabled={!hasFilters}
+              onClick={() => changeFilters(emptyAuditFilters)} className="sm:justify-self-start xl:justify-self-auto">
+              <KoochIcon name="close" className="h-4 w-4" />
+            </KoochButton>
+          </div>
+          {invalidDates && <p className="mt-3 text-sm text-destructive" role="alert">تاریخ پایان نباید پیش از تاریخ شروع باشد.</p>}
         </KoochCard>
-        {error ? <KoochAlert variant={forbidden ? "warning" : "destructive"} title={forbidden ? "دسترسی به تاریخچه ندارید" : "تاریخچه بارگذاری نشد"}>
+        {invalidDates ? null : error ? <KoochAlert variant={forbidden ? "warning" : "destructive"} title={forbidden ? "دسترسی به تاریخچه ندارید" : "تاریخچه بارگذاری نشد"}>
           <p>{forbidden ? "مجوز مشاهده گزارش‌ها برای حساب شما تأیید نشد." : error}</p>
           {!forbidden && <KoochButton variant="outline" className="mt-3" onClick={() => setRetry((value) => value + 1)}>تلاش دوباره</KoochButton>}
         </KoochAlert> : <KoochCard padding="none">

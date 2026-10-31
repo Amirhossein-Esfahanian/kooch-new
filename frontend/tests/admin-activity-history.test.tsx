@@ -52,7 +52,7 @@ describe("Admin activity history", () => {
     expect(mocks.request).toHaveBeenCalledWith("/admin/audit-logs?page=1&pageSize=25", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     expect(screen.getByText("اقامتگاه سرو")).toBeTruthy();
     expect(within(screen.getByRole("table")).getByText("تغییر ظرفیت اتاق")).toBeTruthy();
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده تغییرات" }));
+    fireEvent.click(await screen.findByRole("button", { name: "نمایش تغییرات" }));
     expect(screen.getByText("موجودی کل")).toBeTruthy();
     expect(screen.getByText("قبل:").parentElement?.textContent).toContain("۲");
     expect(screen.getByText("بعد:").parentElement?.textContent).toContain("۳");
@@ -60,7 +60,7 @@ describe("Admin activity history", () => {
     expect(mocks.request.mock.calls.some(([path]) => path.startsWith("/owner/"))).toBe(false);
   });
 
-  it("confirms picker selections immediately but fetches only after Apply Filters", async () => {
+  it("confirms picker selections and automatically fetches once after rapid date changes", async () => {
     render(<Page />); await screen.findByText("مدیر آزمون");
     const from = screen.getByLabelText("از تاریخ");
     const to = screen.getByLabelText("تا تاریخ");
@@ -69,8 +69,9 @@ describe("Admin activity history", () => {
     fireEvent.change(from, { target: { value: "2026-10-30" } });
     fireEvent.change(to, { target: { value: "2026-10-30" } });
     expect(mocks.request).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "اعمال فیلتر" })).toBeNull();
+    expect(screen.queryByText(/روزهای فیلتر بر اساس ساعت تهران/)).toBeNull();
   });
 
   it("applies actor, Property, action and inclusive Tehran date filters", async () => {
@@ -80,7 +81,6 @@ describe("Admin activity history", () => {
     fireEvent.change(screen.getByLabelText("عملیات"), { target: { value: "RoomCapacityChanged" } });
     fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-29" } });
     fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-30" } });
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
     const params = new URL(mocks.request.mock.calls[1][0], "http://localhost").searchParams;
     expect(params.get("actorUserId")).toBe("5"); expect(params.get("propertyId")).toBe("10");
@@ -89,7 +89,7 @@ describe("Admin activity history", () => {
     expect(params.get("toUtc")).toBe("2026-10-30T20:30:00.000Z");
   });
 
-  it("searches safe lookup options, sends selected IDs only after Apply, and clears selections", async () => {
+  it("searches safe lookup options, auto-applies selected IDs, and clears selections", async () => {
     render(<Page />); await screen.findByText("مدیر آزمون");
     await waitFor(() => expect(mocks.lookup).toHaveBeenCalledTimes(2));
     expect(mocks.lookup.mock.calls.map(([path]) => path)).toEqual(expect.arrayContaining([
@@ -101,16 +101,12 @@ describe("Admin activity history", () => {
     await waitFor(() => expect(mocks.lookup.mock.calls.some(([path]) => path.includes("/actors?") && path.includes("search=%D9%85"))).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: "مالک آزمون" }));
     await selectFilter("اقامتگاه", "اقامتگاه سرو");
-    expect(mocks.request).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
     const selected = new URL(mocks.request.mock.calls[1][0], "http://localhost").searchParams;
     expect(selected.get("actorUserId")).toBe("6");
     expect(selected.get("propertyId")).toBe("10");
     fireEvent.keyDown(screen.getByRole("button", { name: "کاربر" }), { key: "Backspace" });
     fireEvent.keyDown(screen.getByRole("button", { name: "اقامتگاه" }), { key: "Backspace" });
-    expect(mocks.request).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
     expect(mocks.request).toHaveBeenLastCalledWith("/admin/audit-logs?page=1&pageSize=25", expect.anything());
   });
@@ -121,13 +117,16 @@ describe("Admin activity history", () => {
       previousValues: { TotalInventory: 4 }, newValues: { TotalInventory: 5 } });
     mocks.request.mockResolvedValue(data);
     render(<Page />);
-    const buttons = await screen.findAllByRole("button", { name: "مشاهده تغییرات" });
+    const buttons = await screen.findAllByRole("button", { name: "نمایش تغییرات" });
     buttons.forEach((button) => fireEvent.click(button));
     const table = screen.getByRole("table");
     expect(table.querySelectorAll("tbody > tr > td[colspan='5']")).toHaveLength(2);
     buttons.forEach((button) => {
       const parent = button.closest("tr")!;
-      expect(parent.nextElementSibling?.querySelector("td")?.getAttribute("colspan")).toBe("5");
+      const detailRow = parent.nextElementSibling!;
+      expect(detailRow.querySelector("td")?.getAttribute("colspan")).toBe("5");
+      expect(detailRow.className).toContain("bg-muted/50");
+      expect(button.querySelector("svg")).toBeTruthy();
       expect(button.getAttribute("aria-expanded")).toBe("true");
     });
     fireEvent.click(screen.getAllByRole("button", { name: "بستن تغییرات" })[0]);
@@ -153,17 +152,21 @@ describe("Admin activity history", () => {
     expect(historical.searchParams.get("fromUtc")).toBe("2021-06-30T19:30:00.000Z");
   });
 
-  it("clears both draft dates and applied date parameters", async () => {
+  it("clears all filters automatically with one icon button", async () => {
     render(<Page />); await screen.findByText("مدیر آزمون");
+    const clear = screen.getByRole("button", { name: "پاک کردن فیلترها" });
+    expect(clear.hasAttribute("disabled")).toBe(true);
+    expect(clear.getAttribute("title")).toBe("پاک کردن فیلترها");
     fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-30" } });
     fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-30" } });
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole("button", { name: "پاک کردن فیلترها" }));
+    expect(clear.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(clear);
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
     expect(screen.getByLabelText("از تاریخ").getAttribute("value")).toBe("");
     expect(screen.getByLabelText("تا تاریخ").getAttribute("value")).toBe("");
     expect(mocks.request).toHaveBeenLastCalledWith("/admin/audit-logs?page=1&pageSize=25", expect.anything());
+    expect(clear.hasAttribute("disabled")).toBe(true);
   });
 
   it("paginates using server metadata and resets filters without fabricating totals", async () => {
@@ -174,6 +177,19 @@ describe("Admin activity history", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "تعداد در صفحه" }), { target: { value: "50" } });
     await waitFor(() => expect(mocks.request).toHaveBeenCalledWith("/admin/audit-logs?page=1&pageSize=50", expect.anything()));
     expect(screen.getByRole("navigation", { name: "صفحه‌بندی تاریخچه" }).textContent).toContain("۲۶");
+  });
+
+  it("resets pagination and makes one request for an automatic action change", async () => {
+    render(<Page />); await screen.findByText("مدیر آزمون");
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+    fireEvent.change(screen.getByLabelText("عملیات"), { target: { value: "RoomCapacityChanged" } });
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
+    expect(mocks.request).toHaveBeenLastCalledWith(
+      "/admin/audit-logs?page=1&pageSize=25&action=RoomCapacityChanged", expect.anything());
+    fireEvent.change(screen.getByLabelText("عملیات"), { target: { value: "RoomCapacityChanged" } });
+    await new Promise((resolve) => setTimeout(resolve, 200));
+    expect(mocks.request).toHaveBeenCalledTimes(3);
   });
 
   it("does not fetch without permission", () => {
@@ -187,6 +203,7 @@ describe("Admin activity history", () => {
     let complete!: (value: AdminAuditPage) => void;
     mocks.request.mockReturnValueOnce(new Promise<AdminAuditPage>((resolve) => { complete = resolve; }));
     const view = render(<Page />);
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(1));
     expect(screen.getByRole("status")).toBeTruthy();
     await act(async () => complete({ ...result(), items: [], totalCount: 0, totalPages: 0 }));
     expect(screen.getByText("رویدادی با این فیلترها ثبت نشده است.")).toBeTruthy();
@@ -213,7 +230,6 @@ describe("Admin activity history", () => {
     current.items[0].newValues = { TotalInventory: 3, Password: "never-render-this" };
     mocks.request.mockResolvedValue(current);
     await selectFilter("کاربر", "مدیر آزمون");
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     expect(await screen.findByText("مدیر جدید")).toBeTruthy();
     await act(async () => old(result()));
     expect(within(screen.getByRole("table")).queryByText("مدیر آزمون")).toBeNull();
@@ -226,7 +242,6 @@ describe("Admin activity history", () => {
     expect(await screen.findByText("مقادیر قبل و بعد ثبت نشده‌اند.")).toBeTruthy();
     fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-30" } });
     fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-29" } });
-    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     expect(screen.getByRole("alert").textContent).toContain("پایان");
     expect(mocks.request).toHaveBeenCalledTimes(1);
   });
@@ -243,7 +258,7 @@ describe("Admin activity history", () => {
     render(<Page />);
     expect(await screen.findByText(/اتاق دبل/)).toBeTruthy();
     expect(mocks.request).toHaveBeenCalledTimes(1);
-    fireEvent.click(screen.getByRole("button", { name: "مشاهده تغییرات قیمت" }));
+    fireEvent.click(screen.getByRole("button", { name: "نمایش تغییرات" }));
     const table = await screen.findByRole("table", { name: "تغییرات قیمت روزانه" });
     expect(within(table).getAllByRole("row")).toHaveLength(11);
     expect(table.querySelectorAll("time")[0].dateTime).toBe("2026-11-01");
@@ -260,7 +275,7 @@ describe("Admin activity history", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(13);
     expect(mocks.request).toHaveBeenCalledTimes(3);
     fireEvent.click(screen.getByRole("button", { name: "بستن تغییرات" }));
-    fireEvent.click(screen.getByRole("button", { name: "مشاهده تغییرات قیمت" }));
+    fireEvent.click(screen.getByRole("button", { name: "نمایش تغییرات" }));
     await waitFor(() => expect(within(screen.getByRole("table", { name: "تغییرات قیمت روزانه" })).getAllByRole("row")).toHaveLength(11));
   });
 
@@ -269,7 +284,7 @@ describe("Admin activity history", () => {
     Object.assign(data.items[0], { action: "PriceChanged", entityType: "RoomDailyPrice", hasPriceDetails: false,
       previousValues: null, newValues: { ChangedCellCount: 3, From: "2026-11-01", To: "2026-11-09" } });
     mocks.request.mockResolvedValue(data); render(<Page />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده تغییرات" }));
+    fireEvent.click(await screen.findByRole("button", { name: "نمایش تغییرات" }));
     expect(await screen.findByText("تعداد خانه تغییرکرده")).toBeTruthy();
     expect(screen.queryByRole("table", { name: "تغییرات قیمت روزانه" })).toBeNull();
     expect(mocks.request).toHaveBeenCalledTimes(1);
@@ -285,7 +300,7 @@ describe("Admin activity history", () => {
       return Promise.resolve({ items: [{ date: "2026-11-03", previousPrice: 50, newPrice: 100, guestType: "Iranian" }], hasMore: false, nextAfter: null });
     });
     render(<Page />);
-    fireEvent.click(await screen.findByRole("button", { name: "مشاهده تغییرات قیمت" }));
+    fireEvent.click(await screen.findByRole("button", { name: "نمایش تغییرات" }));
     expect(await screen.findByText("جزئیات قیمت بارگذاری نشد")).toBeTruthy();
     expect(screen.getByText("مدیر آزمون")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
