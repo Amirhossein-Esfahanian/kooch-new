@@ -1,3 +1,16 @@
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const auditTimeZone = "Asia/Tehran";
+
+function tehranDayStartUtc(date: string): string {
+  return dayjs.tz(date, auditTimeZone).utc().toISOString();
+}
+
 export const auditActionLabels = {
   PriceChanged: "تغییر قیمت", InventoryChanged: "تغییر موجودی و دسترس‌پذیری",
   RoomCreated: "ایجاد اتاق", RoomDeleted: "حذف اتاق", BookingConfirmed: "تأیید رزرو",
@@ -32,11 +45,10 @@ export function adminAuditPath(filters: AuditFilters, page: number, pageSize: nu
   if (filters.actor) params.set("actorUserId", filters.actor);
   if (filters.property) params.set("propertyId", filters.property);
   if (filters.action) params.set("action", filters.action);
-  if (filters.from) params.set("fromUtc", `${filters.from}T00:00:00Z`);
+  if (filters.from) params.set("fromUtc", tehranDayStartUtc(filters.from));
   if (filters.to) {
-    const end = new Date(`${filters.to}T00:00:00Z`);
-    end.setUTCDate(end.getUTCDate() + 1);
-    params.set("toUtc", end.toISOString());
+    const nextDay = dayjs.utc(filters.to).add(1, "day").format("YYYY-MM-DD");
+    params.set("toUtc", tehranDayStartUtc(nextDay));
   }
   return `/admin/audit-logs?${params}`;
 }

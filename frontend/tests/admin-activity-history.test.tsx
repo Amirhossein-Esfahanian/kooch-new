@@ -14,12 +14,13 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
     mocks.guard(requiredPlatformPermission); return children;
   },
 }));
-vi.mock("@/components/KoochDatePicker", () => ({ KoochDatePicker: ({ label, value, onChange }: {
-  label: string; value: string | null; onChange: (value: string | null) => void;
-}) => <input aria-label={label} value={value ?? ""} onChange={(event) => onChange(event.target.value || null)} /> }));
+vi.mock("@/components/KoochDatePicker", () => ({ KoochDatePicker: ({ label, value, onChange, autoConfirmOnSelect }: {
+  label: string; value: string | null; onChange: (value: string | null) => void; autoConfirmOnSelect?: boolean;
+}) => <input aria-label={label} data-auto-confirm={autoConfirmOnSelect ? "true" : "false"} value={value ?? ""} onChange={(event) => onChange(event.target.value || null)} /> }));
 
 import Page from "@/app/admin/activity-history/page";
 import { ApiRequestError } from "@/lib/owner-api";
+import { adminAuditPath, emptyAuditFilters } from "@/lib/admin-audit-logs";
 
 function result(): AdminAuditPage {
   return { items: [{ id: 1, userId: 5, actorDisplayName: "مدیر آزمون", action: "RoomCapacityChanged",
@@ -46,20 +47,65 @@ describe("Admin activity history", () => {
     expect(mocks.request.mock.calls.some(([path]) => path.startsWith("/owner/"))).toBe(false);
   });
 
-  it("applies actor, Property, action and inclusive UTC date filters without browser date shifting", async () => {
+  it("confirms picker selections immediately but fetches only after Apply Filters", async () => {
+    render(<Page />); await screen.findByText("مدیر آزمون");
+    const from = screen.getByLabelText("از تاریخ");
+    const to = screen.getByLabelText("تا تاریخ");
+    expect(from.getAttribute("data-auto-confirm")).toBe("true");
+    expect(to.getAttribute("data-auto-confirm")).toBe("true");
+    fireEvent.change(from, { target: { value: "2026-10-30" } });
+    fireEvent.change(to, { target: { value: "2026-10-30" } });
+    expect(mocks.request).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+  });
+
+  it("applies actor, Property, action and inclusive Tehran date filters", async () => {
     render(<Page />); await screen.findByText("مدیر آزمون");
     fireEvent.change(screen.getByLabelText("شناسه کاربر"), { target: { value: "۵" } });
     fireEvent.change(screen.getByLabelText("شناسه اقامتگاه"), { target: { value: "10" } });
     fireEvent.change(screen.getByLabelText("عملیات"), { target: { value: "RoomCapacityChanged" } });
-    fireEvent.change(screen.getByLabelText("از تاریخ (UTC)"), { target: { value: "2026-10-29" } });
-    fireEvent.change(screen.getByLabelText("تا تاریخ (UTC)"), { target: { value: "2026-10-30" } });
+    fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-29" } });
+    fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-30" } });
     fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
     const params = new URL(mocks.request.mock.calls[1][0], "http://localhost").searchParams;
     expect(params.get("actorUserId")).toBe("5"); expect(params.get("propertyId")).toBe("10");
     expect(params.get("action")).toBe("RoomCapacityChanged");
-    expect(params.get("fromUtc")).toBe("2026-10-29T00:00:00Z");
-    expect(params.get("toUtc")).toBe("2026-10-31T00:00:00.000Z");
+    expect(params.get("fromUtc")).toBe("2026-10-28T20:30:00.000Z");
+    expect(params.get("toUtc")).toBe("2026-10-30T20:30:00.000Z");
+  });
+
+  it("uses Tehran day boundaries independent of device timezone, including historical offset changes", () => {
+    for (const deviceTimeZone of ["UTC", "America/Los_Angeles"]) {
+      vi.stubEnv("TZ", deviceTimeZone);
+      const path = adminAuditPath({ ...emptyAuditFilters, from: "2026-10-30", to: "2026-10-30" }, 1, 25);
+      const params = new URL(path, "http://localhost").searchParams;
+      const from = params.get("fromUtc")!;
+      const to = params.get("toUtc")!;
+      expect(from).toBe("2026-10-29T20:30:00.000Z");
+      expect(to).toBe("2026-10-30T20:30:00.000Z");
+      expect(Date.parse("2026-10-29T20:29:59.999Z") >= Date.parse(from)).toBe(false);
+      expect(Date.parse("2026-10-29T20:30:00.000Z") >= Date.parse(from)).toBe(true);
+      expect(Date.parse("2026-10-30T20:29:59.999Z") < Date.parse(to)).toBe(true);
+      expect(Date.parse("2026-10-30T20:30:00.000Z") < Date.parse(to)).toBe(false);
+    }
+    vi.unstubAllEnvs();
+    const historical = new URL(adminAuditPath({ ...emptyAuditFilters, from: "2021-07-01" }, 1, 25), "http://localhost");
+    expect(historical.searchParams.get("fromUtc")).toBe("2021-06-30T19:30:00.000Z");
+  });
+
+  it("clears both draft dates and applied date parameters", async () => {
+    render(<Page />); await screen.findByText("مدیر آزمون");
+    fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-30" } });
+    fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-30" } });
+    fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole("button", { name: "پاک کردن فیلترها" }));
+    await waitFor(() => expect(mocks.request).toHaveBeenCalledTimes(3));
+    expect(screen.getByLabelText("از تاریخ").getAttribute("value")).toBe("");
+    expect(screen.getByLabelText("تا تاریخ").getAttribute("value")).toBe("");
+    expect(mocks.request).toHaveBeenLastCalledWith("/admin/audit-logs?page=1&pageSize=25", expect.anything());
   });
 
   it("paginates using server metadata and resets filters without fabricating totals", async () => {
@@ -119,8 +165,8 @@ describe("Admin activity history", () => {
     const data = result(); data.items[0].previousValues = null; data.items[0].newValues = null;
     mocks.request.mockResolvedValue(data); render(<Page />);
     expect(await screen.findByText("مقادیر قبل و بعد ثبت نشده‌اند.")).toBeTruthy();
-    fireEvent.change(screen.getByLabelText("از تاریخ (UTC)"), { target: { value: "2026-10-30" } });
-    fireEvent.change(screen.getByLabelText("تا تاریخ (UTC)"), { target: { value: "2026-10-29" } });
+    fireEvent.change(screen.getByLabelText("از تاریخ"), { target: { value: "2026-10-30" } });
+    fireEvent.change(screen.getByLabelText("تا تاریخ"), { target: { value: "2026-10-29" } });
     fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
     expect(screen.getByRole("alert").textContent).toContain("پایان");
     expect(mocks.request).toHaveBeenCalledTimes(1);

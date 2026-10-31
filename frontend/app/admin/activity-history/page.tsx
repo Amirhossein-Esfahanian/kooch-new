@@ -91,15 +91,15 @@ export default function AdminActivityHistoryPage() {
             <KoochField label="عملیات"><KoochSelect value={draft.action} onChange={(event) => setDraft({ ...draft, action: event.target.value })}>
               <option value="">همه عملیات</option>{Object.entries(auditActionLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
             </KoochSelect></KoochField>
-            <KoochDatePicker mode="single" label="از تاریخ (UTC)" size="compact" value={draft.from} onChange={(from) => setDraft({ ...draft, from })} />
-            <KoochDatePicker mode="single" label="تا تاریخ (UTC)" size="compact" value={draft.to} onChange={(to) => setDraft({ ...draft, to })} />
+            <KoochDatePicker mode="single" label="از تاریخ" size="compact" autoConfirmOnSelect value={draft.from} onChange={(from) => setDraft({ ...draft, from })} />
+            <KoochDatePicker mode="single" label="تا تاریخ" size="compact" autoConfirmOnSelect value={draft.to} onChange={(to) => setDraft({ ...draft, to })} />
             <div className="flex flex-wrap gap-2 sm:col-span-2 xl:col-span-5">
               <KoochButton type="submit">اعمال فیلتر</KoochButton>
               <KoochButton variant="outline" onClick={() => { setDraft(emptyAuditFilters); setFilters(emptyAuditFilters); setPage(1); setValidation(""); }}>پاک کردن فیلترها</KoochButton>
             </div>
             {validation && <p className="text-sm text-destructive sm:col-span-2 xl:col-span-5" role="alert">{validation}</p>}
           </form>
-          <p className="mt-3 text-sm text-muted-foreground">فیلتر روزها بر اساس UTC است. زمان رویداد به وقت دستگاه شما نمایش داده می‌شود.</p>
+          <p className="mt-3 text-sm text-muted-foreground">روزهای فیلتر بر اساس ساعت تهران محاسبه می‌شوند. زمان رویداد به وقت دستگاه شما نمایش داده می‌شود.</p>
         </KoochCard>
         {error ? <KoochAlert variant={forbidden ? "warning" : "destructive"} title={forbidden ? "دسترسی به تاریخچه ندارید" : "تاریخچه بارگذاری نشد"}>
           <p>{forbidden ? "مجوز مشاهده گزارش‌ها برای حساب شما تأیید نشد." : error}</p>
