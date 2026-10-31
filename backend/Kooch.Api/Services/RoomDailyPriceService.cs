@@ -73,8 +73,10 @@ public class RoomDailyPriceService(
         var items = request.Items.DistinctBy(item => (item.RoomTypeId, item.Date)).ToList();
         EnsureNoPastDates(items.Select(item => item.Date));
         var roomTypeIds = items.Select(item => item.RoomTypeId).Distinct().ToArray();
-        var validRoomTypeCount = await dbContext.RoomTypes.CountAsync(roomType =>
-            roomType.PropertyId == propertyId && roomType.IsActive && roomTypeIds.Contains(roomType.Id), cancellationToken);
+        var roomNames = await dbContext.RoomTypes.AsNoTracking().Where(roomType =>
+            roomType.PropertyId == propertyId && roomType.IsActive && roomTypeIds.Contains(roomType.Id))
+            .ToDictionaryAsync(roomType => roomType.Id, roomType => roomType.Name, cancellationToken);
+        var validRoomTypeCount = roomNames.Count;
         if (validRoomTypeCount != roomTypeIds.Length) throw new KeyNotFoundException("یک یا چند نوع اتاق پیدا نشد.");
 
         var dates = items.Select(item => item.Date).Distinct().ToArray();
@@ -106,8 +108,9 @@ public class RoomDailyPriceService(
             updated.Add(price);
         }
 
-        dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(propertyId, userId, historyCandidates));
-        AddPriceAudit(userId, propertyId, request.GuestType, historyCandidates);
+        var history = BuildHistory(propertyId, userId, historyCandidates).ToList();
+        dbContext.RoomDailyPriceHistory.AddRange(history);
+        auditLogService.RecordPriceChanges(userId, propertyId, history, roomNames);
 
         await dbContext.SaveChangesAsync(cancellationToken);
         return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
@@ -128,8 +131,10 @@ public class RoomDailyPriceService(
         ValidateDateRange(dates.First(), dates.Last());
 
         var roomTypeIds = items.Select(item => item.RoomTypeId).Distinct().ToArray();
-        var validRoomTypeCount = await dbContext.RoomTypes.CountAsync(roomType =>
-            roomType.PropertyId == propertyId && roomType.IsActive && roomTypeIds.Contains(roomType.Id), cancellationToken);
+        var roomNames = await dbContext.RoomTypes.AsNoTracking().Where(roomType =>
+            roomType.PropertyId == propertyId && roomType.IsActive && roomTypeIds.Contains(roomType.Id))
+            .ToDictionaryAsync(roomType => roomType.Id, roomType => roomType.Name, cancellationToken);
+        var validRoomTypeCount = roomNames.Count;
         if (validRoomTypeCount != roomTypeIds.Length) throw new KeyNotFoundException("یک یا چند نوع اتاق پیدا نشد.");
 
         var sourcePrices = await dbContext.RoomDailyPrices.AsNoTracking()
@@ -181,8 +186,9 @@ public class RoomDailyPriceService(
             updated.Add(destinationPrice);
         }
 
-        dbContext.RoomDailyPriceHistory.AddRange(BuildHistory(propertyId, userId, historyCandidates));
-        AddPriceAudit(userId, propertyId, request.DestinationGuestType, historyCandidates);
+        var history = BuildHistory(propertyId, userId, historyCandidates).ToList();
+        dbContext.RoomDailyPriceHistory.AddRange(history);
+        auditLogService.RecordPriceChanges(userId, propertyId, history, roomNames);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return updated.OrderBy(price => price.Date).ThenBy(price => price.RoomTypeId).Select(Map).ToList();
@@ -368,23 +374,4 @@ public class RoomDailyPriceService(
         decimal OldBasePrice,
         decimal NewBasePrice);
 
-    private void AddPriceAudit(
-        int userId,
-        int propertyId,
-        PricingGuestType guestType,
-        IReadOnlyCollection<PriceHistoryChange> changes)
-    {
-        if (changes.Count == 0) return;
-
-        var from = changes.Min(change => change.Date);
-        var to = changes.Max(change => change.Date);
-        var roomCount = changes.Select(change => change.RoomTypeId).Distinct().Count();
-        auditLogService.Add(
-            userId,
-            AuditAction.PriceChanged,
-            "RoomDailyPrice",
-            propertyId: propertyId,
-            entityName: $"{roomCount} room type(s)",
-            description: $"{changes.Count} price cell(s), {guestType}, {from:yyyy-MM-dd} to {to:yyyy-MM-dd}");
-    }
 }

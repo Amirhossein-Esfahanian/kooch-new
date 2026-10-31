@@ -189,23 +189,7 @@ public class ReservationService(
         ReservationListQuery query,
         CancellationToken cancellationToken = default)
     {
-        var guestId = await dbContext.Guests.AsNoTracking()
-            .Where(guest => guest.UserId == userId)
-            .Select(guest => (int?)guest.Id)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (!guestId.HasValue)
-        {
-            return new PagedResult<ReservationListItemResponse>
-            {
-                Items = [],
-                TotalCount = 0,
-                Page = Math.Max(1, query.Page),
-                PageSize = Math.Clamp(query.PageSize, 1, 100),
-                TotalPages = 0
-            };
-        }
-
-        return await SearchInternalAsync(query, null, guestId.Value, null, cancellationToken);
+        return await SearchInternalAsync(query, null, userId, null, cancellationToken);
     }
 
     public async Task<ReservationResponse> GetByIdForGuestUserAsync(
@@ -219,6 +203,7 @@ public class ReservationService(
 
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        RedactUnownedLegacyTraveler(response, reservation, userId);
         await ApplyGuestPaymentSummaryAsync(response, reservation, DateTime.UtcNow, cancellationToken);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
@@ -245,6 +230,7 @@ public class ReservationService(
 
         reservation = await ExpireAndReloadIfNeededAsync(reservation, cancellationToken);
         var response = ToResponse(reservation, reservation.Property, reservation.RoomType, reservation.Guest);
+        RedactUnownedLegacyTraveler(response, reservation, userId);
         await ApplyGuestPaymentSummaryAsync(response, reservation, DateTime.UtcNow, cancellationToken);
         response.Timeline = await BuildTimelineAsync(reservation, cancellationToken);
         response.CouponDiscountAmount = await dbContext.CouponUsages.AsNoTracking()
@@ -442,6 +428,16 @@ public class ReservationService(
             throw new InvalidOperationException("Terminal reservations cannot be edited.");
         }
 
+        if (reservation.TravelerSnapshotKind.HasValue)
+        {
+            if (request.GuestId.HasValue && request.GuestId != reservation.GuestId)
+                throw new ArgumentException("A captured traveler's Guest association cannot be changed.");
+        }
+        else if (request.GuestId is null or <= 0)
+        {
+            throw new ArgumentException("Guest is required for a legacy reservation.");
+        }
+
         if (IsLockedForFullEdit(reservation.Status))
         {
             EnsureLockedReservationOnlyNotes(reservation, request);
@@ -471,9 +467,11 @@ public class ReservationService(
                 cancellationToken)
             ?? throw new KeyNotFoundException("Room type not found.");
 
-        var guest = await dbContext.Guests.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
-            ?? throw new KeyNotFoundException("Guest not found.");
+        var guest = reservation.TravelerSnapshotKind.HasValue
+            ? reservation.Guest
+            : await dbContext.Guests.AsNoTracking()
+                .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
+                ?? throw new KeyNotFoundException("Guest not found.");
 
         var selectedRoomIds = request.RoomIds.Distinct().ToList();
         var roomCount = selectedRoomIds.Count > 0 ? selectedRoomIds.Count : request.RoomCount;
@@ -525,7 +523,8 @@ public class ReservationService(
             },
             cancellationToken);
 
-        reservation.GuestId = request.GuestId;
+        if (!reservation.TravelerSnapshotKind.HasValue)
+            reservation.GuestId = request.GuestId;
         reservation.RoomTypeId = request.RoomTypeId;
         reservation.RoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : null;
         reservation.CheckInDate = request.CheckInDate;
@@ -1857,7 +1856,7 @@ public class ReservationService(
         var selectedRoomId = selectedRoomIds.Count > 0 ? selectedRoomIds[0] : (int?)null;
 
         var changesRestrictedFields =
-            request.GuestId != reservation.GuestId ||
+            (!reservation.TravelerSnapshotKind.HasValue && request.GuestId != reservation.GuestId) ||
             request.RoomTypeId != reservation.RoomTypeId ||
             selectedRoomId != reservation.RoomId ||
             request.CheckInDate != reservation.CheckInDate ||
@@ -2140,7 +2139,7 @@ public class ReservationService(
     private async Task<PagedResult<ReservationListItemResponse>> SearchInternalAsync(
         ReservationListQuery query,
         int? scopedPropertyId,
-        int? scopedGuestId,
+        int? scopedUserId,
         IReadOnlyCollection<int>? allowedPropertyIds,
         CancellationToken cancellationToken,
         bool includePendingCancellationRequest = false)
@@ -2152,7 +2151,7 @@ public class ReservationService(
             dbContext.Reservations.AsNoTracking(),
             query,
             scopedPropertyId,
-            scopedGuestId,
+            scopedUserId,
             allowedPropertyIds);
         if (includePendingCancellationRequest && query.PendingCancellationRequest == true)
             reservations = reservations.Where(reservation => dbContext.ReservationCancellationRequests.Any(request =>
@@ -2172,12 +2171,19 @@ public class ReservationService(
                 RoomTypeName = reservation.RoomType.Name,
                 RoomId = reservation.RoomId,
                 RoomName = reservation.Room == null ? null : reservation.Room.Name,
-                GuestId = reservation.GuestId,
-                GuestFirstName = reservation.Guest == null ? null : reservation.Guest.FirstName,
-                GuestLastName = reservation.Guest == null ? null : reservation.Guest.LastName,
-                GuestMobile = reservation.Guest == null ||
-                    (scopedPropertyId.HasValue && !reservation.Property.ShowGuestPhoneToPropertyUsers)
-                    ? null : reservation.Guest.Mobile,
+                GuestId = reservation.TravelerSnapshotKind.HasValue ||
+                    scopedUserId.HasValue && (reservation.Guest == null || reservation.Guest.UserId != scopedUserId)
+                    ? null : reservation.GuestId,
+                GuestFirstName = reservation.TravelerSnapshotKind.HasValue ? reservation.TravelerFirstNameSnapshot :
+                    reservation.Guest != null && (!scopedUserId.HasValue || reservation.Guest.UserId == scopedUserId)
+                    ? reservation.Guest.FirstName : null,
+                GuestLastName = reservation.TravelerSnapshotKind.HasValue ? reservation.TravelerLastNameSnapshot :
+                    reservation.Guest != null && (!scopedUserId.HasValue || reservation.Guest.UserId == scopedUserId)
+                    ? reservation.Guest.LastName : null,
+                GuestMobile = scopedPropertyId.HasValue && !reservation.Property.ShowGuestPhoneToPropertyUsers ? null :
+                    reservation.TravelerSnapshotKind.HasValue ? reservation.TravelerMobileSnapshot :
+                    reservation.Guest != null && (!scopedUserId.HasValue || reservation.Guest.UserId == scopedUserId)
+                    ? reservation.Guest.Mobile : null,
                 CheckInDate = reservation.CheckInDate,
                 CheckOutDate = reservation.CheckOutDate,
                 Adults = reservation.AdultCount,
@@ -2217,7 +2223,7 @@ public class ReservationService(
         IQueryable<Reservation> query,
         ReservationListQuery filters,
         int? scopedPropertyId,
-        int? scopedGuestId,
+        int? scopedUserId,
         IReadOnlyCollection<int>? allowedPropertyIds)
     {
         if (allowedPropertyIds is not null)
@@ -2225,9 +2231,9 @@ public class ReservationService(
             query = query.Where(reservation => allowedPropertyIds.Contains(reservation.PropertyId));
         }
 
-        if (scopedGuestId.HasValue)
+        if (scopedUserId.HasValue)
         {
-            query = query.Where(reservation => reservation.GuestId == scopedGuestId.Value);
+            query = query.ForGuestUser(scopedUserId.Value);
         }
 
         if (scopedPropertyId.HasValue)
@@ -2286,7 +2292,13 @@ public class ReservationService(
         {
             var search = filters.GuestSearch.Trim();
             query = query.Where(reservation =>
-                reservation.Guest != null &&
+                reservation.TravelerSnapshotKind.HasValue
+                ? (reservation.TravelerFirstNameSnapshot != null && reservation.TravelerFirstNameSnapshot.Contains(search) ||
+                   reservation.TravelerLastNameSnapshot != null && reservation.TravelerLastNameSnapshot.Contains(search) ||
+                   reservation.TravelerMobileSnapshot != null && reservation.TravelerMobileSnapshot.Contains(search) ||
+                   reservation.TravelerEmailSnapshot != null && reservation.TravelerEmailSnapshot.Contains(search))
+                : reservation.Guest != null &&
+                (!scopedUserId.HasValue || reservation.Guest.UserId == scopedUserId) &&
                 (reservation.Guest.FirstName.Contains(search) ||
                  reservation.Guest.LastName.Contains(search) ||
                  reservation.Guest.Mobile != null && reservation.Guest.Mobile.Contains(search) ||
@@ -2576,6 +2588,18 @@ public class ReservationService(
         };
     }
 
+    private static void RedactUnownedLegacyTraveler(ReservationResponse response, Reservation reservation, int userId)
+    {
+        if (reservation.TravelerSnapshotKind.HasValue || reservation.Guest?.UserId == userId) return;
+        response.GuestId = null;
+        response.GuestFullName = string.Empty;
+        response.GuestMobile = null;
+        response.GuestEmail = null;
+        response.GuestNationalCode = null;
+        response.GuestPassportNumber = null;
+        response.GuestNationality = null;
+    }
+
     private ReservationResponse ToResponse(
         Reservation reservation,
         Property property,
@@ -2860,13 +2884,15 @@ public class ReservationService(
             MealPlanName = reservation.MealPlanNameSnapshot,
             RoomId = reservation.RoomId,
             RoomName = reservation.Room?.Name,
-            GuestId = reservation.GuestId,
-            GuestFullName = guest?.FullName ?? string.Empty,
-            GuestMobile = guest?.Mobile,
-            GuestEmail = guest?.Email,
-            GuestNationalCode = guest?.NationalCode,
-            GuestPassportNumber = guest?.PassportNumber,
-            GuestNationality = guest?.Nationality,
+            GuestId = reservation.TravelerSnapshotKind.HasValue ? null : reservation.GuestId,
+            GuestFullName = reservation.TravelerSnapshotKind.HasValue
+                ? $"{reservation.TravelerFirstNameSnapshot} {reservation.TravelerLastNameSnapshot}".Trim()
+                : guest?.FullName ?? string.Empty,
+            GuestMobile = reservation.TravelerSnapshotKind.HasValue ? reservation.TravelerMobileSnapshot : guest?.Mobile,
+            GuestEmail = reservation.TravelerSnapshotKind.HasValue ? reservation.TravelerEmailSnapshot : guest?.Email,
+            GuestNationalCode = reservation.TravelerSnapshotKind.HasValue ? reservation.TravelerNationalCodeSnapshot : guest?.NationalCode,
+            GuestPassportNumber = reservation.TravelerSnapshotKind.HasValue ? null : guest?.PassportNumber,
+            GuestNationality = reservation.TravelerSnapshotKind.HasValue ? null : guest?.Nationality,
             CheckInDate = reservation.CheckInDate,
             CheckOutDate = reservation.CheckOutDate,
             NightsCount = reservation.CheckOutDate.DayNumber - reservation.CheckInDate.DayNumber,

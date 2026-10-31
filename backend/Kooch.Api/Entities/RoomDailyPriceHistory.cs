@@ -2,6 +2,8 @@ namespace Kooch.Api.Entities;
 
 public class RoomDailyPriceHistory : BaseEntity
 {
+    public int? AuditLogId { get; set; }
+    public AuditLog? AuditLog { get; set; }
     public int PropertyId { get; set; }
     public int RoomTypeId { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;

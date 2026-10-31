@@ -977,6 +977,7 @@ describe("multi-step booking checkout skeleton", () => {
     expect(authApi.request).toHaveBeenNthCalledWith(1, "/auth/request-otp", expect.objectContaining({
       method: "POST",
     }));
+    expect(JSON.parse((authApi.request.mock.calls[0][1] as RequestInit).body as string).nationalCode).toBeNull();
 
     fireEvent.change(screen.getByLabelText(/کد تأیید/), {
       target: { value: "۱۲۳۴۵۶" },
@@ -1018,6 +1019,7 @@ describe("multi-step booking checkout skeleton", () => {
     expect(await screen.findByText("تکمیل اطلاعات حساب")).toBeTruthy();
     fireEvent.change(screen.getAllByLabelText(/نام/)[0], { target: { value: "مینا" } });
     fireEvent.change(screen.getByLabelText(/نام خانوادگی/), { target: { value: "کریمی" } });
+    fireEvent.change(screen.getByLabelText(/کد ملی/), { target: { value: "۱۲۳۴۵۶۷۸۹۱" } });
     fireEvent.change(screen.getByLabelText("ایمیل"), { target: { value: "mina@example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "ساخت حساب و ارسال کد" }));
 
@@ -1030,6 +1032,7 @@ describe("multi-step booking checkout skeleton", () => {
       email: "mina@example.test",
       firstName: "مینا",
       lastName: "کریمی",
+      nationalCode: "1234567891",
       mobile: "09129876543",
     }));
 
@@ -1037,6 +1040,30 @@ describe("multi-step booking checkout skeleton", () => {
     fireEvent.click(screen.getByRole("button", { name: "تأیید و ادامه" }));
     await waitFor(() => expect((screen.getByLabelText(/^نام\s*\*/, { selector: "input" }) as HTMLInputElement).value).toBe("سارا"));
     expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
+  });
+
+  it("blocks checkout registration with an invalid NationalId before requesting another OTP", async () => {
+    persistCart();
+    authApi.request.mockResolvedValueOnce({
+      sent: false,
+      requiresRegistration: true,
+      expiresAtUtc: null,
+    });
+    render(<BookingCheckoutFlow />);
+
+    fireEvent.change(await screen.findByLabelText(/شماره موبایل/), {
+      target: { value: "09129876543" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
+    await screen.findByText("تکمیل اطلاعات حساب");
+    fireEvent.change(screen.getAllByLabelText(/نام/)[0], { target: { value: "مینا" } });
+    fireEvent.change(screen.getByLabelText(/نام خانوادگی/), { target: { value: "کریمی" } });
+    fireEvent.change(screen.getByLabelText(/کد ملی/), { target: { value: "1234567890" } });
+    fireEvent.click(screen.getByRole("button", { name: "ساخت حساب و ارسال کد" }));
+
+    expect(screen.getByText("کد ملی معتبر نیست.")).toBeTruthy();
+    expect(screen.getByLabelText(/کد ملی/).getAttribute("aria-invalid")).toBe("true");
+    expect(authApi.request).toHaveBeenCalledTimes(1);
   });
 
   it("shows a safe invalid OTP error and does not allow progression", async () => {

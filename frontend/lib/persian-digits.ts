@@ -11,3 +11,11 @@ export function toPersianDigits(
       persianDigits["٠١٢٣٤٥٦٧٨٩".indexOf(digit)],
     );
 }
+
+export function toLatinDigits(value: string): string {
+  return value
+    .replace(/[۰-۹]/g, (digit) =>
+      String(persianDigits.indexOf(digit as (typeof persianDigits)[number])),
+    )
+    .replace(/[٠-٩]/g, (digit) => String("٠١٢٣٤٥٦٧٨٩".indexOf(digit)));
+}

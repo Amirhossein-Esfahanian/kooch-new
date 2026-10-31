@@ -23,15 +23,17 @@ public sealed class ReservationVoucherQueryService(
         return await dbContext.ReservationVouchers.AsNoTracking()
             .Where(voucher =>
                 voucher.Reservation.ReservationNumber == normalizedReservationNumber &&
-                voucher.Reservation.Guest != null &&
-                voucher.Reservation.Guest.UserId == userId)
+                dbContext.Reservations.ForGuestUser(userId)
+                    .Any(reservation => reservation.Id == voucher.ReservationId))
             .Select(voucher => new GuestReservationVoucherResponse
             {
                 VoucherNumber = voucher.VoucherNumber,
                 ReservationNumber = voucher.ReservationNumberSnapshot,
                 IssuedAtUtc = voucher.IssuedAtUtc,
                 PropertyName = voucher.PropertyNameSnapshot,
-                GuestName = voucher.GuestNameSnapshot,
+                GuestName = voucher.Reservation.TravelerSnapshotKind.HasValue ||
+                    voucher.Reservation.Guest != null && voucher.Reservation.Guest.UserId == userId
+                    ? voucher.GuestNameSnapshot : string.Empty,
                 RoomTypeName = voucher.RoomTypeNameSnapshot,
                 RoomName = voucher.RoomNameSnapshot,
                 HasExplicitRatePlan = voucher.Reservation.RatePlanId != null,

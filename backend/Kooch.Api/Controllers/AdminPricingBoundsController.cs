@@ -28,7 +28,7 @@ public sealed class AdminPricingBoundsController(
         CancellationToken cancellationToken)
     {
         await EnsureCanManageSettingsAsync(cancellationToken);
-        return Ok(await pricingBoundsService.UpdateAsync(request, cancellationToken));
+        return Ok(await pricingBoundsService.UpdateAsync(request, cancellationToken, GetCurrentUser().UserId));
     }
 
     private async Task EnsureCanManageSettingsAsync(CancellationToken cancellationToken)

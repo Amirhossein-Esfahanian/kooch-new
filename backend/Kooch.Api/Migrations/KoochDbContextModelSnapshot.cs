@@ -469,8 +469,14 @@ namespace Kooch.Api.Migrations
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
+                    b.Property<string>("NewValuesJson")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("OccurredAtUtc")
                         .HasColumnType("datetime2");
+
+                    b.Property<string>("PreviousValuesJson")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<int?>("PropertyId")
                         .HasColumnType("int");
@@ -488,11 +494,22 @@ namespace Kooch.Api.Migrations
 
                     b.HasIndex("EntityType", "EntityId");
 
+                    b.HasIndex("OccurredAtUtc", "Id")
+                        .IsDescending();
+
                     b.HasIndex("PropertyId", "OccurredAtUtc");
 
                     b.HasIndex("UserId", "OccurredAtUtc");
 
-                    b.ToTable("AuditLogs");
+                    b.HasIndex("Action", "OccurredAtUtc", "Id")
+                        .IsDescending(false, true, true);
+
+                    b.ToTable("AuditLogs", t =>
+                        {
+                            t.HasCheckConstraint("CK_AuditLogs_NewValuesJson", "[NewValuesJson] IS NULL OR ISJSON([NewValuesJson]) = 1");
+
+                            t.HasCheckConstraint("CK_AuditLogs_PreviousValuesJson", "[PreviousValuesJson] IS NULL OR ISJSON([PreviousValuesJson]) = 1");
+                        });
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Availability", b =>
@@ -820,6 +837,32 @@ namespace Kooch.Api.Migrations
                         .HasMaxLength(32)
                         .HasColumnType("nvarchar(32)");
 
+                    b.Property<string>("TravelerEmailSnapshot")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("TravelerFirstNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TravelerLastNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TravelerMobileSnapshot")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TravelerNationalCodeSnapshot")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("TravelerSnapshotCapturedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<byte?>("TravelerSnapshotKind")
+                        .HasColumnType("tinyint");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -841,7 +884,10 @@ namespace Kooch.Api.Migrations
                         .IsUnique()
                         .HasFilter("[IdempotencyKey] IS NOT NULL AND [IdempotencyKey] <> ''");
 
-                    b.ToTable("BookingSessions");
+                    b.ToTable("BookingSessions", t =>
+                        {
+                            t.HasCheckConstraint("CK_BookingSessions_TravelerSnapshot", "([TravelerSnapshotKind] IS NULL AND [TravelerFirstNameSnapshot] IS NULL AND [TravelerLastNameSnapshot] IS NULL AND [TravelerMobileSnapshot] IS NULL AND [TravelerEmailSnapshot] IS NULL AND [TravelerNationalCodeSnapshot] IS NULL AND [TravelerSnapshotCapturedAtUtc] IS NULL) OR ([TravelerSnapshotKind] IS NOT NULL AND [TravelerSnapshotKind] IN (1, 2) AND [TravelerSnapshotCapturedAtUtc] IS NOT NULL AND [TravelerFirstNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerFirstNameSnapshot]))) > 0 AND [TravelerLastNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerLastNameSnapshot]))) > 0)");
+                        });
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.CancellationCashRefundExecution", b =>
@@ -4195,6 +4241,32 @@ namespace Kooch.Api.Migrations
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
 
+                    b.Property<string>("TravelerEmailSnapshot")
+                        .HasMaxLength(320)
+                        .HasColumnType("nvarchar(320)");
+
+                    b.Property<string>("TravelerFirstNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TravelerLastNameSnapshot")
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("TravelerMobileSnapshot")
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<string>("TravelerNationalCodeSnapshot")
+                        .HasMaxLength(20)
+                        .HasColumnType("nvarchar(20)");
+
+                    b.Property<DateTime?>("TravelerSnapshotCapturedAtUtc")
+                        .HasColumnType("datetime2(7)");
+
+                    b.Property<byte?>("TravelerSnapshotKind")
+                        .HasColumnType("tinyint");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -4240,6 +4312,8 @@ namespace Kooch.Api.Migrations
                     b.ToTable("Reservations", t =>
                         {
                             t.HasCheckConstraint("CK_Reservations_CancellationIdempotencyPair", "([CancellationIdempotencyKey] IS NULL AND [CancellationRequestFingerprint] IS NULL) OR ([CancellationIdempotencyKey] IS NOT NULL AND [CancellationRequestFingerprint] IS NOT NULL)");
+
+                            t.HasCheckConstraint("CK_Reservations_TravelerSnapshot", "([TravelerSnapshotKind] IS NULL AND [TravelerFirstNameSnapshot] IS NULL AND [TravelerLastNameSnapshot] IS NULL AND [TravelerMobileSnapshot] IS NULL AND [TravelerEmailSnapshot] IS NULL AND [TravelerNationalCodeSnapshot] IS NULL AND [TravelerSnapshotCapturedAtUtc] IS NULL) OR ([TravelerSnapshotKind] IS NOT NULL AND [TravelerSnapshotKind] IN (1, 2) AND [TravelerSnapshotCapturedAtUtc] IS NOT NULL AND [TravelerFirstNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerFirstNameSnapshot]))) > 0 AND [TravelerLastNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerLastNameSnapshot]))) > 0)");
                         });
                 });
 
@@ -5124,6 +5198,9 @@ namespace Kooch.Api.Migrations
                     b.Property<DateOnly>("AffectedDateTo")
                         .HasColumnType("date");
 
+                    b.Property<int?>("AuditLogId")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("ChangedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -5193,6 +5270,8 @@ namespace Kooch.Api.Migrations
                     b.HasIndex("ChangedByUserId");
 
                     b.HasIndex("PropertyId", "ChangedAtUtc");
+
+                    b.HasIndex("AuditLogId", "AffectedDateFrom", "Id");
 
                     b.HasIndex("RoomTypeId", "GuestType", "ChangedAtUtc");
 
@@ -5988,6 +6067,10 @@ namespace Kooch.Api.Migrations
                         .HasColumnType("bit")
                         .HasDefaultValue(false);
 
+                    b.Property<string>("PendingRegistrationNationalCode")
+                        .HasMaxLength(10)
+                        .HasColumnType("nvarchar(10)");
+
                     b.Property<string>("PhoneNumber")
                         .HasMaxLength(30)
                         .HasColumnType("nvarchar(30)");
@@ -6735,6 +6818,12 @@ namespace Kooch.Api.Migrations
                         .IsUnique();
 
                     b.HasIndex("CampaignId", "UserId")
+                        .IsUnique();
+
+                    b.HasIndex(new[] { "NationalCodeSnapshot" }, "IX_WelcomeGiftGrants_NationalCodeSnapshot_Lifetime")
+                        .IsUnique();
+
+                    b.HasIndex(new[] { "UserId" }, "IX_WelcomeGiftGrants_UserId_Lifetime")
                         .IsUnique();
 
                     b.ToTable("WelcomeGiftGrants", t =>
@@ -7948,6 +8037,11 @@ namespace Kooch.Api.Migrations
 
             modelBuilder.Entity("Kooch.Api.Entities.RoomDailyPriceHistory", b =>
                 {
+                    b.HasOne("Kooch.Api.Entities.AuditLog", "AuditLog")
+                        .WithMany()
+                        .HasForeignKey("AuditLogId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("Kooch.Api.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("ChangedByUserId")
@@ -7958,6 +8052,8 @@ namespace Kooch.Api.Migrations
                         .HasForeignKey("RoomTypeId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.Navigation("AuditLog");
 
                     b.Navigation("RoomType");
 

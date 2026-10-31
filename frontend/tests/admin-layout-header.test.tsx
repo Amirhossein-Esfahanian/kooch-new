@@ -15,6 +15,12 @@ const auth = vi.hoisted(() => ({
 }));
 
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
+const siteSettings = vi.hoisted(() => ({ fetch: vi.fn() }));
+
+vi.mock("@/lib/site-settings", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/site-settings")>();
+  return { ...actual, fetchPublicSiteSettings: siteSettings.fetch };
+});
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/admin/users",
@@ -32,6 +38,8 @@ vi.mock("@/components/KoochUserMenu", () => ({
 
 beforeEach(() => {
   navigation.replace.mockReset();
+  siteSettings.fetch.mockReset();
+  siteSettings.fetch.mockResolvedValue({});
   auth.current = {
     authenticated: true,
     loading: false,
@@ -43,6 +51,32 @@ beforeEach(() => {
 });
 
 describe("Admin header layout", () => {
+  it("shows activity history only with the Admin reports permission", () => {
+    auth.current.platformRole = "AdminAssistant";
+    const view = render(<AdminLayout>محتوا</AdminLayout>);
+    expect(screen.queryByRole("link", { name: "تاریخچه فعالیت‌ها" })).toBeNull();
+    auth.current.platformPermissions = ["ViewReports"];
+    view.rerender(<AdminLayout>محتوا</AdminLayout>);
+    expect(screen.getByRole("link", { name: "تاریخچه فعالیت‌ها" }).getAttribute("href"))
+      .toBe("/admin/activity-history");
+  });
+  it("uses the configured site name when no logo is set", async () => {
+    siteSettings.fetch.mockResolvedValue({ "site.name": "اقامت آزمون", "site.logoUrl": "" });
+    render(<AdminLayout>محتوا</AdminLayout>);
+    expect(await screen.findByText("اقامت آزمون")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "اقامت آزمون" })).toBeNull();
+  });
+
+  it("shows a configured logo and keeps the site-name fallback on settings failure", async () => {
+    siteSettings.fetch.mockResolvedValueOnce({ "site.name": "اقامت آزمون", "site.logoUrl": "/logo-test.png" });
+    const view = render(<AdminLayout>محتوا</AdminLayout>);
+    expect(await screen.findByRole("img", { name: "اقامت آزمون" })).toBeTruthy();
+    view.unmount();
+
+    siteSettings.fetch.mockRejectedValueOnce(new Error("offline"));
+    render(<AdminLayout>محتوا</AdminLayout>);
+    expect(await screen.findByText("کوچ")).toBeTruthy();
+  });
   it("keeps global search in the integrated navbar", () => {
     render(
       <AdminLayout>

@@ -151,6 +151,7 @@ public class RoomTypeService(
             AmenityId = amenityId
         }));
 
+        AuditLogService.CaptureApprovedChange(dbContext, userId, roomType);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(roomType.Id, cancellationToken);
     }

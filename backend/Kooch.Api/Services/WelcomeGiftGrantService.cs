@@ -3,48 +3,28 @@ using Kooch.Api.Entities;
 using Kooch.Api.Services.Wallet;
 using Kooch.Api.Utilities;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.ChangeTracking;
 
 namespace Kooch.Api.Services;
 
 public interface IWelcomeGiftGrantService
 {
-    bool IsNewIdentity(Guest guest);
-    Task TryGrantAsync(Guest guest, CancellationToken cancellationToken = default);
+    Task TryGrantForVerifiedRegistrationAsync(User user, CancellationToken cancellationToken = default);
 }
 
 public sealed class WelcomeGiftGrantService(KoochDbContext dbContext, TimeProvider clock)
     : IWelcomeGiftGrantService
 {
     private const string Currency = "IRR";
-    private const string IranianNationality = "ایران";
-
-    public bool IsNewIdentity(Guest guest)
+    // Called only by OTP registration completion inside its transaction.
+    public async Task TryGrantForVerifiedRegistrationAsync(User user, CancellationToken cancellationToken = default)
     {
-        dbContext.ChangeTracker.DetectChanges();
-        EntityEntry<Guest> entry = dbContext.Entry(guest);
-        return guest.UserId.HasValue && guest.NationalCode is not null &&
-               (entry.State == EntityState.Added ||
-                entry.State == EntityState.Modified &&
-                (entry.Property(item => item.NationalCode).OriginalValue is null ||
-                 entry.Property(item => item.UserId).OriginalValue is null));
-    }
-
-    // Called after the identity row is saved, but before its owning transaction commits.
-    public async Task TryGrantAsync(Guest guest, CancellationToken cancellationToken = default)
-    {
-        if (!guest.UserId.HasValue || guest.Id <= 0 ||
-            (guest.Nationality is not null && guest.Nationality != IranianNationality &&
-             !guest.Nationality.Equals("Iran", StringComparison.OrdinalIgnoreCase) &&
-             !guest.Nationality.Equals("IR", StringComparison.OrdinalIgnoreCase)) ||
-            !GuestNormalization.IsValidIranianNationalCode(guest.NationalCode) ||
-            GuestNormalization.NormalizeNationalCode(guest.NationalCode) != guest.NationalCode)
+        var nationalCode = user.PendingRegistrationNationalCode;
+        if (user.Id <= 0 || !user.IsActive ||
+            !GuestNormalization.IsValidIranianNationalCode(nationalCode) ||
+            GuestNormalization.NormalizeNationalCode(nationalCode) != nationalCode)
             return;
         if (dbContext.Database.IsRelational() && dbContext.Database.CurrentTransaction is null)
             throw new InvalidOperationException("Welcome Gift requires the identity transaction.");
-        if (!await dbContext.Users.AsNoTracking().AnyAsync(user =>
-                user.Id == guest.UserId.Value && user.IsActive, cancellationToken)) return;
-
         var now = clock.GetUtcNow().UtcDateTime;
         var localDate = DateOnly.FromDateTime(
             TimeZoneInfo.ConvertTime(clock.GetUtcNow(), IranSiteTime.BusinessTimeZone).DateTime);
@@ -57,8 +37,7 @@ public sealed class WelcomeGiftGrantService(KoochDbContext dbContext, TimeProvid
         if (campaign is null) return;
 
         if (await dbContext.WelcomeGiftGrants.AsNoTracking().AnyAsync(row =>
-                row.CampaignId == campaign.Id &&
-                (row.UserId == guest.UserId.Value || row.NationalCodeSnapshot == guest.NationalCode),
+                row.UserId == user.Id || row.NationalCodeSnapshot == nationalCode,
                 cancellationToken)) return;
         if (campaign.GrantedCount >= campaign.MaxRecipients) return;
         if (campaign.Amount <= 0 || campaign.ValidityDays < 1)
@@ -66,12 +45,12 @@ public sealed class WelcomeGiftGrantService(KoochDbContext dbContext, TimeProvid
 
         var expiry = now.AddDays(campaign.ValidityDays);
         var account = await (dbContext.Database.IsRelational()
-                ? WalletAccountLock.Query(dbContext, guest.UserId.Value, Currency)
-                : dbContext.WalletAccounts.Where(row => row.UserId == guest.UserId.Value && row.Currency == Currency))
+                ? WalletAccountLock.Query(dbContext, user.Id, Currency)
+                : dbContext.WalletAccounts.Where(row => row.UserId == user.Id && row.Currency == Currency))
             .SingleOrDefaultAsync(cancellationToken);
         if (account is null)
         {
-            account = new WalletAccount { UserId = guest.UserId.Value, Currency = Currency };
+            account = new WalletAccount { UserId = user.Id, Currency = Currency };
             dbContext.WalletAccounts.Add(account);
         }
 
@@ -91,8 +70,8 @@ public sealed class WelcomeGiftGrantService(KoochDbContext dbContext, TimeProvid
 
         dbContext.WelcomeGiftGrants.Add(new WelcomeGiftGrant
         {
-            CampaignId = campaign.Id, UserId = guest.UserId.Value,
-            NationalCodeSnapshot = guest.NationalCode!, AmountSnapshot = campaign.Amount,
+            CampaignId = campaign.Id, UserId = user.Id,
+            NationalCodeSnapshot = nationalCode!, AmountSnapshot = campaign.Amount,
             ValidityDaysSnapshot = campaign.ValidityDays, GrantedAtUtc = now,
             ExpiresAtUtc = expiry, WalletLotId = lot.Id, WalletEntryId = entry.Id
         });

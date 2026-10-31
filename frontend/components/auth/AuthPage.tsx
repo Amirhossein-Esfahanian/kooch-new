@@ -12,6 +12,10 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { apiRequest, setToken } from "@/lib/owner-api";
+import {
+  normalizeIranianNationalCode,
+  validateIranianNationalCode,
+} from "@/lib/iran-national-code";
 import { safeInternalReturnTo } from "@/lib/safe-return-to";
 
 type AuthMode = "login" | "register";
@@ -68,6 +72,8 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
   const [registerMobile, setRegisterMobile] = useState("");
+  const [registerNationalCode, setRegisterNationalCode] = useState("");
+  const [nationalCodeError, setNationalCodeError] = useState("");
   const [registerEmail, setRegisterEmail] = useState("");
   const [registerPassword, setRegisterPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -94,6 +100,7 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
   function changeMode(nextMode: AuthMode) {
     setMode(nextMode);
     setError("");
+    setNationalCodeError("");
     setDevOtpCode("");
 
     if (nextMode === "login") {
@@ -184,8 +191,13 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
 
   async function submitRegistration(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setLoading(true);
     setError("");
+
+    const identityError = validateIranianNationalCode(registerNationalCode);
+    setNationalCodeError(identityError);
+    if (identityError) return;
+
+    setLoading(true);
 
     const passwordError = validatePassword(registerPassword);
     if (passwordError) {
@@ -210,6 +222,7 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
           firstName,
           lastName,
           mobile: registerMobile,
+          nationalCode: normalizeIranianNationalCode(registerNationalCode),
           email: registerEmail || null,
           password: registerPassword,
           confirmPassword,
@@ -500,6 +513,24 @@ export function AuthPage({ returnTo }: { returnTo?: string | null }) {
                     placeholder="مثلاً 09123456789"
                     required
                     value={registerMobile}
+                  />
+                </KoochField>
+                <KoochField
+                  error={nationalCodeError || undefined}
+                  label="کد ملی"
+                  required
+                >
+                  <KoochInput
+                    dir="ltr"
+                    inputMode="numeric"
+                    maxLength={20}
+                    onChange={(event) => {
+                      setRegisterNationalCode(event.target.value);
+                      setNationalCodeError("");
+                    }}
+                    placeholder="کد ملی ۱۰ رقمی"
+                    required
+                    value={registerNationalCode}
                   />
                 </KoochField>
                 <KoochField

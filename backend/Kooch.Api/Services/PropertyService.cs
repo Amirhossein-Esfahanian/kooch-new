@@ -205,6 +205,7 @@ public class PropertyService(
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
     }
@@ -224,6 +225,7 @@ public class PropertyService(
         property.EnglishName = englishName;
         property.Type = request.Type;
         property.InventoryMode = request.InventoryMode;
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -244,6 +246,7 @@ public class PropertyService(
         property.Country = request.Country.Trim();
         property.Latitude = request.Latitude;
         property.Longitude = request.Longitude;
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -263,6 +266,7 @@ public class PropertyService(
         property.IsWheelchairAccessible = request.IsWheelchairAccessible;
         property.HasGroundFloorRoom = request.HasGroundFloorRoom;
         property.HasAccessibleBathroom = request.HasAccessibleBathroom;
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -299,6 +303,7 @@ public class PropertyService(
         property.SameNightInstantBookingDayOffset = instantOffset;
         property.SameNightFinalBookingTime = finalTime;
         property.SameNightFinalBookingDayOffset = finalOffset;
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -319,6 +324,7 @@ public class PropertyService(
         {
             property.HasSeparateForeignPricing = request.HasSeparateForeignPricing.Value;
         }
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -442,6 +448,7 @@ public class PropertyService(
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
@@ -1063,6 +1070,7 @@ public class PropertyService(
         }
 
         property.Status = status;
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }

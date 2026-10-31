@@ -5,6 +5,14 @@ public class BookingSession : BaseEntity
     public string SessionCode { get; set; } = string.Empty;
     public int ClientId { get; set; }
     public int? GuestId { get; set; }
+    // 1 = self, 2 = other; null identifies historical rows without a captured snapshot.
+    public byte? TravelerSnapshotKind { get; set; }
+    public string? TravelerFirstNameSnapshot { get; set; }
+    public string? TravelerLastNameSnapshot { get; set; }
+    public string? TravelerMobileSnapshot { get; set; }
+    public string? TravelerEmailSnapshot { get; set; }
+    public string? TravelerNationalCodeSnapshot { get; set; }
+    public DateTime? TravelerSnapshotCapturedAtUtc { get; set; }
     public int PropertyId { get; set; }
     public string Currency { get; set; } = string.Empty;
     public TimeOnly? ExpectedArrivalTime { get; set; }

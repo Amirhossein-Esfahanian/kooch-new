@@ -1112,6 +1112,9 @@ internal sealed record AuditLogEntry(
 
 internal sealed class NoOpAuditLogService : IAuditLogService
 {
+    public void RecordInventoryChanges(int userId, int propertyId, IReadOnlyCollection<int> authorizedRoomTypeIds) { }
+    public void RecordPriceChanges(int userId, int propertyId, IReadOnlyCollection<RoomDailyPriceHistory> history,
+        IReadOnlyDictionary<int, string> roomNames) { }
     public void Add(
         int userId,
         AuditAction action,

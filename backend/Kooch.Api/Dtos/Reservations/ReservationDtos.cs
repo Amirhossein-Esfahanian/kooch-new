@@ -237,7 +237,7 @@ public class ReservationUpdateRequest : IValidatableObject
     public int RoomTypeId { get; set; }
 
     [Range(1, int.MaxValue)]
-    public int GuestId { get; set; }
+    public int? GuestId { get; set; }
 
     public DateOnly CheckInDate { get; set; }
     public DateOnly CheckOutDate { get; set; }

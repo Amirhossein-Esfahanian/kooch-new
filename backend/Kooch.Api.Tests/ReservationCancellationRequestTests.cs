@@ -19,6 +19,47 @@ namespace Kooch.Api.Tests;
 public sealed class ReservationCancellationRequestTests
 {
     [Fact]
+    public async Task SupportRequestForSnapshotWithoutGuest_UsesCanonicalBooker()
+    {
+        await using var context = NewContext();
+        Seed(context);
+        var reservation = await context.Reservations.SingleAsync(row => row.Id == 10);
+        reservation.GuestId = null;
+        reservation.TravelerSnapshotKind = 2;
+        reservation.TravelerFirstNameSnapshot = "Booked";
+        reservation.TravelerLastNameSnapshot = "Traveler";
+        reservation.TravelerSnapshotCapturedAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        var service = new ReservationCancellationRequestService(context,
+            new StubPermissionService(true), new NotificationService(context));
+        await service.CreateForSupportAsync(10, 2, UserRole.SuperAdmin, Request());
+        Assert.Equal(1, Assert.Single(context.ReservationCancellationRequests).RequestedByUserId);
+        Assert.Equal(2, context.ReservationCancellationRequests.Single().CreatedByUserId);
+    }
+
+    [Fact]
+    public async Task SnapshotWithoutGuest_BookerCanRequestAndReadButOtherAccountCannot()
+    {
+        await using var context = NewContext();
+        Seed(context);
+        var reservation = await context.Reservations.SingleAsync(row => row.Id == 10);
+        reservation.ClientId = 1;
+        reservation.GuestId = null;
+        reservation.TravelerSnapshotKind = 2;
+        reservation.TravelerFirstNameSnapshot = "Booked";
+        reservation.TravelerLastNameSnapshot = "Traveler";
+        reservation.TravelerSnapshotCapturedAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            Service(context).CreateAsync(2, "R-100001", Request()));
+        var result = await Service(context).CreateAsync(1, "R-100001", Request());
+        Assert.Equal(result.RequestedAtUtc,
+            (await Service(context).GetLatestAsync(1, "R-100001")).RequestedAtUtc);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            Service(context).GetLatestAsync(2, "R-100001"));
+    }
+
+    [Fact]
     public async Task OwnReservation_CreatesPendingRequestWithCanonicalUserAndGuestSafeProjection()
     {
         await using var context = NewContext();

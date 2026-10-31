@@ -171,7 +171,7 @@ function AdminDashboardTasks() {
     <section aria-labelledby="admin-unfinished-tasks-heading">
       <KoochCard>
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 id="admin-unfinished-tasks-heading" className="text-lg font-bold text-foreground">کارهای نیازمند اقدام</h2>
+          <h2 id="admin-unfinished-tasks-heading" className="text-lg font-bold text-foreground">کارهای من</h2>
           <Link className="text-sm font-semibold text-primary underline-offset-4 hover:underline focus-visible:underline" href="/admin/tasks">مشاهده همه کارها</Link>
         </div>
         {loading ? (
@@ -192,7 +192,7 @@ function AdminDashboardTasks() {
                 {tasks.items.slice(0, 5).map((task) => (
                   <li key={task.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
                     <div className="min-w-0">
-                      <Link className="break-words font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline" href="/admin/tasks">{task.title}</Link>
+                      <Link className="break-words font-semibold text-foreground underline-offset-4 hover:underline focus-visible:underline" href={`/admin/tasks?taskId=${task.id}`}>{task.title}</Link>
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         <KoochBadge variant={task.priority === "High" ? "default" : "muted"}>اولویت {priorityLabel[task.priority]}</KoochBadge>
                         <KoochBadge variant={task.status === "InProgress" ? "default" : "muted"}>{statusLabel[task.status]}</KoochBadge>

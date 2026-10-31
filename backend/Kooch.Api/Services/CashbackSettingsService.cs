@@ -8,7 +8,7 @@ namespace Kooch.Api.Services;
 public interface ICashbackSettingsService
 {
     Task<CashbackPolicyResponse> GetGlobalAsync(string currency, CancellationToken cancellationToken = default);
-    Task<CashbackPolicyResponse> UpdateGlobalAsync(UpdateCashbackPolicyRequest request, CancellationToken cancellationToken = default);
+    Task<CashbackPolicyResponse> UpdateGlobalAsync(UpdateCashbackPolicyRequest request, CancellationToken cancellationToken = default, int? actorUserId = null);
     Task<PropertyCashbackResponse> GetPropertyAsync(int propertyId, string currency, CancellationToken cancellationToken = default);
     Task<PropertyCashbackResponse> UpdatePropertyAsync(int propertyId, UpdatePropertyCashbackRequest request, CancellationToken cancellationToken = default);
     Task<CashbackPolicyResponse> GetEffectiveCashbackPolicyAsync(int propertyId, string currency, CancellationToken cancellationToken = default);
@@ -24,7 +24,7 @@ public sealed class CashbackSettingsService(KoochDbContext dbContext) : ICashbac
         return ToResponse(setting, CashbackPolicySource.Global, currency);
     }
 
-    public async Task<CashbackPolicyResponse> UpdateGlobalAsync(UpdateCashbackPolicyRequest request, CancellationToken cancellationToken = default)
+    public async Task<CashbackPolicyResponse> UpdateGlobalAsync(UpdateCashbackPolicyRequest request, CancellationToken cancellationToken = default, int? actorUserId = null)
     {
         var currency = NormalizeCurrency(request.Currency);
         ValidatePolicy(request.Enabled, request.CalculationMode, request.PercentageRate,
@@ -38,6 +38,7 @@ public sealed class CashbackSettingsService(KoochDbContext dbContext) : ICashbac
         }
         Apply(setting, request.Enabled, request.CalculationMode, request.PercentageRate,
             request.SpendUnitAmount, request.RewardAmount, request.MaxCashbackPerReservation, request.ExpiryDays);
+        if (actorUserId.HasValue) AuditLogService.CaptureApprovedChange(dbContext, actorUserId.Value, setting);
         await dbContext.SaveChangesAsync(cancellationToken);
         return ToResponse(setting, CashbackPolicySource.Global, currency);
     }

@@ -97,6 +97,7 @@ public class AdminSiteSettingsController(
             }
         }
         setting.Value = value;
+        AuditLogService.CaptureApprovedChange(dbContext, GetCurrentUser().UserId, setting);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         return Ok(ToResponse(setting));

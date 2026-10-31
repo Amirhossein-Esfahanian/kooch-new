@@ -64,6 +64,7 @@ public class AdminReservationSettingsController(
             var setting = settings.SingleOrDefault(item => item.Key == key)
                 ?? throw new KeyNotFoundException("Reservation setting was not found.");
             setting.Value = value;
+            AuditLogService.CaptureApprovedChange(dbContext, GetCurrentUser().UserId, setting);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);
@@ -122,6 +123,7 @@ public class AdminReservationSettingsController(
         foreach (var setting in settings)
         {
             setting.Value = values[setting.Key];
+            AuditLogService.CaptureApprovedChange(dbContext, GetCurrentUser().UserId, setting);
         }
 
         await dbContext.SaveChangesAsync(cancellationToken);

@@ -11,6 +11,27 @@ namespace Kooch.Api.Tests;
 
 public sealed class ReservationVoucherIssuanceTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData(999)]
+    public async Task SnapshotTravelerWithoutGuest_NeverUsesBookerOrSupplementsNullContact(int? guestId)
+    {
+        await using var harness = await VoucherHarness.CreateAsync();
+        harness.Reservation.GuestId = guestId;
+        harness.Reservation.TravelerSnapshotKind = 2;
+        harness.Reservation.TravelerFirstNameSnapshot = "Booked";
+        harness.Reservation.TravelerLastNameSnapshot = "Traveler";
+        harness.Reservation.TravelerSnapshotCapturedAtUtc = DateTime.UtcNow;
+        var voucher = await harness.Service.IssueAsync(harness.Reservation, harness.Payment, null);
+        Assert.Equal("Booked Traveler", voucher.GuestNameSnapshot);
+        Assert.Null(voucher.GuestMobileSnapshot);
+        Assert.Null(voucher.GuestEmailSnapshot);
+        harness.Reservation.TravelerFirstNameSnapshot = "Changed";
+        var replay = await harness.Service.IssueAsync(harness.Reservation, harness.Payment, null);
+        Assert.Same(voucher, replay);
+        Assert.Equal("Booked Traveler", replay.GuestNameSnapshot);
+    }
+
     [Fact]
     public async Task Number_IsOpaqueSixDigitReferenceIndependentFromReservationNumber()
     {

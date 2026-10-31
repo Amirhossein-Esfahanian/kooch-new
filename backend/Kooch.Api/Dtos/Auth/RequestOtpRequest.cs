@@ -15,6 +15,9 @@ public class RequestOtpRequest
     [MaxLength(100)]
     public string? LastName { get; set; }
 
+    [MaxLength(20)]
+    public string? NationalCode { get; set; }
+
     [EmailAddress, MaxLength(320)]
     public string? Email { get; set; }
 }

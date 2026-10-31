@@ -18,6 +18,7 @@ public sealed class BookingSessionDetailsResponse
     public BookingSessionPropertyResponse Property { get; set; } = new();
     public BookingSessionClientResponse Client { get; set; } = new();
     public BookingSessionGuestResponse? Guest { get; set; }
+    public AccountBookingSessionPrimaryGuestResponse? PrimaryTraveler { get; set; }
     public BookingSessionDerivedSummaryResponse Summary { get; set; } = new();
     public IReadOnlyList<BookingSessionReservationDetailsResponse> Reservations { get; set; } = [];
 }

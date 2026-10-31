@@ -18,6 +18,40 @@ namespace Kooch.Api.Tests;
 
 public sealed class ReservationVoucherProjectionTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task BookerVoucherRead_AllowsNullGuestButRedactsUnownedLegacyName(bool captured)
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+        harness.Reservation.GuestId = null;
+        if (captured)
+        {
+            harness.Reservation.TravelerSnapshotKind = 2;
+            harness.Reservation.TravelerFirstNameSnapshot = "Booked";
+            harness.Reservation.TravelerLastNameSnapshot = "Traveler";
+            harness.Reservation.TravelerSnapshotCapturedAtUtc = DateTime.UtcNow;
+        }
+        await harness.Context.SaveChangesAsync();
+        var stored = await harness.Context.ReservationVouchers.SingleAsync();
+        var originalName = stored.GuestNameSnapshot;
+        var result = await harness.Service.GetForGuestAsync(1, "R-583214");
+        Assert.Equal(captured ? originalName : string.Empty, result.GuestName);
+        Assert.Equal(originalName, stored.GuestNameSnapshot);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            harness.Service.GetForGuestAsync(2, "R-583214"));
+    }
+
+    [Fact]
+    public async Task LegacyForeignGuestName_IsHiddenFromBookerButNotCanonicalGuestOwner()
+    {
+        await using var harness = await VoucherProjectionHarness.CreateAsync();
+        harness.Guest.UserId = 2;
+        await harness.Context.SaveChangesAsync();
+        Assert.Empty((await harness.Service.GetForGuestAsync(1, "R-583214")).GuestName);
+        Assert.NotEmpty((await harness.Service.GetForGuestAsync(2, "R-583214")).GuestName);
+    }
+
     [Fact]
     public async Task StandardVoucherProjection_HasNoExplicitRatePlan()
     {

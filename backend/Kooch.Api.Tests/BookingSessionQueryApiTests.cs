@@ -21,6 +21,141 @@ namespace Kooch.Api.Tests;
 
 public sealed class BookingSessionQueryApiTests
 {
+    [Theory]
+    [InlineData(null)]
+    [InlineData(2)]
+    [InlineData(1)]
+    public async Task LegacyTravelerRead_RequiresCanonicalGuestOwnership(int? guestUserId)
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var guest = await context.Guests.SingleAsync();
+        guest.UserId = guestUserId;
+        guest.FirstName = "PrivateForeignFirst";
+        guest.LastName = "PrivateForeignLast";
+        guest.Mobile = "09999999999";
+        guest.Email = "private-foreign@example.test";
+        guest.NationalCode = "9999999999";
+        context.Payments.Add(new Payment
+        {
+            BookingSessionId = 10,
+            Amount = 300,
+            Currency = "IRR",
+            Status = PaymentStatus.Successful
+        });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var service = new BookingSessionQueryService(context);
+        var account = await service.GetBySessionCodeForClientAsync(1, "KCH-S-READ-0001");
+        var admin = await service.GetByIdAsync(10);
+        var byCode = await service.GetBySessionCodeAsync("KCH-S-READ-0001");
+        if (guestUserId == 1)
+        {
+            Assert.Equal(guest.FirstName, account.PrimaryGuest!.FirstName);
+            Assert.Equal(guest.NationalCode, admin.Guest!.NationalCode);
+            Assert.Equal(guest.Email, admin.PrimaryTraveler!.Email);
+            Assert.NotNull(byCode.Guest);
+        }
+        else
+        {
+            Assert.Null(account.PrimaryGuest);
+            Assert.Null(admin.Guest);
+            Assert.Null(admin.PrimaryTraveler);
+            Assert.Null(byCode.Guest);
+            Assert.Null(byCode.PrimaryTraveler);
+            var json = JsonSerializer.Serialize(new { account, admin, byCode });
+            foreach (var secret in new[] { guest.FirstName, guest.LastName, guest.Mobile, guest.Email, guest.NationalCode })
+                Assert.DoesNotContain(secret!, json);
+        }
+        Assert.Equal(300, account.TotalAmount);
+        Assert.Equal(300, account.Payment!.Amount);
+        Assert.Equal(PaymentStatus.Successful, account.Payment.Status);
+        Assert.Equal(2, account.Reservations.Count);
+        Assert.Equal(300, admin.Summary.TotalAmount);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.GetBySessionCodeForClientAsync(2, "KCH-S-READ-0001"));
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 1)]
+    [InlineData(null, 2)]
+    [InlineData(2, 2)]
+    public async Task CapturedTravelerRead_NeverSupplementsSnapshotFromGuest(int? guestUserId, byte kind)
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var guest = await context.Guests.SingleAsync();
+        guest.UserId = guestUserId;
+        guest.FirstName = "ForeignFirst";
+        guest.LastName = "ForeignLast";
+        guest.Mobile = "09999999999";
+        guest.Email = "foreign@example.test";
+        guest.NationalCode = "9999999999";
+        var session = await context.BookingSessions.SingleAsync(item => item.Id == 10);
+        session.TravelerSnapshotKind = kind;
+        session.TravelerFirstNameSnapshot = "Booked";
+        session.TravelerLastNameSnapshot = "Traveler";
+        session.TravelerSnapshotCapturedAtUtc = DateTime.UtcNow;
+        // Optional snapshot fields intentionally null: mutable Guest values must not fill them.
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var service = new BookingSessionQueryService(context);
+        var account = await service.GetBySessionCodeForClientAsync(1, session.SessionCode);
+        var admin = await service.GetByIdAsync(10);
+        var byCode = await service.GetBySessionCodeAsync(session.SessionCode);
+        foreach (var traveler in new[] { account.PrimaryGuest, admin.PrimaryTraveler, byCode.PrimaryTraveler })
+        {
+            Assert.NotNull(traveler);
+            Assert.Equal("Booked", traveler.FirstName);
+            Assert.Equal("Traveler", traveler.LastName);
+            Assert.Null(traveler.Mobile);
+            Assert.Null(traveler.Email);
+            Assert.Null(traveler.NationalCode);
+        }
+        Assert.Null(admin.Guest);
+        Assert.Null(byCode.Guest);
+        var json = JsonSerializer.Serialize(new { account, admin, byCode });
+        foreach (var secret in new[] { guest.FirstName, guest.LastName, guest.Mobile, guest.Email, guest.NationalCode })
+            Assert.DoesNotContain(secret!, json);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.GetBySessionCodeForClientAsync(2, session.SessionCode));
+    }
+
+    [Fact]
+    public async Task CapturedTravelerRead_WorksWithoutGuestAndPreservesAllCapturedFields()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var session = await context.BookingSessions.SingleAsync(item => item.Id == 10);
+        session.GuestId = null;
+        session.TravelerSnapshotKind = 2;
+        session.TravelerFirstNameSnapshot = "Booked";
+        session.TravelerLastNameSnapshot = "Person";
+        session.TravelerMobileSnapshot = "09121111111";
+        session.TravelerEmailSnapshot = "booked@example.test";
+        session.TravelerNationalCodeSnapshot = "1234567890";
+        session.TravelerSnapshotCapturedAtUtc = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var service = new BookingSessionQueryService(context);
+        var account = await service.GetBySessionCodeForClientAsync(1, session.SessionCode);
+        var admin = await service.GetByIdAsync(10);
+        foreach (var traveler in new[] { account.PrimaryGuest, admin.PrimaryTraveler })
+        {
+            Assert.NotNull(traveler);
+            Assert.Equal("Booked", traveler.FirstName);
+            Assert.Equal("Person", traveler.LastName);
+            Assert.Equal("09121111111", traveler.Mobile);
+            Assert.Equal("booked@example.test", traveler.Email);
+            Assert.Equal("1234567890", traveler.NationalCode);
+        }
+        Assert.Null(admin.Guest);
+    }
+
     [Fact]
     public void BookingAndReservationDeadlines_SerializeAsUtcWithoutChangingClockTime()
     {
@@ -461,7 +596,8 @@ public sealed class BookingSessionQueryApiTests
         var result = await service.GetByIdAsync(10);
 
         Assert.Equal(2, result.Reservations.Count);
-        Assert.Equal(1, harness.QueryCounter.CompilationCount);
+        // EF may reuse the projection compiled by an earlier read test.
+        Assert.InRange(harness.QueryCounter.CompilationCount, 0, 1);
         Assert.Empty(context.ChangeTracker.Entries());
     }
 

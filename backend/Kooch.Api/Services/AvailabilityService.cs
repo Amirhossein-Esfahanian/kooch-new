@@ -72,14 +72,7 @@ public class AvailabilityService(
             }
         }
 
-        AddInventoryAudit(
-            userId,
-            propertyId,
-            roomTypes.Count,
-            request.StartDate,
-            request.EndDate,
-            request.AvailableCount,
-            request.AvailableCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available);
+        auditLogService.RecordInventoryChanges(userId, propertyId, roomTypeIds);
         await dbContext.SaveChangesAsync(cancellationToken);
 
         var monthStart = new DateOnly(request.StartDate.Year, request.StartDate.Month, 1);
@@ -136,15 +129,7 @@ public class AvailabilityService(
             updated.Add(availability);
         }
 
-        var distinctItems = request.Items.DistinctBy(item => (item.RoomTypeId, item.Date)).ToList();
-        AddInventoryAudit(
-            userId,
-            propertyId,
-            roomTypeIds.Length,
-            distinctItems.Min(item => item.Date),
-            distinctItems.Max(item => item.Date),
-            effectiveCount,
-            request.Status);
+        auditLogService.RecordInventoryChanges(userId, propertyId, roomTypeIds);
         await dbContext.SaveChangesAsync(cancellationToken);
         var effectiveNights = await GetEffectiveNightsAsync(roomTypeIds, dates.Min(), dates.Max(), cancellationToken);
         return updated
@@ -183,14 +168,7 @@ public class AvailabilityService(
             .SingleOrDefaultAsync(item => item.RoomTypeId == roomType.Id && item.Date == request.Date, cancellationToken);
 
         availability = UpsertInventoryEntity(roomType, request.Date, request.AvailableCount, availability);
-        AddInventoryAudit(
-            userId,
-            propertyId,
-            1,
-            request.Date,
-            request.Date,
-            request.AvailableCount,
-            request.AvailableCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available);
+        auditLogService.RecordInventoryChanges(userId, propertyId, [roomType.Id]);
         await dbContext.SaveChangesAsync(cancellationToken);
         var effectiveNight = (await GetEffectiveNightsAsync(
             [roomType.Id],
@@ -227,14 +205,7 @@ public class AvailabilityService(
         availability.AvailableCount = availableCount;
         availability.Status = availableCount == 0 ? AvailabilityStatus.Unavailable : AvailabilityStatus.Available;
         availability.IsClosed = availableCount == 0;
-        AddInventoryAudit(
-            userId,
-            availability.RoomType.PropertyId,
-            1,
-            availability.Date,
-            availability.Date,
-            availability.AvailableCount,
-            availability.Status);
+        auditLogService.RecordInventoryChanges(userId, availability.RoomType.PropertyId, [availability.RoomTypeId]);
         await dbContext.SaveChangesAsync(cancellationToken);
         var effectiveNight = (await GetEffectiveNightsAsync(
             [availability.RoomTypeId],
@@ -325,14 +296,7 @@ public class AvailabilityService(
             availability.MinNightsOverride = request.MinNightsOverride;
         }
 
-        AddInventoryAudit(
-            userId,
-            roomType.PropertyId,
-            1,
-            request.StartDate,
-            request.EndDate,
-            request.AvailableCount,
-            request.Status);
+        auditLogService.RecordInventoryChanges(userId, roomType.PropertyId, [roomType.Id]);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await GetAsync(
             userId,
@@ -508,21 +472,4 @@ public class AvailabilityService(
         }
     }
 
-    private void AddInventoryAudit(
-        int userId,
-        int propertyId,
-        int roomTypeCount,
-        DateOnly from,
-        DateOnly to,
-        int availableCount,
-        AvailabilityStatus status)
-    {
-        auditLogService.Add(
-            userId,
-            AuditAction.InventoryChanged,
-            "Availability",
-            propertyId: propertyId,
-            entityName: $"{roomTypeCount} room type(s)",
-            description: $"Status: {status}, capacity: {availableCount}, {from:yyyy-MM-dd} to {to:yyyy-MM-dd}");
-    }
 }

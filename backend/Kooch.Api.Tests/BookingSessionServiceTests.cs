@@ -526,7 +526,7 @@ public sealed partial class BookingSessionServiceTests
     }
 
     [Fact]
-    public async Task AccountSelfBooking_NewNationalIdentity_GrantsWelcomeGiftOnceBeforeCommit()
+    public async Task AccountSelfBooking_NewNationalIdentity_DoesNotGrantWelcomeGift()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
         await using (var setup = harness.CreateContext())
@@ -549,9 +549,9 @@ public sealed partial class BookingSessionServiceTests
 
         Assert.Equal(first.BookingSessionId, replay.BookingSessionId);
         await using var verify = harness.CreateContext();
-        Assert.Single(await verify.WelcomeGiftGrants.ToListAsync());
-        Assert.Single(await verify.WalletEntries.ToListAsync());
-        Assert.Equal(1, (await verify.WelcomeGiftCampaigns.SingleAsync()).GrantedCount);
+        Assert.Empty(await verify.WelcomeGiftGrants.ToListAsync());
+        Assert.Empty(await verify.WalletEntries.ToListAsync());
+        Assert.Equal(0, (await verify.WelcomeGiftCampaigns.SingleAsync()).GrantedCount);
     }
 
     [Fact]
@@ -987,6 +987,56 @@ public sealed partial class BookingSessionServiceTests
     }
 
     [Fact]
+    public async Task AccountBookingForSelf_DoesNotClaimGuestByUnverifiedContact()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Guests.Remove(await setup.Guests.SingleAsync());
+            var user = await setup.Users.SingleAsync();
+            user.Email = "shared@example.test";
+            setup.Guests.Add(new Guest
+            {
+                Id = 2, FirstName = "Other", LastName = "Guest",
+                NormalizedEmail = "shared@example.test"
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+
+        var result = await scope.Service.CreateForAccountAsync(
+            1, CreateAccountRequest(CreateAccountItem(10, 100)));
+
+        await using var verification = harness.CreateContext();
+        Assert.Null((await verification.Guests.SingleAsync(guest => guest.Id == 2)).UserId);
+        Assert.NotEqual(2, result.GuestId);
+        Assert.Equal(1, (await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId)).UserId);
+    }
+
+    [Fact]
+    public async Task AccountBookingForAnother_DoesNotLinkCanonicalUserBySuppliedContact()
+    {
+        await using var harness = await BookingSessionTestHarness.CreateAsync();
+        await using (var setup = harness.CreateContext())
+        {
+            setup.Users.Add(new User
+            {
+                Id = 2, FirstName = "Other", LastName = "User", PasswordHash = "hash",
+                PhoneNumber = "09123456789", Role = UserRole.Client, IsActive = true
+            });
+            await setup.SaveChangesAsync();
+        }
+        await using var scope = harness.CreateService();
+
+        var result = await scope.Service.CreateForAccountAsync(
+            1, CreateOtherGuestAccountRequest(CreateAccountItem(10, 100)));
+
+        await using var verification = harness.CreateContext();
+        Assert.Null(result.GuestId);
+        Assert.Single(await verification.Guests.ToListAsync());
+    }
+
+    [Fact]
     public async Task AccountBookingForSelf_GuestFieldsParticipateInIdempotency()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
@@ -1016,7 +1066,7 @@ public sealed partial class BookingSessionServiceTests
     }
 
     [Fact]
-    public async Task AccountBookingForAnother_CreatesIndependentGuestForEveryChild()
+    public async Task AccountBookingForAnother_CopiesSnapshotToEveryChildWithoutCreatingGuest()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
         await using var scope = harness.CreateService();
@@ -1026,8 +1076,7 @@ public sealed partial class BookingSessionServiceTests
 
         var result = await scope.Service.CreateForAccountAsync(1, request);
 
-        Assert.NotNull(result.GuestId);
-        Assert.NotEqual(1, result.GuestId);
+        Assert.Null(result.GuestId);
         await using var verification = harness.CreateContext();
         var session = await verification.BookingSessions
             .Include(item => item.Reservations)
@@ -1035,8 +1084,24 @@ public sealed partial class BookingSessionServiceTests
         Assert.Equal(1, session.ClientId);
         Assert.Equal(result.GuestId, session.GuestId);
         Assert.All(session.Reservations, reservation => Assert.Equal(session.GuestId, reservation.GuestId));
-        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == session.GuestId);
-        Assert.Null(traveler.UserId);
+        Assert.Single(await verification.Guests.ToListAsync());
+        Assert.Equal((byte)2, session.TravelerSnapshotKind);
+        Assert.Equal("Niloofar", session.TravelerFirstNameSnapshot);
+        Assert.Equal("Traveler", session.TravelerLastNameSnapshot);
+        Assert.Equal("09123456789", session.TravelerMobileSnapshot);
+        Assert.Null(session.TravelerEmailSnapshot);
+        Assert.Null(session.TravelerNationalCodeSnapshot);
+        Assert.NotNull(session.TravelerSnapshotCapturedAtUtc);
+        Assert.All(session.Reservations, reservation =>
+        {
+            Assert.Equal(session.TravelerSnapshotKind, reservation.TravelerSnapshotKind);
+            Assert.Equal(session.TravelerFirstNameSnapshot, reservation.TravelerFirstNameSnapshot);
+            Assert.Equal(session.TravelerLastNameSnapshot, reservation.TravelerLastNameSnapshot);
+            Assert.Equal(session.TravelerMobileSnapshot, reservation.TravelerMobileSnapshot);
+            Assert.Equal(session.TravelerEmailSnapshot, reservation.TravelerEmailSnapshot);
+            Assert.Equal(session.TravelerNationalCodeSnapshot, reservation.TravelerNationalCodeSnapshot);
+            Assert.Equal(session.TravelerSnapshotCapturedAtUtc, reservation.TravelerSnapshotCapturedAtUtc);
+        });
         Assert.Equal(1, await verification.Users.CountAsync());
     }
 
@@ -1051,8 +1116,8 @@ public sealed partial class BookingSessionServiceTests
         var result = await scope.Service.CreateForAccountAsync(1, request);
 
         await using var verification = harness.CreateContext();
-        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId);
-        Assert.Equal("1234567890", traveler.NationalCode);
+        Assert.Null(result.GuestId);
+        Assert.Equal("1234567890", (await verification.BookingSessions.SingleAsync()).TravelerNationalCodeSnapshot);
         Assert.Equal(1, await verification.Users.CountAsync());
     }
 
@@ -1067,7 +1132,8 @@ public sealed partial class BookingSessionServiceTests
         var result = await scope.Service.CreateForAccountAsync(1, request);
 
         await using var verification = harness.CreateContext();
-        Assert.Null((await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId)).NationalCode);
+        Assert.Null(result.GuestId);
+        Assert.Null((await verification.BookingSessions.SingleAsync()).TravelerNationalCodeSnapshot);
     }
 
     [Fact]
@@ -1110,7 +1176,7 @@ public sealed partial class BookingSessionServiceTests
 
         Assert.NotEqual(2, result.GuestId);
         await using var verification = harness.CreateContext();
-        Assert.Equal(3, await verification.Guests.CountAsync());
+        Assert.Equal(2, await verification.Guests.CountAsync());
     }
 
     [Theory]
@@ -1153,10 +1219,10 @@ public sealed partial class BookingSessionServiceTests
         var result = await scope.Service.CreateForAccountAsync(1, request);
 
         await using var verification = harness.CreateContext();
-        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId);
-        Assert.Equal("09123456789", traveler.Mobile);
-        Assert.Equal("09123456789", traveler.NormalizedMobile);
-        Assert.Null(traveler.Email);
+        Assert.Null(result.GuestId);
+        var traveler = await verification.BookingSessions.SingleAsync();
+        Assert.Equal("09123456789", traveler.TravelerMobileSnapshot);
+        Assert.Null(traveler.TravelerEmailSnapshot);
     }
 
     [Fact]
@@ -1171,13 +1237,14 @@ public sealed partial class BookingSessionServiceTests
         var result = await scope.Service.CreateForAccountAsync(1, request);
 
         await using var verification = harness.CreateContext();
-        var traveler = await verification.Guests.SingleAsync(guest => guest.Id == result.GuestId);
-        Assert.Equal("traveler@example.test", traveler.Email);
-        Assert.Equal("traveler@example.test", traveler.NormalizedEmail);
+        Assert.Null(result.GuestId);
+        var traveler = await verification.BookingSessions.SingleAsync();
+        Assert.Equal("traveler@example.test", traveler.TravelerEmailSnapshot);
+        Assert.Null(traveler.TravelerMobileSnapshot);
     }
 
     [Fact]
-    public async Task AccountBookingForAnother_ResolvesOneExactExistingGuest()
+    public async Task AccountBookingForAnother_DoesNotResolveMatchingExistingGuest()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
         await using (var setup = harness.CreateContext())
@@ -1198,13 +1265,13 @@ public sealed partial class BookingSessionServiceTests
             1,
             CreateOtherGuestAccountRequest(CreateAccountItem(10, 100)));
 
-        Assert.Equal(2, result.GuestId);
+        Assert.Null(result.GuestId);
         await using var verification = harness.CreateContext();
         Assert.Equal(2, await verification.Guests.CountAsync());
     }
 
     [Fact]
-    public async Task AccountBookingForAnother_NationalCodeFillsMatchedGuestWithoutChangingResolveKey()
+    public async Task AccountBookingForAnother_NationalCodeDoesNotMutateMatchedGuest()
     {
         await using var harness = await BookingSessionTestHarness.CreateAsync();
         await using (var setup = harness.CreateContext())
@@ -1225,10 +1292,11 @@ public sealed partial class BookingSessionServiceTests
 
         var result = await scope.Service.CreateForAccountAsync(1, request);
 
-        Assert.Equal(2, result.GuestId);
+        Assert.Null(result.GuestId);
         await using var verification = harness.CreateContext();
         Assert.Equal(2, await verification.Guests.CountAsync());
-        Assert.Equal("1234567890", (await verification.Guests.FindAsync(2))!.NationalCode);
+        Assert.Null((await verification.Guests.FindAsync(2))!.NationalCode);
+        Assert.Equal("1234567890", (await verification.BookingSessions.SingleAsync()).TravelerNationalCodeSnapshot);
     }
 
     [Fact]
@@ -1318,7 +1386,7 @@ public sealed partial class BookingSessionServiceTests
 
         Assert.Equal(first.BookingSessionId, replay.BookingSessionId);
         await using var verification = harness.CreateContext();
-        Assert.Equal(2, await verification.Guests.CountAsync());
+        Assert.Single(await verification.Guests.ToListAsync());
 
         request.ExpectedArrivalTime = new TimeOnly(18, 0);
         await Assert.ThrowsAsync<InvalidOperationException>(

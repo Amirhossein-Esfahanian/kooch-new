@@ -73,7 +73,7 @@ export type ReservationMutationPayload = {
   propertyId: number;
   roomTypeId: number;
   roomId: number;
-  guestId: number;
+  guestId: number | null;
   checkInDate: string;
   checkOutDate: string;
   adults: number;
@@ -1110,7 +1110,7 @@ export function ManualReservationDialog({
 
   useEffect(() => {
     guestSearchAbortRef.current?.abort();
-    if (!dialogOpen || !guestBasePath || draft.guestSearch.trim().length < 2) {
+    if (isEditMode || !dialogOpen || !guestBasePath || draft.guestSearch.trim().length < 2) {
       setGuests([]);
       return;
     }
@@ -1132,7 +1132,7 @@ export function ManualReservationDialog({
       window.clearTimeout(timer);
       guestSearchAbortRef.current?.abort();
     };
-  }, [dialogOpen, draft.guestSearch, guestBasePath]);
+  }, [dialogOpen, draft.guestSearch, guestBasePath, isEditMode]);
 
   useEffect(() => {
     pricePreviewAbortRef.current?.abort();
@@ -1254,6 +1254,7 @@ export function ManualReservationDialog({
   ]);
 
   async function addGuest() {
+    if (isEditMode) return;
     if (!guestDraft.firstName.trim() && !guestDraft.lastName.trim()) {
       toast.error("نام یا نام خانوادگی مهمان را وارد کنید.");
       return;
@@ -1303,7 +1304,7 @@ export function ManualReservationDialog({
       return;
     }
 
-    if (!selectedPropertyId || !draft.guestId) {
+    if (!selectedPropertyId || (!isEditMode && !draft.guestId)) {
       toast.error("اقامتگاه و مهمان را انتخاب کنید.");
       return;
     }
@@ -1369,7 +1370,7 @@ export function ManualReservationDialog({
             propertyId: selectedPropertyId,
             roomTypeId: Number(draft.roomTypeId),
             roomId: Number(draft.roomIds[0]),
-            guestId: Number(draft.guestId),
+            guestId: isEditMode ? reservation?.guestId ?? null : Number(draft.guestId),
             checkInDate: draft.checkInDate,
             checkOutDate: draft.checkOutDate,
             adults: toPositiveInt(draft.adults, 1),
@@ -1507,6 +1508,41 @@ export function ManualReservationDialog({
             )}
           </KoochCard>
 
+          {isEditMode && (
+            <section aria-label="اطلاعات مهمان ثبت‌شده" className="grid gap-2">
+              <h3 className="text-sm font-semibold text-foreground">مهمان ثبت‌شده</h3>
+              <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                <div className="min-w-0">
+                  <dt className="text-muted-foreground">نام مهمان</dt>
+                  <dd className="break-words text-foreground">
+                    {reservation?.guestFullName || reservation?.guestName || "—"}
+                  </dd>
+                </div>
+                {reservation?.guestMobile && (
+                  <div className="min-w-0">
+                    <dt className="text-muted-foreground">موبایل</dt>
+                    <dd className="break-words text-foreground">{reservation.guestMobile}</dd>
+                  </div>
+                )}
+                {reservation?.guestEmail && (
+                  <div className="min-w-0">
+                    <dt className="text-muted-foreground">ایمیل</dt>
+                    <dd className="break-words text-foreground">{reservation.guestEmail}</dd>
+                  </div>
+                )}
+                {reservation?.guestNationalCode && (
+                  <div className="min-w-0">
+                    <dt className="text-muted-foreground">کد ملی</dt>
+                    <dd className="break-words text-foreground">{reservation.guestNationalCode}</dd>
+                  </div>
+                )}
+              </dl>
+              <p className="text-xs text-muted-foreground">
+                اطلاعات مهمان ثبت‌شده در این فرم قابل تغییر نیست.
+              </p>
+            </section>
+          )}
+
           {isLockedEdit ? (
             <KoochAlert
               title={isTerminalReadOnly ? "رزرو نهایی‌شده" : "رزرو پرداخت‌شده"}
@@ -1596,41 +1632,43 @@ export function ManualReservationDialog({
                   </KoochField>
                 )}
 
-                <KoochField className="md:col-span-2" label="مهمان" required>
-                  <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-                    <KoochSearchableSelect
-                      disabled={isLockedEdit}
-                      emptyText={
-                        draft.guestSearch.trim().length < 2
-                          ? "برای جستجوی مهمان حداقل دو حرف وارد کنید."
-                          : "مهمانی پیدا نشد."
-                      }
-                      onChange={(value) => {
-                        updateDraft("guestId", value);
-                        const guest = guests.find(
-                          (item) => item.id.toString() === value,
-                        );
-                        if (guest) updateDraft("guestSearch", guestName(guest));
-                      }}
-                      onSearchChange={(query) =>
-                        updateDraft("guestSearch", query)
-                      }
-                      options={guestOptions}
-                      placeholder="انتخاب مهمان"
-                      searchPlaceholder="نام، موبایل یا ایمیل"
-                      value={draft.guestId}
-                    />
-                    {context === "admin" && !isLockedEdit && (
-                      <KoochButton
-                        onClick={() => setGuestDialogOpen(true)}
-                        type="button"
-                        variant="outline"
-                      >
-                        افزودن مهمان
-                      </KoochButton>
-                    )}
-                  </div>
-                </KoochField>
+                {!isEditMode && (
+                  <KoochField className="md:col-span-2" label="مهمان" required>
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+                      <KoochSearchableSelect
+                        disabled={isLockedEdit}
+                        emptyText={
+                          draft.guestSearch.trim().length < 2
+                            ? "برای جستجوی مهمان حداقل دو حرف وارد کنید."
+                            : "مهمانی پیدا نشد."
+                        }
+                        onChange={(value) => {
+                          updateDraft("guestId", value);
+                          const guest = guests.find(
+                            (item) => item.id.toString() === value,
+                          );
+                          if (guest) updateDraft("guestSearch", guestName(guest));
+                        }}
+                        onSearchChange={(query) =>
+                          updateDraft("guestSearch", query)
+                        }
+                        options={guestOptions}
+                        placeholder="انتخاب مهمان"
+                        searchPlaceholder="نام، موبایل یا ایمیل"
+                        value={draft.guestId}
+                      />
+                      {context === "admin" && !isLockedEdit && (
+                        <KoochButton
+                          onClick={() => setGuestDialogOpen(true)}
+                          type="button"
+                          variant="outline"
+                        >
+                          افزودن مهمان
+                        </KoochButton>
+                      )}
+                    </div>
+                  </KoochField>
+                )}
 
                 <KoochField
                   className="md:col-span-2"
@@ -2040,7 +2078,7 @@ export function ManualReservationDialog({
           </>
         }
         onOpenChange={setGuestDialogOpen}
-        open={guestDialogOpen}
+        open={guestDialogOpen && !isEditMode}
         title="افزودن مهمان"
         size="md"
       >

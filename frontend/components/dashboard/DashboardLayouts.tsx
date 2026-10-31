@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -17,6 +18,8 @@ import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import type { PermissionGroup } from "@/lib/owner-api";
 import { canViewOwnerMenuItem } from "@/lib/property-menu-permissions";
 import { formatDateTime } from "@/lib/account-reservations";
+import { shouldBypassImageOptimization } from "@/lib/image-delivery";
+import { defaultSiteSettings, fetchPublicSiteSettings, mergeSiteSettings, settingValue, type SiteSettingsMap } from "@/lib/site-settings";
 import {
   getNotifications,
   getNotificationUnreadCount,
@@ -110,6 +113,12 @@ const adminMenuItems: DashboardMenuItem[] = [
     label: "گزارش‌ها",
     icon: "/svgs/list.svg",
     href: "/admin/reports",
+    platformPermission: "ViewReports",
+  },
+  {
+    label: "تاریخچه فعالیت‌ها",
+    icon: "/svgs/list.svg",
+    href: "/admin/activity-history",
     platformPermission: "ViewReports",
   },
   {
@@ -383,6 +392,7 @@ export function AdminLayout({
   const router = useRouter();
   const refreshAttemptedRef = useRef(false);
   const session = useAuthSession();
+  const [siteSettings, setSiteSettings] = useState<SiteSettingsMap>(defaultSiteSettings);
   const {
     authenticated,
     loading,
@@ -399,6 +409,14 @@ export function AdminLayout({
   const visibleAdminMenuItems = adminMenuItems.filter((item) =>
     canViewAdminMenuItem(item, platformPermissions, platformRole),
   );
+
+  useEffect(() => {
+    let active = true;
+    fetchPublicSiteSettings()
+      .then((settings) => { if (active) setSiteSettings(mergeSiteSettings(settings)); })
+      .catch(() => { if (active) setSiteSettings(defaultSiteSettings); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -439,8 +457,11 @@ export function AdminLayout({
     return <DashboardAuthorizationLoading />;
   }
 
+  const siteName = settingValue(siteSettings, "site.name").trim() || defaultSiteSettings["site.name"];
+  const logoUrl = settingValue(siteSettings, "site.logoUrl").trim();
+
   return (
-    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems} enableAdminReservationLinks canManageAnnouncements={platformRole === "SuperAdmin" || platformPermissions.includes("ManageNotifications")}>
+    <DashboardShell integratedHeader menuItems={visibleAdminMenuItems} enableAdminReservationLinks canManageAnnouncements={platformRole === "SuperAdmin" || platformPermissions.includes("ManageNotifications")} siteBranding={{ name: siteName, logoUrl }}>
       {children}
     </DashboardShell>
   );
@@ -598,6 +619,7 @@ function DashboardShell({
   enableAdminReservationLinks = false,
   integratedHeader = false,
   menuItems,
+  siteBranding,
   onWorkspaceChange,
   workspaceLabel = "پنل مدیریت",
   workspaceOptions = [],
@@ -608,6 +630,7 @@ function DashboardShell({
   enableAdminReservationLinks?: boolean;
   integratedHeader?: boolean;
   menuItems: DashboardMenuItem[];
+  siteBranding?: { name: string; logoUrl: string };
   onWorkspaceChange?: (workspaceId: string) => void;
   workspaceLabel?: string;
   workspaceOptions?: { id: string; name: string }[];
@@ -758,6 +781,7 @@ function DashboardShell({
           currentWorkspaceId={currentWorkspaceId}
           darkMode={darkMode}
           menuItems={menuItems}
+          siteBranding={siteBranding}
           mobileOpen={mobileSidebarOpen}
           onCollapse={() => setCollapsed((value) => !value)}
           onMobileClose={() => setMobileSidebarOpen(false)}
@@ -817,6 +841,7 @@ function DashboardSidebar({
   currentWorkspaceId,
   darkMode,
   menuItems,
+  siteBranding,
   mobileOpen,
   onCollapse,
   onMobileClose,
@@ -828,6 +853,7 @@ function DashboardSidebar({
   currentWorkspaceId?: string;
   darkMode: boolean;
   menuItems: DashboardMenuItem[];
+  siteBranding?: { name: string; logoUrl: string };
   mobileOpen: boolean;
   onCollapse: () => void;
   onMobileClose: () => void;
@@ -850,12 +876,16 @@ function DashboardSidebar({
       <div className="flex h-full flex-col px-2 py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-bold text-white shadow-lg shadow-blue-600/20">
-              کوچ
-            </div>
+            {siteBranding?.logoUrl ? (
+              <Image alt={siteBranding.name} className="h-11 w-11 shrink-0 rounded-xl object-contain" height={44} width={44} src={siteBranding.logoUrl} unoptimized={shouldBypassImageOptimization(siteBranding.logoUrl)} />
+            ) : siteBranding ? (
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-bold text-white" aria-hidden="true">{siteBranding.name.trim().slice(0, 1)}</div>
+            ) : (
+              <div className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[var(--theme-primary)] text-lg font-bold text-white shadow-lg shadow-blue-600/20">کوچ</div>
+            )}
             {!collapsed && (
               <div className="min-w-0 [&>p:last-child]:hidden">
-                <p className="text-sm font-bold">Kooch</p>
+                <p className={siteBranding ? "truncate text-sm font-bold" : "text-sm font-bold"}>{siteBranding?.name ?? "Kooch"}</p>
                 <p className={`truncate ${mutedText(darkMode)}`}>
                   {workspaceLabel}
                 </p>

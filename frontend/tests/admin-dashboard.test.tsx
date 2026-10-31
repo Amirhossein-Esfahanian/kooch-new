@@ -146,7 +146,7 @@ describe("Admin dashboard V1", () => {
     ));
     render(<AdminDashboardPage />);
 
-    const section = await screen.findByRole("region", { name: "کارهای نیازمند اقدام" });
+    const section = await screen.findByRole("region", { name: "کارهای من" });
     await waitFor(() => expect(within(section).getByText("تعداد کل کارهای نیازمند اقدام: ۱۷")).toBeTruthy());
     expect(mocks.apiRequest).toHaveBeenCalledWith(
       "/admin/tasks/mine/unfinished?page=1&pageSize=5", expect.objectContaining({ signal: expect.any(AbortSignal) }));
@@ -157,7 +157,7 @@ describe("Admin dashboard V1", () => {
     expect(within(section).getAllByText("در حال انجام")).toHaveLength(2);
     expect(within(section).getByText(/سررسید:/)).toBeTruthy();
     expect(within(section).getByRole("link", { name: "مشاهده همه کارها" }).getAttribute("href")).toBe("/admin/tasks");
-    expect(within(section).getByRole("link", { name: "کار اول" }).getAttribute("href")).toBe("/admin/tasks");
+    expect(within(section).getByRole("link", { name: "کار اول" }).getAttribute("href")).toBe("/admin/tasks?taskId=1");
   });
 
   it("keeps dashboard metrics visible while tasks load, then shows a genuine empty state", async () => {
@@ -167,7 +167,7 @@ describe("Admin dashboard V1", () => {
       ? new Promise<ReturnType<typeof taskResponse>>((resolve) => { resolveTasks = resolve; })
       : Promise.resolve(response()));
     render(<AdminDashboardPage />);
-    const section = screen.getByRole("region", { name: "کارهای نیازمند اقدام" });
+    const section = screen.getByRole("region", { name: "کارهای من" });
     expect(within(section).getByRole("status").textContent).toContain("در حال دریافت کارهای شما");
     expect(await screen.findByText("اقامتگاه سرو")).toBeTruthy();
     resolveTasks(taskResponse([], 0));
@@ -180,7 +180,7 @@ describe("Admin dashboard V1", () => {
     mocks.apiRequest.mockImplementation((path: string) => path.startsWith("/admin/tasks/")
       ? Promise.reject(new Error("offline")) : Promise.resolve(response()));
     render(<AdminDashboardPage />);
-    const section = screen.getByRole("region", { name: "کارهای نیازمند اقدام" });
+    const section = screen.getByRole("region", { name: "کارهای من" });
     expect(await within(section).findByText("کارها بارگذاری نشدند")).toBeTruthy();
     expect(screen.getByText("اقامتگاه سرو")).toBeTruthy();
     expect(within(section).queryByText("پیگیری رزرو")).toBeNull();
@@ -194,7 +194,7 @@ describe("Admin dashboard V1", () => {
     mocks.apiRequest.mockImplementation((path: string) => path.startsWith("/admin/tasks/")
       ? Promise.reject(new ApiRequestError("Forbidden", 403)) : Promise.resolve(response()));
     const view = render(<AdminDashboardPage />);
-    const forbidden = within(view.container).getByRole("region", { name: "کارهای نیازمند اقدام" });
+    const forbidden = within(view.container).getByRole("region", { name: "کارهای من" });
     expect(await within(forbidden).findByText("دسترسی به کارها ندارید")).toBeTruthy();
     expect(within(forbidden).queryByRole("button", { name: "تلاش دوباره برای کارها" })).toBeNull();
     view.unmount();

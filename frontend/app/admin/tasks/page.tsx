@@ -100,6 +100,7 @@ export default function AdminTasksPage() {
   const [reservationSearched, setReservationSearched] = useState(false);
   const [reservationError, setReservationError] = useState<string | null>(null);
   const handledReservationLink = useRef(false);
+  const handledTaskLink = useRef(false);
   const [nextAssigneeId, setNextAssigneeId] = useState("");
   const [reassigning, setReassigning] = useState(false);
   const [reassignError, setReassignError] = useState<string | null>(null);
@@ -157,6 +158,15 @@ export default function AdminTasksPage() {
       setDetailLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!canReadTasks || handledTaskLink.current) return;
+    const rawId = new URLSearchParams(window.location.search).get("taskId");
+    if (rawId === null) return;
+    handledTaskLink.current = true;
+    if (!/^[1-9]\d*$/.test(rawId) || !Number.isSafeInteger(Number(rawId))) return;
+    void openTask(Number(rawId));
+  }, [canReadTasks, openTask]);
 
   function openCreate() {
     setCreateDraft(emptyCreateDraft());

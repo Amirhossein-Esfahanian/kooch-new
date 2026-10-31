@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public class AuditLogService(
+public partial class AuditLogService(
     KoochDbContext dbContext,
     IPermissionService permissionService) : IAuditLogService
 {

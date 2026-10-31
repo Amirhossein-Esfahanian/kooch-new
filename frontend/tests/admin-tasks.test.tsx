@@ -36,6 +36,13 @@ describe("Admin tasks", () => {
     mocks.request.mockImplementation(async (path: string) => path === "/admin/tasks" ? tasks : path === "/admin/tasks/assignees" ? assignees : path === "/admin/tasks/7" ? detail : (() => { throw new Error(path); })());
   });
 
+  it("opens an existing task detail from the dashboard task link", async () => {
+    window.history.replaceState({}, "", "/admin/tasks?taskId=7");
+    render(<AdminTasksPage />);
+    expect(await screen.findByRole("dialog", { name: "پیگیری رزرو" })).toBeTruthy();
+    expect(mocks.request).toHaveBeenCalledWith("/admin/tasks/7");
+  });
+
   it("opens creation from a reservation link and preselects the verified reservation", async () => {
     window.history.replaceState({}, "", "/admin/tasks?reservationId=12");
     mocks.request.mockImplementation(async (path: string, init?: RequestInit) => {

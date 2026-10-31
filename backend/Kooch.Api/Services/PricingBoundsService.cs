@@ -26,7 +26,8 @@ public sealed class PricingBoundsService(KoochDbContext dbContext) : IPricingBou
 
     public async Task<PricingBoundsResponse> UpdateAsync(
         UpdatePricingBoundsRequest request,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        int? actorUserId = null)
     {
         var target = Validate(request);
         var settings = await dbContext.SiteSettings
@@ -40,6 +41,9 @@ public sealed class PricingBoundsService(KoochDbContext dbContext) : IPricingBou
         settings.Single(setting => setting.Key == MaximumPriceKey).Value =
             target.MaxPrice.ToString(CultureInfo.InvariantCulture);
 
+        if (actorUserId.HasValue)
+            foreach (var setting in settings)
+                AuditLogService.CaptureApprovedChange(dbContext, actorUserId.Value, setting);
         await dbContext.SaveChangesAsync(cancellationToken);
         return target;
     }

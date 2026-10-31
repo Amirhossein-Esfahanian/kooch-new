@@ -8,5 +8,6 @@ public interface IPricingBoundsService
 
     Task<PricingBoundsResponse> UpdateAsync(
         UpdatePricingBoundsRequest request,
-        CancellationToken cancellationToken = default);
+        CancellationToken cancellationToken = default,
+        int? actorUserId = null);
 }

@@ -14,6 +14,9 @@ public class RegisterRequest
     [Required, MaxLength(30)]
     public string Mobile { get; set; } = string.Empty;
 
+    [Required, MaxLength(20)]
+    public string NationalCode { get; set; } = string.Empty;
+
     [EmailAddress, MaxLength(320)]
     public string? Email { get; set; }
 

@@ -11,6 +11,10 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { apiRequest, ApiRequestError, setToken } from "@/lib/owner-api";
+import {
+  normalizeIranianNationalCode,
+  validateIranianNationalCode,
+} from "@/lib/iran-national-code";
 
 type IdentityStage = "mobile" | "registration" | "otp";
 
@@ -49,6 +53,8 @@ export function CheckoutIdentityStep({
   const [mobile, setMobile] = useState("");
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
+  const [nationalCode, setNationalCode] = useState("");
+  const [nationalCodeError, setNationalCodeError] = useState("");
   const [email, setEmail] = useState("");
   const [otpCode, setOtpCode] = useState("");
   const [expiresAtUtc, setExpiresAtUtc] = useState<string | null>(null);
@@ -198,6 +204,11 @@ export function CheckoutIdentityStep({
       setError("نام و نام خانوادگی را کامل وارد کنید.");
       return;
     }
+    if (stage === "registration") {
+      const identityError = validateIranianNationalCode(nationalCode);
+      setNationalCodeError(identityError);
+      if (identityError) return;
+    }
 
     setSending(true);
     setError("");
@@ -211,6 +222,10 @@ export function CheckoutIdentityStep({
             allowRegistration: true,
             firstName: stage === "registration" ? firstName : null,
             lastName: stage === "registration" ? lastName : null,
+            nationalCode:
+              stage === "registration"
+                ? normalizeIranianNationalCode(nationalCode)
+                : null,
             email: stage === "registration" ? email || null : null,
           }),
         },
@@ -416,6 +431,24 @@ export function CheckoutIdentityStep({
                   />
                 </KoochField>
               </div>
+              <KoochField
+                error={nationalCodeError || undefined}
+                label="کد ملی"
+                required
+              >
+                <KoochInput
+                  dir="ltr"
+                  inputMode="numeric"
+                  maxLength={20}
+                  onChange={(event) => {
+                    setNationalCode(event.target.value);
+                    setNationalCodeError("");
+                  }}
+                  placeholder="کد ملی ۱۰ رقمی"
+                  required
+                  value={nationalCode}
+                />
+              </KoochField>
               <KoochField helperText="اختیاری" label="ایمیل">
                 <KoochInput
                   autoComplete="email"

@@ -1,87 +1,65 @@
 using Kooch.Api.Authentication;
 using Kooch.Api.Dtos.Guests;
-using Kooch.Api.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Filters;
 
 namespace Kooch.Api.Controllers;
 
 [ApiController]
 [OwnerAuthorize]
+[OwnerGuestApiDisabled]
 [Route("api/owner/properties/{propertyId:int}/guests")]
-public class OwnerGuestsController(
-    IGuestService guestService,
-    IPermissionService permissionService) : AuthenticatedControllerBase
+public class OwnerGuestsController : AuthenticatedControllerBase
 {
     [HttpGet]
-    [ProducesResponseType<IReadOnlyList<GuestResponse>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<GuestResponse>>> Search(
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<IReadOnlyList<GuestResponse>> Search(
         int propertyId,
         [FromQuery] GuestSearchRequest query,
         CancellationToken cancellationToken)
     {
-        await EnsureCanViewAsync(propertyId, cancellationToken);
-        return Ok(await guestService.SearchAsync(query, cancellationToken));
+        return StatusCode(StatusCodes.Status403Forbidden);
     }
 
     [HttpGet("{id:int}")]
-    [ProducesResponseType<GuestResponse>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<GuestResponse>> GetById(
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<GuestResponse> GetById(
         int propertyId,
         int id,
         CancellationToken cancellationToken)
     {
-        await EnsureCanViewAsync(propertyId, cancellationToken);
-        return Ok(await guestService.GetAsync(id, cancellationToken));
+        return StatusCode(StatusCodes.Status403Forbidden);
     }
 
     [HttpPost]
-    [ProducesResponseType<GuestResponse>(StatusCodes.Status201Created)]
-    public async Task<ActionResult<GuestResponse>> Create(
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<GuestResponse> Create(
         int propertyId,
         GuestCreateRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsureCanCreateBookingsAsync(propertyId, cancellationToken);
-        var guest = await guestService.CreateAsync(request, cancellationToken);
-        return StatusCode(StatusCodes.Status201Created, guest);
+        return StatusCode(StatusCodes.Status403Forbidden);
     }
 
     [HttpPut("{id:int}")]
-    [ProducesResponseType<GuestResponse>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<GuestResponse>> Update(
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public ActionResult<GuestResponse> Update(
         int propertyId,
         int id,
         GuestUpdateRequest request,
         CancellationToken cancellationToken)
     {
-        await EnsureCanEditBookingsAsync(propertyId, cancellationToken);
-        return Ok(await guestService.UpdateAsync(id, request, cancellationToken));
+        return StatusCode(StatusCodes.Status403Forbidden);
     }
+}
 
-    private async Task EnsureCanViewAsync(int propertyId, CancellationToken cancellationToken)
-    {
-        var user = GetCurrentUser();
-        if (!await permissionService.CanAsync(user.UserId, propertyId, "bookings.view", cancellationToken))
-        {
-            throw new UnauthorizedAccessException("You cannot access this property's guests.");
-        }
-    }
+// Temporary containment until Property-scoped Guest management has an approved model.
+// Short-circuit before model binding, including malformed create/update requests.
+[AttributeUsage(AttributeTargets.Class)]
+internal sealed class OwnerGuestApiDisabledAttribute : Attribute, IResourceFilter
+{
+    public void OnResourceExecuting(ResourceExecutingContext context) =>
+        context.Result = new StatusCodeResult(StatusCodes.Status403Forbidden);
 
-    private async Task EnsureCanEditBookingsAsync(int propertyId, CancellationToken cancellationToken)
-    {
-        var user = GetCurrentUser();
-        if (!await permissionService.CanAsync(user.UserId, propertyId, "bookings.edit", cancellationToken))
-        {
-            throw new UnauthorizedAccessException("You cannot access this property's guests.");
-        }
-    }
-
-    private async Task EnsureCanCreateBookingsAsync(int propertyId, CancellationToken cancellationToken)
-    {
-        var user = GetCurrentUser();
-        if (!await permissionService.CanAsync(user.UserId, propertyId, "bookings.create", cancellationToken))
-        {
-            throw new UnauthorizedAccessException("You cannot create guests for this property's reservations.");
-        }
-    }
+    public void OnResourceExecuted(ResourceExecutedContext context) { }
 }

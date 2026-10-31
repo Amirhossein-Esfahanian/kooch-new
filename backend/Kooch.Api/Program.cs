@@ -95,6 +95,7 @@ builder.Services.AddScoped<IPropertyAmenityService, PropertyAmenityService>();
 builder.Services.AddScoped<IPropertyCommonAreaService, PropertyCommonAreaService>();
 builder.Services.AddScoped<IPropertyViewService, PropertyViewService>();
 builder.Services.AddScoped<PropertyVisitService>();
+builder.Services.AddScoped<OwnerPropertyVisitAnalyticsService>();
 builder.Services.AddScoped<IPropertySettingService, PropertySettingService>();
 builder.Services.AddScoped<INearbyPlaceService, NearbyPlaceService>();
 builder.Services.AddScoped<IRoomTypeService, RoomTypeService>();

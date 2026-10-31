@@ -23,6 +23,54 @@ namespace Kooch.Api.Tests;
 public sealed class MockBookingSessionPaymentTests
 {
     [Fact]
+    public async Task SnapshotTravelerWithoutGuest_PaymentAndVoucherPreserveIdentityAndAuthorization()
+    {
+        await using var harness = await Harness.CreateAsync();
+        var reservations = await harness.Context.Reservations.OrderBy(r => r.Id).ToListAsync();
+        foreach (var reservation in reservations)
+        {
+            reservation.GuestId = null;
+            reservation.TravelerSnapshotKind = 2;
+            reservation.TravelerFirstNameSnapshot = $"Booked{reservation.Id}";
+            reservation.TravelerLastNameSnapshot = "Traveler";
+            reservation.TravelerMobileSnapshot = null;
+            reservation.TravelerEmailSnapshot = "booked@example.test";
+            reservation.TravelerNationalCodeSnapshot = "1234567891";
+            reservation.TravelerSnapshotCapturedAtUtc = new DateTime(2026, 10, 27, 12, 0, 0, DateTimeKind.Utc);
+        }
+        await harness.Context.SaveChangesAsync();
+        var before = reservations.ToDictionary(r => r.Id, Identity);
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => harness.AccountService.InitiateAsync(
+            2, Harness.SessionCode, InternalTestPaymentProvider.ProviderName, "wrong-account"));
+        await harness.AccountService.InitiateAsync(
+            1, Harness.SessionCode, InternalTestPaymentProvider.ProviderName, "snapshot-payment");
+        await harness.MockService.SimulateAsync(1, Harness.SessionCode, true);
+        await harness.MockService.SimulateAsync(1, Harness.SessionCode, true);
+        harness.Context.ChangeTracker.Clear();
+        foreach (var reservation in await harness.Context.Reservations.ToListAsync())
+        {
+            Assert.Equal(ReservationStatus.Confirmed, reservation.Status);
+            Assert.Null(reservation.GuestId);
+            Assert.Equal(before[reservation.Id], Identity(reservation));
+        }
+        var vouchers = await harness.Context.ReservationVouchers.ToListAsync();
+        Assert.Equal(2, vouchers.Count);
+        Assert.All(vouchers, voucher =>
+        {
+            Assert.Equal($"Booked{voucher.ReservationId} Traveler", voucher.GuestNameSnapshot);
+            Assert.Null(voucher.GuestMobileSnapshot);
+            Assert.Equal("booked@example.test", voucher.GuestEmailSnapshot);
+        });
+
+        static string Identity(Reservation r) => JsonSerializer.Serialize(new
+        {
+            r.TravelerSnapshotKind, r.TravelerFirstNameSnapshot, r.TravelerLastNameSnapshot,
+            r.TravelerMobileSnapshot, r.TravelerEmailSnapshot, r.TravelerNationalCodeSnapshot,
+            r.TravelerSnapshotCapturedAtUtc
+        });
+    }
+
+    [Fact]
     public void AccountProviderDiscovery_IsAuthenticatedGetAndInitiationUsesProviderKeyContract()
     {
         Assert.NotNull(typeof(AccountBookingSessionsController)

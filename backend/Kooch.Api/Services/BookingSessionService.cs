@@ -24,11 +24,8 @@ public sealed class BookingSessionService(
     IBookingSessionCodeGenerator sessionCodeGenerator,
     IReservationNotificationDispatcher notificationDispatcher,
     IPropertySameNightBookingPolicyService sameNightPolicyService,
-    ReservationActivityService activityService,
-    IWelcomeGiftGrantService? welcomeGiftGrantService = null) : IBookingSessionService
+    ReservationActivityService activityService) : IBookingSessionService
 {
-    private readonly IWelcomeGiftGrantService giftGrantService =
-        welcomeGiftGrantService ?? new WelcomeGiftGrantService(dbContext, TimeProvider.System);
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> LocalResourceLocks = new();
 
     public Task<BookingSessionCreateResult> CreateAsync(
@@ -133,7 +130,10 @@ public sealed class BookingSessionService(
                 cancellationToken);
             if (existingSession is not null)
             {
-                if (!string.Equals(existingSession.RequestHash, requestHash, StringComparison.Ordinal))
+                if (!string.Equals(existingSession.RequestHash, requestHash, StringComparison.Ordinal) &&
+                    !(creationKind == BookingSessionCreationKind.Account &&
+                      accountContext is { BookingForSelf: true } &&
+                      MatchesSelfReplayHash(request, accountContext, existingSession)))
                 {
                     throw new InvalidOperationException(
                         "The idempotency key has already been used with a different booking payload.");
@@ -198,6 +198,13 @@ public sealed class BookingSessionService(
             ClientId = request.ClientId,
             GuestId = primaryGuest.GuestId,
             Guest = primaryGuest.NewGuest,
+            TravelerSnapshotKind = accountContext is null ? null : (byte)(accountContext.BookingForSelf ? 1 : 2),
+            TravelerFirstNameSnapshot = primaryGuest.Snapshot?.FirstName,
+            TravelerLastNameSnapshot = primaryGuest.Snapshot?.LastName,
+            TravelerMobileSnapshot = primaryGuest.Snapshot?.Mobile,
+            TravelerEmailSnapshot = primaryGuest.Snapshot?.Email,
+            TravelerNationalCodeSnapshot = primaryGuest.Snapshot?.NationalCode,
+            TravelerSnapshotCapturedAtUtc = accountContext is null ? null : now,
             PropertyId = request.PropertyId,
             Currency = currency,
             ExpectedArrivalTime = accountContext?.ExpectedArrivalTime,
@@ -220,6 +227,13 @@ public sealed class BookingSessionService(
                 ClientId = request.ClientId,
                 GuestId = primaryGuest.GuestId,
                 Guest = primaryGuest.NewGuest,
+                TravelerSnapshotKind = session.TravelerSnapshotKind,
+                TravelerFirstNameSnapshot = session.TravelerFirstNameSnapshot,
+                TravelerLastNameSnapshot = session.TravelerLastNameSnapshot,
+                TravelerMobileSnapshot = session.TravelerMobileSnapshot,
+                TravelerEmailSnapshot = session.TravelerEmailSnapshot,
+                TravelerNationalCodeSnapshot = session.TravelerNationalCodeSnapshot,
+                TravelerSnapshotCapturedAtUtc = session.TravelerSnapshotCapturedAtUtc,
                 PropertyId = request.PropertyId,
                 RoomTypeId = prepared.Item.RoomTypeId,
                 RoomId = prepared.Item.RoomId,
@@ -252,10 +266,6 @@ public sealed class BookingSessionService(
             });
         }
 
-        var newlyEstablishedIdentities = dbContext.ChangeTracker.Entries<Guest>()
-            .Select(entry => entry.Entity)
-            .Where(giftGrantService.IsNewIdentity)
-            .ToArray();
         dbContext.BookingSessions.Add(session);
         await sessionCodeGenerator.SaveWithSessionCodeRetryAsync(dbContext, reservationNumberGenerator, cancellationToken);
         if (creationKind == BookingSessionCreationKind.Account)
@@ -265,8 +275,6 @@ public sealed class BookingSessionService(
                     ReservationActivityVisibility.PropertyVisible, "رزرو ایجاد شد",
                     cancellationToken: cancellationToken);
         }
-        foreach (var guest in newlyEstablishedIdentities)
-            await giftGrantService.TryGrantAsync(guest, cancellationToken);
         var pendingApprovalIds = session.Reservations
             .Where(reservation => reservation.Status == ReservationStatus.PendingApproval)
             .Select(reservation => reservation.Id)
@@ -285,6 +293,22 @@ public sealed class BookingSessionService(
     {
         var normalized = idempotencyKey?.Trim();
         return string.IsNullOrEmpty(normalized) ? null : normalized;
+    }
+
+    private static bool MatchesSelfReplayHash(
+        BookingSessionCreateRequest request, AccountBookingContext accountContext, BookingSession existingSession)
+    {
+        // Guest association is server-owned and can appear after the first self booking.
+        // Retain existing stored hashes while still comparing the complete submitted payload.
+        return new int?[] { null, existingSession.GuestId }.Any(guestId =>
+            string.Equals(existingSession.RequestHash, ComputeAccountRequestHash(
+                new BookingSessionCreateRequest
+                {
+                    ClientId = request.ClientId,
+                    GuestId = guestId,
+                    PropertyId = request.PropertyId,
+                    Items = request.Items
+                }, accountContext), StringComparison.Ordinal));
     }
 
     private static BookingSessionReservationCreateItem ToInternalItem(
@@ -519,76 +543,21 @@ public sealed class BookingSessionService(
                 await ApplySelfGuestUpdatesAsync(selfInput, linkedGuest, clientId, cancellationToken);
             }
 
-            return new PrimaryGuestAssignment(linkedGuest.Id, linkedGuest.Id == 0 ? linkedGuest : null);
+            var snapshot = new NormalizedPrimaryGuest(
+                GuestNormalization.NormalizeText(linkedGuest.FirstName),
+                GuestNormalization.NormalizeText(linkedGuest.LastName),
+                GuestNormalization.NormalizeMobile(linkedGuest.Mobile),
+                GuestNormalization.NormalizeEmail(linkedGuest.Email),
+                GuestNormalization.NormalizeNationalCode(linkedGuest.NationalCode));
+            if (snapshot.FirstName is null || snapshot.LastName is null)
+                throw new ArgumentException("Traveler first and last name are required.");
+            return new PrimaryGuestAssignment(linkedGuest.Id, linkedGuest.Id == 0 ? linkedGuest : null, snapshot);
         }
 
         var input = accountContext.PrimaryGuest
             ?? throw new InvalidOperationException("Primary guest details are required.");
-        var matchingGuests = await dbContext.Guests
-            .Where(guest =>
-                (input.Mobile != null && guest.NormalizedMobile == input.Mobile) ||
-                (input.Email != null && guest.NormalizedEmail == input.Email))
-            .Take(2)
-            .ToListAsync(cancellationToken);
-        if (matchingGuests.Count > 1)
-        {
-            throw new ArgumentException("اطلاعات تماس مهمان با بیش از یک پرونده مطابقت دارد.");
-        }
-
-        if (matchingGuests.Count == 1)
-        {
-            var guest = matchingGuests[0];
-            EnsureContactsDoNotConflict(input, guest.NormalizedMobile, guest.NormalizedEmail);
-            ApplyNationalCodeIfProvided(input.NationalCode, guest);
-            return new PrimaryGuestAssignment(guest.Id, null);
-        }
-
-        var matchingUsers = await dbContext.Users
-            .IgnoreQueryFilters()
-            .Where(user =>
-                (input.Mobile != null && user.PhoneNumber == input.Mobile) ||
-                (input.Email != null && user.Email == input.Email))
-            .Take(2)
-            .ToListAsync(cancellationToken);
-        if (matchingUsers.Count > 1)
-        {
-            throw new ArgumentException("اطلاعات تماس مهمان با بیش از یک حساب مطابقت دارد.");
-        }
-
-        int? linkedUserId = null;
-        if (matchingUsers.Count == 1)
-        {
-            var user = matchingUsers[0];
-            EnsureContactsDoNotConflict(input, user.PhoneNumber, user.Email);
-            if (user.Role != UserRole.Client)
-            {
-                throw new ArgumentException("مهمان با این اطلاعات قابل ثبت نیست.");
-            }
-
-            var alreadyLinked = await dbContext.Guests
-                .AnyAsync(guest => guest.UserId == user.Id, cancellationToken);
-            if (alreadyLinked)
-            {
-                throw new ArgumentException("مهمانی با این اطلاعات قبلاً ثبت شده است.");
-            }
-
-            linkedUserId = user.Id;
-        }
-
-        var newGuest = new Guest
-        {
-            UserId = linkedUserId,
-            FirstName = input.FirstName!,
-            LastName = input.LastName!,
-            Mobile = input.Mobile,
-            NormalizedMobile = input.Mobile,
-            Email = input.Email,
-            NormalizedEmail = input.Email,
-            NationalCode = input.NationalCode,
-            Nationality = "ایران"
-        };
-        dbContext.Guests.Add(newGuest);
-        return new PrimaryGuestAssignment(null, newGuest);
+        // Submitted traveler data is booking-owned metadata, never a canonical identity lookup.
+        return new PrimaryGuestAssignment(null, null, input);
     }
 
     private static (NormalizedPrimaryGuest Guest, bool HasAnyValue) NormalizePrimaryGuest(
@@ -628,35 +597,6 @@ public sealed class BookingSessionService(
         var email = IsInternalUserEmail(user.Email)
             ? null
             : UserIdentityNormalization.NormalizeEmail(user.Email);
-        var candidates = await dbContext.Guests
-            .Where(guest =>
-                (mobile != null && guest.NormalizedMobile == mobile) ||
-                (email != null && guest.NormalizedEmail == email))
-            .Take(2)
-            .ToListAsync(cancellationToken);
-        if (candidates.Count > 1 || candidates.Any(guest => guest.UserId.HasValue))
-        {
-            throw new ArgumentException("اطلاعات تماس حساب با پرونده مهمان دیگری تداخل دارد.");
-        }
-
-        if (candidates.Count == 1)
-        {
-            var candidate = candidates[0];
-            candidate.UserId = clientId;
-            candidate.FirstName = string.IsNullOrWhiteSpace(candidate.FirstName)
-                ? user.FirstName
-                : candidate.FirstName;
-            candidate.LastName = string.IsNullOrWhiteSpace(candidate.LastName)
-                ? user.LastName
-                : candidate.LastName;
-            candidate.Mobile ??= mobile;
-            candidate.NormalizedMobile ??= mobile;
-            candidate.Email ??= email;
-            candidate.NormalizedEmail ??= email;
-            candidate.Nationality ??= "ایران";
-            return candidate;
-        }
-
         var newGuest = new Guest
         {
             UserId = clientId,
@@ -728,33 +668,6 @@ public sealed class BookingSessionService(
 
     private static bool IsInternalUserEmail(string? email) =>
         email?.EndsWith("@mobile.kooch.local", StringComparison.OrdinalIgnoreCase) == true;
-
-    private static void EnsureContactsDoNotConflict(
-        NormalizedPrimaryGuest input,
-        string? storedMobile,
-        string? storedEmail)
-    {
-        if ((input.Mobile is not null && !string.Equals(input.Mobile, storedMobile, StringComparison.Ordinal)) ||
-            (input.Email is not null && !string.Equals(input.Email, storedEmail, StringComparison.OrdinalIgnoreCase)))
-        {
-            throw new ArgumentException("اطلاعات تماس مهمان با پرونده موجود هم‌خوانی ندارد.");
-        }
-    }
-
-    private static void ApplyNationalCodeIfProvided(string? nationalCode, Guest guest)
-    {
-        if (nationalCode is null || string.Equals(guest.NationalCode, nationalCode, StringComparison.Ordinal))
-        {
-            return;
-        }
-
-        if (guest.NationalCode is not null)
-        {
-            throw new ArgumentException("کد ملی مهمان با پرونده موجود هم‌خوانی ندارد.");
-        }
-
-        guest.NationalCode = nationalCode;
-    }
 
     private static void ValidateRequest(BookingSessionCreateRequest request)
     {
@@ -1435,7 +1348,8 @@ public sealed class BookingSessionService(
 
     private sealed record PrimaryGuestAssignment(
         int? GuestId,
-        Guest? NewGuest);
+        Guest? NewGuest,
+        NormalizedPrimaryGuest? Snapshot = null);
 
     private sealed class LocalResourceLockScope(IReadOnlyList<SemaphoreSlim> acquiredLocks) : IAsyncDisposable
     {

@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Data;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Cryptography;
 using System.Security.Claims;
@@ -9,6 +10,7 @@ using Kooch.Api.Dtos.Auth;
 using Kooch.Api.Dtos.Users;
 using Kooch.Api.Entities;
 using Kooch.Api.Utilities;
+using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
@@ -21,11 +23,15 @@ public class AuthService(
     IOptions<JwtOptions> jwtOptions,
     IPropertyAuthorizationService propertyAuthorizationService,
     IHostEnvironment appEnvironment,
-    INotificationService notificationService) : IAuthService
+    INotificationService notificationService,
+    IWelcomeGiftGrantService? welcomeGiftGrantService = null) : IAuthService
 {
     private readonly JwtOptions _jwtOptions = jwtOptions.Value;
+    private readonly IWelcomeGiftGrantService giftGrantService =
+        welcomeGiftGrantService ?? new WelcomeGiftGrantService(dbContext, TimeProvider.System);
     private static readonly TimeSpan OtpLifetime = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan OtpRequestCooldown = TimeSpan.FromSeconds(60);
+    private const int MaxOtpVerificationAttempts = 3;
     private const string InternalEmailDomain = "mobile.kooch.local";
 
     public async Task<RequestOtpResponse> RegisterAsync(
@@ -39,6 +45,7 @@ public class AuthService(
 
         PasswordPolicy.Validate(request.Password);
         var identity = CreateUserIdentity(request.FirstName, request.LastName, request.Mobile, request.Email);
+        var nationalCode = NormalizeRequiredRegistrationNationalCode(request.NationalCode);
         var mobile = identity.PhoneNumber;
         var email = identity.Email;
 
@@ -47,7 +54,6 @@ public class AuthService(
         {
             await EnsureUniqueEmailAsync(email, null, cancellationToken);
         }
-        await EnsurePassengerGuestCanBeLinkedAsync(mobile, email, cancellationToken);
 
         var user = new User
         {
@@ -56,14 +62,13 @@ public class AuthService(
             Email = email,
             PhoneNumber = mobile,
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
+            PendingRegistrationNationalCode = nationalCode,
             Role = UserRole.Client,
             IsActive = false
         };
 
         dbContext.Users.Add(user);
         await dbContext.SaveChangesAsync(cancellationToken);
-        await CreateOrLinkGuestForPassengerAsync(user, mobile, email, cancellationToken);
-
         return await CreateAndSendOtpAsync(user, mobile, cancellationToken);
     }
 
@@ -112,15 +117,12 @@ public class AuthService(
                 request.LastName,
                 mobile,
                 request.Email);
+            var nationalCode = NormalizeRequiredRegistrationNationalCode(request.NationalCode);
             if (!string.IsNullOrWhiteSpace(identity.Email))
             {
                 await EnsureUniqueEmailAsync(identity.Email, null, cancellationToken);
             }
             await EnsureUniqueMobileAsync(identity.PhoneNumber, null, cancellationToken);
-            await EnsurePassengerGuestCanBeLinkedAsync(
-                identity.PhoneNumber,
-                identity.Email,
-                cancellationToken);
 
             user = new User
             {
@@ -130,17 +132,13 @@ public class AuthService(
                 PhoneNumber = identity.PhoneNumber,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(
                     Convert.ToHexString(RandomNumberGenerator.GetBytes(32))),
+                PendingRegistrationNationalCode = nationalCode,
                 Role = UserRole.Client,
                 IsActive = false
             };
 
             dbContext.Users.Add(user);
             await dbContext.SaveChangesAsync(cancellationToken);
-            await CreateOrLinkGuestForPassengerAsync(
-                user,
-                identity.PhoneNumber,
-                identity.Email,
-                cancellationToken);
         }
 
         if (user is null)
@@ -161,6 +159,40 @@ public class AuthService(
         VerifyOtpRequest request,
         CancellationToken cancellationToken = default)
     {
+        for (var attempt = 1; ; attempt++)
+        {
+            User? user;
+            try
+            {
+                user = await VerifyOtpAttemptAsync(request, cancellationToken);
+            }
+            catch (Exception exception) when (dbContext.Database.IsSqlServer() && IsSqlServerDeadlock(exception))
+            {
+                // The attempt has disposed its transaction; none of its tracked state may be reused.
+                dbContext.ChangeTracker.Clear();
+                if (attempt >= MaxOtpVerificationAttempts)
+                    throw new OtpVerificationUnavailableException(exception);
+                await Task.Delay(TimeSpan.FromMilliseconds(50 * attempt + RandomNumberGenerator.GetInt32(50)),
+                    cancellationToken);
+                continue;
+            }
+
+            // Response construction is outside the retry boundary: the OTP transaction is already committed.
+            return user is null ? null : await CreateAuthResponseAsync(user, cancellationToken);
+        }
+    }
+
+    private static bool IsSqlServerDeadlock(Exception exception)
+    {
+        for (Exception? current = exception; current is not null; current = current.InnerException)
+            if (current is SqlException { Number: 1205 }) return true;
+        return false;
+    }
+
+    private async Task<User?> VerifyOtpAttemptAsync(
+        VerifyOtpRequest request,
+        CancellationToken cancellationToken)
+    {
         var mobile = UserIdentityNormalization.NormalizePhoneNumber(request.Mobile);
         if (string.IsNullOrWhiteSpace(mobile))
         {
@@ -175,33 +207,68 @@ public class AuthService(
 
         var codeHash = HashToken($"{mobile}:{code}");
         var now = DateTime.UtcNow;
-        var otp = await dbContext.MobileOtpCodes
-            .Include(item => item.User)
+        var otp = await dbContext.MobileOtpCodes.AsNoTracking()
             .Where(item => item.Mobile == mobile && item.CodeHash == codeHash)
             .OrderByDescending(item => item.CreatedAtUtc)
             .FirstOrDefaultAsync(cancellationToken);
 
         if (otp is null ||
             otp.UsedAtUtc.HasValue ||
-            otp.ExpiresAtUtc <= now ||
-            otp.User.PasswordSetupRequired)
+            otp.ExpiresAtUtc <= now)
         {
             return null;
         }
 
-        var activeOtps = await dbContext.MobileOtpCodes
-            .Where(item => item.Mobile == mobile &&
-                           item.UsedAtUtc == null &&
-                           item.ExpiresAtUtc > now)
-            .ToListAsync(cancellationToken);
-        foreach (var activeOtp in activeOtps)
+        await using var transaction = await dbContext.Database.BeginTransactionAsync(
+            IsolationLevel.Serializable, cancellationToken);
+        var user = dbContext.Database.IsSqlServer()
+            ? await dbContext.Users.FromSqlInterpolated(
+                $"SELECT * FROM Users WITH (UPDLOCK, HOLDLOCK) WHERE Id = {otp.UserId}")
+                .SingleAsync(cancellationToken)
+            : await dbContext.Users.SingleAsync(item => item.Id == otp.UserId, cancellationToken);
+        if (user.PasswordSetupRequired ||
+            UserIdentityNormalization.NormalizePhoneNumber(user.PhoneNumber) != mobile)
         {
-            activeOtp.UsedAtUtc = now;
+            return null;
+        }
+        var isNewRegistration = !user.IsActive && user.PendingRegistrationNationalCode is not null;
+
+        var lockTimeUtc = DateTime.UtcNow;
+        var activeOtps = dbContext.Database.IsSqlServer()
+            ? dbContext.MobileOtpCodes.FromSqlInterpolated(
+                $"SELECT * FROM [MobileOtpCodes] WITH (UPDLOCK, HOLDLOCK, INDEX(IX_MobileOtpCodes_Mobile_UsedAtUtc_ExpiresAtUtc)) WHERE [Mobile] = {mobile} AND [UsedAtUtc] IS NULL AND [ExpiresAtUtc] > {lockTimeUtc}")
+            : dbContext.MobileOtpCodes.Where(item =>
+                item.Mobile == mobile && item.UsedAtUtc == null && item.ExpiresAtUtc > lockTimeUtc);
+        // Lock this mobile's active codes before changing any OTP index keys.
+        var activeOtpIds = await activeOtps.AsNoTracking().OrderBy(item => item.Id)
+            .Select(item => item.Id).ToArrayAsync(cancellationToken);
+        var verifiedAtUtc = DateTime.UtcNow;
+        var claimed = await dbContext.MobileOtpCodes
+            .Where(item => item.Id == otp.Id && item.UsedAtUtc == null && item.ExpiresAtUtc > verifiedAtUtc)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.UsedAtUtc, verifiedAtUtc), cancellationToken);
+        if (claimed != 1)
+        {
+            return null;
         }
 
-        otp.User.IsActive = true;
+        foreach (var activeOtpId in activeOtpIds.Where(id => id != otp.Id))
+        {
+            await dbContext.MobileOtpCodes
+                .Where(item => item.Id == activeOtpId && item.UsedAtUtc == null && item.ExpiresAtUtc > verifiedAtUtc)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(item => item.UsedAtUtc, verifiedAtUtc), cancellationToken);
+        }
+        user.IsActive = true;
         await dbContext.SaveChangesAsync(cancellationToken);
-        return await CreateAuthResponseAsync(otp.User, cancellationToken);
+        await LinkVerifiedMobileGuestAsync(user, mobile, cancellationToken);
+        if (isNewRegistration)
+            await giftGrantService.TryGrantForVerifiedRegistrationAsync(user, cancellationToken);
+        if (user.PendingRegistrationNationalCode is not null)
+        {
+            user.PendingRegistrationNationalCode = null;
+            await dbContext.SaveChangesAsync(cancellationToken);
+        }
+        await transaction.CommitAsync(cancellationToken);
+        return user;
     }
 
     public async Task<string> CreatePasswordSetupTokenAsync(
@@ -567,7 +634,12 @@ public class AuthService(
         User user,
         CancellationToken cancellationToken)
     {
-        var guestId = await ResolvePassengerGuestIdAsync(user, cancellationToken);
+        var guestId = user.Role == UserRole.Client
+            ? await dbContext.Guests.AsNoTracking()
+                .Where(guest => guest.UserId == user.Id)
+                .Select(guest => (int?)guest.Id)
+                .SingleOrDefaultAsync(cancellationToken)
+            : null;
         // var expiresAtUtc = DateTime.UtcNow.AddMinutes(_jwtOptions.ExpiresMinutes);
         var expiresAtUtc = DateTime.UtcNow.AddDays(_jwtOptions.AccessTokenExpirationDays);
         return new AuthResponse
@@ -582,6 +654,16 @@ public class AuthService(
         };
     }
 
+
+    private static string NormalizeRequiredRegistrationNationalCode(string? nationalCode)
+    {
+        if (!GuestNormalization.IsValidIranianNationalCode(nationalCode))
+        {
+            throw new ArgumentException("A valid Iranian NationalId is required.");
+        }
+
+        return GuestNormalization.NormalizeNationalCode(nationalCode)!;
+    }
 
     private static UserIdentityInput CreateUserIdentity(
         string firstName,
@@ -684,173 +766,44 @@ public class AuthService(
         };
     }
 
-    private async Task CreateOrLinkGuestForPassengerAsync(
+    private async Task LinkVerifiedMobileGuestAsync(
         User user,
-        string mobile,
-        string? email,
+        string verifiedMobile,
         CancellationToken cancellationToken)
     {
-        var (guest, hasConflict) = await FindPassengerGuestLinkCandidateAsync(
-            mobile,
-            email,
-            user.Id,
-            cancellationToken);
-        if (hasConflict)
+        if (user.Role != UserRole.Client ||
+            await dbContext.Guests.AnyAsync(guest => guest.UserId == user.Id, cancellationToken))
         {
-            throw new ArgumentException("A guest already exists for this mobile or email.");
-        }
-
-        if (guest is not null)
-        {
-            if (guest.UserId.HasValue && guest.UserId.Value != user.Id)
-            {
-                throw new ArgumentException("A guest already exists for this mobile or email.");
-            }
-
-            guest.UserId = user.Id;
-            guest.FirstName = string.IsNullOrWhiteSpace(guest.FirstName) ? user.FirstName : guest.FirstName;
-            guest.LastName = string.IsNullOrWhiteSpace(guest.LastName) ? user.LastName : guest.LastName;
-            guest.Mobile ??= mobile;
-            guest.NormalizedMobile ??= mobile;
-            guest.Email ??= email;
-            guest.NormalizedEmail ??= email;
-            guest.Nationality ??= "\u0627\u06CC\u0631\u0627\u0646";
-            await dbContext.SaveChangesAsync(cancellationToken);
             return;
         }
 
+        var candidates = await dbContext.Guests.AsNoTracking()
+            .Where(guest => guest.NormalizedMobile == verifiedMobile)
+            .Take(2)
+            .ToListAsync(cancellationToken);
+        if (candidates.Count == 1 && candidates[0].UserId is null)
+        {
+            var candidateId = candidates[0].Id;
+            var linked = await dbContext.Guests
+                .Where(guest => guest.Id == candidateId && guest.UserId == null)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(guest => guest.UserId, user.Id), cancellationToken);
+            if (linked == 1)
+            {
+                return;
+            }
+        }
+
+        // Ambiguous or already-owned contact records are never transferred to this User.
         dbContext.Guests.Add(new Guest
         {
             UserId = user.Id,
             FirstName = user.FirstName,
             LastName = user.LastName,
-            Mobile = mobile,
-            NormalizedMobile = mobile,
-            Email = email,
-            NormalizedEmail = email,
+            Mobile = verifiedMobile,
+            NormalizedMobile = verifiedMobile,
             Nationality = "\u0627\u06CC\u0631\u0627\u0646"
         });
         await dbContext.SaveChangesAsync(cancellationToken);
-    }
-
-    private async Task EnsurePassengerGuestCanBeLinkedAsync(
-        string mobile,
-        string? email,
-        CancellationToken cancellationToken)
-    {
-        var (_, hasConflict) = await FindPassengerGuestLinkCandidateAsync(
-            mobile,
-            email,
-            null,
-            cancellationToken);
-        if (hasConflict)
-        {
-            throw new ArgumentException("A passenger account already exists for this guest.");
-        }
-    }
-
-    private async Task<int?> ResolvePassengerGuestIdAsync(
-        User user,
-        CancellationToken cancellationToken)
-    {
-        if (user.Role != UserRole.Client)
-        {
-            return null;
-        }
-
-        var linkedGuestId = await dbContext.Guests
-            .Where(guest => guest.UserId == user.Id)
-            .Select(guest => (int?)guest.Id)
-            .SingleOrDefaultAsync(cancellationToken);
-        if (linkedGuestId.HasValue)
-        {
-            return linkedGuestId.Value;
-        }
-
-        var mobile = UserIdentityNormalization.NormalizePhoneNumber(user.PhoneNumber);
-        var email = IsInternalEmail(user.Email) ? null : UserIdentityNormalization.NormalizeEmail(user.Email);
-        if (mobile is null && email is null)
-        {
-            return null;
-        }
-
-        var (guest, hasConflict) = await FindPassengerGuestLinkCandidateAsync(
-            mobile,
-            email,
-            user.Id,
-            cancellationToken);
-        if (hasConflict)
-        {
-            return null;
-        }
-
-        if (guest is not null)
-        {
-            guest.UserId = user.Id;
-            guest.FirstName = string.IsNullOrWhiteSpace(guest.FirstName) ? user.FirstName : guest.FirstName;
-            guest.LastName = string.IsNullOrWhiteSpace(guest.LastName) ? user.LastName : guest.LastName;
-            guest.Mobile ??= mobile;
-            guest.NormalizedMobile ??= mobile;
-            guest.Email ??= email;
-            guest.NormalizedEmail ??= email;
-            guest.Nationality ??= "\u0627\u06CC\u0631\u0627\u0646";
-            await dbContext.SaveChangesAsync(cancellationToken);
-            return guest.Id;
-        }
-
-        var newGuest = new Guest
-        {
-            UserId = user.Id,
-            FirstName = user.FirstName,
-            LastName = user.LastName,
-            Mobile = mobile,
-            NormalizedMobile = mobile,
-            Email = email,
-            NormalizedEmail = email,
-            Nationality = "\u0627\u06CC\u0631\u0627\u0646"
-        };
-        dbContext.Guests.Add(newGuest);
-        await dbContext.SaveChangesAsync(cancellationToken);
-        return newGuest.Id;
-    }
-
-    private async Task<(Guest? Guest, bool HasConflict)> FindPassengerGuestLinkCandidateAsync(
-        string? mobile,
-        string? email,
-        int? userId,
-        CancellationToken cancellationToken)
-    {
-        if (mobile is null && email is null)
-        {
-            return (null, false);
-        }
-
-        var guests = await dbContext.Guests
-            .Where(guest =>
-                (mobile != null && guest.NormalizedMobile == mobile) ||
-                (email != null && guest.NormalizedEmail == email))
-            .ToListAsync(cancellationToken);
-        if (guests.Count == 0)
-        {
-            return (null, false);
-        }
-
-        if (userId.HasValue)
-        {
-            var alreadyLinked = guests.SingleOrDefault(guest => guest.UserId == userId.Value);
-            if (alreadyLinked is not null)
-            {
-                return (alreadyLinked, false);
-            }
-        }
-
-        if (guests.Any(guest => guest.UserId.HasValue) ||
-            guests.Select(guest => guest.Id).Distinct().Count() > 1)
-        {
-            return (null, true);
-        }
-
-        return (guests[0], false);
     }
 
     private async Task<User?> FindUserByIdentifierAsync(

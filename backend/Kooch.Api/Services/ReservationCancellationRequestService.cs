@@ -104,7 +104,8 @@ public sealed class ReservationCancellationRequestService(
                 item.Id,
                 item.PropertyId,
                 item.Status,
-                GuestUserId = item.Guest == null ? null : item.Guest.UserId
+                GuestUserId = item.TravelerSnapshotKind.HasValue || item.Guest == null || item.Guest.UserId == null
+                    ? (int?)item.ClientId : item.Guest.UserId
             })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Reservation not found.");

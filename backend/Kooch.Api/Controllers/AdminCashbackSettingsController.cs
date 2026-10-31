@@ -23,7 +23,7 @@ public sealed class AdminCashbackSettingsController(
     public async Task<ActionResult<CashbackPolicyResponse>> UpdateGlobal(UpdateCashbackPolicyRequest request, CancellationToken cancellationToken)
     {
         await EnsureCanManageSettingsAsync(cancellationToken);
-        return Ok(await cashbackSettingsService.UpdateGlobalAsync(request, cancellationToken));
+        return Ok(await cashbackSettingsService.UpdateGlobalAsync(request, cancellationToken, GetCurrentUser().UserId));
     }
 
     [HttpGet("api/admin/properties/{propertyId:int}/cashback")]

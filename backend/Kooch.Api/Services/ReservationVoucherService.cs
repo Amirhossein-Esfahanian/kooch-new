@@ -126,6 +126,13 @@ public sealed class ReservationVoucherService(
         Reservation reservation,
         CancellationToken cancellationToken)
     {
+        if (reservation.TravelerSnapshotKind.HasValue)
+            return CreateGuestSnapshot(
+                reservation.TravelerFirstNameSnapshot!,
+                reservation.TravelerLastNameSnapshot!,
+                reservation.TravelerMobileSnapshot,
+                reservation.TravelerEmailSnapshot);
+
         if (reservation.GuestId.HasValue)
         {
             var guest = await dbContext.Guests.IgnoreQueryFilters().AsNoTracking()

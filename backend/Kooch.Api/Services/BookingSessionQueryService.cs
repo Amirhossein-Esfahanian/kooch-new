@@ -178,16 +178,26 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                     Name = session.Property.Name,
                     Slug = session.Property.Slug
                 },
-                PrimaryGuest = session.Guest == null
-                    ? null
-                    : new AccountBookingSessionPrimaryGuestResponse
+                // A captured snapshot is complete historical data, never a Guest fallback source.
+                PrimaryGuest = session.TravelerSnapshotKind.HasValue
+                    ? new AccountBookingSessionPrimaryGuestResponse
+                    {
+                        FirstName = session.TravelerFirstNameSnapshot!,
+                        LastName = session.TravelerLastNameSnapshot!,
+                        Mobile = session.TravelerMobileSnapshot,
+                        Email = session.TravelerEmailSnapshot,
+                        NationalCode = session.TravelerNationalCodeSnapshot
+                    }
+                    : session.Guest != null && session.Guest.UserId == session.ClientId
+                    ? new AccountBookingSessionPrimaryGuestResponse
                     {
                         FirstName = session.Guest.FirstName,
                         LastName = session.Guest.LastName,
                         Mobile = session.Guest.Mobile,
                         Email = session.Guest.Email,
                         NationalCode = session.Guest.NationalCode
-                    },
+                    }
+                    : null,
                 Currency = session.Currency,
                 Payment = session.Payments
                     .OrderByDescending(payment => payment.CreatedAtUtc)
@@ -263,9 +273,28 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                     PhoneNumber = session.Client.PhoneNumber,
                     Email = session.Client.Email
                 },
-                Guest = session.Guest == null
-                    ? null
-                    : new BookingSessionGuestResponse
+                PrimaryTraveler = session.TravelerSnapshotKind.HasValue
+                    ? new AccountBookingSessionPrimaryGuestResponse
+                    {
+                        FirstName = session.TravelerFirstNameSnapshot!,
+                        LastName = session.TravelerLastNameSnapshot!,
+                        Mobile = session.TravelerMobileSnapshot,
+                        Email = session.TravelerEmailSnapshot,
+                        NationalCode = session.TravelerNationalCodeSnapshot
+                    }
+                    : session.Guest != null && session.Guest.UserId == session.ClientId
+                    ? new AccountBookingSessionPrimaryGuestResponse
+                    {
+                        FirstName = session.Guest.FirstName,
+                        LastName = session.Guest.LastName,
+                        Mobile = session.Guest.Mobile,
+                        Email = session.Guest.Email,
+                        NationalCode = session.Guest.NationalCode
+                    }
+                    : null,
+                Guest = !session.TravelerSnapshotKind.HasValue &&
+                    session.Guest != null && session.Guest.UserId == session.ClientId
+                    ? new BookingSessionGuestResponse
                     {
                         GuestId = session.Guest.Id,
                         FirstName = session.Guest.FirstName,
@@ -273,7 +302,8 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                         Mobile = session.Guest.Mobile,
                         Email = session.Guest.Email,
                         NationalCode = session.Guest.NationalCode
-                    },
+                    }
+                    : null,
                 Reservations = session.Reservations
                     .OrderBy(reservation => reservation.Id)
                     .Select(reservation => new BookingSessionReservationDetailsResponse

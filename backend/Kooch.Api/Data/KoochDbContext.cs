@@ -152,6 +152,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAuditLogsAreAppendOnly();
         EnsureAdminTaskHistory();
         EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
@@ -189,6 +190,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAuditLogsAreAppendOnly();
         EnsureAdminTaskHistory();
         EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
@@ -201,6 +203,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAuditLogsAreAppendOnly();
         EnsureAdminTaskHistory();
         EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
@@ -215,6 +218,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         EnsureFinancialHistoryIsAppendOnly();
         EnsureReservationActivitiesAreAppendOnly();
+        EnsureAuditLogsAreAppendOnly();
         EnsureAdminTaskHistory();
         EnsureAdminAnnouncementHistory();
         EnsureCancellationRequestHistory();
@@ -237,6 +241,13 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 !entry.Entity.ReadAtUtc.HasValue)
                 throw new InvalidOperationException("Notification read state may only change from unread to read.");
         }
+    }
+
+    private void EnsureAuditLogsAreAppendOnly()
+    {
+        if (ChangeTracker.Entries<AuditLog>().Any(entry =>
+                entry.State is EntityState.Modified or EntityState.Deleted))
+            throw new InvalidOperationException("Audit logs are append-only.");
     }
 
     private void EnsureReservationActivitiesAreAppendOnly()
@@ -969,6 +980,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(user => user.Username).HasMaxLength(100);
             entity.Property(user => user.PasswordHash).HasMaxLength(500).IsRequired();
             entity.Property(user => user.PhoneNumber).HasMaxLength(30);
+            entity.Property(user => user.PendingRegistrationNationalCode).HasMaxLength(10);
             entity.Property(user => user.PasswordSetupRequired).HasDefaultValue(false);
             entity.Property(user => user.SecurityStampVersion).HasDefaultValue(0);
             entity.Property(user => user.CanBeRestricted).HasDefaultValue(true);
@@ -1401,6 +1413,11 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
 
         modelBuilder.Entity<RoomDailyPriceHistory>(entity =>
         {
+            entity.HasIndex(history => new { history.AuditLogId, history.AffectedDateFrom, history.Id });
+            entity.HasOne(history => history.AuditLog)
+                .WithMany()
+                .HasForeignKey(history => history.AuditLogId)
+                .OnDelete(DeleteBehavior.NoAction);
             entity.Property(history => history.GuestType)
                 .HasConversion<string>()
                 .HasMaxLength(20)
@@ -1463,6 +1480,15 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(log => log.EntityType).HasMaxLength(100).IsRequired();
             entity.Property(log => log.EntityName).HasMaxLength(300);
             entity.Property(log => log.Description).HasMaxLength(1000);
+            entity.ToTable(table =>
+            {
+                table.HasCheckConstraint("CK_AuditLogs_PreviousValuesJson",
+                    "[PreviousValuesJson] IS NULL OR ISJSON([PreviousValuesJson]) = 1");
+                table.HasCheckConstraint("CK_AuditLogs_NewValuesJson",
+                    "[NewValuesJson] IS NULL OR ISJSON([NewValuesJson]) = 1");
+            });
+            entity.HasIndex(log => new { log.OccurredAtUtc, log.Id }).IsDescending(true, true);
+            entity.HasIndex(log => new { log.Action, log.OccurredAtUtc, log.Id }).IsDescending(false, true, true);
             entity.HasIndex(log => new { log.PropertyId, log.OccurredAtUtc });
             entity.HasIndex(log => new { log.UserId, log.OccurredAtUtc });
             entity.HasIndex(log => new { log.EntityType, log.EntityId });
@@ -1565,6 +1591,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<BookingSession>(entity =>
         {
+            entity.Property(item => item.TravelerSnapshotKind).HasColumnType("tinyint");
+            entity.Property(item => item.TravelerFirstNameSnapshot).HasMaxLength(100);
+            entity.Property(item => item.TravelerLastNameSnapshot).HasMaxLength(100);
+            entity.Property(item => item.TravelerMobileSnapshot).HasMaxLength(30);
+            entity.Property(item => item.TravelerEmailSnapshot).HasMaxLength(320);
+            entity.Property(item => item.TravelerNationalCodeSnapshot).HasMaxLength(20);
+            entity.Property(item => item.TravelerSnapshotCapturedAtUtc).HasColumnType("datetime2(7)");
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_BookingSessions_TravelerSnapshot",
+                "([TravelerSnapshotKind] IS NULL AND [TravelerFirstNameSnapshot] IS NULL AND [TravelerLastNameSnapshot] IS NULL AND [TravelerMobileSnapshot] IS NULL AND [TravelerEmailSnapshot] IS NULL AND [TravelerNationalCodeSnapshot] IS NULL AND [TravelerSnapshotCapturedAtUtc] IS NULL) OR ([TravelerSnapshotKind] IS NOT NULL AND [TravelerSnapshotKind] IN (1, 2) AND [TravelerSnapshotCapturedAtUtc] IS NOT NULL AND [TravelerFirstNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerFirstNameSnapshot]))) > 0 AND [TravelerLastNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerLastNameSnapshot]))) > 0)"));
             entity.Property(session => session.SessionCode).HasMaxLength(32).IsRequired();
             entity.Property(session => session.Currency).HasMaxLength(3).IsRequired();
             entity.Property(session => session.ExpectedArrivalTime).HasColumnType("time");
@@ -1615,6 +1651,16 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<Reservation>(entity =>
         {
+            entity.Property(item => item.TravelerSnapshotKind).HasColumnType("tinyint");
+            entity.Property(item => item.TravelerFirstNameSnapshot).HasMaxLength(100);
+            entity.Property(item => item.TravelerLastNameSnapshot).HasMaxLength(100);
+            entity.Property(item => item.TravelerMobileSnapshot).HasMaxLength(30);
+            entity.Property(item => item.TravelerEmailSnapshot).HasMaxLength(320);
+            entity.Property(item => item.TravelerNationalCodeSnapshot).HasMaxLength(20);
+            entity.Property(item => item.TravelerSnapshotCapturedAtUtc).HasColumnType("datetime2(7)");
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_Reservations_TravelerSnapshot",
+                "([TravelerSnapshotKind] IS NULL AND [TravelerFirstNameSnapshot] IS NULL AND [TravelerLastNameSnapshot] IS NULL AND [TravelerMobileSnapshot] IS NULL AND [TravelerEmailSnapshot] IS NULL AND [TravelerNationalCodeSnapshot] IS NULL AND [TravelerSnapshotCapturedAtUtc] IS NULL) OR ([TravelerSnapshotKind] IS NOT NULL AND [TravelerSnapshotKind] IN (1, 2) AND [TravelerSnapshotCapturedAtUtc] IS NOT NULL AND [TravelerFirstNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerFirstNameSnapshot]))) > 0 AND [TravelerLastNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerLastNameSnapshot]))) > 0)"));
             entity.Property(reservation => reservation.RatePlanNameSnapshot).HasMaxLength(150);
             entity.Property(reservation => reservation.MealPlanNameSnapshot).HasMaxLength(150);
             entity.Property(reservation => reservation.MealPlanSlugSnapshot).HasMaxLength(170);
@@ -2459,6 +2505,9 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
             entity.Property(grant => grant.AmountSnapshot).HasPrecision(18, 2);
             entity.HasIndex(grant => new { grant.CampaignId, grant.UserId }).IsUnique();
             entity.HasIndex(grant => new { grant.CampaignId, grant.NationalCodeSnapshot }).IsUnique();
+            entity.HasIndex(grant => grant.UserId);
+            entity.HasIndex(grant => grant.UserId, "IX_WelcomeGiftGrants_UserId_Lifetime").IsUnique();
+            entity.HasIndex(grant => grant.NationalCodeSnapshot, "IX_WelcomeGiftGrants_NationalCodeSnapshot_Lifetime").IsUnique();
             entity.HasIndex(grant => grant.WalletLotId).IsUnique();
             entity.HasIndex(grant => grant.WalletEntryId).IsUnique();
             entity.HasOne(grant => grant.Campaign).WithMany().HasForeignKey(grant => grant.CampaignId)

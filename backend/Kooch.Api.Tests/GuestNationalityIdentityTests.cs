@@ -43,7 +43,7 @@ public sealed class GuestNationalityIdentityTests
     }
 
     [Fact]
-    public async Task IranianIdentity_IsUniqueAcrossCanonicalUserLinks()
+    public async Task IranianIdentity_IsUniqueAcrossGuestRecordsWithoutClaimingUser()
     {
         await using var db = CreateContext();
         db.Users.AddRange(User(1, "09120000001"), User(2, "09120000002"));
@@ -51,7 +51,7 @@ public sealed class GuestNationalityIdentityTests
         var service = new GuestService(db);
 
         var first = await service.CreateAsync(CreateIranian());
-        Assert.Equal(1, first.UserId);
+        Assert.Null(first.UserId);
         Assert.Equal(ValidNationalCode, first.NationalCode);
         Assert.Equal("ایران", first.Nationality);
         Assert.Null(first.PassportNumber);
@@ -90,6 +90,9 @@ public sealed class GuestNationalityIdentityTests
         await db.SaveChangesAsync();
         var service = new GuestService(db);
         var created = await service.CreateAsync(CreateIranian());
+        var existing = await db.Guests.SingleAsync();
+        existing.UserId = 1;
+        await db.SaveChangesAsync();
         var foreign = await service.UpdateAsync(created.Id, new GuestUpdateRequest
         {
             FirstName = "Test", Mobile = "09120000001", Nationality = "France", PassportNumber = " ab 123 "
@@ -99,6 +102,29 @@ public sealed class GuestNationalityIdentityTests
         Assert.Null(foreign.NationalCode);
         Assert.Equal("AB123", foreign.PassportNumber);
         Assert.Equal("France", foreign.Nationality);
+    }
+
+    [Fact]
+    public async Task Edit_ContactChangeNeverTransfersExistingGuestToAnotherUser()
+    {
+        await using var db = CreateContext();
+        db.Users.AddRange(User(1, "09120000001"), User(2, "09120000002"));
+        await db.SaveChangesAsync();
+        var service = new GuestService(db);
+        var created = await service.CreateAsync(CreateIranian());
+        Assert.Null(created.UserId);
+        var existing = await db.Guests.SingleAsync();
+        existing.UserId = 1;
+        await db.SaveChangesAsync();
+
+        var updated = await service.UpdateAsync(created.Id, new GuestUpdateRequest
+        {
+            FirstName = "Test", Mobile = "09120000002", Nationality = "ایران",
+            NationalCode = ValidNationalCode
+        });
+
+        Assert.Equal(1, updated.UserId);
+        Assert.Equal(1, (await db.Guests.SingleAsync()).UserId);
     }
 
     [Fact]
