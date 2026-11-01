@@ -49,6 +49,23 @@ type SummaryState =
   | { propertyId: number; status: "ready"; data: OwnerOperationalSummary }
   | { propertyId: number; status: "error" | "forbidden" };
 
+interface OwnerDailyInventorySummary {
+  propertyId: number;
+  businessDate: string;
+  configuredUnits: number;
+  eligibleConfiguredUnits: number;
+  reservedAllocatedUnits: number;
+  remainingUnits: number;
+  availableModeRemainingUnits: number;
+  onRequestRemainingUnits: number;
+  blockedRoomTypeCount: number;
+}
+
+type InventorySummaryState =
+  | { propertyId: number; status: "loading" }
+  | { propertyId: number; status: "ready"; data: OwnerDailyInventorySummary }
+  | { propertyId: number; status: "error" | "forbidden" };
+
 type OverviewState =
   | { propertyId: number; status: "loading" }
   | { propertyId: number; status: "ready"; property: PropertyResponse; completion: PropertyCompletionResponse; roomTypes: RoomTypeResponse[] }
@@ -414,10 +431,103 @@ export default function OwnerPropertyDashboardPage() {
         )}
 
         {canViewReports && authenticated && !loading && isOwnerWorkspace && (
-          <OwnerPropertyVisitAnalyticsSection canViewBookings={canViewBookings} propertyId={propertyId} />
+          <>
+            <OwnerDailyInventorySummarySection propertyId={propertyId} />
+            <OwnerPropertyVisitAnalyticsSection canViewBookings={canViewBookings} propertyId={propertyId} />
+          </>
         )}
       </main>
     </OwnerLayout>
+  );
+}
+
+function OwnerDailyInventorySummarySection({ propertyId }: { propertyId: number }) {
+  const [state, setState] = useState<InventorySummaryState | null>(null);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    if (!Number.isInteger(propertyId) || propertyId <= 0) return;
+    const controller = new AbortController();
+    setState({ propertyId, status: "loading" });
+    apiRequest<OwnerDailyInventorySummary>(`/owner/properties/${propertyId}/inventory/today-summary`, {
+      signal: controller.signal,
+    })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        const values = [data?.configuredUnits, data?.reservedAllocatedUnits,
+          data?.availableModeRemainingUnits, data?.onRequestRemainingUnits];
+        if (data?.propertyId !== propertyId || typeof data.businessDate !== "string" ||
+          !/^\d{4}-\d{2}-\d{2}$/.test(data.businessDate) ||
+          !Number.isFinite(parseLocalIsoDate(data.businessDate).getTime()) ||
+          !values.every((value) => Number.isSafeInteger(value) && value >= 0)) {
+          setState({ propertyId, status: "error" });
+          return;
+        }
+        setState({ propertyId, status: "ready", data });
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({ propertyId, status: reason instanceof ApiRequestError && (reason.status === 403 || reason.status === 404)
+          ? "forbidden" : "error" });
+      });
+    return () => controller.abort();
+  }, [propertyId, retry]);
+
+  const current = state?.propertyId === propertyId ? state : null;
+  const data = current?.status === "ready" ? current.data : null;
+  const metrics = data ? [
+    { label: "ظرفیت تعریف‌شده", value: data.configuredUnits },
+    { label: "تخصیص‌یافته به رزروها", value: data.reservedAllocatedUnits },
+    { label: "باقی‌مانده عادی", value: data.availableModeRemainingUnits },
+    { label: "باقی‌مانده درخواستی", value: data.onRequestRemainingUnits },
+  ] : [];
+
+  return (
+    <section aria-labelledby="owner-inventory-summary-title" className="grid gap-3" dir="rtl">
+      <div>
+        <h2 id="owner-inventory-summary-title" className="text-lg font-semibold text-foreground">وضعیت موجودی امروز</h2>
+        <p className="mt-1 text-xs leading-6 text-muted-foreground">
+          اعداد بر پایه واحد رزروِ انواع اتاق فعال هستند، نه تعداد اتاق فیزیکی؛ باقی‌مانده عادی تضمین فروش یا رزرو فوری نیست.
+        </p>
+        {data && <p className="mt-1 text-xs text-muted-foreground">تاریخ تهران: <time dateTime={data.businessDate}>{formatBookingDate(data.businessDate)}</time></p>}
+      </div>
+      {!current || current.status === "loading" ? (
+        <div aria-label="در حال دریافت موجودی امروز" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="status">
+          {Array.from({ length: 4 }, (_, index) => (
+            <KoochCard aria-hidden="true" className="min-h-24" key={index} padding="sm">
+              <div className="h-4 w-2/3 rounded bg-muted motion-safe:animate-pulse" />
+              <div className="mt-3 h-7 w-1/3 rounded bg-muted motion-safe:animate-pulse" />
+            </KoochCard>
+          ))}
+        </div>
+      ) : current.status === "forbidden" ? (
+        <KoochAlert title="دسترسی به موجودی امروز این اقامتگاه ندارید" variant="warning">
+          این بخش به دسترسی گزارش‌های همین اقامتگاه نیاز دارد یا اقامتگاه دیگر در دسترس نیست.
+        </KoochAlert>
+      ) : current.status === "error" ? (
+        <KoochAlert title="دریافت موجودی امروز انجام نشد" variant="destructive">
+          <p>سایر بخش‌های داشبورد همچنان در دسترس هستند.</p>
+          <KoochButton className="mt-3" onClick={() => setRetry((value) => value + 1)} variant="outline">تلاش دوباره</KoochButton>
+        </KoochAlert>
+      ) : data ? (
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {metrics.map(({ label, value }) => (
+              <KoochCard aria-label={label} className="flex min-h-24 min-w-0 flex-col justify-between" key={label} padding="sm">
+                <p className="text-sm text-muted-foreground">{label}</p>
+                <p className="mt-2 flex items-baseline gap-2 text-foreground">
+                  <span className="text-2xl font-semibold tabular-nums">{formatCount(value)}</span>
+                  <span className="text-xs">واحد رزرو</span>
+                </p>
+              </KoochCard>
+            ))}
+          </div>
+          {data.configuredUnits === 0 && data.reservedAllocatedUnits === 0 && (
+            <p className="text-sm text-muted-foreground" role="status">برای امروز ظرفیت یا تخصیص رزروی ثبت نشده است.</p>
+          )}
+        </>
+      ) : null}
+    </section>
   );
 }
 
