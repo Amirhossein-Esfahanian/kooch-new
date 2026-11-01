@@ -212,7 +212,12 @@ describe("Owner Property Visit Analytics", () => {
     expect(request.searchParams.get("page")).toBe("1");
     expect(request.searchParams.get("pageSize")).toBe("1");
     expect(createdCard.parentElement?.children).toHaveLength(3);
-    expect(createdCard.parentElement?.parentElement?.className).toContain("lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]");
+    const analyticsLayout = createdCard.parentElement?.parentElement;
+    expect(analyticsLayout?.className).toContain("lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]");
+    expect(analyticsLayout?.parentElement).toBe(section);
+    expect(section.className).toContain("bg-card");
+    expect(createdCard.className).toContain("bg-muted");
+    expect(createdCard.className).not.toContain("border");
   });
 
   it("does not request reservation counts without bookings.view", async () => {

@@ -279,10 +279,10 @@ export default function OwnerPropertyDashboardPage() {
     }
   }
   const quickActions = [
-    { label: "قیمت‌گذاری", description: "مدیریت قیمت اتاق‌ها", permission: "Pricing" as const, href: `/owner/properties/${propertyId}/pricing` },
-    { label: "ظرفیت و موجودی", description: "تقویم ظرفیت و دسترسی", permission: "Inventory" as const, href: `/owner/properties/${propertyId}/inventory` },
-    { label: "رزروها", description: "بررسی و پیگیری رزروها", permission: "Bookings" as const, href: `/owner/properties/${propertyId}/reservations` },
-    { label: "اتاق‌ها", description: "مدیریت نوع اتاق‌ها", permission: "Rooms" as const, href: `/owner/properties/${propertyId}/rooms` },
+    { label: "قیمت‌گذاری", description: "مدیریت قیمت اتاق‌ها", icon: "price" as const, permission: "Pricing" as const, href: `/owner/properties/${propertyId}/pricing` },
+    { label: "ظرفیت و موجودی", description: "تقویم ظرفیت و دسترسی", icon: "capacity" as const, permission: "Inventory" as const, href: `/owner/properties/${propertyId}/inventory` },
+    { label: "رزروها", description: "بررسی و پیگیری رزروها", icon: "audit" as const, permission: "Bookings" as const, href: `/owner/properties/${propertyId}/reservations` },
+    { label: "اتاق‌ها", description: "مدیریت نوع اتاق‌ها", icon: "home" as const, permission: "Rooms" as const, href: `/owner/properties/${propertyId}/rooms` },
   ].filter((action) => routePropertyIsValid && canViewOwnerMenuItem(effectivePermissions, action.permission));
 
   return (
@@ -416,14 +416,15 @@ export default function OwnerPropertyDashboardPage() {
 
         {quickActions.length > 0 && (
           <section aria-labelledby="owner-quick-actions-title" className="grid gap-3">
-            <h2 id="owner-quick-actions-title" className="text-lg font-semibold text-foreground">کارهای سریع</h2>
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <h2 id="owner-quick-actions-title" className="text-sm font-semibold text-foreground">کارهای سریع</h2>
+            <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
               {quickActions.map((action) => (
-                <Link className="group min-w-0 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" href={action.href} key={action.label}>
-                  <KoochCard className="h-full transition-colors group-hover:border-primary group-focus-visible:border-primary" padding="sm">
-                    <h3 className="text-sm font-semibold text-foreground">{action.label}</h3>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{action.description}</p>
-                  </KoochCard>
+                <Link className="group flex min-h-14 min-w-0 items-center gap-3 rounded-lg px-3 py-2 text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background" href={action.href} key={action.label}>
+                  <KoochIcon className="text-muted-foreground group-hover:text-foreground" name={action.icon} />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-semibold group-hover:underline group-hover:underline-offset-4">{action.label}</span>{" "}
+                    <span className="block text-xs leading-5 text-muted-foreground">{action.description}</span>
+                  </span>
                 </Link>
               ))}
             </div>
@@ -483,21 +484,23 @@ function OwnerDailyInventorySummarySection({ propertyId }: { propertyId: number 
   ] : [];
 
   return (
-    <section aria-labelledby="owner-inventory-summary-title" className="grid gap-3" dir="rtl">
-      <div>
-        <h2 id="owner-inventory-summary-title" className="text-lg font-semibold text-foreground">وضعیت موجودی امروز</h2>
-        <p className="mt-1 text-xs leading-6 text-muted-foreground">
-          اعداد بر پایه واحد رزروِ انواع اتاق فعال هستند، نه تعداد اتاق فیزیکی؛ باقی‌مانده عادی تضمین فروش یا رزرو فوری نیست.
-        </p>
-        {data && <p className="mt-1 text-xs text-muted-foreground">تاریخ تهران: <time dateTime={data.businessDate}>{formatBookingDate(data.businessDate)}</time></p>}
+    <KoochCard aria-labelledby="owner-inventory-summary-title" className="grid min-w-0 gap-5 sm:p-6" dir="rtl">
+      <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-2">
+        <div className="min-w-0">
+          <h2 id="owner-inventory-summary-title" className="text-lg font-semibold text-foreground">وضعیت موجودی امروز</h2>
+          <p className="mt-1 text-xs leading-6 text-muted-foreground">
+            اعداد بر پایه واحد رزروِ انواع اتاق فعال هستند، نه تعداد اتاق فیزیکی؛ باقی‌مانده عادی تضمین فروش یا رزرو فوری نیست.
+          </p>
+        </div>
+        {data && <p className="text-xs leading-6 text-muted-foreground">تاریخ تهران: <time dateTime={data.businessDate}>{formatBookingDate(data.businessDate)}</time></p>}
       </div>
       {!current || current.status === "loading" ? (
         <div aria-label="در حال دریافت موجودی امروز" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" role="status">
           {Array.from({ length: 4 }, (_, index) => (
-            <KoochCard aria-hidden="true" className="min-h-24" key={index} padding="sm">
-              <div className="h-4 w-2/3 rounded bg-muted motion-safe:animate-pulse" />
-              <div className="mt-3 h-7 w-1/3 rounded bg-muted motion-safe:animate-pulse" />
-            </KoochCard>
+            <div aria-hidden="true" className="min-h-32 rounded-lg bg-muted p-4" key={index}>
+              <div className="h-4 w-2/3 rounded bg-background motion-safe:animate-pulse" />
+              <div className="mt-3 h-7 w-1/3 rounded bg-background motion-safe:animate-pulse" />
+            </div>
           ))}
         </div>
       ) : current.status === "forbidden" ? (
@@ -513,13 +516,13 @@ function OwnerDailyInventorySummarySection({ propertyId }: { propertyId: number 
         <>
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             {metrics.map(({ label, value }) => (
-              <KoochCard aria-label={label} className="flex min-h-24 min-w-0 flex-col justify-between" key={label} padding="sm">
-                <p className="text-sm text-muted-foreground">{label}</p>
-                <p className="mt-2 flex items-baseline gap-2 text-foreground">
-                  <span className="text-2xl font-semibold tabular-nums">{formatCount(value)}</span>
-                  <span className="text-xs">واحد رزرو</span>
+              <div aria-label={label} className="flex min-h-32 min-w-0 flex-col items-center justify-center gap-3 rounded-lg bg-muted p-4 text-center" key={label} role="region">
+                <p className="text-sm leading-6 text-muted-foreground">{label}</p>
+                <p className="flex flex-wrap items-baseline justify-center gap-2 text-foreground">
+                  <span className="break-words text-3xl font-semibold tabular-nums">{formatCount(value)}</span>
+                  <span className="text-xs text-muted-foreground">واحد رزرو</span>
                 </p>
-              </KoochCard>
+              </div>
             ))}
           </div>
           {data.configuredUnits === 0 && data.reservedAllocatedUnits === 0 && (
@@ -527,7 +530,7 @@ function OwnerDailyInventorySummarySection({ propertyId }: { propertyId: number 
           )}
         </>
       ) : null}
-    </section>
+    </KoochCard>
   );
 }
 
@@ -569,14 +572,14 @@ function OwnerPropertyVisitAnalyticsSection({ canViewBookings, propertyId }: { c
   const hasRecordedVisits = points.some((point) => point.recordedVisits > 0);
 
   return (
-    <section aria-labelledby="owner-visit-analytics-title" className="grid gap-3" dir="rtl">
+    <KoochCard aria-labelledby="owner-visit-analytics-title" className="grid min-w-0 gap-6 sm:p-6" dir="rtl">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="owner-visit-analytics-title" className="text-lg font-semibold text-foreground">
             بازدیدهای ثبت‌شده
           </h2>
           {data && (
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
               امروز بر پایه تاریخ تهران: <time dateTime={data.businessDate}>{formatBookingDate(data.businessDate)}</time>
             </p>
           )}
@@ -599,13 +602,13 @@ function OwnerPropertyVisitAnalyticsSection({ canViewBookings, propertyId }: { c
       </div>
 
       {!current || current.status === "loading" ? (
-        <KoochCard aria-label="در حال دریافت آمار بازدیدها" role="status">
+        <div aria-label="در حال دریافت آمار بازدیدها" role="status">
           <div aria-hidden="true" className="grid gap-3 motion-safe:animate-pulse sm:grid-cols-2">
             <div className="h-16 rounded-lg bg-muted" />
             <div className="h-16 rounded-lg bg-muted" />
             <div className="h-56 rounded-lg bg-muted sm:col-span-2" />
           </div>
-        </KoochCard>
+        </div>
       ) : current.status === "forbidden" ? (
         <KoochAlert title="دسترسی به آمار بازدیدهای این اقامتگاه ندارید" variant="warning">
           برای مشاهده این بخش به دسترسی گزارش‌های همین اقامتگاه نیاز دارید.
@@ -618,8 +621,8 @@ function OwnerPropertyVisitAnalyticsSection({ canViewBookings, propertyId }: { c
           </KoochButton>
         </KoochAlert>
       ) : data ? (
-        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
-          <KoochCard className="min-w-0" padding="sm">
+        <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="min-w-0">
             <h3 className="text-sm font-semibold text-foreground">روند روزانه بازدیدهای ثبت‌شده</h3>
             {points.length === 0 ? (
               <p className="mt-4 text-sm text-muted-foreground" role="status">داده‌ای برای نمایش نمودار وجود ندارد.</p>
@@ -632,8 +635,10 @@ function OwnerPropertyVisitAnalyticsSection({ canViewBookings, propertyId }: { c
                       <XAxis dataKey="businessDate" height={38} minTickGap={24} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatTrendDate} tickLine={false} tickMargin={10} />
                       <YAxis allowDecimals={false} axisLine={false} tick={{ fill: "var(--muted-foreground)", fontSize: 11 }} tickFormatter={formatCount} tickLine={false} width={42} />
                       <Tooltip
+                        contentStyle={{ backgroundColor: "var(--popover)", borderColor: "var(--border)", borderRadius: "0.5rem", color: "var(--popover-foreground)", direction: "rtl", textAlign: "right" }}
                         cursor={{ stroke: "var(--border)" }}
                         formatter={(value) => [formatCount(Number(value)), "بازدیدهای ثبت‌شده"]}
+                        labelStyle={{ color: "var(--popover-foreground)" }}
                         labelFormatter={(label) => formatBookingDate(String(label))}
                       />
                       <Line activeDot={{ fill: "var(--primary)", r: 4 }} dataKey="recordedVisits" dot={period === 7} isAnimationActive={false} stroke="var(--primary)" strokeWidth={2} type="linear" />
@@ -660,23 +665,23 @@ function OwnerPropertyVisitAnalyticsSection({ canViewBookings, propertyId }: { c
             <p className="mt-3 text-xs leading-6 text-muted-foreground">
               تاریخ شروع ثبت بازدیدها مشخص نیست؛ صفرهای روزهای گذشته لزوماً به معنی فعال بودن ثبت بازدید در آن روزها نیست.
             </p>
-          </KoochCard>
+          </div>
           <div className={`grid gap-3 ${canViewBookings ? "grid-rows-3" : "grid-rows-2"}`}>
-            <KoochCard aria-label="بازدیدهای ثبت‌شده امروز" className="flex min-h-24 flex-col justify-between" padding="sm">
-              <p className="text-sm text-muted-foreground">بازدیدهای ثبت‌شده امروز</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(data.todayRecordedVisits)}</p>
-            </KoochCard>
-            <KoochCard aria-label="بازدیدهای ثبت‌شده در بازه انتخاب‌شده" className="flex min-h-24 flex-col justify-between" padding="sm">
-              <p className="text-sm text-muted-foreground">بازدیدهای ثبت‌شده در {visitPeriods.find((item) => item.days === period)?.label}</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
+            <section aria-label="بازدیدهای ثبت‌شده امروز" className="flex min-h-28 min-w-0 flex-col justify-center gap-2 rounded-lg bg-muted p-4">
+              <p className="text-sm leading-6 text-muted-foreground">بازدیدهای ثبت‌شده امروز</p>
+              <p className="break-words text-3xl font-semibold tabular-nums text-foreground">{formatCount(data.todayRecordedVisits)}</p>
+            </section>
+            <section aria-label="بازدیدهای ثبت‌شده در بازه انتخاب‌شده" className="flex min-h-28 min-w-0 flex-col justify-center gap-2 rounded-lg bg-muted p-4">
+              <p className="text-sm leading-6 text-muted-foreground">بازدیدهای ثبت‌شده در {visitPeriods.find((item) => item.days === period)?.label}</p>
+              <p className="break-words text-3xl font-semibold tabular-nums text-foreground">
                 {formatCount(period === 7 ? data.last7DaysTotal : period === 30 ? data.last30DaysTotal : data.last90DaysTotal)}
               </p>
-            </KoochCard>
+            </section>
             {canViewBookings && <CreatedReservationsTodayCard businessDate={data.businessDate} propertyId={propertyId} />}
           </div>
         </div>
       ) : null}
-    </section>
+    </KoochCard>
   );
 }
 
@@ -704,12 +709,12 @@ function CreatedReservationsTodayCard({ businessDate, propertyId }: { businessDa
 
   const current = state?.propertyId === propertyId && state.businessDate === businessDate ? state : null;
   return (
-    <KoochCard aria-label="رزروهای امروز" className="flex min-h-24 flex-col justify-between" padding="sm">
-      <p className="text-sm text-muted-foreground">رزروهای امروز</p>
+    <section aria-label="رزروهای امروز" className="flex min-h-28 min-w-0 flex-col justify-center gap-2 rounded-lg bg-muted p-4">
+      <p className="text-sm leading-6 text-muted-foreground">رزروهای امروز</p>
       {!current || current.status === "loading" ? (
         <p className="mt-2 text-sm text-muted-foreground" role="status">در حال دریافت...</p>
       ) : current.status === "ready" ? (
-        <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(current.count)}</p>
+        <p className="break-words text-3xl font-semibold tabular-nums text-foreground">{formatCount(current.count)}</p>
       ) : current.status === "forbidden" ? (
         <p className="mt-2 text-xs text-muted-foreground">دسترسی به شمار رزروها ندارید.</p>
       ) : (
@@ -718,7 +723,7 @@ function CreatedReservationsTodayCard({ businessDate, propertyId }: { businessDa
           <KoochButton className="mt-1" onClick={() => setRetry((value) => value + 1)} size="sm" variant="ghost">تلاش دوباره</KoochButton>
         </div>
       )}
-    </KoochCard>
+    </section>
   );
 }
 
@@ -799,9 +804,9 @@ function OwnerOperationalSummarySection({
       {metrics.length > 0 && (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {metrics.map(({ label, value }) => (
-            <KoochCard className="flex min-h-24 min-w-0 flex-col justify-between" key={label} padding="sm">
-              <p className="text-sm text-muted-foreground">{label}</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(value)}</p>
+            <KoochCard className="flex min-h-40 min-w-0 flex-col items-center justify-center gap-4 text-center" key={label}>
+              <p className="text-sm font-medium leading-6 text-muted-foreground">{label}</p>
+              <p className="max-w-full break-words text-4xl font-bold leading-tight tabular-nums text-foreground xl:text-5xl">{formatCount(value)}</p>
             </KoochCard>
           ))}
         </div>

@@ -89,6 +89,11 @@ describe("Owner Property operational dashboard summary", () => {
     expect(cards?.className).toContain("sm:grid-cols-2");
     expect(cards?.className).toContain("lg:grid-cols-4");
     expect(cards?.children).toHaveLength(4);
+    Array.from(cards?.children ?? []).forEach((card) => {
+      expect(card.className).toContain("min-h-40");
+      expect(card.className).toContain("text-center");
+      expect(card.lastElementChild?.className).toContain("text-4xl");
+    });
     expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
     expect(screen.getByText("کارهای سریع")).toBeTruthy();
   });
@@ -113,6 +118,12 @@ describe("Owner Property operational dashboard summary", () => {
     expect(screen.queryByText(/فروش امروز|اتاق فروخته‌شده|ظرفیت قابل فروش/)).toBeNull();
     expect(document.querySelector("main")?.getAttribute("dir")).toBe("rtl");
     expect(screen.getByRole("region", { name: "کارهای سریع" }).querySelector(".sm\\:grid-cols-2")).toBeTruthy();
+    within(screen.getByRole("region", { name: "کارهای سریع" })).getAllByRole("link").forEach((link) => {
+      expect(link.querySelector("section")).toBeNull();
+      expect(link.className).toContain("min-h-14");
+      expect(link.className).toContain("focus-visible:ring-2");
+      expect(link.querySelector('[aria-hidden="true"]')).toBeTruthy();
+    });
   });
 
   it("omits unauthorized metrics and quick actions rather than displaying zero", async () => {

@@ -72,6 +72,12 @@ describe("Owner dashboard daily inventory", () => {
     });
     expect(mocks.apiRequest).toHaveBeenCalledWith("/owner/properties/17/inventory/today-summary", expect.objectContaining({ signal: expect.any(AbortSignal) }));
     const cards = within(section).getByRole("region", { name: labels[0] }).parentElement;
+    expect(section.className).toContain("bg-card");
+    Array.from(cards?.children ?? []).forEach((tile) => {
+      expect(tile.className).toContain("bg-muted");
+      expect(tile.className).toContain("text-center");
+      expect(tile.className).not.toContain("border");
+    });
     expect(cards?.children).toHaveLength(4);
     expect(cards?.className).toContain("sm:grid-cols-2");
     expect(cards?.className).toContain("lg:grid-cols-4");
