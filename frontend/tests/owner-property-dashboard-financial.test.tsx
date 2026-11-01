@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  propertyStatus: "PendingReview",
+  propertyStatus: "Draft",
   propertyId: "17",
   routePropertyIsValid: true,
   canEditProperties: true,
@@ -26,7 +26,8 @@ vi.mock("@/components/owner/OwnerPropertyProvider", () => ({
     routePropertyIsValid: mocks.routePropertyIsValid,
     effectivePermissions: {
       Properties: { edit: mocks.canEditProperties },
-      Pricing: { edit: mocks.canEditPricing },
+      Pricing: { view: true, edit: mocks.canEditPricing },
+      Bookings: { view: true },
     },
   }),
 }));
@@ -49,6 +50,7 @@ function setup(sections: typeof missingSections = missingSections) {
   mocks.apiRequest.mockImplementation((path: string) => Promise.resolve(
     path.endsWith("/completion") ? { propertyId: Number(mocks.propertyId), canActivate: sections.length === 0, completionPercentage: 67, sections }
       : path.endsWith("/room-types") ? []
+      : path.endsWith("/operational-summary") ? { businessDate: "2026-11-01", pendingApprovalCount: 0, scheduledArrivalsTodayCount: 0, scheduledDeparturesTodayCount: 0 }
       : { id: Number(mocks.propertyId), name: "اقامتگاه", slug: "test-property", status: mocks.propertyStatus },
   ));
 }
@@ -56,7 +58,7 @@ function setup(sections: typeof missingSections = missingSections) {
 describe("Owner Property dashboard completion guidance", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.propertyStatus = "PendingReview";
+    mocks.propertyStatus = "Draft";
     mocks.propertyId = "17";
     mocks.routePropertyIsValid = true;
     mocks.canEditProperties = true;
@@ -72,11 +74,45 @@ describe("Owner Property dashboard completion guidance", () => {
     expect(within(section).getByRole("link", { name: "حداقل یک تصویر" }).getAttribute("href")).toBe("/owner/properties/17?step=4");
   });
 
+  it.each(["Draft", "Rejected"])("places one prominent incomplete %s banner before operations", async (status) => {
+    mocks.propertyStatus = status;
+    render(<OwnerPropertyDashboardPage />);
+    const banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
+    const operations = screen.getByRole("heading", { name: "وضعیت رزروهای اقامتگاه" });
+    expect(banner.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(banner.querySelector('[class*="!bg-amber-50"]')).toBeTruthy();
+    expect(within(banner).getByRole("heading", { name: "اطلاعات لازم برای تأیید اقامتگاه کامل نیست" })).toBeTruthy();
+    expect(within(banner).getByRole("link", { name: "تکمیل اطلاعات ضروری" }).getAttribute("href")).toBe("/owner/properties/17?step=0");
+    expect(screen.getAllByRole("region", { name: "بررسی و تأیید اقامتگاه" })).toHaveLength(1);
+  });
+
+  it("shows a ready banner with the existing submit action before quick actions", async () => {
+    mocks.propertyStatus = "Draft";
+    setup([]);
+    render(<OwnerPropertyDashboardPage />);
+    const banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
+    expect(banner.compareDocumentPosition(screen.getByRole("heading", { name: "کارهای سریع" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(banner.querySelector('[class*="!bg-primary/10"]')).toBeTruthy();
+    expect(within(banner).getByRole("heading", { name: "اقامتگاه آماده بررسی مدیر است" })).toBeTruthy();
+    expect(within(banner).getByRole("button", { name: "ارسال برای بررسی مدیر" })).toBeTruthy();
+  });
+
+  it("uses a distinct pending banner without submit or edit actions", async () => {
+    mocks.propertyStatus = "PendingReview";
+    render(<OwnerPropertyDashboardPage />);
+    const banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
+    expect(banner.querySelector('[class*="!bg-blue-50"]')).toBeTruthy();
+    expect(within(banner).getByRole("heading", { name: "اقامتگاه در انتظار بررسی مدیر است" })).toBeTruthy();
+    expect(within(banner).queryByRole("button")).toBeNull();
+    expect(within(banner).queryByRole("link")).toBeNull();
+  });
+
   it("hides setup guidance for an approved Property even when completion reports gaps", async () => {
     mocks.propertyStatus = "Approved";
     render(<OwnerPropertyDashboardPage />);
     await screen.findByRole("heading", { name: "اقامتگاه" });
     expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
+    expect(screen.queryByRole("region", { name: "بررسی و تأیید اقامتگاه" })).toBeNull();
   });
 
   it("omits an empty checklist", async () => {
@@ -87,6 +123,7 @@ describe("Owner Property dashboard completion guidance", () => {
   });
 
   it("shows missing items without unauthorized edit links", async () => {
+    mocks.propertyStatus = "Draft";
     mocks.canEditProperties = false;
     mocks.canEditPricing = false;
     render(<OwnerPropertyDashboardPage />);

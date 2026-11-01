@@ -191,12 +191,14 @@ export default function OwnerPropertyDashboardPage() {
   const incompleteSections = overview?.completion.sections?.filter((section) =>
     section.status !== "Complete" && section.missingItems.length > 0) ?? [];
   const showCompletionChecklist = Boolean(
-    overview && property?.status !== "Approved" && incompleteSections.length > 0,
+    overview && (property?.status === "Draft" || property?.status === "Rejected") && incompleteSections.length > 0,
   );
   const review = reviewState?.propertyId === propertyId ? reviewState : null;
   const canSubmit = authenticated && !loading && isOwnerWorkspace && canEditProperty &&
     (property?.status === "Draft" || property?.status === "Rejected") &&
     overview?.completion.canActivate === true;
+  const firstEditableSection = incompleteSections.find((section) =>
+    review?.status !== "forbidden" && effectivePermissions?.[completionEditPermission(section)]?.edit);
 
   async function submitForReview() {
     if (!canSubmit || reviewRequest.current || review?.status === "forbidden" || review?.needsRefresh) return;
@@ -303,6 +305,85 @@ export default function OwnerPropertyDashboardPage() {
           </KoochAlert>
         )}
 
+        {overview && property?.status !== "Approved" && (
+          <section aria-label="بررسی و تأیید اقامتگاه" className="min-w-0">
+            <KoochCard
+              className={`grid gap-4 border p-5 sm:p-6 ${
+                property?.status === "PendingReview"
+                  ? "!border-blue-300 !bg-blue-50 dark:!border-blue-800 dark:!bg-blue-950/40"
+                  : property?.status === "Suspended" || overview.completion.canActivate !== true
+                    ? "!border-amber-300 !bg-amber-50 dark:!border-amber-800 dark:!bg-amber-950/40"
+                    : "!border-primary/50 !bg-primary/10"
+              }`}
+              padding="none"
+            >
+              <div className="grid gap-1">
+                <h2 className="text-lg font-bold text-foreground sm:text-xl">
+                  {property?.status === "PendingReview" ? "اقامتگاه در انتظار بررسی مدیر است"
+                    : property?.status === "Suspended" ? "اقامتگاه تعلیق شده است"
+                      : overview.completion.canActivate === true ? "اقامتگاه آماده بررسی مدیر است"
+                        : "اطلاعات لازم برای تأیید اقامتگاه کامل نیست"}
+                </h2>
+                <p className="text-sm leading-6 text-foreground/85">
+                  {property?.status === "PendingReview" ? "درخواست بررسی ثبت شده است. پس از بررسی مدیر، نتیجه مشخص می‌شود."
+                    : property?.status === "Suspended" ? "ارسال مجدد برای بررسی در این وضعیت امکان‌پذیر نیست."
+                      : overview.completion.canActivate === true ? "اطلاعات لازم تکمیل است؛ تأیید نهایی نیازمند بررسی مدیر است."
+                        : "برای ارسال اقامتگاه به مدیر، موارد ضروری زیر را تکمیل کنید."}
+                </p>
+              </div>
+
+              {showCompletionChecklist && (
+                <section aria-label="تکمیل و راه‌اندازی اقامتگاه" className="grid gap-2">
+                  <h3 className="text-sm font-semibold text-foreground">موارد باقی‌مانده</h3>
+                  <ul className="grid gap-2 sm:grid-cols-2">
+                    {incompleteSections.flatMap((section) => section.missingItems.map((item) => {
+                      const canEdit = review?.status !== "forbidden" && Boolean(effectivePermissions?.[completionEditPermission(section)]?.edit);
+                      const href = propertyCompletionHref("owner", propertyId, section);
+                      return (
+                        <li className="min-w-0 rounded-lg border border-border bg-background/80 px-3 py-2 text-sm" key={`${section.key}-${item}`}>
+                          <span className="text-muted-foreground">{section.label}: </span>
+                          {canEdit ? (
+                            <Link className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" href={href}>
+                              {item}
+                            </Link>
+                          ) : <span className="font-medium text-foreground">{item}</span>}
+                        </li>
+                      );
+                    }))}
+                  </ul>
+                </section>
+              )}
+
+              {review && (
+                <div className="text-sm font-medium text-foreground" role={review.status === "loading" || review.status === "success" ? "status" : "alert"}>
+                  <p>{review.message}</p>
+                  {review.needsRefresh && (
+                    <KoochButton className="mt-3" variant="outline" onClick={() => { setReviewState(null); setOverviewRetry((value) => value + 1); }}>
+                      به‌روزرسانی وضعیت اقامتگاه
+                    </KoochButton>
+                  )}
+                </div>
+              )}
+
+              {(canSubmit && review?.status !== "forbidden" && !review?.needsRefresh ||
+                showCompletionChecklist && firstEditableSection) && (
+                <div className="flex flex-wrap gap-3">
+                  {canSubmit && review?.status !== "forbidden" && !review?.needsRefresh && (
+                    <KoochButton loading={review?.status === "loading"} onClick={submitForReview} size="lg">
+                      {property?.status === "Rejected" ? "ارسال مجدد برای بررسی" : "ارسال برای بررسی مدیر"}
+                    </KoochButton>
+                  )}
+                  {showCompletionChecklist && firstEditableSection && (
+                    <Link className={`${linkButtonClass} border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]`} href={propertyCompletionHref("owner", propertyId, firstEditableSection)}>
+                      تکمیل اطلاعات ضروری
+                    </Link>
+                  )}
+                </div>
+              )}
+            </KoochCard>
+          </section>
+        )}
+
         {(canViewBookings || canViewRooms) && authenticated && !loading && isOwnerWorkspace && (
           <OwnerOperationalSummarySection
             activeRoomTypeCount={activeRoomTypeCount}
@@ -324,64 +405,6 @@ export default function OwnerPropertyDashboardPage() {
                 </Link>
               ))}
             </div>
-          </section>
-        )}
-
-        {overview && authenticated && !loading && isOwnerWorkspace && routePropertyIsValid && (
-          <section aria-label="بررسی و تأیید اقامتگاه" className="grid gap-3">
-            {property?.status === "PendingReview" && (
-              <KoochAlert title="اقامتگاه در انتظار بررسی مدیر است" variant="info">
-                درخواست بررسی ثبت شده است. پس از بررسی مدیر، نتیجه مشخص می‌شود.
-              </KoochAlert>
-            )}
-            {property?.status === "Suspended" && (
-              <KoochAlert title="اقامتگاه تعلیق شده است" variant="warning">
-                ارسال مجدد برای بررسی در این وضعیت امکان‌پذیر نیست.
-              </KoochAlert>
-            )}
-            {review && (
-              <KoochAlert role={review.status === "loading" || review.status === "success" ? "status" : "alert"}
-                variant={review.status === "success" ? "success" : review.status === "loading" ? "info" : "warning"}>
-                <p>{review.message}</p>
-                {review.needsRefresh && (
-                  <KoochButton className="mt-3" variant="outline" onClick={() => { setReviewState(null); setOverviewRetry((value) => value + 1); }}>
-                    به‌روزرسانی وضعیت اقامتگاه
-                  </KoochButton>
-                )}
-              </KoochAlert>
-            )}
-            {canSubmit && review?.status !== "forbidden" && !review?.needsRefresh && (
-              <KoochCard className="flex flex-wrap items-center justify-between gap-3" padding="sm">
-                <p className="text-sm text-muted-foreground">اطلاعات لازم تکمیل است؛ تأیید نهایی نیازمند بررسی مدیر است.</p>
-                <KoochButton loading={review?.status === "loading"} onClick={submitForReview}>
-                  {property?.status === "Rejected" ? "ارسال مجدد برای بررسی" : "ارسال برای بررسی مدیر"}
-                </KoochButton>
-              </KoochCard>
-            )}
-          </section>
-        )}
-
-        {showCompletionChecklist && routePropertyIsValid && (
-          <section aria-label="تکمیل و راه‌اندازی اقامتگاه" className="grid gap-3">
-            <KoochCard className="grid gap-3" padding="sm">
-              <h2 className="text-base font-semibold text-foreground">موارد باقی‌مانده برای تکمیل اقامتگاه</h2>
-              <ul className="grid gap-2 sm:grid-cols-2">
-                {incompleteSections.flatMap((section) => section.missingItems.map((item) => {
-                  const canEdit = review?.status !== "forbidden" && Boolean(effectivePermissions?.[completionEditPermission(section)]?.edit);
-                  const href = propertyCompletionHref("owner", propertyId, section);
-                  return (
-                    <li className="min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm" key={`${section.key}-${item}`}>
-                      <span className="text-muted-foreground">{section.label}: </span>
-                      {canEdit ? (
-                        <Link className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" href={href}>
-                          {item}
-                        </Link>
-                      ) : <span className="font-medium text-foreground">{item}</span>}
-                    </li>
-                  );
-                }))}
-              </ul>
-            </KoochCard>
           </section>
         )}
 
