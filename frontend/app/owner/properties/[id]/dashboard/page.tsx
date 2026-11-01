@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dayjs from "dayjs";
 import utc from "dayjs/plugin/utc";
 import timezone from "dayjs/plugin/timezone";
@@ -134,6 +134,22 @@ export default function OwnerPropertyDashboardPage() {
     canViewOwnerMenuItem(effectivePermissions, "Rooms");
   const [overviewState, setOverviewState] = useState<OverviewState | null>(null);
   const [overviewRetry, setOverviewRetry] = useState(0);
+  const reviewRequest = useRef<AbortController | null>(null);
+  const [reviewState, setReviewState] = useState<{
+    propertyId: number;
+    status: "loading" | "success" | "error" | "forbidden";
+    message: string;
+    needsRefresh?: boolean;
+  } | null>(null);
+  const canEditProperty = routePropertyIsValid && Boolean(effectivePermissions?.Properties?.edit);
+
+  useEffect(() => {
+    setReviewState(null);
+    return () => {
+      reviewRequest.current?.abort();
+      reviewRequest.current = null;
+    };
+  }, [propertyId, authenticated, routePropertyIsValid, canEditProperty]);
 
   useEffect(() => {
     if (loading || !authenticated || !isOwnerWorkspace || !routePropertyIsValid || !Number.isInteger(propertyId) || propertyId <= 0) return;
@@ -165,7 +181,8 @@ export default function OwnerPropertyDashboardPage() {
     return () => controller.abort();
   }, [authenticated, loading, propertyId, routePropertyIsValid, overviewRetry, isOwnerWorkspace]);
 
-  const currentOverview = overviewState?.propertyId === propertyId ? overviewState : null;
+  const currentOverview = authenticated && !loading && isOwnerWorkspace && routePropertyIsValid &&
+    overviewState?.propertyId === propertyId ? overviewState : null;
   const overview = currentOverview?.status === "ready" ? currentOverview : null;
   const property = overview?.property;
   const activeRoomTypeCount = canViewRooms && overview
@@ -176,6 +193,63 @@ export default function OwnerPropertyDashboardPage() {
   const showCompletionChecklist = Boolean(
     overview && property?.status !== "Approved" && incompleteSections.length > 0,
   );
+  const review = reviewState?.propertyId === propertyId ? reviewState : null;
+  const canSubmit = authenticated && !loading && isOwnerWorkspace && canEditProperty &&
+    (property?.status === "Draft" || property?.status === "Rejected") &&
+    overview?.completion.canActivate === true;
+
+  async function submitForReview() {
+    if (!canSubmit || reviewRequest.current || review?.status === "forbidden" || review?.needsRefresh) return;
+    const controller = new AbortController();
+    reviewRequest.current = controller;
+    const { signal } = controller;
+    setReviewState({ propertyId, status: "loading", message: "در حال ارسال برای بررسی..." });
+
+    async function refreshApproval() {
+      const [freshProperty, completion] = await Promise.all([
+        apiRequest<PropertyResponse>(`/owner/properties/${propertyId}`, { signal }),
+        apiRequest<PropertyCompletionResponse>(`/owner/properties/${propertyId}/completion`, { signal }),
+      ]);
+      if (!signal.aborted) setOverviewState((previous) => previous?.status === "ready" && previous.propertyId === propertyId
+        ? { ...previous, property: freshProperty, completion } : previous);
+    }
+
+    let submissionCompleted = false;
+    try {
+      const submitted = await apiRequest<PropertyResponse>(`/owner/properties/${propertyId}/submit-for-review`, { method: "POST", signal });
+      if (signal.aborted) return;
+      submissionCompleted = true;
+      // Use the server's status, never infer approval from completeness.
+      setOverviewState((previous) => previous?.status === "ready" && previous.propertyId === propertyId
+        ? { ...previous, property: submitted } : previous);
+      await refreshApproval();
+      if (!signal.aborted) setReviewState({ propertyId, status: "success", message: "درخواست بررسی ثبت شد. تأیید نهایی فقط توسط مدیر انجام می‌شود." });
+    } catch (reason: unknown) {
+      if (signal.aborted) return;
+      if (reason instanceof ApiRequestError && reason.status === 403) {
+        setReviewState({ propertyId, status: "forbidden", message: "اجازه ارسال این اقامتگاه برای بررسی را ندارید." });
+        return;
+      }
+      const body = reason instanceof ApiRequestError ? reason.body as { completion?: PropertyCompletionResponse } | null : null;
+      const completion = body?.completion;
+      if (completion?.propertyId === propertyId && Array.isArray(completion.sections) && typeof completion.canActivate === "boolean") {
+        setOverviewState((previous) => previous?.status === "ready" && previous.propertyId === propertyId
+          ? { ...previous, completion } : previous);
+      }
+      let needsRefresh = submissionCompleted;
+      if (!submissionCompleted) {
+        try { await refreshApproval(); } catch { needsRefresh = true; }
+      }
+      if (!signal.aborted) setReviewState({
+        propertyId, status: "error", needsRefresh,
+        message: reason instanceof ApiRequestError && reason.status === 409
+          ? reason.message
+          : "ارسال یا به‌روزرسانی وضعیت انجام نشد. پیش از تلاش دوباره، وضعیت اقامتگاه را بررسی کنید.",
+      });
+    } finally {
+      if (reviewRequest.current === controller) reviewRequest.current = null;
+    }
+  }
   const quickActions = [
     { label: "قیمت‌گذاری", description: "مدیریت قیمت اتاق‌ها", permission: "Pricing" as const, href: `/owner/properties/${propertyId}/pricing` },
     { label: "ظرفیت و موجودی", description: "تقویم ظرفیت و دسترسی", permission: "Inventory" as const, href: `/owner/properties/${propertyId}/inventory` },
@@ -253,16 +327,48 @@ export default function OwnerPropertyDashboardPage() {
           </section>
         )}
 
-        {showCompletionChecklist && (
+        {overview && authenticated && !loading && isOwnerWorkspace && routePropertyIsValid && (
+          <section aria-label="بررسی و تأیید اقامتگاه" className="grid gap-3">
+            {property?.status === "PendingReview" && (
+              <KoochAlert title="اقامتگاه در انتظار بررسی مدیر است" variant="info">
+                درخواست بررسی ثبت شده است. پس از بررسی مدیر، نتیجه مشخص می‌شود.
+              </KoochAlert>
+            )}
+            {property?.status === "Suspended" && (
+              <KoochAlert title="اقامتگاه تعلیق شده است" variant="warning">
+                ارسال مجدد برای بررسی در این وضعیت امکان‌پذیر نیست.
+              </KoochAlert>
+            )}
+            {review && (
+              <KoochAlert role={review.status === "loading" || review.status === "success" ? "status" : "alert"}
+                variant={review.status === "success" ? "success" : review.status === "loading" ? "info" : "warning"}>
+                <p>{review.message}</p>
+                {review.needsRefresh && (
+                  <KoochButton className="mt-3" variant="outline" onClick={() => { setReviewState(null); setOverviewRetry((value) => value + 1); }}>
+                    به‌روزرسانی وضعیت اقامتگاه
+                  </KoochButton>
+                )}
+              </KoochAlert>
+            )}
+            {canSubmit && review?.status !== "forbidden" && !review?.needsRefresh && (
+              <KoochCard className="flex flex-wrap items-center justify-between gap-3" padding="sm">
+                <p className="text-sm text-muted-foreground">اطلاعات لازم تکمیل است؛ تأیید نهایی نیازمند بررسی مدیر است.</p>
+                <KoochButton loading={review?.status === "loading"} onClick={submitForReview}>
+                  {property?.status === "Rejected" ? "ارسال مجدد برای بررسی" : "ارسال برای بررسی مدیر"}
+                </KoochButton>
+              </KoochCard>
+            )}
+          </section>
+        )}
+
+        {showCompletionChecklist && routePropertyIsValid && (
           <section aria-label="تکمیل و راه‌اندازی اقامتگاه" className="grid gap-3">
             <KoochCard className="grid gap-3" padding="sm">
               <h2 className="text-base font-semibold text-foreground">موارد باقی‌مانده برای تکمیل اقامتگاه</h2>
               <ul className="grid gap-2 sm:grid-cols-2">
                 {incompleteSections.flatMap((section) => section.missingItems.map((item) => {
-                  const canEdit = Boolean(effectivePermissions?.[completionEditPermission(section)]?.edit);
-                  const href = section.key === "financial"
-                    ? `/owner/properties/${propertyId}?step=7`
-                    : propertyCompletionHref("owner", propertyId, section);
+                  const canEdit = review?.status !== "forbidden" && Boolean(effectivePermissions?.[completionEditPermission(section)]?.edit);
+                  const href = propertyCompletionHref("owner", propertyId, section);
                   return (
                     <li className="min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm" key={`${section.key}-${item}`}>
                       <span className="text-muted-foreground">{section.label}: </span>

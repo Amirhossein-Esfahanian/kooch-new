@@ -11,7 +11,7 @@ export function propertyCompletionHref(
   const target = section.actionTarget || section.key;
 
   if (target === "rooms") return `${base}/rooms`;
-  if (target === "pricing" || target === "financial") return `${base}/pricing`;
+  if (target === "pricing") return `${base}/pricing`;
   if (target === "availability") return `${base}/inventory`;
 
   const stepByTarget: Record<string, number> = {
@@ -21,6 +21,7 @@ export function propertyCompletionHref(
     images: 4,
     descriptions: 5,
     policies: 7,
+    financial: 8,
   };
 
   const step = stepByTarget[target];
