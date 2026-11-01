@@ -150,6 +150,7 @@ public class PropertyService(
             throw new UnauthorizedAccessException("You cannot manage this property.");
         }
 
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
         PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
         var receptionFrom = request.HasRegularReceptionFrom ? request.RegularReceptionFrom : property.RegularReceptionFrom;
         var receptionUntil = request.HasRegularReceptionUntil ? request.RegularReceptionUntil : property.RegularReceptionUntil;
@@ -206,7 +207,7 @@ public class PropertyService(
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return await LoadResponseAsync(property.Id, cancellationToken);
     }
 
@@ -218,6 +219,7 @@ public class PropertyService(
         CancellationToken cancellationToken = default)
     {
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
         var englishName = CleanOptional(request.EnglishName);
         await RepairMissingSlugAsync(property, englishName, cancellationToken);
 
@@ -226,7 +228,7 @@ public class PropertyService(
         property.Type = request.Type;
         property.InventoryMode = request.InventoryMode;
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
 
@@ -238,6 +240,7 @@ public class PropertyService(
         CancellationToken cancellationToken = default)
     {
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
         PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
         await ValidateDestinationAsync(request.DestinationId, cancellationToken);
         property.DestinationId = request.DestinationId;
@@ -247,7 +250,7 @@ public class PropertyService(
         property.Latitude = request.Latitude;
         property.Longitude = request.Longitude;
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
 
@@ -283,6 +286,7 @@ public class PropertyService(
             await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
         }
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
         var receptionFrom = request.HasRegularReceptionFrom ? request.RegularReceptionFrom : property.RegularReceptionFrom;
         var receptionUntil = request.HasRegularReceptionUntil ? request.RegularReceptionUntil : property.RegularReceptionUntil;
         var instantTime = request.HasSameNightInstantBookingTime ? request.SameNightInstantBookingTime : property.SameNightInstantBookingTime;
@@ -304,7 +308,7 @@ public class PropertyService(
         property.SameNightFinalBookingTime = finalTime;
         property.SameNightFinalBookingDayOffset = finalOffset;
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
 
@@ -337,8 +341,9 @@ public class PropertyService(
         CancellationToken cancellationToken = default)
     {
         var property = await GetManageableEntityAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
         property.Description = request.Description.Trim();
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
 
@@ -380,7 +385,8 @@ public class PropertyService(
         await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
         PropertyCoordinateValidator.EnsureValid(request.Latitude, request.Longitude);
 
-        var property = await GetEntityAsync(propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
+        var property = approvalWrite.Property;
         if (request.OwnerId != property.OwnerId)
         {
             throw new InvalidOperationException("Use the transfer ownership action to change a property owner.");
@@ -442,14 +448,18 @@ public class PropertyService(
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
-        if (request.Status == PropertyStatus.Approved)
+        if (request.Status == PropertyStatus.Approved && !approvalWrite.WasApproved)
         {
             await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
+        }
+        else if (request.Status == PropertyStatus.Approved)
+        {
+            await EnsureCanonicalOwnerAccountAsync(property.OwnerId, cancellationToken);
         }
 
         property.Status = request.Status;
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
 
@@ -1063,7 +1073,8 @@ public class PropertyService(
     {
         await EnsureCanAdminManagePropertyAsync(userId, role, propertyId, cancellationToken);
 
-        var property = await GetEntityAsync(propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
+        var property = approvalWrite.Property;
         if (status == PropertyStatus.Approved)
         {
             await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
@@ -1071,7 +1082,7 @@ public class PropertyService(
 
         property.Status = status;
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken, revalidateApproval: false);
         return await LoadResponseAsync(propertyId, cancellationToken);
     }
 

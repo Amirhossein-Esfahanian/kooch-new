@@ -10,7 +10,8 @@ namespace Kooch.Api.Services;
 public class PropertyImageService(
     KoochDbContext dbContext,
     IPropertyAccessService propertyAccessService,
-    IWebHostEnvironment environment) : IPropertyImageService
+    IWebHostEnvironment environment,
+    IPropertyCompletionService propertyCompletionService) : IPropertyImageService
 {
     private static readonly HashSet<string> AllowedExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -165,9 +166,10 @@ public class PropertyImageService(
     public async Task<PropertyImageResponse> UpdateAsync(
         int userId, UserRole role, int imageId, PropertyImageRequest request, CancellationToken cancellationToken = default)
     {
-        var image = await dbContext.PropertyImages.SingleOrDefaultAsync(item => item.Id == imageId, cancellationToken)
-            ?? throw new KeyNotFoundException("Property image not found.");
-        await EnsureCanManageAsync(userId, role, image.PropertyId, cancellationToken);
+        var propertyId = await GetImagePropertyIdAsync(imageId, cancellationToken);
+        await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
+        var image = await LoadImageForWriteAsync(imageId, cancellationToken);
         await ValidateLinksAsync(image.PropertyId, request.RoomTypeId, request.RoomId, cancellationToken);
         var generatedAltText = await GenerateAltTextAsync(image.PropertyId, request.RoomTypeId, request.Tag, cancellationToken);
         if (request.IsCover)
@@ -177,16 +179,17 @@ public class PropertyImageService(
 
         Apply(image, request);
         image.AltText ??= generatedAltText;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
         return Map(image);
     }
 
     public async Task DeleteAsync(
         int userId, UserRole role, int imageId, CancellationToken cancellationToken = default)
     {
-        var image = await dbContext.PropertyImages.SingleOrDefaultAsync(item => item.Id == imageId, cancellationToken)
-            ?? throw new KeyNotFoundException("Property image not found.");
-        await EnsureCanManageAsync(userId, role, image.PropertyId, cancellationToken);
+        var propertyId = await GetImagePropertyIdAsync(imageId, cancellationToken);
+        await EnsureCanManageAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
+        var image = await LoadImageForWriteAsync(imageId, cancellationToken);
 
         var shouldPromotePropertyCover =
             image.IsCover &&
@@ -215,7 +218,21 @@ public class PropertyImageService(
         image.IsDeleted = true;
         image.DeletedAtUtc = DateTime.UtcNow;
         image.DeletedByUserId = userId;
-        await dbContext.SaveChangesAsync(cancellationToken);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken);
+    }
+
+    private async Task<int> GetImagePropertyIdAsync(int imageId, CancellationToken cancellationToken) =>
+        await dbContext.PropertyImages.AsNoTracking().Where(image => image.Id == imageId)
+            .Select(image => (int?)image.PropertyId).SingleOrDefaultAsync(cancellationToken)
+        ?? throw new KeyNotFoundException("Property image not found.");
+
+    private async Task<PropertyImage> LoadImageForWriteAsync(int imageId, CancellationToken cancellationToken)
+    {
+        var image = await dbContext.PropertyImages.SingleOrDefaultAsync(item => item.Id == imageId, cancellationToken)
+            ?? throw new KeyNotFoundException("Property image not found.");
+        await dbContext.Entry(image).ReloadAsync(cancellationToken);
+        if (image.IsDeleted) throw new KeyNotFoundException("Property image not found.");
+        return image;
     }
 
     private async Task EnsureCanViewAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken)

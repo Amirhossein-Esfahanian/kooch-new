@@ -298,7 +298,8 @@ public sealed class PropertyImageCharacterizationTests
             Db.Properties.AddRange(new Property { Id = 10, OwnerId = 1, Name = "Property" }, new Property { Id = 11, OwnerId = 1, Name = "Other" });
             Db.RoomTypes.AddRange(new RoomType { Id = 20, PropertyId = 10, Name = "Room A" }, new RoomType { Id = 21, PropertyId = 10, Name = "Room B" }, new RoomType { Id = 99, PropertyId = 11, Name = "Foreign" });
             Db.SaveChanges();
-            Service = new PropertyImageService(Db, new PropertyAccessService(Db), new TestEnvironment { WebRootPath = root, ContentRootPath = root });
+            Service = new PropertyImageService(Db, new PropertyAccessService(Db), new TestEnvironment { WebRootPath = root, ContentRootPath = root },
+                new PropertyCompletionService(Db, new PropertyAccessService(Db)));
         }
         public async Task<IReadOnlyList<PropertyImageResponse>> Upload(int? room, int actor = 1) =>
             await Service.UploadAsync(actor, actor == 1 ? UserRole.SuperAdmin : UserRole.Client, 10, await Request(room));
