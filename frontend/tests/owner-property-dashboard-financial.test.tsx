@@ -74,13 +74,17 @@ describe("Owner Property dashboard completion guidance", () => {
     expect(within(section).getByRole("link", { name: "حداقل یک تصویر" }).getAttribute("href")).toBe("/owner/properties/17?step=4");
   });
 
-  it.each(["Draft", "Rejected"])("places one prominent incomplete %s banner before operations", async (status) => {
+  it.each([
+    { status: "Draft", surface: "--theme-warning-soft", icon: "alert.svg" },
+    { status: "Rejected", surface: "--theme-danger-soft", icon: "error.svg" },
+  ])("places one contextual incomplete $status banner before operations", async ({ status, surface, icon }) => {
     mocks.propertyStatus = status;
     render(<OwnerPropertyDashboardPage />);
     const banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
     const operations = screen.getByRole("heading", { name: "وضعیت رزروهای اقامتگاه" });
     expect(banner.compareDocumentPosition(operations) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(banner.querySelector('[class*="!bg-amber-50"]')).toBeTruthy();
+    expect(banner.querySelector("section[style]")?.getAttribute("style")).toContain(surface);
+    expect(within(banner).getByRole("heading", { name: "اطلاعات لازم برای تأیید اقامتگاه کامل نیست" }).querySelector(`[style*="${icon}"]`)).toBeTruthy();
     expect(within(banner).getByRole("heading", { name: "اطلاعات لازم برای تأیید اقامتگاه کامل نیست" })).toBeTruthy();
     expect(within(banner).getByRole("link", { name: "تکمیل اطلاعات ضروری" }).getAttribute("href")).toBe("/owner/properties/17?step=0");
     expect(screen.getAllByRole("region", { name: "بررسی و تأیید اقامتگاه" })).toHaveLength(1);
@@ -92,7 +96,7 @@ describe("Owner Property dashboard completion guidance", () => {
     render(<OwnerPropertyDashboardPage />);
     const banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
     expect(banner.compareDocumentPosition(screen.getByRole("heading", { name: "کارهای سریع" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(banner.querySelector('[class*="!bg-primary/10"]')).toBeTruthy();
+    expect(banner.querySelector("section[style]")?.getAttribute("style")).toContain("--theme-primary-soft");
     expect(within(banner).getByRole("heading", { name: "اقامتگاه آماده بررسی مدیر است" })).toBeTruthy();
     expect(within(banner).getByRole("button", { name: "ارسال برای بررسی مدیر" })).toBeTruthy();
   });
@@ -101,10 +105,29 @@ describe("Owner Property dashboard completion guidance", () => {
     mocks.propertyStatus = "PendingReview";
     render(<OwnerPropertyDashboardPage />);
     const banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
-    expect(banner.querySelector('[class*="!bg-blue-50"]')).toBeTruthy();
+    expect(banner.querySelector("section[style]")?.getAttribute("style")).toContain("--theme-primary-soft");
+    expect(within(banner).getByRole("heading", { name: "اقامتگاه در انتظار بررسی مدیر است" }).querySelector('[style*="info.svg"]')).toBeTruthy();
     expect(within(banner).getByRole("heading", { name: "اقامتگاه در انتظار بررسی مدیر است" })).toBeTruthy();
     expect(within(banner).queryByRole("button")).toBeNull();
     expect(within(banner).queryByRole("link")).toBeNull();
+  });
+
+  it("gives complete Rejected and Suspended Properties their distinct status tones", async () => {
+    mocks.propertyStatus = "Rejected";
+    setup([]);
+    const view = render(<OwnerPropertyDashboardPage />);
+    let banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
+    expect(banner.querySelector("section[style]")?.getAttribute("style")).toContain("--theme-danger-soft");
+    expect(within(banner).getByRole("button", { name: "ارسال مجدد برای بررسی" })).toBeTruthy();
+
+    view.unmount();
+    mocks.propertyStatus = "Suspended";
+    setup([]);
+    render(<OwnerPropertyDashboardPage />);
+    banner = await screen.findByRole("region", { name: "بررسی و تأیید اقامتگاه" });
+    expect(banner.querySelector("section[style]")?.getAttribute("style")).toContain("--muted");
+    expect(within(banner).getByRole("heading", { name: "اقامتگاه تعلیق شده است" }).querySelector('[style*="ban.svg"]')).toBeTruthy();
+    expect(within(banner).queryByRole("button", { name: /ارسال.*بررسی/ })).toBeNull();
   });
 
   it("hides setup guidance for an approved Property even when completion reports gaps", async () => {

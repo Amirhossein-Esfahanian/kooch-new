@@ -20,6 +20,7 @@ import { OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochIcon, type KoochIconName } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import { formatBookingDate } from "@/components/booking/booking-display";
@@ -199,6 +200,14 @@ export default function OwnerPropertyDashboardPage() {
     overview?.completion.canActivate === true;
   const firstEditableSection = incompleteSections.find((section) =>
     review?.status !== "forbidden" && effectivePermissions?.[completionEditPermission(section)]?.edit);
+  const approvalBannerTone: { surface: string; border: string; iconColor: string; icon: KoochIconName } =
+    property?.status === "Rejected"
+      ? { surface: "var(--theme-danger-soft)", border: "color-mix(in srgb, var(--theme-danger) 22%, var(--border))", iconColor: "var(--theme-danger)", icon: "error" }
+      : property?.status === "Suspended"
+        ? { surface: "var(--muted)", border: "var(--border)", iconColor: "var(--muted-foreground)", icon: "suspend" }
+        : property?.status === "Draft" && overview?.completion.canActivate !== true
+          ? { surface: "var(--theme-warning-soft)", border: "color-mix(in srgb, var(--theme-warning) 22%, var(--border))", iconColor: "var(--theme-warning)", icon: "warning" }
+          : { surface: "var(--theme-primary-soft)", border: "var(--theme-primary-border)", iconColor: "var(--theme-primary-text)", icon: "info" };
 
   async function submitForReview() {
     if (!canSubmit || reviewRequest.current || review?.status === "forbidden" || review?.needsRefresh) return;
@@ -308,17 +317,13 @@ export default function OwnerPropertyDashboardPage() {
         {overview && property?.status !== "Approved" && (
           <section aria-label="بررسی و تأیید اقامتگاه" className="min-w-0">
             <KoochCard
-              className={`grid gap-4 border p-5 sm:p-6 ${
-                property?.status === "PendingReview"
-                  ? "!border-blue-300 !bg-blue-50 dark:!border-blue-800 dark:!bg-blue-950/40"
-                  : property?.status === "Suspended" || overview.completion.canActivate !== true
-                    ? "!border-amber-300 !bg-amber-50 dark:!border-amber-800 dark:!bg-amber-950/40"
-                    : "!border-primary/50 !bg-primary/10"
-              }`}
+              className="grid gap-4 p-5 sm:p-6"
               padding="none"
+              style={{ backgroundColor: approvalBannerTone.surface, borderColor: approvalBannerTone.border }}
             >
               <div className="grid gap-1">
-                <h2 className="text-lg font-bold text-foreground sm:text-xl">
+                <h2 className="flex items-center gap-2 text-lg font-bold text-foreground sm:text-xl">
+                  <KoochIcon className="size-5" name={approvalBannerTone.icon} style={{ color: approvalBannerTone.iconColor }} />
                   {property?.status === "PendingReview" ? "اقامتگاه در انتظار بررسی مدیر است"
                     : property?.status === "Suspended" ? "اقامتگاه تعلیق شده است"
                       : overview.completion.canActivate === true ? "اقامتگاه آماده بررسی مدیر است"
