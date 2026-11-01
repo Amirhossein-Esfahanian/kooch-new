@@ -5,7 +5,6 @@ import {
   FormEvent,
   type ReactNode,
   useEffect,
-  useMemo,
   useRef,
   useState,
 } from "react";
@@ -52,7 +51,6 @@ import {
 } from "@/components/property/PropertyLocationPicker";
 import {
   getPropertyFinancialWarnings,
-  hasActiveExtraGuestRoomType as hasExtraGuestRoomType,
   PricingSettingsWarning,
 } from "@/components/pricing/PricingWarnings";
 import { useSiteCurrencyLabel } from "@/lib/currency";
@@ -265,15 +263,6 @@ interface PropertyWizardProps {
   isAdmin?: boolean;
   adminCashbackSettings?: ReactNode;
   onDone?: (property: PropertyResponse) => void;
-}
-
-interface CompletionSection {
-  key: string;
-  label: string;
-  isComplete: boolean;
-  missingItems: string[];
-  recommendedMissingItems: string[];
-  targetStepIndex: number;
 }
 
 function cleanCommonAreas(values: CommonAreaDraft[]) {
@@ -599,136 +588,6 @@ export function PropertyWizard({
       (setting) => !activePropertySettingIds.has(setting.id),
     ),
   ];
-  const hasActiveExtraGuestRoomType = hasExtraGuestRoomType(roomTypes);
-  const completionSections = useMemo<CompletionSection[]>(() => {
-    const hasImages = allImages.some(
-      (image) => !image.roomTypeId && !image.roomId,
-    );
-    const hasDescription = Boolean(data.propertyDescription.trim());
-    const hasCommonAreas = cleanCommonAreas(data.commonAreas).length > 0;
-    const hasNearbyPlaces = cleanNearbyPlaces(data.nearbyPlaces).length > 0;
-    const required = (items: Array<[boolean, string]>) =>
-      items.filter(([done]) => !done).map(([, label]) => label);
-    const recommended = (items: Array<[boolean, string]>) =>
-      items.filter(([done]) => !done).map(([, label]) => label);
-
-    return [
-      {
-        key: "basic",
-        label: "اطلاعات پایه",
-        targetStepIndex: 0,
-        isComplete: Boolean(data.name.trim()),
-        missingItems: required([
-          [Boolean(data.name.trim()), "نام فارسی"],
-        ]),
-        recommendedMissingItems: recommended([
-          [Boolean(data.englishName.trim()), "نام انگلیسی"],
-          [Boolean(data.seoTitle.trim()), "عنوان سئو"],
-          [Boolean(data.seoDescription.trim()), "توضیحات سئو"],
-        ]),
-      },
-      {
-        key: "location",
-        label: "موقعیت و نشانی",
-        targetStepIndex: 1,
-        isComplete: Boolean(data.city.trim() && data.address.trim()),
-        missingItems: required([
-          [Boolean(data.city.trim()), "شهر"],
-          [Boolean(data.address.trim()), "نشانی"],
-        ]),
-        recommendedMissingItems: recommended([
-          [Boolean(data.latitude && data.longitude), "مختصات نقشه"],
-        ]),
-      },
-      {
-        key: "building",
-        label: "ساختمان و دسترسی",
-        targetStepIndex: 2,
-        isComplete: Number(data.floors || 0) > 0,
-        missingItems: required([[Number(data.floors || 0) > 0, "تعداد طبقات"]]),
-        recommendedMissingItems: [],
-      },
-      {
-        key: "amenities",
-        label: "امکانات",
-        targetStepIndex: 3,
-        isComplete: true,
-        missingItems: [],
-        recommendedMissingItems: recommended([
-          [data.selectedAmenityIds.length > 0, "حداقل یک امکان"],
-        ]),
-      },
-      {
-        key: "images",
-        label: "تصاویر",
-        targetStepIndex: 4,
-        isComplete: hasImages,
-        missingItems: required([[hasImages, "حداقل یک تصویر"]]),
-        recommendedMissingItems: [],
-      },
-      {
-        key: "descriptions",
-        label: "توضیحات و فضاها",
-        targetStepIndex: 5,
-        isComplete: hasDescription || hasCommonAreas,
-        missingItems: required([
-          [hasDescription || hasCommonAreas, "توضیح اقامتگاه یا فضای مشترک"],
-        ]),
-        recommendedMissingItems: recommended([
-          [hasCommonAreas, "فضاهای مشترک"],
-        ]),
-      },
-      {
-        key: "nearby",
-        label: "مکان‌های نزدیک",
-        targetStepIndex: 6,
-        isComplete: hasNearbyPlaces,
-        missingItems: required([[hasNearbyPlaces, "حداقل یک مکان نزدیک"]]),
-        recommendedMissingItems: [],
-      },
-      {
-        key: "rules",
-        label: "قوانین و زمان‌ها",
-        targetStepIndex: 7,
-        isComplete: Boolean(data.checkInTime && data.checkOutTime),
-        missingItems: required([
-          [Boolean(data.checkInTime), "ساعت ورود"],
-          [Boolean(data.checkOutTime), "ساعت خروج"],
-        ]),
-        recommendedMissingItems: [],
-      },
-      {
-        key: "financial",
-        label: "کودک و نفر اضافه",
-        targetStepIndex: 8,
-        isComplete: !hasActiveExtraGuestRoomType || data.extraGuestPrice !== "",
-        missingItems: required([
-          [!hasActiveExtraGuestRoomType || data.extraGuestPrice !== "", "نرخ نفر اضافه"],
-        ]),
-        recommendedMissingItems: [],
-      },
-      {
-        key: "seo",
-        label: "تنظیمات سئو",
-        targetStepIndex: 9,
-        isComplete: true,
-        missingItems: [],
-        recommendedMissingItems: recommended([
-          [Boolean(data.seoTitle.trim()), "عنوان سئو"],
-          [Boolean(data.seoDescription.trim()), "توضیحات سئو"],
-        ]),
-      },
-      {
-        key: "review",
-        label: "بازبینی",
-        targetStepIndex: 10,
-        isComplete: Boolean(property),
-        missingItems: required([[Boolean(property), "ذخیره اولیه اقامتگاه"]]),
-        recommendedMissingItems: [],
-      },
-    ];
-  }, [allImages, data, hasActiveExtraGuestRoomType, property]);
-
   function jumpToStep(index: number) {
     setError("");
     setStep(index);
@@ -743,6 +602,7 @@ export function PropertyWizard({
       location: 1,
       amenities: 3,
       images: 4,
+      descriptions: 5,
       policies: 7,
       financial: 8,
     };
@@ -1217,38 +1077,26 @@ export function PropertyWizard({
         </div>
         <nav className="grid gap-1">
           {steps.map((label, index) => {
-            const section = completionSections.find(
-              (item) => item.targetStepIndex === index,
+            const section = completion?.sections.find(
+              (item) => completionStepTarget(item.actionTarget || item.key) === index,
             );
-            const isComplete = Boolean(section?.isComplete);
-            const hasRequiredMissing = Boolean(section && !section.isComplete);
-            const hasRecommendedMissing = Boolean(
-              section?.isComplete && section.recommendedMissingItems.length,
-            );
+            const isComplete = section?.status === "Complete";
+            const hasRequiredMissing = Boolean(section && !isComplete);
             return (
               <button
                 className={`flex items-center justify-between rounded-xl px-3 py-2.5 text-right text-sm font-bold transition ${step === index ? "bg-primary text-primary-foreground" : isComplete ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)] hover:bg-muted" : "text-muted-foreground hover:bg-muted"}`}
                 key={label}
                 onClick={() => jumpToStep(index)}
                 title={
-                  section
-                    ? [
-                        ...section.missingItems,
-                        ...section.recommendedMissingItems,
-                      ].join("، ")
-                    : undefined
+                  section?.missingItems.join("، ")
                 }
                 type="button"
               >
                 <span>{label}</span>
                 <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-primary-foreground/20 text-primary-foreground" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : hasRecommendedMissing ? "bg-[var(--theme-warning-soft)] text-[var(--theme-warning)]" : "bg-[var(--theme-success-soft)] text-[var(--theme-success)]"}`}
+                  className={`rounded-full px-2 py-0.5 text-xs ${step === index ? "bg-primary-foreground/20 text-primary-foreground" : hasRequiredMissing ? "bg-[var(--theme-danger-soft)] text-[var(--theme-danger)]" : isComplete ? "bg-[var(--theme-success-soft)] text-[var(--theme-success)]" : "bg-muted text-muted-foreground"}`}
                 >
-                  {isComplete
-                    ? hasRecommendedMissing
-                      ? "پیشنهاد"
-                      : "✓"
-                    : "ناقص"}
+                  {section ? isComplete ? "✓" : "ناقص" : completion ? "اختیاری" : "—"}
                 </span>
               </button>
             );
@@ -2026,10 +1874,7 @@ export function PropertyWizard({
               </KoochField>
               <KoochField
                 label={`نرخ نفر اضافه (${currencyLabel})`}
-                required={hasActiveExtraGuestRoomType}
-                helperText={hasActiveExtraGuestRoomType
-                  ? "برای اتاق‌های دارای نفر اضافه الزامی است؛ صفر به معنی رایگان است."
-                  : "اگر اتاقی نفر اضافه نمی‌پذیرد، این مبلغ اختیاری است."}
+                helperText="برای محاسبه نرخ نفر اضافه استفاده می‌شود؛ صفر به معنی رایگان است. برای تأیید اقامتگاه الزامی نیست."
               >
                 <KoochInput
                   inputMode="numeric"
@@ -2102,7 +1947,7 @@ export function PropertyWizard({
             {property && (
               <PricingSettingsWarning
                 editHref={`${isAdmin ? "/admin" : "/owner"}/properties/${property.id}?step=8`}
-                title="تنظیمات مالی کامل نشده"
+                title="راهنمای قیمت‌گذاری نفر اضافه"
                 warnings={getPropertyFinancialWarnings(property, roomTypes)}
               />
             )}

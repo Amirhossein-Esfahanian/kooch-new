@@ -36,9 +36,9 @@ vi.mock("@/lib/owner-api", async (importOriginal) => ({
 import OwnerPropertyDashboardPage from "@/app/owner/properties/[id]/dashboard/page";
 
 const missingSections = [
-  { key: "basic", label: "اطلاعات پایه", actionTarget: "basic", status: "Incomplete", missingItems: ["نام فارسی", "توضیحات اقامتگاه"] },
-  { key: "financial", label: "تنظیمات مالی", actionTarget: "financial", status: "Incomplete", missingItems: ["قیمت نفر اضافه"] },
-  { key: "pricing", label: "قیمت‌گذاری", actionTarget: "pricing", status: "Incomplete", missingItems: ["حداقل یک قیمت روزانه معتبر"] },
+  { key: "basic", label: "اطلاعات پایه", actionTarget: "basic", status: "Incomplete", missingItems: ["نام فارسی"] },
+  { key: "descriptions", label: "توضیحات اقامتگاه", actionTarget: "descriptions", status: "Incomplete", missingItems: ["توضیحات اقامتگاه"] },
+  { key: "images", label: "تصاویر", actionTarget: "images", status: "Incomplete", missingItems: ["حداقل یک تصویر"] },
 ];
 
 function setup(sections: typeof missingSections = missingSections) {
@@ -62,9 +62,8 @@ describe("Owner Property dashboard completion guidance", () => {
     render(<OwnerPropertyDashboardPage />);
     const section = await screen.findByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" });
     expect(within(section).getByRole("link", { name: "نام فارسی" }).getAttribute("href")).toBe("/owner/properties/17?step=0");
-    expect(within(section).getByRole("link", { name: "توضیحات اقامتگاه" }).getAttribute("href")).toBe("/owner/properties/17?step=0");
-    expect(within(section).getByRole("link", { name: "قیمت نفر اضافه" }).getAttribute("href")).toBe("/owner/properties/17?step=7");
-    expect(within(section).getByRole("link", { name: "حداقل یک قیمت روزانه معتبر" }).getAttribute("href")).toBe("/owner/properties/17/pricing");
+    expect(within(section).getByRole("link", { name: "توضیحات اقامتگاه" }).getAttribute("href")).toBe("/owner/properties/17?step=5");
+    expect(within(section).getByRole("link", { name: "حداقل یک تصویر" }).getAttribute("href")).toBe("/owner/properties/17?step=4");
   });
 
   it("hides setup guidance for an approved Property even when completion reports gaps", async () => {
@@ -86,7 +85,7 @@ describe("Owner Property dashboard completion guidance", () => {
     mocks.canEditPricing = false;
     render(<OwnerPropertyDashboardPage />);
     const section = await screen.findByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" });
-    expect(within(section).getByText("قیمت نفر اضافه")).toBeTruthy();
+    expect(within(section).getByRole("list").textContent).toContain("حداقل یک تصویر");
     expect(within(section).queryAllByRole("link")).toHaveLength(0);
   });
 });

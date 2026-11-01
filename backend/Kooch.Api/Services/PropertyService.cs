@@ -409,12 +409,6 @@ public class PropertyService(
         property.Address = request.Address.Trim();
         property.City = request.City.Trim();
         property.Country = request.Country.Trim();
-        if (request.Status == PropertyStatus.Approved)
-        {
-            await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
-        }
-
-        property.Status = request.Status;
         property.Type = request.Type;
         property.InventoryMode = request.InventoryMode;
         property.CheckInTime = request.CheckInTime;
@@ -448,6 +442,12 @@ public class PropertyService(
         property.ChildPrice = request.ChildPrice;
         property.ExtraGuestPrice = request.ExtraGuestPrice;
 
+        if (request.Status == PropertyStatus.Approved)
+        {
+            await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
+        }
+
+        property.Status = request.Status;
         AuditLogService.CaptureApprovedChange(dbContext, userId, property);
         await dbContext.SaveChangesAsync(cancellationToken);
         return await LoadResponseAsync(propertyId, cancellationToken);
@@ -1079,6 +1079,9 @@ public class PropertyService(
         int propertyId,
         CancellationToken cancellationToken)
     {
+        var property = await GetEntityAsync(propertyId, cancellationToken);
+        await ValidateDestinationAsync(property.DestinationId, cancellationToken);
+        await EnsureCanonicalOwnerAccountAsync(property.OwnerId, cancellationToken);
         var completion = await propertyCompletionService.CalculateAsync(propertyId, cancellationToken);
         if (!completion.CanActivate)
         {

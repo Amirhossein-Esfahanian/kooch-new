@@ -11,7 +11,7 @@ public sealed class PropertyOperationalHealthTests
     private const string SoldOutWarning = "در ۶۰ روز آینده در حال حاضر اقامت قابل رزروی باقی نمانده است.";
 
     [Fact]
-    public async Task ConfirmedReservationChangesOnlyOperationalWarning()
+    public async Task ConfirmedReservationAffectsSellabilityWithoutChangingApprovalCompleteness()
     {
         await using var db = CreateContext();
         var today = UtcToday();
@@ -22,6 +22,7 @@ public sealed class PropertyOperationalHealthTests
         Assert.DoesNotContain(SoldOutWarning, before.Warnings);
         Assert.True(before.CanActivate);
         Assert.Equal(100, before.CompletionPercentage);
+        Assert.True(await HasLiveStayAsync(db, today));
 
         AddReservation(db, 10, today);
         await db.SaveChangesAsync();
@@ -30,7 +31,8 @@ public sealed class PropertyOperationalHealthTests
         var configurationAfter = await ReadinessAsync(db, today);
         Assert.Equal(configurationBefore.HasJointStandardStay, configurationAfter.HasJointStandardStay);
         Assert.Equal(configurationBefore.ConfiguredCandidates, configurationAfter.ConfiguredCandidates);
-        Assert.Contains(SoldOutWarning, after.Warnings);
+        Assert.DoesNotContain(SoldOutWarning, after.Warnings);
+        Assert.False(await HasLiveStayAsync(db, today));
         Assert.True(after.CanActivate);
         Assert.Equal(100, after.CompletionPercentage);
         Assert.Equal(before.CompletedSections, after.CompletedSections);
@@ -53,6 +55,7 @@ public sealed class PropertyOperationalHealthTests
 
         Assert.True(completion.CanActivate);
         Assert.DoesNotContain(SoldOutWarning, completion.Warnings);
+        Assert.True(await HasLiveStayAsync(db, today));
     }
 
     [Theory]
@@ -95,8 +98,9 @@ public sealed class PropertyOperationalHealthTests
 
         var completion = await CompletionAsync(db);
 
-        Assert.False(completion.CanActivate);
-        Assert.Contains("pricing", completion.MissingSections);
+        Assert.True(completion.CanActivate);
+        Assert.Empty(completion.MissingSections);
+        Assert.False(await HasLiveStayAsync(db, today));
         Assert.DoesNotContain(SoldOutWarning, completion.Warnings);
     }
 
@@ -104,7 +108,7 @@ public sealed class PropertyOperationalHealthTests
     [InlineData(AvailabilityStatus.Unavailable, 1, false)]
     [InlineData(AvailabilityStatus.Available, 0, false)]
     [InlineData(AvailabilityStatus.Available, 1, true)]
-    public async Task UnconfiguredStandardNightRemainsAConfigurationBlockerOnly(
+    public async Task UnconfiguredStandardNightBlocksSellabilityButNotApproval(
         AvailabilityStatus status, int capacity, bool isClosed)
     {
         await using var db = CreateContext();
@@ -118,8 +122,9 @@ public sealed class PropertyOperationalHealthTests
 
         var completion = await CompletionAsync(db);
 
-        Assert.False(completion.CanActivate);
-        Assert.Contains("availability", completion.MissingSections);
+        Assert.True(completion.CanActivate);
+        Assert.Empty(completion.MissingSections);
+        Assert.False(await HasLiveStayAsync(db, today));
         Assert.DoesNotContain(SoldOutWarning, completion.Warnings);
     }
 
@@ -138,11 +143,12 @@ public sealed class PropertyOperationalHealthTests
         var completion = await CompletionAsync(db);
         Assert.True(completion.CanActivate);
         Assert.Equal(100, completion.CompletionPercentage);
-        Assert.Contains(SoldOutWarning, completion.Warnings);
+        Assert.DoesNotContain(SoldOutWarning, completion.Warnings);
+        Assert.False(await HasLiveStayAsync(db, today));
     }
 
     [Fact]
-    public async Task AnotherRoomTypeWithLiveStandardStayPreventsWarning()
+    public async Task AnotherRoomTypeWithLiveStandardStayPreservesSellability()
     {
         await using var db = CreateContext();
         var today = UtcToday();
@@ -160,6 +166,7 @@ public sealed class PropertyOperationalHealthTests
 
         Assert.True(completion.CanActivate);
         Assert.DoesNotContain(SoldOutWarning, completion.Warnings);
+        Assert.True(await HasLiveStayAsync(db, today));
     }
 
     [Theory]
@@ -177,7 +184,8 @@ public sealed class PropertyOperationalHealthTests
         var completion = await CompletionAsync(db);
 
         Assert.True(completion.CanActivate);
-        Assert.Equal(warns, completion.Warnings.Contains(SoldOutWarning));
+        Assert.DoesNotContain(SoldOutWarning, completion.Warnings);
+        Assert.Equal(!warns, await HasLiveStayAsync(db, today));
     }
 
     private static DateOnly UtcToday() => DateOnly.FromDateTime(DateTime.UtcNow);
@@ -233,9 +241,11 @@ public sealed class PropertyOperationalHealthTests
         new PropertyStandardStayReadinessService(db).EvaluateAsync(100, today);
 
     private static Task<Kooch.Api.Dtos.Properties.PropertyCompletionResponse> CompletionAsync(KoochDbContext db) =>
-        new PropertyCompletionService(db, null!, new PropertyStandardStayReadinessService(db),
-            new PropertyOperationalHealthService(new EffectiveAvailabilityService(db)))
-            .CalculateAsync(100);
+        new PropertyCompletionService(db, null!).CalculateAsync(100);
+
+    private static async Task<bool> HasLiveStayAsync(KoochDbContext db, DateOnly today) =>
+        await new PropertyOperationalHealthService(new EffectiveAvailabilityService(db))
+            .HasCurrentlyBookableStandardStayAsync((await ReadinessAsync(db, today)).ConfiguredCandidates, today);
 
     private static KoochDbContext CreateContext() => new(
         new DbContextOptionsBuilder<KoochDbContext>()

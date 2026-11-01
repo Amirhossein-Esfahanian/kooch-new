@@ -200,7 +200,7 @@ public sealed class PropertyStandardStayReadinessTests
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task CompletionAndApprovalFollowJointCandidate(bool available)
+    public async Task ApprovalCompletenessIsIndependentOfJointCandidate(bool available)
     {
         await using var db = CreateContext();
         await SeedAsync(db);
@@ -215,14 +215,13 @@ public sealed class PropertyStandardStayReadinessTests
         await db.SaveChangesAsync();
 
         var completion = await new PropertyCompletionService(
-            db, null!, new PropertyStandardStayReadinessService(db),
-            new PropertyOperationalHealthService(new EffectiveAvailabilityService(db)))
+            db, null!)
             .CalculateAsync(100);
 
-        Assert.Equal(available, completion.CanActivate);
-        Assert.Equal(available ? 100 : 89, completion.CompletionPercentage);
-        Assert.Equal(available, completion.CompletedSections.Contains("availability"));
-        Assert.Equal(!available, completion.MissingSections.Contains("availability"));
+        Assert.True(completion.CanActivate);
+        Assert.Equal(100, completion.CompletionPercentage);
+        Assert.DoesNotContain("availability", completion.CompletedSections);
+        Assert.Empty(completion.MissingSections);
     }
 
     private static Task<PropertyStandardStayReadiness> EvaluateAsync(KoochDbContext db) =>

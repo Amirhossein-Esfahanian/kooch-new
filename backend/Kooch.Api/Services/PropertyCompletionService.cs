@@ -7,9 +7,7 @@ namespace Kooch.Api.Services;
 
 public class PropertyCompletionService(
     KoochDbContext dbContext,
-    IPropertyAccessService propertyAccessService,
-    IPropertyStandardStayReadinessService standardStayReadinessService,
-    IPropertyOperationalHealthService operationalHealthService) : IPropertyCompletionService
+    IPropertyAccessService propertyAccessService) : IPropertyCompletionService
 {
     public async Task<PropertyCompletionResponse> GetAsync(
         int userId,
@@ -34,36 +32,13 @@ public class PropertyCompletionService(
         int propertyId,
         CancellationToken cancellationToken = default)
     {
-        var today = DateOnly.FromDateTime(DateTime.UtcNow);
-        var state = await dbContext.Properties.AsNoTracking()
-            .Where(property => property.Id == propertyId)
-            .Select(property => new
-            {
-                property.Status,
-                BasicName = property.Name != "",
-                BasicEnglishName = property.EnglishName != null && property.EnglishName != "",
-                BasicDescription = property.Description != "",
-                Address = property.Address != "",
-                City = property.City != "",
-                Coordinates = property.Latitude != null && property.Longitude != null,
-                Images = property.Images.Any(image => image.RoomTypeId == null && image.RoomId == null),
-                Amenities = property.PropertyAmenities.Any(),
-                PoliciesCheckIn = property.CheckInTime != null,
-                PoliciesCheckOut = property.CheckOutTime != null,
-                Rooms = property.RoomTypes.Any(roomType => roomType.IsActive),
-                HasActiveExtraGuestRoomType = property.RoomTypes.Any(roomType =>
-                    roomType.IsActive && roomType.AllowExtraGuest && roomType.MaxExtraGuests > 0),
-                PricingStarted = property.RoomTypes.Any(roomType =>
-                    roomType.IsActive &&
-                    (roomType.BasePrice != null && roomType.BasePrice > 0 ||
-                     roomType.DailyPrices.Any())),
-                AvailabilityStarted = property.RoomTypes.Any(roomType =>
-                    roomType.IsActive &&
-                    (roomType.TotalInventory > 0 || roomType.Availability.Any())),
-                HasExtraGuestPrice = property.ExtraGuestPrice != null,
-            })
-            .SingleAsync(cancellationToken);
-        var readiness = await standardStayReadinessService.EvaluateAsync(propertyId, today, cancellationToken);
+        // Use current tracked values when an Admin full update also requests approval.
+        var property = await dbContext.Properties.SingleAsync(item => item.Id == propertyId, cancellationToken);
+        var hasImage = await dbContext.PropertyImages.AsNoTracking().AnyAsync(image =>
+            image.PropertyId == propertyId && image.RoomTypeId == null && image.RoomId == null &&
+            image.Url.Trim() != "" && image.Url.Length <= 2000, cancellationToken);
+        var hasAmenities = await dbContext.PropertyAmenities.AsNoTracking()
+            .AnyAsync(item => item.PropertyId == propertyId, cancellationToken);
 
         var sections = new[]
         {
@@ -72,64 +47,41 @@ public class PropertyCompletionService(
                 "اطلاعات پایه",
                 "basic",
                 [
-                    (state.BasicName, "نام فارسی"),
-                    (state.BasicDescription, "توضیحات اقامتگاه")
+                    (HasText(property.Name, 200), "نام فارسی")
                 ],
-                started: state.BasicName || state.BasicDescription),
+                started: !string.IsNullOrWhiteSpace(property.Name)),
+            Section(
+                "descriptions",
+                "توضیحات اقامتگاه",
+                "descriptions",
+                [(HasText(property.Description, 4000), "توضیحات اقامتگاه")],
+                started: !string.IsNullOrWhiteSpace(property.Description)),
             Section(
                 "location",
                 "نشانی و موقعیت",
                 "location",
                 [
-                    (state.City, "شهر"),
-                    (state.Address, "نشانی")
+                    (HasText(property.Country, 100), "کشور"),
+                    (HasText(property.City, 100), "شهر"),
+                    (HasText(property.Address, 500), "نشانی")
                 ],
-                started: state.City || state.Address || state.Coordinates),
+                started: !string.IsNullOrWhiteSpace(property.Country) ||
+                    !string.IsNullOrWhiteSpace(property.City) || !string.IsNullOrWhiteSpace(property.Address)),
             Section(
                 "images",
                 "تصاویر",
                 "images",
-                [(state.Images, "حداقل یک تصویر")],
-                started: state.Images),
-            Section(
-                "amenities",
-                "امکانات",
-                "amenities",
-                [],
-                started: true),
+                [(hasImage, "حداقل یک تصویر")],
+                started: hasImage),
             Section(
                 "policies",
                 "قوانین و زمان‌ها",
                 "policies",
                 [
-                    (state.PoliciesCheckIn, "ساعت ورود"),
-                    (state.PoliciesCheckOut, "ساعت خروج")
+                    (property.CheckInTime.HasValue, "ساعت ورود"),
+                    (property.CheckOutTime.HasValue, "ساعت خروج")
                 ],
-                started: state.PoliciesCheckIn || state.PoliciesCheckOut),
-            Section(
-                "financial",
-                "تنظیمات مالی",
-                "financial",
-                [(!state.HasActiveExtraGuestRoomType || state.HasExtraGuestPrice, "قیمت نفر اضافه")],
-                started: state.HasActiveExtraGuestRoomType || state.HasExtraGuestPrice),
-            Section(
-                "rooms",
-                "اتاق‌ها",
-                "rooms",
-                [(state.Rooms, "حداقل یک اتاق فعال")],
-                started: state.Rooms),
-            Section(
-                "pricing",
-                "قیمت‌گذاری",
-                "pricing",
-                [(readiness.HasValidDailyPricing, "حداقل یک قیمت روزانه معتبر")],
-                started: state.PricingStarted || readiness.HasValidDailyPricing),
-            Section(
-                "availability",
-                "موجودی",
-                "availability",
-                [(readiness.HasJointStandardStay, "حداقل یک تاریخ دارای قیمت و موجودی قابل رزرو")],
-                started: state.AvailabilityStarted || readiness.HasValidConfiguredAvailability),
+                started: property.CheckInTime.HasValue || property.CheckOutTime.HasValue),
         };
 
         var completedSections = sections
@@ -143,15 +95,9 @@ public class PropertyCompletionService(
         var completionPercentage = (int)Math.Round(
             completedSections.Length / (decimal)sections.Length * 100m,
             MidpointRounding.AwayFromZero);
-        var warnings = BuildWarnings(state.BasicEnglishName, state.Amenities, state.Images,
-            state.Rooms, readiness.HasValidDailyPricing, readiness.HasJointStandardStay,
-            state.HasActiveExtraGuestRoomType && !state.HasExtraGuestPrice).ToList();
-        if (state.Status == PropertyStatus.Approved && readiness.HasJointStandardStay &&
-            !await operationalHealthService.HasCurrentlyBookableStandardStayAsync(
-                readiness.ConfiguredCandidates, today, cancellationToken))
-        {
-            warnings.Add("در ۶۰ روز آینده در حال حاضر اقامت قابل رزروی باقی نمانده است.");
-        }
+        var warnings = new List<string>();
+        if (string.IsNullOrWhiteSpace(property.EnglishName)) warnings.Add("نام انگلیسی اقامتگاه ثبت نشده است.");
+        if (!hasAmenities) warnings.Add("امکانات اقامتگاه ثبت نشده است.");
 
         return new PropertyCompletionResponse
         {
@@ -196,23 +142,6 @@ public class PropertyCompletionService(
         };
     }
 
-    private static IReadOnlyList<string> BuildWarnings(
-        bool hasEnglishName,
-        bool hasAmenities,
-        bool hasImages,
-        bool hasRooms,
-        bool hasPricing,
-        bool hasAvailability,
-        bool isExtraGuestPriceMissing)
-    {
-        var warnings = new List<string>();
-        if (!hasEnglishName) warnings.Add("نام انگلیسی اقامتگاه ثبت نشده است.");
-        if (!hasAmenities) warnings.Add("امکانات اقامتگاه ثبت نشده است.");
-        if (!hasImages) warnings.Add("تصویری برای اقامتگاه ثبت نشده است.");
-        if (!hasRooms) warnings.Add("هیچ اتاق فعالی ثبت نشده است.");
-        if (!hasPricing) warnings.Add("قیمت‌گذاری اقامتگاه کامل نیست.");
-        if (!hasAvailability) warnings.Add("موجودی قابل رزرو ثبت نشده است.");
-        if (isExtraGuestPriceMissing) warnings.Add("قیمت نفر اضافه ثبت نشده است.");
-        return warnings;
-    }
+    private static bool HasText(string? value, int maxLength) =>
+        !string.IsNullOrWhiteSpace(value) && value.Length <= maxLength;
 }

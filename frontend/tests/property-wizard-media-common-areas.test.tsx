@@ -122,41 +122,48 @@ let loadedRoomTypes: Array<Pick<RoomTypeResponse, "isActive" | "allowExtraGuest"
 
 const completion = {
   propertyId: 17,
-  completionPercentage: 50,
+  completionPercentage: 20,
   healthStatus: "NeedsAttention",
   sections: [
     {
-      key: "rooms",
-      label: "اتاق‌های فعال",
-      status: "NotStarted",
-      missingItems: ["حداقل یک اتاق فعال"],
-      actionTarget: "rooms",
+      key: "basic",
+      label: "اطلاعات پایه",
+      status: "Complete",
+      missingItems: [],
+      actionTarget: "basic",
     },
     {
-      key: "pricing",
-      label: "قیمت‌گذاری اقامتگاه",
+      key: "descriptions",
+      label: "توضیحات اقامتگاه",
       status: "Incomplete",
-      missingItems: ["حداقل یک قیمت ثبت‌شده"],
-      actionTarget: "pricing",
+      missingItems: ["توضیحات اقامتگاه"],
+      actionTarget: "descriptions",
     },
     {
-      key: "availability",
-      label: "موجودی رزرو",
-      status: "NotStarted",
-      missingItems: ["حداقل یک روز موجود"],
-      actionTarget: "availability",
-    },
-    {
-      key: "financial",
-      label: "وضعیت مالی آزمایشی",
+      key: "location",
+      label: "نشانی و موقعیت",
       status: "Incomplete",
-      missingItems: ["قیمت نفر اضافه"],
-      actionTarget: "financial",
+      missingItems: ["کشور", "شهر", "نشانی"],
+      actionTarget: "location",
+    },
+    {
+      key: "images",
+      label: "تصاویر اقامتگاه",
+      status: "Incomplete",
+      missingItems: ["حداقل یک تصویر"],
+      actionTarget: "images",
+    },
+    {
+      key: "policies",
+      label: "زمان‌های اقامت",
+      status: "Incomplete",
+      missingItems: ["ساعت ورود", "ساعت خروج"],
+      actionTarget: "policies",
     },
   ],
   warnings: [],
-  completedSections: [],
-  missingSections: ["rooms", "pricing", "availability", "financial"],
+  completedSections: ["basic"],
+  missingSections: ["descriptions", "location", "images", "policies"],
   canActivate: false,
 } satisfies PropertyCompletionResponse;
 
@@ -728,7 +735,6 @@ describe("PropertyWizard media and common areas", () => {
     expect(englishName.required).toBe(false);
     expect(englishName.value).toBe("");
     fireEvent.change(screen.getByLabelText("نام فارسی"), { target: { value: "اقامتگاه آزمایشی" } });
-    expect(screen.getByRole("button", { name: /اطلاعات پایه/ }).textContent).toContain("پیشنهاد");
     expect(screen.getByRole("button", { name: /اطلاعات پایه/ }).textContent).not.toContain("ناقص");
 
     fireEvent.click(screen.getByRole("button", { name: "ذخیره و ادامه" }));
@@ -744,9 +750,9 @@ describe("PropertyWizard media and common areas", () => {
     render(<PropertyWizard mode="edit" propertyId={17} />);
     await screen.findByRole("heading", { name: "امکانات" });
     const section = screen.getByRole("button", { name: /امکانات/ });
-    expect(section.textContent).toContain("پیشنهاد");
+    expect(section.textContent).toContain("اختیاری");
     expect(section.textContent).not.toContain("ناقص");
-    expect(section.getAttribute("title")).toContain("حداقل یک امکان");
+    expect(section.getAttribute("title")).toBeNull();
   });
 
   it("shows optional-content warnings in the existing completion card", () => {
@@ -761,6 +767,21 @@ describe("PropertyWizard media and common areas", () => {
     }} />);
     expect(screen.getByText("نام انگلیسی اقامتگاه ثبت نشده است.")).toBeTruthy();
     expect(screen.getByText("امکانات اقامتگاه ثبت نشده است.")).toBeTruthy();
+  });
+
+  it("uses backend approval gaps and marks floors, nearby places and financial settings optional", async () => {
+    loadedProperty = { ...property, floorsCount: null, extraGuestPrice: null };
+    loadedRoomTypes = [];
+    window.history.replaceState({}, "", "?step=2");
+    render(<PropertyWizard mode="edit" propertyId={17} />);
+    await screen.findByLabelText("تعداد طبقات");
+    expect(screen.getByRole("button", { name: /اطلاعات پایه/ }).textContent).toContain("✓");
+    // Local description/common areas cannot override the persisted backend requirement.
+    expect(screen.getByRole("button", { name: /توضیحات و فضاها/ }).textContent).toContain("ناقص");
+    for (const label of [/ساختمان و دسترسی/, /مکان‌های نزدیک/, /کودک و نفر اضافه/]) {
+      expect(screen.getByRole("button", { name: label }).textContent).toContain("اختیاری");
+    }
+    expect(screen.getByRole("button", { name: /موقعیت/ }).getAttribute("title")).toBe("کشور، شهر، نشانی");
   });
 
   it.each([false, true])("round-trips the selected MealPlan through %s full update and permits clearing", async (isAdmin) => {
@@ -1038,7 +1059,7 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
     expect(
       screen.getByRole("button", { name: /^امکانات/ }).textContent,
-    ).toContain("پیشنهاد");
+    ).toContain("اختیاری");
 
     fireEvent.click(screen.getByRole("button", { name: /^امکانات/ }));
     fireEvent.click(
@@ -1047,7 +1068,7 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(screen.getByRole("button", { name: /بازبینی/ }));
     expect(
       screen.getByRole("button", { name: /^امکانات/ }).textContent,
-    ).toContain("✓");
+    ).toContain("اختیاری");
     expect(
       api.request.mock.calls.some(([path]) => String(path).endsWith("/views")),
     ).toBe(false);
@@ -1058,16 +1079,17 @@ describe("PropertyWizard media and common areas", () => {
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
-    expect(await screen.findByText("50% تکمیل شده")).toBeTruthy();
-    expect(screen.getByText("اتاق‌های فعال")).toBeTruthy();
-    expect(screen.getByText("قیمت‌گذاری اقامتگاه")).toBeTruthy();
-    expect(screen.getByText("موجودی رزرو")).toBeTruthy();
-    expect(screen.queryByText("وضعیت مالی آزمایشی")).toBeNull();
+    expect(await screen.findByText("20% تکمیل شده")).toBeTruthy();
+    expect(screen.getByText("توضیحات اقامتگاه")).toBeTruthy();
+    expect(screen.getByText("نشانی و موقعیت")).toBeTruthy();
+    expect(screen.getByText("تصاویر اقامتگاه")).toBeTruthy();
+    expect(screen.queryByText("اتاق‌های فعال")).toBeNull();
+    expect(screen.queryByText("قیمت‌گذاری اقامتگاه")).toBeNull();
     expect(screen.getByText("1 بخش ناقص دیگر")).toBeTruthy();
     expect(screen.queryByText(/میزان تکمیل اطلاعات/)).toBeNull();
     expect(screen.queryByRole("heading", { name: "موارد ناقص" })).toBeNull();
 
-    expect(screen.getByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+    expect(screen.getByText("راهنمای قیمت‌گذاری نفر اضافه")).toBeTruthy();
     expect(screen.getByRole("heading", { name: "دسترسی" })).toBeTruthy();
     expect(
       screen.queryByRole("link", { name: "مشاهده صفحه عمومی" }),
@@ -1332,7 +1354,7 @@ describe("PropertyWizard media and common areas", () => {
       await screen.findByRole("heading", { name: "اطلاعات پایه" }),
     ).toBeTruthy();
     expect(screen.queryByText(/واحد پول:/)).toBeNull();
-    expect(screen.queryByText("تنظیمات مالی کامل نشده")).toBeNull();
+    expect(screen.queryByText("راهنمای قیمت‌گذاری نفر اضافه")).toBeNull();
   });
 
   it("shows the financial warning only on final review when settings are incomplete", async () => {
@@ -1340,7 +1362,7 @@ describe("PropertyWizard media and common areas", () => {
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
-    expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+    expect(await screen.findByText("راهنمای قیمت‌گذاری نفر اضافه")).toBeTruthy();
   });
 
   it("leaves Admin navigation actions to the property page header and breadcrumb", async () => {
@@ -1348,7 +1370,7 @@ describe("PropertyWizard media and common areas", () => {
     window.history.replaceState({}, "", "?step=10");
     render(<PropertyWizard isAdmin mode="edit" propertyId={17} />);
 
-    expect(await screen.findByText("تنظیمات مالی کامل نشده")).toBeTruthy();
+    expect(await screen.findByText("راهنمای قیمت‌گذاری نفر اضافه")).toBeTruthy();
     expect(screen.queryByRole("link", { name: "مدیریت اتاق‌ها" })).toBeNull();
     expect(
       screen.queryByRole("link", { name: "بازگشت به لیست اقامتگاه‌ها" }),
@@ -1467,13 +1489,13 @@ describe("PropertyWizard media and common areas", () => {
   it("shows every incomplete backend section after rejected approval without changing status", async () => {
     const rejectedCompletion: PropertyCompletionResponse = {
       ...completion,
-      completionPercentage: 50,
+      completionPercentage: 40,
       sections: [
         { key: "basic", label: "اطلاعات پایه", status: "Incomplete", missingItems: ["نام فارسی"], actionTarget: "basic" },
-        { key: "amenities", label: "امکانات", status: "Complete", missingItems: [], actionTarget: "amenities" },
-        { key: "financial", label: "تنظیمات مالی", status: "Incomplete", missingItems: ["قیمت نفر اضافه"], actionTarget: "financial" },
-        { key: "availability", label: "موجودی", status: "Incomplete", missingItems: ["حداقل یک روز موجود"], actionTarget: "availability" },
-        { key: "complete", label: "بخش کامل", status: "Complete", missingItems: [], actionTarget: "complete" },
+        { key: "descriptions", label: "توضیحات اقامتگاه", status: "Incomplete", missingItems: ["توضیحات اقامتگاه"], actionTarget: "descriptions" },
+        { key: "images", label: "تصاویر", status: "Incomplete", missingItems: ["حداقل یک تصویر"], actionTarget: "images" },
+        { key: "location", label: "نشانی و موقعیت", status: "Complete", missingItems: [], actionTarget: "location" },
+        { key: "policies", label: "قوانین و زمان‌ها", status: "Complete", missingItems: [], actionTarget: "policies" },
       ],
     };
     statusUpdateError = new ApiRequestError("اطلاعات اقامتگاه برای فعال‌سازی کامل نیست.", 400, {
@@ -1486,17 +1508,17 @@ describe("PropertyWizard media and common areas", () => {
     fireEvent.click(await screen.findByRole("button", { name: "تأیید و تغییر وضعیت" }));
     const dialog = await screen.findByRole("dialog", { name: "فعال‌سازی انجام نشد" });
     expect(within(dialog).getByText("اطلاعات اقامتگاه برای فعال‌سازی کامل نیست.")).toBeTruthy();
-    expect(within(dialog).getByText("50% تکمیل شده")).toBeTruthy();
-    for (const label of ["اطلاعات پایه", "تنظیمات مالی", "موجودی"]) {
+    expect(within(dialog).getByText("40% تکمیل شده")).toBeTruthy();
+    for (const label of ["اطلاعات پایه", "توضیحات اقامتگاه", "تصاویر"]) {
       expect(within(dialog).getByText(label)).toBeTruthy();
     }
-    for (const missing of ["نام فارسی", "قیمت نفر اضافه", "حداقل یک روز موجود"]) {
-      expect(within(dialog).getByText(new RegExp(missing))).toBeTruthy();
+    for (const missing of ["نام فارسی", "توضیحات اقامتگاه", "حداقل یک تصویر"]) {
+      expect(dialog.textContent).toContain(missing);
     }
-    expect(within(dialog).queryByText("امکانات")).toBeNull();
-    expect(within(dialog).queryByText("بخش کامل")).toBeNull();
+    expect(within(dialog).queryByText("نشانی و موقعیت")).toBeNull();
+    expect(within(dialog).queryByText("قوانین و زمان‌ها")).toBeNull();
     expect(dialog.textContent).not.toContain('"completionPercentage"');
-    expect(within(dialog).getByRole("link", { name: "تکمیل" }).getAttribute("href")).toBe("/admin/properties/17/inventory");
+    expect(within(dialog).getAllByRole("button", { name: "تکمیل" })).toHaveLength(3);
     expect(screen.getByRole("button", { name: "پیش‌نویس" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByRole("button", { name: "تایید شده" }).hasAttribute("disabled")).toBe(false);
     fireEvent.click(within(dialog).getAllByRole("button", { name: "تکمیل" })[0]);
@@ -1530,20 +1552,20 @@ describe("PropertyWizard media and common areas", () => {
     expect(screen.getByLabelText("سن کودک رایگان تا")).toBeTruthy();
     expect(screen.getByLabelText("حداکثر تعداد کودک رایگان")).toBeTruthy();
     expect(screen.getByLabelText(/نرخ کودک/)).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("✓"));
-    expect(screen.getByText("اگر اتاقی نفر اضافه نمی‌پذیرد، این مبلغ اختیاری است.")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("اختیاری"));
+    expect(screen.getByText(/برای تأیید اقامتگاه الزامی نیست/)).toBeTruthy();
   });
 
-  it("requires extra guest price only for an active capable room and accepts explicit zero", async () => {
+  it("keeps extra guest price optional for approval with active capable rooms and accepts explicit zero", async () => {
     loadedRoomTypes = [{ isActive: true, allowExtraGuest: true, maxExtraGuests: 2 }];
     window.history.replaceState({}, "", "?step=8");
     render(<PropertyWizard mode="edit" propertyId={17} />);
 
     expect(await screen.findByRole("heading", { name: "قوانین کودک و نفر اضافه" })).toBeTruthy();
-    await waitFor(() => expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("ناقص"));
-    expect(screen.getByText("برای اتاق‌های دارای نفر اضافه الزامی است؛ صفر به معنی رایگان است.")).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("اختیاری"));
+    expect(screen.getByText(/برای تأیید اقامتگاه الزامی نیست/)).toBeTruthy();
     fireEvent.change(screen.getByLabelText(/نرخ نفر اضافه/), { target: { value: "۰" } });
-    expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("✓");
+    expect(screen.getByRole("button", { name: /کودک و نفر اضافه/ }).textContent).toContain("اختیاری");
     fireEvent.click(screen.getByRole("button", { name: "ذخیره" }));
     await waitFor(() => {
       const call = api.request.mock.calls.find(([path, init]) =>

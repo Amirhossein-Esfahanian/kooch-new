@@ -19,6 +19,7 @@ export function propertyCompletionHref(
     location: 1,
     amenities: 3,
     images: 4,
+    descriptions: 5,
     policies: 7,
   };
 
