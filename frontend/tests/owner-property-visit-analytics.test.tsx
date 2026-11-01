@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   propertyId: "17",
   canViewReports: true,
+  canViewBookings: false,
   apiRequest: vi.fn(),
 }));
 
@@ -21,7 +22,7 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 vi.mock("@/components/owner/OwnerPropertyProvider", () => ({
   useOwnerProperty: () => ({
     routePropertyIsValid: true,
-    effectivePermissions: { Reports: { view: mocks.canViewReports }, Bookings: { view: false } },
+    effectivePermissions: { Reports: { view: mocks.canViewReports }, Bookings: { view: mocks.canViewBookings } },
   }),
 }));
 vi.mock("@/components/property/PropertyCompletionCard", () => ({
@@ -60,6 +61,8 @@ const analytics = {
 function setupRequests(visitResponse: unknown = analytics) {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path.endsWith("/visits/analytics")) return Promise.resolve(visitResponse);
+    if (path.includes("/reservations?")) return Promise.resolve({ totalCount: 4, items: [] });
+    if (path.endsWith("/reservations/operational-summary")) return Promise.resolve({ businessDate: analytics.businessDate, pendingApprovalCount: 0, scheduledArrivalsTodayCount: 0, scheduledDeparturesTodayCount: 0 });
     if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 80 });
     if (path.endsWith("/room-types")) return Promise.resolve([]);
     return Promise.resolve({ id: Number(mocks.propertyId), name: "خانه سرو", slug: "cedar", status: "Approved", city: "کاشان" });
@@ -71,6 +74,7 @@ describe("Owner Property Visit Analytics", () => {
     vi.clearAllMocks();
     mocks.propertyId = "17";
     mocks.canViewReports = true;
+    mocks.canViewBookings = false;
     setupRequests();
   });
 
@@ -139,7 +143,7 @@ describe("Owner Property Visit Analytics", () => {
   it("never requests analytics without reports.view", async () => {
     mocks.canViewReports = false;
     render(<OwnerPropertyDashboardPage />);
-    await waitFor(() => expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "خانه سرو" })).toBeTruthy());
     expect(screen.queryByRole("region", { name: "بازدیدهای ثبت‌شده" })).toBeNull();
     expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).endsWith("/visits/analytics"))).toBe(false);
   });
@@ -155,7 +159,7 @@ describe("Owner Property Visit Analytics", () => {
     expect(await within(section).findByText("دسترسی به آمار بازدیدهای این اقامتگاه ندارید")).toBeTruthy();
     expect(within(section).queryByRole("img")).toBeNull();
     expect(within(section).queryByRole("button", { name: "تلاش دوباره" })).toBeNull();
-    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "خانه سرو" })).toBeTruthy();
   });
 
   it("keeps the dashboard working on analytics errors and retries", async () => {
@@ -167,7 +171,7 @@ describe("Owner Property Visit Analytics", () => {
     render(<OwnerPropertyDashboardPage />);
     const section = await screen.findByRole("region", { name: "بازدیدهای ثبت‌شده" });
     expect(await within(section).findByText("دریافت آمار بازدیدها انجام نشد")).toBeTruthy();
-    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "خانه سرو" })).toBeTruthy();
     setupRequests();
     fireEvent.click(within(section).getByRole("button", { name: "تلاش دوباره" }));
     expect(await within(section).findByText("۱۷")).toBeTruthy();
@@ -192,5 +196,51 @@ describe("Owner Property Visit Analytics", () => {
     resolveOld(analytics);
     await waitFor(() => expect(within(todayCard).getByText("۹")).toBeTruthy());
     expect(within(todayCard).queryByText("۳")).toBeNull();
+  });
+
+  it("uses the reservation API totalCount for the Tehran creation day and keeps three metric cards beside the chart", async () => {
+    mocks.canViewBookings = true;
+    render(<OwnerPropertyDashboardPage />);
+    const section = await screen.findByRole("region", { name: "بازدیدهای ثبت‌شده" });
+    const createdCard = await within(section).findByRole("region", { name: "رزروهای امروز" });
+    expect(await within(createdCard).findByText("۴")).toBeTruthy();
+    const call = mocks.apiRequest.mock.calls.find(([path]) => String(path).includes("/reservations?"));
+    expect(call).toBeTruthy();
+    const request = new URL(String(call?.[0]), "http://localhost");
+    expect(request.searchParams.get("createdFrom")).toBe("2026-10-20T20:30:00.000Z");
+    expect(request.searchParams.get("createdTo")).toBe("2026-10-21T20:29:59.9999999Z");
+    expect(request.searchParams.get("page")).toBe("1");
+    expect(request.searchParams.get("pageSize")).toBe("1");
+    expect(createdCard.parentElement?.children).toHaveLength(3);
+    expect(createdCard.parentElement?.parentElement?.className).toContain("lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]");
+  });
+
+  it("does not request reservation counts without bookings.view", async () => {
+    render(<OwnerPropertyDashboardPage />);
+    const section = await screen.findByRole("region", { name: "بازدیدهای ثبت‌شده" });
+    expect(await within(section).findByText("۱۷")).toBeTruthy();
+    expect(within(section).queryByRole("region", { name: "رزروهای امروز" })).toBeNull();
+    expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).includes("/reservations?"))).toBe(false);
+  });
+
+  it("isolates reservation-count errors from visits and retries without displaying a fabricated count", async () => {
+    mocks.canViewBookings = true;
+    mocks.apiRequest.mockImplementation((path: string) => {
+      if (path.endsWith("/visits/analytics")) return Promise.resolve(analytics);
+      if (path.includes("/reservations?")) return Promise.reject(new Error("offline"));
+      if (path.endsWith("/reservations/operational-summary")) return Promise.resolve({ businessDate: analytics.businessDate, pendingApprovalCount: 0, scheduledArrivalsTodayCount: 0, scheduledDeparturesTodayCount: 0 });
+      if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 100, sections: [] });
+      if (path.endsWith("/room-types")) return Promise.resolve([]);
+      return Promise.resolve({ id: 17, name: "خانه سرو", status: "Approved" });
+    });
+    render(<OwnerPropertyDashboardPage />);
+    const section = await screen.findByRole("region", { name: "بازدیدهای ثبت‌شده" });
+    const createdCard = await within(section).findByRole("region", { name: "رزروهای امروز" });
+    expect(await within(createdCard).findByText("دریافت شمار رزروها انجام نشد.")).toBeTruthy();
+    expect(within(createdCard).queryByText("۰")).toBeNull();
+    expect(within(section).getByText("۱۷")).toBeTruthy();
+    setupRequests();
+    fireEvent.click(within(createdCard).getByRole("button", { name: "تلاش دوباره" }));
+    expect(await within(createdCard).findByText("۴")).toBeTruthy();
   });
 });

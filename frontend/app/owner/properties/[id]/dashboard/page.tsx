@@ -3,6 +3,9 @@
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
 import {
   CartesianGrid,
   Line,
@@ -20,17 +23,14 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
 import { formatBookingDate } from "@/components/booking/booking-display";
-import { PropertyCompletionCard } from "@/components/property/PropertyCompletionCard";
-import {
-  getPropertyFinancialWarnings,
-  PricingSettingsWarning,
-} from "@/components/pricing/PricingWarnings";
 import {
   apiRequest,
   ApiRequestError,
   PropertyCompletionResponse,
+  PropertyCompletionSectionResponse,
   PropertyResponse,
   RoomTypeResponse,
+  type PermissionGroup,
 } from "@/lib/owner-api";
 import { propertyCompletionHref } from "@/lib/property-completion";
 import { canViewOwnerMenuItem } from "@/lib/property-menu-permissions";
@@ -68,6 +68,14 @@ type VisitState =
   | { propertyId: number; status: "ready"; data: OwnerVisitAnalytics }
   | { propertyId: number; status: "error" | "forbidden" };
 
+type CreatedCountState =
+  | { propertyId: number; businessDate: string; status: "loading" }
+  | { propertyId: number; businessDate: string; status: "ready"; count: number }
+  | { propertyId: number; businessDate: string; status: "error" | "forbidden" };
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
 const visitPeriods: { days: VisitPeriod; label: string }[] = [
   { days: 7, label: "۷ روز گذشته" },
   { days: 30, label: "۳۰ روز گذشته" },
@@ -80,6 +88,26 @@ const formatTrendDate = (value: string) =>
   }).format(parseLocalIsoDate(value));
 
 const formatCount = (value: number) => new Intl.NumberFormat("fa-IR").format(value);
+
+function createdReservationsTodayPath(propertyId: number, businessDate: string) {
+  const nextDay = dayjs.utc(businessDate).add(1, "day").format("YYYY-MM-DD");
+  const fromUtc = dayjs.tz(businessDate, "Asia/Tehran").utc().toISOString();
+  const nextDayStartUtc = dayjs.tz(nextDay, "Asia/Tehran").utc();
+  // ReservationListQuery.CreatedTo is inclusive, with SQL DateTime precision of seven fractional digits.
+  const toUtcInclusive = nextDayStartUtc.subtract(1, "millisecond").toISOString().replace(/Z$/, "9999Z");
+  const params = new URLSearchParams({ page: "1", pageSize: "1", createdFrom: fromUtc, createdTo: toUtcInclusive });
+  return `/owner/properties/${propertyId}/reservations?${params}`;
+}
+
+function completionEditPermission(section: PropertyCompletionSectionResponse): PermissionGroup {
+  if (section.key === "financial") return "Properties";
+  switch (section.actionTarget || section.key) {
+    case "rooms": return "Rooms";
+    case "pricing": return "Pricing";
+    case "availability": return "Inventory";
+    default: return "Properties";
+  }
+}
 
 const linkButtonClass =
   "inline-flex min-h-10 items-center justify-center rounded-md border px-4 py-2 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background";
@@ -140,6 +168,14 @@ export default function OwnerPropertyDashboardPage() {
   const currentOverview = overviewState?.propertyId === propertyId ? overviewState : null;
   const overview = currentOverview?.status === "ready" ? currentOverview : null;
   const property = overview?.property;
+  const activeRoomTypeCount = canViewRooms && overview
+    ? overview.roomTypes.filter((roomType) => roomType.isActive).length
+    : null;
+  const incompleteSections = overview?.completion.sections?.filter((section) =>
+    section.status !== "Complete" && section.missingItems.length > 0) ?? [];
+  const showCompletionChecklist = Boolean(
+    overview && property?.status !== "Approved" && incompleteSections.length > 0,
+  );
   const quickActions = [
     { label: "قیمت‌گذاری", description: "مدیریت قیمت اتاق‌ها", permission: "Pricing" as const, href: `/owner/properties/${propertyId}/pricing` },
     { label: "ظرفیت و موجودی", description: "تقویم ظرفیت و دسترسی", permission: "Inventory" as const, href: `/owner/properties/${propertyId}/inventory` },
@@ -193,19 +229,12 @@ export default function OwnerPropertyDashboardPage() {
           </KoochAlert>
         )}
 
-        {canViewBookings && authenticated && !loading && isOwnerWorkspace && (
-          <OwnerOperationalSummarySection propertyId={propertyId} />
-        )}
-
-        {canViewRooms && overview && (
-          <section aria-label="نوع اتاق‌های فعال">
-            <KoochCard className="sm:max-w-xs" padding="sm">
-              <p className="text-sm text-muted-foreground">نوع اتاق‌های فعال</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
-                {formatCount(overview.roomTypes.filter((roomType) => roomType.isActive).length)}
-              </p>
-            </KoochCard>
-          </section>
+        {(canViewBookings || canViewRooms) && authenticated && !loading && isOwnerWorkspace && (
+          <OwnerOperationalSummarySection
+            activeRoomTypeCount={activeRoomTypeCount}
+            canViewBookings={canViewBookings}
+            propertyId={propertyId}
+          />
         )}
 
         {quickActions.length > 0 && (
@@ -224,28 +253,41 @@ export default function OwnerPropertyDashboardPage() {
           </section>
         )}
 
-        {overview && (
+        {showCompletionChecklist && (
           <section aria-label="تکمیل و راه‌اندازی اقامتگاه" className="grid gap-3">
-            <PricingSettingsWarning
-              editHref={`/owner/properties/${propertyId}?step=7`}
-              warnings={getPropertyFinancialWarnings(overview.property, overview.roomTypes)}
-            />
-            <PropertyCompletionCard
-              completion={overview.completion}
-              getActionHref={(section) => propertyCompletionHref("owner", propertyId, section)}
-            />
+            <KoochCard className="grid gap-3" padding="sm">
+              <h2 className="text-base font-semibold text-foreground">موارد باقی‌مانده برای تکمیل اقامتگاه</h2>
+              <ul className="grid gap-2 sm:grid-cols-2">
+                {incompleteSections.flatMap((section) => section.missingItems.map((item) => {
+                  const canEdit = Boolean(effectivePermissions?.[completionEditPermission(section)]?.edit);
+                  const href = section.key === "financial"
+                    ? `/owner/properties/${propertyId}?step=7`
+                    : propertyCompletionHref("owner", propertyId, section);
+                  return (
+                    <li className="min-w-0 rounded-lg border border-border bg-background px-3 py-2 text-sm" key={`${section.key}-${item}`}>
+                      <span className="text-muted-foreground">{section.label}: </span>
+                      {canEdit ? (
+                        <Link className="font-medium text-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring" href={href}>
+                          {item}
+                        </Link>
+                      ) : <span className="font-medium text-foreground">{item}</span>}
+                    </li>
+                  );
+                }))}
+              </ul>
+            </KoochCard>
           </section>
         )}
 
         {canViewReports && authenticated && !loading && isOwnerWorkspace && (
-          <OwnerPropertyVisitAnalyticsSection propertyId={propertyId} />
+          <OwnerPropertyVisitAnalyticsSection canViewBookings={canViewBookings} propertyId={propertyId} />
         )}
       </main>
     </OwnerLayout>
   );
 }
 
-function OwnerPropertyVisitAnalyticsSection({ propertyId }: { propertyId: number }) {
+function OwnerPropertyVisitAnalyticsSection({ canViewBookings, propertyId }: { canViewBookings: boolean; propertyId: number }) {
   const [period, setPeriod] = useState<VisitPeriod>(30);
   const [state, setState] = useState<VisitState | null>(null);
   const [retry, setRetry] = useState(0);
@@ -332,19 +374,7 @@ function OwnerPropertyVisitAnalyticsSection({ propertyId }: { propertyId: number
           </KoochButton>
         </KoochAlert>
       ) : data ? (
-        <>
-          <div className="grid gap-3 sm:grid-cols-2">
-            <KoochCard aria-label="بازدیدهای ثبت‌شده امروز" padding="sm">
-              <p className="text-sm text-muted-foreground">بازدیدهای ثبت‌شده امروز</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(data.todayRecordedVisits)}</p>
-            </KoochCard>
-            <KoochCard aria-label="بازدیدهای ثبت‌شده در بازه انتخاب‌شده" padding="sm">
-              <p className="text-sm text-muted-foreground">بازدیدهای ثبت‌شده در {visitPeriods.find((item) => item.days === period)?.label}</p>
-              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
-                {formatCount(period === 7 ? data.last7DaysTotal : period === 30 ? data.last30DaysTotal : data.last90DaysTotal)}
-              </p>
-            </KoochCard>
-          </div>
+        <div className="grid min-w-0 gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(16rem,1fr)]">
           <KoochCard className="min-w-0" padding="sm">
             <h3 className="text-sm font-semibold text-foreground">روند روزانه بازدیدهای ثبت‌شده</h3>
             {points.length === 0 ? (
@@ -387,18 +417,81 @@ function OwnerPropertyVisitAnalyticsSection({ propertyId }: { propertyId: number
               تاریخ شروع ثبت بازدیدها مشخص نیست؛ صفرهای روزهای گذشته لزوماً به معنی فعال بودن ثبت بازدید در آن روزها نیست.
             </p>
           </KoochCard>
-        </>
+          <div className={`grid gap-3 ${canViewBookings ? "grid-rows-3" : "grid-rows-2"}`}>
+            <KoochCard aria-label="بازدیدهای ثبت‌شده امروز" className="flex min-h-24 flex-col justify-between" padding="sm">
+              <p className="text-sm text-muted-foreground">بازدیدهای ثبت‌شده امروز</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(data.todayRecordedVisits)}</p>
+            </KoochCard>
+            <KoochCard aria-label="بازدیدهای ثبت‌شده در بازه انتخاب‌شده" className="flex min-h-24 flex-col justify-between" padding="sm">
+              <p className="text-sm text-muted-foreground">بازدیدهای ثبت‌شده در {visitPeriods.find((item) => item.days === period)?.label}</p>
+              <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">
+                {formatCount(period === 7 ? data.last7DaysTotal : period === 30 ? data.last30DaysTotal : data.last90DaysTotal)}
+              </p>
+            </KoochCard>
+            {canViewBookings && <CreatedReservationsTodayCard businessDate={data.businessDate} propertyId={propertyId} />}
+          </div>
+        </div>
       ) : null}
     </section>
   );
 }
 
-function OwnerOperationalSummarySection({ propertyId }: { propertyId: number }) {
+function CreatedReservationsTodayCard({ businessDate, propertyId }: { businessDate: string; propertyId: number }) {
+  const [state, setState] = useState<CreatedCountState | null>(null);
+  const [retry, setRetry] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setState({ propertyId, businessDate, status: "loading" });
+    apiRequest<{ totalCount: number }>(createdReservationsTodayPath(propertyId, businessDate), { signal: controller.signal })
+      .then((page) => {
+        if (controller.signal.aborted) return;
+        setState(Number.isInteger(page?.totalCount) && page.totalCount >= 0
+          ? { propertyId, businessDate, status: "ready", count: page.totalCount }
+          : { propertyId, businessDate, status: "error" });
+      })
+      .catch((reason: unknown) => {
+        if (controller.signal.aborted) return;
+        setState({ propertyId, businessDate, status: reason instanceof ApiRequestError && (reason.status === 403 || reason.status === 404)
+          ? "forbidden" : "error" });
+      });
+    return () => controller.abort();
+  }, [businessDate, propertyId, retry]);
+
+  const current = state?.propertyId === propertyId && state.businessDate === businessDate ? state : null;
+  return (
+    <KoochCard aria-label="رزروهای امروز" className="flex min-h-24 flex-col justify-between" padding="sm">
+      <p className="text-sm text-muted-foreground">رزروهای امروز</p>
+      {!current || current.status === "loading" ? (
+        <p className="mt-2 text-sm text-muted-foreground" role="status">در حال دریافت...</p>
+      ) : current.status === "ready" ? (
+        <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(current.count)}</p>
+      ) : current.status === "forbidden" ? (
+        <p className="mt-2 text-xs text-muted-foreground">دسترسی به شمار رزروها ندارید.</p>
+      ) : (
+        <div>
+          <p className="mt-2 text-xs text-muted-foreground">دریافت شمار رزروها انجام نشد.</p>
+          <KoochButton className="mt-1" onClick={() => setRetry((value) => value + 1)} size="sm" variant="ghost">تلاش دوباره</KoochButton>
+        </div>
+      )}
+    </KoochCard>
+  );
+}
+
+function OwnerOperationalSummarySection({
+  activeRoomTypeCount,
+  canViewBookings,
+  propertyId,
+}: {
+  activeRoomTypeCount: number | null;
+  canViewBookings: boolean;
+  propertyId: number;
+}) {
   const [state, setState] = useState<SummaryState | null>(null);
   const [retry, setRetry] = useState(0);
 
   useEffect(() => {
-    if (!Number.isInteger(propertyId) || propertyId <= 0) return;
+    if (!canViewBookings || !Number.isInteger(propertyId) || propertyId <= 0) return;
     const controller = new AbortController();
     setState({ propertyId, status: "loading" });
     apiRequest<OwnerOperationalSummary>(
@@ -418,9 +511,18 @@ function OwnerOperationalSummarySection({ propertyId }: { propertyId: number }) 
         });
       });
     return () => controller.abort();
-  }, [propertyId, retry]);
+  }, [canViewBookings, propertyId, retry]);
 
   const current = state?.propertyId === propertyId ? state : null;
+  const summary = canViewBookings && current?.status === "ready" ? current.data : null;
+  const metrics = [
+    ...(summary ? [
+      { label: "در انتظار تأیید", value: summary.pendingApprovalCount },
+      { label: "ورودهای امروز", value: summary.scheduledArrivalsTodayCount },
+      { label: "خروج‌های امروز", value: summary.scheduledDeparturesTodayCount },
+    ] : []),
+    ...(activeRoomTypeCount === null ? [] : [{ label: "انواع اتاق فعال", value: activeRoomTypeCount }]),
+  ];
 
   return (
     <section aria-labelledby="owner-operational-summary-title" className="grid gap-3" dir="rtl">
@@ -428,39 +530,38 @@ function OwnerOperationalSummarySection({ propertyId }: { propertyId: number }) 
         <h2 id="owner-operational-summary-title" className="text-lg font-semibold text-foreground">
           وضعیت رزروهای اقامتگاه
         </h2>
-        {current?.status === "ready" && (
+        {summary && (
           <p className="mt-1 text-sm text-muted-foreground">
-            بر پایه تاریخ امروز اقامتگاه: <time dateTime={current.data.businessDate}>{formatBookingDate(current.data.businessDate)}</time>
+            ورود و خروج بر اساس برنامه رزروها، در تاریخ تهران: <time dateTime={summary.businessDate}>{formatBookingDate(summary.businessDate)}</time>
           </p>
         )}
       </div>
-      {(!current || current.status === "loading") ? (
+      {canViewBookings && (!current || current.status === "loading") && (
         <KoochCard role="status">در حال دریافت خلاصه رزروها...</KoochCard>
-      ) : current.status === "forbidden" ? (
+      )}
+      {canViewBookings && current?.status === "forbidden" && (
         <KoochAlert title="دسترسی به خلاصه رزروها ندارید" variant="warning">
           برای مشاهده این اطلاعات به دسترسی رزروهای اقامتگاه نیاز دارید.
         </KoochAlert>
-      ) : current.status === "error" ? (
+      )}
+      {canViewBookings && current?.status === "error" && (
         <KoochAlert title="دریافت خلاصه رزروها انجام نشد" variant="destructive">
           <p>اطلاعات سایر بخش‌های داشبورد همچنان در دسترس است.</p>
           <KoochButton className="mt-3" onClick={() => setRetry((value) => value + 1)} variant="outline">
             تلاش دوباره
           </KoochButton>
         </KoochAlert>
-      ) : current.status === "ready" ? (
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { label: "در انتظار تأیید", value: current.data.pendingApprovalCount },
-            { label: "ورود برنامه‌ریزی‌شده امروز", value: current.data.scheduledArrivalsTodayCount },
-            { label: "خروج برنامه‌ریزی‌شده امروز", value: current.data.scheduledDeparturesTodayCount },
-          ].map(({ label, value }) => (
-            <KoochCard className="min-w-0" key={label} padding="sm">
+      )}
+      {metrics.length > 0 && (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {metrics.map(({ label, value }) => (
+            <KoochCard className="flex min-h-24 min-w-0 flex-col justify-between" key={label} padding="sm">
               <p className="text-sm text-muted-foreground">{label}</p>
               <p className="mt-2 text-2xl font-semibold tabular-nums text-foreground">{formatCount(value)}</p>
             </KoochCard>
           ))}
         </div>
-      ) : null}
+      )}
     </section>
   );
 }

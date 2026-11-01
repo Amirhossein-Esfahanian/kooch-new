@@ -53,7 +53,7 @@ const summary = {
 function setupRequests() {
   mocks.apiRequest.mockImplementation((path: string) => {
     if (path.endsWith("/reservations/operational-summary")) return Promise.resolve(summary);
-    if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 80 });
+    if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 100, sections: [] });
     if (path.endsWith("/room-types")) return Promise.resolve([]);
     return Promise.resolve({ id: Number(mocks.propertyId), name: "خانه سرو", slug: "cedar", status: "Approved", city: "کاشان" });
   });
@@ -70,7 +70,7 @@ describe("Owner Property operational dashboard summary", () => {
     setupRequests();
   });
 
-  it("shows API counts, a real zero, scheduled labels and the API business date alongside setup widgets", async () => {
+  it("shows four equal operational cards, a real zero, and the API business date", async () => {
     render(<OwnerPropertyDashboardPage />);
     const section = await screen.findByRole("region", { name: "وضعیت رزروهای اقامتگاه" });
     expect(mocks.apiRequest).toHaveBeenCalledWith(
@@ -78,27 +78,32 @@ describe("Owner Property operational dashboard summary", () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     expect(within(section).getByText("۲")).toBeTruthy();
-    expect(within(section).getByText("۰")).toBeTruthy();
+    expect(within(section).getAllByText("۰")).toHaveLength(2);
     expect(within(section).getByText("۵")).toBeTruthy();
-    expect(within(section).getByText("ورود برنامه‌ریزی‌شده امروز")).toBeTruthy();
-    expect(within(section).getByText("خروج برنامه‌ریزی‌شده امروز")).toBeTruthy();
-    expect(within(section).getByText(/بر پایه تاریخ امروز اقامتگاه/)).toBeTruthy();
+    expect(within(section).getByText("ورودهای امروز")).toBeTruthy();
+    expect(within(section).getByText("خروج‌های امروز")).toBeTruthy();
+    expect(within(section).getByText("انواع اتاق فعال")).toBeTruthy();
+    expect(within(section).getByText(/برنامه رزروها، در تاریخ تهران/)).toBeTruthy();
     expect(within(section).getByText(/۱۴۰۵/)).toBeTruthy();
-    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+    const cards = within(section).getByText("در انتظار تأیید").parentElement?.parentElement;
+    expect(cards?.className).toContain("sm:grid-cols-2");
+    expect(cards?.className).toContain("lg:grid-cols-4");
+    expect(cards?.children).toHaveLength(4);
+    expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
     expect(screen.getByText("کارهای سریع")).toBeTruthy();
   });
 
   it("shows only active RoomTypes and existing permission-gated quick actions", async () => {
     mocks.apiRequest.mockImplementation((path: string) => {
       if (path.endsWith("/reservations/operational-summary")) return Promise.resolve(summary);
-      if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 80 });
+      if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 100, sections: [] });
       if (path.endsWith("/room-types")) return Promise.resolve([
         { id: 1, isActive: true }, { id: 2, isActive: false }, { id: 3, isActive: true },
       ]);
       return Promise.resolve({ id: 17, name: "خانه سرو", slug: "cedar", status: "Approved", city: "کاشان" });
     });
     render(<OwnerPropertyDashboardPage />);
-    expect(within(await screen.findByRole("region", { name: "نوع اتاق‌های فعال" })).getByText("۲")).toBeTruthy();
+    expect(within(await screen.findByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).getByText("انواع اتاق فعال").nextElementSibling?.textContent).toBe("۲");
     expect(screen.getByRole("heading", { name: "خانه سرو" })).toBeTruthy();
     expect(screen.getByText(/وضعیت: تأیید شده/)).toBeTruthy();
     expect(screen.getByRole("link", { name: /قیمت‌گذاری/ }).getAttribute("href")).toBe("/owner/properties/17/pricing");
@@ -118,9 +123,9 @@ describe("Owner Property operational dashboard summary", () => {
     render(<OwnerPropertyDashboardPage />);
     await screen.findByRole("heading", { name: "خانه سرو" });
     expect(screen.queryByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).toBeNull();
-    expect(screen.queryByRole("region", { name: "نوع اتاق‌های فعال" })).toBeNull();
+    expect(screen.queryByText("انواع اتاق فعال")).toBeNull();
     expect(screen.queryByRole("region", { name: "کارهای سریع" })).toBeNull();
-    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
   });
 
   it("keeps overview errors distinct and retries without fabricated RoomType counts", async () => {
@@ -132,18 +137,18 @@ describe("Owner Property operational dashboard summary", () => {
     );
     render(<OwnerPropertyDashboardPage />);
     expect(await screen.findByText("دریافت اطلاعات اقامتگاه انجام نشد")).toBeTruthy();
-    expect(screen.queryByRole("region", { name: "نوع اتاق‌های فعال" })).toBeNull();
+    expect(screen.queryByText("انواع اتاق فعال")).toBeNull();
     expect(within(screen.getByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).getByText("۵")).toBeTruthy();
     setupRequests();
     fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
-    expect(within(await screen.findByRole("region", { name: "نوع اتاق‌های فعال" })).getByText("۰")).toBeTruthy();
+    expect(within(await screen.findByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).getByText("انواع اتاق فعال").nextElementSibling?.textContent).toBe("۰");
   });
 
   it("shows loading without fabricated zero counts", async () => {
     mocks.apiRequest.mockImplementation((path: string) =>
       path.endsWith("/reservations/operational-summary")
         ? new Promise(() => undefined)
-        : path.endsWith("/completion") ? Promise.resolve({ completionPercentage: 80 })
+        : path.endsWith("/completion") ? Promise.resolve({ completionPercentage: 100, sections: [] })
         : path.endsWith("/room-types") ? Promise.resolve([])
         : Promise.resolve({ id: 17, name: "خانه سرو" }),
     );
@@ -155,8 +160,9 @@ describe("Owner Property operational dashboard summary", () => {
 
   it("hides the section and makes no request without bookings.view", async () => {
     mocks.canViewBookings = false;
+    mocks.canViewRooms = false;
     render(<OwnerPropertyDashboardPage />);
-    await waitFor(() => expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy());
+    await waitFor(() => expect(screen.getByRole("heading", { name: "خانه سرو" })).toBeTruthy());
     expect(screen.queryByRole("region", { name: "وضعیت رزروهای اقامتگاه" })).toBeNull();
     expect(mocks.apiRequest.mock.calls.some(([path]) => String(path).includes("operational-summary"))).toBe(false);
   });
@@ -165,14 +171,14 @@ describe("Owner Property operational dashboard summary", () => {
     mocks.apiRequest.mockImplementation((path: string) =>
       path.endsWith("/reservations/operational-summary")
         ? Promise.reject(new Error("offline"))
-        : path.endsWith("/completion") ? Promise.resolve({ completionPercentage: 80 })
+        : path.endsWith("/completion") ? Promise.resolve({ completionPercentage: 100, sections: [] })
         : path.endsWith("/room-types") ? Promise.resolve([])
         : Promise.resolve({ id: 17, name: "خانه سرو" }),
     );
     render(<OwnerPropertyDashboardPage />);
     const section = await screen.findByRole("region", { name: "وضعیت رزروهای اقامتگاه" });
     expect(await within(section).findByRole("alert")).toBeTruthy();
-    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
     setupRequests();
     fireEvent.click(within(section).getByRole("button", { name: "تلاش دوباره" }));
     expect(await within(section).findByText("۵")).toBeTruthy();
@@ -182,7 +188,7 @@ describe("Owner Property operational dashboard summary", () => {
     mocks.apiRequest.mockImplementation((path: string) =>
       path.endsWith("/reservations/operational-summary")
         ? Promise.reject(new ApiRequestError("Forbidden", 403))
-        : path.endsWith("/completion") ? Promise.resolve({ completionPercentage: 80 })
+        : path.endsWith("/completion") ? Promise.resolve({ completionPercentage: 100, sections: [] })
         : path.endsWith("/room-types") ? Promise.resolve([])
         : Promise.resolve({ id: 17, name: "خانه سرو" }),
     );
@@ -190,7 +196,7 @@ describe("Owner Property operational dashboard summary", () => {
     const section = await screen.findByRole("region", { name: "وضعیت رزروهای اقامتگاه" });
     expect(await within(section).findByText("دسترسی به خلاصه رزروها ندارید")).toBeTruthy();
     expect(within(section).queryByRole("button", { name: "تلاش دوباره" })).toBeNull();
-    expect(screen.getByText("وضعیت تکمیل اقامتگاه")).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
   });
 
   it("discards an old Property response after switching PropertyId", async () => {
@@ -202,7 +208,7 @@ describe("Owner Property operational dashboard summary", () => {
       if (path.endsWith("/reservations/operational-summary")) {
         return Promise.resolve({ ...summary, pendingApprovalCount: 9 });
       }
-      if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 80 });
+      if (path.endsWith("/completion")) return Promise.resolve({ completionPercentage: 100, sections: [] });
       if (path.endsWith("/room-types")) return Promise.resolve([]);
       return Promise.resolve({ id: Number(mocks.propertyId), name: "خانه سرو" });
     });
