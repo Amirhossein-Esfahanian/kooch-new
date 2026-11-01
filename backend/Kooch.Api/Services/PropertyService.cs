@@ -1035,6 +1035,42 @@ public class PropertyService(
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    public async Task<PropertyResponse> SubmitForReviewAsync(
+        int userId,
+        UserRole role,
+        int propertyId,
+        CancellationToken cancellationToken = default)
+    {
+        await EnsureCanSubmitForReviewAsync(userId, role, propertyId, cancellationToken);
+        await using var approvalWrite = await PropertyApprovalWriteScope.BeginAsync(dbContext, propertyId, cancellationToken);
+        // Ownership may have changed while waiting for another Property writer.
+        await EnsureCanSubmitForReviewAsync(userId, role, propertyId, cancellationToken);
+        var property = approvalWrite.Property;
+        if (property.Status is not (PropertyStatus.Draft or PropertyStatus.Rejected))
+        {
+            throw new InvalidOperationException("Only Draft or Rejected Properties can be submitted for review.");
+        }
+
+        await EnsurePropertyCanActivateAsync(propertyId, cancellationToken);
+        property.Status = PropertyStatus.PendingReview;
+        AuditLogService.CaptureApprovedChange(dbContext, userId, property);
+        await approvalWrite.SaveAsync(userId, propertyCompletionService, cancellationToken, revalidateApproval: false);
+        return await LoadResponseAsync(propertyId, cancellationToken);
+    }
+
+    private async Task EnsureCanSubmitForReviewAsync(int userId, UserRole role, int propertyId,
+        CancellationToken cancellationToken)
+    {
+        // Owner submission requires membership even for users with platform-wide privileges.
+        if (!await dbContext.UserPropertyAccesses.AnyAsync(access =>
+                access.UserId == userId && access.PropertyId == propertyId && access.IsActive &&
+                access.Status == PropertyUserStatus.Active, cancellationToken) ||
+            !await propertyAccessService.CanManagePropertyAsync(userId, role, propertyId, cancellationToken))
+        {
+            throw new UnauthorizedAccessException("Active Property membership and property.edit are required.");
+        }
+    }
+
     public Task<PropertyResponse> ApprovePropertyAsync(
         int userId,
         UserRole role,

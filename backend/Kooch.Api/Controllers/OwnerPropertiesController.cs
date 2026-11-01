@@ -81,6 +81,16 @@ public class OwnerPropertiesController(
     public Task<ActionResult<PropertyResponse>> UpdateSeo(int id, UpdatePropertySeoSectionRequest request, CancellationToken cancellationToken) =>
         UpdateSection((userId, role) => propertyService.UpdateSeoSectionAsync(userId, role, id, request, cancellationToken));
 
+    [HttpPost("{id:int}/submit-for-review")]
+    [ProducesResponseType<PropertyResponse>(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<PropertyResponse>> SubmitForReview(int id, CancellationToken cancellationToken)
+    {
+        var user = GetCurrentUser();
+        return Ok(await propertyService.SubmitForReviewAsync(user.UserId, user.Role, id, cancellationToken));
+    }
+
     [HttpGet("{id:int}/completion")]
     [ProducesResponseType<PropertyCompletionResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<PropertyCompletionResponse>> GetCompletion(

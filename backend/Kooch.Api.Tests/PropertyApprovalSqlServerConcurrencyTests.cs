@@ -86,6 +86,72 @@ public sealed class PropertyApprovalSqlServerConcurrencyTests(SqlServerWalletDat
         await PropertyApprovalTestData.AssertInvalidationAuditAsync(verify, ids, ids.AdminId);
     }
 
+    [SqlServerWalletFact]
+    public async Task ImageDeletionFirst_ReviewSubmissionWaitsThenRejectsMissingImage()
+    {
+        PropertyApprovalTestData.Ids ids;
+        await using (var setup = database.NewContext())
+            ids = await PropertyApprovalTestData.SeedAsync(setup, PropertyStatus.Draft);
+        await using var deletion = database.NewContext();
+        await using var transaction = await deletion.Database.BeginTransactionAsync();
+        await PropertyApprovalTestData.Images(deletion).DeleteAsync(ids.OwnerId, UserRole.Client, ids.ImageId);
+
+        await using var submission = database.NewContext();
+        var request = PropertyApprovalTestData.Service(submission).SubmitForReviewAsync(ids.OwnerId, UserRole.Client, ids.PropertyId);
+        await Task.Delay(200);
+        Assert.False(request.IsCompleted);
+        await transaction.CommitAsync();
+        await Assert.ThrowsAsync<PropertyActivationException>(() => request.WaitAsync(TimeSpan.FromSeconds(30)));
+        await using var verify = database.NewContext();
+        Assert.Equal(PropertyStatus.Draft, (await verify.Properties.SingleAsync(row => row.Id == ids.PropertyId)).Status);
+        Assert.False(await verify.AuditLogs.AnyAsync(row => row.PropertyId == ids.PropertyId &&
+            row.NewValuesJson != null && row.NewValuesJson.Contains("\"Status\":\"PendingReview\"")));
+    }
+
+    [SqlServerWalletFact]
+    public async Task SubmissionFirst_ImageDeletionWaits_AndSubsequentAdminApprovalRevalidates()
+    {
+        PropertyApprovalTestData.Ids ids;
+        await using (var setup = database.NewContext())
+            ids = await PropertyApprovalTestData.SeedAsync(setup, PropertyStatus.Draft);
+        await using var submission = database.NewContext();
+        await using var transaction = await submission.Database.BeginTransactionAsync();
+        await PropertyApprovalTestData.Service(submission).SubmitForReviewAsync(ids.OwnerId, UserRole.Client, ids.PropertyId);
+
+        await using var deletion = database.NewContext();
+        var write = PropertyApprovalTestData.Images(deletion).DeleteAsync(ids.OwnerId, UserRole.Client, ids.ImageId);
+        await Task.Delay(200);
+        Assert.False(write.IsCompleted);
+        await transaction.CommitAsync();
+        await write.WaitAsync(TimeSpan.FromSeconds(30));
+        await using var verify = database.NewContext();
+        // A later edit does not introduce a new PendingReview -> Draft policy.
+        Assert.Equal(PropertyStatus.PendingReview, (await verify.Properties.SingleAsync(row => row.Id == ids.PropertyId)).Status);
+        await Assert.ThrowsAsync<PropertyActivationException>(() => PropertyApprovalTestData.Service(verify)
+            .ApprovePropertyAsync(ids.AdminId, UserRole.SuperAdmin, ids.PropertyId));
+    }
+
+    [SqlServerWalletFact]
+    public async Task ConcurrentSubmissions_OnlyOneTransitionAndAudit()
+    {
+        PropertyApprovalTestData.Ids ids;
+        await using (var setup = database.NewContext())
+            ids = await PropertyApprovalTestData.SeedAsync(setup, PropertyStatus.Draft);
+        await using var first = database.NewContext();
+        await using var transaction = await first.Database.BeginTransactionAsync();
+        await PropertyApprovalTestData.Service(first).SubmitForReviewAsync(ids.OwnerId, UserRole.Client, ids.PropertyId);
+        await using var second = database.NewContext();
+        var retry = PropertyApprovalTestData.Service(second).SubmitForReviewAsync(ids.OwnerId, UserRole.Client, ids.PropertyId);
+        await Task.Delay(200);
+        Assert.False(retry.IsCompleted);
+        await transaction.CommitAsync();
+        await Assert.ThrowsAsync<InvalidOperationException>(() => retry.WaitAsync(TimeSpan.FromSeconds(30)));
+        await using var verify = database.NewContext();
+        Assert.Equal(PropertyStatus.PendingReview, (await verify.Properties.SingleAsync(row => row.Id == ids.PropertyId)).Status);
+        Assert.Single(await verify.AuditLogs.Where(row => row.PropertyId == ids.PropertyId &&
+            row.NewValuesJson != null && row.NewValuesJson.Contains("\"Status\":\"PendingReview\"")).ToListAsync());
+    }
+
     private static async Task ChangeImageAsync(KoochDbContext context, PropertyApprovalTestData.Ids ids, bool reassign)
     {
         if (reassign)

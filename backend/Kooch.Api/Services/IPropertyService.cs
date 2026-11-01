@@ -26,6 +26,7 @@ public interface IPropertyService
     Task<IReadOnlyList<PublicPropertySuggestionResponse>> GetPublicPropertySuggestionsAsync(string? q = null, string? city = null, CancellationToken cancellationToken = default);
     Task<PublicPropertyResponse?> GetPublicPropertyBySlugAsync(string slug, CancellationToken cancellationToken = default);
     Task<PropertyResponse> ApprovePropertyAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);
+    Task<PropertyResponse> SubmitForReviewAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);
     Task<PropertyResponse> RejectPropertyAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);
     Task<PropertyResponse> SuspendPropertyAsync(int userId, UserRole role, int propertyId, CancellationToken cancellationToken = default);
     Task<PropertyResponse> SetPropertyStatusAsync(int userId, UserRole role, int propertyId, PropertyStatus status, CancellationToken cancellationToken = default);
