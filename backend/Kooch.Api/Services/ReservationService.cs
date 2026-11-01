@@ -344,6 +344,8 @@ public class ReservationService(
             IsolationLevel.Serializable,
             cancellationToken);
 
+        property = await PropertyApprovalWriteScope.LockApprovedForNewBookingAsync(
+            dbContext, request.PropertyId, cancellationToken);
         await LockRoomTypeAsync(request.RoomTypeId, cancellationToken);
         availability = await availabilityService.GetAvailabilityAsync(
             request.PropertyId,

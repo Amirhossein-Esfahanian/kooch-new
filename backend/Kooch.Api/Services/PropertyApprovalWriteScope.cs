@@ -18,6 +18,18 @@ internal sealed class PropertyApprovalWriteScope(
     [nameof(Property.Name), nameof(Property.Description), nameof(Property.Country), nameof(Property.City),
         nameof(Property.Address), nameof(Property.CheckInTime), nameof(Property.CheckOutTime)];
 
+    internal static async Task<Property> LockApprovedForNewBookingAsync(
+        KoochDbContext context, int propertyId, CancellationToken cancellationToken)
+    {
+        if (context.Database.IsRelational() && context.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("New booking approval validation requires a transaction.");
+
+        await using var scope = await BeginAsync(context, propertyId, cancellationToken);
+        if (scope.Property.Status != PropertyStatus.Approved)
+            throw new InvalidOperationException("Only Approved Properties can accept new bookings.");
+        return scope.Property;
+    }
+
     public static async Task<PropertyApprovalWriteScope> BeginAsync(
         KoochDbContext context, int propertyId, CancellationToken cancellationToken)
     {

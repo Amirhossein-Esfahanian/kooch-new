@@ -147,7 +147,6 @@ public sealed class BookingSessionService(
         await ValidateClientAndGuestAsync(request, cancellationToken);
         var property = await ValidatePropertyAsync(
             request.PropertyId,
-            creationKind,
             cancellationToken);
         var receptionCoordinationRequired = creationKind == BookingSessionCreationKind.Account &&
             ReceptionCoordinationEvaluator.Evaluate(
@@ -769,24 +768,11 @@ public sealed class BookingSessionService(
 
     private async Task<Property> ValidatePropertyAsync(
         int propertyId,
-        BookingSessionCreationKind creationKind,
         CancellationToken cancellationToken)
     {
-        var property = await dbContext.Properties.AsNoTracking()
-            .Include(item => item.DefaultMealPlan)
-            .SingleOrDefaultAsync(item => item.Id == propertyId, cancellationToken)
-            ?? throw new KeyNotFoundException("Property not found.");
-        if (property.Status is PropertyStatus.Rejected or PropertyStatus.Suspended)
-        {
-            throw new InvalidOperationException("Property is not available for reservations.");
-        }
-
-        if (creationKind == BookingSessionCreationKind.Account &&
-            property.Status != PropertyStatus.Approved)
-        {
-            throw new InvalidOperationException("Property is not available for public booking.");
-        }
-
+        var property = await PropertyApprovalWriteScope.LockApprovedForNewBookingAsync(
+            dbContext, propertyId, cancellationToken);
+        await dbContext.Entry(property).Reference(item => item.DefaultMealPlan).LoadAsync(cancellationToken);
         return property;
     }
 
