@@ -1,10 +1,14 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
+import { KoochUserMenu } from "@/components/KoochUserMenu";
 
 const mocks = vi.hoisted(() => ({
   apiRequest: vi.fn(),
   getToken: vi.fn(() => "session-token"),
+  pathname: "/admin",
+  push: vi.fn(), clearSession: vi.fn(),
   user: {
     userId: 17, firstName: "الهه", lastName: "رحیم‌زاده",
     fullName: "الهه رحیم‌زاده", email: "user@example.com",
@@ -16,7 +20,12 @@ vi.mock("@/lib/owner-api", () => ({
   getToken: mocks.getToken,
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
-  useAuthSession: () => ({ user: mocks.user }),
+  useAuthSession: () => ({ user: mocks.user, workspaces: ["admin", "owner"], clearSession: mocks.clearSession }),
+  resolveSessionDestination: (_session: unknown, workspace: string) => `/${workspace}`,
+}));
+vi.mock("next/navigation", () => ({
+  usePathname: () => mocks.pathname,
+  useRouter: () => ({ push: mocks.push }),
 }));
 
 function missingAvatar() {
@@ -33,6 +42,8 @@ beforeEach(() => {
   localStorage.clear();
   mocks.apiRequest.mockReset().mockResolvedValue(undefined);
   mocks.getToken.mockReturnValue("session-token");
+  mocks.pathname = "/admin";
+  mocks.push.mockReset(); mocks.clearSession.mockReset();
   mocks.user = {
     userId: 17, firstName: "الهه", lastName: "رحیم‌زاده",
     fullName: "الهه رحیم‌زاده", email: "user@example.com",
@@ -42,6 +53,120 @@ beforeEach(() => {
     revokeObjectURL: vi.fn(),
   }));
   missingAvatar();
+});
+
+describe("Sidebar profile avatar", () => {
+  function trigger() { return screen.getByRole("button", { name: /منوی کاربر/ }); }
+
+  it("loads after Strict Mode effect remounts", async () => {
+    existingAvatar();
+    render(<StrictMode><KoochUserMenu variant="sidebar" /></StrictMode>);
+    expect((await within(trigger()).findByRole("img")).getAttribute("src")).toBe("blob:avatar-1");
+  });
+
+  it.each(["/admin", "/owner/properties/11/dashboard"])("renders the authenticated image in %s, including collapsed mode", async (pathname) => {
+    mocks.pathname = pathname;
+    existingAvatar();
+    const view = render(<KoochUserMenu variant="sidebar" />);
+    const image = await within(trigger()).findByRole("img", { name: "تصویر پروفایل" });
+    expect(image.getAttribute("src")).toBe("blob:avatar-1");
+    expect(image.getAttribute("width")).toBe("32");
+    expect(image.className).toContain("object-cover");
+    expect(trigger().className).toContain("min-h-11");
+    view.rerender(<KoochUserMenu collapsed variant="sidebar" />);
+    expect(trigger().getAttribute("title")).toBe(mocks.user.fullName);
+    expect(within(trigger()).getByRole("img")).toBe(image);
+  });
+
+  it("keeps initials for missing or failed images", async () => {
+    const view = render(<KoochUserMenu variant="sidebar" />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(within(trigger()).queryByRole("img")).toBeNull();
+    expect(within(trigger()).getByText("ا")).toBeTruthy();
+    view.unmount();
+    existingAvatar();
+    render(<KoochUserMenu variant="sidebar" />);
+    fireEvent.error(await within(trigger()).findByRole("img"));
+    expect(within(trigger()).queryByRole("img")).toBeNull();
+    expect(within(trigger()).getByText("ا")).toBeTruthy();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:avatar-1");
+  });
+
+  it("shares upload/delete updates with the dialog without duplicate lookups and preserves logout", async () => {
+    existingAvatar();
+    vi.mocked(URL.createObjectURL).mockReturnValueOnce("blob:old").mockReturnValueOnce("blob:new");
+    render(<KoochUserMenu variant="sidebar" />);
+    await within(trigger()).findByRole("img");
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "تنظیمات حساب" }));
+    await screen.findByRole("dialog");
+    expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("انتخاب تصویر پروفایل"), {
+      target: { files: [new File(["image"], "photo.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect(within(trigger()).getByRole("img").getAttribute("src")).toBe("blob:new"));
+    expect(within(screen.getByRole("dialog")).getByRole("img").getAttribute("src")).toBe("blob:new");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "حذف تصویر" }));
+    await waitFor(() => expect(within(trigger()).queryByRole("img")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "خروج" }));
+    expect(mocks.clearSession).toHaveBeenCalledTimes(1);
+    expect(mocks.push).toHaveBeenCalledWith("/login");
+  });
+
+  it("reloads the persisted photo across navigation and Admin/Owner remounts", async () => {
+    existingAvatar();
+    const view = render(<KoochUserMenu variant="sidebar" />);
+    await within(trigger()).findByRole("img");
+    view.unmount();
+    mocks.pathname = "/owner/properties/11/dashboard";
+    render(<KoochUserMenu variant="sidebar" />);
+    expect((await within(trigger()).findByRole("img")).getAttribute("src")).toBe("blob:avatar-1");
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("silently falls back for lookup failures or absent credentials", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    const view = render(<KoochUserMenu variant="sidebar" />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    expect(within(trigger()).queryByRole("img")).toBeNull();
+    view.unmount();
+    vi.mocked(fetch).mockClear();
+    mocks.getToken.mockReturnValue("");
+    render(<KoochUserMenu variant="sidebar" />);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not replace the previous avatar when upload fails", async () => {
+    existingAvatar();
+    mocks.apiRequest.mockRejectedValueOnce(new Error("upload failed"));
+    render(<KoochUserMenu variant="sidebar" />);
+    await within(trigger()).findByRole("img");
+    fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "تنظیمات حساب" }));
+    fireEvent.change(await screen.findByLabelText("انتخاب تصویر پروفایل"), {
+      target: { files: [new File(["image"], "photo.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledTimes(1));
+    expect(within(trigger()).getByRole("img").getAttribute("src")).toBe("blob:avatar-1");
+  });
+
+  it("discards stale avatar requests when the authenticated User changes", async () => {
+    let finishOld!: (response: Response) => void;
+    const pending = new Promise<Response>((resolve) => { finishOld = resolve; });
+    vi.stubGlobal("fetch", vi.fn().mockReturnValueOnce(pending).mockResolvedValue({
+      status: 200, ok: true, blob: async () => new Blob(["new-user"], { type: "image/webp" }),
+    }));
+    const view = render(<KoochUserMenu variant="sidebar" />);
+    mocks.user = { ...mocks.user, userId: 18, fullName: "کاربر دیگر" };
+    view.rerender(<KoochUserMenu variant="sidebar" />);
+    await within(trigger()).findByRole("img");
+    await act(async () => { finishOld(new Response("old-user")); });
+    expect(URL.createObjectURL).toHaveBeenCalledTimes(1);
+    expect(within(trigger()).getByRole("img").getAttribute("src")).toBe("blob:avatar-1");
+  });
 });
 
 describe("User profile avatar", () => {

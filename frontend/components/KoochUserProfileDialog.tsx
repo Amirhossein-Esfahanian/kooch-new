@@ -7,7 +7,8 @@ import { KoochCheckbox } from "@/components/KoochCheckbox";
 import { KoochDialog } from "@/components/KoochDialog";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
-import { apiRequest, getToken } from "@/lib/owner-api";
+import { apiRequest } from "@/lib/owner-api";
+import { UserProfileAvatarProvider, useUserProfileAvatar } from "@/components/auth/UserProfileAvatarProvider";
 
 type ProfileForm = {
   name: string;
@@ -78,7 +79,11 @@ function initials(name: string, firstName?: string, lastName?: string) {
   return [Array.from(parts[0])[0], ...(parts.length > 1 ? [Array.from(parts[parts.length - 1])[0]] : [])].join(" ");
 }
 
-export function KoochUserProfileDialog({
+export function KoochUserProfileDialog(props: Parameters<typeof UserProfileDialogContent>[0]) {
+  return <UserProfileAvatarProvider><UserProfileDialogContent {...props} /></UserProfileAvatarProvider>;
+}
+
+function UserProfileDialogContent({
   onOpenChange,
   open,
 }: {
@@ -88,14 +93,9 @@ export function KoochUserProfileDialog({
   const { user } = useAuthSession();
   const [form, setForm] = useState<ProfileForm>(defaultForm);
   const [saving, setSaving] = useState(false);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const { avatarUrl, ensureAvatar, refreshAvatar, clearAvatar } = useUserProfileAvatar();
   const [avatarPending, setAvatarPending] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
-  const avatarRequestVersion = useRef(0);
-
-  useEffect(() => () => {
-    if (avatarUrl) URL.revokeObjectURL(avatarUrl);
-  }, [avatarUrl]);
 
   useEffect(() => {
     if (open) {
@@ -103,30 +103,14 @@ export function KoochUserProfileDialog({
     }
   }, [open, user?.email, user?.fullName]);
 
-  async function loadAvatar(signal?: AbortSignal) {
-    const version = ++avatarRequestVersion.current;
-    const token = getToken();
-    if (!token) { if (version === avatarRequestVersion.current) setAvatarUrl(null); return; }
-    const response = await fetch("/api/backend/account/profile/avatar", {
-      headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal,
-    });
-    if (response.status === 404) { if (version === avatarRequestVersion.current) setAvatarUrl(null); return; }
-    if (!response.ok) throw new Error("بارگذاری تصویر پروفایل انجام نشد.");
-    const blob = await response.blob();
-    if (!signal?.aborted && version === avatarRequestVersion.current) setAvatarUrl(URL.createObjectURL(blob));
-  }
-
   useEffect(() => {
-    if (!open || !user) { avatarRequestVersion.current++; setAvatarUrl(null); return; }
-    const controller = new AbortController();
-    setAvatarUrl(null);
-    void loadAvatar(controller.signal).catch((error: unknown) => {
-      if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : "بارگذاری تصویر پروفایل انجام نشد.");
+    if (!open || !user) return;
+    let active = true;
+    void ensureAvatar().catch((error: unknown) => {
+      if (active) toast.error(error instanceof Error ? error.message : "بارگذاری تصویر پروفایل انجام نشد.");
     });
-    return () => { avatarRequestVersion.current++; controller.abort(); };
-    // The authenticated User and open state define this avatar lookup.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, user?.userId]);
+    return () => { active = false; };
+  }, [open, user?.userId, ensureAvatar]);
 
   async function uploadAvatar(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -136,7 +120,7 @@ export function KoochUserProfileDialog({
       const body = new FormData();
       body.append("file", file);
       await apiRequest<void>("/account/profile/avatar", { method: "PUT", body });
-      await loadAvatar();
+      await refreshAvatar();
       toast.success("تصویر پروفایل ذخیره شد.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "ذخیره تصویر پروفایل انجام نشد.");
@@ -151,8 +135,7 @@ export function KoochUserProfileDialog({
     setAvatarPending(true);
     try {
       await apiRequest<void>("/account/profile/avatar", { method: "DELETE" });
-      avatarRequestVersion.current++;
-      setAvatarUrl(null);
+      clearAvatar();
       toast.success("تصویر پروفایل حذف شد.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "حذف تصویر پروفایل انجام نشد.");
@@ -230,6 +213,7 @@ export function KoochUserProfileDialog({
               <img
                 alt="تصویر پروفایل"
                 className="h-full w-full object-cover"
+                onError={clearAvatar}
                 src={avatarUrl}
               />
             ) : (

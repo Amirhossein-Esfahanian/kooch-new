@@ -8,6 +8,7 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
+import { UserProfileAvatarProvider, useUserProfileAvatar } from "@/components/auth/UserProfileAvatarProvider";
 
 const workspaceOptions: ReadonlyArray<{
   key: AuthWorkspace;
@@ -25,7 +26,11 @@ function routeWorkspace(pathname: string): AuthWorkspace | null {
   return null;
 }
 
-export function KoochUserMenu({
+export function KoochUserMenu(props: Parameters<typeof UserMenuContent>[0]) {
+  return <UserProfileAvatarProvider eager={props.variant === "sidebar"}><UserMenuContent {...props} /></UserProfileAvatarProvider>;
+}
+
+function UserMenuContent({
   collapsed = false,
   darkMode = false,
   onOpenChange,
@@ -41,6 +46,7 @@ export function KoochUserMenu({
   const pathname = usePathname();
   const router = useRouter();
   const session = useAuthSession();
+  const { avatarUrl, clearAvatar } = useUserProfileAvatar();
   const [internalOpen, setInternalOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -163,8 +169,12 @@ export function KoochUserMenu({
           type="button"
           title={isSidebar && collapsed ? userName : undefined}
         >
-          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-bold ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
-            {userName.charAt(0)}
+          <span className={`grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg text-xs font-bold ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
+            {isSidebar && avatarUrl ? (
+              // Authenticated private media is rendered from the existing blob loader.
+              // eslint-disable-next-line @next/next/no-img-element
+              <img alt="تصویر پروفایل" className="h-full w-full object-cover" height={32} onError={clearAvatar} src={avatarUrl} width={32} />
+            ) : userName.charAt(0)}
           </span>
           {isSidebar ? (
             <span className={`min-w-0 flex-1 text-start ${collapsed ? "md:hidden" : ""}`}>
