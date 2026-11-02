@@ -43,6 +43,7 @@
 }
 
 :root {
+  --dashboard-dark-background: #0b0f17;
   color-scheme: light;
   --background: #f8fafc;
   --foreground: #0f172a;
@@ -153,9 +154,10 @@
   --property-search-background: #4a2d24;
 }
 
-.dark {
+.dark,
+:root[data-dashboard-mode="dark"] [data-dashboard-loading] {
   color-scheme: dark;
-  --background: #0b0f17;
+  --background: var(--dashboard-dark-background);
   --foreground: #e5e7eb;
   --card: #111720;
   --card-foreground: #f8fafc;
@@ -221,6 +223,13 @@
 
 html {
   scroll-behavior: smooth;
+}
+
+/* Pre-hydration canvas only; never enables global dark tokens on public pages. */
+html[data-dashboard-mode="dark"],
+html[data-dashboard-mode="dark"] body {
+  background-color: var(--dashboard-dark-background);
+  color-scheme: dark;
 }
 
 body {

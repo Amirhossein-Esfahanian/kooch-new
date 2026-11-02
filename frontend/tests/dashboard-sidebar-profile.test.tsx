@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { renderToString } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -70,6 +71,15 @@ it.each(["admin", "owner"] as const)("keeps %s authorization loading in the save
   expect(screen.getByRole("status").className).toContain("dark");
   expect(screen.getByRole("status").className).toContain("bg-background");
   expect(screen.queryByRole("button", { name: "تغییر حالت روشن و تیره" })).toBeNull();
+});
+
+it.each(["admin", "owner"] as const)("renders a nonblank %s loading surface during server rendering", (panel) => {
+  mocks.authLoading = true;
+  mocks.pathname = panel === "admin" ? "/admin" : "/owner/properties/11/dashboard";
+  const Layout = panel === "admin" ? AdminLayout : OwnerLayout;
+  const html = renderToString(<Layout>content</Layout>);
+  expect(html).toContain('data-dashboard-loading=""');
+  expect(html).toContain('role="status"');
 });
 
 describe.each(["admin", "owner"] as const)("%s sidebar profile", (panel) => {

@@ -6,6 +6,7 @@ import { OwnerPropertyProvider } from "@/components/owner/OwnerPropertyProvider"
 import { Toaster } from "sonner";
 import { fetchDefaultSeoMetadata } from "@/lib/site-settings.server";
 import { iranYekan } from "./fonts";
+import { dashboardThemeBootstrap } from "@/lib/dashboard-theme-bootstrap";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "./globals.css";
 
@@ -31,6 +32,9 @@ export default function RootLayout({
       suppressHydrationWarning
       className={iranYekan.variable}
     >
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: dashboardThemeBootstrap }} />
+      </head>
       <body className="font-sans min-h-screen antialiased">
         <AuthSessionProvider>
           <OwnerPropertyProvider>

@@ -1,12 +1,14 @@
 "use client";
 
-import { useSyncExternalStore } from "react";
+import { useLayoutEffect, useSyncExternalStore } from "react";
+import { dashboardThemeStorageKey, isDashboardPath } from "./dashboard-theme-bootstrap";
+
+export { dashboardThemeStorageKey } from "./dashboard-theme-bootstrap";
 
 type DashboardTheme = "light" | "dark";
 
-export const dashboardThemeStorageKey = "kooch_dashboard_mode";
-
 const listeners = new Set<() => void>();
+let mountedSurfaces = 0;
 let memoryTheme: DashboardTheme = "light";
 let storageOverride: DashboardTheme | null = null;
 
@@ -47,5 +49,14 @@ const serverTheme = () => null;
 
 export function useDashboardTheme() {
   const theme = useSyncExternalStore(subscribe, readTheme, serverTheme);
+  useLayoutEffect(() => {
+    if (theme === null || !isDashboardPath(window.location.pathname)) return;
+    mountedSurfaces += 1;
+    document.documentElement.setAttribute("data-dashboard-mode", theme);
+    return () => {
+      mountedSurfaces -= 1;
+      if (mountedSurfaces === 0) document.documentElement.removeAttribute("data-dashboard-mode");
+    };
+  }, [theme]);
   return { darkMode: theme === "dark", ready: theme !== null, toggleTheme };
 }

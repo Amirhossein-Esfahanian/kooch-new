@@ -256,12 +256,12 @@ function getOwnerMenuItems(
 }
 
 function DashboardAuthorizationLoading() {
-  const { darkMode, ready } = useDashboardTheme();
-  if (!ready) return null;
+  const { darkMode } = useDashboardTheme();
 
   return (
     <div
       className={`fixed inset-0 z-50 grid place-items-center bg-background px-5 text-sm font-semibold text-muted-foreground ${darkMode ? "dark" : ""}`}
+      data-dashboard-loading=""
       role="status"
     >
       در حال بررسی دسترسی...
@@ -760,8 +760,8 @@ function DashboardShell({
     return () => window.removeEventListener("keydown", handleEscape);
   }, [drawerType, profileMenuOpen]);
 
-  // Wait for the browser preference instead of hydrating a light dashboard first.
-  if (!themeReady) return null;
+  // The bootstrap themes this existing loading surface before hydration.
+  if (!themeReady) return <DashboardAuthorizationLoading />;
 
   return (
     <KoochButtonAppearanceProvider value={darkMode ? "dashboard-dark" : "dashboard-light"}>
