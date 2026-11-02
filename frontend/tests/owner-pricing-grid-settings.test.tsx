@@ -56,6 +56,7 @@ vi.mock("@/components/pricing/PricingBulkEditDialog", () => ({
 }));
 
 import { OwnerPricingGrid } from "@/components/owner/OwnerPricingGrid";
+import { KoochButtonAppearanceProvider } from "@/components/KoochButton";
 
 function installApiResponses(
   managementResult: Record<string, string> | Error,
@@ -118,6 +119,17 @@ describe("OwnerPricingGrid operational settings", () => {
     mocks.apiRequest.mockReset();
     mocks.currencyLabel = "تومان";
     mocks.push.mockReset();
+  });
+
+  it.each(["owner", "admin"] as const)("preserves the history action and scopes charcoal to the Owner toolbar (%s)", async (context) => {
+    installApiResponses({});
+    render(<KoochButtonAppearanceProvider value="dashboard-light">
+      <OwnerPricingGrid context={context} propertyId={51} />
+    </KoochButtonAppearanceProvider>);
+    const history = screen.getByRole("button", { name: "مشاهده سوابق تغییر قیمت" });
+    expect(history.className).toContain(context === "owner" ? "kooch-admin-button-utility" : "kooch-admin-button-outline");
+    fireEvent.click(history);
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenCalledWith("/owner/properties/51/pricing/history"));
   });
 
   it("shows the extra guest warning only for an active capable RoomType with missing price", async () => {

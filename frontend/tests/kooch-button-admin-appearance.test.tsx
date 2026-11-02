@@ -5,6 +5,18 @@ import { KoochButton, KoochButtonAppearanceProvider } from "@/components/KoochBu
 import { KoochDialog } from "@/components/KoochDialog";
 
 describe("Admin button appearance", () => {
+  it.each(["dashboard-light", "dashboard-dark"] as const)("shares the explicit charcoal treatment with the utility alias in %s", (appearance) => {
+    render(<KoochButtonAppearanceProvider value={appearance}>
+      <KoochButton variant="charcoal">سوابق</KoochButton>
+      <KoochButton variant="utility">ابزار</KoochButton>
+      <KoochButton>ذخیره</KoochButton>
+    </KoochButtonAppearanceProvider>);
+    const charcoal = screen.getByRole("button", { name: "سوابق" });
+    expect(charcoal.className).toBe(screen.getByRole("button", { name: "ابزار" }).className);
+    expect(charcoal.className).toContain("kooch-admin-button-utility");
+    expect(charcoal.getAttribute("data-kooch-button-theme")).toBe(appearance.endsWith("dark") ? "dark" : "light");
+    expect(screen.getByRole("button", { name: "ذخیره" }).className).toContain("kooch-admin-button-primary");
+  });
   it("keeps existing default variants and sizes outside the Admin scope", () => {
     render(<>
       <KoochButton>اصلی</KoochButton>
@@ -97,18 +109,28 @@ describe("Admin button appearance", () => {
     expect(onClick).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps the Admin scope and theme through a real dialog portal", async () => {
+  it.each([
+    ["admin-light", "admin-dark"],
+    ["dashboard-light", "dashboard-dark"],
+  ] as const)("keeps %s scope and theme through a real dialog portal", async (light, dark) => {
     const onOpenChange = vi.fn();
-    const content = <KoochDialog open onOpenChange={onOpenChange} title="ویرایش" footer={<KoochButton>ذخیره</KoochButton>}>
+    const content = <KoochDialog open onOpenChange={onOpenChange} title="ویرایش" footer={<>
+      <KoochButton>ذخیره</KoochButton>
+      <KoochButton variant="charcoal">سوابق</KoochButton>
+    </>}>
       <p>محتوای فرم</p>
     </KoochDialog>;
-    const view = render(<KoochButtonAppearanceProvider value="admin-light">{content}</KoochButtonAppearanceProvider>);
+    const view = render(<KoochButtonAppearanceProvider value={light}>{content}</KoochButtonAppearanceProvider>);
     const dialog = await screen.findByRole("dialog", { name: "ویرایش" });
     const button = within(dialog).getByRole("button", { name: "ذخیره" });
+    const charcoal = within(dialog).getByRole("button", { name: "سوابق" });
     expect(view.container.contains(button)).toBe(false);
     expect(button.getAttribute("data-kooch-button-theme")).toBe("light");
+    expect(charcoal.getAttribute("data-kooch-button-theme")).toBe("light");
+    expect(charcoal.className).toContain("kooch-admin-button-utility");
     expect(within(dialog).getByRole("button", { name: "بستن" }).hasAttribute("data-kooch-button-theme")).toBe(false);
-    view.rerender(<KoochButtonAppearanceProvider value="admin-dark">{content}</KoochButtonAppearanceProvider>);
+    view.rerender(<KoochButtonAppearanceProvider value={dark}>{content}</KoochButtonAppearanceProvider>);
     expect(button.getAttribute("data-kooch-button-theme")).toBe("dark");
+    expect(charcoal.getAttribute("data-kooch-button-theme")).toBe("dark");
   });
 });

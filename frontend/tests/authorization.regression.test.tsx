@@ -47,6 +47,7 @@ import {
   type PropertyPermissionMatrix,
 } from "@/components/auth/AuthSessionProvider";
 import { AdminLayout, OwnerLayout } from "@/components/dashboard/DashboardLayouts";
+import { KoochButton } from "@/components/KoochButton";
 import { OwnerPropertyProvider } from "@/components/owner/OwnerPropertyProvider";
 import { saveRememberedWorkspace } from "@/lib/auth-session";
 
@@ -359,12 +360,22 @@ describe("property workspace authorization", () => {
       }),
       <OwnerLayout>
         <div data-testid="owner-content">owner</div>
+        <KoochButton>ذخیره اقامتگاه</KoochButton>
+        <KoochButton variant="charcoal">سوابق</KoochButton>
       </OwnerLayout>,
       { pathname: "/owner/properties/11", params: { id: "11" } },
     );
 
     expect(await screen.findByTestId("owner-content")).toBeTruthy();
     expect(screen.getByText("Property 11")).toBeTruthy();
+    const save = screen.getByRole("button", { name: "ذخیره اقامتگاه" });
+    const history = screen.getByRole("button", { name: "سوابق" });
+    expect(save.className).toContain("kooch-admin-button-primary");
+    expect(history.className).toContain("kooch-admin-button-utility");
+    expect(save.getAttribute("data-kooch-button-theme")).toBe("light");
+    fireEvent.click(screen.getByRole("button", { name: "تغییر حالت روشن و تیره" }));
+    expect(save.getAttribute("data-kooch-button-theme")).toBe("dark");
+    expect(history.getAttribute("data-kooch-button-theme")).toBe("dark");
   });
 
   it("sends a multi-property owner without a saved property to the first active property", () => {

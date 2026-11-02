@@ -1550,7 +1550,7 @@ export function OwnerPricingGrid({
             onClick={openHistory}
             size="sm"
             type="button"
-            variant="outline"
+            variant={context === "owner" ? "charcoal" : "outline"}
           >
             مشاهده سوابق تغییر قیمت
           </KoochButton>

@@ -372,7 +372,7 @@ a {
 }
 
 @layer components {
-  /* Only context-marked Admin buttons use these tokens, including portaled actions. */
+  /* Dashboard-scoped buttons share the approved Admin tokens, including portaled actions. */
   .kooch-admin-button {
     --admin-button-on-filled: #ffffff;
     --admin-button-shade: #0f172a;

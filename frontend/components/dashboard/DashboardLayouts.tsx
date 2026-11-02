@@ -757,7 +757,7 @@ function DashboardShell({
   }, [drawerType, profileMenuOpen]);
 
   return (
-    <KoochButtonAppearanceProvider value={integratedHeader ? darkMode ? "admin-dark" : "admin-light" : "default"}>
+    <KoochButtonAppearanceProvider value={darkMode ? "dashboard-dark" : "dashboard-light"}>
     <div
       className={`fixed inset-0 z-50 overflow-hidden  ${darkMode ? "dark" : ""} ${
         integratedHeader
