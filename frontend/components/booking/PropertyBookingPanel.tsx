@@ -14,6 +14,7 @@ import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import {
   BookingCartMobileActionBar,
   BookingCartSummary,
+  type BookingCartDraft,
 } from "@/components/booking/BookingCart";
 import { PublicRoomTypeCard } from "@/components/booking/PublicRoomTypeCard";
 import { PublicRoomTypeCalendarDialog } from "@/components/booking/PublicRoomTypeCalendarDialog";
@@ -589,15 +590,30 @@ function PropertyBookingPanelContent({
       stayRooms: guests.rooms,
     }),
   );
-  const showCartSummary = isMultiRoomSearch ? canCheckout : hasSearchResults && (cart.items.length === 0 || canCheckout);
+  const showCartSummary = isMultiRoomSearch
+    ? hasCandidateResults && selectedRoomCount > 0
+    : hasSearchResults && (cart.items.length === 0 || canCheckout);
+  const draftSummary: BookingCartDraft | undefined = isMultiRoomSearch && !canCheckout ? {
+    requestedRooms: guests.rooms,
+    status: selectedRoomCount < guests.rooms ? "partial" : quoteError ? "error" : quoteLoading ? "pending" : "unconfirmed",
+    selections: selectedOffers.map((selection) => {
+      const candidate = candidates?.roomTypes.find((room) => room.roomTypeId === selection.roomTypeId);
+      return {
+        ...selection,
+        roomTypeName: candidate?.name ?? roomTypes.find((room) => room.id === selection.roomTypeId)?.name ?? "نوع اتاق انتخاب‌شده",
+        ratePlanName: candidate?.ratePlans.find((plan) => plan.ratePlanId === selection.ratePlanId)?.name ?? null,
+      };
+    }),
+  } : undefined;
   const cartSummary = (
     <BookingCartSummary
+      draft={draftSummary}
       className={
         hasSearchResults
           ? "lg:sticky lg:top-[calc(var(--header-height)+var(--property-booking-search-height,0px)+1rem)]"
           : undefined
       }
-      items={cart.items}
+      items={draftSummary ? [] : cart.items}
       loading={false}
       onContinue={continueCheckout}
       onRemove={isMultiRoomSearch ? removeMultiCartItem : cart.removeItem}
@@ -805,6 +821,7 @@ function PropertyBookingPanelContent({
                 candidateBooking={hasCandidateResults ? {
                   option: candidate,
                   availableToAdd: candidateAvailableToAdd,
+                  selectionLimitReached: Boolean(candidate && selectedRoomCount >= guests.rooms && candidate.availableCount > candidateTotalSelected),
                   selectedQuantity: candidateSelected.find((selection) => selection.ratePlanId === null)?.quantity ?? 0,
                   totalSelectedQuantity: candidateTotalSelected,
                   onAdd: () => changeMultiSelection(roomType.id, null, 1),

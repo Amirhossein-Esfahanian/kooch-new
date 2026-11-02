@@ -654,13 +654,22 @@ export function SharedDateRangePicker({
                   asCalendar(date, activeCalendar).format("D"),
                 );
                 const visualState = { selected, disabled, today, inRange };
+                const fullDate = displayDateParts(iso, activeCalendar);
+                const accessibleDate = [
+                  fullDate.weekday, fullDate.date,
+                  isRangeStart ? `${text.start} انتخاب‌شده` : "",
+                  isRangeEnd ? `${text.end} انتخاب‌شده` : "",
+                  inRange ? "در بازه انتخاب‌شده" : "",
+                ].filter(Boolean).join("، ");
                 return (
                   <div
                     className={`h-10 ${inRange || selected ? "bg-[var(--theme-primary-soft)]" : ""} ${isRangeStart ? "rounded-r-[4px]" : ""} ${isRangeEnd ? "rounded-l-[4px]" : ""}`}
                     key={iso}
                   >
                     <button
-                      aria-label={holidayAccessibleLabel(dayText, holiday)}
+                      aria-current={today ? "date" : undefined}
+                      aria-label={holidayAccessibleLabel(accessibleDate, holiday) ?? accessibleDate}
+                      aria-pressed={selected || inRange}
                       className={`h-10 w-full rounded-[4px] text-sm font-semibold transition ${holidayDayStateClass(visualState, holiday, "text-foreground hover:bg-[var(--theme-primary-soft)]")}`}
                       data-calendar-date={iso}
                       data-holiday={holiday ? "true" : undefined}

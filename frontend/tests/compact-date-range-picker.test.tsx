@@ -317,6 +317,33 @@ describe("KoochCompactDateRangePicker", () => {
     expect(screen.getByRole("button", { name: "انصراف" })).toBeTruthy();
   });
 
+  it.each(["jalali", "gregorian"] as const)("announces full %s dates, range boundaries and selected middle days without changing constraints", (calendarType) => {
+    const onChange = vi.fn();
+    const view = render(<SharedDateRangePicker calendarType={calendarType} disabledDates={["2026-03-25"]}
+      labels={{ start: "ورود", end: "خروج" }} loadHolidayData={false} maxDate="2026-04-01"
+      minDate="2026-03-20" onChange={onChange} value={committedRange} />);
+    fireEvent.click(view.container.querySelector("button")!);
+    const start = findDay("2026-03-21");
+    const middle = findDay("2026-03-22");
+    const end = findDay("2026-03-23");
+    expect(start.getAttribute("aria-label")).toContain(calendarType === "jalali" ? "۱ فروردین ۱۴۰۵" : "۲۱ مارس ۲۰۲۶");
+    expect(start.getAttribute("aria-label")).toContain("شنبه");
+    expect(start.getAttribute("aria-label")).toContain("ورود انتخاب‌شده");
+    expect(end.getAttribute("aria-label")).toContain("خروج انتخاب‌شده");
+    for (const day of [start, middle, end]) expect(day.getAttribute("aria-pressed")).toBe("true");
+    expect(middle.getAttribute("aria-label")).toContain("در بازه انتخاب‌شده");
+    expect(findDay("2026-03-24").getAttribute("aria-pressed")).toBe("false");
+    expect(findDay("2026-03-25").disabled).toBe(true);
+    if (calendarType === "gregorian") expect(findDay("2026-03-19").disabled).toBe(true);
+    expect(findDay("2026-04-02").disabled).toBe(true);
+    fireEvent.click(findDay("2026-03-25"));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(findDay("2026-03-26"));
+    expect(findDay("2026-03-26").getAttribute("aria-label")).toContain("ورود انتخاب‌شده");
+    expect(end.getAttribute("aria-pressed")).toBe("false");
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
   it("limits the test navigation to development", () => {
     expect(shouldShowDevelopmentNavigation("development")).toBe(true);
     expect(shouldShowDevelopmentNavigation("production")).toBe(false);

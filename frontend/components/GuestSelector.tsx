@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useRef, useState } from "react";
+import { ReactNode, useEffect, useId, useRef, useState } from "react";
 
 export type GuestSelectorValue = {
   rooms: number;
@@ -48,20 +48,23 @@ function CounterRow({
 }) {
   const canDecrease = value > min;
   const canIncrease = max === undefined || value < max;
+  const titleId = useId();
+  const subtitleId = useId();
 
   return (
-    <div className="flex items-center justify-between gap-4 py-3">
+    <div aria-describedby={subtitle ? subtitleId : undefined} aria-labelledby={titleId} className="flex items-center justify-between gap-4 py-3" role="group">
       <div>
-        <p className="font-bold text-slate-950">{title}</p>
+        <p className="font-bold text-foreground" id={titleId}>{title}</p>
 
         {subtitle && (
-          <p className="mt-1 text-xs font-bold text-slate-500">{subtitle}</p>
+          <p className="mt-1 text-xs font-bold text-muted-foreground" id={subtitleId}>{subtitle}</p>
         )}
       </div>
 
       <div className="flex items-center gap-3" dir="ltr">
         <button
-          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-bold text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
+          aria-label={`کاهش ${title}`}
+          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-border text-lg font-bold text-primary transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           disabled={!canDecrease}
           onClick={() => onChange(value - 1)}
           type="button"
@@ -69,12 +72,13 @@ function CounterRow({
           -
         </button>
 
-        <span className="w-7 text-center text-xl font-bold text-slate-950">
+        <output aria-atomic="true" aria-label={title} aria-live="polite" className="w-7 text-center text-xl font-bold text-foreground">
           {formatFaNumber(value)}
-        </span>
+        </output>
 
         <button
-          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-slate-300 text-lg font-bold text-[var(--theme-primary)] transition hover:border-[var(--theme-primary)] disabled:cursor-not-allowed disabled:text-slate-300"
+          aria-label={`افزایش ${title}`}
+          className="touch-target-44 grid h-8 w-8 place-items-center rounded-full border border-border text-lg font-bold text-primary transition hover:border-primary disabled:cursor-not-allowed disabled:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           disabled={!canIncrease}
           onClick={() => onChange(value + 1)}
           type="button"
@@ -96,6 +100,8 @@ export function GuestSelector({
   maxChildren = 6,
 }: GuestSelectorProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const popoverId = useId();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -139,16 +145,26 @@ export function GuestSelector({
 
   return (
     <div
-      className={`relative grid gap-2 text-sm font-bold text-slate-700 ${className}`}
+      className={`relative grid gap-2 text-sm font-bold text-foreground ${className}`}
+      onKeyDown={(event) => {
+        if (!open || event.key !== "Escape") return;
+        event.preventDefault();
+        event.stopPropagation();
+        setOpen(false);
+        triggerRef.current?.focus();
+      }}
       ref={wrapperRef}
     >
       {label && <span>{label}</span>}
 
       <button
+        aria-controls={open ? popoverId : undefined}
         aria-expanded={open}
+        aria-label={`${label || "مسافران"}: ${guestSummary}، ${roomSummary}`}
         className={`kooch-form-control ${controlClassName} flex items-center justify-between gap-3 text-right`}
         data-control-active={open ? "true" : undefined}
         onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
         type="button"
       >
         <span className="flex min-w-0 items-center gap-2.5">
@@ -161,7 +177,7 @@ export function GuestSelector({
           <span className="grid min-w-0 gap-1">
             <span className="truncate">{guestSummary}</span>
 
-            <span className="truncate text-xs font-bold text-slate-500">
+            <span className="truncate text-xs font-bold text-muted-foreground">
               {roomSummary}
             </span>
           </span>
@@ -169,7 +185,7 @@ export function GuestSelector({
 
         <span
           aria-hidden="true"
-          className={`shrink-0 text-lg text-slate-500 transition motion-reduce:transition-none ${
+          className={`shrink-0 text-lg text-muted-foreground transition motion-reduce:transition-none ${
             open ? "rotate-180" : ""
           }`}
         >
@@ -178,7 +194,7 @@ export function GuestSelector({
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full z-40 mt-3 w-full rounded-2xl border border-slate-200 bg-white p-5 text-right shadow-2xl sm:w-[360px]">
+        <div aria-label="انتخاب مسافران و اتاق‌ها" className="absolute end-0 top-full z-40 mt-3 w-full rounded-2xl border border-border bg-popover p-5 text-right text-popover-foreground shadow-2xl sm:w-[360px]" dir="rtl" id={popoverId} role="group">
           <CounterRow
             title="تعداد اتاق"
             value={value.rooms}
@@ -204,15 +220,15 @@ export function GuestSelector({
           />
 
           {value.children > 0 && (
-            <div className="mt-4 border-t border-slate-100 pt-4">
-              <p className="mb-3 text-sm leading-6 text-slate-600">
+            <div className="mt-4 border-t border-border pt-4">
+              <p className="mb-3 text-sm leading-6 text-muted-foreground">
                 برای محاسبه دقیق، سن کودک را وارد کنید.
               </p>
 
               <div className="grid gap-3">
                 {value.childAges.map((age, index) => (
                   <label
-                    className="grid gap-2 text-sm font-bold text-slate-700"
+                    className="grid gap-2 text-sm font-bold text-foreground"
                     key={index}
                   >
                     سن کودک {formatFaNumber(index + 1)}

@@ -387,6 +387,12 @@ function multiQuote(selections: Array<{ roomTypeId: number; quantity: number; ra
 const changedStayHint =
   "این نتایج برای تاریخ یا مهمان‌های متفاوتی است. با انتخاب اتاق جدید می‌توانید انتخاب‌های فعلی را جایگزین کنید.";
 
+async function findQuotedSummary() {
+  const summary = await screen.findByTestId("booking-choices-summary");
+  await waitFor(() => expect(within(summary).getByRole("button", { name: "ادامه رزرو" }).hasAttribute("disabled")).toBe(false));
+  return summary;
+}
+
 function storeExistingCart({
   checkIn = "2030-08-10",
   checkOut = "2030-08-12",
@@ -492,7 +498,7 @@ describe("public property booking integration", () => {
     fireEvent.click(await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
     expect(api.fetchQuote).not.toHaveBeenCalled();
     fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
-    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(await findQuotedSummary()).toBeTruthy();
     expect(api.fetchCandidates).toHaveBeenCalledWith("kashan-house", expect.objectContaining({ rooms: 2, adults: 4, childAges: [] }));
     expect(api.fetchOptions).not.toHaveBeenCalled();
     expect(api.fetchQuote.mock.calls[0][1]).toEqual({ checkInDate: "2030-08-10", checkOutDate: "2030-08-12", adults: 4, childAges: [], selections: [{ roomTypeId: 10, ratePlanId: null, quantity: 2 }] });
@@ -658,10 +664,54 @@ describe("public property booking integration", () => {
       checkInDate: "2030-08-10", checkOutDate: "2030-08-12", adults: 4,
       childAges: [], selections: [{ roomTypeId: 10, ratePlanId: null, quantity: 2 }],
     });
-    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(await findQuotedSummary()).toBeTruthy();
     expect(screen.getAllByText("۸٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
     expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+  });
+
+  it.each(["landing", "marketplace"])("keeps the %s draft visible through partial/pending quotes and distinguishes the request limit from inventory", async (entry) => {
+    searchParams = new URLSearchParams("checkIn=2030-08-10&checkOut=2030-08-12&adults=4&rooms=2&children=0");
+    const secondRoom = { ...property.roomTypes[0], id: 20, name: "سوئیت بزرگ" };
+    api.fetchProperty.mockResolvedValue({ ...property, roomTypes: [...property.roomTypes, secondRoom] });
+    api.fetchCandidates.mockResolvedValue({ ...multiCandidates, roomTypes: [multiCandidates.roomTypes[0],
+      { ...multiCandidates.roomTypes[0], roomTypeId: 20, name: secondRoom.name, ratePlans: [] },
+    ] });
+    let resolveQuote!: (value: ReturnType<typeof multiQuote>) => void;
+    api.fetchQuote.mockImplementationOnce(() => new Promise((resolve) => { resolveQuote = resolve; }));
+    render(entry === "landing" ? <PropertyBookingLanding /> : <PublicPropertyPage />);
+    const card = await screen.findByTestId("room-type-card-10");
+    const suite = await screen.findByTestId("room-type-card-20");
+    const add = await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" });
+    add.focus();
+    fireEvent.click(add);
+    const summary = screen.getByTestId("booking-choices-summary");
+    expect(document.activeElement).toBe(within(card).getByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    expect(within(summary).getByText("اتاق شاه‌نشین")).toBeTruthy();
+    expect(summary.textContent).toContain("۱ از ۲ اتاق");
+    expect(summary.textContent).not.toContain("تومان");
+    fireEvent.click(within(summary).getByRole("button", { name: "ادامه رزرو" }));
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(api.fetchQuote).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
+    expect(summary.getAttribute("aria-busy")).toBe("true");
+    expect(within(summary).getByText("در انتظار بررسی قیمت")).toBeTruthy();
+    expect(summary.textContent).not.toContain("تومان");
+    expect(within(summary).getByRole("button", { name: "ادامه رزرو" }).hasAttribute("disabled")).toBe(true);
+    const limited = within(suite).getByRole("button", { name: "تعداد اتاق درخواستی تکمیل است سوئیت بزرگ" });
+    expect(limited.hasAttribute("disabled")).toBe(true);
+    expect(within(suite).getByText("۳ واحد برای این بازه")).toBeTruthy();
+    expect(within(suite).queryByText("تکمیل ظرفیت")).toBeNull();
+    await act(async () => resolveQuote(multiQuote([{ roomTypeId: 10, ratePlanId: null, quantity: 2 }])));
+    const quoted = await findQuotedSummary();
+    expect(within(quoted).getByText("۸٬۰۰۰٬۰۰۰ تومان")).toBeTruthy();
+    expect(within(quoted).queryByText("در انتظار بررسی قیمت")).toBeNull();
+    fireEvent.click(within(card).getByRole("button", { name: "کاهش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    expect(within(suite).getByRole("button", { name: "انتخاب سوئیت بزرگ" }).hasAttribute("disabled")).toBe(false);
+    expect(summary.textContent).toContain("۱ از ۲ اتاق");
+    expect(summary.textContent).not.toContain("۸٬۰۰۰٬۰۰۰");
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it("fails closed on quote error and restores checkout only after retry", async () => {
@@ -674,9 +724,12 @@ describe("public property booking integration", () => {
     fireEvent.click(await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
     fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
     expect(await screen.findByText("ظرفیت ترکیب انتخابی کافی نیست")).toBeTruthy();
-    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
+    const draftSummary = screen.getByTestId("booking-choices-summary");
+    expect(within(draftSummary).getByText("در انتظار بررسی قیمت")).toBeTruthy();
+    expect(within(draftSummary).getByRole("button", { name: "ادامه رزرو" }).hasAttribute("disabled")).toBe(true);
+    expect(draftSummary.textContent).not.toContain("تومان");
     fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
-    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(await findQuotedSummary()).toBeTruthy();
     expect(api.fetchQuote).toHaveBeenCalledTimes(2);
   });
 
@@ -701,7 +754,7 @@ describe("public property booking integration", () => {
       { roomTypeId: 10, ratePlanId: null, quantity: 1 },
       { roomTypeId: 20, ratePlanId: null, quantity: 1 },
     ]);
-    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(await findQuotedSummary()).toBeTruthy();
     expect(within(suiteCard).queryByText("۴٬۰۰۰٬۰۰۰ تومان")).toBeNull();
   });
 
@@ -740,7 +793,7 @@ describe("public property booking integration", () => {
     fireEvent.click(within(card).getByRole("button", { name: "انتخاب اتاق شاه‌نشین، بدون صبحانه" }));
     await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledTimes(2));
     resolveOld(multiQuote([{ roomTypeId: 10, ratePlanId: null, quantity: 2 }]));
-    const summary = await screen.findByTestId("booking-choices-summary");
+    const summary = await findQuotedSummary();
     expect(within(summary).getByText(/بدون صبحانه/)).toBeTruthy();
     expect(within(summary).getAllByText(/تخصیص هر واحد/)).toHaveLength(2);
   });
@@ -757,7 +810,7 @@ describe("public property booking integration", () => {
     fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
     await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
     expect(api.fetchQuote.mock.calls[0][1].childAges).toEqual([7]);
-    const summary = await screen.findByTestId("booking-choices-summary");
+    const summary = await findQuotedSummary();
     expect(within(summary).getByText(/۴ بزرگسال · ۱ کودک/)).toBeTruthy();
     expect(within(summary).getAllByText(/تخصیص هر واحد/)).toHaveLength(2);
   });
@@ -781,7 +834,7 @@ describe("public property booking integration", () => {
     }));
     render(<PublicPropertyPage />);
     await waitFor(() => expect(api.fetchQuote).toHaveBeenCalledOnce());
-    await screen.findByTestId("booking-choices-summary");
+    await findQuotedSummary();
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey)
       .toBe("existing-multi-key");
   });

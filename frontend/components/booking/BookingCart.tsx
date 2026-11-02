@@ -17,6 +17,18 @@ export interface BookingCartLine {
   total: number;
 }
 
+export interface BookingCartDraft {
+  requestedRooms: number;
+  status: "partial" | "pending" | "error" | "unconfirmed";
+  selections: {
+    roomTypeId: number;
+    ratePlanId: number | null;
+    roomTypeName: string;
+    ratePlanName: string | null;
+    quantity: number;
+  }[];
+}
+
 export function groupBookingCartItems(items: BookingCartItem[]) {
   const groups = new Map<string, BookingCartLine>();
   for (const item of items) {
@@ -121,6 +133,7 @@ export function BookingCartSummary({
   onRemove,
   className,
   title = "انتخاب‌های شما",
+  draft,
 }: {
   items: BookingCartItem[];
   total: number;
@@ -129,6 +142,7 @@ export function BookingCartSummary({
   onRemove?: (id: string) => void;
   className?: string;
   title?: string;
+  draft?: BookingCartDraft;
 }) {
   const currencyLabel = useSiteCurrencyLabel();
   const lines = groupBookingCartItems(items);
@@ -138,9 +152,13 @@ export function BookingCartSummary({
   const mode = firstItem
     ? bookingModePresentation(firstItem.bookingMode)
     : null;
+  const selectedCount = draft
+    ? draft.selections.reduce((sum, selection) => sum + selection.quantity, 0)
+    : items.length;
 
   return (
     <section
+      aria-busy={draft?.status === "pending" ? true : undefined}
       aria-labelledby="booking-choices-title"
       className={`${className ?? "mt-5"} rounded-lg border border-border bg-card p-4`}
       data-testid="booking-choices-summary"
@@ -152,13 +170,40 @@ export function BookingCartSummary({
         >
           {title}
         </h3>
-        {items.length > 0 && (
+        {selectedCount > 0 && (
           <span className="text-xs font-bold text-muted-foreground">
-            {items.length.toLocaleString("fa-IR")} اتاق
+            {selectedCount.toLocaleString("fa-IR")} اتاق
           </span>
         )}
       </div>
-      {items.length === 0 ? (
+      {draft ? (
+        <>
+          <ul aria-label="انتخاب‌های موقت" className="mt-2">
+            {draft.selections.map((selection) => (
+              <li className="border-b border-border py-3 text-sm last:border-0" key={`${selection.roomTypeId}:${selection.ratePlanId ?? "base"}`}>
+                <p className="break-words font-bold text-foreground">{selection.roomTypeName}</p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {selection.ratePlanId === null ? "نرخ استاندارد" : selection.ratePlanName || "نرخ انتخاب‌شده"}
+                </p>
+                <p className="mt-1 font-semibold text-foreground">{selection.quantity.toLocaleString("fa-IR")} اتاق</p>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 rounded-lg bg-muted p-3 text-sm" role="status">
+            <p className="font-semibold text-foreground">در انتظار بررسی قیمت</p>
+            <p className="mt-1 text-xs leading-6 text-muted-foreground">
+              {draft.status === "partial"
+                ? `${selectedCount.toLocaleString("fa-IR")} از ${draft.requestedRooms.toLocaleString("fa-IR")} اتاق انتخاب شده؛ برای بررسی قیمت نهایی، انتخاب اتاق‌ها را کامل کنید.`
+                : draft.status === "pending"
+                  ? "ترکیب اتاق‌ها و قیمت نهایی در حال بررسی است."
+                  : draft.status === "error"
+                    ? "بررسی قیمت انجام نشد؛ انتخاب‌های موقت حفظ شده‌اند. دوباره تلاش کنید."
+                    : "قیمت این انتخاب هنوز برای ادامه رزرو تأیید نشده است."}
+            </p>
+          </div>
+          {onContinue && <KoochButton className="mt-4 w-full" disabled>ادامه رزرو</KoochButton>}
+        </>
+      ) : items.length === 0 ? (
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
           هنوز اتاقی انتخاب نکرده‌اید.
         </p>

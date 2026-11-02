@@ -1,5 +1,6 @@
 "use client";
 
+import { useLayoutEffect, useRef } from "react";
 import { PropertyPhoto } from "@/components/booking/PropertyPhoto";
 import { KoochButton } from "@/components/KoochButton";
 import { bookingModePresentation } from "@/components/booking/booking-display";
@@ -38,6 +39,7 @@ export interface PublicRoomTypeBookingState {
 export interface PublicRoomTypeCandidateBookingState {
   option: PublicBookingRoomTypeCandidate | null;
   availableToAdd: number;
+  selectionLimitReached?: boolean;
   selectedQuantity: number;
   totalSelectedQuantity: number;
   onAdd: () => void;
@@ -210,6 +212,7 @@ export function PublicRoomTypeCard({
           </p>
           <RateOfferRow
             availableToAdd={candidateBooking.availableToAdd}
+            selectionLimitReached={candidateBooking.selectionLimitReached}
             controlName={`${roomType.name}، نرخ استاندارد`}
             currencyLabel={currencyLabel}
             mealPlanName={candidateOption.defaultMealPlanName}
@@ -222,6 +225,7 @@ export function PublicRoomTypeCard({
           {candidateBooking.ratePlans.map((plan) => (
             <RateOfferRow
               availableToAdd={candidateBooking.availableToAdd}
+              selectionLimitReached={candidateBooking.selectionLimitReached}
               controlName={`${roomType.name}، ${plan.name}`}
               currencyLabel={currencyLabel}
               key={plan.ratePlanId}
@@ -242,6 +246,7 @@ export function PublicRoomTypeCard({
 
 function RateOfferRow({
   availableToAdd,
+  selectionLimitReached,
   controlName,
   currencyLabel,
   finalAmount,
@@ -255,6 +260,7 @@ function RateOfferRow({
   totalAvailable,
 }: {
   availableToAdd: number;
+  selectionLimitReached?: boolean;
   controlName: string;
   currencyLabel: string;
   finalAmount?: number;
@@ -299,6 +305,7 @@ function RateOfferRow({
         )}
         <OfferQuantityControl
           availableToAdd={availableToAdd}
+          selectionLimitReached={selectionLimitReached}
           name={controlName}
           onAdd={onAdd}
           onRemove={onRemove}
@@ -349,6 +356,7 @@ function RoomTypeBookingDetails({
             <div className="mt-4 flex min-h-11 items-center justify-start md:justify-end">
               <OfferQuantityControl
                 availableToAdd={candidateBooking.availableToAdd}
+                selectionLimitReached={candidateBooking.selectionLimitReached}
                 fullWidth
                 name={option.name}
                 onAdd={candidateBooking.onAdd}
@@ -485,6 +493,7 @@ function formatStayQuoteScope(nightsCount: number) {
 
 function OfferQuantityControl({
   availableToAdd,
+  selectionLimitReached = false,
   fullWidth = false,
   name,
   onAdd,
@@ -493,6 +502,7 @@ function OfferQuantityControl({
   totalAvailable,
 }: {
   availableToAdd: number;
+  selectionLimitReached?: boolean;
   fullWidth?: boolean;
   name: string;
   onAdd: () => void;
@@ -500,20 +510,36 @@ function OfferQuantityControl({
   selectedQuantity: number;
   totalAvailable: number;
 }) {
+  const addRef = useRef<HTMLButtonElement>(null);
+  const removeRef = useRef<HTMLButtonElement>(null);
+  const restoreFocus = useRef(false);
+  const previousQuantity = useRef(selectedQuantity);
+  useLayoutEffect(() => {
+    if (restoreFocus.current && previousQuantity.current !== selectedQuantity) {
+      (selectedQuantity > 0 ? removeRef.current : addRef.current)?.focus();
+    }
+    restoreFocus.current = false;
+    previousQuantity.current = selectedQuantity;
+  });
+  const blockedLabel = selectionLimitReached ? "تعداد اتاق درخواستی تکمیل است" : "تکمیل ظرفیت";
   // Keep an over-capacity selection visible and decrementable after availability shrinks.
   const isSingleUnit = totalAvailable === 1 && selectedQuantity <= 1;
   if (selectedQuantity === 0) {
     return (
       <KoochButton
         aria-label={
-          availableToAdd === 0 ? `تکمیل ظرفیت ${name}` : `انتخاب ${name}`
+          availableToAdd === 0 ? `${blockedLabel} ${name}` : `انتخاب ${name}`
         }
         className={fullWidth ? "w-full" : "min-w-28"}
         disabled={availableToAdd === 0}
-        onClick={onAdd}
+        onClick={(event) => {
+          restoreFocus.current = document.activeElement === event.currentTarget;
+          onAdd();
+        }}
+        ref={addRef}
         variant={availableToAdd === 0 ? "outline" : "primary"}
       >
-        {availableToAdd === 0 ? "تکمیل ظرفیت" : "انتخاب"}
+        {availableToAdd === 0 ? blockedLabel : "انتخاب"}
       </KoochButton>
     );
   }
@@ -523,7 +549,11 @@ function OfferQuantityControl({
         aria-label={`حذف انتخاب ${name}`}
         aria-pressed={true}
         className={fullWidth ? "w-full" : "min-w-28"}
-        onClick={onRemove}
+        onClick={(event) => {
+          restoreFocus.current = document.activeElement === event.currentTarget;
+          onRemove();
+        }}
+        ref={removeRef}
         variant="outline"
       >
         <span aria-hidden="true">✓</span> انتخاب شد؛ حذف
@@ -538,7 +568,11 @@ function OfferQuantityControl({
     >
       <KoochButton
         aria-label={`کاهش تعداد ${name}`}
-        onClick={onRemove}
+        onClick={(event) => {
+          restoreFocus.current = selectedQuantity === 1 && document.activeElement === event.currentTarget;
+          onRemove();
+        }}
+        ref={removeRef}
         size="icon"
         variant="outline"
       >
