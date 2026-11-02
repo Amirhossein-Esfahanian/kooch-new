@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   pathname: "/admin",
+  authLoading: false,
   push: vi.fn(), replace: vi.fn(), clearSession: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
@@ -11,7 +12,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({
-    authenticated: true, loading: false, platformRole: "SuperAdmin", platformPermissions: [],
+    authenticated: true, loading: mocks.authLoading, platformRole: "SuperAdmin", platformPermissions: [],
     workspaces: ["account", "admin", "owner"],
     user: { fullName: "سارا رضایی", email: "sara@example.test" },
     clearSession: mocks.clearSession,
@@ -41,14 +42,35 @@ vi.mock("@/components/KoochUserProfileDialog", () => ({
 
 import { AdminLayout, OwnerLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochUserMenu } from "@/components/KoochUserMenu";
+import { dashboardThemeStorageKey } from "@/lib/dashboard-theme";
 
-function renderPanel(panel: "admin" | "owner") {
-  mocks.pathname = panel === "admin" ? "/admin" : "/owner/properties/11";
+function renderPanel(panel: "admin" | "owner", pathname?: string) {
+  mocks.pathname = pathname ?? (panel === "admin" ? "/admin" : "/owner/properties/11");
   const Layout = panel === "admin" ? AdminLayout : OwnerLayout;
   return render(<Layout><div>محتوای صفحه</div></Layout>);
 }
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => { vi.clearAllMocks(); mocks.authLoading = false; });
+
+it.each([
+  ["admin", "admin"], ["owner", "owner"], ["admin", "owner"], ["owner", "admin"],
+] as const)("restores dark mode after %s to %s route remounts", (from, to) => {
+  const view = renderPanel(from, from === "admin" ? "/admin" : "/owner/properties/11/dashboard");
+  fireEvent.click(screen.getByRole("button", { name: "تغییر حالت روشن و تیره" }));
+  expect(screen.getByText("محتوای صفحه").closest(".dark")).toBeTruthy();
+  view.unmount();
+  renderPanel(to, to === "admin" ? "/admin/tasks" : "/owner/properties/11/reservations");
+  expect(screen.getByText("محتوای صفحه").closest(".dark")).toBeTruthy();
+});
+
+it.each(["admin", "owner"] as const)("keeps %s authorization loading in the saved theme", (panel) => {
+  localStorage.setItem(dashboardThemeStorageKey, "dark");
+  mocks.authLoading = true;
+  renderPanel(panel);
+  expect(screen.getByRole("status").className).toContain("dark");
+  expect(screen.getByRole("status").className).toContain("bg-background");
+  expect(screen.queryByRole("button", { name: "تغییر حالت روشن و تیره" })).toBeNull();
+});
 
 describe.each(["admin", "owner"] as const)("%s sidebar profile", (panel) => {
   it("moves one profile trigger to a footer outside the scrollable navigation", () => {
@@ -156,6 +178,7 @@ it("keeps public profile placement and trigger styling unchanged", () => {
 
 it("shares Admin and Owner header appearance and interactive states without changing their canvases", () => {
   function captureHeader(panel: "admin" | "owner") {
+    localStorage.setItem(dashboardThemeStorageKey, "light");
     const view = renderPanel(panel);
     const search = screen.getByPlaceholderText("جستجو در اقامتگاه، رزرو، کاربر...");
     const header = search.closest("header")!;

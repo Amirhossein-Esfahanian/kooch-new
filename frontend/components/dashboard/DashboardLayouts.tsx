@@ -19,6 +19,7 @@ import type { PermissionGroup } from "@/lib/owner-api";
 import { canViewOwnerMenuItem } from "@/lib/property-menu-permissions";
 import { formatDateTime } from "@/lib/account-reservations";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
+import { useDashboardTheme } from "@/lib/dashboard-theme";
 import { defaultSiteSettings, fetchPublicSiteSettings, mergeSiteSettings, settingValue, type SiteSettingsMap } from "@/lib/site-settings";
 import {
   getNotifications,
@@ -255,9 +256,12 @@ function getOwnerMenuItems(
 }
 
 function DashboardAuthorizationLoading() {
+  const { darkMode, ready } = useDashboardTheme();
+  if (!ready) return null;
+
   return (
     <div
-      className="grid min-h-[50vh] place-items-center px-5 text-sm font-semibold text-muted-foreground"
+      className={`fixed inset-0 z-50 grid place-items-center bg-background px-5 text-sm font-semibold text-muted-foreground ${darkMode ? "dark" : ""}`}
       role="status"
     >
       در حال بررسی دسترسی...
@@ -638,7 +642,7 @@ function DashboardShell({
   const router = useRouter();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
+  const { darkMode, ready: themeReady, toggleTheme } = useDashboardTheme();
   const [drawerType, setDrawerType] = useState<
     "messages" | "notifications" | null
   >(null);
@@ -756,6 +760,9 @@ function DashboardShell({
     return () => window.removeEventListener("keydown", handleEscape);
   }, [drawerType, profileMenuOpen]);
 
+  // Wait for the browser preference instead of hydrating a light dashboard first.
+  if (!themeReady) return null;
+
   return (
     <KoochButtonAppearanceProvider value={darkMode ? "dashboard-dark" : "dashboard-light"}>
     <div
@@ -804,7 +811,7 @@ function DashboardShell({
               setProfileMenuOpen(false);
               setDrawerType((current) => (current === type ? null : type));
             }}
-            onThemeToggle={() => setDarkMode((value) => !value)}
+            onThemeToggle={toggleTheme}
             onSidebarToggle={() => setMobileSidebarOpen(true)}
           />
           <div className="min-h-0 flex-1 overflow-y-auto">
