@@ -1,0 +1,141 @@
+.landing {
+  --header-height: 0px;
+  background: var(--background);
+  color: var(--foreground);
+  padding-bottom: calc(7rem + env(safe-area-inset-bottom));
+}
+.state { display: grid; min-height: 100svh; place-items: center; padding: 1.5rem; background: var(--background); color: var(--foreground); }
+.skip { position: absolute; z-index: 60; inset-block-start: .75rem; inset-inline-start: 1rem; padding: .75rem 1rem; background: var(--card); color: var(--foreground); transform: translateY(-200%); }
+.skip:focus { transform: translateY(0); }
+.hero { position: relative; isolation: isolate; min-height: 100svh; color: var(--foreground); background: var(--background); }
+.backdrop { position: absolute; inset: 0; z-index: -2; overflow: hidden; }
+.backdrop img { object-fit: cover; }
+.header { position: relative; z-index: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem 1rem; width: 100%; padding: 1.5rem; background: transparent; }
+.header, .identity { text-shadow: 0 1px 3px var(--background), 0 2px 12px color-mix(in srgb, var(--background) 85%, transparent); }
+.wordmark { display: inline-flex; align-items: center; min-height: 44px; max-width: 30ch; font-size: 1.125rem; font-weight: 800; overflow-wrap: anywhere; }
+.links { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; min-width: 0; font-size: .875rem; }
+.links a { position: relative; display: inline-flex; min-height: 44px; align-items: center; }
+.links a::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: .25rem;
+  height: 1px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: right center;
+  transition: transform 180ms cubic-bezier(.16, 1, .3, 1);
+}
+.links a:hover::after, .links a:focus-visible::after { transform: scaleX(1); }
+.landing a:focus-visible, .landing button:focus-visible, .previewCopy h2:focus-visible { outline: 2px solid var(--ring); outline-offset: 5px; border-radius: .25rem; }
+.scene { display: grid; min-width: 0; width: 100%; }
+.roomNav { min-width: 0; padding: 1.5rem; background: color-mix(in srgb, var(--card) 78%, transparent); }
+.roomNav h2 { font-size: 1rem; font-weight: 700; }
+.navHint { margin-block: .5rem 1.25rem; font-size: .875rem; }
+.roomList { display: flex; gap: .5rem; overflow-x: auto; padding: .75rem; margin-inline: -.75rem; scrollbar-color: var(--border) transparent; }
+.hero .roomChoice {
+  display: flex;
+  flex: 0 0 min(18rem, 75vw);
+  justify-content: flex-start;
+  min-width: 0;
+  min-height: 80px;
+  padding: 1rem .75rem;
+  text-align: start;
+  white-space: normal;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.hero .roomChoice:hover, .hero .roomChoice:focus-visible { background: transparent; }
+.roomChoiceContent {
+  display: grid;
+  grid-template-columns: 2.5ch minmax(0, 1fr);
+  align-items: start;
+  gap: .75rem;
+  min-width: 0;
+  width: 100%;
+}
+.roomNumber { padding-top: .5rem; font-size: .875rem; font-weight: 400; font-variant-numeric: tabular-nums; opacity: .85; transition: opacity 200ms ease; }
+.roomChoiceText { display: block; min-width: 0; }
+.roomName {
+  display: inline-block;
+  max-width: 100%;
+  font-size: clamp(1.125rem, 2vw, 1.4375rem);
+  font-weight: 600;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  text-decoration: none;
+  transform-origin: right center;
+  transition: transform 200ms cubic-bezier(.16, 1, .3, 1);
+}
+.roomSeparator { display: block; height: 1px; margin-block: .5rem; background: currentColor; opacity: .45; transition: opacity 200ms ease; }
+.roomSummary { display: block; min-width: 0; white-space: normal; overflow-wrap: anywhere; font-size: .8125rem; font-weight: 400; line-height: 1.8; }
+.roomChoice[aria-pressed="true"] .roomSeparator { height: 2px; margin-block-end: calc(.5rem - 1px); opacity: 1; }
+.roomChoice[aria-pressed="true"] .roomNumber { font-weight: 700; opacity: 1; }
+.roomChoice:focus-visible .roomName { transform: scale(1.04); }
+.roomChoice:focus-visible .roomNumber { opacity: 1; }
+@media (hover: hover) and (pointer: fine) {
+  .roomChoice:hover .roomName { transform: scale(1.04); }
+  .roomChoice:hover .roomNumber { opacity: 1; }
+}
+.identity { min-width: 0; padding: 2rem 1.5rem; }
+.identityLead { width: fit-content; max-width: 100%; }
+.location { margin-bottom: .5rem; font-size: 1rem; }
+.identity h1 { max-width: 16ch; font-size: clamp(2.5rem, 6vw, 6rem); font-weight: 800; line-height: 1.35; overflow-wrap: anywhere; text-wrap: balance; }
+.intro { max-width: 55ch; margin-top: 1rem; line-height: 1.9; }
+.bookingLink { display: inline-flex; min-height: 48px; align-items: center; gap: 1.5rem; margin-block: 1.5rem 2rem; padding: .75rem 1.25rem; border: 1px solid color-mix(in srgb, var(--card-foreground) 22%, transparent); border-radius: .5rem; background: var(--card); color: var(--card-foreground); box-shadow: inset 0 1px 0 color-mix(in srgb, var(--card-foreground) 10%, transparent); text-shadow: none; font-weight: 700; transition: background-color 180ms ease, border-color 180ms ease; }
+.bookingLink:hover, .bookingLink:active { background: var(--muted); border-color: color-mix(in srgb, var(--card-foreground) 40%, transparent); }
+.preview { display: grid; gap: 1.25rem; align-items: start; scroll-margin-top: 1rem; }
+.previewPhoto { position: relative; min-width: 0; aspect-ratio: 4 / 3; overflow: hidden; border-radius: .5rem; }
+.previewPhoto img { object-fit: cover; }
+.previewCopy { min-width: 0; }
+.previewCopy h2 { font-size: 1.25rem; font-weight: 700; overflow-wrap: anywhere; }
+.previewCopy p { margin-top: .75rem; line-height: 1.8; font-size: .875rem; }
+.roomDescription { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.amenities { display: flex; flex-wrap: wrap; gap: .5rem 1rem; margin-top: 1rem; font-size: .8125rem; }
+.sectionHeading .previewNote { font-size: .75rem; line-height: 1.8; }
+.booking { scroll-margin-top: 1rem; }
+.sectionHeading { max-width: 1280px; margin-inline: auto; padding: 3rem 1.5rem 1.5rem; }
+.sectionHeading h2, .information h2 { font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 800; }
+.sectionHeading p { margin-top: .75rem; max-width: 70ch; line-height: 1.9; color: var(--muted-foreground); }
+.sectionHeading p + p { font-size: .8125rem; }
+.bookingRooms { max-width: 1280px; margin-inline: auto; padding: 1.5rem; }
+.information { display: grid; gap: 3rem; max-width: 1280px; margin-inline: auto; padding: 3rem 1.5rem; border-top: 1px solid var(--border); }
+.description { white-space: pre-line; max-width: 70ch; margin-top: 1rem; line-height: 2; }
+.propertyAmenities { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; margin-top: 1.5rem; font-size: .875rem; }
+.practical { display: grid; align-content: start; gap: 2rem; }
+.practical h3 { font-weight: 700; margin-bottom: .75rem; }
+.practical p { line-height: 1.9; }
+.practical dl { display: grid; grid-template-columns: 1fr auto; gap: .75rem 1.5rem; }
+.practical dd { font-variant-numeric: tabular-nums; }
+@media (min-width: 640px) {
+  .preview { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .information { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+}
+@media (min-width: 768px) {
+  .hero { --room-panel-width: clamp(260px, 28vw, 300px); display: flex; flex-direction: column; }
+  /* One uninterrupted panel, including behind the transparent header. */
+  .hero::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: 0; z-index: -1; width: var(--room-panel-width); background: color-mix(in srgb, var(--card) 78%, transparent); pointer-events: none; }
+  .header { display: grid; grid-template-columns: var(--room-panel-width) minmax(0, 1fr); gap: 0; padding: 0; }
+  .wordmark { max-width: none; padding: 1.5rem; }
+  .links { justify-content: flex-end; padding: 1.5rem 2rem; }
+  .scene { flex: 1; grid-template-columns: var(--room-panel-width) minmax(0, 1fr); }
+  .roomNav { display: flex; flex-direction: column; min-height: 0; padding: 2rem 1.5rem; background: transparent; contain: size; }
+  .roomList { display: grid; flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; align-content: start; }
+  .hero .roomChoice { width: 100%; flex-basis: auto; padding-block: 1.5rem; }
+  .roomName { font-size: clamp(1.25rem, 1.5vw, 1.4375rem); }
+  .identity { align-self: center; width: 100%; max-width: 1100px; margin-inline: auto; padding: 2rem; }
+  .preview { grid-template-columns: minmax(0, 1fr); }
+  .previewPhoto { max-width: 220px; width: 100%; }
+}
+@media (min-width: 1024px) {
+  .landing { padding-bottom: 0; }
+  .hero { --room-panel-width: clamp(300px, 25vw, 390px); }
+  .identity { padding: 3rem clamp(2rem, 4vw, 4rem); }
+  .preview { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+  .previewPhoto { max-width: 260px; width: 100%; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .landing *, .landing *::before, .landing *::after { scroll-behavior: auto; transition: none; }
+  .roomChoice:hover .roomName, .roomChoice:focus-visible .roomName { transform: none; }
+}

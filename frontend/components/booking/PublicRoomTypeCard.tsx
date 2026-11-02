@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { PropertyPhoto } from "@/components/booking/PropertyPhoto";
 import { KoochButton } from "@/components/KoochButton";
 import { bookingModePresentation } from "@/components/booking/booking-display";
 import type {
@@ -10,7 +10,6 @@ import type {
   PublicBookingRoomTypeOption,
 } from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
-import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import { formatPrice, type PublicRoomType } from "@/lib/public-properties";
 
 export type RoomTypeUnavailableReason =
@@ -90,16 +89,13 @@ export function PublicRoomTypeCard({
       role="listitem"
     >
       <div className="grid md:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[220px_minmax(0,1fr)_190px]">
-        <Image
+        <PropertyPhoto
           alt={roomType.name}
           className="h-full min-h-52 w-full object-cover"
           height={624}
           loading="lazy"
           sizes="(max-width: 767px) calc(100vw - 2.5rem), 220px"
-          src={roomType.images[0]?.url ?? galleryFallback}
-          unoptimized={shouldBypassImageOptimization(
-            roomType.images[0]?.url ?? galleryFallback,
-          )}
+          sources={[...roomType.images.map((image) => image.url), galleryFallback]}
           width={660}
         />
         <div className="min-w-0 p-5">

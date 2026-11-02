@@ -151,6 +151,9 @@ vi.mock("@/components/GuestSelector", () => ({
       >
         تغییر تعداد اتاق آزمایشی
       </button>
+      <button type="button" onClick={() => onChange({ adults: 4, children: 0, childAges: [], rooms: 2 })}>
+        چهار بزرگسال و دو اتاق آزمایشی
+      </button>
     </div>
   ),
 }));
@@ -197,6 +200,7 @@ vi.mock("@/components/property/PropertyLocationMap", async (importOriginal) => {
 });
 
 import PublicPropertyPage from "@/app/properties/[slug]/page";
+import { PropertyBookingLanding } from "@/components/booking/PropertyBookingLanding";
 import { formatBookingDateRange } from "@/components/booking/booking-display";
 import {
   bookingCartStorageKey,
@@ -457,6 +461,40 @@ describe("public property booking integration", () => {
       to: "2026-11-21",
       days: [],
     });
+  });
+
+  it("reuses the real single-room booking controls from the branded landing without adding the preview", async () => {
+    render(<PropertyBookingLanding />);
+    const card = await screen.findByTestId("room-type-card-10");
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(bookingCartStorageKey)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت به تاریخ اولیه" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    const select = await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین" });
+    fireEvent.click(select);
+    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(api.fetchOptions).toHaveBeenCalledWith("kashan-house", expect.objectContaining({ adults: 2 }));
+    expect(api.fetchCandidates).not.toHaveBeenCalled();
+    fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
+    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+  });
+
+  it("reuses candidates, quantity selection and authoritative quote on the branded landing", async () => {
+    render(<PropertyBookingLanding />);
+    const card = await screen.findByTestId("room-type-card-10");
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت به تاریخ اولیه" }));
+    fireEvent.click(screen.getByRole("button", { name: "چهار بزرگسال و دو اتاق آزمایشی" }));
+    fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
+    fireEvent.click(await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین، نرخ استاندارد" }));
+    expect(api.fetchQuote).not.toHaveBeenCalled();
+    fireEvent.click(within(card).getByRole("button", { name: "افزایش تعداد اتاق شاه‌نشین، نرخ استاندارد" }));
+    expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(api.fetchCandidates).toHaveBeenCalledWith("kashan-house", expect.objectContaining({ rooms: 2, adults: 4, childAges: [] }));
+    expect(api.fetchOptions).not.toHaveBeenCalled();
+    expect(api.fetchQuote.mock.calls[0][1]).toEqual({ checkInDate: "2030-08-10", checkOutDate: "2030-08-12", adults: 4, childAges: [], selections: [{ roomTypeId: 10, ratePlanId: null, quantity: 2 }] });
+    expect(screen.getAllByText("۸٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
+    fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
+    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
   });
 
   describe("visit tracking", () => {

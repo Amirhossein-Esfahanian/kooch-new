@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import { Footer } from "@/components/Footer";
-import { Header } from "@/components/Header";
+import { PublicSiteShell } from "@/components/PublicSiteShell";
 import { AuthSessionProvider } from "@/components/auth/AuthSessionProvider";
 import { OwnerPropertyProvider } from "@/components/owner/OwnerPropertyProvider";
 import { Toaster } from "sonner";
@@ -45,11 +44,7 @@ export default function RootLayout({
                   "try{var t=localStorage.getItem('kooch_theme')||'ocean';document.documentElement.dataset.theme=t}catch(e){}",
               }}
             />
-            <div className="flex min-h-screen flex-col">
-              <Header />
-              <main className="flex-1">{children}</main>
-              <Footer />
-            </div>
+            <PublicSiteShell>{children}</PublicSiteShell>
           </OwnerPropertyProvider>
         </AuthSessionProvider>
       </body>
