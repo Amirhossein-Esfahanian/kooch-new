@@ -800,7 +800,6 @@ function DashboardShell({
             activeDrawer={drawerType}
             notificationUnreadCount={unreadCount}
             darkMode={darkMode}
-            integrated={integratedHeader}
             onDrawerToggle={(type) => {
               setProfileMenuOpen(false);
               setDrawerType((current) => (current === type ? null : type));
@@ -999,7 +998,6 @@ function DashboardHeader({
   activeDrawer,
   notificationUnreadCount,
   darkMode,
-  integrated,
   onDrawerToggle,
   onThemeToggle,
   onSidebarToggle,
@@ -1007,20 +1005,13 @@ function DashboardHeader({
   activeDrawer: "messages" | "notifications" | null;
   notificationUnreadCount: number | null;
   darkMode: boolean;
-  integrated: boolean;
   onDrawerToggle: (type: "messages" | "notifications") => void;
   onThemeToggle: () => void;
   onSidebarToggle: () => void;
 }) {
   return (
     <header
-      className={`px-4 py-3 lg:px-6 ${
-        integrated
-          ? "bg-background"
-          : darkMode
-            ? "border-b border-white/10 bg-[#0f141d]"
-            : "border-b border-slate-200 bg-white"
-      }`}
+      className="bg-transparent px-4 py-3 lg:px-6"
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
         {/* Right side: mobile menu + global search */}

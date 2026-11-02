@@ -102,7 +102,7 @@ describe("Admin header layout", () => {
     );
     expect(globalSearch.getAttribute("type")).toBe("search");
     const navbar = globalSearch.closest("header");
-    expect(navbar?.className).toContain("bg-background");
+    expect(navbar?.className).toContain("bg-transparent");
     expect(navbar?.className).not.toContain("bg-white");
     const shell = navbar?.parentElement?.parentElement?.parentElement;
     expect(shell?.className).toContain("bg-background");
@@ -111,7 +111,7 @@ describe("Admin header layout", () => {
       screen.getByRole("button", { name: "تغییر حالت روشن و تیره" }),
     );
     expect(shell?.className).toContain("dark");
-    expect(globalSearch.closest("header")?.className).toContain("bg-background");
+    expect(globalSearch.closest("header")?.className).toContain("bg-transparent");
   });
 
   it("renders the compact breadcrumb and lighter title hierarchy", () => {

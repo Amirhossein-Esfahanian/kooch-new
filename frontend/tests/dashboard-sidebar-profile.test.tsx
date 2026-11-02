@@ -153,3 +153,39 @@ it("keeps public profile placement and trigger styling unchanged", () => {
   expect(screen.getByRole("menu").className).toContain("top-12");
   expect(screen.getByRole("button", { name: "بستن منوی کاربر" })).toBeTruthy();
 });
+
+it("shares Admin and Owner header appearance and interactive states without changing their canvases", () => {
+  function captureHeader(panel: "admin" | "owner") {
+    const view = renderPanel(panel);
+    const search = screen.getByPlaceholderText("جستجو در اقامتگاه، رزرو، کاربر...");
+    const header = search.closest("header")!;
+    const shell = header.parentElement!.parentElement!.parentElement!;
+    const sidebar = screen.getByRole("complementary");
+    const initialSidebarClasses = sidebar.className;
+    const styles = () => ({
+      header: header.className,
+      layout: header.firstElementChild?.className,
+      search: search.className,
+      searchContainer: search.parentElement?.className,
+      controls: within(header).getAllByRole("button").map((button) => button.className),
+    });
+    expect(header.className).toContain("bg-transparent");
+    expect(header.className).not.toContain("border-b");
+    expect(shell.className).toContain(panel === "admin" ? "bg-background" : "bg-slate-100");
+    expect(within(header).queryByRole("button", { name: /منوی کاربر/ })).toBeNull();
+    const light = styles();
+    fireEvent.change(search, { target: { value: "رزرو" } });
+    expect((search as HTMLInputElement).value).toBe("رزرو");
+    fireEvent.click(within(header).getByRole("button", { name: "پیام‌ها" }));
+    const activeMessages = within(header).getByRole("button", { name: "پیام‌ها" }).className;
+    fireEvent.click(within(header).getByRole("button", { name: "پیام‌ها" }));
+    expect(sidebar.className).toBe(initialSidebarClasses);
+    fireEvent.click(within(header).getByRole("button", { name: "تغییر حالت روشن و تیره" }));
+    expect(shell.className).toContain("dark");
+    const dark = styles();
+    expect(header.className).toBe(light.header);
+    view.unmount();
+    return { light, dark, activeMessages };
+  }
+  expect(captureHeader("owner")).toEqual(captureHeader("admin"));
+});
