@@ -5,8 +5,8 @@ import { useEffect, useState } from "react";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochIcon } from "@/components/KoochIcon";
-import type { GuestSelectorValue } from "@/components/GuestSelector";
-import { PropertyBookingPanel } from "@/components/booking/PropertyBookingPanel";
+import { PropertyBookingPanel, propertyRoomsAnchorId } from "@/components/booking/PropertyBookingPanel";
+import { useBookingUrlContext } from "@/hooks/useBookingUrlContext";
 import { PropertyPhoto } from "@/components/booking/PropertyPhoto";
 import { fetchPublicApi, PublicApiError, type PublicProperty, type PublicRoomType } from "@/lib/public-properties";
 import { toPersianDigits } from "@/lib/persian-digits";
@@ -53,8 +53,7 @@ export function PropertyBookingLanding() {
 
 function LandingContent({ property }: { property: PublicProperty }) {
   const [selectedId, setSelectedId] = useState(property.roomTypes[0]?.id);
-  const [dates, setDates] = useState<{ startDate: string | null; endDate: string | null }>({ startDate: null, endDate: null });
-  const [guests, setGuests] = useState<GuestSelectorValue>({ rooms: 1, adults: 2, children: 0, childAges: [] });
+  const { dates, setDates, guests, setGuests, autoCheckInitialContextKey } = useBookingUrlContext("book", property.slug);
   const room = property.roomTypes.find((item) => item.id === selectedId) ?? property.roomTypes[0];
   const propertyImages = [property.coverImageUrl, ...[...property.images].sort((a, b) => Number(b.isCover) - Number(a.isCover)).map((image) => image.url)];
   const galleryFallback = propertyImages.find((url) => url?.trim()) ?? "";
@@ -148,8 +147,8 @@ function LandingContent({ property }: { property: PublicProperty }) {
           <p className={styles.previewNote}>پیش‌نمایش اتاق، آن را به رزرو اضافه نمی‌کند. ظرفیت و قیمت پس از انتخاب تاریخ بررسی می‌شود.</p>
         </div>
         {property.roomTypes.length > 0 ? (
-          <PropertyBookingPanel dates={dates} galleryFallback={galleryFallback} guests={guests} onDatesChange={setDates} onGuestsChange={setGuests} onShowRoomDetails={showRoom} propertyId={property.id} propertyName={property.name} propertySlug={property.slug} roomTypes={property.roomTypes}>
-            {({ searchBar, roomSelection }) => <>{searchBar}<div className={styles.bookingRooms}>{roomSelection}</div></>}
+          <PropertyBookingPanel autoCheckInitialContextKey={autoCheckInitialContextKey} entryKind="book" dates={dates} galleryFallback={galleryFallback} guests={guests} onDatesChange={setDates} onGuestsChange={setGuests} onShowRoomDetails={showRoom} propertyId={property.id} propertyName={property.name} propertySlug={property.slug} roomTypes={property.roomTypes}>
+            {({ searchBar, roomSelection }) => <>{searchBar}<div className={styles.bookingRooms} id={propertyRoomsAnchorId}>{roomSelection}</div></>}
           </PropertyBookingPanel>
         ) : <p className={styles.sectionHeading}>در حال حاضر اتاقی برای بررسی رزرو وجود ندارد.</p>}
       </section>

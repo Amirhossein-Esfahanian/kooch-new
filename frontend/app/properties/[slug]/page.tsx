@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import type { GuestSelectorValue } from "@/components/GuestSelector";
+import { useBookingUrlContext } from "@/hooks/useBookingUrlContext";
 import {
   PropertyBookingPanel,
   propertyRoomsAnchorId,
@@ -25,12 +25,6 @@ import {
 } from "@/lib/public-properties";
 import { shouldBypassImageOptimization } from "@/lib/image-delivery";
 import { getToken } from "@/lib/auth-session";
-import {
-  formatLocalIsoDate,
-  getExclusiveRangeLength,
-  isBeforeLocalIsoDate,
-  parseLocalIsoDate,
-} from "@/lib/date-utils";
 
 const placeholder =
   "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?auto=format&fit=crop&w=1200&q=80";
@@ -93,94 +87,17 @@ const bedLabels: Record<string, string> = {
   "Traditional Floor Bedding": "رختخواب سنتی",
 };
 
-function readPositiveNumber(value: string | null, fallback: number) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
-}
-
-function readGuestParams(
-  searchParams: Pick<URLSearchParams, "get">,
-): GuestSelectorValue {
-  const children = Math.max(
-    0,
-    readPositiveNumber(searchParams.get("children"), 0),
-  );
-  const childAges = (searchParams.get("childAges") ?? "")
-    .split(",")
-    .filter(Boolean)
-    .map((age) => Number(age))
-    .filter((age) => Number.isFinite(age))
-    .slice(0, children);
-
-  while (childAges.length < children) childAges.push(5);
-
-  return {
-    rooms: readPositiveNumber(searchParams.get("rooms"), 1),
-    adults: readPositiveNumber(
-      searchParams.get("adults") ?? searchParams.get("guests"),
-      2,
-    ),
-    children,
-    childAges,
-  };
-}
-
-function initialAvailabilityContextKey(
-  searchParams: Pick<URLSearchParams, "get">,
-  propertySlug: string,
-): string | null {
-  const checkIn = searchParams.get("checkIn");
-  const checkOut = searchParams.get("checkOut");
-  const rooms = searchParams.get("rooms");
-  const adults = searchParams.get("adults") ?? searchParams.get("guests");
-  const children = searchParams.get("children");
-  if (!checkIn || !checkOut || !rooms || !adults || children === null) return null;
-
-  const validDate = (value: string) =>
-    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-    formatLocalIsoDate(parseLocalIsoDate(value)) === value;
-  if (
-    !validDate(checkIn) ||
-    !validDate(checkOut) ||
-    getExclusiveRangeLength(checkIn, checkOut) < 1 ||
-    isBeforeLocalIsoDate(checkIn, formatLocalIsoDate(new Date()))
-  ) return null;
-
-  const validCount = (value: string, minimum: number) =>
-    /^\d+$/.test(value) && Number.isSafeInteger(Number(value)) && Number(value) >= minimum;
-  if (!validCount(rooms, 1) || !validCount(adults, 1) || !validCount(children, 0)) return null;
-
-  const childAges = Number(children) === 0 ? [] : (searchParams.get("childAges") ?? "").split(",");
-  if (
-    childAges.length !== Number(children) ||
-    childAges.some((age) => !validCount(age, 0) || Number(age) > 17)
-  ) return null;
-
-  return JSON.stringify([
-    propertySlug, checkIn, checkOut, Number(rooms), Number(adults),
-    Number(children), childAges.map(Number),
-  ]);
-}
-
 export default function PublicPropertyPage() {
   const { slug } = useParams<{ slug: string }>();
   const searchParams = useSearchParams();
+  const { dates: bookingDates, setDates: setBookingDates, guests: bookingGuests,
+    setGuests: setBookingGuests, autoCheckInitialContextKey } = useBookingUrlContext("properties", slug);
   const auth = useAuthSession();
   const [property, setProperty] = useState<PublicProperty | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [detailsRoomType, setDetailsRoomType] = useState<PublicRoomType | null>(
     null,
-  );
-  const [bookingDates, setBookingDates] = useState<{
-    startDate: string | null;
-    endDate: string | null;
-  }>({
-    startDate: searchParams.get("checkIn"),
-    endDate: searchParams.get("checkOut"),
-  });
-  const [bookingGuests, setBookingGuests] = useState<GuestSelectorValue>(() =>
-    readGuestParams(searchParams),
   );
 
   useEffect(() => {
@@ -260,13 +177,6 @@ export default function PublicPropertyPage() {
     meta.content = description;
   }, [property]);
 
-  useEffect(() => {
-    setBookingDates({
-      startDate: searchParams.get("checkIn"),
-      endDate: searchParams.get("checkOut"),
-    });
-    setBookingGuests(readGuestParams(searchParams));
-  }, [searchParams]);
 
   const groupedAmenities = useMemo(() => {
     const groups = new Map<string, PublicProperty["amenities"]>();
@@ -314,7 +224,6 @@ export default function PublicPropertyPage() {
   const resultsHref = resultQuery
     ? `/properties?${resultQuery}`
     : "/properties";
-  const autoCheckInitialContextKey = initialAvailabilityContextKey(searchParams, property.slug);
   const publicLocation = getValidPublicLocation(
     property.latitude,
     property.longitude,

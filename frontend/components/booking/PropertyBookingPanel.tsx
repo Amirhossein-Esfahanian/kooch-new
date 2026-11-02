@@ -40,6 +40,7 @@ import {
   type PublicBookingRoomTypeOption,
 } from "@/lib/booking-sessions";
 import type { PublicRoomType } from "@/lib/public-properties";
+import type { PropertyEntryKind } from "@/lib/booking-context";
 import { KoochSvgIcon } from "../KoochSvgIcon";
 
 type DateRange = { startDate: string | null; endDate: string | null };
@@ -64,6 +65,7 @@ type PropertyBookingPanelSlots = {
 export const propertyRoomsAnchorId = "property-rooms";
 
 export function PropertyBookingPanel(props: {
+  entryKind?: PropertyEntryKind;
   autoCheckInitialContextKey?: string | null;
   propertyId: number;
   propertyName: string;
@@ -85,6 +87,7 @@ export function PropertyBookingPanel(props: {
 }
 
 function PropertyBookingPanelContent({
+  entryKind = "properties",
   autoCheckInitialContextKey,
   propertyId,
   propertyName,
@@ -98,6 +101,7 @@ function PropertyBookingPanelContent({
   onGuestsChange,
   children,
 }: {
+  entryKind?: PropertyEntryKind;
   autoCheckInitialContextKey?: string | null;
   propertyId: number;
   propertyName: string;
@@ -535,7 +539,7 @@ function PropertyBookingPanelContent({
 
   function continueCheckout() {
     if (!canCheckout) return;
-    cart.setCheckoutRequested(false);
+    cart.setCheckoutRequested(false, { kind: entryKind, propertyId, propertySlug, rooms: guests.rooms });
     router.push("/booking/checkout?step=information");
   }
 

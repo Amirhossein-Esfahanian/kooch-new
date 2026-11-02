@@ -39,6 +39,7 @@ import {
 import { bookingModePresentation } from "@/components/booking/booking-display";
 import { fetchPublicApi, type PublicProperty } from "@/lib/public-properties";
 import type { ReceptionHours } from "@/lib/reception-hours";
+import { validBookingPropertyEntry, writeBookingContext, type BookingPropertyEntry } from "@/lib/booking-context";
 import { useBookingSupportPhone } from "@/components/booking/BookingSupportContact";
 
 export function BookingCheckoutFlow() {
@@ -273,7 +274,7 @@ function BookingCheckoutContent() {
     );
   }
 
-  const propertyReturnHref = buildPropertyReturnHref(cart.items);
+  const propertyReturnHref = buildPropertyReturnHref(cart.items, cart.propertyEntry);
   const bookingMode = cart.items[0].bookingMode;
   const finalActionLabel =
     bookingMode === "OnRequest"
@@ -461,19 +462,17 @@ function ReviewStep({
   );
 }
 
-export function buildPropertyReturnHref(items: BookingCartItem[]) {
+export function buildPropertyReturnHref(items: BookingCartItem[], propertyEntry?: BookingPropertyEntry) {
   const firstItem = items[0];
-  if (!firstItem) return "/properties";
+  if (!firstItem || !firstItem.propertySlug || firstItem.propertySlug === "." || firstItem.propertySlug === "..") return "/properties";
 
-  const query = new URLSearchParams({
-    checkIn: firstItem.checkIn,
-    checkOut: firstItem.checkOut,
-    adults: String(firstItem.adults),
-    children: String(firstItem.children),
-    rooms: String(items.length),
+  const entry = validBookingPropertyEntry(propertyEntry, items);
+  const query = writeBookingContext({
+    dates: { startDate: firstItem.checkIn, endDate: firstItem.checkOut },
+    guests: { adults: firstItem.adults, children: firstItem.children,
+      rooms: entry?.rooms ?? firstItem.stayRooms ?? items.length, childAges: firstItem.childAges },
   });
-  firstItem.childAges.forEach((age) => query.append("childAges", String(age)));
-  return `/properties/${encodeURIComponent(firstItem.propertySlug)}?${query.toString()}`;
+  return `/${entry?.kind ?? "properties"}/${encodeURIComponent(firstItem.propertySlug)}?${query.toString()}`;
 }
 
 export function buildSelfGuestDraft(

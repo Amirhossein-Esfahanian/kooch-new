@@ -5,12 +5,13 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { PublicProperty } from "@/lib/public-properties";
 
-const mocks = vi.hoisted(() => ({ fetchProperty: vi.fn(), slug: "garden-house", pathname: "/book/garden-house", panel: vi.fn() }));
-vi.mock("next/navigation", () => ({ useParams: () => ({ slug: mocks.slug }), usePathname: () => mocks.pathname }));
+const mocks = vi.hoisted(() => ({ fetchProperty: vi.fn(), slug: "garden-house", pathname: "/book/garden-house", query: "", panel: vi.fn() }));
+vi.mock("next/navigation", () => ({ useParams: () => ({ slug: mocks.slug }), usePathname: () => mocks.pathname, useSearchParams: () => new URLSearchParams(mocks.query) }));
 vi.mock("@/components/Header", () => ({ Header: () => <header>Marketplace header Kooch</header> }));
 vi.mock("@/components/Footer", () => ({ Footer: () => <footer>Marketplace footer Kooch</footer> }));
 vi.mock("@/lib/public-properties", async (original) => ({ ...await original<typeof import("@/lib/public-properties")>(), fetchPublicApi: mocks.fetchProperty }));
 vi.mock("@/components/booking/PropertyBookingPanel", () => ({
+  propertyRoomsAnchorId: "property-rooms",
   PropertyBookingPanel: (props: ComponentProps<typeof import("@/components/booking/PropertyBookingPanel").PropertyBookingPanel>) => {
     mocks.panel(props);
     return props.children({ searchBar: <div>جستجوی واقعی</div>, roomSelection: <div>انتخاب تعداد اتاق</div> });
@@ -49,10 +50,86 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.slug = "garden-house";
   mocks.pathname = "/book/garden-house";
+  mocks.query = "";
+  window.history.replaceState(null, "", "/book/garden-house");
   mocks.fetchProperty.mockResolvedValue(property());
 });
 
 describe("Property booking landing", () => {
+  it("initializes the shared booking engine from canonical URL context with ordered child ages", async () => {
+    mocks.query = "checkIn=2030-08-10&checkOut=2030-08-12&rooms=2&adults=4&children=2&childAges=4,9";
+    render(<PropertyBookingLanding />);
+    await screen.findByRole("heading", { level: 1 });
+    const props = mocks.panel.mock.calls.at(-1)![0];
+    expect(props.dates).toEqual({ startDate: "2030-08-10", endDate: "2030-08-12" });
+    expect(props.guests).toEqual({ rooms: 2, adults: 4, children: 2, childAges: [4, 9] });
+    expect(props.autoCheckInitialContextKey).toContain("[4,9]");
+    expect(props.entryKind).toBe("book");
+    expect(screen.getByText("انتخاب تعداد اتاق").parentElement?.id).toBe("property-rooms");
+    expect(document.querySelectorAll("#property-rooms")).toHaveLength(1);
+  });
+
+  it("keeps edits across stale query wrappers, refresh, and external navigation without coupling preview selection", async () => {
+    mocks.query = "checkIn=2030-08-10&checkOut=2030-08-12&rooms=1&adults=2&children=0&utm_source=test";
+    const view = render(<PropertyBookingLanding />);
+    await screen.findByRole("heading", { level: 1 });
+    const initialKey = mocks.panel.mock.calls.at(-1)![0].autoCheckInitialContextKey;
+    act(() => {
+      mocks.panel.mock.calls.at(-1)![0].onGuestsChange({ rooms: 2, adults: 4, children: 2, childAges: [4, 9] });
+      mocks.panel.mock.calls.at(-1)![0].onDatesChange({ startDate: "2030-09-10", endDate: "2030-09-12" });
+    });
+    view.rerender(<PropertyBookingLanding />);
+    let props = mocks.panel.mock.calls.at(-1)![0];
+    expect(props.guests.childAges).toEqual([4, 9]);
+    expect(props.dates.startDate).toBe("2030-09-10");
+    expect(props.autoCheckInitialContextKey).toBe(initialKey);
+    expect(window.location.search).toContain("childAges=4%2C9");
+    expect(window.location.search).toContain("utm_source=test");
+    const nav = screen.getByRole("navigation", { name: "پیش‌نمایش اتاق‌ها" });
+    fireEvent.click(within(nav).getByRole("button", { name: /اتاق حیاط/ }));
+    expect(mocks.panel.mock.calls.at(-1)![0].guests.rooms).toBe(2);
+    // Next's native-history echo must not start a search or reset newer edits.
+    mocks.query = window.location.search.slice(1);
+    view.rerender(<PropertyBookingLanding />);
+    expect(mocks.panel.mock.calls.at(-1)![0].autoCheckInitialContextKey).toBe(initialKey);
+    view.unmount();
+    const refreshed = render(<PropertyBookingLanding />);
+    await screen.findByRole("heading", { level: 1 });
+    props = mocks.panel.mock.calls.at(-1)![0];
+    expect(props.guests).toEqual({ rooms: 2, adults: 4, children: 2, childAges: [4, 9] });
+    expect(props.dates.startDate).toBe("2030-09-10");
+    mocks.query = "checkIn=2030-10-10&checkOut=2030-10-12&rooms=1&adults=3&children=0";
+    refreshed.rerender(<PropertyBookingLanding />);
+    props = mocks.panel.mock.calls.at(-1)![0];
+    expect(props.guests.adults).toBe(3);
+    expect(props.dates.startDate).toBe("2030-10-10");
+  });
+
+  it("falls back safely for malformed query context and exposes a scroll margin on actual results", async () => {
+    mocks.query = "checkIn=wrong&rooms=-1&adults=Infinity&children=99999999999999999";
+    render(<PropertyBookingLanding />);
+    await screen.findByRole("heading", { level: 1 });
+    const props = mocks.panel.mock.calls.at(-1)![0];
+    expect(props.dates).toEqual({ startDate: null, endDate: null });
+    expect(props.guests).toEqual({ rooms: 1, adults: 2, children: 0, childAges: [] });
+    expect(props.autoCheckInitialContextKey).toBeNull();
+    const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
+    expect(css).toMatch(/\.bookingRooms\s*\{[^}]*scroll-margin-top:[^}]*--property-booking-search-height/);
+  });
+
+  it("uses Next-compatible native replacement once per changed context and preserves the current hash", async () => {
+    window.history.replaceState({ __NA: true }, "", "/book/garden-house#booking");
+    render(<PropertyBookingLanding />);
+    await screen.findByRole("heading", { level: 1 });
+    const replace = vi.spyOn(window.history, "replaceState");
+    const guests = { rooms: 2, adults: 3, children: 2, childAges: [4, 9] };
+    act(() => mocks.panel.mock.calls.at(-1)![0].onGuestsChange(guests));
+    act(() => mocks.panel.mock.calls.at(-1)![0].onGuestsChange(guests));
+    expect(replace).toHaveBeenCalledTimes(1);
+    expect(replace).toHaveBeenCalledWith(null, "", expect.stringMatching(/^\/book\/garden-house\?.*#booking$/));
+    replace.mockRestore();
+  });
+
   it("resolves the slug, renders actual identity, image and shared booking slots without marketplace chrome", async () => {
     const { container } = render(<PublicSiteShell><PropertyBookingLanding /></PublicSiteShell>);
     expect(screen.getByRole("status").textContent).toContain("در حال دریافت");

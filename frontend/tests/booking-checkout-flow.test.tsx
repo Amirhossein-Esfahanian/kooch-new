@@ -84,6 +84,7 @@ import {
   validateCheckoutStayDetailsDraft,
 } from "@/components/booking/CheckoutStayDetails";
 import { ApiRequestError } from "@/lib/owner-api";
+import { readBookingContext, type BookingPropertyEntry } from "@/lib/booking-context";
 
 function bookingItems(): BookingCartItem[] {
   return [
@@ -131,7 +132,7 @@ function onRequestBookingItems(): BookingCartItem[] {
   }));
 }
 
-function persistCart(items = bookingItems()) {
+function persistCart(items = bookingItems(), propertyEntry?: BookingPropertyEntry) {
   sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({
     propertyId: items[0].propertyId,
     propertyName: items[0].propertyName,
@@ -139,6 +140,7 @@ function persistCart(items = bookingItems()) {
     bookingMode: items[0].bookingMode,
     idempotencyKey: "checkout-stable-key",
     checkoutRequested: false,
+    propertyEntry,
     items,
   }));
 }
@@ -230,6 +232,45 @@ describe("multi-step booking checkout skeleton", () => {
 
     expect(navigation.push).toHaveBeenCalledWith(buildPropertyReturnHref(items));
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).items).toHaveLength(3);
+  });
+
+  it.each(["book", "properties"] as const)("restores the %s origin through cart remount and returns with all guest context", async (kind) => {
+    const items = bookingItems().map((item) => ({ ...item, children: 2, childAges: [4, 9] }));
+    const entry = { kind, propertyId: items[0].propertyId, propertySlug: items[0].propertySlug, rooms: 1 };
+    persistCart(items, entry);
+    const first = render(<BookingCheckoutFlow />);
+    await screen.findByRole("button", { name: "بازگشت به انتخاب اقامت" });
+    first.unmount();
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "بازگشت به انتخاب اقامت" }));
+    const href = navigation.push.mock.calls.at(-1)![0] as string;
+    expect(href.startsWith(`/${kind}/${items[0].propertySlug}?`)).toBe(true);
+    expect(readBookingContext(new URLSearchParams(href.split("?")[1]))).toEqual({
+      dates: { startDate: items[0].checkIn, endDate: items[0].checkOut },
+      guests: { rooms: 1, adults: 2, children: 2, childAges: [4, 9] },
+    });
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey).toBe("checkout-stable-key");
+  });
+
+  it("does not trust arbitrary return URLs, unknown routes or cross-Property entries", () => {
+    const items = bookingItems();
+    const valid = { kind: "book", propertyId: items[0].propertyId, propertySlug: items[0].propertySlug };
+    for (const entry of ["https://evil.test", { ...valid, kind: "//evil.test" },
+      { ...valid, propertyId: 999 }, { ...valid, propertySlug: "foreign-property" }]) {
+      expect(buildPropertyReturnHref(items, entry as BookingPropertyEntry)).toBe(buildPropertyReturnHref(items));
+    }
+    expect(buildPropertyReturnHref([{ ...items[0], propertySlug: ".." }])).toBe("/properties");
+    expect(buildPropertyReturnHref([{ ...items[0], propertySlug: "//evil.test/path?x=1" }])).toMatch(/^\/properties\/%2F%2Fevil/);
+    const multiRoom = items.map((item) => ({ ...item, stayRooms: 2 }));
+    expect(new URLSearchParams(buildPropertyReturnHref(multiRoom).split("?")[1]).get("rooms")).toBe("2");
+  });
+
+  it("ignores cross-Property origin metadata restored from sessionStorage", async () => {
+    const items = bookingItems();
+    persistCart(items, { kind: "book", propertyId: 999, propertySlug: "foreign" });
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "بازگشت به انتخاب اقامت" }));
+    expect(navigation.push).toHaveBeenCalledWith(buildPropertyReturnHref(items));
   });
 
   it("navigates from Step 2 to the Step 3 review skeleton and back", async () => {

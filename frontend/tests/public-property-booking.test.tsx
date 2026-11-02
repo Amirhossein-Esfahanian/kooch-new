@@ -477,6 +477,10 @@ describe("public property booking integration", () => {
     expect(api.fetchCandidates).not.toHaveBeenCalled();
     fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
     expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).propertyEntry).toEqual({
+      kind: "book", propertyId: property.id, propertySlug: "kashan-house", rooms: 1,
+    });
+    expect(navigation.scrollIntoView.mock.contexts).toContain(document.getElementById("property-rooms"));
   });
 
   it("reuses candidates, quantity selection and authoritative quote on the branded landing", async () => {
@@ -495,6 +499,19 @@ describe("public property booking integration", () => {
     expect(screen.getAllByText("۸٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
     expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+  });
+
+  it.each(["landing", "marketplace"])("reads repeated child ages on the %s and searches the actual results once", async (entry) => {
+    searchParams = new URLSearchParams("checkIn=2030-08-10&checkOut=2030-08-12&adults=2&rooms=1&children=2&childAges=4&childAges=9");
+    api.fetchOptions.mockResolvedValue({ ...availableOptions, children: 2, childAges: [4, 9] });
+    render(entry === "landing" ? <PropertyBookingLanding /> : <PublicPropertyPage />);
+    await screen.findByRole("button", { name: "انتخاب اتاق شاه‌نشین" });
+    expect(api.fetchOptions).toHaveBeenCalledTimes(1);
+    expect(api.fetchOptions).toHaveBeenCalledWith("kashan-house", expect.objectContaining({
+      checkIn: "2030-08-10", checkOut: "2030-08-12", adults: 2, children: 2, childAges: [4, 9],
+    }));
+    expect(navigation.scrollIntoView.mock.contexts).toContain(document.getElementById("property-rooms"));
+    expect(document.querySelectorAll("#property-rooms")).toHaveLength(1);
   });
 
   describe("visit tracking", () => {

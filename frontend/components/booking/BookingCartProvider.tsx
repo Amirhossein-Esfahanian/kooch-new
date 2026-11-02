@@ -10,6 +10,7 @@ import {
   useReducer,
 } from "react";
 import type { BookingMode } from "@/lib/booking-sessions";
+import { validBookingPropertyEntry, type BookingPropertyEntry } from "@/lib/booking-context";
 
 export const bookingCartStorageKey = "kooch_booking_cart_v1";
 export const lastBookingSessionCodeKey = "kooch_last_booking_session_code";
@@ -59,6 +60,7 @@ function normalizeBookingCartItem(item: BookingCartItem): BookingCartItem {
 }
 
 export interface BookingCartState {
+  propertyEntry?: BookingPropertyEntry;
   hydrated: boolean;
   propertyId: number | null;
   propertyName: string;
@@ -93,7 +95,7 @@ type BookingCartAction =
   | { type: "hydrate"; payload: StoredBookingCart | null }
   | { type: "replace"; payload: BookingCartState }
   | { type: "remove"; itemId: string }
-  | { type: "checkout-requested"; value: boolean }
+  | { type: "checkout-requested"; value: boolean; propertyEntry?: BookingPropertyEntry }
   | { type: "renew-idempotency"; value: string }
   | { type: "clear" };
 
@@ -119,7 +121,7 @@ function cartReducer(
   }
   if (action.type === "replace") return action.payload;
   if (action.type === "checkout-requested") {
-    return { ...state, checkoutRequested: action.value };
+    return { ...state, checkoutRequested: action.value, propertyEntry: action.propertyEntry };
   }
   if (action.type === "renew-idempotency") {
     return { ...state, idempotencyKey: action.value };
@@ -350,6 +352,7 @@ export function restoreBookingCart(value: string | null): StoredBookingCart | nu
       bookingMode: parsed.bookingMode,
       idempotencyKey: parsed.idempotencyKey,
       checkoutRequested: Boolean(parsed.checkoutRequested),
+      propertyEntry: validBookingPropertyEntry(parsed.propertyEntry, items),
       items,
     };
   } catch {
@@ -398,7 +401,7 @@ interface BookingCartContextValue extends BookingCartState {
   replaceWithSelection: (selection: BookingCartSelection) => void;
   replaceWithSelections: (selections: BookingCartSelection[]) => void;
   removeItem: (itemId: string) => void;
-  setCheckoutRequested: (value: boolean) => void;
+  setCheckoutRequested: (value: boolean, propertyEntry?: BookingPropertyEntry) => void;
   renewIdempotencyKey: () => void;
   replaceItems: (items: BookingCartItem[]) => void;
   clear: () => void;
@@ -455,13 +458,14 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
     replaceWithSelections([selection]);
   }, [replaceWithSelections]);
 
-  const setCheckoutRequested = useCallback((next: boolean) => {
-    const nextState = { ...state, checkoutRequested: next };
+  const setCheckoutRequested = useCallback((next: boolean, entry?: BookingPropertyEntry) => {
+    const propertyEntry = validBookingPropertyEntry(entry ?? state.propertyEntry, state.items);
+    const nextState = { ...state, checkoutRequested: next, propertyEntry };
     if (nextState.items.length > 0) {
       const { hydrated: _hydrated, ...stored } = nextState;
       sessionStorage.setItem(bookingCartStorageKey, JSON.stringify(stored));
     }
-    dispatch({ type: "checkout-requested", value: next });
+    dispatch({ type: "checkout-requested", value: next, propertyEntry });
   }, [state]);
 
   const clear = useCallback(() => {
