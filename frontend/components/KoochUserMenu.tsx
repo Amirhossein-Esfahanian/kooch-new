@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   resolveSessionDestination,
@@ -26,15 +26,17 @@ function routeWorkspace(pathname: string): AuthWorkspace | null {
 }
 
 export function KoochUserMenu({
+  collapsed = false,
   darkMode = false,
   onOpenChange,
   open,
   variant = "public",
 }: {
+  collapsed?: boolean;
   darkMode?: boolean;
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
-  variant?: "dashboard" | "public";
+  variant?: "dashboard" | "public" | "sidebar";
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -44,16 +46,28 @@ export function KoochUserMenu({
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuOpen = open ?? internalOpen;
+  const isSidebar = variant === "sidebar";
   const currentWorkspace = routeWorkspace(pathname);
   const userName = session.user?.fullName || session.user?.email || "کاربر کوچ";
+  const secondaryIdentifier = session.user?.email || session.user?.phoneNumber;
   const visibleWorkspaces = workspaceOptions.filter((workspace) =>
     session.workspaces.includes(workspace.key),
   );
 
-  function setMenuOpen(nextOpen: boolean) {
+  const setMenuOpen = useCallback((nextOpen: boolean) => {
     if (open === undefined) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
-  }
+  }, [onOpenChange, open]);
+
+  useEffect(() => {
+    if (!menuOpen || !isSidebar) return;
+    const closeOnOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target) &&
+        !triggerRef.current?.contains(event.target)) setMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", closeOnOutsidePointer);
+    return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
+  }, [isSidebar, menuOpen, setMenuOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -103,6 +117,9 @@ export function KoochUserMenu({
       setMenuOpen(false);
       triggerRef.current?.focus();
       return;
+    } else if (event.key === "Tab" && isSidebar) {
+      setMenuOpen(false);
+      triggerRef.current?.focus();
     }
 
     if (nextIndex !== null && items[nextIndex]) {
@@ -115,18 +132,20 @@ export function KoochUserMenu({
     ? "border-white/10 bg-white/5 text-slate-100 hover:border-[var(--theme-primary)]"
     : "border-slate-200 bg-slate-50 text-slate-900 hover:border-[var(--theme-primary)]";
   const triggerClass =
-    variant === "dashboard"
+    isSidebar
+      ? "border-transparent bg-transparent text-foreground hover:bg-muted"
+      : variant === "dashboard"
       ? dashboardTriggerClass
       : "border-border bg-background text-foreground hover:border-[var(--theme-primary-border)] hover:bg-muted";
-  const menuClass = darkMode
+  const menuClass = darkMode && !isSidebar
     ? "border-white/10 bg-[#111720] text-slate-100"
     : "border-border bg-popover text-popover-foreground";
-  const itemClass = darkMode ? "hover:bg-white/10" : "hover:bg-muted";
+  const itemClass = darkMode && !isSidebar ? "hover:bg-white/10" : "hover:bg-muted";
 
   return (
     <>
-      <div className="relative">
-        {menuOpen && (
+      <div className={isSidebar ? "relative w-full" : "relative"}>
+        {menuOpen && !isSidebar && (
           <button
             aria-label="بستن منوی کاربر"
             className="fixed inset-0 z-[60] cursor-default"
@@ -138,16 +157,24 @@ export function KoochUserMenu({
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           aria-label={`منوی کاربر ${userName}`}
-          className={`relative z-[80] flex min-h-10 max-w-56 items-center gap-2 rounded-xl border px-2 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${triggerClass}`}
+          className={`relative z-[80] flex items-center gap-2 border px-2 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSidebar ? `min-h-11 w-full rounded-lg ${collapsed ? "md:justify-center" : ""}` : "min-h-10 max-w-56 rounded-xl"} ${triggerClass}`}
           onClick={() => setMenuOpen(!menuOpen)}
           ref={triggerRef}
           type="button"
+          title={isSidebar && collapsed ? userName : undefined}
         >
-          <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--theme-primary)] text-xs font-bold text-white">
+          <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-bold ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
             {userName.charAt(0)}
           </span>
-          <span className="hidden min-w-0 truncate lg:inline">{userName}</span>
-          <span aria-hidden="true" className="text-muted-foreground">
+          {isSidebar ? (
+            <span className={`min-w-0 flex-1 text-start ${collapsed ? "md:hidden" : ""}`}>
+              <span className="block truncate text-sm font-semibold">{userName}</span>
+              {secondaryIdentifier && secondaryIdentifier !== userName && (
+                <span className="block truncate text-xs font-normal text-foreground" dir="auto">{secondaryIdentifier}</span>
+              )}
+            </span>
+          ) : <span className="hidden min-w-0 truncate lg:inline">{userName}</span>}
+          <span aria-hidden="true" className={`text-muted-foreground ${isSidebar ? `rotate-180 ${collapsed ? "md:hidden" : ""}` : ""}`}>
             ▾
           </span>
         </button>
@@ -155,7 +182,7 @@ export function KoochUserMenu({
         {menuOpen && (
           <div
             aria-label="انتخاب محیط کاربری و حساب"
-            className={`absolute left-0 top-12 z-[90] w-64 overflow-hidden rounded-xl border p-1 text-sm font-bold shadow-xl ${menuClass}`}
+            className={`absolute z-[90] w-64 border p-1 text-sm font-bold shadow-xl ${isSidebar ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-6rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg" : "left-0 top-12 overflow-hidden rounded-xl"} ${menuClass}`}
             onKeyDown={handleMenuKeyDown}
             ref={menuRef}
             role="menu"

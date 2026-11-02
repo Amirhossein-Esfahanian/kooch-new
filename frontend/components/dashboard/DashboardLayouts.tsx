@@ -784,8 +784,13 @@ function DashboardShell({
           menuItems={menuItems}
           siteBranding={siteBranding}
           mobileOpen={mobileSidebarOpen}
-          onCollapse={() => setCollapsed((value) => !value)}
-          onMobileClose={() => setMobileSidebarOpen(false)}
+          onCollapse={() => { setProfileMenuOpen(false); setCollapsed((value) => !value); }}
+          onMobileClose={() => { setProfileMenuOpen(false); setMobileSidebarOpen(false); }}
+          profileMenuOpen={profileMenuOpen}
+          onProfileMenuOpenChange={(nextOpen) => {
+            if (nextOpen) setDrawerType(null);
+            setProfileMenuOpen(nextOpen);
+          }}
           onWorkspaceChange={onWorkspaceChange}
           workspaceLabel={workspaceLabel}
           workspaceOptions={workspaceOptions}
@@ -796,15 +801,9 @@ function DashboardShell({
             notificationUnreadCount={unreadCount}
             darkMode={darkMode}
             integrated={integratedHeader}
-            profileMenuOpen={profileMenuOpen}
             onDrawerToggle={(type) => {
               setProfileMenuOpen(false);
               setDrawerType((current) => (current === type ? null : type));
-            }}
-            onProfileMenuClose={() => setProfileMenuOpen(false)}
-            onProfileMenuToggle={() => {
-              setDrawerType(null);
-              setProfileMenuOpen((value) => !value);
             }}
             onThemeToggle={() => setDarkMode((value) => !value)}
             onSidebarToggle={() => setMobileSidebarOpen(true)}
@@ -847,6 +846,8 @@ function DashboardSidebar({
   mobileOpen,
   onCollapse,
   onMobileClose,
+  profileMenuOpen,
+  onProfileMenuOpenChange,
   onWorkspaceChange,
   workspaceLabel,
   workspaceOptions,
@@ -859,6 +860,8 @@ function DashboardSidebar({
   mobileOpen: boolean;
   onCollapse: () => void;
   onMobileClose: () => void;
+  profileMenuOpen: boolean;
+  onProfileMenuOpenChange: (open: boolean) => void;
   onWorkspaceChange?: (workspaceId: string) => void;
   workspaceLabel: string;
   workspaceOptions: { id: string; name: string }[];
@@ -868,15 +871,15 @@ function DashboardSidebar({
   return (
     <aside
       className={`fixed inset-y-0 right-0 z-50 h-full shrink-0 border-l transition-all duration-300 motion-reduce:transition-none md:static md:z-auto md:block ${
-        mobileOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
+        mobileOpen ? "visible translate-x-0" : "invisible translate-x-full md:visible md:translate-x-0"
       } ${collapsed ? "md:w-24" : "md:w-72"} w-72 ${
         darkMode
           ? "border-white/10 bg-[#111720]"
           : "border-slate-200 bg-slate-200/95"
       }`}
     >
-      <div className="flex h-full flex-col px-2 py-4">
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex h-full min-h-0 flex-col px-2 py-4">
+        <div className="flex shrink-0 items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-3">
             {siteBranding?.logoUrl ? (
               <Image alt={siteBranding.name} className="h-11 w-11 shrink-0 rounded-xl object-contain" height={44} width={44} src={siteBranding.logoUrl} unoptimized={shouldBypassImageOptimization(siteBranding.logoUrl)} />
@@ -921,7 +924,7 @@ function DashboardSidebar({
 
         {!collapsed && workspaceOptions.length > 1 && onWorkspaceChange && (
           <select
-            className={`mt-4 h-10 w-full rounded-lg border px-3 text-sm font-bold outline-none transition focus:border-[var(--theme-primary)] ${
+            className={`mt-4 h-10 w-full shrink-0 rounded-lg border px-3 text-sm font-bold outline-none transition focus:border-[var(--theme-primary)] ${
               darkMode
                 ? "border-white/10 bg-white/5 text-slate-100"
                 : "border-slate-300 bg-white text-slate-900"
@@ -938,7 +941,7 @@ function DashboardSidebar({
           </select>
         )}
 
-        <nav className="mt-6 grid gap-1">
+        <nav className="mt-6 grid min-h-0 flex-1 content-start gap-1 overflow-y-auto">
           {menuItems.map((item) => {
             const hrefPath = item.href.split("#")[0];
             const isHashLink = item.href.includes("#");
@@ -978,20 +981,15 @@ function DashboardSidebar({
           })}
         </nav>
 
-        <div
-          className={`mt-auto hidden rounded-lg border p-4 ${darkMode ? "border-white/10 bg-white/5" : "border-slate-200 bg-white"}`}
-        >
-          {!collapsed ? (
-            <>
-              <p className="text-sm font-bold">نمونه قابل بازاستفاده</p>
-              <p className={`mt-2 text-xs leading-6 ${mutedText(darkMode)}`}>
-                این شِل بعداً می‌تواند پایه AdminLayout و OwnerLayout شود.
-              </p>
-            </>
-          ) : (
-            <p className="text-center text-lg">✦</p>
-          )}
-        </div>
+        <footer className="mt-3 shrink-0 border-t border-border pt-3" data-slot="sidebar-profile">
+          <KoochUserMenu
+            collapsed={collapsed}
+            darkMode={darkMode}
+            onOpenChange={onProfileMenuOpenChange}
+            open={profileMenuOpen}
+            variant="sidebar"
+          />
+        </footer>
       </div>
     </aside>
   );
@@ -1003,22 +1001,16 @@ function DashboardHeader({
   darkMode,
   integrated,
   onDrawerToggle,
-  onProfileMenuClose,
-  onProfileMenuToggle,
   onThemeToggle,
   onSidebarToggle,
-  profileMenuOpen,
 }: {
   activeDrawer: "messages" | "notifications" | null;
   notificationUnreadCount: number | null;
   darkMode: boolean;
   integrated: boolean;
   onDrawerToggle: (type: "messages" | "notifications") => void;
-  onProfileMenuClose: () => void;
-  onProfileMenuToggle: () => void;
   onThemeToggle: () => void;
   onSidebarToggle: () => void;
-  profileMenuOpen: boolean;
 }) {
   return (
     <header
@@ -1102,15 +1094,6 @@ function DashboardHeader({
             )}
           </button>
 
-          <KoochUserMenu
-            darkMode={darkMode}
-            onOpenChange={(nextOpen) => {
-              if (nextOpen) onProfileMenuToggle();
-              else onProfileMenuClose();
-            }}
-            open={profileMenuOpen}
-            variant="dashboard"
-          />
         </div>
       </div>
     </header>
