@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AdminLayout } from "@/components/dashboard/DashboardLayouts";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { KoochButton } from "@/components/KoochButton";
 
 const auth = vi.hoisted(() => ({
   current: {
@@ -51,6 +52,13 @@ beforeEach(() => {
 });
 
 describe("Admin header layout", () => {
+  it("enables Admin button styling and updates it with the existing theme toggle", () => {
+    render(<AdminLayout><KoochButton>ایجاد</KoochButton></AdminLayout>);
+    const action = screen.getByRole("button", { name: "ایجاد" });
+    expect(action.getAttribute("data-kooch-button-theme")).toBe("light");
+    fireEvent.click(screen.getByRole("button", { name: "تغییر حالت روشن و تیره" }));
+    expect(action.getAttribute("data-kooch-button-theme")).toBe("dark");
+  });
   it("shows activity history only with the Admin reports permission", () => {
     auth.current.platformRole = "AdminAssistant";
     const view = render(<AdminLayout>محتوا</AdminLayout>);

@@ -10,7 +10,7 @@ import {
   useAuthSession,
 } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
-import { KoochButton } from "@/components/KoochButton";
+import { KoochButton, KoochButtonAppearanceProvider } from "@/components/KoochButton";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochUserMenu } from "@/components/KoochUserMenu";
 import type { PropertyPermissionMatrix } from "@/components/auth/AuthSessionProvider";
@@ -757,6 +757,7 @@ function DashboardShell({
   }, [drawerType, profileMenuOpen]);
 
   return (
+    <KoochButtonAppearanceProvider value={integratedHeader ? darkMode ? "admin-dark" : "admin-light" : "default"}>
     <div
       className={`fixed inset-0 z-50 overflow-hidden  ${darkMode ? "dark" : ""} ${
         integratedHeader
@@ -833,6 +834,7 @@ function DashboardShell({
         onClose={() => setDrawerType(null)}
       />
     </div>
+    </KoochButtonAppearanceProvider>
   );
 }
 

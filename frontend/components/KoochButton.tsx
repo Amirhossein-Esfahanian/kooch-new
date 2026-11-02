@@ -1,18 +1,32 @@
-import { forwardRef } from "react";
+"use client";
+
+import { createContext, forwardRef, useContext } from "react";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-type KoochButtonVariant = "primary" | "outline" | "ghost" | "destructive";
+type KoochButtonVariant = "primary" | "utility" | "outline" | "ghost" | "destructive";
 
 type KoochButtonSize = "sm" | "md" | "lg" | "icon";
+
+const KoochButtonAppearanceContext = createContext<"default" | "admin-light" | "admin-dark">("default");
+
+// React context keeps the appearance scoped when dialog content renders through a portal.
+export const KoochButtonAppearanceProvider = KoochButtonAppearanceContext.Provider;
 
 const variantClass: Record<KoochButtonVariant, string> = {
   primary:
     "border border-primary bg-primary text-primary-foreground hover:bg-[var(--primary-hover)]",
   outline: "border border-border bg-background text-foreground hover:bg-muted",
+  utility: "border border-border bg-background text-foreground hover:bg-muted",
   ghost:
     "border border-transparent bg-transparent text-foreground hover:bg-muted",
   destructive:
     "border border-destructive bg-destructive text-destructive-foreground hover:bg-[var(--theme-danger)]",
+};
+
+const adminVariantClass = {
+  primary: "border kooch-admin-button kooch-admin-button-filled kooch-admin-button-primary",
+  utility: "border kooch-admin-button kooch-admin-button-filled kooch-admin-button-utility",
+  outline: "border kooch-admin-button kooch-admin-button-outline",
 };
 
 const sizeClass: Record<KoochButtonSize, string> = {
@@ -47,20 +61,30 @@ export const KoochButton = forwardRef<HTMLButtonElement, KoochButtonProps>(
     },
     ref,
   ) {
+    const appearance = useContext(KoochButtonAppearanceContext);
+    const adminClasses = variant === "primary" || variant === "utility" || variant === "outline"
+      ? adminVariantClass[variant] : null;
+    const useAdminAppearance = appearance !== "default" && adminClasses !== null &&
+      size !== "icon" && props["aria-pressed"] === undefined &&
+      props["aria-selected"] === undefined && props.role !== "tab";
     const isDisabled = disabled || loading;
 
     return (
       <button
         className={[
-          "inline-flex shrink-0 items-center justify-center gap-2 rounded-md font-semibold transition disabled:pointer-events-none disabled:opacity-60 [@media(pointer:coarse)]:min-h-11",
+          "inline-flex shrink-0 items-center justify-center gap-2 font-semibold disabled:pointer-events-none disabled:opacity-60 [@media(pointer:coarse)]:min-h-11",
+          useAdminAppearance
+            ? "rounded-lg transition-[background-color,border-color,color,box-shadow] duration-150 motion-reduce:transition-none"
+            : "rounded-md transition",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-          variantClass[variant],
+          useAdminAppearance ? adminClasses : variantClass[variant],
           sizeClass[size],
           className,
         ]
           .filter(Boolean)
           .join(" ")}
         disabled={isDisabled}
+        data-kooch-button-theme={useAdminAppearance ? appearance === "admin-dark" ? "dark" : "light" : undefined}
         ref={ref}
         type={type}
         {...props}

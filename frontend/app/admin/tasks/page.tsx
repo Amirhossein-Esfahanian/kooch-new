@@ -10,6 +10,7 @@ import { KoochBadge } from "@/components/KoochBadge";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
+import { KoochIcon } from "@/components/KoochIcon";
 import { KoochField, KoochInput, KoochSelect, KoochTextarea } from "@/components/KoochFormControls";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { formatDateTime, formatNumber } from "@/lib/account-reservations";
@@ -355,7 +356,7 @@ export default function AdminTasksPage() {
               <KoochField label="جستجوی رزرو (اختیاری)">
                 <KoochInput value={reservationSearch} placeholder="شماره رزرو، مانند R-123456" disabled={creating || reservationSearching} onChange={(event) => { setReservationSearch(event.target.value); setReservationOptions([]); setReservationSearched(false); setCreateDraft((current) => ({ ...current, reservationId: "" })); }} />
               </KoochField>
-              <KoochButton className="justify-self-start" size="sm" variant="outline" disabled={!reservationSearch.trim()} loading={reservationSearching} onClick={() => void searchReservations()}>جستجوی رزرو</KoochButton>
+              <KoochButton className="justify-self-start" size="sm" variant="utility" leftIcon={<KoochIcon name="search" style={{ width: 16, height: 16 }} />} disabled={!reservationSearch.trim()} loading={reservationSearching} onClick={() => void searchReservations()}>جستجوی رزرو</KoochButton>
               {reservationError && <KoochAlert variant="destructive">{reservationError}</KoochAlert>}
               {reservationOptions.length > 0 && <KoochField label="رزرو مرتبط">
                 <KoochSelect value={createDraft.reservationId} disabled={creating} onChange={(event) => setCreateDraft({ ...createDraft, reservationId: event.target.value })}>

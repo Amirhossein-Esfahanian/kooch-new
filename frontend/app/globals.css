@@ -55,6 +55,7 @@
   --primary: #2563eb;
   --primary-hover: #1d4ed8;
   --primary-foreground: #ffffff;
+  --admin-button-accent: #2563eb;
   --popover: #ffffff;
   --popover-foreground: #0f172a;
   --destructive: #dc2626;
@@ -111,6 +112,7 @@
 }
 
 :root[data-theme="forest"] {
+  --admin-button-accent: #15803d;
   --primary: #15803d;
   --primary-hover: #166534;
   --theme-primary: var(--primary);
@@ -124,6 +126,7 @@
 }
 
 :root[data-theme="royal"] {
+  --admin-button-accent: #7c3aed;
   --primary: #7c3aed;
   --primary-hover: #6d28d9;
   --theme-primary: var(--primary);
@@ -137,6 +140,7 @@
 }
 
 :root[data-theme="sunset"] {
+  --admin-button-accent: #ea580c;
   --primary: #ea580c;
   --primary-hover: #c2410c;
   --theme-primary: var(--primary);
@@ -365,6 +369,85 @@ a {
 .kooch-form-control:disabled,
 .kooch-form-control[aria-disabled="true"] {
   cursor: not-allowed;
+}
+
+@layer components {
+  /* Only context-marked Admin buttons use these tokens, including portaled actions. */
+  .kooch-admin-button {
+    --admin-button-on-filled: #ffffff;
+    --admin-button-shade: #0f172a;
+    --admin-button-primary-fill: color-mix(in srgb, var(--admin-button-accent) 80%, var(--admin-button-shade));
+    --admin-button-primary-hover: color-mix(in srgb, var(--admin-button-accent) 74%, var(--admin-button-shade));
+    --admin-button-primary-active: color-mix(in srgb, var(--admin-button-accent) 68%, var(--admin-button-shade));
+    --admin-button-utility-fill: #303640;
+    --admin-button-utility-hover: #3c4450;
+    --admin-button-utility-active: #252b34;
+    --admin-button-outline-fill: var(--card);
+    --admin-button-outline-hover: var(--muted);
+    --admin-button-outline-text: var(--foreground);
+    --admin-button-outline-edge: var(--control-border);
+    --admin-button-highlight: rgb(255 255 255 / 0.2);
+    --admin-button-shadow: rgb(15 23 42 / 0.18);
+  }
+
+  .kooch-admin-button:where([data-kooch-button-theme="dark"]) {
+    --admin-button-primary-fill: color-mix(in srgb, var(--admin-button-accent) 82%, var(--admin-button-shade));
+    --admin-button-primary-hover: color-mix(in srgb, var(--admin-button-accent) 76%, var(--admin-button-shade));
+    --admin-button-primary-active: color-mix(in srgb, var(--admin-button-accent) 70%, var(--admin-button-shade));
+    --admin-button-utility-fill: #303742;
+    --admin-button-utility-hover: #3c4553;
+    --admin-button-utility-active: #252b34;
+    --admin-button-outline-fill: #171d27;
+    --admin-button-outline-hover: #222a36;
+    --admin-button-outline-text: #e5e7eb;
+    --admin-button-outline-edge: rgb(255 255 255 / 0.18);
+    --admin-button-highlight: rgb(255 255 255 / 0.16);
+    --admin-button-shadow: rgb(0 0 0 / 0.4);
+  }
+
+  .kooch-admin-button-primary {
+    --admin-button-fill: var(--admin-button-primary-fill);
+    --admin-button-hover: var(--admin-button-primary-hover);
+    --admin-button-active: var(--admin-button-primary-active);
+  }
+
+  .kooch-admin-button-utility {
+    --admin-button-fill: var(--admin-button-utility-fill);
+    --admin-button-hover: var(--admin-button-utility-hover);
+    --admin-button-active: var(--admin-button-utility-active);
+  }
+
+  .kooch-admin-button-filled {
+    background-color: var(--admin-button-fill);
+    border-color: color-mix(in srgb, var(--admin-button-fill) 80%, var(--admin-button-on-filled));
+    color: var(--admin-button-on-filled);
+    --tw-shadow: inset 0 1px 0 var(--admin-button-highlight), 0 1px 2px var(--admin-button-shadow);
+    box-shadow: var(--tw-ring-offset-shadow, 0 0 transparent), var(--tw-ring-shadow, 0 0 transparent), var(--tw-shadow);
+  }
+
+  .kooch-admin-button-filled:where(:enabled:not([aria-disabled="true"]):hover) {
+    background-color: var(--admin-button-hover);
+  }
+
+  .kooch-admin-button-filled:where(:enabled:not([aria-disabled="true"]):active) {
+    background-color: var(--admin-button-active);
+    --tw-shadow: inset 0 1px 1px var(--admin-button-shadow);
+  }
+
+  .kooch-admin-button-outline {
+    background-color: var(--admin-button-outline-fill);
+    border-color: var(--admin-button-outline-edge);
+    color: var(--admin-button-outline-text);
+  }
+
+  .kooch-admin-button-outline:where(:enabled:not([aria-disabled="true"]):hover),
+  .kooch-admin-button-outline:where(:enabled:not([aria-disabled="true"]):active) {
+    background-color: var(--admin-button-outline-hover);
+  }
+
+  .kooch-admin-button-filled:where(:disabled, [aria-disabled="true"]) {
+    --tw-shadow: 0 0 transparent;
+  }
 }
 
 .ds-button-primary,
