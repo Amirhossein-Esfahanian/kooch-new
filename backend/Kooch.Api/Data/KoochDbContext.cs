@@ -1591,6 +1591,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<BookingSession>(entity =>
         {
+            entity.Property(session => session.CommissionType).HasColumnType("int");
+            entity.ToTable(table => table.HasCheckConstraint(
+                "CK_BookingSessions_CommissionType",
+                "[CommissionType] IS NULL OR [CommissionType] IN (0, 1, 2)"));
             entity.Property(item => item.TravelerSnapshotKind).HasColumnType("tinyint");
             entity.Property(item => item.TravelerFirstNameSnapshot).HasMaxLength(100);
             entity.Property(item => item.TravelerLastNameSnapshot).HasMaxLength(100);

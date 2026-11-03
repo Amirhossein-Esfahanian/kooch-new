@@ -15,6 +15,7 @@ public class BookingSession : BaseEntity
     public DateTime? TravelerSnapshotCapturedAtUtc { get; set; }
     public int PropertyId { get; set; }
     public string Currency { get; set; } = string.Empty;
+    public CommissionType? CommissionType { get; set; }
     public TimeOnly? ExpectedArrivalTime { get; set; }
     public byte? ExpectedArrivalDayOffset { get; set; }
     public bool ReceptionCoordinationRequired { get; set; }

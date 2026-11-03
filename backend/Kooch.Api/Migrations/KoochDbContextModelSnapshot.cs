@@ -778,6 +778,9 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("ClientId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("CommissionType")
+                        .HasColumnType("int");
+
                     b.Property<DateTime>("CreatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -886,6 +889,8 @@ namespace Kooch.Api.Migrations
 
                     b.ToTable("BookingSessions", t =>
                         {
+                            t.HasCheckConstraint("CK_BookingSessions_CommissionType", "[CommissionType] IS NULL OR [CommissionType] IN (0, 1, 2)");
+
                             t.HasCheckConstraint("CK_BookingSessions_TravelerSnapshot", "([TravelerSnapshotKind] IS NULL AND [TravelerFirstNameSnapshot] IS NULL AND [TravelerLastNameSnapshot] IS NULL AND [TravelerMobileSnapshot] IS NULL AND [TravelerEmailSnapshot] IS NULL AND [TravelerNationalCodeSnapshot] IS NULL AND [TravelerSnapshotCapturedAtUtc] IS NULL) OR ([TravelerSnapshotKind] IS NOT NULL AND [TravelerSnapshotKind] IN (1, 2) AND [TravelerSnapshotCapturedAtUtc] IS NOT NULL AND [TravelerFirstNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerFirstNameSnapshot]))) > 0 AND [TravelerLastNameSnapshot] IS NOT NULL AND LEN(LTRIM(RTRIM([TravelerLastNameSnapshot]))) > 0)");
                         });
                 });
