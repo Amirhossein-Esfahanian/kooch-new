@@ -38,12 +38,14 @@ public sealed partial class BookingSessionServiceTests
             .Include(session => session.Reservations)
             .SingleAsync();
         Assert.Null(persisted.IdempotencyKey);
+        Assert.Null(persisted.CommissionType);
         Assert.Equal(64, persisted.RequestHash?.Length);
         var persistedReservation = Assert.Single(persisted.Reservations);
         Assert.Equal(persisted.Id, persistedReservation.BookingSessionId);
         Assert.Equal(100, persistedReservation.RoomId);
         Assert.Equal(ReservationSource.Website, persistedReservation.Source);
         Assert.Null(persistedReservation.RatePlanId);
+        Assert.Equal(CommissionType.Direct, persistedReservation.CommissionType);
         Assert.Null(persistedReservation.RatePlanNameSnapshot);
         Assert.Null(persistedReservation.MealPlanNameSnapshot);
         Assert.Null(persistedReservation.MealPlanSlugSnapshot);
@@ -2026,7 +2028,8 @@ public sealed partial class BookingSessionServiceTests
         public KoochDbContext CreateContext() => new(options);
 
         public ServiceScope CreateService(TestReservationPricingService? pricing = null, bool useAuthoritativePricing = false,
-            IPropertySameNightBookingPolicyService? sameNightPolicy = null)
+            IPropertySameNightBookingPolicyService? sameNightPolicy = null,
+            IPropertyDirectBookingContextService? directContexts = null)
         {
             var context = CreateContext();
             var notificationDispatcher = new RecordingReservationNotificationDispatcher();
@@ -2044,7 +2047,7 @@ public sealed partial class BookingSessionServiceTests
                 new BookingSessionCodeGenerator(context),
                 notificationDispatcher,
                 sameNightPolicy ?? new PropertySameNightBookingPolicyService(TimeProvider.System),
-                new ReservationActivityService(context, new StubPermissionService(true)));
+                new ReservationActivityService(context, new StubPermissionService(true)), directContexts);
             return new ServiceScope(context, service, notificationDispatcher);
         }
 

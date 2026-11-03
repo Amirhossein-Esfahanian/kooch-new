@@ -24,7 +24,8 @@ public sealed class BookingSessionService(
     IBookingSessionCodeGenerator sessionCodeGenerator,
     IReservationNotificationDispatcher notificationDispatcher,
     IPropertySameNightBookingPolicyService sameNightPolicyService,
-    ReservationActivityService activityService) : IBookingSessionService
+    ReservationActivityService activityService,
+    IPropertyDirectBookingContextService? propertyDirectContexts = null) : IBookingSessionService
 {
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> LocalResourceLocks = new();
 
@@ -59,26 +60,33 @@ public sealed class BookingSessionService(
             .Select(user => new { GuestId = user.Guest == null ? null : (int?)user.Guest.Id })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new KeyNotFoundException("Client not found.");
-        var roomTypeProperties = await dbContext.RoomTypes.AsNoTracking()
-            .Where(roomType => roomTypeIds.Contains(roomType.Id) && roomType.IsActive)
-            .Select(roomType => new { roomType.Id, roomType.PropertyId })
-            .ToListAsync(cancellationToken);
-        if (roomTypeProperties.Count != roomTypeIds.Length)
+        var normalizedKey = NormalizeIdempotencyKey(request.IdempotencyKey);
+        // Advisory identity lookup only. Core re-reads and matches the session under the key lock.
+        // Existing sessions must not depend on today's RoomType activation or Property approval.
+        var replayPropertyId = normalizedKey is null ? null : await dbContext.BookingSessions
+            .IgnoreQueryFilters().AsNoTracking()
+            .Where(session => session.ClientId == clientId && session.IdempotencyKey == normalizedKey)
+            .Select(session => (int?)session.PropertyId).SingleOrDefaultAsync(cancellationToken);
+        var propertyId = replayPropertyId;
+        if (propertyId is null)
         {
-            throw new KeyNotFoundException("Room type not found.");
-        }
-
-        var propertyIds = roomTypeProperties.Select(item => item.PropertyId).Distinct().ToArray();
-        if (propertyIds.Length is not 1)
-        {
-            throw new InvalidOperationException("All reservations in a booking session must belong to one property.");
+            var roomTypeProperties = await dbContext.RoomTypes.AsNoTracking()
+                .Where(roomType => roomTypeIds.Contains(roomType.Id) && roomType.IsActive)
+                .Select(roomType => new { roomType.Id, roomType.PropertyId })
+                .ToListAsync(cancellationToken);
+            if (roomTypeProperties.Count != roomTypeIds.Length)
+                throw new KeyNotFoundException("Room type not found.");
+            var propertyIds = roomTypeProperties.Select(item => item.PropertyId).Distinct().ToArray();
+            if (propertyIds.Length is not 1)
+                throw new InvalidOperationException("All reservations in a booking session must belong to one property.");
+            propertyId = propertyIds[0];
         }
 
         var internalRequest = new BookingSessionCreateRequest
         {
             ClientId = clientId,
             GuestId = accountContext.BookingForSelf ? identity.GuestId : null,
-            PropertyId = propertyIds[0],
+            PropertyId = propertyId.Value,
             IdempotencyKey = request.IdempotencyKey,
             Items = request.Items
                 .Select(item => ToInternalItem(item, accountContext.SpecialRequest,
@@ -130,6 +138,13 @@ public sealed class BookingSessionService(
                 cancellationToken);
             if (existingSession is not null)
             {
+                if (creationKind == BookingSessionCreationKind.Account &&
+                    ((existingSession.CommissionType ?? CommissionType.Direct) !=
+                        (accountContext?.DirectContext is null ? CommissionType.Direct : CommissionType.PropertyReferralCode) ||
+                     accountContext?.DirectContext is { } direct && direct.PropertyId != existingSession.PropertyId))
+                {
+                    throw new InvalidOperationException("The idempotency key has already been used with a different booking payload.");
+                }
                 if (!string.Equals(existingSession.RequestHash, requestHash, StringComparison.Ordinal) &&
                     !(creationKind == BookingSessionCreationKind.Account &&
                       accountContext is { BookingForSelf: true } &&
@@ -139,11 +154,21 @@ public sealed class BookingSessionService(
                         "The idempotency key has already been used with a different booking payload.");
                 }
 
+                if (accountContext?.DirectContext?.Token is { } replayToken)
+                    RequireDirectContexts().ValidateForExistingSessionReplay(replayToken, request.ClientId,
+                        existingSession.PropertyId, normalizedIdempotencyKey);
                 await transaction.CommitAsync(cancellationToken);
                 return ToResult(existingSession);
             }
         }
 
+        if (accountContext?.DirectContext is { } directContext)
+        {
+            if (directContext.PropertyId != request.PropertyId || directContext.Token is null)
+                throw new ArgumentException("A matching Property Direct booking context token is required for creation.");
+            RequireDirectContexts().Validate(directContext.Token, request.ClientId, request.PropertyId,
+                normalizedIdempotencyKey!);
+        }
         await ValidateClientAndGuestAsync(request, cancellationToken);
         var property = await ValidatePropertyAsync(
             request.PropertyId,
@@ -206,6 +231,9 @@ public sealed class BookingSessionService(
             TravelerSnapshotCapturedAtUtc = accountContext is null ? null : now,
             PropertyId = request.PropertyId,
             Currency = currency,
+            CommissionType = creationKind == BookingSessionCreationKind.Account
+                ? accountContext?.DirectContext is null ? CommissionType.Direct : CommissionType.PropertyReferralCode
+                : null,
             ExpectedArrivalTime = accountContext?.ExpectedArrivalTime,
             ExpectedArrivalDayOffset = accountContext?.ExpectedArrivalDayOffset,
             ReceptionCoordinationRequired = receptionCoordinationRequired,
@@ -234,6 +262,7 @@ public sealed class BookingSessionService(
                 TravelerNationalCodeSnapshot = session.TravelerNationalCodeSnapshot,
                 TravelerSnapshotCapturedAtUtc = session.TravelerSnapshotCapturedAtUtc,
                 PropertyId = request.PropertyId,
+                CommissionType = session.CommissionType ?? CommissionType.Direct,
                 RoomTypeId = prepared.Item.RoomTypeId,
                 RoomId = prepared.Item.RoomId,
                 RatePlanId = prepared.Item.RatePlanId,
@@ -293,6 +322,9 @@ public sealed class BookingSessionService(
         var normalized = idempotencyKey?.Trim();
         return string.IsNullOrEmpty(normalized) ? null : normalized;
     }
+
+    private IPropertyDirectBookingContextService RequireDirectContexts() =>
+        propertyDirectContexts ?? throw new PropertyDirectBookingContextUnavailableException();
 
     private static bool MatchesSelfReplayHash(
         BookingSessionCreateRequest request, AccountBookingContext accountContext, BookingSession existingSession)
@@ -369,9 +401,21 @@ public sealed class BookingSessionService(
         BookingSessionCreateRequest request,
         AccountBookingContext accountContext)
     {
+        var legacyHash = ComputeLegacyAccountRequestHash(request, accountContext);
+        if (accountContext.DirectContext is null) return legacyHash;
+        var envelope = JsonSerializer.SerializeToUtf8Bytes(new CanonicalDirectAttributionRequest(
+            1, "PropertyDirectBookingAttribution", request.PropertyId,
+            (int)CommissionType.PropertyReferralCode, legacyHash));
+        return Convert.ToHexString(SHA256.HashData(envelope));
+    }
+
+    private static string ComputeLegacyAccountRequestHash(
+        BookingSessionCreateRequest request,
+        AccountBookingContext accountContext)
+    {
         if (accountContext.StayGuests is { } stayGuests)
         {
-            var legacyAccountHash = ComputeAccountRequestHash(
+            var legacyAccountHash = ComputeLegacyAccountRequestHash(
                 request, accountContext with { StayGuests = null });
             var stayPayload = JsonSerializer.SerializeToUtf8Bytes(new CanonicalStayGuestBookingRequest(
                 legacyAccountHash,
@@ -443,6 +487,10 @@ public sealed class BookingSessionService(
     private static AccountBookingContext NormalizeAccountContext(
         AccountBookingSessionCreateRequest request)
     {
+        if (request.PropertyDirectContext is { } direct &&
+            (direct.PropertyId <= 0 || direct.Token?.Length > 4096 ||
+             NormalizeIdempotencyKey(request.IdempotencyKey) is null))
+            throw new ArgumentException("Invalid Property Direct booking context or idempotency key.");
         var validationResults = new List<ValidationResult>();
         Validator.TryValidateObject(
             request,
@@ -511,7 +559,8 @@ public sealed class BookingSessionService(
             specialRequest,
             request.StayGuests is { } stayGuests
                 ? new AccountStayGuests(stayGuests.Adults, stayGuests.ChildAges.ToArray())
-                : null);
+                : null,
+            request.PropertyDirectContext is { } context ? new DirectContextInput(context.PropertyId, context.Token) : null);
     }
 
     private async Task<PrimaryGuestAssignment> ResolvePrimaryGuestAsync(
@@ -1321,7 +1370,13 @@ public sealed class BookingSessionService(
         TimeOnly? ExpectedArrivalTime,
         byte? ExpectedArrivalDayOffset,
         string? SpecialRequest,
-        AccountStayGuests? StayGuests);
+        AccountStayGuests? StayGuests,
+        DirectContextInput? DirectContext = null);
+
+    private sealed record DirectContextInput(int PropertyId, string? Token);
+
+    private sealed record CanonicalDirectAttributionRequest(
+        int Version, string Purpose, int PropertyId, int CommissionType, string RequestHash);
 
     private sealed record AccountStayGuests(int Adults, IReadOnlyList<int> ChildAges);
 

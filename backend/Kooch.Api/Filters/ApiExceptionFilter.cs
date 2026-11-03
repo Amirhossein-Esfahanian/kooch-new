@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Kooch.Api.Exceptions;
 using Kooch.Api.Services.MediaStorage;
 using Kooch.Api.Services.Svg;
+using Kooch.Api.Services;
 
 namespace Kooch.Api.Filters;
 
@@ -46,6 +47,7 @@ public class ApiExceptionFilter : IExceptionFilter
 
         var statusCode = context.Exception switch
         {
+            PropertyDirectBookingContextUnavailableException => StatusCodes.Status503ServiceUnavailable,
             KeyNotFoundException => StatusCodes.Status404NotFound,
             UnauthorizedAccessException => StatusCodes.Status403Forbidden,
             InvalidOperationException => StatusCodes.Status409Conflict,

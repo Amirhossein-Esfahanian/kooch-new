@@ -57,7 +57,15 @@ public sealed class PropertyDirectBookingContextService(
     }
 
     public TrustedPropertyDirectBookingContext Validate(string token, int authenticatedClientId,
-        int expectedPropertyId, string normalizedIdempotencyKey)
+        int expectedPropertyId, string normalizedIdempotencyKey) =>
+        ValidateCore(token, authenticatedClientId, expectedPropertyId, normalizedIdempotencyKey, allowExpired: false);
+
+    public TrustedPropertyDirectBookingContext ValidateForExistingSessionReplay(string token, int authenticatedClientId,
+        int expectedPropertyId, string normalizedIdempotencyKey) =>
+        ValidateCore(token, authenticatedClientId, expectedPropertyId, normalizedIdempotencyKey, allowExpired: true);
+
+    private TrustedPropertyDirectBookingContext ValidateCore(string token, int authenticatedClientId,
+        int expectedPropertyId, string normalizedIdempotencyKey, bool allowExpired)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 4096 || authenticatedClientId <= 0 || expectedPropertyId <= 0)
         {
@@ -83,7 +91,7 @@ public sealed class PropertyDirectBookingContextService(
             payload.PropertyId != expectedPropertyId || payload.Policy != (int)CommissionType.PropertyReferralCode ||
             payload.IssuedAtUtc == default || payload.IssuedAtUtc.Offset != TimeSpan.Zero ||
             payload.ExpiresAtUtc.Offset != TimeSpan.Zero || payload.IssuedAtUtc > now ||
-            payload.ExpiresAtUtc <= now || payload.ExpiresAtUtc <= payload.IssuedAtUtc ||
+            (!allowExpired && payload.ExpiresAtUtc <= now) || payload.ExpiresAtUtc <= payload.IssuedAtUtc ||
             payload.ExpiresAtUtc - payload.IssuedAtUtc > TimeSpan.FromMinutes(60) ||
             payload.IdempotencyKeyHash is not { Length: 32 } ||
             !CryptographicOperations.FixedTimeEquals(payload.IdempotencyKeyHash, HashKey(key)))

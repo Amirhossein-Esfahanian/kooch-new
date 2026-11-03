@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 using Kooch.Api.Entities;
 using Kooch.Api.Dtos.Guests;
 using Kooch.Api.Utilities;
@@ -17,6 +18,7 @@ public sealed class BookingSessionCreateRequest
 public sealed class AccountBookingSessionCreateRequest : IValidatableObject
 {
     public string? IdempotencyKey { get; set; }
+    public AccountPropertyDirectBookingContextRequest? PropertyDirectContext { get; set; }
     public bool BookingForSelf { get; set; } = true;
     public AccountBookingSessionPrimaryGuestRequest? PrimaryGuest { get; set; }
     public TimeOnly? ExpectedArrivalTime { get; set; }
@@ -90,6 +92,17 @@ public sealed class AccountBookingSessionCreateRequest : IValidatableObject
             yield return result;
         }
     }
+}
+
+[JsonUnmappedMemberHandling(JsonUnmappedMemberHandling.Disallow)]
+public sealed class AccountPropertyDirectBookingContextRequest
+{
+    [Range(1, int.MaxValue)]
+    public int PropertyId { get; set; }
+
+    // Null is permitted only for an exact replay of an already-created Direct session.
+    [MaxLength(4096)]
+    public string? Token { get; set; }
 }
 
 public sealed class AccountBookingSessionStayGuests

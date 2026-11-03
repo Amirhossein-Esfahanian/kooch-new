@@ -10,6 +10,50 @@ namespace Kooch.Api.Tests;
 
 public sealed class PaymentFinancializationTests
 {
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PropertyDirect_UsesStoredPolicyAndCurrentRate_ThenPreservesFirstSnapshotOnRetry(bool propertyOverride)
+    {
+        await using var harness = await FinancializationHarness.CreateDirectAsync();
+        var reservation = await harness.Context.Reservations.SingleAsync();
+        reservation.CommissionType = CommissionType.PropertyReferralCode;
+        var setting = new SiteSetting
+        {
+            Key = CommissionPolicyResolver.PropertyReferralCodeSettingKey, Value = "7", IsActive = true,
+            Type = SiteSettingType.Number, Group = "Commission", Label = "Test Direct rate"
+        };
+        harness.Context.SiteSettings.Add(setting);
+        if (propertyOverride)
+            harness.Context.PropertyCommissionRates.Add(new PropertyCommissionRate
+            { PropertyId = reservation.PropertyId, CommissionType = CommissionType.PropertyReferralCode, Rate = 13, IsEnabled = true });
+        await harness.Context.SaveChangesAsync();
+        // Rate changes after booking but before financialization must still take effect.
+        setting.Value = "9";
+        await harness.Context.SaveChangesAsync();
+        var payment = new Payment
+        {
+            ReservationId = reservation.Id, Amount = 100, Currency = "IRR", Status = PaymentStatus.Successful
+        };
+        harness.Context.Payments.Add(payment);
+        await harness.Context.SaveChangesAsync();
+        var service = new PaymentFinancializationService(harness.Context, new CommissionPolicyResolver(harness.Context));
+        await service.ApplyAsync(reservation, payment, null, 100, DateTime.UtcNow);
+        await harness.Context.SaveChangesAsync();
+        var snapshot = await harness.Context.ReservationFinancialSnapshots.SingleAsync();
+        Assert.Equal(CommissionType.PropertyReferralCode, snapshot.CommissionType);
+        Assert.Equal(propertyOverride ? 13m : 9m, snapshot.CommissionRate);
+        Assert.Equal(propertyOverride ? CommissionRateSource.PropertyOverride : CommissionRateSource.Global, snapshot.CommissionRateSource);
+        setting.Value = "99";
+        foreach (var rate in await harness.Context.PropertyCommissionRates.ToListAsync()) rate.Rate = 99;
+        await harness.Context.SaveChangesAsync();
+        await service.ApplyAsync(reservation, payment, null, 100, DateTime.UtcNow);
+        await harness.Context.SaveChangesAsync();
+        Assert.Single(await harness.Context.ReservationFinancialSnapshots.ToListAsync());
+        Assert.Single(await harness.Context.FinancialEntries.ToListAsync());
+        Assert.Equal(propertyOverride ? 13m : 9m, snapshot.CommissionRate);
+    }
+
     [Fact]
     public async Task DirectSuccessfulPayment_ConfirmsAndCreatesSnapshotAndPositivePayable()
     {

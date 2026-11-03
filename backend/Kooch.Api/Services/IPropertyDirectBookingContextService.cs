@@ -10,6 +10,10 @@ public interface IPropertyDirectBookingContextService
 
     TrustedPropertyDirectBookingContext Validate(string token, int authenticatedClientId,
         int expectedPropertyId, string normalizedIdempotencyKey);
+
+    // Only after matching a persisted Direct session under the booking idempotency lock.
+    TrustedPropertyDirectBookingContext ValidateForExistingSessionReplay(string token, int authenticatedClientId,
+        int expectedPropertyId, string normalizedIdempotencyKey);
 }
 
 public sealed record TrustedPropertyDirectBookingContext(

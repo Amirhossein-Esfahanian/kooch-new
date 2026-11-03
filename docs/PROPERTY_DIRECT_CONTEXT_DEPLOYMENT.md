@@ -1,6 +1,9 @@
-# Property Direct booking context prerequisites (Phase 2)
+# Property Direct booking context prerequisites (Phases 2–3)
 
-This phase only issues and validates contexts. Booking creation and commission selection do not consume them yet.
+Account booking creation now accepts an optional `propertyDirectContext: {propertyId, token}`.
+Without this object, new Account sessions and reservations use Marketplace policy 0. With a valid context,
+new sessions and all their reservations use policy 2, atomically in the existing creation transaction.
+The frontend is not connected yet: `/book/{slug}` still uses Marketplace semantics. Reception policy 1 is not activated.
 Public `/book/{slug}` links are reusable and not secret. A context proves server authorization, not referral origin.
 
 No persistent Data Protection ring was explicitly configured before this feature. The new endpoint fails closed
@@ -34,5 +37,16 @@ Unapproved, deleted and missing Properties receive the same 404. Missing key con
 Protection purpose: `Kooch.Account.PropertyDirectBookingContext.v1`. Protected JSON contains version, client ID,
 Property ID, fixed numeric policy 2, SHA-256 of the booking service's trimmed key, and UTC issuance/expiry instants.
 There is no public validation endpoint. Validation binds all fields and rejects expiry without grace/replay bypass.
-Phase 3 must recheck Property approval, RoomType membership, creation transactions and semantic idempotency;
-issuance is not a reservation, allocation, quota claim, or guarantee of future availability.
+Creation rechecks Property approval under the existing Property lock, plus RoomType/Room membership, pricing
+and capacity. Issuance is not a reservation, allocation, quota claim, or guarantee of future availability.
+
+Direct request identity wraps the unchanged canonical Account request hash in a deterministic version-1
+attribution envelope (Property ID and fixed policy 2). Token bytes and timestamps are not request identity.
+Marketplace/historical hashes are unchanged, and historical null Session policies are not backfilled.
+Matching replay is checked under the existing idempotency lock before new-creation checks. An explicitly
+Direct request may omit its token only for a stored policy-2 session with matching Property and request hash.
+If a replay supplies a token, authenticity and all bindings remain mandatory; only expiry may be ignored.
+Tokenless input never authorizes a new Direct session. New creation always requires a currently valid token.
+Invalid context never falls back to Marketplace. Missing key configuration returns generic 503 from Account
+creation as well as issuance. Key loss prevents supplied-token replay, but does not prevent authenticated,
+exact tokenless replay of an already-created Direct session.
