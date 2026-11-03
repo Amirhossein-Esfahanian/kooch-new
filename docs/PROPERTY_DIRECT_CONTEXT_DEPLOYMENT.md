@@ -3,7 +3,10 @@
 Account booking creation now accepts an optional `propertyDirectContext: {propertyId, token}`.
 Without this object, new Account sessions and reservations use Marketplace policy 0. With a valid context,
 new sessions and all their reservations use policy 2, atomically in the existing creation transaction.
-The frontend is not connected yet: `/book/{slug}` still uses Marketplace semantics. Reception policy 1 is not activated.
+The `/book/{slug}` frontend is integrated with authenticated Property Direct checkout. After checkout revalidation,
+a valid protected context selects policy 2 for new Account bookings. `/properties/{slug}` retains Marketplace policy 0.
+Invalid Direct context never silently falls back to Marketplace. Reception Link / policy 1 is not activated.
+This describes the implemented contracts, not completed live end-to-end verification or Production deployment.
 Public `/book/{slug}` links are reusable and not secret. A context proves server authorization, not referral origin.
 
 No persistent Data Protection ring was explicitly configured before this feature. The new endpoint fails closed

@@ -225,7 +225,7 @@ public class AmenitiesController(
     [ProducesResponseType<AmenitySvgStageResponse>(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public async Task<ActionResult<AmenitySvgStageResponse>> StageSvg(
-        [FromForm] IFormFile file,
+        IFormFile file,
         CancellationToken cancellationToken)
     {
         await EnsureCanManageAmenitiesAsync(cancellationToken);

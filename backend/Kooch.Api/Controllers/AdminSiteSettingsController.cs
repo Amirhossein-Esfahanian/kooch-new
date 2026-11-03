@@ -107,7 +107,7 @@ public class AdminSiteSettingsController(
     [Consumes("multipart/form-data")]
     [ProducesResponseType<SiteSettingResponse>(StatusCodes.Status200OK)]
     public async Task<ActionResult<SiteSettingResponse>> Upload(
-        [FromForm] IFormFile file,
+        IFormFile file,
         [FromForm] string key,
         CancellationToken cancellationToken)
     {

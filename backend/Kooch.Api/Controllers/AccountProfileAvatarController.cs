@@ -12,7 +12,7 @@ public sealed class AccountProfileAvatarController(ProfileAvatarService avatars)
 {
     [HttpPut]
     [RequestSizeLimit(ProfileAvatarService.MaximumUploadBytes + 1024 * 1024)]
-    public async Task<IActionResult> Upload([FromForm] IFormFile file, CancellationToken cancellationToken)
+    public async Task<IActionResult> Upload(IFormFile file, CancellationToken cancellationToken)
     {
         await avatars.UploadAsync(GetCurrentUser().UserId, file, cancellationToken);
         return NoContent();
