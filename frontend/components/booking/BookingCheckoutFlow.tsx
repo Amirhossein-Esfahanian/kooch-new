@@ -14,8 +14,14 @@ import {
 } from "@/components/booking/BookingCartProvider";
 import {
   createBookingSessionFromCart,
+  buildBookingSessionRequestFromCart,
   revalidateBookingCart,
 } from "@/components/booking/booking-checkout";
+import {
+  createPropertyDirectBookingSession,
+  replayPropertyDirectBookingSession,
+  DirectBookingCheckoutError,
+} from "@/components/booking/direct-booking-checkout";
 import {
   BookingCheckoutStepper,
   type BookingCheckoutStep,
@@ -57,6 +63,9 @@ function BookingCheckoutContent() {
   const auth = useAuthSession();
   const cart = useBookingCart();
   const submissionLockRef = useRef(false);
+  const checkoutMountedRef = useRef(false);
+  const submissionIdentityRef = useRef("");
+  const confirmedSessionRef = useRef<{ userId: number; key: string; sessionCode: string } | null>(null);
   const linkedGuestInitializedRef = useRef(false);
   const [finalizing, setFinalizing] = useState(false);
   const [finalizationMessage, setFinalizationMessage] = useState<{
@@ -81,6 +90,8 @@ function BookingCheckoutContent() {
   const stayDetailsComplete = Object.keys(stayDetailsErrors).length === 0;
   const checkoutPropertyId = cart.items[0]?.propertyId;
   const checkoutPropertySlug = cart.items[0]?.propertySlug;
+  submissionIdentityRef.current = JSON.stringify([auth.user?.userId, cart.idempotencyKey,
+    checkoutPropertyId, checkoutPropertySlug, cart.propertyEntry?.kind]);
   const receptionHours = receptionData && receptionData.propertyId === checkoutPropertyId
     ? receptionData.hours
     : null;
@@ -95,6 +106,11 @@ function BookingCheckoutContent() {
     requestedReview && !auth.loading && !identityComplete
       ? "نشست شما در دسترس نیست یا اطلاعات هویتی کامل نشده است. سبد رزرو حفظ شده؛ شماره موبایل را تأیید کنید و سپس ادامه دهید."
       : null;
+
+  useEffect(() => {
+    checkoutMountedRef.current = true;
+    return () => { checkoutMountedRef.current = false; };
+  }, []);
 
   useEffect(() => {
     setStayDetailsDraft(
@@ -189,7 +205,7 @@ function BookingCheckoutContent() {
   const finalizeCheckout = useCallback(async () => {
     if (cart.items.length === 0 || submissionLockRef.current) return;
 
-    if (!hasCompleteCheckoutIdentity(auth)) {
+    if (auth.loading || !hasCompleteCheckoutIdentity(auth)) {
       cart.setCheckoutRequested(false);
       router.push("/booking/checkout?step=information");
       return;
@@ -197,11 +213,44 @@ function BookingCheckoutContent() {
 
     if (!cart.idempotencyKey) return;
 
+    const userId = auth.user!.userId;
+    if (confirmedSessionRef.current?.key === cart.idempotencyKey && confirmedSessionRef.current.userId === userId) {
+      router.push(`/account/booking-sessions/${encodeURIComponent(confirmedSessionRef.current.sessionCode)}`);
+      return;
+    }
+    const entry = validBookingPropertyEntry(cart.propertyEntry, cart.items);
+    const directEntry = entry?.kind === "book" ? entry : null;
+    const submissionIdentity = submissionIdentityRef.current;
+    const isCurrent = () => checkoutMountedRef.current && submissionIdentityRef.current === submissionIdentity;
+
+    const complete = (sessionCode: string) => {
+      if (!isCurrent()) throw new DirectBookingCheckoutError("اطلاعات حساب یا رزرو تغییر کرده است. سفارش‌های حساب قبلی را بررسی کنید.");
+      confirmedSessionRef.current = { userId, key: cart.idempotencyKey!, sessionCode };
+      // Browser storage failure must not turn a confirmed server creation into a failed attempt.
+      try {
+        sessionStorage.setItem(lastBookingSessionCodeKey, sessionCode);
+        sessionStorage.removeItem(checkoutStayDetailsStorageKey);
+      } catch { /* The canonical Session URL remains available without this convenience storage. */ }
+      try { cart.clear(); } catch { /* A retained cart can only replay the same keyed attempt. */ }
+      router.push(`/account/booking-sessions/${encodeURIComponent(sessionCode)}`);
+    };
+
     submissionLockRef.current = true;
     setFinalizing(true);
     setFinalizationMessage(null);
     try {
+      const details = toBookingCheckoutStayDetails(stayDetailsDraft);
+      if (directEntry && cart.directCreationAttempt?.userId === userId &&
+          cart.directCreationAttempt.idempotencyKey === cart.idempotencyKey) {
+        const replay = await replayPropertyDirectBookingSession(
+          buildBookingSessionRequestFromCart(cart.items, cart.idempotencyKey, details), directEntry.propertyId);
+        if (replay) {
+          complete(replay.sessionCode);
+          return;
+        }
+      }
       const refreshed = await revalidateBookingCart(cart.items);
+      if (!isCurrent()) throw new DirectBookingCheckoutError("اطلاعات حساب یا رزرو تغییر کرده است. انتخاب فعلی را دوباره بررسی کنید.");
       cart.replaceItems(refreshed.items);
       if (refreshed.priceChanged) {
         cart.setCheckoutRequested(false);
@@ -212,19 +261,20 @@ function BookingCheckoutContent() {
         return;
       }
 
-      const created = await createBookingSessionFromCart(
-        refreshed.items,
-        cart.idempotencyKey,
-        toBookingCheckoutStayDetails(stayDetailsDraft),
-      );
-      sessionStorage.setItem(lastBookingSessionCodeKey, created.sessionCode);
-      sessionStorage.removeItem(checkoutStayDetailsStorageKey);
-      cart.clear();
-      router.push(
-        `/account/booking-sessions/${encodeURIComponent(created.sessionCode)}`,
-      );
+      const created = directEntry
+        ? await createPropertyDirectBookingSession(
+            buildBookingSessionRequestFromCart(refreshed.items, cart.idempotencyKey, details),
+            { propertyId: refreshed.items[0].propertyId, propertySlug: refreshed.items[0].propertySlug },
+            () => cart.markDirectCreationAttempt(userId), isCurrent)
+        : await createBookingSessionFromCart(refreshed.items, cart.idempotencyKey, details);
+      complete(created.sessionCode);
     } catch (error) {
-      cart.setCheckoutRequested(false);
+      if (!checkoutMountedRef.current) return;
+      if (!directEntry) cart.setCheckoutRequested(false);
+      if (error instanceof DirectBookingCheckoutError && error.status === 401) {
+        await auth.refreshSession({ redirectOnUnauthorized: false }).catch(() => null);
+        router.push("/booking/checkout?step=information");
+      }
       setFinalizationMessage({
         tone: "error",
         text:
@@ -335,7 +385,7 @@ function BookingCheckoutContent() {
               <ReviewStep draft={stayDetailsDraft} items={cart.items} receptionHours={receptionHours} support={support} />
             )}
 
-            {currentStep === "review" && finalizationMessage ? (
+            {finalizationMessage ? (
               <KoochAlert
                 className="mt-6"
                 title={

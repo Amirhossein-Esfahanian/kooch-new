@@ -68,6 +68,7 @@ export interface BookingCartState {
   bookingMode: BookingMode | null;
   idempotencyKey: string | null;
   checkoutRequested: boolean;
+  directCreationAttempt?: { userId: number; idempotencyKey: string };
   items: BookingCartItem[];
 }
 
@@ -97,6 +98,7 @@ type BookingCartAction =
   | { type: "remove"; itemId: string }
   | { type: "checkout-requested"; value: boolean; propertyEntry?: BookingPropertyEntry }
   | { type: "renew-idempotency"; value: string }
+  | { type: "direct-creation-attempt"; userId: number }
   | { type: "clear" };
 
 const emptyCart: BookingCartState = {
@@ -124,7 +126,10 @@ function cartReducer(
     return { ...state, checkoutRequested: action.value, propertyEntry: action.propertyEntry };
   }
   if (action.type === "renew-idempotency") {
-    return { ...state, idempotencyKey: action.value };
+    return { ...state, idempotencyKey: action.value, directCreationAttempt: undefined };
+  }
+  if (action.type === "direct-creation-attempt" && state.idempotencyKey) {
+    return { ...state, directCreationAttempt: { userId: action.userId, idempotencyKey: state.idempotencyKey } };
   }
   if (action.type === "remove") {
     const items = state.items.filter((item) => item.id !== action.itemId);
@@ -353,6 +358,9 @@ export function restoreBookingCart(value: string | null): StoredBookingCart | nu
       idempotencyKey: parsed.idempotencyKey,
       checkoutRequested: Boolean(parsed.checkoutRequested),
       propertyEntry: validBookingPropertyEntry(parsed.propertyEntry, items),
+      ...(Number.isSafeInteger(parsed.directCreationAttempt?.userId) && parsed.directCreationAttempt!.userId > 0 &&
+          parsed.directCreationAttempt?.idempotencyKey === parsed.idempotencyKey
+        ? { directCreationAttempt: { userId: parsed.directCreationAttempt!.userId, idempotencyKey: parsed.idempotencyKey } } : {}),
       items,
     };
   } catch {
@@ -403,6 +411,7 @@ interface BookingCartContextValue extends BookingCartState {
   removeItem: (itemId: string) => void;
   setCheckoutRequested: (value: boolean, propertyEntry?: BookingPropertyEntry) => void;
   renewIdempotencyKey: () => void;
+  markDirectCreationAttempt: (userId: number) => void;
   replaceItems: (items: BookingCartItem[]) => void;
   clear: () => void;
 }
@@ -477,6 +486,14 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "renew-idempotency", value: createIdentifier() });
   }, []);
 
+  const markDirectCreationAttempt = useCallback((userId: number) => {
+    if (!state.idempotencyKey) throw new Error("کلید تلاش رزرو در دسترس نیست.");
+    const { hydrated: _hydrated, ...stored } = state;
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify({ ...stored,
+      directCreationAttempt: { userId, idempotencyKey: state.idempotencyKey } }));
+    dispatch({ type: "direct-creation-attempt", userId });
+  }, [state]);
+
   const value = useMemo<BookingCartContextValue>(
     () => ({
       ...state,
@@ -487,10 +504,11 @@ export function BookingCartProvider({ children }: { children: ReactNode }) {
       removeItem: (itemId) => dispatch({ type: "remove", itemId }),
       setCheckoutRequested,
       renewIdempotencyKey,
+      markDirectCreationAttempt,
       replaceItems,
       clear,
     }),
-    [addSelection, clear, renewIdempotencyKey, replaceItems, replaceWithSelection, replaceWithSelections, setCheckoutRequested, state],
+    [addSelection, clear, renewIdempotencyKey, markDirectCreationAttempt, replaceItems, replaceWithSelection, replaceWithSelections, setCheckoutRequested, state],
   );
 
   return (

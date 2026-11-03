@@ -149,6 +149,7 @@ export interface AccountBookingSessionItemRequest {
 
 export interface AccountBookingSessionCreateRequest {
   idempotencyKey: string;
+  propertyDirectContext?: { propertyId: number; token: string | null };
   bookingForSelf: boolean;
   primaryGuest: AccountBookingSessionPrimaryGuestRequest | null;
   expectedArrivalTime: string | null;
@@ -376,6 +377,19 @@ export function createAccountBookingSession(
   return apiRequest<AccountBookingSessionCreateResponse>(
     "/account/booking-sessions",
     { method: "POST", body: JSON.stringify(request) },
+  );
+}
+
+export interface PropertyDirectBookingContextResponse {
+  propertyId: number;
+  token: string;
+  expiresAtUtc: string;
+}
+
+export function issuePropertyDirectBookingContext(propertySlug: string, idempotencyKey: string) {
+  return apiRequest<PropertyDirectBookingContextResponse>(
+    "/account/property-direct-booking-contexts",
+    { method: "POST", body: JSON.stringify({ propertySlug, idempotencyKey }) },
   );
 }
 

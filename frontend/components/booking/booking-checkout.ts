@@ -8,6 +8,7 @@ import {
   fetchBookingOptions,
   validateBookingQuote,
   type AccountBookingSessionCreateResponse,
+  type AccountBookingSessionCreateRequest,
   type AccountBookingSessionPrimaryGuestRequest,
   type BookingOptionsQuery,
   type PublicBookingOptions,
@@ -172,6 +173,15 @@ export function createBookingSessionFromCart(
   stayDetails: BookingCheckoutStayDetails,
   create: typeof createAccountBookingSession = createAccountBookingSession,
 ): Promise<AccountBookingSessionCreateResponse> {
+  return create(buildBookingSessionRequestFromCart(items, idempotencyKey, stayDetails));
+}
+
+export function buildBookingSessionRequestFromCart(
+  items: BookingCartItem[],
+  idempotencyKey: string,
+  stayDetails: BookingCheckoutStayDetails,
+): AccountBookingSessionCreateRequest {
+  if (items.length === 0) throw new Error("سبد رزرو خالی است.");
   if (!bookingCartItemsShareContext(items)) {
     throw new Error("همه اتاق‌های سبد باید تاریخ اقامت و ترکیب مهمان یکسان داشته باشند.");
   }
@@ -181,7 +191,7 @@ export function createBookingSessionFromCart(
     item.allocatedChildAges === undefined))) {
     throw new Error("ترکیب اتاق‌های سبد کامل نیست؛ دوباره اتاق‌ها را انتخاب کنید.");
   }
-  return create({
+  return {
     idempotencyKey,
     bookingForSelf: stayDetails.bookingForSelf,
     primaryGuest: stayDetails.primaryGuest,
@@ -199,5 +209,5 @@ export function createBookingSessionFromCart(
       childAges: multiRoom ? [] : item.childAges,
       notes: item.notes,
     })),
-  });
+  };
 }

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const navigation = vi.hoisted(() => ({
@@ -45,7 +45,8 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => auth,
 }));
-vi.mock("@/components/booking/booking-checkout", () => ({
+vi.mock("@/components/booking/booking-checkout", async (original) => ({
+  ...await original<typeof import("@/components/booking/booking-checkout")>(),
   createBookingSessionFromCart: checkout.create,
   revalidateBookingCart: checkout.revalidate,
 }));
@@ -170,6 +171,7 @@ function signIn(overrides: Partial<NonNullable<typeof auth.user>> = {}) {
 describe("multi-step booking checkout skeleton", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authApi.request.mockReset();
     sessionStorage.clear();
     auth.authenticated = false;
     auth.loading = false;
@@ -427,6 +429,212 @@ describe("multi-step booking checkout skeleton", () => {
     expect(sessionStorage.getItem(lastBookingSessionCodeKey)).toBe("BS-100");
     expect(sessionStorage.getItem(bookingCartStorageKey)).toBeNull();
     expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/BS-100");
+  });
+
+  function persistDirect(items = bookingItems()) {
+    persistCart(items, { kind: "book", propertyId: 1, propertySlug: "kashan-house", rooms: 3 });
+  }
+
+  function setupDirectApi() {
+    authApi.request.mockImplementation(async (path: string) => {
+      if (path === "/account/property-direct-booking-contexts") return {
+        propertyId: 1, token: "protected-direct-context", expiresAtUtc: new Date(Date.now() + 1_200_000).toISOString(),
+      };
+      if (path === "/account/booking-sessions") return { sessionCode: "O-DIRECT", propertyId: 1 };
+      throw new Error("Unexpected API request");
+    });
+  }
+
+  it("issues Direct context only on authenticated final submission and preserves quantities/rate plans", async () => {
+    const items = bookingItems().map((item) => ({ ...item, ratePlanId: 55 }));
+    persistDirect(items);
+    setupDirectApi();
+    const view = render(<BookingCheckoutFlow />);
+    await screen.findByRole("heading", { name: "تکمیل رزرو", level: 1 });
+    expect(authApi.request).not.toHaveBeenCalled();
+    signIn();
+    navigation.step = "review";
+    view.rerender(<BookingCheckoutFlow />);
+    const submit = await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" });
+    expect(authApi.request).not.toHaveBeenCalled();
+    fireEvent.click(submit);
+    fireEvent.click(submit);
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+    expect(authApi.request).toHaveBeenCalledTimes(2);
+    expect(authApi.request.mock.calls[0]).toEqual(["/account/property-direct-booking-contexts", {
+      method: "POST", body: JSON.stringify({ propertySlug: "kashan-house", idempotencyKey: "checkout-stable-key" }),
+    }]);
+    const payload = JSON.parse(authApi.request.mock.calls[1][1].body);
+    expect(payload.idempotencyKey).toBe("checkout-stable-key");
+    expect(payload.propertyDirectContext).toEqual({ propertyId: 1, token: "protected-direct-context" });
+    expect(payload.items.map((item: { roomTypeId: number; ratePlanId: number }) => [item.roomTypeId, item.ratePlanId])).toEqual([[10, 55], [10, 55], [20, 55]]);
+    expect(checkout.create).not.toHaveBeenCalled();
+    expect(JSON.stringify(sessionStorage)).not.toContain("protected-direct-context");
+    expect(JSON.stringify(localStorage)).not.toContain("protected-direct-context");
+    expect(window.location.href).not.toContain("protected-direct-context");
+  });
+
+  it("does not issue Direct context until a changed quote has been reviewed", async () => {
+    persistDirect(); signIn(); navigation.step = "review"; setupDirectApi();
+    checkout.revalidate.mockResolvedValueOnce({ items: bookingItems(), priceChanged: true });
+    render(<BookingCheckoutFlow />);
+    const submit = await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" });
+    fireEvent.click(submit);
+    expect(await screen.findByText(/قیمت به‌روز شده است/)).toBeTruthy();
+    expect(authApi.request).not.toHaveBeenCalled();
+    fireEvent.click(submit);
+    await waitFor(() => expect(authApi.request).toHaveBeenCalledTimes(2));
+  });
+
+  it("does not create a booking when checkout unmounts during context issuance", async () => {
+    persistDirect(); signIn(); navigation.step = "review";
+    let resolveContext!: (value: unknown) => void;
+    authApi.request.mockImplementationOnce(() => new Promise((resolve) => { resolveContext = resolve; }));
+    const view = render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    await waitFor(() => expect(authApi.request).toHaveBeenCalledOnce());
+    view.unmount();
+    await act(async () => { resolveContext({ propertyId: 1, token: "unused-protected-token", expiresAtUtc: new Date(Date.now() + 1_200_000).toISOString() }); });
+    expect(authApi.request).toHaveBeenCalledOnce();
+    expect(navigation.push).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem(bookingCartStorageKey)).not.toContain("unused-protected-token");
+  });
+
+  it("keeps Direct intent through authentication remount and obtains no token during hydration", async () => {
+    persistDirect(); setupDirectApi();
+    const beforeLogin = render(<BookingCheckoutFlow />);
+    await screen.findByLabelText(/شماره موبایل/);
+    expect(authApi.request).not.toHaveBeenCalled();
+    beforeLogin.unmount();
+    signIn(); navigation.step = "review";
+    render(<BookingCheckoutFlow />);
+    const submit = await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" });
+    expect(authApi.request).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).propertyEntry.kind).toBe("book");
+    fireEvent.click(submit);
+    await waitFor(() => expect(authApi.request).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(authApi.request.mock.calls[1][1].body).propertyDirectContext.token).toBe("protected-direct-context");
+  });
+
+  it("replays a lost Direct creation response after refresh with the original key, no token or revalidation", async () => {
+    persistDirect(); signIn(); navigation.step = "review"; setupDirectApi();
+    authApi.request.mockImplementation(async (path: string) => {
+      if (path.endsWith("property-direct-booking-contexts")) return {
+        propertyId: 1, token: "protected-direct-context", expiresAtUtc: new Date(Date.now() + 1_200_000).toISOString(),
+      };
+      throw new TypeError("Lost response");
+    });
+    const first = render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    expect(await screen.findByText(/با همان انتخاب‌ها دوباره تلاش کنید/)).toBeTruthy();
+    const originalPayload = JSON.parse(authApi.request.mock.calls[1][1].body);
+    const persisted = sessionStorage.getItem(bookingCartStorageKey)!;
+    expect(persisted).not.toContain("protected-direct-context");
+    expect(JSON.parse(persisted).directCreationAttempt).toEqual({ userId: 7, idempotencyKey: "checkout-stable-key" });
+    first.unmount();
+    authApi.request.mockClear(); checkout.revalidate.mockClear();
+    authApi.request.mockResolvedValue({ sessionCode: "O-REPLAY", propertyId: 1 });
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-REPLAY"));
+    expect(checkout.revalidate).not.toHaveBeenCalled();
+    expect(authApi.request).toHaveBeenCalledExactlyOnceWith("/account/booking-sessions", {
+      method: "POST", body: JSON.stringify({ ...originalPayload, propertyDirectContext: { propertyId: 1, token: null } }),
+    });
+  });
+
+  it("revalidates and issues afresh with the same key only after the exact tokenless-new rejection", async () => {
+    persistDirect(); signIn(); navigation.step = "review"; setupDirectApi();
+    const stored = JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!);
+    stored.directCreationAttempt = { userId: 7, idempotencyKey: stored.idempotencyKey };
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify(stored));
+    authApi.request.mockRejectedValueOnce(new ApiRequestError("A matching Property Direct booking context token is required for creation.", 400));
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+    expect(authApi.request).toHaveBeenCalledTimes(3);
+    expect(checkout.revalidate).toHaveBeenCalledOnce();
+    expect(authApi.request.mock.calls.map(([, init]) => JSON.parse(init.body).idempotencyKey)).toEqual([
+      "checkout-stable-key", "checkout-stable-key", "checkout-stable-key",
+    ]);
+  });
+
+  it.each([403, 404, 429, 503, "network"])("preserves Direct intent and cart after issuance %s, with no fallback or retry loop", async (status) => {
+    persistDirect(); signIn(); navigation.step = "review";
+    authApi.request.mockRejectedValue(status === "network" ? new TypeError("offline") : new ApiRequestError("raw backend data", Number(status)));
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    expect(await screen.findByText("ثبت سفارش انجام نشد")).toBeTruthy();
+    expect(screen.queryByText("raw backend data")).toBeNull();
+    expect(authApi.request).toHaveBeenCalledOnce();
+    expect(checkout.create).not.toHaveBeenCalled();
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).propertyEntry.kind).toBe("book");
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey).toBe("checkout-stable-key");
+  });
+
+  it("recovers Direct issuance 401 through existing session refresh and the information step", async () => {
+    persistDirect(); signIn(); navigation.step = "review";
+    authApi.request.mockRejectedValue(new ApiRequestError("unauthorized", 401));
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    await waitFor(() => expect(auth.refreshSession).toHaveBeenCalledWith({ redirectOnUnauthorized: false }));
+    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+    expect(sessionStorage.getItem(bookingCartStorageKey)).not.toBeNull();
+    expect(checkout.create).not.toHaveBeenCalled();
+  });
+
+  it("keeps Direct multi-room stayGuests and OnRequest creation semantics", async () => {
+    const items = onRequestBookingItems().slice(0, 2).map((item) => ({ ...item,
+      stayRooms: 2, adults: 4, allocatedAdults: 2, allocatedChildAges: [],
+    }));
+    persistDirect(items); signIn(); navigation.step = "review"; setupDirectApi();
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ارسال درخواست رزرو" }));
+    await waitFor(() => expect(authApi.request).toHaveBeenCalledTimes(2));
+    const payload = JSON.parse(authApi.request.mock.calls[1][1].body);
+    expect(payload.stayGuests).toEqual({ adults: 4, childAges: [7] });
+    expect(payload.items).toHaveLength(2);
+    expect(payload.propertyDirectContext.propertyId).toBe(1);
+    expect(navigation.push).not.toHaveBeenCalledWith(expect.stringMatching(/payment/));
+  });
+
+  it("clears the non-secret Direct attempt marker when stay details explicitly renew the key", async () => {
+    persistDirect(); signIn();
+    const stored = JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!);
+    stored.directCreationAttempt = { userId: 7, idempotencyKey: "checkout-stable-key" };
+    sessionStorage.setItem(bookingCartStorageKey, JSON.stringify(stored));
+    render(<BookingCheckoutFlow />);
+    fireEvent.change(await screen.findByLabelText("زمان تقریبی ورود", { selector: "select" }), { target: { value: "16:00:00" } });
+    await waitFor(() => expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).idempotencyKey).not.toBe("checkout-stable-key"));
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).directCreationAttempt).toBeUndefined();
+    expect(authApi.request).not.toHaveBeenCalled();
+  });
+
+  it("does not create again if browser storage fails AFTER the server confirmed the Session", async () => {
+    persistDirect(); signIn(); navigation.step = "review"; setupDirectApi();
+    const set = Storage.prototype.setItem;
+    const storage = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+      if (key === lastBookingSessionCodeKey) throw new DOMException("Storage unavailable", "QuotaExceededError");
+      return set.call(this, key, value);
+    });
+    try {
+      render(<BookingCheckoutFlow />);
+      const submit = await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" });
+      fireEvent.click(submit);
+      await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+      expect(authApi.request).toHaveBeenCalledTimes(2);
+      expect(screen.queryByText("ثبت سفارش انجام نشد")).toBeNull();
+    } finally { storage.mockRestore(); }
+  });
+
+  it("Marketplace with an explicit properties origin never calls the Direct APIs", async () => {
+    const items = bookingItems();
+    persistCart(items, { kind: "properties", propertyId: 1, propertySlug: "kashan-house" });
+    signIn(); navigation.step = "review";
+    render(<BookingCheckoutFlow />);
+    fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
+    await waitFor(() => expect(checkout.create).toHaveBeenCalledOnce());
+    expect(authApi.request).not.toHaveBeenCalled();
   });
 
   it("requires price-change confirmation before submitting a multi-room quote", async () => {
