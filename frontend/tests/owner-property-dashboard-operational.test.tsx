@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   propertyId: "17",
@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   canViewRooms: true,
   canViewPricing: true,
   canViewInventory: true,
+  canViewProperty: true,
+  routePropertyIsValid: true,
   apiRequest: vi.fn(),
 }));
 
@@ -23,12 +25,13 @@ vi.mock("@/components/dashboard/DashboardLayouts", () => ({
 }));
 vi.mock("@/components/owner/OwnerPropertyProvider", () => ({
   useOwnerProperty: () => ({
-    routePropertyIsValid: true,
+    routePropertyIsValid: mocks.routePropertyIsValid,
     effectivePermissions: {
       Bookings: { view: mocks.canViewBookings },
       Rooms: { view: mocks.canViewRooms },
       Pricing: { view: mocks.canViewPricing },
       Inventory: { view: mocks.canViewInventory },
+      Properties: { view: mocks.canViewProperty },
     },
   }),
 }));
@@ -60,6 +63,7 @@ function setupRequests() {
 }
 
 describe("Owner Property operational dashboard summary", () => {
+  afterEach(() => vi.unstubAllEnvs());
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.propertyId = "17";
@@ -67,6 +71,8 @@ describe("Owner Property operational dashboard summary", () => {
     mocks.canViewRooms = true;
     mocks.canViewPricing = true;
     mocks.canViewInventory = true;
+    mocks.canViewProperty = true;
+    mocks.routePropertyIsValid = true;
     setupRequests();
   });
 
@@ -96,6 +102,38 @@ describe("Owner Property operational dashboard summary", () => {
     });
     expect(screen.queryByRole("region", { name: "تکمیل و راه‌اندازی اقامتگاه" })).toBeNull();
     expect(screen.getByText("کارهای سریع")).toBeTruthy();
+  });
+
+  it("places the public booking link immediately after quick actions using authorized Property data", async () => {
+    vi.stubEnv("NEXT_PUBLIC_KOOCH_PUBLIC_ORIGIN", "https://public.example.test/");
+    render(<OwnerPropertyDashboardPage />);
+    const card = await screen.findByRole("region", { name: "لینک رزرو عمومی" });
+    await screen.findByRole("textbox", { name: "نشانی صفحه رزرو عمومی" });
+    expect(screen.getByRole("region", { name: "کارهای سریع" }).nextElementSibling).toBe(card);
+    expect((screen.getByRole("textbox", { name: "نشانی صفحه رزرو عمومی" }) as HTMLInputElement).value).toBe("https://public.example.test/book/cedar");
+  });
+
+  it.each(["membership", "permission"])("does not expose sharing without Property %s access", async (boundary) => {
+    vi.stubEnv("NEXT_PUBLIC_KOOCH_PUBLIC_ORIGIN", "https://public.example.test");
+    if (boundary === "membership") mocks.routePropertyIsValid = false;
+    else mocks.canViewProperty = false;
+    render(<OwnerPropertyDashboardPage />);
+    const card = screen.getByRole("region", { name: "لینک رزرو عمومی" });
+    expect(within(card).getByRole("status").textContent).toContain("دسترسی به اطلاعات این اقامتگاه ندارید");
+    expect(within(card).queryByRole("textbox")).toBeNull();
+    if (boundary === "membership") expect(mocks.apiRequest).not.toHaveBeenCalled();
+    else await screen.findByRole("heading", { name: "خانه سرو" });
+  });
+
+  it("removes the old sharing URL immediately when switching Properties", async () => {
+    vi.stubEnv("NEXT_PUBLIC_KOOCH_PUBLIC_ORIGIN", "https://public.example.test");
+    const { rerender } = render(<OwnerPropertyDashboardPage />);
+    await screen.findByRole("textbox", { name: "نشانی صفحه رزرو عمومی" });
+    mocks.propertyId = "18";
+    mocks.apiRequest.mockImplementation(() => new Promise(() => undefined));
+    rerender(<OwnerPropertyDashboardPage />);
+    expect(screen.queryByRole("textbox", { name: "نشانی صفحه رزرو عمومی" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "کپی لینک" })).toBeNull();
   });
 
   it("shows only active RoomTypes and existing permission-gated quick actions", async () => {

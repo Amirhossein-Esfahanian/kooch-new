@@ -23,6 +23,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochIcon, type KoochIconName } from "@/components/KoochIcon";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { useOwnerProperty } from "@/components/owner/OwnerPropertyProvider";
+import { OwnerPublicBookingLinkCard } from "@/components/owner/OwnerPublicBookingLinkCard";
 import { formatBookingDate } from "@/components/booking/booking-display";
 import {
   apiRequest,
@@ -429,6 +430,15 @@ export default function OwnerPropertyDashboardPage() {
               ))}
             </div>
           </section>
+        )}
+
+        {authenticated && !loading && isOwnerWorkspace && (
+          <OwnerPublicBookingLinkCard
+            key={propertyId}
+            canViewProperty={routePropertyIsValid && canViewOwnerMenuItem(effectivePermissions, "Properties")}
+            loading={!currentOverview || currentOverview.status === "loading"}
+            property={property?.id === propertyId ? property : undefined}
+          />
         )}
 
         {canViewReports && authenticated && !loading && isOwnerWorkspace && (
