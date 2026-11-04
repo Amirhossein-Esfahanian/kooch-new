@@ -23,7 +23,7 @@ function warnOnce(message: string) {
   console.warn(message);
 }
 
-function resolveBackendOrigin() {
+export function resolveBackendOrigin() {
   const configuredOrigin = process.env.KOOCH_BACKEND_ORIGIN?.trim();
   if (!configuredOrigin) {
     if (process.env.NODE_ENV === "development") {

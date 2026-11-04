@@ -14,13 +14,16 @@ import styles from "./PropertyBookingLanding.module.css";
 
 type Resource = { slug: string; property?: PublicProperty; error?: "missing" | "failed" };
 
-export function PropertyBookingLanding() {
+export function PropertyBookingLanding({ initialProperty, initialSlug }: { initialProperty?: PublicProperty; initialSlug?: string } = {}) {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const serverProperty = initialProperty?.status === "Approved" && (initialSlug ?? initialProperty.slug) === slug
+    ? initialProperty : undefined;
   const [attempt, setAttempt] = useState(0);
   const [resource, setResource] = useState<Resource>({ slug: "" });
 
   useEffect(() => {
+    if (serverProperty) return;
     let current = true;
     setResource({ slug });
     fetchPublicApi<PublicProperty>(`/properties/${encodeURIComponent(slug)}`)
@@ -31,9 +34,9 @@ export function PropertyBookingLanding() {
         if (current) setResource({ slug, error: error instanceof PublicApiError && error.status === 404 ? "missing" : "failed" });
       });
     return () => { current = false; };
-  }, [slug, attempt]);
+  }, [slug, attempt, serverProperty]);
 
-  const current = resource.slug === slug ? resource : { slug };
+  const current = serverProperty ? { slug, property: serverProperty } : resource.slug === slug ? resource : { slug };
   if (!current.property) {
     return (
       <div className={styles.state} dir="rtl">

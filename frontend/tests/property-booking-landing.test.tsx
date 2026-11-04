@@ -3,6 +3,7 @@ import type { ComponentProps } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { renderToString } from "react-dom/server";
 import type { PublicProperty } from "@/lib/public-properties";
 
 const mocks = vi.hoisted(() => ({ fetchProperty: vi.fn(), slug: "garden-house", pathname: "/book/garden-house", query: "", panel: vi.fn() }));
@@ -56,6 +57,17 @@ beforeEach(() => {
 });
 
 describe("Property booking landing", () => {
+  it("renders real initial Property content on the server without a second client fetch", () => {
+    const data = property();
+    const html = renderToString(<PropertyBookingLanding initialProperty={data} initialSlug={data.slug} />);
+    expect(html).toContain("خانه باغ");
+    expect(html).toContain("خانه‌ای در میان باغ");
+    expect(html).toContain("خیابان باغ");
+    expect(html).not.toContain("در حال دریافت اقامتگاه");
+    render(<PropertyBookingLanding initialProperty={data} initialSlug={data.slug} />);
+    expect(screen.getByRole("heading", { level: 1, name: data.name })).toBeTruthy();
+    expect(mocks.fetchProperty).not.toHaveBeenCalled();
+  });
   it("initializes the shared booking engine from canonical URL context with ordered child ages", async () => {
     mocks.query = "checkIn=2030-08-10&checkOut=2030-08-12&rooms=2&adults=4&children=2&childAges=4,9";
     render(<PropertyBookingLanding />);
@@ -262,7 +274,8 @@ describe("Property booking landing", () => {
     expect(css).toContain("overflow-y: auto");
     expect(css).toContain("prefers-reduced-motion");
     const route = readFileSync(resolve(process.cwd(), "app/book/[slug]/page.tsx"), "utf8");
-    expect(route).toContain('absolute: "رزرو اقامتگاه"');
+    expect(route).toContain("export async function generateMetadata");
+    expect(route).toContain("propertyBookingMetadata");
   });
 
   it("uses one full-height edge panel, without a central scrim, navbar fill or bottom strip", async () => {
