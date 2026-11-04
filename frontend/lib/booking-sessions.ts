@@ -215,6 +215,8 @@ export interface AccountBookingSessionSummary {
 
 export interface AccountBookingSession {
   sessionCode: string;
+  // Older deployed APIs may omit attribution; Direct consumers must fail closed.
+  commissionType?: 0 | 1 | 2 | null;
   displayCodeLabel: string;
   property: { propertyId: number; name: string; slug: string };
   primaryGuest?: AccountBookingSessionPrimaryGuestResponse | null;

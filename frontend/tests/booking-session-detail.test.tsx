@@ -8,6 +8,7 @@ import { formatBookingDeadline } from "@/components/booking/booking-display";
 const navigation = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
 }));
+const authState = vi.hoisted(() => ({ authenticated: true }));
 const bookingApi = vi.hoisted(() => ({
   fetch: vi.fn(),
   fetchProviders: vi.fn(),
@@ -22,7 +23,7 @@ vi.mock("next/navigation", () => ({
 }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({
-    authenticated: true,
+    authenticated: authState.authenticated,
     loading: false,
     user: {
       fullName: "سارا احمدی",
@@ -51,6 +52,12 @@ vi.mock("@/lib/currency", () => ({
 }));
 
 import AccountBookingSessionPage from "@/app/account/booking-sessions/[sessionCode]/page";
+import { BookingSessionDetail } from "@/components/booking/BookingSessionDetail";
+
+vi.mock("@/components/booking/CheckoutIdentityStep", () => ({
+  CheckoutIdentityStep: ({ allowAlternateLogin }: { allowAlternateLogin: boolean }) =>
+    <div>ورود برای مشاهده رزرو{allowAlternateLogin ? "ورود جایگزین" : ""}</div>,
+}));
 
 function response(): AccountBookingSession {
   const approvalDeadline = new Date(Date.now() + 10 * 60 * 1000).toISOString();
@@ -143,6 +150,7 @@ function mixedResponse(deadline = new Date(Date.now() + 10 * 60 * 1000).toISOStr
 describe("account booking session detail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    authState.authenticated = true;
     sessionStorage.clear();
     bookingApi.settings.mockResolvedValue({ "site.bookingSupportPhone": "+982112345678" });
     bookingApi.fetch.mockResolvedValue(response());
@@ -154,6 +162,60 @@ describe("account booking session detail", () => {
       status: "Pending",
       checkoutDestination: "/booking/sessions/BS-1405-001/mock-payment",
     });
+  });
+
+  it.each([0, 1, null, undefined, "2"])("Direct rejects untrusted or non-Direct channel %s", async (commissionType) => {
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), commissionType });
+    render(<BookingSessionDetail directProperty={{ id: 1, slug: "kashan-house", name: "خانه کاشان" }} />);
+    expect(await screen.findByText("سفارش رزرو پیدا نشد.")).toBeTruthy();
+    expect(screen.queryByText("R-001")).toBeNull();
+    expect(bookingApi.fetchProviders).not.toHaveBeenCalled();
+    expect(bookingApi.initiate).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { id: 2, slug: "kashan-house", name: "دیگر" },
+    { id: 1, slug: "different-house", name: "دیگر" },
+  ])("Direct rejects mismatched Property %s", async (directProperty) => {
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), commissionType: 2 });
+    render(<BookingSessionDetail directProperty={directProperty} />);
+    expect(await screen.findByText("سفارش رزرو پیدا نشد.")).toBeTruthy();
+    expect(bookingApi.fetchProviders).not.toHaveBeenCalled();
+  });
+
+  it("Direct reuses authoritative details and gateway initiation without account or wallet links", async () => {
+    bookingApi.fetch.mockResolvedValue({ ...instantReadyResponse(), commissionType: 2 });
+    const property = { id: 1, slug: "kashan-house", name: "خانه کاشان" };
+    const view = render(<BookingSessionDetail directProperty={property} />);
+    expect(await screen.findByRole("heading", { name: "جزئیات اقامت" })).toBeTruthy();
+    expect(screen.getAllByText("۴٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
+    expect(screen.getByText("مهلت پرداخت")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "خانه کاشان" }).getAttribute("href")).toBe("/book/kashan-house");
+    expect(screen.queryByText("سفارش‌های من")).toBeNull();
+    expect(screen.queryByText(/کیف پول|شارژ کیف|Marketplace/)).toBeNull();
+    fireEvent.click((await screen.findAllByRole("button", { name: "پرداخت" }))[0]);
+    await screen.findByRole("heading", { name: "جزئیات اقامت" });
+    expect(bookingApi.initiate).toHaveBeenCalledWith("BS-1405-001", expect.any(String), "saman");
+    view.unmount();
+    render(<BookingSessionDetail directProperty={property} />);
+    expect(await screen.findByRole("heading", { name: "جزئیات اقامت" })).toBeTruthy();
+    expect(bookingApi.fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("Direct preserves backend ownership denial without exposing session data", async () => {
+    bookingApi.fetch.mockRejectedValue(new Error("Booking session not found."));
+    render(<BookingSessionDetail directProperty={{ id: 1, slug: "kashan-house", name: "خانه کاشان" }} />);
+    expect(await screen.findByText("Booking session not found.")).toBeTruthy();
+    expect(screen.queryByText("R-001")).toBeNull();
+    expect(bookingApi.fetchProviders).not.toHaveBeenCalled();
+  });
+
+  it("Direct keeps unauthenticated entry inline without fetching private data or navigating to login", async () => {
+    authState.authenticated = false;
+    render(<BookingSessionDetail directProperty={{ id: 1, slug: "kashan-house", name: "خانه کاشان" }} />);
+    expect(await screen.findByText("ورود برای مشاهده رزرو")).toBeTruthy();
+    expect(bookingApi.fetch).not.toHaveBeenCalled();
+    expect(navigation.router.replace).not.toHaveBeenCalled();
   });
 
   it("shows the session code and each independent reservation", async () => {

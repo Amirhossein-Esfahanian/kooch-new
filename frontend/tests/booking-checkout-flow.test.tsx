@@ -476,7 +476,7 @@ describe("multi-step booking checkout skeleton", () => {
     expect(await within(dialog).findByText(/قیمت به‌روز شده است/)).toBeTruthy();
     expect(authApi.request).not.toHaveBeenCalled();
     fireEvent.click(submit); fireEvent.click(submit);
-    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/book/kashan-house/reservations/O-DIRECT"));
     expect(authApi.request).toHaveBeenCalledTimes(2);
     const body = JSON.parse(authApi.request.mock.calls[1][1].body);
     expect(body.propertyDirectContext).toEqual({ propertyId: 1, token: "protected-direct-context" });
@@ -615,7 +615,7 @@ describe("multi-step booking checkout skeleton", () => {
     expect(authApi.request).not.toHaveBeenCalled();
     fireEvent.click(submit);
     fireEvent.click(submit);
-    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/book/kashan-house/reservations/O-DIRECT"));
     expect(authApi.request).toHaveBeenCalledTimes(2);
     expect(authApi.request.mock.calls[0]).toEqual(["/account/property-direct-booking-contexts", {
       method: "POST", body: JSON.stringify({ propertySlug: "kashan-house", idempotencyKey: "checkout-stable-key" }),
@@ -692,7 +692,7 @@ describe("multi-step booking checkout skeleton", () => {
     authApi.request.mockResolvedValue({ sessionCode: "O-REPLAY", propertyId: 1 });
     render(<BookingCheckoutFlow />);
     fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
-    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-REPLAY"));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/book/kashan-house/reservations/O-REPLAY"));
     expect(checkout.revalidate).not.toHaveBeenCalled();
     expect(authApi.request).toHaveBeenCalledExactlyOnceWith("/account/booking-sessions", {
       method: "POST", body: JSON.stringify({ ...originalPayload, propertyDirectContext: { propertyId: 1, token: null } }),
@@ -707,7 +707,7 @@ describe("multi-step booking checkout skeleton", () => {
     authApi.request.mockRejectedValueOnce(new ApiRequestError("A matching Property Direct booking context token is required for creation.", 400));
     render(<BookingCheckoutFlow />);
     fireEvent.click(await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" }));
-    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+    await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/book/kashan-house/reservations/O-DIRECT"));
     expect(authApi.request).toHaveBeenCalledTimes(3);
     expect(checkout.revalidate).toHaveBeenCalledOnce();
     expect(authApi.request.mock.calls.map(([, init]) => JSON.parse(init.body).idempotencyKey)).toEqual([
@@ -777,7 +777,7 @@ describe("multi-step booking checkout skeleton", () => {
       render(<BookingCheckoutFlow />);
       const submit = await screen.findByRole("button", { name: "ثبت رزرو و ادامه به پرداخت" });
       fireEvent.click(submit);
-      await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/account/booking-sessions/O-DIRECT"));
+      await waitFor(() => expect(navigation.push).toHaveBeenCalledWith("/book/kashan-house/reservations/O-DIRECT"));
       expect(authApi.request).toHaveBeenCalledTimes(2);
       expect(screen.queryByText("ثبت سفارش انجام نشد")).toBeNull();
     } finally { storage.mockRestore(); }

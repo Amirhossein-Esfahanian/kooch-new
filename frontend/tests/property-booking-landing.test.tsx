@@ -359,6 +359,15 @@ describe("actual image fallback", () => {
 });
 
 describe("public chrome boundary", () => {
+  it("omits Marketplace chrome on private Property session detail only", () => {
+    mocks.pathname = "/book/garden-house/reservations/SESSION-1";
+    const view = render(<PublicSiteShell><p>جزئیات رزرو</p></PublicSiteShell>);
+    expect(screen.queryByText("Marketplace header Kooch")).toBeNull();
+    expect(screen.queryByText("Marketplace footer Kooch")).toBeNull();
+    mocks.pathname = "/account/booking-sessions/SESSION-1";
+    view.rerender(<PublicSiteShell><p>جزئیات رزرو</p></PublicSiteShell>);
+    expect(screen.getByText("Marketplace header Kooch")).toBeTruthy();
+  });
   it.each(["/properties/garden-house", "/login", "/booking/checkout", "/book", "/book/garden-house/other", "/admin"])("preserves incumbent chrome on %s", (path) => {
     mocks.pathname = path;
     render(<PublicSiteShell><p>محتوا</p></PublicSiteShell>);

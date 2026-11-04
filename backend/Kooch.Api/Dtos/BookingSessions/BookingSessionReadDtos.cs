@@ -105,6 +105,8 @@ public sealed class BookingSessionReservationDetailsResponse
 public sealed class AccountBookingSessionResponse
 {
     public string SessionCode { get; set; } = string.Empty;
+    [JsonConverter(typeof(JsonNumberEnumConverter<CommissionType>))]
+    public CommissionType? CommissionType { get; set; }
     public string DisplayCodeLabel { get; set; } = "کد سفارش";
     public BookingSessionPropertyResponse Property { get; set; } = new();
     public AccountBookingSessionPrimaryGuestResponse? PrimaryGuest { get; set; }

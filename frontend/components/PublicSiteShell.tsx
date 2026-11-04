@@ -7,7 +7,7 @@ import { Footer } from "@/components/Footer";
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const propertyLanding = /^\/book\/[^/]+\/?$/.test(pathname ?? "");
+  const propertyLanding = /^\/book\/[^/]+(?:\/reservations\/[^/]+)?\/?$/.test(pathname ?? "");
 
   return (
     <div className="flex min-h-screen flex-col">

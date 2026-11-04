@@ -80,7 +80,7 @@ export function BookingCheckoutContent({
   const submissionLockRef = useRef(false);
   const checkoutMountedRef = useRef(false);
   const submissionIdentityRef = useRef("");
-  const confirmedSessionRef = useRef<{ userId: number; key: string; sessionCode: string } | null>(null);
+  const confirmedSessionRef = useRef<{ userId: number; key: string; sessionCode: string; href: string } | null>(null);
   const linkedGuestInitializedRef = useRef(false);
   const [finalizing, setFinalizing] = useState(false);
   const [showExistingOrderRecovery, setShowExistingOrderRecovery] = useState(false);
@@ -257,7 +257,7 @@ export function BookingCheckoutContent({
 
     const userId = auth.user!.userId;
     if (confirmedSessionRef.current?.key === cart.idempotencyKey && confirmedSessionRef.current.userId === userId) {
-      router.push(`/account/booking-sessions/${encodeURIComponent(confirmedSessionRef.current.sessionCode)}`);
+      router.push(confirmedSessionRef.current.href);
       return;
     }
     const entry = validBookingPropertyEntry(cart.propertyEntry, cart.items);
@@ -271,14 +271,17 @@ export function BookingCheckoutContent({
 
     const complete = (sessionCode: string) => {
       if (!isCurrent()) throw new DirectBookingCheckoutError("اطلاعات حساب یا رزرو تغییر کرده است. سفارش‌های حساب قبلی را بررسی کنید.");
-      confirmedSessionRef.current = { userId, key: cart.idempotencyKey!, sessionCode };
+      const href = directEntry
+        ? `/book/${encodeURIComponent(directEntry.propertySlug)}/reservations/${encodeURIComponent(sessionCode)}`
+        : `/account/booking-sessions/${encodeURIComponent(sessionCode)}`;
+      confirmedSessionRef.current = { userId, key: cart.idempotencyKey!, sessionCode, href };
       // Browser storage failure must not turn a confirmed server creation into a failed attempt.
       try {
         sessionStorage.setItem(lastBookingSessionCodeKey, sessionCode);
         sessionStorage.removeItem(checkoutStayDetailsStorageKey);
       } catch { /* The canonical Session URL remains available without this convenience storage. */ }
       try { cart.clear(); } catch { /* A retained cart can only replay the same keyed attempt. */ }
-      router.push(`/account/booking-sessions/${encodeURIComponent(sessionCode)}`);
+      router.push(href);
     };
 
     submissionLockRef.current = true;

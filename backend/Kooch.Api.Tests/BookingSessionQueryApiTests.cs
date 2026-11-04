@@ -23,6 +23,51 @@ public sealed class BookingSessionQueryApiTests
 {
     [Theory]
     [InlineData(null)]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public async Task AccountRead_PreservesPersistedCommissionTypeAndNumericJsonContract(int? value)
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        var session = await context.BookingSessions.SingleAsync(item => item.Id == 10);
+        session.CommissionType = value.HasValue ? (CommissionType)value.Value : null;
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+
+        var service = new BookingSessionQueryService(context);
+        var response = await service.GetBySessionCodeForClientAsync(1, session.SessionCode);
+
+        Assert.Equal(session.CommissionType, response.CommissionType);
+        Assert.Equal(session.SessionCode, response.SessionCode);
+        Assert.Equal(1, response.Property.PropertyId);
+        Assert.Equal(300, response.TotalAmount);
+        Assert.Equal(2, response.Reservations.Count);
+        Assert.Empty(context.ChangeTracker.Entries());
+
+        // Match the application's string-enum default while keeping this field numeric.
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        using var document = JsonDocument.Parse(JsonSerializer.Serialize(response, options));
+        var field = document.RootElement.GetProperty("commissionType");
+        if (value.HasValue)
+        {
+            Assert.Equal(JsonValueKind.Number, field.ValueKind);
+            Assert.Equal(value.Value, field.GetInt32());
+        }
+        else
+        {
+            Assert.Equal(JsonValueKind.Null, field.ValueKind);
+        }
+
+        await Assert.ThrowsAsync<KeyNotFoundException>(() =>
+            service.GetBySessionCodeForClientAsync(2, session.SessionCode));
+        Assert.Null(typeof(AccountBookingSessionListItemResponse).GetProperty("CommissionType"));
+        Assert.Null(typeof(BookingSessionDetailsResponse).GetProperty("CommissionType"));
+    }
+
+    [Theory]
+    [InlineData(null)]
     [InlineData(2)]
     [InlineData(1)]
     public async Task LegacyTravelerRead_RequiresCanonicalGuestOwnership(int? guestUserId)

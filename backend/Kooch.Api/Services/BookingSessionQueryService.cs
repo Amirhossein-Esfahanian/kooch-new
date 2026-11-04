@@ -168,6 +168,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             .Select(session => new AccountBookingSessionResponse
             {
                 SessionCode = session.SessionCode,
+                CommissionType = session.CommissionType,
                 ExpectedArrivalTime = session.ExpectedArrivalTime,
                 ExpectedArrivalDayOffset = session.ExpectedArrivalDayOffset,
                 ReceptionCoordinationRequired = session.ReceptionCoordinationRequired,
