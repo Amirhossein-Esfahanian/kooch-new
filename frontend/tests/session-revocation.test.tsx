@@ -1,5 +1,6 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { useEffect } from "react";
 
 const navigation = vi.hoisted(() => ({
   router: {
@@ -88,6 +89,12 @@ function SessionProbe() {
   );
 }
 
+function InlineRecoveryProbe({ recover }: { recover: () => void }) {
+  const { registerInlineSessionRecovery } = useAuthSession();
+  useEffect(() => registerInlineSessionRecovery?.(recover), [recover, registerInlineSessionRecovery]);
+  return null;
+}
+
 async function renderLoadedProvider(fetchMock: ReturnType<typeof vi.fn>) {
   fetchMock.mockResolvedValueOnce(jsonResponse(authSessionResponse()));
 
@@ -130,6 +137,19 @@ describe("canonical session revocation handling", () => {
     localStorage.setItem(ownerPropertyKey, "42");
     fetchMock = vi.fn();
     global.fetch = fetchMock as unknown as typeof fetch;
+  });
+
+  it("clears revoked credentials but lets an opted-in checkout recover without /login", async () => {
+    const recover = vi.fn();
+    fetchMock.mockResolvedValueOnce(jsonResponse(authSessionResponse()));
+    render(<AuthSessionProvider><SessionProbe /><InlineRecoveryProbe recover={recover} /></AuthSessionProvider>);
+    await waitFor(() => expect(screen.getByTestId("authenticated").textContent).toBe("yes"));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ code: "session_revoked", message: "Revoked" }, { status: 401 }));
+    await act(async () => { await expectApiError(apiRequest("/account/booking-sessions"), 401, true); });
+    expect(getToken()).toBeNull();
+    expect(screen.getByTestId("authenticated").textContent).toBe("no");
+    expect(recover).toHaveBeenCalledOnce();
+    expect(navigation.router.replace).not.toHaveBeenCalled();
   });
 
   it("clears provider state and session data while preserving the remembered preference", async () => {

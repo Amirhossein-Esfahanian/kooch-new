@@ -27,6 +27,13 @@ public partial class PaymentService
         }
         if (await GetExistingPaymentAsync(session.Id, request.IdempotencyKey, ct) is not null)
             throw new InvalidOperationException("The checkout key already belongs to a different payment.");
+        // Read persisted attribution under the session lock; a tracked entity may be stale.
+        // Existing attempts replay above, so historical callbacks and funding remain recoverable.
+        var commissionType = await dbContext.BookingSessions.Where(s => s.Id == session.Id)
+            .Select(s => s.CommissionType).SingleAsync(ct);
+        if (commissionType == CommissionType.PropertyReferralCode)
+            throw new InvalidOperationException(
+                "PropertyDirectWalletFundingNotAllowed: Property Direct bookings require gateway-only funding.");
         await EnsureNoOtherPendingPaymentAsync(session.Id, ct);
         var handler = new PaymentDomainApplicationHandler(dbContext, effectiveAvailabilityService, paymentFinancializationService, reservationVoucherService);
         await handler.LockSessionCapacityAsync(session.Id, ct);

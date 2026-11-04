@@ -56,7 +56,22 @@ export function BookingCheckoutFlow() {
   );
 }
 
-function BookingCheckoutContent() {
+export function BookingCheckoutContent({
+  presentation = "page",
+  onEditSelection,
+  onBusyChange,
+  identityResetKey = 0,
+}: {
+  presentation?: "page" | "dialog";
+  onEditSelection?: () => void;
+  onBusyChange?: (busy: boolean) => void;
+  identityResetKey?: number;
+} = {}) {
+  const isDialog = presentation === "dialog";
+  const [dialogStep, setDialogStep] = useState<"information" | "review">("information");
+  const [identityBusy, setIdentityBusy] = useState(false);
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousStepRef = useRef<BookingCheckoutStep | null>(null);
   const support = useBookingSupportPhone();
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -68,6 +83,7 @@ function BookingCheckoutContent() {
   const confirmedSessionRef = useRef<{ userId: number; key: string; sessionCode: string } | null>(null);
   const linkedGuestInitializedRef = useRef(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [showExistingOrderRecovery, setShowExistingOrderRecovery] = useState(false);
   const [finalizationMessage, setFinalizationMessage] = useState<{
     tone: "error" | "info";
     text: string;
@@ -81,7 +97,7 @@ function BookingCheckoutContent() {
   } | null>(null);
   const [receptionLoadFailed, setReceptionLoadFailed] = useState(false);
   const [showStayDetailsErrors, setShowStayDetailsErrors] = useState(false);
-  const requestedReview = searchParams.get("step") === "review";
+  const requestedReview = isDialog ? dialogStep === "review" : searchParams.get("step") === "review";
   const identityComplete = hasCompleteCheckoutIdentity(auth);
   const stayDetailsErrors = useMemo(
     () => validateCheckoutStayDetailsDraft(stayDetailsDraft),
@@ -102,10 +118,30 @@ function BookingCheckoutContent() {
     stayDetailsComplete
       ? "review"
       : "information";
+  const ContentTag = isDialog ? "div" : "main";
   const identityInterruptionMessage =
     requestedReview && !auth.loading && !identityComplete
       ? "نشست شما در دسترس نیست یا اطلاعات هویتی کامل نشده است. سبد رزرو حفظ شده؛ شماره موبایل را تأیید کنید و سپس ادامه دهید."
       : null;
+
+  const showInformation = useCallback(() => {
+    if (isDialog) setDialogStep("information");
+    else router.push("/booking/checkout?step=information");
+  }, [isDialog, router]);
+
+  useEffect(() => {
+    onBusyChange?.(finalizing || identityBusy);
+    return () => onBusyChange?.(false);
+  }, [finalizing, identityBusy, onBusyChange]);
+
+  useEffect(() => { if (isDialog) setDialogStep("information"); }, [identityResetKey, isDialog]);
+
+  useEffect(() => {
+    if (isDialog && previousStepRef.current !== null && previousStepRef.current !== currentStep) {
+      stepHeadingRef.current?.focus();
+    }
+    previousStepRef.current = currentStep;
+  }, [currentStep, isDialog]);
 
   useEffect(() => {
     checkoutMountedRef.current = true;
@@ -114,12 +150,12 @@ function BookingCheckoutContent() {
 
   useEffect(() => {
     setStayDetailsDraft(
-      restoreCheckoutStayDetailsDraft(
+      isDialog ? emptyCheckoutStayDetailsDraft : restoreCheckoutStayDetailsDraft(
         sessionStorage.getItem(checkoutStayDetailsStorageKey),
       ),
     );
     setStayDetailsHydrated(true);
-  }, []);
+  }, [isDialog]);
 
   useEffect(() => {
     if (!cart.hydrated || !checkoutPropertySlug || !checkoutPropertyId) return;
@@ -177,20 +213,25 @@ function BookingCheckoutContent() {
   }, [auth.user, identityComplete, stayDetailsHydrated]);
 
   useEffect(() => {
-    if (!stayDetailsHydrated) return;
+    if (!stayDetailsHydrated || isDialog) return;
     sessionStorage.setItem(
       checkoutStayDetailsStorageKey,
       serializeCheckoutStayDetailsDraft(stayDetailsDraft),
     );
-  }, [stayDetailsDraft, stayDetailsHydrated]);
+  }, [isDialog, stayDetailsDraft, stayDetailsHydrated]);
 
   const updateStayDetails = useCallback(
     (next: CheckoutStayDetailsDraft) => {
       setStayDetailsDraft(next);
       setShowStayDetailsErrors(false);
-      cart.renewIdempotencyKey();
+      // An ambiguous Direct creation must be resolved before a different key can create again.
+      // Its private traveler draft is deliberately not persisted by the dialog.
+      const unresolvedDirectAttempt = isDialog &&
+        cart.directCreationAttempt?.userId === auth.user?.userId &&
+        cart.directCreationAttempt?.idempotencyKey === cart.idempotencyKey;
+      if (!unresolvedDirectAttempt) cart.renewIdempotencyKey();
     },
-    [cart],
+    [auth.user?.userId, cart, isDialog],
   );
 
   const continueToReview = useCallback(() => {
@@ -199,15 +240,16 @@ function BookingCheckoutContent() {
       setShowStayDetailsErrors(true);
       return;
     }
-    router.push("/booking/checkout?step=review");
-  }, [identityComplete, router, stayDetailsComplete]);
+    if (isDialog) setDialogStep("review");
+    else router.push("/booking/checkout?step=review");
+  }, [identityComplete, isDialog, router, stayDetailsComplete]);
 
   const finalizeCheckout = useCallback(async () => {
     if (cart.items.length === 0 || submissionLockRef.current) return;
 
     if (auth.loading || !hasCompleteCheckoutIdentity(auth)) {
-      cart.setCheckoutRequested(false);
-      router.push("/booking/checkout?step=information");
+      if (!isDialog) cart.setCheckoutRequested(false);
+      showInformation();
       return;
     }
 
@@ -220,6 +262,10 @@ function BookingCheckoutContent() {
     }
     const entry = validBookingPropertyEntry(cart.propertyEntry, cart.items);
     const directEntry = entry?.kind === "book" ? entry : null;
+    if (isDialog && !directEntry) {
+      setFinalizationMessage({ tone: "error", text: "انتخاب رزرو مستقیم معتبر نیست؛ به انتخاب اقامت برگردید." });
+      return;
+    }
     const submissionIdentity = submissionIdentityRef.current;
     const isCurrent = () => checkoutMountedRef.current && submissionIdentityRef.current === submissionIdentity;
 
@@ -237,6 +283,7 @@ function BookingCheckoutContent() {
 
     submissionLockRef.current = true;
     setFinalizing(true);
+    setShowExistingOrderRecovery(false);
     setFinalizationMessage(null);
     try {
       const details = toBookingCheckoutStayDetails(stayDetailsDraft);
@@ -253,7 +300,7 @@ function BookingCheckoutContent() {
       if (!isCurrent()) throw new DirectBookingCheckoutError("اطلاعات حساب یا رزرو تغییر کرده است. انتخاب فعلی را دوباره بررسی کنید.");
       cart.replaceItems(refreshed.items);
       if (refreshed.priceChanged) {
-        cart.setCheckoutRequested(false);
+        if (!isDialog) cart.setCheckoutRequested(false);
         setFinalizationMessage({
           tone: "info",
           text: "قیمت به‌روز شده است. مبلغ جدید را بررسی و دوباره ثبت نهایی را انتخاب کنید.",
@@ -270,10 +317,13 @@ function BookingCheckoutContent() {
       complete(created.sessionCode);
     } catch (error) {
       if (!checkoutMountedRef.current) return;
+      if (isDialog && error instanceof DirectBookingCheckoutError && error.status === 409) {
+        setShowExistingOrderRecovery(true);
+      }
       if (!directEntry) cart.setCheckoutRequested(false);
       if (error instanceof DirectBookingCheckoutError && error.status === 401) {
         await auth.refreshSession({ redirectOnUnauthorized: false }).catch(() => null);
-        router.push("/booking/checkout?step=information");
+        showInformation();
       }
       setFinalizationMessage({
         tone: "error",
@@ -284,7 +334,7 @@ function BookingCheckoutContent() {
       submissionLockRef.current = false;
       setFinalizing(false);
     }
-  }, [auth, cart, router, stayDetailsDraft]);
+  }, [auth, cart, isDialog, router, showInformation, stayDetailsDraft]);
 
   if (!cart.hydrated) {
     return (
@@ -316,9 +366,9 @@ function BookingCheckoutContent() {
         </KoochAlert>
         <KoochButton
           className="mt-5"
-          onClick={() => router.push("/properties")}
+          onClick={() => isDialog ? onEditSelection?.() : router.push("/properties")}
         >
-          بازگشت به اقامتگاه‌ها
+          {isDialog ? "ویرایش انتخاب اقامت" : "بازگشت به اقامتگاه‌ها"}
         </KoochButton>
       </div>
     );
@@ -338,7 +388,7 @@ function BookingCheckoutContent() {
       dir="rtl"
     >
       <div
-        className="sticky top-[var(--header-height)] z-40 h-[var(--checkout-timeline-height)] w-full border-b border-border bg-[var(--property-search-background)] shadow-sm"
+        className={`${isDialog ? "" : "sticky top-[var(--header-height)] z-40"} h-[var(--checkout-timeline-height)] w-full border-b border-border bg-[var(--property-search-background)] shadow-sm`}
         data-testid="checkout-sticky-timeline"
       >
         <div className="mx-auto max-w-7xl px-4 sm:px-6">
@@ -348,10 +398,19 @@ function BookingCheckoutContent() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7">
-        <h1 className="text-xl font-bold" id="checkout-page-title">
+      <ContentTag className={`mx-auto max-w-7xl ${isDialog ? "py-4" : "px-4 py-5 sm:px-6 sm:py-7"}`}>
+        <h1 ref={stepHeadingRef} tabIndex={isDialog ? -1 : undefined} className="text-xl font-bold" id="checkout-page-title">
           {currentStep === "review" ? "مرور و نهایی‌سازی" : "تکمیل رزرو"}
         </h1>
+
+        {isDialog && <details className="mt-4 rounded-lg border border-border bg-muted lg:hidden">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+            خلاصه رزرو · {cart.items[0].propertyName} · {cart.items.length.toLocaleString("fa-IR")} اتاق
+          </summary>
+          <div className="max-h-[45dvh] overflow-y-auto p-3">
+            <BookingCheckoutSummary items={cart.items} total={cart.total} priceNotice="این قیمت انتخاب فعلی است و پیش از ثبت نهایی دوباره بررسی می‌شود." />
+          </div>
+        </details>}
 
         <div className="mt-5 grid min-w-0 items-start gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(300px,360px)]">
           <section
@@ -366,8 +425,11 @@ function BookingCheckoutContent() {
             {currentStep === "information" ? (
               <>
                 <CheckoutIdentityStep
+                  key={identityResetKey}
+                  allowAlternateLogin={!isDialog}
+                  onBusyChange={setIdentityBusy}
                   interruptionMessage={identityInterruptionMessage}
-                  onAuthenticated={() => cart.setCheckoutRequested(false)}
+                  onAuthenticated={() => { if (!isDialog) cart.setCheckoutRequested(false); }}
                 />
                 {identityComplete && auth.user && stayDetailsHydrated ? (
                   <CheckoutStayDetails
@@ -398,19 +460,23 @@ function BookingCheckoutContent() {
                 }
               >
                 {finalizationMessage.text}
+                {showExistingOrderRecovery && <div className="mt-3 space-y-3">
+                  <p>ممکن است تلاش قبلی ثبت شده باشد. کلید همان تلاش حفظ شده است؛ پیش از شروع رزرو دیگری، سفارش‌های خود را بررسی کنید.</p>
+                  <KoochButton variant="outline" onClick={() => router.push("/account/orders")}>بررسی سفارش‌های من</KoochButton>
+                </div>}
               </KoochAlert>
             ) : null}
           </section>
 
           <aside
             aria-label="خلاصه رزرو"
-            className="lg:sticky lg:top-[calc(var(--header-height)+var(--checkout-timeline-height)+1rem)] lg:col-start-2 lg:row-span-2 lg:row-start-1"
+            className={isDialog ? "hidden lg:sticky lg:top-0 lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:block" : "lg:sticky lg:top-[calc(var(--header-height)+var(--checkout-timeline-height)+1rem)] lg:col-start-2 lg:row-span-2 lg:row-start-1"}
           >
-            <BookingCheckoutSummary items={cart.items} total={cart.total} />
+            <BookingCheckoutSummary items={cart.items} total={cart.total} priceNotice={isDialog ? "این قیمت انتخاب فعلی است و پیش از ثبت نهایی دوباره بررسی می‌شود." : undefined} />
           </aside>
 
           <div
-            className={`flex flex-col gap-3 sm:flex-row sm:justify-between lg:col-start-1 ${
+            className={`flex flex-col gap-3 sm:flex-row sm:justify-between lg:col-start-1 ${isDialog ? "sticky bottom-0 bg-card py-3" : ""} ${
               currentStep === "review"
                 ? "border-t border-border pt-4"
                 : "rounded-lg border border-border bg-card p-4"
@@ -418,17 +484,16 @@ function BookingCheckoutContent() {
             data-testid="checkout-mobile-actions"
           >
             <KoochButton
-              onClick={() =>
-                router.push(
-                  currentStep === "information"
-                    ? propertyReturnHref
-                    : "/booking/checkout?step=information",
-                )
-              }
+              disabled={isDialog && (finalizing || identityBusy)}
+              onClick={() => {
+                if (currentStep !== "information") showInformation();
+                else if (isDialog) onEditSelection?.();
+                else router.push(propertyReturnHref);
+              }}
               variant="outline"
             >
               {currentStep === "information"
-                ? "بازگشت به انتخاب اقامت"
+                ? isDialog ? "ویرایش انتخاب اقامت" : "بازگشت به انتخاب اقامت"
                 : "بازگشت به اطلاعات"}
             </KoochButton>
             {currentStep === "information" ? (
@@ -449,7 +514,7 @@ function BookingCheckoutContent() {
             )}
           </div>
         </div>
-      </main>
+      </ContentTag>
     </div>
   );
 }

@@ -18,6 +18,7 @@ import {
 } from "@/components/booking/BookingCart";
 import { PublicRoomTypeCard } from "@/components/booking/PublicRoomTypeCard";
 import { PublicRoomTypeCalendarDialog } from "@/components/booking/PublicRoomTypeCalendarDialog";
+import { PropertyDirectCheckoutDialog } from "@/components/booking/PropertyDirectCheckoutDialog";
 import {
   bookingCartOfferMatches,
   bookingCartSelectionMatchesItems,
@@ -118,6 +119,7 @@ function PropertyBookingPanelContent({
 }) {
   const router = useRouter();
   const cart = useBookingCart();
+  const [directCheckoutOpen, setDirectCheckoutOpen] = useState(false);
   const [options, setOptions] = useState<PublicBookingOptions | null>(null);
   const [candidates, setCandidates] = useState<PublicBookingCandidates | null>(null);
   const [optionsContextKey, setOptionsContextKey] = useState<string | null>(null);
@@ -540,8 +542,9 @@ function PropertyBookingPanelContent({
 
   function continueCheckout() {
     if (!canCheckout) return;
-    cart.setCheckoutRequested(false, { kind: entryKind, propertyId, propertySlug, rooms: guests.rooms });
-    router.push("/booking/checkout?step=information");
+    cart.setCheckoutRequested(entryKind === "book", { kind: entryKind, propertyId, propertySlug, rooms: guests.rooms });
+    if (entryKind === "book") setDirectCheckoutOpen(true);
+    else router.push("/booking/checkout?step=information");
   }
 
   const hasLegacyResults = Boolean(
@@ -716,6 +719,12 @@ function PropertyBookingPanelContent({
 
   const roomSelection = (
     <>
+      {entryKind === "book" && <PropertyDirectCheckoutDialog
+        propertyId={propertyId}
+        propertySlug={propertySlug}
+        open={directCheckoutOpen}
+        onOpenChange={setDirectCheckoutOpen}
+      />}
       {searchContextDiffersFromCart && (
         <KoochAlert title="جست‌وجوی جدید" variant="info">
           این نتایج برای تاریخ یا مهمان‌های متفاوتی است. با انتخاب اتاق جدید

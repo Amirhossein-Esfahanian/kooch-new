@@ -12,9 +12,11 @@ import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
 export function BookingCheckoutSummary({
   items,
   total,
+  priceNotice,
 }: {
   items: BookingCartItem[];
   total: number;
+  priceNotice?: string;
 }) {
   const currencyLabel = useSiteCurrencyLabel();
   const first = items[0];
@@ -89,6 +91,7 @@ export function BookingCheckoutSummary({
       </SummaryCard>
 
       <SummaryCard testId="checkout-price-summary" title="جزئیات قیمت">
+        {priceNotice && <p className="mb-3 text-xs leading-6 text-muted-foreground">{priceNotice}</p>}
         <dl className="grid gap-3">
           {lines.map((line) => (
             <div
@@ -105,7 +108,7 @@ export function BookingCheckoutSummary({
             </div>
           ))}
           <div className="flex items-end justify-between gap-3 border-t border-border pt-4">
-            <dt className="font-bold text-foreground">مبلغ کل</dt>
+            <dt className="font-bold text-foreground">{priceNotice ? "مبلغ انتخاب‌شده" : "مبلغ کل"}</dt>
             <dd className="text-lg font-bold text-foreground">
               {formatCurrency(total, { currencyLabel })}
             </dd>

@@ -43,9 +43,13 @@ export function hasCompleteCheckoutIdentity(
 export function CheckoutIdentityStep({
   interruptionMessage,
   onAuthenticated,
+  allowAlternateLogin = true,
+  onBusyChange,
 }: {
   interruptionMessage?: string | null;
   onAuthenticated: () => void;
+  allowAlternateLogin?: boolean;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const auth = useAuthSession();
   const router = useRouter();
@@ -67,6 +71,11 @@ export function CheckoutIdentityStep({
   const [profileLastName, setProfileLastName] = useState("");
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileError, setProfileError] = useState("");
+
+  useEffect(() => {
+    onBusyChange?.(sending || verifying || profileSaving);
+    return () => onBusyChange?.(false);
+  }, [onBusyChange, sending, verifying, profileSaving]);
 
   useEffect(() => {
     if (cooldownSeconds <= 0) return;
@@ -471,7 +480,7 @@ export function CheckoutIdentityStep({
               ? "ساخت حساب و ارسال کد"
               : "ارسال کد تأیید"}
           </KoochButton>
-          <KoochButton
+          {allowAlternateLogin && <KoochButton
             className="sm:w-fit"
             onClick={() =>
               router.push(
@@ -482,7 +491,7 @@ export function CheckoutIdentityStep({
             variant="ghost"
           >
             ورود به حساب از مسیر دیگر
-          </KoochButton>
+          </KoochButton>}
         </form>
       )}
     </div>

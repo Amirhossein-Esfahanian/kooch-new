@@ -151,7 +151,7 @@ function LandingContent({ property }: { property: PublicProperty }) {
         </div>
         {property.roomTypes.length > 0 ? (
           <PropertyBookingPanel autoCheckInitialContextKey={autoCheckInitialContextKey} entryKind="book" dates={dates} galleryFallback={galleryFallback} guests={guests} onDatesChange={setDates} onGuestsChange={setGuests} onShowRoomDetails={showRoom} propertyId={property.id} propertyName={property.name} propertySlug={property.slug} roomTypes={property.roomTypes}>
-            {({ searchBar, roomSelection }) => <>{searchBar}<div className={styles.bookingRooms} id={propertyRoomsAnchorId}>{roomSelection}</div></>}
+            {({ searchBar, roomSelection }) => <>{searchBar}<div className={styles.bookingRooms} id={propertyRoomsAnchorId} tabIndex={-1}>{roomSelection}</div></>}
           </PropertyBookingPanel>
         ) : <p className={styles.sectionHeading}>در حال حاضر اتاقی برای بررسی رزرو وجود ندارد.</p>}
       </section>

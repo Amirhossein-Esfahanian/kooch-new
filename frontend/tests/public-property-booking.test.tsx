@@ -481,12 +481,23 @@ describe("public property booking integration", () => {
     expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
     expect(api.fetchOptions).toHaveBeenCalledWith("kashan-house", expect.objectContaining({ adults: 2 }));
     expect(api.fetchCandidates).not.toHaveBeenCalled();
-    fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
-    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+    const launcher = screen.getAllByRole("button", { name: "ادامه رزرو" })[0];
+    launcher.focus();
+    fireEvent.click(launcher);
+    const dialog = await screen.findByRole("dialog", { name: "تکمیل رزرو خانه کاشان" });
+    expect(within(dialog).getByLabelText(/شماره موبایل/)).toBeTruthy();
+    expect(navigation.push).not.toHaveBeenCalled();
     expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).propertyEntry).toEqual({
       kind: "book", propertyId: property.id, propertySlug: "kashan-house", rooms: 1,
     });
     expect(navigation.scrollIntoView.mock.contexts).toContain(document.getElementById("property-rooms"));
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(launcher));
+    expect(JSON.parse(sessionStorage.getItem(bookingCartStorageKey)!).checkoutRequested).toBe(false);
+    fireEvent.click(launcher);
+    const reopened = await screen.findByRole("dialog");
+    fireEvent.click(within(reopened).getByRole("button", { name: "ویرایش انتخاب اقامت" }));
+    await waitFor(() => expect(document.activeElement).toBe(document.getElementById("property-rooms")));
   });
 
   it("reuses candidates, quantity selection and authoritative quote on the branded landing", async () => {
@@ -504,7 +515,8 @@ describe("public property booking integration", () => {
     expect(api.fetchQuote.mock.calls[0][1]).toEqual({ checkInDate: "2030-08-10", checkOutDate: "2030-08-12", adults: 4, childAges: [], selections: [{ roomTypeId: 10, ratePlanId: null, quantity: 2 }] });
     expect(screen.getAllByText("۸٬۰۰۰٬۰۰۰ تومان").length).toBeGreaterThan(0);
     fireEvent.click(screen.getAllByRole("button", { name: "ادامه رزرو" })[0]);
-    expect(navigation.push).toHaveBeenCalledWith("/booking/checkout?step=information");
+    expect(await screen.findByRole("dialog", { name: "تکمیل رزرو خانه کاشان" })).toBeTruthy();
+    expect(navigation.push).not.toHaveBeenCalled();
   });
 
   it.each(["landing", "marketplace"])("reads repeated child ages on the %s and searches the actual results once", async (entry) => {

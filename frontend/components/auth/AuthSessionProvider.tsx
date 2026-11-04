@@ -131,6 +131,7 @@ export interface AuthSessionContextValue {
     options?: RefreshSessionOptions,
   ) => Promise<AuthSession | null>;
   clearSession: () => void;
+  registerInlineSessionRecovery?: (handler: () => void) => () => void;
 }
 
 const AuthSessionContext = createContext<AuthSessionContextValue | null>(null);
@@ -201,6 +202,11 @@ export function resolveSessionDestination(
 export function AuthSessionProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const requestIdRef = useRef(0);
+  const inlineRecoveryHandlers = useRef(new Set<() => void>());
+  const registerInlineSessionRecovery = useCallback((handler: () => void) => {
+    inlineRecoveryHandlers.current.add(handler);
+    return () => { inlineRecoveryHandlers.current.delete(handler); };
+  }, []);
   const [session, setSession] = useState<AuthSession | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -271,7 +277,11 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
         setSession(null);
         setLoading(false);
         toast.error(message);
-        router.replace("/login");
+        if (inlineRecoveryHandlers.current.size > 0) {
+          for (const recover of inlineRecoveryHandlers.current) recover();
+        } else {
+          router.replace("/login");
+        }
       }),
     [router],
   );
@@ -298,8 +308,9 @@ export function AuthSessionProvider({ children }: { children: ReactNode }) {
       defaultPropertyId: session?.defaultPropertyId ?? null,
       refreshSession,
       clearSession,
+      registerInlineSessionRecovery,
     }),
-    [clearSession, loading, refreshSession, session],
+    [clearSession, loading, refreshSession, registerInlineSessionRecovery, session],
   );
 
   return (
