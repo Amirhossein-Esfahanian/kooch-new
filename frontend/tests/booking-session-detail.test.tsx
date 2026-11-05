@@ -218,6 +218,17 @@ describe("account booking session detail", () => {
     expect(navigation.router.replace).not.toHaveBeenCalled();
   });
 
+  it("Direct hides already loaded private details immediately after shared logout", async () => {
+    bookingApi.fetch.mockResolvedValue({ ...readyResponse(), commissionType: 2 });
+    const property = { id: 1, slug: "kashan-house", name: "خانه کاشان" };
+    const view = render(<BookingSessionDetail directProperty={property} />);
+    expect(await screen.findByRole("heading", { name: "جزئیات اقامت" })).toBeTruthy();
+    authState.authenticated = false;
+    view.rerender(<BookingSessionDetail directProperty={property} />);
+    expect(screen.getByText("ورود برای مشاهده رزرو")).toBeTruthy();
+    expect(screen.queryByText("R-001")).toBeNull();
+  });
+
   it("shows the session code and each independent reservation", async () => {
     render(<AccountBookingSessionPage />);
     expect((await screen.findAllByText("BS-1405-001")).length).toBeGreaterThan(0);

@@ -254,6 +254,8 @@ export interface AccountBookingSession {
 }
 
 export interface AccountBookingSessionListItem {
+  commissionType?: 0 | 1 | 2 | null;
+  reservations?: AccountBookingSession["reservations"];
   sessionCode: string;
   property: { propertyId: number; name: string; slug: string };
   checkInDate: string | null;
@@ -408,11 +410,15 @@ export function acknowledgeReceptionCoordination(sessionCode: string) {
   );
 }
 
-export function fetchAccountBookingSessions(page = 1, pageSize = 10) {
+export function fetchAccountBookingSessions(page = 1, pageSize = 10, filters?: { propertyId: number; commissionType: 2 }) {
   const params = new URLSearchParams({
     page: String(page),
     pageSize: String(pageSize),
   });
+  if (filters) {
+    params.set("propertyId", String(filters.propertyId));
+    params.set("commissionType", String(filters.commissionType));
+  }
   return apiRequest<PagedAccountBookingSessions>(
     `/account/booking-sessions?${params.toString()}`,
   );

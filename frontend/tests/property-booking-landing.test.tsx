@@ -23,6 +23,7 @@ import { PropertyBookingLanding } from "@/components/booking/PropertyBookingLand
 import { PropertyPhoto } from "@/components/booking/PropertyPhoto";
 import { PublicSiteShell } from "@/components/PublicSiteShell";
 import { PublicApiError } from "@/lib/public-properties";
+vi.mock("@/components/booking/PropertyGuestAccount", () => ({ PropertyGuestAccount: () => null }));
 
 function property(): PublicProperty {
   const room = {

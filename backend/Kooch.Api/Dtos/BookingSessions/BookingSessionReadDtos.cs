@@ -1,6 +1,7 @@
 using Kooch.Api.Entities;
 using Kooch.Api.Serialization;
 using System.Text.Json.Serialization;
+using System.ComponentModel.DataAnnotations;
 
 namespace Kooch.Api.Dtos.BookingSessions;
 
@@ -136,12 +137,21 @@ public sealed class AccountBookingSessionPrimaryGuestResponse
 
 public sealed class AccountBookingSessionListQuery
 {
+    [Range(1, int.MaxValue)]
+    public int? PropertyId { get; set; }
+    [EnumDataType(typeof(CommissionType))]
+    public CommissionType? CommissionType { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 10;
 }
 
 public sealed class AccountBookingSessionListItemResponse
 {
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    [JsonConverter(typeof(JsonNumberEnumConverter<CommissionType>))]
+    public CommissionType? CommissionType { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<AccountBookingSessionReservationResponse>? Reservations { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     public BookingSessionPropertyResponse Property { get; set; } = new();
     public DateOnly? CheckInDate { get; set; }

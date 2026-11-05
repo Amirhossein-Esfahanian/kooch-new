@@ -10,11 +10,17 @@ vi.mock("@/lib/owner-api", async (importOriginal) => {
 import {
   acknowledgeReceptionCoordination,
   fetchAccountPaymentProviders,
+  fetchAccountBookingSessions,
   initiateAccountBookingSessionPayment,
   simulateMockBookingSessionPayment,
 } from "@/lib/booking-sessions";
 
 describe("booking-session payment API contract", () => {
+  it("sends Property and persisted-channel filters on the existing paged Account read endpoint", async () => {
+    ownerApi.apiRequest.mockResolvedValue({ items: [] });
+    await fetchAccountBookingSessions(2, 10, { propertyId: 2, commissionType: 2 });
+    expect(ownerApi.apiRequest).toHaveBeenCalledWith("/account/booking-sessions?page=2&pageSize=10&propertyId=2&commissionType=2");
+  });
   it("acknowledges through the owning Account action without a client timestamp or requirement flag", async () => {
     ownerApi.apiRequest.mockResolvedValue({ receptionCoordinationAcknowledgedAtUtc: "2026-10-13T12:00:00Z" });
     await acknowledgeReceptionCoordination("O/123456");

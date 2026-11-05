@@ -44,11 +44,13 @@ export function CheckoutIdentityStep({
   interruptionMessage,
   onAuthenticated,
   allowAlternateLogin = true,
+  intent = "checkout",
   onBusyChange,
 }: {
   interruptionMessage?: string | null;
   onAuthenticated: () => void;
   allowAlternateLogin?: boolean;
+  intent?: "checkout" | "account";
   onBusyChange?: (busy: boolean) => void;
 }) {
   const auth = useAuthSession();
@@ -306,12 +308,12 @@ export function CheckoutIdentityStep({
     <div>
       <h2
         className="text-xl font-bold text-foreground"
-        id="checkout-step-title"
+        id={intent === "account" ? undefined : "checkout-step-title"}
       >
-        اطلاعات رزروکننده
+        {intent === "account" ? "ورود به حساب" : "اطلاعات رزروکننده"}
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
-        با تأیید شماره موبایل، رزرو به همان حساب کاربری شما متصل می‌شود.
+        {intent === "account" ? "با تأیید شماره موبایل، وارد حساب مشترک خود شوید و رزروهای این اقامتگاه را ببینید." : "با تأیید شماره موبایل، رزرو به همان حساب کاربری شما متصل می‌شود."}
       </p>
 
       {interruptionMessage ? (

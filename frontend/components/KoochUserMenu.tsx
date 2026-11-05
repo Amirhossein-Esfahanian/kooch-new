@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import {
   resolveSessionDestination,
@@ -36,12 +36,14 @@ function UserMenuContent({
   onOpenChange,
   open,
   variant = "public",
+  propertySlug,
 }: {
   collapsed?: boolean;
   darkMode?: boolean;
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
-  variant?: "dashboard" | "public" | "sidebar";
+  variant?: "dashboard" | "public" | "sidebar" | "property";
+  propertySlug?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -51,12 +53,14 @@ function UserMenuContent({
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
   const menuOpen = open ?? internalOpen;
   const isSidebar = variant === "sidebar";
+  const isProperty = variant === "property";
   const currentWorkspace = routeWorkspace(pathname);
   const userName = session.user?.fullName || session.user?.email || "کاربر کوچ";
   const secondaryIdentifier = session.user?.email || session.user?.phoneNumber;
-  const visibleWorkspaces = workspaceOptions.filter((workspace) =>
+  const visibleWorkspaces = isProperty ? [] : workspaceOptions.filter((workspace) =>
     session.workspaces.includes(workspace.key),
   );
 
@@ -66,14 +70,14 @@ function UserMenuContent({
   }, [onOpenChange, open]);
 
   useEffect(() => {
-    if (!menuOpen || !isSidebar) return;
+    if (!menuOpen || !(isSidebar || isProperty)) return;
     const closeOnOutsidePointer = (event: PointerEvent) => {
       if (event.target instanceof Node && !menuRef.current?.contains(event.target) &&
         !triggerRef.current?.contains(event.target)) setMenuOpen(false);
     };
     document.addEventListener("pointerdown", closeOnOutsidePointer);
     return () => document.removeEventListener("pointerdown", closeOnOutsidePointer);
-  }, [isSidebar, menuOpen, setMenuOpen]);
+  }, [isSidebar, isProperty, menuOpen, setMenuOpen]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -96,7 +100,7 @@ function UserMenuContent({
   function logout() {
     setMenuOpen(false);
     session.clearSession();
-    router.push("/login");
+    router.push(isProperty && propertySlug ? `/book/${encodeURIComponent(propertySlug)}` : "/login");
   }
 
   function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
@@ -123,7 +127,7 @@ function UserMenuContent({
       setMenuOpen(false);
       triggerRef.current?.focus();
       return;
-    } else if (event.key === "Tab" && isSidebar) {
+    } else if (event.key === "Tab" && (isSidebar || isProperty)) {
       setMenuOpen(false);
       triggerRef.current?.focus();
     }
@@ -151,7 +155,7 @@ function UserMenuContent({
   return (
     <>
       <div className={isSidebar ? "relative w-full" : "relative"}>
-        {menuOpen && !isSidebar && (
+        {menuOpen && !isSidebar && !isProperty && (
           <button
             aria-label="بستن منوی کاربر"
             className="fixed inset-0 z-[60] cursor-default"
@@ -162,8 +166,9 @@ function UserMenuContent({
         <button
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          aria-label={`منوی کاربر ${userName}`}
-          className={`relative z-[80] flex items-center gap-2 border px-2 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSidebar ? `min-h-11 w-full rounded-lg ${collapsed ? "md:justify-center" : ""}` : "min-h-10 max-w-56 rounded-xl"} ${triggerClass}`}
+          aria-controls={menuOpen ? menuId : undefined}
+          aria-label={isProperty ? "حساب من" : `منوی کاربر ${userName}`}
+          className={`relative z-[80] flex items-center gap-2 border px-2 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSidebar ? `min-h-11 w-full rounded-lg ${collapsed ? "md:justify-center" : ""}` : isProperty ? "min-h-11 max-w-56 rounded-lg" : "min-h-10 max-w-56 rounded-xl"} ${triggerClass}`}
           onClick={() => setMenuOpen(!menuOpen)}
           ref={triggerRef}
           type="button"
@@ -183,7 +188,7 @@ function UserMenuContent({
                 <span className="block truncate text-xs font-normal text-foreground" dir="auto">{secondaryIdentifier}</span>
               )}
             </span>
-          ) : <span className="hidden min-w-0 truncate lg:inline">{userName}</span>}
+          ) : <span className={isProperty ? "min-w-0 truncate" : "hidden min-w-0 truncate lg:inline"}>{isProperty ? "حساب من" : userName}</span>}
           <span aria-hidden="true" className={`text-muted-foreground ${isSidebar ? `rotate-180 ${collapsed ? "md:hidden" : ""}` : ""}`}>
             ▾
           </span>
@@ -191,12 +196,14 @@ function UserMenuContent({
 
         {menuOpen && (
           <div
-            aria-label="انتخاب محیط کاربری و حساب"
+            aria-label={isProperty ? "حساب من" : "انتخاب محیط کاربری و حساب"}
             className={`absolute z-[90] w-64 border p-1 text-sm font-bold shadow-xl ${isSidebar ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-6rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg" : "left-0 top-12 overflow-hidden rounded-xl"} ${menuClass}`}
             onKeyDown={handleMenuKeyDown}
             ref={menuRef}
+            id={menuId}
             role="menu"
           >
+            {isProperty && propertySlug && <button className={`block min-h-11 w-full rounded-lg px-3 py-2 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${itemClass}`} role="menuitem" type="button" onClick={() => { setMenuOpen(false); router.push(`/book/${encodeURIComponent(propertySlug)}/my-bookings`); }}>رزروهای من</button>}
             {visibleWorkspaces.map((workspace) => (
               <button
                 aria-current={
@@ -211,7 +218,7 @@ function UserMenuContent({
                 {workspace.label}
               </button>
             ))}
-            <div className="my-1 border-t border-border" role="separator" />
+            {!isProperty && <><div className="my-1 border-t border-border" role="separator" />
             <button
               className={`block min-h-10 w-full rounded-lg px-3 py-2 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
               onClick={openAccountSettings}
@@ -220,22 +227,23 @@ function UserMenuContent({
             >
               تنظیمات حساب
             </button>
+            </>}
             <button
-              className={`block min-h-10 w-full rounded-lg px-3 py-2 text-right text-destructive transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
+              className={`block ${isProperty ? "min-h-11" : "min-h-10"} w-full rounded-lg px-3 py-2 text-right text-destructive transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
               onClick={logout}
               role="menuitem"
               type="button"
             >
-              خروج
+              {isProperty ? "خروج از حساب" : "خروج"}
             </button>
           </div>
         )}
       </div>
 
-      <KoochUserProfileDialog
+      {!isProperty && <KoochUserProfileDialog
         onOpenChange={setProfileDialogOpen}
         open={profileDialogOpen}
-      />
+      />}
     </>
   );
 }

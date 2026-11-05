@@ -11,6 +11,7 @@ import { PropertyPhoto } from "@/components/booking/PropertyPhoto";
 import { fetchPublicApi, PublicApiError, type PublicProperty, type PublicRoomType } from "@/lib/public-properties";
 import { toPersianDigits } from "@/lib/persian-digits";
 import styles from "./PropertyBookingLanding.module.css";
+import { PropertyGuestAccount } from "@/components/booking/PropertyGuestAccount";
 
 type Resource = { slug: string; property?: PublicProperty; error?: "missing" | "failed" };
 
@@ -81,6 +82,7 @@ function LandingContent({ property }: { property: PublicProperty }) {
             <a href="#property-introduction">درباره اقامتگاه</a>
             {property.address && <a href="#property-location">نشانی</a>}
           </nav>
+          <PropertyGuestAccount slug={property.slug} />
         </header>
 
         <div className={styles.scene}>

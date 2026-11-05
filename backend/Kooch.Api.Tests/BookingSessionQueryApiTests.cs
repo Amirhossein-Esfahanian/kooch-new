@@ -21,6 +21,66 @@ namespace Kooch.Api.Tests;
 
 public sealed class BookingSessionQueryApiTests
 {
+    [Fact]
+    public async Task AccountList_PropertyDirectFiltersPrecedePaginationAndRemainOwned()
+    {
+        await using var harness = await BookingSessionReadHarness.CreateAsync();
+        await using var context = harness.CreateContext();
+        context.Properties.Add(new Property { Id = 2, Name = "Other Property", Slug = "other", OwnerId = 1, DestinationId = 1, Description = "Other", Address = "Other", City = "Other", Country = "IR" });
+        foreach (var row in new (int Id, int Client, int Property, CommissionType? Channel)[] {
+            (20, 1, 1, CommissionType.PropertyReferralCode), (21, 1, 1, CommissionType.PropertyReferralCode),
+            (22, 1, 1, CommissionType.Direct), (23, 1, 1, CommissionType.PropertyReferralLink),
+            (24, 1, 1, null), (25, 2, 1, CommissionType.PropertyReferralCode), (26, 1, 2, CommissionType.PropertyReferralCode) })
+        {
+            context.BookingSessions.Add(new BookingSession { Id = row.Id, ClientId = row.Client, PropertyId = row.Property, CommissionType = row.Channel,
+                SessionCode = $"FILTER-{row.Id}", Currency = "IRR", RequestHash = new string('C', 64), CreatedAtUtc = new DateTime(2036, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
+        }
+        context.Reservations.Add(new Reservation { Id = 2000, BookingSessionId = 21, ReservationNumber = "R-DIRECT", ClientId = 1, PropertyId = 1, RoomTypeId = 10,
+            CheckInDate = new DateOnly(2036, 1, 1), CheckOutDate = new DateOnly(2036, 1, 2), AdultCount = 1, FinalAmount = 700, Currency = "IRR", Status = ReservationStatus.Confirmed });
+        await context.SaveChangesAsync();
+        context.ChangeTracker.Clear();
+        var service = new BookingSessionQueryService(context);
+        var query = new AccountBookingSessionListQuery { PropertyId = 1, CommissionType = CommissionType.PropertyReferralCode, PageSize = 1 };
+        var first = await service.GetForClientAsync(1, query);
+        Assert.Equal(2, first.TotalCount);
+        Assert.Equal(2, first.TotalPages);
+        var item = Assert.Single(first.Items);
+        Assert.Equal("FILTER-21", item.SessionCode);
+        Assert.Equal(CommissionType.PropertyReferralCode, item.CommissionType);
+        var jsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+        jsonOptions.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        using var json = JsonDocument.Parse(JsonSerializer.Serialize(item, jsonOptions));
+        Assert.Equal(2, json.RootElement.GetProperty("commissionType").GetInt32());
+        var reservation = Assert.Single(item.Reservations!);
+        Assert.Equal("R-DIRECT", reservation.ReservationNumber);
+        Assert.Equal("Room Type One", reservation.RoomTypeName);
+        Assert.Equal(700, reservation.FinalAmount);
+        query.Page = 2;
+        Assert.Equal("FILTER-20", Assert.Single((await service.GetForClientAsync(1, query)).Items).SessionCode);
+        query.Page = 1;
+        Assert.Equal("FILTER-25", Assert.Single((await service.GetForClientAsync(2, query)).Items).SessionCode);
+        query.PropertyId = 2;
+        Assert.Equal("FILTER-26", Assert.Single((await service.GetForClientAsync(1, query)).Items).SessionCode);
+        query.PropertyId = 999;
+        Assert.Empty((await service.GetForClientAsync(1, query)).Items);
+        var unfiltered = await service.GetForClientAsync(1, new AccountBookingSessionListQuery { PageSize = 500 });
+        Assert.Equal(50, unfiltered.PageSize);
+        Assert.Contains(unfiltered.Items, value => value.SessionCode == "FILTER-22");
+        Assert.Contains(unfiltered.Items, value => value.SessionCode == "FILTER-24");
+        Assert.All(unfiltered.Items, value => { Assert.Null(value.CommissionType); Assert.Null(value.Reservations); });
+        Assert.Empty(context.ChangeTracker.Entries());
+    }
+
+    [Theory]
+    [InlineData(0, 2)]
+    [InlineData(1, 3)]
+    public void AccountList_RejectsInvalidPropertyOrChannelFilters(int propertyId, int channel)
+    {
+        var query = new AccountBookingSessionListQuery { PropertyId = propertyId, CommissionType = (CommissionType)channel };
+        Assert.False(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(query,
+            new System.ComponentModel.DataAnnotations.ValidationContext(query), [], validateAllProperties: true));
+    }
+
     [Theory]
     [InlineData(null)]
     [InlineData(0)]
@@ -62,7 +122,7 @@ public sealed class BookingSessionQueryApiTests
 
         await Assert.ThrowsAsync<KeyNotFoundException>(() =>
             service.GetBySessionCodeForClientAsync(2, session.SessionCode));
-        Assert.Null(typeof(AccountBookingSessionListItemResponse).GetProperty("CommissionType"));
+        Assert.DoesNotContain("CommissionType", JsonSerializer.Serialize(new AccountBookingSessionListItemResponse()));
         Assert.Null(typeof(BookingSessionDetailsResponse).GetProperty("CommissionType"));
     }
 

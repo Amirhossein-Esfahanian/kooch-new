@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const navigation = vi.hoisted(() => ({
   router: { push: vi.fn(), replace: vi.fn() },
 }));
+vi.mock("@/components/booking/PropertyGuestAccount", () => ({ PropertyGuestAccount: () => null }));
 const api = vi.hoisted(() => ({
   fetch: vi.fn(),
   fetchProviders: vi.fn(),

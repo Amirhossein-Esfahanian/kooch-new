@@ -7,7 +7,7 @@ import { Footer } from "@/components/Footer";
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const propertyLanding = /^\/book\/[^/]+(?:\/reservations\/[^/]+(?:\/(?:success|payment-failure|mock-payment))?)?\/?$/.test(pathname ?? "") ||
+  const propertyLanding = /^\/book\/[^/]+(?:\/my-bookings|\/reservations\/[^/]+(?:\/(?:success|payment-failure|mock-payment))?)?\/?$/.test(pathname ?? "") ||
     /^\/booking\/sessions\/[^/]+\/(?:success|payment-failure|mock-payment)\/?$/.test(pathname ?? "");
 
   return (

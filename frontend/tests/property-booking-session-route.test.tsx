@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const api = vi.hoisted(() => ({ property: vi.fn(), detail: vi.fn() }));
+vi.mock("@/components/booking/PropertyGuestAccount", () => ({ PropertyGuestAccount: () => null }));
 vi.mock("@/lib/public-properties.server", () => ({ getPublicBookingProperty: api.property }));
 vi.mock("next/navigation", () => ({ notFound: () => { throw new Error("NOT_FOUND"); } }));
 vi.mock("@/components/booking/BookingSessionDetail", () => ({

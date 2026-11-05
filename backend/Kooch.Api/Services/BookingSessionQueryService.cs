@@ -43,6 +43,10 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
         var now = timeProvider.GetUtcNow().UtcDateTime;
         var sessions = dbContext.BookingSessions.AsNoTracking()
             .Where(session => session.ClientId == clientId);
+        if (query.PropertyId.HasValue)
+            sessions = sessions.Where(session => session.PropertyId == query.PropertyId.Value);
+        if (query.CommissionType.HasValue)
+            sessions = sessions.Where(session => session.CommissionType == query.CommissionType.Value);
         var totalCount = await sessions.CountAsync(cancellationToken);
         var projections = await sessions
             .OrderByDescending(session => session.CreatedAtUtc)
@@ -104,6 +108,42 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             })
             .ToListAsync(cancellationToken);
         var items = projections.Select(projection => ToListItem(projection, now)).ToArray();
+        if (query.PropertyId.HasValue && query.CommissionType == CommissionType.PropertyReferralCode && items.Length > 0)
+        {
+            var codes = items.Select(item => item.SessionCode).ToArray();
+            // Same owned, Property/channel-scoped query; load details only for this bounded page.
+            var details = await sessions.Where(session => codes.Contains(session.SessionCode))
+                .Select(session => new
+                {
+                    session.SessionCode,
+                    session.CommissionType,
+                    Reservations = session.Reservations.OrderBy(reservation => reservation.Id)
+                        .Select(reservation => new AccountBookingSessionReservationResponse
+                        {
+                            ReservationNumber = reservation.ReservationNumber ?? string.Empty,
+                            RoomTypeId = reservation.RoomTypeId,
+                            RatePlanId = reservation.RatePlanId,
+                            RatePlanName = reservation.RatePlanNameSnapshot,
+                            MealPlanName = reservation.MealPlanNameSnapshot,
+                            RoomTypeName = reservation.RoomType.Name,
+                            RoomId = reservation.RoomId,
+                            RoomName = reservation.Room == null ? null : reservation.Room.Name,
+                            CheckInDate = reservation.CheckInDate,
+                            CheckOutDate = reservation.CheckOutDate,
+                            Status = reservation.Status,
+                            FinalAmount = reservation.FinalAmount,
+                            Currency = reservation.Currency,
+                            PaymentExpiresAtUtc = reservation.PaymentExpiresAtUtc,
+                            ApprovalExpiresAtUtc = reservation.ApprovalExpiresAtUtc
+                        }).ToList()
+                }).ToListAsync(cancellationToken);
+            var byCode = details.ToDictionary(item => item.SessionCode);
+            foreach (var item in items)
+            {
+                item.Reservations = byCode[item.SessionCode].Reservations;
+                item.CommissionType = byCode[item.SessionCode].CommissionType;
+            }
+        }
 
         return new PagedResult<AccountBookingSessionListItemResponse>
         {
