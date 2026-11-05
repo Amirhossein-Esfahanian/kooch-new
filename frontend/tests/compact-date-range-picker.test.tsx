@@ -86,6 +86,28 @@ function ControlledPicker({
 }
 
 describe("KoochCompactDateRangePicker", () => {
+  it("supports separate Direct arrival/departure fields with the same immediate range confirmation", async () => {
+    installHolidayFetch([]);
+    const onChange = vi.fn();
+    render(<KoochCompactDateRangePicker combinedField={false} value={committedRange} onChange={onChange} />);
+    expect(screen.getAllByRole("button")).toHaveLength(2);
+    expect(document.querySelector("[data-combined-date-field]")).toBeNull();
+    const arrival = screen.getByRole("button", { name: /^تاریخ ورود/ });
+    arrival.focus();
+    fireEvent.click(arrival);
+    expect(arrival.getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("dialog", { name: "انتخاب تاریخ اقامت" })).toBeTruthy();
+    fireEvent.click(findDay("2026-03-24"));
+    expect(onChange).not.toHaveBeenCalled();
+    fireEvent.click(findDay("2026-03-26"));
+    await waitFor(() => expect(onChange).toHaveBeenCalledExactlyOnceWith({ startDate: "2026-03-24", endDate: "2026-03-26" }));
+    await waitFor(() => expect(document.activeElement).toBe(arrival));
+    const departure = screen.getByRole("button", { name: /^تاریخ خروج/ });
+    fireEvent.click(departure);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(document.activeElement).toBe(departure));
+  });
+
   beforeEach(() => {
     Object.defineProperty(window, "matchMedia", {
       configurable: true,

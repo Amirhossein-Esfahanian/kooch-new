@@ -10,9 +10,11 @@ export function PropertyGuestAuthDialog({ open, onOpenChange, onAuthenticated, p
 }) {
   const [busy, setBusy] = useState(false);
   return <KoochDialog open={open} onOpenChange={(next) => { if (!busy) onOpenChange(next); }} closeDisabled={busy}
-    title={propertyName || "ورود / ثبت‌نام"} description="ورود امن به حساب مشترک برای مشاهده و پیگیری رزروها"
-    size="sm" contentClassName={`${styles.scope} ${styles.authDialog}`} bodyClassName={styles.authBody}>
+    title={<>{propertyName && <span className={styles.authProperty}>{propertyName}</span>}<span className={styles.authHeading}>ورود / ثبت‌نام</span></>}
+    description="برای مشاهده و پیگیری رزروها، شماره موبایل خود را تأیید کنید."
+    closeButtonClassName={styles.authClose}
+    size="sm" contentClassName={`dark ${styles.scope} ${styles.authDialog}`} bodyClassName={styles.authBody}>
     {/* The shared dialog owns initial focus so lazy mounting cannot steal its return target. */}
-    {open && <CheckoutIdentityStep intent="account" allowAlternateLogin={false} autoFocusMobile={false} onBusyChange={setBusy} onAuthenticated={onAuthenticated} />}
+    {open && <CheckoutIdentityStep intent="account" allowAlternateLogin={false} autoFocusMobile={false} showIntroduction={false} onBusyChange={setBusy} onAuthenticated={onAuthenticated} />}
   </KoochDialog>;
 }

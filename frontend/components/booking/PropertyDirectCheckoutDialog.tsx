@@ -8,11 +8,12 @@ import { BookingCheckoutContent } from "@/components/booking/BookingCheckoutFlow
 import { useBookingCart } from "@/components/booking/BookingCartProvider";
 import { validBookingPropertyEntry } from "@/lib/booking-context";
 
-export function PropertyDirectCheckoutDialog({ propertyId, propertySlug, open, onOpenChange }: {
+export function PropertyDirectCheckoutDialog({ propertyId, propertySlug, open, onOpenChange, contentClassName = "" }: {
   propertyId: number;
   propertySlug: string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  contentClassName?: string;
 }) {
   const cart = useBookingCart();
   const auth = useAuthSession();
@@ -67,7 +68,7 @@ export function PropertyDirectCheckoutDialog({ propertyId, propertySlug, open, o
     title={`تکمیل رزرو ${cart.items[0]?.propertyName ?? "اقامتگاه"}`}
     description="اطلاعات رزرو را همین‌جا تکمیل کنید. با بستن این پنجره، انتخاب اتاق‌ها حفظ می‌شود."
     size="xl"
-    contentClassName="max-sm:!h-[100dvh] max-sm:!max-h-[100dvh] max-sm:!w-screen max-sm:!max-w-none max-sm:!rounded-none"
+    contentClassName={`${contentClassName} max-sm:!h-[100dvh] max-sm:!max-h-[100dvh] max-sm:!w-screen max-sm:!max-w-none max-sm:!rounded-none`}
     bodyClassName="px-4 py-0 sm:px-6"
   >
     {open && matches && <>

@@ -36,10 +36,12 @@ function calendarMonths() {
 }
 
 export function PublicRoomTypeCalendarDialog({
+  contentClassName = "",
   roomType,
   propertySlug,
   onClose,
 }: {
+  contentClassName?: string;
   roomType: PublicRoomType | null;
   propertySlug: string;
   onClose: () => void;
@@ -118,7 +120,7 @@ export function PublicRoomTypeCalendarDialog({
   return (
     <KoochDialog
       bodyClassName="min-w-0 px-3 py-4 sm:px-6"
-      contentClassName="!h-auto sm:!max-w-xl"
+      contentClassName={`!h-auto sm:!max-w-xl ${contentClassName}`}
       onOpenChange={(open) => { if (!open) onClose(); }}
       open={roomType !== null}
       size="md"

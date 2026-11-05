@@ -15,7 +15,7 @@ vi.mock("@/components/booking/PropertyBookingPanel", () => ({
   propertyRoomsAnchorId: "property-rooms",
   PropertyBookingPanel: (props: ComponentProps<typeof import("@/components/booking/PropertyBookingPanel").PropertyBookingPanel>) => {
     mocks.panel(props);
-    return props.children({ searchBar: <div>جستجوی واقعی</div>, roomSelection: <div>انتخاب تعداد اتاق</div> });
+    return props.children({ searchBar: <div>جستجوی واقعی</div>, roomSelection: <div>انتخاب تعداد اتاق{props.roomTypes.map((room) => <button key={room.id} onClick={() => props.onShowRoomDetails(room)}>مشاهده {room.name}</button>)}</div> });
   },
 }));
 
@@ -50,6 +50,7 @@ function property(): PublicProperty {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: vi.fn() });
   mocks.slug = "garden-house";
   mocks.pathname = "/book/garden-house";
   mocks.query = "";
@@ -58,6 +59,18 @@ beforeEach(() => {
 });
 
 describe("Property booking landing", () => {
+  it.each([[1, "single"], [2, "pair"], [3, "grid"]] as const)("selects a count-aware composition for %i actual RoomTypes", async (count, layout) => {
+    const data = property();
+    data.roomTypes = Array.from({ length: count }, (_, index) => ({ ...data.roomTypes[0], id: index + 1, name: `اتاق ${index + 1}` }));
+    mocks.fetchProperty.mockResolvedValueOnce(data);
+    render(<PropertyBookingLanding />);
+    await screen.findByRole("heading", { level: 1 });
+    expect(document.getElementById("property-rooms")?.getAttribute("data-room-layout")).toBe(layout);
+    expect(mocks.panel.mock.calls.at(-1)![0].roomTypes).toHaveLength(count);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(document.querySelectorAll('img[src*="room.jpg"]')).toHaveLength(0);
+  });
+
   it("renders real initial Property content on the server without a second client fetch", () => {
     const data = property();
     const html = renderToString(<PropertyBookingLanding initialProperty={data} initialSlug={data.slug} />);
@@ -98,8 +111,7 @@ describe("Property booking landing", () => {
     expect(props.autoCheckInitialContextKey).toBe(initialKey);
     expect(window.location.search).toContain("childAges=4%2C9");
     expect(window.location.search).toContain("utm_source=test");
-    const nav = screen.getByRole("navigation", { name: "پیش‌نمایش اتاق‌ها" });
-    fireEvent.click(within(nav).getByRole("button", { name: /اتاق حیاط/ }));
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده اتاق حیاط" }));
     expect(mocks.panel.mock.calls.at(-1)![0].guests.rooms).toBe(2);
     // Next's native-history echo must not start a search or reset newer edits.
     mocks.query = window.location.search.slice(1);
@@ -159,14 +171,36 @@ describe("Property booking landing", () => {
     expect(Object.keys(props).join()).not.toMatch(/commission|channel/i);
   });
 
+  it("shows only real facilities after the functional rooms, without reference-image claims", async () => {
+    const data = property();
+    data.amenities = [{ id: 9, name: "حیاط مرکزی", category: "عمومی" }, { id: 10, name: "اینترنت", category: "عمومی" }];
+    mocks.fetchProperty.mockResolvedValueOnce(data);
+    render(<PropertyBookingLanding />);
+    const facilities = await screen.findByRole("region", { name: "امکانات و خدمات اقامتگاه" });
+    expect(within(facilities).getAllByRole("listitem").map((item) => item.textContent)).toEqual(["حیاط مرکزی", "اینترنت"]);
+    expect(document.getElementById("property-rooms")!.compareDocumentPosition(facilities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("link", { name: "امکانات" }).getAttribute("href")).toBe("#property-facilities");
+    expect(document.body.textContent).not.toMatch(/Royal Crest|اسپا|انتقال فرودگاهی|استخر|تخفیف/);
+  });
+
+  it("hides absent facilities and falls back to an actual Property image for the hero", async () => {
+    const data = property();
+    data.coverImageUrl = null;
+    data.images = [{ ...data.roomTypes[0].images[0], url: "/actual-property.jpg" }];
+    mocks.fetchProperty.mockResolvedValueOnce(data);
+    render(<PropertyBookingLanding />);
+    const hero = await screen.findByRole("region", { name: "معرفی خانه باغ" });
+    expect(hero.querySelector('img[src*="actual-property.jpg"]')).toBeTruthy();
+    expect(screen.queryByRole("region", { name: "امکانات و خدمات اقامتگاه" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "امکانات" })).toBeNull();
+  });
+
   it("switches preview only and falls back to the actual Property image without touching the cart", async () => {
     sessionStorage.setItem("cart-sentinel", "unchanged");
     render(<PropertyBookingLanding />);
-    const nav = await screen.findByRole("navigation", { name: "پیش‌نمایش اتاق‌ها" });
-    const second = within(nav).getByRole("button", { name: /اتاق حیاط/ });
+    const second = await screen.findByRole("button", { name: "مشاهده اتاق حیاط" });
     fireEvent.click(second);
-    expect(second.getAttribute("aria-pressed")).toBe("true");
-    const preview = screen.getByRole("region", { name: "اتاق حیاط" });
+    const preview = await screen.findByRole("dialog", { name: "اتاق حیاط" });
     expect(within(preview).getByText("نمای حیاط")).toBeTruthy();
     expect(within(preview).getByRole("img").getAttribute("src")).toContain("house.jpg");
     expect(sessionStorage.getItem("cart-sentinel")).toBe("unchanged");
@@ -175,47 +209,41 @@ describe("Property booking landing", () => {
     expect(screen.getByRole("link", { name: /انتخاب تاریخ و رزرو/ }).getAttribute("href")).toBe("#booking");
   });
 
-  it("renders stable two-digit room indices with real capacity and independently selected preview state", async () => {
+  it("preserves API room ordering and independently selected details without cart changes", async () => {
     const data = property();
     data.roomTypes = [data.roomTypes[1], data.roomTypes[0]];
     mocks.fetchProperty.mockResolvedValueOnce(data);
     render(<PropertyBookingLanding />);
-    const nav = await screen.findByRole("navigation", { name: "پیش‌نمایش اتاق‌ها" });
-    const choices = within(nav).getAllByRole("button");
-    expect(choices.map((choice) => choice.getAttribute("aria-labelledby"))).toEqual(["room-nav-name-2", "room-nav-name-1"]);
-    expect(within(choices[0]).getByText("01").getAttribute("aria-hidden")).toBe("true");
-    expect(within(choices[1]).getByText("02").getAttribute("dir")).toBe("ltr");
-    expect(within(choices[0]).getByText("ظرفیت: ۲ بزرگسال، ۱ کودک")).toBeTruthy();
-    expect(within(choices[0]).queryByText("نمای حیاط")).toBeNull();
-    expect(choices[0].querySelector('[aria-hidden="true"]:not([dir])')).toBeTruthy();
-    expect(choices[0].getAttribute("aria-pressed")).toBe("true");
+    await screen.findByRole("heading", { level: 1 });
+    const choices = screen.getAllByRole("button", { name: /^مشاهده اتاق/ });
+    expect(choices.map((choice) => choice.textContent)).toEqual(["مشاهده اتاق حیاط", "مشاهده اتاق باغ"]);
     choices[1].focus();
     expect(document.activeElement).toBe(choices[1]);
-    // Merely focusing a preview must not change its selection or the booking cart.
-    expect(choices[0].getAttribute("aria-pressed")).toBe("true");
+    expect(screen.queryByRole("dialog")).toBeNull();
     fireEvent.click(choices[1]);
-    expect(choices[0].getAttribute("aria-pressed")).toBe("false");
-    expect(choices[1].getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByRole("region", { name: "اتاق باغ" })).toBeTruthy();
+    const dialog = await screen.findByRole("dialog", { name: "اتاق باغ" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "بازگشت به انتخاب اتاق" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await vi.waitFor(() => expect(document.activeElement).toBe(choices[1]));
     expect(sessionStorage.length).toBe(0);
   });
 
-  it("preserves long Persian room names and uses actual adult/child capacity instead of description excerpts", async () => {
+  it("preserves long Persian room names and actual capacity in connected room details", async () => {
     const data = property();
     const longName = "اتاق شاه‌نشین رو به حیاط مرکزی با نام بسیار طولانی برای اقامت خانوادگی";
     data.roomTypes[0] = { ...data.roomTypes[0], name: longName, description: "  اتاقی رو به باغ\n  با پنجره‌های چوبی  " };
     data.roomTypes[1] = { ...data.roomTypes[1], description: " \n ", maxAdults: 4, maxChildren: 0 };
     mocks.fetchProperty.mockResolvedValueOnce(data);
     render(<PropertyBookingLanding />);
-    const nav = await screen.findByRole("navigation", { name: "پیش‌نمایش اتاق‌ها" });
-    const first = within(nav).getByRole("button", { name: longName });
-    expect(within(first).getByText(longName).textContent).toBe(longName);
-    expect(within(first).getByText("ظرفیت: ۲ بزرگسال، ۱ کودک")).toBeTruthy();
-    expect(first.textContent).not.toContain("پنجره‌های چوبی");
-    const second = within(nav).getByRole("button", { name: "اتاق حیاط" });
-    expect(within(second).getByText("ظرفیت: ۴ بزرگسال، ۰ کودک")).toBeTruthy();
-    expect(second.getAttribute("aria-describedby")).toBe("room-nav-summary-2");
-    expect(within(nav).queryByText(/تومان|قیمت|موجودی|رزرو آنی/)).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: `مشاهده ${longName}` }));
+    const first = await screen.findByRole("dialog", { name: longName });
+    expect(within(first).getByText("ظرفیت بزرگسال: ۲ · ظرفیت کودک: ۱")).toBeTruthy();
+    fireEvent.click(within(first).getByRole("button", { name: "بازگشت به انتخاب اتاق" }));
+    await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "مشاهده اتاق حیاط" }));
+    const second = await screen.findByRole("dialog", { name: "اتاق حیاط" });
+    expect(within(second).getByText("ظرفیت بزرگسال: ۴ · ظرفیت کودک: ۰")).toBeTruthy();
+    expect(within(second).queryByText(/تومان|رزرو آنی/)).toBeNull();
   });
 
   it("fails closed for an unapproved response and for 404", async () => {
@@ -260,82 +288,71 @@ describe("Property booking landing", () => {
   it("handles a real empty room list and missing imagery without an empty image src", async () => {
     mocks.fetchProperty.mockResolvedValueOnce({ ...property(), coverImageUrl: null, roomTypes: [], description: "", shortDescription: "", checkInTime: null, checkOutTime: null, address: "" });
     const { container } = render(<PropertyBookingLanding />);
-    expect(await screen.findByText("هنوز اتاقی برای نمایش ثبت نشده است.")).toBeTruthy();
+    expect(await screen.findByText("در حال حاضر اتاقی برای بررسی رزرو وجود ندارد.")).toBeTruthy();
     expect(container.querySelector("img")).toBeNull();
     expect(mocks.panel).not.toHaveBeenCalled();
     expect(screen.queryByText("زمان اقامت")).toBeNull();
   });
 
-  it("provides horizontal mobile room navigation, desktop RTL columns and local zero header offset", () => {
+  it("provides responsive real room cards and a local zero header offset", () => {
     const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
     expect(css).toContain("--header-height: 0px");
-    expect(css).toContain("overflow-x: auto");
     expect(css).toContain("@media (min-width: 1024px)");
-    expect(css).toContain("grid-template-columns: var(--room-panel-width) minmax(0, 1fr)");
-    expect(css).toContain("overflow-y: auto");
+    expect(css).toContain('[data-room-layout="single"]');
+    expect(css).toContain('[data-room-layout="grid"]');
+    expect(css).toContain('repeat(3, minmax(0, 1fr))');
+    expect(css).toContain('.bookingRooms [role="listitem"]');
     expect(css).toContain("prefers-reduced-motion");
     const route = readFileSync(resolve(process.cwd(), "app/book/[slug]/page.tsx"), "utf8");
     expect(route).toContain("export async function generateMetadata");
     expect(route).toContain("propertyBookingMetadata");
   });
 
-  it("uses one full-height edge panel, without a central scrim, navbar fill or bottom strip", async () => {
+  it("uses a cinematic hero before the real search and room selection", async () => {
     const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
     const source = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.tsx"), "utf8");
-    expect(source).not.toContain("styles.shade");
-    expect(css).not.toMatch(/\.shade\s*\{/);
-    expect(css).toMatch(/\.hero::before\s*\{[^}]*inset-block: 0;[^}]*inset-inline-start: 0;[^}]*width: var\(--room-panel-width\);[^}]*background: color-mix/);
-    expect(css).toContain("--room-panel-width: clamp(300px, 25vw, 390px)");
-    expect(css).toContain("--room-panel-width: clamp(260px, 28vw, 300px)");
-    expect(css).toMatch(/\.roomNav\s*\{[^}]*background: transparent;[^}]*contain: size;/);
-    expect(css).not.toMatch(/\.(header|scene)[^{]*\{[^}]*max-width/);
-    expect(css).toMatch(/\.header\s*\{[^}]*background: transparent;/);
-    expect(css).not.toContain("--text-scrim-opacity");
-    expect(css).not.toContain(".identityLead::before");
-    expect(css).not.toContain(".previewCopy::before");
-    expect(css).not.toContain("mask-image");
-    expect(css).not.toContain("linear-gradient");
+    expect(css).toContain(".heroPhoto::after");
+    expect(css).toContain("linear-gradient(270deg");
+    expect(css).not.toContain("--room-panel-width");
+    expect(source).toContain("guestStyles.scope");
     render(<PropertyBookingLanding />);
     const hero = await screen.findByRole("region", { name: "معرفی خانه باغ" });
-    const note = screen.getByText("پیش‌نمایش اتاق، آن را به رزرو اضافه نمی‌کند. ظرفیت و قیمت پس از انتخاب تاریخ بررسی می‌شود.");
-    expect(hero.contains(note)).toBe(false);
-    expect(screen.getByRole("region", { name: "اقامت خود را انتخاب کنید" }).contains(note)).toBe(true);
+    expect(hero.contains(screen.getByText("جستجوی واقعی"))).toBe(false);
+    expect(screen.getByText("جستجوی واقعی").compareDocumentPosition(screen.getByText("انتخاب تعداد اتاق")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(hero.querySelector("#room-preview")).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(hero.querySelector('[class*="heroPhoto"]')).toBeTruthy();
   });
 
-  it("animates only room names and header underlines, without moving separators or ignoring reduced motion", () => {
+  it("keeps scoped focus and reduced-motion rules without expensive animated effects", () => {
     const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
-    expect(css).toMatch(/\.hero \.roomChoice\s*\{[^}]*background: transparent;[^}]*box-shadow: none;/);
-    expect(css).toContain("text-decoration: none");
     expect(css).toContain("overflow-wrap: anywhere");
-    expect(css).toMatch(/\.roomSeparator\s*\{[^}]*height: 1px;/);
-    expect(css).toContain("(hover: hover) and (pointer: fine)");
-    expect(css).toMatch(/\.roomChoice:focus-visible \.roomName\s*\{ transform: scale\(1\.04\);/);
-    expect(css).not.toMatch(/\.roomChoiceContent\s*\{[^}]*transform/);
-    expect(css).toMatch(/\.links a::after\s*\{[^}]*transform: scaleX\(0\);[^}]*transform-origin: right center;/);
-    expect(css).toContain(".links a:hover::after, .links a:focus-visible::after { transform: scaleX(1); }");
-    expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none;[\s\S]*\.roomChoice:hover \.roomName, \.roomChoice:focus-visible \.roomName \{ transform: none; \}/);
+    expect(css).toContain(":focus-visible");
+    expect(css).toMatch(/prefers-reduced-motion: reduce[\s\S]*transition: none/);
+    expect(css).toContain(".header, .search > div:first-child");
+    expect(css).not.toMatch(/\.hero\s*\{[^}]*backdrop-filter/);
+    expect(css).not.toMatch(/\.heroPhoto\s*\{[^}]*backdrop-filter/);
     expect(css).not.toContain(":global");
   });
 
-  it("preserves hero link destinations and uses a local charcoal booking control", async () => {
+  it("preserves Property link destinations and uses a gold booking control", async () => {
     render(<PropertyBookingLanding />);
     const links = await screen.findByRole("navigation", { name: "راهنمای اقامتگاه" });
-    expect(within(links).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["#booking", "#property-introduction", "#property-location"]);
+    expect(within(links).getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual(["#booking", "#property-rooms", "#property-introduction", "#property-location"]);
     expect(screen.getByRole("link", { name: "انتخاب تاریخ و رزرو" }).getAttribute("href")).toBe("#booking");
     const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
-    expect(css).toMatch(/\.bookingLink\s*\{[^}]*background: var\(--card\);[^}]*color: var\(--card-foreground\);/);
-    expect(css).toContain(".bookingLink:hover, .bookingLink:active");
-    expect(css).toContain(".landing a:focus-visible");
+    expect(css).toMatch(/\.bookingLink, \.headerBooking\s*\{[^}]*background: var\(--primary\);[^}]*color: var\(--primary-foreground\);/);
+    expect(css).toContain(".bookingLink:hover, .headerBooking:hover");
+    expect(css).toContain(".landing :is(a, button):focus-visible");
   });
 
-  it("retains a long room list inside the pane without creating booking selections", async () => {
+  it("passes a long actual room list to the shared engine without creating selections", async () => {
     const data = property();
     data.roomTypes = Array.from({ length: 60 }, (_, index) => ({ ...data.roomTypes[0], id: index + 1, name: `اتاق ${index + 1}` }));
     mocks.fetchProperty.mockResolvedValueOnce(data);
     render(<PropertyBookingLanding />);
-    const nav = await screen.findByRole("navigation", { name: "پیش‌نمایش اتاق‌ها" });
-    expect(within(nav).getAllByRole("button")).toHaveLength(60);
-    expect(within(nav).getByText("60")).toBeTruthy();
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.getAllByRole("button", { name: /^مشاهده اتاق/ })).toHaveLength(60);
     expect(sessionStorage.length).toBe(0);
     expect(mocks.panel.mock.calls.at(-1)![0].roomTypes).toHaveLength(60);
   });

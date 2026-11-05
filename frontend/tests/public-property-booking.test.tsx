@@ -472,13 +472,16 @@ describe("public property booking integration", () => {
   it("reuses the real single-room booking controls from the branded landing without adding the preview", async () => {
     render(<PropertyBookingLanding />);
     const card = await screen.findByTestId("room-type-card-10");
+    expect(screen.queryByTestId("property-search-context")).toBeNull();
     expect(api.fetchOptions).not.toHaveBeenCalled();
     expect(sessionStorage.getItem(bookingCartStorageKey)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "بازگشت به تاریخ اولیه" }));
     fireEvent.click(screen.getByRole("button", { name: "بررسی موجودی" }));
     const select = await within(card).findByRole("button", { name: "انتخاب اتاق شاه‌نشین" });
+    expect(screen.queryByTestId("booking-choices-summary")).toBeNull();
     fireEvent.click(select);
     expect(await screen.findByTestId("booking-choices-summary")).toBeTruthy();
+    expect(screen.getByTestId("room-selection-region").className).not.toContain("lg:grid-cols-");
     expect(api.fetchOptions).toHaveBeenCalledWith("kashan-house", expect.objectContaining({ adults: 2 }));
     expect(api.fetchCandidates).not.toHaveBeenCalled();
     const launcher = screen.getAllByRole("button", { name: "ادامه رزرو" })[0];

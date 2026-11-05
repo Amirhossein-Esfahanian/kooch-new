@@ -62,7 +62,10 @@ describe("Property guest account", () => {
     fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
     expect(screen.queryByRole("menuitem", { name: "خروج از حساب" })).toBeNull();
     fireEvent.click(screen.getByRole("menuitem", { name: "رزروهای من" }));
-    const dialog = await screen.findByRole("dialog", { name: "خانه باغ" });
+    const dialog = await screen.findByRole("dialog", { name: /خانه باغ.*ورود \/ ثبت‌نام/ });
+    expect(within(dialog).getAllByRole("heading")).toHaveLength(1);
+    expect(within(dialog).queryByText("ورود به حساب")).toBeNull();
+    expect(within(dialog).getByText("برای مشاهده و پیگیری رزروها، شماره موبایل خود را تأیید کنید.")).toBeTruthy();
     expect(within(dialog).getByLabelText(/شماره موبایل/)).toBeTruthy();
     expect(within(dialog).queryByText(/خلاصه رزرو/)).toBeNull();
     expect(mocks.api).not.toHaveBeenCalled();

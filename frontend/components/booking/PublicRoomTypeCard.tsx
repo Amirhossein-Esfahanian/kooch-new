@@ -52,6 +52,8 @@ export interface PublicRoomTypeCandidateBookingState {
 }
 
 export function PublicRoomTypeCard({
+  compact = false,
+  imageSizes = "(max-width: 767px) calc(100vw - 2.5rem), 220px",
   roomType,
   galleryFallback,
   booking,
@@ -59,6 +61,8 @@ export function PublicRoomTypeCard({
   onShowDetails,
   onShowCalendar,
 }: {
+  compact?: boolean;
+  imageSizes?: string;
   roomType: PublicRoomType;
   galleryFallback: string;
   booking?: PublicRoomTypeBookingState;
@@ -96,7 +100,7 @@ export function PublicRoomTypeCard({
           className="h-full min-h-52 w-full object-cover"
           height={624}
           loading="lazy"
-          sizes="(max-width: 767px) calc(100vw - 2.5rem), 220px"
+          sizes={imageSizes}
           sources={[...roomType.images.map((image) => image.url), galleryFallback]}
           width={660}
         />
@@ -112,7 +116,7 @@ export function PublicRoomTypeCard({
             {roomType.bedInformation.map(persianBed).join(" | ") ||
               "ترکیب تخت ثبت نشده"}
           </p>
-          <p className="mt-3 text-sm leading-7 text-muted-foreground">
+          <p className={`mt-3 text-sm leading-7 text-muted-foreground ${compact ? "line-clamp-3" : ""}`}>
             {roomType.description}
           </p>
           {details.length > 0 && (
@@ -121,13 +125,13 @@ export function PublicRoomTypeCard({
             </p>
           )}
           {roomType.notes && (
-            <p className="mt-2 text-sm leading-7 text-muted-foreground">
+            <p className={`mt-2 text-sm leading-7 text-muted-foreground ${compact ? "line-clamp-2" : ""}`}>
               {roomType.notes}
             </p>
           )}
           {roomType.amenities.length > 0 && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {roomType.amenities.map((amenity) => (
+              {(compact ? roomType.amenities.slice(0, 4) : roomType.amenities).map((amenity) => (
                 <span
                   className="rounded-full bg-muted px-3 py-1 text-xs font-bold text-foreground"
                   key={amenity.id}
@@ -145,18 +149,18 @@ export function PublicRoomTypeCard({
             currencyLabel={currencyLabel}
             roomType={roomType}
           />
-          <div className="grid gap-2">
+          <div className={compact ? "flex flex-wrap items-center gap-3" : "grid gap-2"}>
             <KoochButton
-              className="w-full"
+              className={compact ? "min-h-11" : "w-full"}
               onClick={onShowDetails}
               variant="outline"
             >
               مشاهده جزئیات
             </KoochButton>
             <KoochButton
-              className="w-full"
+              className={compact ? "min-h-11 px-0 underline underline-offset-4" : "w-full"}
               onClick={onShowCalendar}
-              variant="outline"
+              variant={compact ? "ghost" : "outline"}
             >
               مشاهده تقویم
             </KoochButton>

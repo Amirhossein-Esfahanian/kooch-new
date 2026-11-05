@@ -502,9 +502,14 @@ export function SharedDateRangePicker({
           </span>
         )}
         <button
+          aria-haspopup="dialog"
+          aria-expanded={isOpen && active}
           className={dateButtonBase}
           data-control-active={active ? "true" : undefined}
-          onClick={() => open(field)}
+          onClick={(event) => {
+            combinedTriggerRef.current = event.currentTarget;
+            open(field);
+          }}
           type="button"
         >
           {showFieldLabels && !labelsAbove && (
@@ -529,9 +534,9 @@ export function SharedDateRangePicker({
           ? "text-card-foreground"
           : `absolute right-0 top-full z-50 mt-3 w-full min-w-[min(92vw,360px)] rounded-lg border border-border bg-popover text-popover-foreground shadow-2xl sm:w-[680px] ${daySpacing === "compact" ? "p-3" : daySpacing === "comfortable" ? "p-5" : "p-4"}`
       }
-      aria-label={combinedField ? toPersianDigits(text.rangeTitle) : undefined}
+      aria-label={combinedField || !openOnDialog ? toPersianDigits(text.rangeTitle) : undefined}
       data-calendar-day-spacing={daySpacing}
-      role={combinedField ? "dialog" : undefined}
+      role={combinedField || !openOnDialog ? "dialog" : undefined}
     >
       <div
         className={`${daySpacing === "compact" ? "mb-3" : daySpacing === "comfortable" ? "mb-5" : "mb-4"} flex flex-wrap items-center justify-between gap-3`}

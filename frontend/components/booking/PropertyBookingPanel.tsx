@@ -67,6 +67,7 @@ type PropertyBookingPanelSlots = {
 export const propertyRoomsAnchorId = "property-rooms";
 
 export function PropertyBookingPanel(props: {
+  portalClassName?: string;
   entryKind?: PropertyEntryKind;
   autoCheckInitialContextKey?: string | null;
   propertyId: number;
@@ -89,6 +90,7 @@ export function PropertyBookingPanel(props: {
 }
 
 function PropertyBookingPanelContent({
+  portalClassName,
   entryKind = "properties",
   autoCheckInitialContextKey,
   propertyId,
@@ -103,6 +105,7 @@ function PropertyBookingPanelContent({
   onGuestsChange,
   children,
 }: {
+  portalClassName?: string;
   entryKind?: PropertyEntryKind;
   autoCheckInitialContextKey?: string | null;
   propertyId: number;
@@ -596,6 +599,8 @@ function PropertyBookingPanelContent({
   const showCartSummary = isMultiRoomSearch
     ? hasCandidateResults && selectedRoomCount > 0
     : hasSearchResults && (cart.items.length === 0 || canCheckout);
+  const displayCartSummary = showCartSummary &&
+    (entryKind !== "book" || cart.items.length > 0 || selectedRoomCount > 0);
   const draftSummary: BookingCartDraft | undefined = isMultiRoomSearch && !canCheckout ? {
     requestedRooms: guests.rooms,
     status: selectedRoomCount < guests.rooms ? "partial" : quoteError ? "error" : quoteLoading ? "pending" : "unconfirmed",
@@ -612,7 +617,7 @@ function PropertyBookingPanelContent({
     <BookingCartSummary
       draft={draftSummary}
       className={
-        hasSearchResults
+        entryKind === "book" ? "mt-3" : hasSearchResults
           ? "lg:sticky lg:top-[calc(var(--header-height)+var(--property-booking-search-height,0px)+1rem)]"
           : undefined
       }
@@ -637,14 +642,16 @@ function PropertyBookingPanelContent({
         >
           <form
             aria-label="جستجوی موجودی این اقامتگاه"
-            className="grid grid-cols-2 items-end gap-2 sm:gap-3 xl:grid-cols-[minmax(180px,0.8fr)_minmax(320px,1.5fr)_minmax(240px,1fr)_auto]"
+            className={entryKind === "book"
+              ? "grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(320px,2fr)_minmax(210px,1fr)_auto]"
+              : "grid grid-cols-2 items-end gap-2 sm:gap-3 xl:grid-cols-[minmax(180px,0.8fr)_minmax(320px,1.5fr)_minmax(240px,1fr)_auto]"}
             data-testid="room-availability-controls"
             onSubmit={(event) => {
               event.preventDefault();
               void checkAvailability();
             }}
           >
-            <div className="col-span-2 grid gap-1.5 text-sm font-bold text-foreground sm:col-span-1">
+            {entryKind !== "book" && <div className="col-span-2 grid gap-1.5 text-sm font-bold text-foreground sm:col-span-1">
               {/* <span id="property-search-context-label">اقامتگاه</span> */}
               <div
                 aria-labelledby="property-search-context-label"
@@ -654,11 +661,12 @@ function PropertyBookingPanelContent({
                 <KoochSvgIcon src="/svgs/search-3.svg" size="lg" />
                 <span className="truncate">{propertyName}</span>
               </div>
-            </div>
+            </div>}
 
-            <div className="col-span-2 grid min-w-0 gap-1.5 text-sm font-bold text-foreground sm:col-span-1">
+            <div className={entryKind === "book" ? "grid min-w-0 gap-1.5 sm:col-span-2 lg:col-span-1" : "col-span-2 grid min-w-0 gap-1.5 text-sm font-bold text-foreground sm:col-span-1"}>
               {/* <span>تاریخ اقامت</span> */}
               <KoochCompactDateRangePicker
+                combinedField={entryKind !== "book"}
                 calendarType="jalali"
                 daySpacing="compact"
                 disablePastDates
@@ -673,8 +681,8 @@ function PropertyBookingPanelContent({
 
             <GuestSelector
               className="col-span-1 gap-1.5"
-              controlClassName="h-12 w-full px-3 text-right text-xs"
-              label=""
+              controlClassName={entryKind === "book" ? "h-[52px] w-full px-3 text-right text-xs" : "h-12 w-full px-3 text-right text-xs"}
+              label={entryKind === "book" ? "مهمانان و اتاق‌ها" : ""}
               icon={<KoochSvgIcon src="/svgs/users-3.svg" size="lg" />}
               onChange={onGuestsChange}
               value={guests}
@@ -720,6 +728,7 @@ function PropertyBookingPanelContent({
   const roomSelection = (
     <>
       {entryKind === "book" && <PropertyDirectCheckoutDialog
+        contentClassName={portalClassName}
         propertyId={propertyId}
         propertySlug={propertySlug}
         open={directCheckoutOpen}
@@ -763,7 +772,7 @@ function PropertyBookingPanelContent({
       )}
 
       <div
-        className={`grid items-start gap-5 ${searchContextDiffersFromCart ? "mt-4" : ""} ${canCheckout ? "pb-24 sm:pb-0" : ""} ${showCartSummary ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : ""}`}
+        className={`grid items-start gap-5 ${searchContextDiffersFromCart ? "mt-4" : ""} ${canCheckout ? "pb-24 sm:pb-0" : ""} ${displayCartSummary && entryKind !== "book" ? "lg:grid-cols-[minmax(0,1fr)_minmax(280px,340px)]" : ""}`}
         data-testid="room-selection-region"
       >
         <div
@@ -808,6 +817,8 @@ function PropertyBookingPanelContent({
 
             return (
               <PublicRoomTypeCard
+                compact={entryKind === "book"}
+                imageSizes={entryKind === "book" ? roomTypes.length === 1 ? "(min-width: 900px) 50vw, 100vw" : "(min-width: 1280px) 420px, (min-width: 768px) 50vw, 100vw" : undefined}
                 booking={
                   hasLegacyResults
                     ? {
@@ -851,7 +862,7 @@ function PropertyBookingPanelContent({
             );
           })}
         </div>
-        {showCartSummary && cartSummary}
+        {displayCartSummary && cartSummary}
       </div>
 
       <BookingCartMobileActionBar
@@ -861,11 +872,13 @@ function PropertyBookingPanelContent({
         total={canCheckout ? cart.total : 0}
       />
       <PublicRoomTypeCalendarDialog
+        contentClassName={portalClassName}
         onClose={() => setCalendarRoomType(null)}
         propertySlug={propertySlug}
         roomType={calendarRoomType}
       />
       <KoochConfirmDialog
+        className={portalClassName}
         cancelText="حفظ سبد فعلی"
         confirmText="شروع رزرو جدید"
         description={
@@ -890,6 +903,7 @@ function PropertyBookingPanelContent({
         variant="warning"
       />
       <KoochConfirmDialog
+        className={portalClassName}
         cancelText="حفظ سبد فعلی"
         confirmText="شروع رزرو جدید"
         description="برای ادامه، سبد رزرو فعلی با اتاق‌های انتخاب‌شده و قیمت تأییدشده جایگزین می‌شود."

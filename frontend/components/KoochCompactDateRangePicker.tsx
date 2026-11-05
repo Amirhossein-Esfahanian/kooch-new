@@ -20,6 +20,7 @@ export type KoochCompactDateRangePickerProps = {
   disabledDates?: DisabledDates;
   daySpacing?: CalendarDaySpacing;
   fieldSize?: DateRangeFieldSize;
+  combinedField?: boolean;
 };
 
 export function KoochCompactDateRangePicker({
@@ -32,13 +33,14 @@ export function KoochCompactDateRangePicker({
   disabledDates,
   daySpacing = "normal",
   fieldSize = "standard",
+  combinedField = true,
 }: KoochCompactDateRangePickerProps) {
   return (
     <div className="[&_[data-date-divider]+span]:ps-2">
       <SharedDateRangePicker
         autoCommit
         calendarType={calendarType}
-        combinedField
+        combinedField={combinedField}
         daySpacing={daySpacing}
         disabledDates={disabledDates}
         disablePastDates={disablePastDates}

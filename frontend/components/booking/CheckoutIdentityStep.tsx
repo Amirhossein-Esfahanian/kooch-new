@@ -47,6 +47,7 @@ export function CheckoutIdentityStep({
   intent = "checkout",
   onBusyChange,
   autoFocusMobile = true,
+  showIntroduction = true,
 }: {
   interruptionMessage?: string | null;
   onAuthenticated: () => void;
@@ -54,6 +55,7 @@ export function CheckoutIdentityStep({
   intent?: "checkout" | "account";
   onBusyChange?: (busy: boolean) => void;
   autoFocusMobile?: boolean;
+  showIntroduction?: boolean;
 }) {
   const auth = useAuthSession();
   const router = useRouter();
@@ -308,7 +310,7 @@ export function CheckoutIdentityStep({
 
   return (
     <div>
-      <h2
+      {showIntroduction && <><h2
         className="text-xl font-bold text-foreground"
         id={intent === "account" ? undefined : "checkout-step-title"}
       >
@@ -316,7 +318,7 @@ export function CheckoutIdentityStep({
       </h2>
       <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground">
         {intent === "account" ? "با تأیید شماره موبایل، وارد حساب مشترک خود شوید و رزروهای این اقامتگاه را ببینید." : "با تأیید شماره موبایل، رزرو به همان حساب کاربری شما متصل می‌شود."}
-      </p>
+      </p></>}
 
       {interruptionMessage ? (
         <KoochAlert
