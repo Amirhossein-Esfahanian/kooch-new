@@ -1,6 +1,8 @@
-import { BookingPaymentResult } from "@/components/booking/BookingPaymentResult";
+import { PropertyBookingPaymentEntry } from "@/components/booking/PropertyBookingPaymentEntry";
+
+export const metadata = { robots: { index: false, follow: false } };
 
 export default async function BookingPaymentSuccessPage({ params }: { params: Promise<{ sessionCode: string }> }) {
   const { sessionCode } = await params;
-  return <BookingPaymentResult mode="success" sessionCode={sessionCode} />;
+  return <PropertyBookingPaymentEntry kind="success" sessionCode={sessionCode} />;
 }

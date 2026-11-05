@@ -20,18 +20,22 @@ import {
   statusVariant,
 } from "@/lib/account-reservations";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { directSessionHref, isDirectSessionForProperty, type DirectSessionProperty } from "@/lib/property-booking-session";
 
 export function BookingPaymentResult({
   sessionCode,
   mode,
+  directProperty,
 }: {
   sessionCode: string;
   mode: "success" | "failure";
+  directProperty?: DirectSessionProperty;
 }) {
   const router = useRouter();
   const auth = useAuthSession();
   const currencyLabel = useSiteCurrencyLabel();
-  const [session, setSession] = useState<AccountBookingSession | null>(null);
+  const [loadedSession, setSession] = useState<AccountBookingSession | null>(null);
+  const session = loadedSession && (!directProperty || isDirectSessionForProperty(loadedSession, sessionCode, directProperty)) ? loadedSession : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -44,13 +48,21 @@ export function BookingPaymentResult({
     }
     let active = true;
     let timer: number | undefined;
+    let attempts = 0;
     const load = async () => {
       try {
+        attempts += 1;
         const value = await fetchAccountBookingSession(sessionCode);
         if (!active) return;
+        if (directProperty && !isDirectSessionForProperty(value, sessionCode, directProperty)) {
+          setSession(null);
+          setError("سفارش رزرو پیدا نشد.");
+          setLoading(false);
+          return;
+        }
         setSession(value);
         setLoading(false);
-        if (mode === "success" && value.payment?.status !== "Successful") {
+        if (directProperty ? attempts < 15 && value.payment?.status !== "Successful" && value.payment?.status !== "Failed" : mode === "success" && value.payment?.status !== "Successful") {
           timer = window.setTimeout(load, 2000);
         }
       } catch {
@@ -65,7 +77,7 @@ export function BookingPaymentResult({
       active = false;
       if (timer) window.clearTimeout(timer);
     };
-  }, [auth.authenticated, auth.loading, mode, router, sessionCode]);
+  }, [auth.authenticated, auth.loading, directProperty, mode, router, sessionCode]);
 
   if (auth.loading || loading)
     return <StateAlert>در حال بررسی نتیجه پرداخت...</StateAlert>;
@@ -73,22 +85,24 @@ export function BookingPaymentResult({
     return <StateAlert error>{error || "سفارش رزرو پیدا نشد."}</StateAlert>;
 
   const successful = session.payment?.status === "Successful";
+  const resultMode = directProperty ? successful ? "success" : session.payment?.status === "Failed" ? "failure" : "pending" : mode;
+  const detailHref = directProperty ? directSessionHref(directProperty, sessionCode) : `/account/booking-sessions/${encodeURIComponent(sessionCode)}`;
   const mixedOutcome = session.summary.hasRejectedReservations;
   const paymentEligibility = getBookingSessionPaymentEligibility(session);
   const canRetry =
-    mode === "failure" && !successful && paymentEligibility.canPay;
+    (directProperty ? resultMode === "failure" : mode === "failure") && !successful && paymentEligibility.canPay;
   return (
     <main className="mx-auto grid max-w-4xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
       <KoochPageHeader
         eyebrow="نتیجه پرداخت"
-        title={mode === "success" ? "نتیجه سفارش رزرو" : "پرداخت ناموفق"}
+        title={resultMode === "failure" ? "پرداخت ناموفق" : "نتیجه سفارش رزرو"}
         description={
           <span>
             کد سفارش: <b dir="ltr">{session.sessionCode}</b>
           </span>
         }
       />
-      {mode === "success" ? (
+      {resultMode === "success" ? (
         <KoochAlert
           variant={successful ? "success" : "info"}
           title={
@@ -101,9 +115,13 @@ export function BookingPaymentResult({
               : "تمام رزروهای این سفارش تأیید شدند."
             : "نتیجه امن پرداخت دریافت شده و وضعیت به‌صورت خودکار بررسی می‌شود."}
         </KoochAlert>
+      ) : resultMode === "pending" ? (
+        <KoochAlert variant="info" title="نتیجه پرداخت هنوز مشخص نیست" role="status">
+          هنوز پرداخت موفق یا ناموفق از سمت سرور تأیید نشده است. وضعیت برای مدت محدودی به‌صورت خودکار بررسی می‌شود؛ برای بررسی دوباره می‌توانید به جزئیات سفارش برگردید.
+        </KoochAlert>
       ) : (
         <KoochAlert variant="destructive" title="پرداخت تکمیل نشد">
-          مبلغی در این شبیه‌سازی موفق ثبت نشده و وضعیت رزروها تغییر نکرده است.
+          {directProperty ? "سرور این تلاش پرداخت را ناموفق گزارش کرده است. وضعیت رزرو و امکان تلاش مجدد را در جزئیات سفارش بررسی کنید." : "مبلغی در این شبیه‌سازی موفق ثبت نشده و وضعیت رزروها تغییر نکرده است."}
         </KoochAlert>
       )}
       {error && <KoochAlert variant="destructive">{error}</KoochAlert>}
@@ -173,7 +191,7 @@ export function BookingPaymentResult({
           <KoochButton
             onClick={() =>
               router.push(
-                `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+                detailHref,
               )
             }
           >
@@ -183,19 +201,19 @@ export function BookingPaymentResult({
         <KoochButton
           onClick={() =>
             router.push(
-              `/account/booking-sessions/${encodeURIComponent(sessionCode)}`,
+              detailHref,
             )
           }
           variant="outline"
         >
           جزئیات سفارش
         </KoochButton>
-        <Link
+        {!directProperty && <Link
           className="inline-flex min-h-11 items-center rounded-md px-4 text-sm font-bold text-primary hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           href="/account/reservations"
         >
           رزروهای من
-        </Link>
+        </Link>}
       </div>
     </main>
   );

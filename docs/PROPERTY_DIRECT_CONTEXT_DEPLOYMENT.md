@@ -1,5 +1,49 @@
 # Property Direct booking context prerequisites (Phases 2–3)
 
+## Local Development: one-command Backend startup
+
+From `E:\React\kooch`, under the approved `COPPER-DESKTOP\Copper` account:
+
+```powershell
+.\scripts\dev-backend.ps1
+```
+
+The script reads the existing flat environment-setting Hashtable in
+`C:\Users\Copper\AppData\Local\Kooch\Development\property-direct-context.psd1`.
+It validates the existing application identity, encrypted persistent Key Ring and
+trusted CurrentUser certificate/private-key presence. It never provisions or replaces them.
+Validation checks file encryption metadata and certificate validity, not actual key decryption.
+It refuses to build or start when port 5081 is occupied, and never kills another process.
+
+Every invocation performs an incremental **Release** build of current source with `--no-restore`;
+build failure prevents startup. Existing .NET 9 SDK/NuGet assets must already be available.
+It then runs with `--no-build --no-launch-profile`, Development environment, and explicit
+`--AutomaticDatabaseMutations:Enabled=false`. The existing Data Protection settings are also
+pinned on the runtime command line. Only process environment values are loaded; previous values
+are restored when the script exits. No global environment, launch profile or database defaults change.
+This safety applies to this script: plain `dotnet run` still uses the application's existing defaults.
+
+Preflight without building, loading environment values or launching:
+
+```powershell
+.\scripts\dev-backend.ps1 -ValidateOnly
+```
+
+For a graceful restart, press **Ctrl+C in the owning Backend console**, wait for shutdown,
+then run the same one-command startup again. If the owning console is unavailable or port 5081
+remains occupied, stop and investigate; do not force-stop another process. At startup, explicitly
+confirm the log message:
+
+```text
+Automatic database migrations, seed operations, and background database writers are disabled.
+```
+
+Also confirm `Development`, `http://localhost:5081` and absence of certificate/key-recovery errors.
+The script's preflight/build success is not proof of HTTP readiness or live payment verification.
+Do not delete keys, change the certificate/application identity, apply migrations, or perform live
+booking/payment checks as part of a restart. PowerShell execution policy must permit this local script;
+the script does not change policy or trust stores.
+
 Account booking creation now accepts an optional `propertyDirectContext: {propertyId, token}`.
 Without this object, new Account sessions and reservations use Marketplace policy 0. With a valid context,
 new sessions and all their reservations use policy 2, atomically in the existing creation transaction.

@@ -14,12 +14,14 @@ import {
   type AccountBookingSession,
 } from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { directSessionHref, isDirectSessionForProperty, type DirectSessionProperty } from "@/lib/property-booking-session";
 
-export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
+export function MockPaymentCheckout({ sessionCode, directProperty }: { sessionCode: string; directProperty?: DirectSessionProperty }) {
   const router = useRouter();
   const auth = useAuthSession();
   const currencyLabel = useSiteCurrencyLabel();
-  const [session, setSession] = useState<AccountBookingSession | null>(null);
+  const [loadedSession, setSession] = useState<AccountBookingSession | null>(null);
+  const session = loadedSession && (!directProperty || isDirectSessionForProperty(loadedSession, sessionCode, directProperty)) ? loadedSession : null;
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState<"success" | "failure" | null>(
     null,
@@ -43,6 +45,10 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
     ])
       .then(([value, providers]) => {
         if (!active) return;
+        if (directProperty && !isDirectSessionForProperty(value, sessionCode, directProperty)) {
+          setError("سفارش رزرو پیدا نشد.");
+          return;
+        }
         setSession(value);
         setTestProviderAvailable(providers.some((provider) => provider.value === "internal-test"));
       })
@@ -51,27 +57,39 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
     return () => {
       active = false;
     };
-  }, [auth.authenticated, auth.loading, router, sessionCode]);
+  }, [auth.authenticated, auth.loading, directProperty, router, sessionCode]);
+
+  useEffect(() => {
+    if (directProperty && session?.payment?.status === "Successful") {
+      router.replace(directSessionHref(directProperty, sessionCode, "success"));
+    }
+  }, [directProperty, router, session?.payment?.status, sessionCode]);
 
   useEffect(() => {
     if (!session?.payment || session.payment.status !== "Pending") return;
+    let active = true;
     const timer = window.setInterval(() => {
       void fetchAccountBookingSession(sessionCode)
         .then((value) => {
+          if (!active) return;
+          if (directProperty && !isDirectSessionForProperty(value, sessionCode, directProperty)) {
+            setSession(null);
+            return;
+          }
           setSession(value);
           if (value.payment?.status === "Successful") {
             router.replace(
-              `/booking/sessions/${encodeURIComponent(sessionCode)}/success`,
+              directProperty ? directSessionHref(directProperty, sessionCode, "success") : `/booking/sessions/${encodeURIComponent(sessionCode)}/success`,
             );
           }
         })
         .catch(() => undefined);
     }, 2000);
-    return () => window.clearInterval(timer);
-  }, [router, session?.payment, sessionCode]);
+    return () => { active = false; window.clearInterval(timer); };
+  }, [directProperty, router, session?.payment, sessionCode]);
 
   async function simulate(succeeded: boolean) {
-    if (submissionPending.current || !testProviderAvailable) return;
+    if (submissionPending.current || !testProviderAvailable || (directProperty && (!session || session.payment?.status !== "Pending"))) return;
     submissionPending.current = true;
     setSubmitting(succeeded ? "success" : "failure");
     setError("");
@@ -80,7 +98,9 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
         sessionCode,
         succeeded,
       );
-      router.push(result.redirectDestination);
+      router.push(directProperty
+        ? directSessionHref(directProperty, sessionCode, result.state === "failed" ? "payment-failure" : "success")
+        : result.redirectDestination);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "پرداخت آزمایشی انجام نشد.",
@@ -95,13 +115,15 @@ export function MockPaymentCheckout({ sessionCode }: { sessionCode: string }) {
     return <PageState>در حال آماده‌سازی پرداخت آزمایشی...</PageState>;
   if (!session)
     return <PageState error>{error || "سفارش رزرو پیدا نشد."}</PageState>;
+  if (directProperty && session.payment?.status !== "Pending")
+    return <PageState>این تلاش پرداخت فعال نیست. نتیجه را در جزئیات سفارش بررسی کنید.</PageState>;
   if (!testProviderAvailable)
     return <PageState>در حال حاضر روش پرداخت فعالی در دسترس نیست. وضعیت سفارش محفوظ می‌ماند.</PageState>;
 
   return (
     <main className="mx-auto grid max-w-3xl gap-5 px-4 py-8 sm:px-6" dir="rtl">
       <KoochPageHeader
-        eyebrow="درگاه آزمایشی کوچ"
+        eyebrow={directProperty ? undefined : "درگاه آزمایشی کوچ"}
         title="پرداخت آزمایشی"
         description="این صفحه فقط در محیط توسعه و تست فعال است و تراکنش واقعی ایجاد نمی‌کند."
       />

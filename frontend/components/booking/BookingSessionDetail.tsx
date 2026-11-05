@@ -36,8 +36,8 @@ import {
 import { getBookingSessionPaymentEligibility } from "@/lib/booking-payment-eligibility";
 import { useReservationPaymentCountdown } from "@/lib/reservation-countdown";
 import { CheckoutIdentityStep } from "@/components/booking/CheckoutIdentityStep";
+import { isDirectSessionForProperty, type DirectSessionProperty } from "@/lib/property-booking-session";
 
-export type DirectSessionProperty = { id: number; slug: string; name: string };
 
 export function BookingSessionDetail({ directProperty }: { directProperty?: DirectSessionProperty }) {
   const { sessionCode } = useParams<{ sessionCode: string }>();
@@ -58,8 +58,7 @@ function BookingSessionDetailContent({ directProperty }: { directProperty?: Dire
   const [loadedSession, setSession] = useState<AccountBookingSession | null>(null);
   // Missing attribution (including an older API response) must fail closed.
   const session = loadedSession && (!directProperty ||
-    (loadedSession.sessionCode === sessionCode && loadedSession.commissionType === 2 && loadedSession.property.propertyId === directProperty.id &&
-      loadedSession.property.slug === directProperty.slug)) ? loadedSession : null;
+    isDirectSessionForProperty(loadedSession, sessionCode, directProperty)) ? loadedSession : null;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [initiatingPayment, setInitiatingPayment] = useState(false);

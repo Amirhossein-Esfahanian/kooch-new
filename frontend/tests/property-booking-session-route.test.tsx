@@ -9,6 +9,12 @@ vi.mock("@/components/booking/BookingSessionDetail", () => ({
 }));
 
 import PropertyBookingSessionPage, { metadata } from "@/app/book/[slug]/reservations/[sessionCode]/page";
+import { metadata as successMetadata } from "@/app/book/[slug]/reservations/[sessionCode]/success/page";
+import { metadata as failureMetadata } from "@/app/book/[slug]/reservations/[sessionCode]/payment-failure/page";
+import MockPage, { metadata as mockMetadata } from "@/app/book/[slug]/reservations/[sessionCode]/mock-payment/page";
+import { metadata as genericSuccessMetadata } from "@/app/booking/sessions/[sessionCode]/success/page";
+import { metadata as genericFailureMetadata } from "@/app/booking/sessions/[sessionCode]/payment-failure/page";
+import { metadata as genericMockMetadata } from "@/app/booking/sessions/[sessionCode]/mock-payment/page";
 
 describe("private Property booking route", () => {
   beforeEach(() => {
@@ -32,5 +38,22 @@ describe("private Property booking route", () => {
   it("marks private details noindex without Marketplace title branding", () => {
     expect(metadata.robots).toEqual({ index: false, follow: false });
     expect(metadata.title).toEqual({ absolute: "جزئیات رزرو اقامتگاه" });
+  });
+
+  it("marks all private payment entry/result routes noindex", () => {
+    for (const value of [successMetadata, failureMetadata, mockMetadata, genericSuccessMetadata, genericFailureMetadata, genericMockMetadata]) {
+      expect(value.robots).toEqual({ index: false, follow: false });
+    }
+    expect(successMetadata.title).toEqual({ absolute: "نتیجه پرداخت رزرو اقامتگاه" });
+  });
+
+  it("preserves the existing test-provider feature gate on the branded mock route", async () => {
+    vi.stubEnv("NEXT_PUBLIC_INTERNAL_TEST_PAYMENTS_ENABLED", "false");
+    try {
+      await expect(MockPage({ params: Promise.resolve({ slug: "garden-house", sessionCode: "SESSION-1" }) })).rejects.toThrow("NOT_FOUND");
+      expect(api.property).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });
