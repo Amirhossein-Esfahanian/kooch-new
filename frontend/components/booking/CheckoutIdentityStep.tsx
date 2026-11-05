@@ -46,12 +46,14 @@ export function CheckoutIdentityStep({
   allowAlternateLogin = true,
   intent = "checkout",
   onBusyChange,
+  autoFocusMobile = true,
 }: {
   interruptionMessage?: string | null;
   onAuthenticated: () => void;
   allowAlternateLogin?: boolean;
   intent?: "checkout" | "account";
   onBusyChange?: (busy: boolean) => void;
+  autoFocusMobile?: boolean;
 }) {
   const auth = useAuthSession();
   const router = useRouter();
@@ -405,7 +407,7 @@ export function CheckoutIdentityStep({
           <KoochField label="شماره موبایل" required>
             <KoochInput
               autoComplete="tel"
-              autoFocus
+              autoFocus={autoFocusMobile}
               dir="ltr"
               inputMode="tel"
               maxLength={30}

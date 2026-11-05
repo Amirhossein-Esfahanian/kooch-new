@@ -2,17 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { KoochButton } from "@/components/KoochButton";
-import { KoochDialog } from "@/components/KoochDialog";
 import { KoochUserMenu } from "@/components/KoochUserMenu";
-import { CheckoutIdentityStep } from "@/components/booking/CheckoutIdentityStep";
+import styles from "./PropertyDirectGuest.module.css";
 
-export function PropertyGuestAccount({ slug }: { slug: string }) {
+const PropertyGuestAuthDialog = dynamic(() => import("./PropertyGuestAuthDialog").then((module) => module.PropertyGuestAuthDialog), {
+  ssr: false, loading: () => <p role="status">در حال آماده‌سازی ورود...</p>,
+});
+
+export function PropertyGuestAccount({ slug, propertyName, navigation = [] }: { slug: string; propertyName?: string; navigation?: ReadonlyArray<{ href: string; label: string }> }) {
   const auth = useAuthSession();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
   const redirected = useRef(false);
   const href = `/book/${encodeURIComponent(slug)}/my-bookings`;
   const completeLogin = useCallback(() => {
@@ -21,17 +23,17 @@ export function PropertyGuestAccount({ slug }: { slug: string }) {
     setOpen(false);
     router.push(href);
   }, [href, router]);
-  useEffect(() => { setOpen(false); setBusy(false); redirected.current = false; }, [slug]);
+  useEffect(() => { setOpen(false); redirected.current = false; }, [slug]);
   useEffect(() => {
     if (open && auth.authenticated) completeLogin();
   }, [auth.authenticated, completeLogin, open]);
   useEffect(() => auth.registerInlineSessionRecovery?.(() => setOpen(false)), [auth.registerInlineSessionRecovery]);
 
-  return <div className="relative z-50" dir="rtl">
-    {auth.authenticated ? <KoochUserMenu key={`${slug}:${auth.user?.userId}`} variant="property" propertySlug={slug} />
-      : <KoochButton className="min-h-11" disabled={auth.loading} variant="outline" onClick={() => { redirected.current = false; if (auth.authenticated) completeLogin(); else setOpen(true); }}>ورود / ثبت‌نام</KoochButton>}
-    <KoochDialog open={open && !auth.authenticated} onOpenChange={(next) => { if (!busy) setOpen(next); }} closeDisabled={busy} title="ورود / ثبت‌نام" description="با شماره موبایل حساب مشترک خود وارد شوید." size="md">
-      {open && !auth.authenticated && <CheckoutIdentityStep intent="account" allowAlternateLogin={false} onBusyChange={setBusy} onAuthenticated={completeLogin} />}
-    </KoochDialog>
-  </div>;
+  return <nav className={`${styles.scope} ${styles.navigation}`} dir="rtl" aria-label="راهنمای اقامتگاه">
+    <div className={styles.desktopLinks}>{navigation.map((link) => <a href={link.href} key={link.href}>{link.label}</a>)}</div>
+    <KoochUserMenu key={`${slug}:${auth.user?.userId}:${auth.authenticated}`} variant="property" propertySlug={slug}
+      propertyMenuLabel="منوی اقامتگاه" propertyLinks={navigation} triggerClassName={styles.menuTrigger} menuClassName={styles.menu}
+      onPropertyLogin={() => { if (auth.loading) return; redirected.current = false; if (auth.authenticated) completeLogin(); else setOpen(true); }} />
+    {open && !auth.authenticated && <PropertyGuestAuthDialog open onOpenChange={setOpen} onAuthenticated={completeLogin} propertyName={propertyName} />}
+  </nav>;
 }

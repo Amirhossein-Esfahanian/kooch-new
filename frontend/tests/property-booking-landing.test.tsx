@@ -23,7 +23,7 @@ import { PropertyBookingLanding } from "@/components/booking/PropertyBookingLand
 import { PropertyPhoto } from "@/components/booking/PropertyPhoto";
 import { PublicSiteShell } from "@/components/PublicSiteShell";
 import { PublicApiError } from "@/lib/public-properties";
-vi.mock("@/components/booking/PropertyGuestAccount", () => ({ PropertyGuestAccount: () => null }));
+vi.mock("@/components/booking/PropertyGuestAccount", () => ({ PropertyGuestAccount: ({ navigation = [] }: { navigation?: Array<{ href: string; label: string }> }) => <nav aria-label="راهنمای اقامتگاه">{navigation.map((link) => <a href={link.href} key={link.href}>{link.label}</a>)}</nav> }));
 
 function property(): PublicProperty {
   const room = {

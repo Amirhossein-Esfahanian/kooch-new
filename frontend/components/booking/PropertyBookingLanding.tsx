@@ -77,12 +77,11 @@ function LandingContent({ property }: { property: PublicProperty }) {
         </div>
         <header className={styles.header}>
           <a className={styles.wordmark} href="#property-introduction">{property.name}</a>
-          <nav aria-label="راهنمای اقامتگاه" className={styles.links}>
-            <a href="#booking">رزرو اقامت</a>
-            <a href="#property-introduction">درباره اقامتگاه</a>
-            {property.address && <a href="#property-location">نشانی</a>}
-          </nav>
-          <PropertyGuestAccount slug={property.slug} />
+          <PropertyGuestAccount slug={property.slug} propertyName={property.name} navigation={[
+            { href: "#booking", label: "رزرو اقامت" },
+            { href: "#property-introduction", label: "درباره اقامتگاه" },
+            ...(property.address ? [{ href: "#property-location", label: "نشانی" }] : []),
+          ]} />
         </header>
 
         <div className={styles.scene}>

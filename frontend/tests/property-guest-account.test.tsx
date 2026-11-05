@@ -12,6 +12,12 @@ vi.mock("@/lib/owner-api", async (original) => ({ ...await original<typeof impor
 
 import { PropertyGuestAccount } from "@/components/booking/PropertyGuestAccount";
 
+async function openLogin() {
+  fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
+  fireEvent.click(screen.getByRole("menuitem", { name: "ورود / ثبت‌نام" }));
+  return screen.findByRole("dialog");
+}
+
 describe("Property guest account", () => {
   beforeEach(() => {
     vi.clearAllMocks(); clearToken();
@@ -25,8 +31,9 @@ describe("Property guest account", () => {
   it("opens standalone shared OTP login without a cart and navigates exactly once after authentication", async () => {
     sessionStorage.setItem(bookingCartStorageKey, "existing-selection-fixture");
     render(<PropertyGuestAccount slug="garden" />);
-    fireEvent.click(screen.getByRole("button", { name: "ورود / ثبت‌نام" }));
-    const dialog = await screen.findByRole("dialog");
+    const dialog = await openLogin();
+    expect(dialog.className).not.toContain("h-[min(760px,90vh)]");
+    expect(dialog.className).toContain("h-auto");
     fireEvent.change(within(dialog).getByLabelText(/شماره موبایل/), { target: { value: "09120000000" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "ارسال کد تأیید" }));
     fireEvent.change(await within(dialog).findByLabelText(/کد تأیید/), { target: { value: "123456" } });
@@ -41,8 +48,7 @@ describe("Property guest account", () => {
   it("reuses inline registration for a new mobile number", async () => {
     mocks.api.mockResolvedValueOnce({ sent: false, requiresRegistration: true, expiresAtUtc: null });
     render(<PropertyGuestAccount slug="garden" />);
-    fireEvent.click(screen.getByRole("button", { name: "ورود / ثبت‌نام" }));
-    await screen.findByRole("dialog");
+    await openLogin();
     fireEvent.change(screen.getByLabelText(/شماره موبایل/), { target: { value: "09120000000" } });
     fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
     expect(await screen.findByRole("button", { name: "ساخت حساب و ارسال کد" })).toBeTruthy();
@@ -50,11 +56,38 @@ describe("Property guest account", () => {
     expect(mocks.push).not.toHaveBeenCalled();
   });
 
+  it("prompts shared authentication from My Bookings without requesting booking context", async () => {
+    render(<PropertyGuestAccount slug="garden" propertyName="خانه باغ" />);
+    expect(screen.queryByRole("button", { name: "ورود / ثبت‌نام" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
+    expect(screen.queryByRole("menuitem", { name: "خروج از حساب" })).toBeNull();
+    fireEvent.click(screen.getByRole("menuitem", { name: "رزروهای من" }));
+    const dialog = await screen.findByRole("dialog", { name: "خانه باغ" });
+    expect(within(dialog).getByLabelText(/شماره موبایل/)).toBeTruthy();
+    expect(within(dialog).queryByText(/خلاصه رزرو/)).toBeNull();
+    expect(mocks.api).not.toHaveBeenCalled();
+    expect(mocks.push).not.toHaveBeenCalled();
+  });
+
+  it("keeps Property links reachable in the compact menu with keyboard navigation", () => {
+    render(<PropertyGuestAccount slug="garden" navigation={[{ href: "#booking", label: "رزرو اقامت" }, { href: "#property-introduction", label: "درباره اقامتگاه" }]} />);
+    fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
+    const booking = screen.getByRole("menuitem", { name: "رزرو اقامت" });
+    expect(booking.getAttribute("href")).toBe("#booking");
+    expect(document.activeElement).toBe(booking);
+    fireEvent.keyDown(booking, { key: "ArrowDown" });
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "درباره اقامتگاه" }));
+    fireEvent.keyDown(document.activeElement!, { key: "End" });
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "رزروهای من" }));
+    fireEvent.keyDown(document.activeElement!, { key: "Home" });
+    fireEvent.click(booking);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
   it("preserves shared Escape closing and focus restoration without changing authentication", async () => {
     render(<PropertyGuestAccount slug="garden" />);
-    const trigger = screen.getByRole("button", { name: "ورود / ثبت‌نام" });
-    trigger.focus(); fireEvent.click(trigger);
-    await screen.findByRole("dialog");
+    const trigger = screen.getByRole("button", { name: "منوی اقامتگاه" });
+    trigger.focus(); await openLogin();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     await waitFor(() => expect(document.activeElement).toBe(trigger));
@@ -64,21 +97,21 @@ describe("Property guest account", () => {
   it("existing-session menu has only Property bookings and real shared logout", async () => {
     mocks.auth.authenticated = true; setToken("isolated-fixture-token");
     const view = render(<PropertyGuestAccount slug="garden" />);
-    fireEvent.click(screen.getByRole("button", { name: "حساب من" }));
+    fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
     expect(screen.getAllByRole("menuitem")).toHaveLength(2);
     expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "رزروهای من" }));
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByRole("menu")).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "حساب من" }));
+    fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "رزروهای من" }));
     expect(mocks.push).toHaveBeenCalledWith("/book/garden/my-bookings");
     expect(mocks.api).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole("button", { name: "حساب من" }));
+    fireEvent.click(screen.getByRole("button", { name: "منوی اقامتگاه" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "خروج از حساب" }));
     expect(mocks.clear).toHaveBeenCalledOnce(); expect(getToken()).toBeNull();
     expect(mocks.push).toHaveBeenLastCalledWith("/book/garden");
     view.rerender(<PropertyGuestAccount slug="garden" />);
-    expect(screen.getByRole("button", { name: "ورود / ثبت‌نام" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "منوی اقامتگاه" })).toBeTruthy();
     expect(screen.queryByRole("menu")).toBeNull();
     expect(document.body.textContent).not.toMatch(/کیف پول|پنل مدیریت|پنل اقامتگاه‌ها/);
   });

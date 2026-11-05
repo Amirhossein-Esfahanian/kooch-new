@@ -37,6 +37,11 @@ function UserMenuContent({
   open,
   variant = "public",
   propertySlug,
+  onPropertyLogin,
+  propertyLinks = [],
+  propertyMenuLabel = "حساب من",
+  triggerClassName = "",
+  menuClassName = "",
 }: {
   collapsed?: boolean;
   darkMode?: boolean;
@@ -44,6 +49,11 @@ function UserMenuContent({
   open?: boolean;
   variant?: "dashboard" | "public" | "sidebar" | "property";
   propertySlug?: string;
+  onPropertyLogin?: () => void;
+  propertyLinks?: ReadonlyArray<{ href: string; label: string }>;
+  propertyMenuLabel?: string;
+  triggerClassName?: string;
+  menuClassName?: string;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -83,7 +93,7 @@ function UserMenuContent({
     if (!menuOpen) return;
 
     const firstItem =
-      menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]');
+      menuRef.current?.querySelector<HTMLElement>('[role="menuitem"]');
     firstItem?.focus();
   }, [menuOpen]);
 
@@ -105,12 +115,12 @@ function UserMenuContent({
 
   function handleMenuKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const items = Array.from(
-      menuRef.current?.querySelectorAll<HTMLButtonElement>(
+      menuRef.current?.querySelectorAll<HTMLElement>(
         '[role="menuitem"]',
       ) ?? [],
     );
     const currentIndex = items.indexOf(
-      document.activeElement as HTMLButtonElement,
+      document.activeElement as HTMLElement,
     );
     let nextIndex: number | null = null;
 
@@ -167,20 +177,20 @@ function UserMenuContent({
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           aria-controls={menuOpen ? menuId : undefined}
-          aria-label={isProperty ? "حساب من" : `منوی کاربر ${userName}`}
-          className={`relative z-[80] flex items-center gap-2 border px-2 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSidebar ? `min-h-11 w-full rounded-lg ${collapsed ? "md:justify-center" : ""}` : isProperty ? "min-h-11 max-w-56 rounded-lg" : "min-h-10 max-w-56 rounded-xl"} ${triggerClass}`}
+          aria-label={isProperty ? propertyMenuLabel : `منوی کاربر ${userName}`}
+          className={`relative z-[80] flex items-center gap-2 border px-2 py-1.5 text-sm font-bold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${isSidebar ? `min-h-11 w-full rounded-lg ${collapsed ? "md:justify-center" : ""}` : isProperty ? "min-h-11 max-w-56 rounded-lg" : "min-h-10 max-w-56 rounded-xl"} ${triggerClass} ${triggerClassName}`}
           onClick={() => setMenuOpen(!menuOpen)}
           ref={triggerRef}
           type="button"
           title={isSidebar && collapsed ? userName : undefined}
         >
-          <span className={`grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg text-xs font-bold ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
+          {!isProperty && <span className={`grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg text-xs font-bold ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
             {isSidebar && avatarUrl ? (
               // Authenticated private media is rendered from the existing blob loader.
               // eslint-disable-next-line @next/next/no-img-element
               <img alt="تصویر پروفایل" className="h-full w-full object-cover" height={32} onError={clearAvatar} src={avatarUrl} width={32} />
             ) : userName.charAt(0)}
-          </span>
+          </span>}
           {isSidebar ? (
             <span className={`min-w-0 flex-1 text-start ${collapsed ? "md:hidden" : ""}`}>
               <span className="block truncate text-sm font-semibold">{userName}</span>
@@ -188,7 +198,7 @@ function UserMenuContent({
                 <span className="block truncate text-xs font-normal text-foreground" dir="auto">{secondaryIdentifier}</span>
               )}
             </span>
-          ) : <span className={isProperty ? "min-w-0 truncate" : "hidden min-w-0 truncate lg:inline"}>{isProperty ? "حساب من" : userName}</span>}
+          ) : <span className={isProperty ? "min-w-0 truncate" : "hidden min-w-0 truncate lg:inline"}>{isProperty ? propertyMenuLabel : userName}</span>}
           <span aria-hidden="true" className={`text-muted-foreground ${isSidebar ? `rotate-180 ${collapsed ? "md:hidden" : ""}` : ""}`}>
             ▾
           </span>
@@ -197,13 +207,15 @@ function UserMenuContent({
         {menuOpen && (
           <div
             aria-label={isProperty ? "حساب من" : "انتخاب محیط کاربری و حساب"}
-            className={`absolute z-[90] w-64 border p-1 text-sm font-bold shadow-xl ${isSidebar ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-6rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg" : "left-0 top-12 overflow-hidden rounded-xl"} ${menuClass}`}
+            className={`absolute z-[90] w-64 border p-1 text-sm font-bold shadow-xl ${isSidebar ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-6rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg" : "left-0 top-12 overflow-hidden rounded-xl"} ${menuClass} ${menuClassName}`}
             onKeyDown={handleMenuKeyDown}
             ref={menuRef}
             id={menuId}
             role="menu"
           >
-            {isProperty && propertySlug && <button className={`block min-h-11 w-full rounded-lg px-3 py-2 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${itemClass}`} role="menuitem" type="button" onClick={() => { setMenuOpen(false); router.push(`/book/${encodeURIComponent(propertySlug)}/my-bookings`); }}>رزروهای من</button>}
+            {isProperty && propertyLinks.map((link) => <a key={link.href} href={link.href} role="menuitem" className="flex min-h-11 items-center rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setMenuOpen(false)}>{link.label}</a>)}
+            {isProperty && !session.authenticated && onPropertyLogin && <button className="block min-h-11 w-full rounded-lg px-3 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" role="menuitem" type="button" onClick={() => { setMenuOpen(false); triggerRef.current?.focus(); onPropertyLogin(); }}>ورود / ثبت‌نام</button>}
+            {isProperty && propertySlug && <button className={`block min-h-11 w-full rounded-lg px-3 py-2 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${itemClass}`} role="menuitem" type="button" onClick={() => { setMenuOpen(false); if (!session.authenticated && onPropertyLogin) { triggerRef.current?.focus(); onPropertyLogin(); } else router.push(`/book/${encodeURIComponent(propertySlug)}/my-bookings`); }}>رزروهای من</button>}
             {visibleWorkspaces.map((workspace) => (
               <button
                 aria-current={
@@ -228,14 +240,14 @@ function UserMenuContent({
               تنظیمات حساب
             </button>
             </>}
-            <button
+            {(!isProperty || session.authenticated) && <button
               className={`block ${isProperty ? "min-h-11" : "min-h-10"} w-full rounded-lg px-3 py-2 text-right text-destructive transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
               onClick={logout}
               role="menuitem"
               type="button"
             >
               {isProperty ? "خروج از حساب" : "خروج"}
-            </button>
+            </button>}
           </div>
         )}
       </div>
