@@ -76,8 +76,6 @@
 .sidebarCard section > div { height: 14rem; }
 .sidebarCard [role="status"] { background: var(--card); color: var(--muted-foreground); }
 .address { margin-top: 1rem; font-size: .875rem; line-height: 1.9; overflow-wrap: anywhere; }
-.weatherHeading { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
-.weatherHeading > span:last-child { padding: .125rem .5rem; border: 1px solid var(--border); border-radius: .25rem; color: var(--muted-foreground); font-size: .6875rem; }
 .galleryDialog.galleryDialog { height: auto; max-height: 94dvh; }
 .galleryBody { padding: 1rem; }
 .viewer { display: grid; gap: 1rem; }

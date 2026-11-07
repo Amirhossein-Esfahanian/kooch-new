@@ -6,6 +6,11 @@ import { MarketplacePropertyDetail } from "@/components/property/marketplace/Mar
 import styles from "@/components/property/marketplace/MarketplacePropertyDetail.module.css";
 import type { PublicProperty } from "@/lib/public-properties";
 
+vi.mock("@/hooks/useWeather", () => ({ useWeather: () => ({ state: { status: "loaded", data: {
+  status: "unavailable", unavailableReason: "no_snapshot", locationKey: "kashan", provider: "VisualCrossing",
+  attribution: "Weather data by Visual Crossing", unitGroup: "metric", fetchedAtUtc: null, days: [],
+} }, retry: vi.fn() }) }));
+
 vi.mock("@/components/property/PropertyLocationMap", async (original) => ({
   ...await original<typeof import("@/components/property/PropertyLocationMap")>(),
   PropertyLocationMap: () => <div data-testid="map-fixture">نقشهٔ آزمایشی</div>,
@@ -103,8 +108,8 @@ describe("Marketplace property presentation", () => {
     expect(screen.getByRole("button", { name: "مشاهده همه تصاویر" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("تصویری برای این اقامتگاه ثبت نشده است.")).toBeTruthy();
     expect(screen.getByText("امتیاز قابل‌نمایشی در دسترس نیست.")).toBeTruthy();
-    expect(screen.getByText("غیرزنده")).toBeTruthy();
-    expect(screen.getByText(/اطلاعات زنده یا پیش‌بینی ارائه نمی‌شود/)).toBeTruthy();
+    expect(screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" })).toBeTruthy();
+    expect(screen.getByText("پیش‌بینی آب‌وهوا در حال حاضر در دسترس نیست.")).toBeTruthy();
     expect(screen.queryByTestId("map-fixture")).toBeNull();
     expect(document.getElementById("property-policies")!.textContent).toContain("جزئیات سیاست لغو در حال حاضر برای نمایش در دسترس نیست.");
     expect(document.getElementById("property-policies")!.textContent).not.toContain("یادداشت واقعی");
