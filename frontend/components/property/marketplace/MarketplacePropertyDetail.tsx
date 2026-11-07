@@ -107,6 +107,10 @@ export function MarketplacePropertyDetail({ property, resultsHref, searchBar, ro
           {property.roomTypes.length ? roomSelection : <p className={styles.unavailable}>هنوز اتاق فعالی ثبت نشده است.</p>}
         </section>
 
+        <div className={`${styles.fullWidth} min-w-0`}>
+          <MarketplaceWeatherCard />
+        </div>
+
         <section aria-labelledby="reviews-title" className={`${styles.section} ${styles.fullWidth}`} id="property-reviews" tabIndex={-1}>
           <h2 id="reviews-title">نظرات مهمانان</h2>
           <p className={styles.unavailable}>اطلاعات نظرات و امتیاز مهمانان در حال حاضر برای نمایش در دسترس نیست.</p>
@@ -150,7 +154,6 @@ export function MarketplacePropertyDetail({ property, resultsHref, searchBar, ro
           <p className={styles.address}>{property.address}، {property.city}</p>
           <a className={styles.textLink} href="#property-location" onClick={(event) => { event.preventDefault(); navigation.navigate("property-location"); }}>اطلاعات محدوده و مکان‌های نزدیک</a>
         </KoochCard>
-        <MarketplaceWeatherCard className={styles.sidebarCard} />
       </aside>
     </div>
     <KoochDialog contentClassName={styles.amenitiesDialog} onOpenChange={setAllAmenitiesOpen} open={allAmenitiesOpen} size="md" title="همه امکانات اقامتگاه">

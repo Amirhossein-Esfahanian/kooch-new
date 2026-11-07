@@ -9,15 +9,17 @@ import { weatherDayLabel, weatherForToday, weatherNumber, weatherUpdatedLabel } 
 import { WeatherIcon } from "./WeatherIcon";
 import styles from "./WeatherCard.module.css";
 
-export function WeatherCard({ state, onRetry, className = "", showPrecipitation = true, notice }: {
-  state: WeatherState; onRetry?: () => void; className?: string; showPrecipitation?: boolean; notice?: ReactNode;
+export type WeatherCardLayout = "vertical" | "horizontal";
+
+export function WeatherCard({ state, onRetry, className = "", showPrecipitation = true, notice, layout = "vertical" }: {
+  state: WeatherState; onRetry?: () => void; className?: string; showPrecipitation?: boolean; notice?: ReactNode; layout?: WeatherCardLayout;
 }) {
   const headingId = useId();
   const today = useWeatherToday();
   const data = state.status === "loaded" && today ? weatherForToday(state.data, today) : null;
   const days = data && data.status !== "unavailable" ? data.days.slice(0, 7) : [];
   const unit = data?.unitGroup === "us" ? "فارنهایت" : "سانتی‌گراد";
-  return <KoochCard aria-busy={state.status === "loading"} aria-labelledby={headingId} className={`${styles.card} ${className}`} dir="rtl">
+  return <KoochCard aria-busy={state.status === "loading"} aria-labelledby={headingId} className={`${styles.card} ${layout === "horizontal" ? styles.horizontal : ""} ${className}`} dir="rtl">
     <h2 className={styles.heading} id={headingId}>پیش‌بینی آب‌وهوا{data?.locationKey === "kashan" ? "ی کاشان" : ""}</h2>
     <div className={styles.message}>
       {notice}
@@ -31,13 +33,13 @@ export function WeatherCard({ state, onRetry, className = "", showPrecipitation 
     {state.status === "error" && onRetry && <KoochButton className={styles.retry} onClick={onRetry} size="sm" variant="outline">تلاش دوباره</KoochButton>}
     {days.length > 0 && <>
       <p className={styles.unit}>دما به درجهٔ {unit}</p>
-      <ul aria-label="پیش‌بینی روزانه" className={styles.days}>{days.map((day) => {
+      <ul aria-label="پیش‌بینی روزانه" className={styles.days} tabIndex={layout === "horizontal" ? 0 : undefined}>{days.map((day) => {
         const label = weatherDayLabel(day.date);
         return <li key={day.date}>
           <time dateTime={day.date}><strong>{label.weekday}</strong><span>{label.date}</span></time>
           <span className={styles.icon}><WeatherIcon code={day.icon} /></span>
           <div className={styles.forecast}>
-            <p>{day.conditions}</p>
+            <p className={styles.conditions}>{day.conditions}</p>
             <p className={styles.temperatures}>
               <span>بیشینه <bdi>{weatherNumber.format(day.maxTemperature)}°</bdi></span>
               <span>کمینه <bdi>{weatherNumber.format(day.minTemperature)}°</bdi></span>
@@ -47,7 +49,9 @@ export function WeatherCard({ state, onRetry, className = "", showPrecipitation 
         </li>;
       })}</ul>
     </>}
-    {data?.fetchedAtUtc && <p className={styles.updated}>آخرین به‌روزرسانی: <time dateTime={data.fetchedAtUtc}>{weatherUpdatedLabel(data.fetchedAtUtc)}</time> (تهران)</p>}
-    <p className={styles.attribution}>منبع: <a href="https://www.visualcrossing.com/weather-data" rel="noopener noreferrer" target="_blank" lang="en" dir="ltr">Visual Crossing<span className="sr-only"> (باز شدن در پنجرهٔ جدید)</span></a></p>
+    <div className={styles.footer}>
+      {data?.fetchedAtUtc && <p className={styles.updated}>آخرین به‌روزرسانی: <time dateTime={data.fetchedAtUtc}>{weatherUpdatedLabel(data.fetchedAtUtc)}</time> (تهران)</p>}
+      <p className={styles.attribution}>منبع: <a href="https://www.visualcrossing.com/weather-data" rel="noopener noreferrer" target="_blank" lang="en" dir="ltr">Visual Crossing<span className="sr-only"> (باز شدن در پنجرهٔ جدید)</span></a></p>
+    </div>
   </KoochCard>;
 }

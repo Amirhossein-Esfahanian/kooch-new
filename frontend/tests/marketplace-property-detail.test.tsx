@@ -292,6 +292,20 @@ describe("Marketplace property presentation", () => {
     await waitFor(() => expect(link.getAttribute("aria-current")).toBe("location"));
   });
 
+  it("places exactly one full-width weather panel immediately after all Rooms content, not in the sidebar", () => {
+    render(<Detail />);
+    const rooms = document.getElementById("property-rooms")!;
+    const weather = screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" });
+    const wrapper = rooms.nextElementSibling!;
+    expect(wrapper.contains(weather)).toBe(true);
+    expect(wrapper.classList.contains(styles.fullWidth)).toBe(true);
+    expect(wrapper.classList.contains("min-w-0")).toBe(true);
+    expect(wrapper.parentElement?.classList.contains(styles.contentGrid)).toBe(true);
+    expect(wrapper.nextElementSibling?.id).toBe("property-reviews");
+    expect(screen.getAllByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" })).toHaveLength(1);
+    expect(within(screen.getByRole("complementary")).queryByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" })).toBeNull();
+  });
+
   it("does not hide a focused site-header control while the user scrolls", async () => {
     render(<div><header data-testid="site-header"><a href="/login">ورود به حساب</a></header><main><Detail /></main></div>);
     const header = screen.getByTestId("site-header");

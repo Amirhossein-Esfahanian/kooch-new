@@ -29,6 +29,9 @@ it("makes no diagnostic request before a click; displays direct results inside t
   expect(fetcher).toHaveBeenCalledTimes(1);
   expect(fetcher).toHaveBeenCalledWith("/api/backend/weather/test-live", expect.objectContaining({ cache: "no-store" }));
   expect(screen.getAllByRole("region")).toHaveLength(1);
+  expect(screen.getByRole("list", { name: "پیش‌بینی روزانه" }).tabIndex).toBe(0);
+  expect(screen.getByRole("region").compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(screen.getByRole("region").contains(button)).toBe(false);
   expect(screen.getAllByRole("listitem")).toHaveLength(7);
   expect(screen.getByRole("region").getAttribute("dir")).toBe("rtl");
   expect(localStorage.length).toBe(0); expect(sessionStorage.length).toBe(0);

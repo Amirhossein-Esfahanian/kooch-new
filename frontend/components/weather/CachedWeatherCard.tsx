@@ -1,9 +1,9 @@
 "use client";
 
 import { useWeather } from "@/hooks/useWeather";
-import { WeatherCard } from "./WeatherCard";
+import { WeatherCard, type WeatherCardLayout } from "./WeatherCard";
 
-export function CachedWeatherCard({ className }: { className?: string }) {
+export function CachedWeatherCard({ className, layout }: { className?: string; layout?: WeatherCardLayout }) {
   const { state, retry } = useWeather();
-  return <WeatherCard className={className} onRetry={retry} state={state} />;
+  return <WeatherCard className={className} layout={layout} onRetry={retry} state={state} />;
 }

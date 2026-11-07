@@ -2,6 +2,10 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeatherCard } from "@/components/weather/WeatherCard";
 import { WeatherIcon } from "@/components/weather/WeatherIcon";
+import type { WeatherState } from "@/hooks/useWeather";
+import styles from "@/components/weather/WeatherCard.module.css";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { createWeatherLoader, getWeather, weatherBusinessDate, weatherForToday, weatherMidnightDelay, type WeatherResponse } from "@/lib/weather";
 import { weatherFixture } from "./fixtures/weather";
 
@@ -95,6 +99,50 @@ describe("weather API and shared cache", () => {
 });
 
 describe("reusable weather presentation", () => {
+  it("offers seven accessible horizontal tiles with the same mapped values, dates and attribution", () => {
+    render(<WeatherCard layout="horizontal" state={{ status: "loaded", data: weatherFixture() }} />);
+    const card = screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" });
+    expect(card.classList.contains(styles.horizontal)).toBe(true);
+    expect(card.getAttribute("dir")).toBe("rtl");
+    const row = within(card).getByRole("list", { name: "پیش‌بینی روزانه" });
+    expect(row.tabIndex).toBe(0);
+    row.focus();
+    expect(document.activeElement).toBe(row);
+    const tiles = within(row).getAllByRole("listitem");
+    expect(tiles).toHaveLength(7);
+    for (const [index, tile] of tiles.entries()) {
+      expect(tile.querySelector("time")?.getAttribute("datetime")).toBe(weatherFixture().days[index].date);
+      expect(tile.querySelector('[aria-hidden="true"]')).toBeTruthy();
+      expect(tile.textContent).toContain("آفتابی");
+      expect(tile.textContent).toContain("بیشینه");
+      expect(tile.textContent).toContain("کمینه");
+      expect(tile.textContent).toContain("احتمال بارش ۰٪");
+    }
+    expect(within(card).getByText(/آخرین به‌روزرسانی/)).toBeTruthy();
+    expect(within(card).getByRole("link", { name: /Visual Crossing/ })).toBeTruthy();
+  });
+
+  it.each(["loading", "error", "stale", "unavailable", "forecast_expired"])("preserves %s in the horizontal layout", (mode) => {
+    const state: WeatherState = mode === "loading" || mode === "error" ? { status: mode } : {
+      status: "loaded", data: { ...weatherFixture(), status: mode === "stale" ? "stale" : "unavailable",
+        unavailableReason: mode === "forecast_expired" ? "forecast_expired" : null, days: mode === "stale" ? weatherFixture().days : [] },
+    };
+    render(<WeatherCard layout="horizontal" onRetry={vi.fn()} state={state} />);
+    expect(screen.getByRole("region").classList.contains(styles.horizontal)).toBe(true);
+    expect(screen.getByRole(mode === "error" ? "alert" : "status")).toBeTruthy();
+    expect(screen.queryAllByRole("listitem")).toHaveLength(mode === "stale" ? 7 : 0);
+    expect(screen.getByRole("link", { name: /Visual Crossing/ })).toBeTruthy();
+  });
+
+  it("keeps horizontal scrolling inside the row and seven equal desktop columns in scoped CSS", () => {
+    const css = readFileSync(resolve(process.cwd(), "components/weather/WeatherCard.module.css"), "utf8");
+    expect(css).toMatch(/\.horizontal \.days\s*\{[^}]*grid-auto-flow:\s*column/);
+    expect(css).toMatch(/\.horizontal \.days\s*\{[^}]*max-width:\s*100%[^}]*overflow-x:\s*auto/);
+    expect(css).toMatch(/@media \(min-width: 1024px\)[\s\S]*grid-template-columns:\s*repeat\(7, minmax\(0, 1fr\)\)/);
+    expect(css).toContain("overscroll-behavior-inline: contain");
+    expect(css).toContain(".horizontal .days:focus-visible");
+  });
+
   it("updates an already open panel at Tehran midnight without relabeling yesterday", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-11-07T20:29:59Z"));

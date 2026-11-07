@@ -12,7 +12,7 @@ import { WeatherCard } from "./WeatherCard";
 export function MarketplaceWeatherCard({ className }: { className?: string }) {
   return process.env.NODE_ENV === "development"
     ? <DevelopmentWeatherCard className={className} />
-    : <CachedWeatherCard className={className} />;
+    : <CachedWeatherCard className={className} layout="horizontal" />;
 }
 
 function DevelopmentWeatherCard({ className }: { className?: string }) {
@@ -52,7 +52,7 @@ function DevelopmentWeatherCard({ className }: { className?: string }) {
   }
 
   return <div className="min-w-0" dir="rtl">
-    <WeatherCard className={className} onRetry={retry}
+    <WeatherCard className={className} layout="horizontal" onRetry={retry}
       state={allowed && direct ? { status: "loaded", data: direct } : state}
       notice={allowed && <>
         {pending && <p role="status">در حال دریافت مستقیم آب‌وهوا…</p>}
