@@ -17,7 +17,7 @@ namespace Kooch.Api.Tests.Weather;
 public sealed class WeatherHttpTests
 {
     [Fact]
-    public async Task AnonymousGet_IsCachedReadOnlyAndReturnsNormalizedSnapshot()
+    public async Task AnonymousGet_IsCachedReadOnlyAndRemainsReadableWhenRefreshDisabled()
     {
         await using var fixture = await WeatherDatabase.CreateAsync();
         var provider = new CountingProvider(fixture);
@@ -45,6 +45,9 @@ public sealed class WeatherHttpTests
 
         await using (var scope = app.Services.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<WeatherService>().RefreshAsync(default);
+        fixture.Settings.Enabled = false;
+        await using (var scope = app.Services.CreateAsyncScope())
+            Assert.Equal("disabled", await scope.ServiceProvider.GetRequiredService<WeatherService>().RefreshAsync(default));
         using var filled = await client.GetAsync("/api/weather");
         var response = await filled.Content.ReadFromJsonAsync<WeatherResponse>();
         Assert.Equal("available", response!.Status);

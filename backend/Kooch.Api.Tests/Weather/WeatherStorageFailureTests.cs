@@ -21,7 +21,7 @@ public sealed class WeatherStorageFailureTests
             .UseSqlServer("Server=unused;Database=ModelOnly;Integrated Security=True;TrustServerCertificate=True")
             .AddInterceptors(interceptor).Options);
         var service = new WeatherService(new WeatherForecastStore(context), new NeverCalledProvider(),
-            Options.Create(new WeatherOptions()), TimeProvider.System, NullLogger<WeatherService>.Instance);
+            Options.Create(new WeatherOptions { Enabled = true }), TimeProvider.System, NullLogger<WeatherService>.Instance);
         Assert.Equal("setup_required", (await service.GetAsync(default)).UnavailableReason);
         Assert.Equal("setup_required", await service.RefreshAsync(default));
         Assert.Equal(2, interceptor.BlockedOpenCount);

@@ -340,7 +340,7 @@ app.MapMockPaymentCheckout(internalTestPaymentsEnabled);
 if (!automaticDatabaseMutationsEnabled)
 {
     app.Logger.LogInformation(
-        "Automatic database migrations, seed operations, and background database writers are disabled.");
+        "Automatic database migrations, seed operations, and non-weather background database writers are disabled. Weather refresh is controlled independently by Weather:Enabled.");
 }
 
 await AutomaticDatabaseMutationsStartup.RunInitializationAsync(automaticDatabaseMutationsEnabled, async () =>

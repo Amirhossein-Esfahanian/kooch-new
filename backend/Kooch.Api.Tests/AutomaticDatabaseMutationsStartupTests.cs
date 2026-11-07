@@ -14,8 +14,7 @@ public sealed class AutomaticDatabaseMutationsStartupTests
         "HolidayCalendarSyncHostedService",
         "CashbackGrantHostedService",
         "ReservationExpirationHostedService",
-        "ReservationApprovalReminderHostedService",
-        "WeatherRefreshHostedService"
+        "ReservationApprovalReminderHostedService"
     ];
 
     [Fact]

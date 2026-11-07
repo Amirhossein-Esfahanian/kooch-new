@@ -9,9 +9,14 @@ public sealed class WeatherRefreshHostedService(IServiceScopeFactory scopes, IOp
     {
         await Task.Yield();
         var settings = options.Value;
-        if (!settings.Enabled || !settings.IsValid())
+        if (!settings.Enabled)
         {
-            logger.LogWarning("Weather background refresh is disabled or its configuration is invalid.");
+            logger.LogInformation("Weather background refresh is disabled by Weather:Enabled.");
+            return;
+        }
+        if (!settings.IsValid())
+        {
+            logger.LogWarning("Weather background refresh configuration is invalid.");
             return;
         }
         try

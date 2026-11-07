@@ -133,6 +133,17 @@ public sealed class WeatherServiceTests
     }
 
     [Fact]
+    public async Task DisabledRefresh_SkipsDatabaseAndProvider()
+    {
+        await using var fixture = await WeatherDatabase.CreateAsync(createTable: false);
+        fixture.Settings.Enabled = false;
+        await using var context = fixture.Context();
+        var provider = new FakeProvider(fixture);
+        Assert.Equal("disabled", await fixture.Service(context, provider).RefreshAsync(default));
+        Assert.Equal(0, provider.Calls);
+    }
+
+    [Fact]
     public async Task MissingStorage_ReturnsSafeUnavailableWithoutProviderCall()
     {
         await using var fixture = await WeatherDatabase.CreateAsync(createTable: false);
@@ -207,7 +218,7 @@ internal sealed class WeatherTestClock : TimeProvider
 internal sealed class WeatherDatabase : IAsyncDisposable
 {
     private readonly string path = Path.Combine(Path.GetTempPath(), $"kooch-weather-{Guid.NewGuid():N}.db");
-    public WeatherOptions Settings { get; } = new();
+    public WeatherOptions Settings { get; } = new() { Enabled = true };
     public WeatherTestClock Clock { get; } = new();
     public KoochDbContext Context() => new(new DbContextOptionsBuilder<KoochDbContext>()
         .UseSqlite($"Data Source={path};Pooling=False;Default Timeout=10").Options);

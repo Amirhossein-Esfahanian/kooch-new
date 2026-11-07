@@ -11,6 +11,7 @@ public static class WeatherServiceRegistration
             .RemoveAllLoggers();
         services.AddScoped<WeatherForecastStore>();
         services.AddScoped<WeatherService>();
+        services.AddHostedService<WeatherRefreshHostedService>();
         return services;
     }
 }

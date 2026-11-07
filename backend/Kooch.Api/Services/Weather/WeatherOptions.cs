@@ -3,7 +3,7 @@ namespace Kooch.Api.Services.Weather;
 public sealed class WeatherOptions
 {
     public const string SectionName = "Weather";
-    public bool Enabled { get; set; } = true;
+    public bool Enabled { get; set; } = false;
     public string Provider { get; set; } = "VisualCrossing";
     public string LocationKey { get; set; } = "kashan";
     public string Location { get; set; } = "Kashan,Iran";
