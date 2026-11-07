@@ -1,4 +1,5 @@
 using Kooch.Api.Services.Holidays;
+using Kooch.Api.Services.Weather;
 
 namespace Kooch.Api.Services;
 
@@ -25,6 +26,7 @@ public static class AutomaticDatabaseMutationsStartup
         services.AddHostedService<CashbackGrantHostedService>();
         services.AddHostedService<ReservationExpirationHostedService>();
         services.AddHostedService<ReservationApprovalReminderHostedService>();
+        services.AddHostedService<WeatherRefreshHostedService>();
         return services;
     }
 

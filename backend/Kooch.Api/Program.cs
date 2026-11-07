@@ -10,6 +10,7 @@ using Kooch.Api.Integrations.PnlDev;
 using Kooch.Api.Services;
 using Kooch.Api.Services.Amenities;
 using Kooch.Api.Services.Holidays;
+using Kooch.Api.Services.Weather;
 using Kooch.Api.Services.MediaStorage;
 using Kooch.Api.Services.ProfileAvatar;
 using Kooch.Api.Services.SiteSettings;
@@ -49,6 +50,7 @@ builder.Services.AddScoped<IAmenityCategoryIconMigration, AmenityCategoryIconMig
 builder.Services.AddScoped<IAmenityIconMigration, AmenityIconMigration>();
 builder.Services.AddHttpClient<IHolidayProvider, PnlDevHolidayProvider>();
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSharedWeather(builder.Configuration);
 builder.Services.AddPropertyDirectBookingContexts(builder.Configuration);
 builder.Services.AddScoped<Kooch.Api.Services.Wallet.WalletService>();
 builder.Services.AddScoped<IHolidayCalendarSynchronizationService, HolidayCalendarSynchronizationService>();
