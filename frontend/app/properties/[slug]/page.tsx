@@ -3,23 +3,17 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { useBookingUrlContext } from "@/hooks/useBookingUrlContext";
 import {
   PropertyBookingPanel,
-  propertyRoomsAnchorId,
 } from "@/components/booking/PropertyBookingPanel";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
-import { PromotionCards } from "@/components/promotions/PromotionCards";
-import {
-  getValidPublicLocation,
-  PropertyLocationMap,
-} from "@/components/property/PropertyLocationMap";
+import { MarketplacePropertyDetail } from "@/components/property/marketplace/MarketplacePropertyDetail";
 import {
   fetchPublicApi,
-  PublicImage,
   PublicProperty,
   PublicRoomType,
 } from "@/lib/public-properties";
@@ -54,28 +48,6 @@ function tehranVisitDate(): string {
   const part = (type: string) => parts.find((item) => item.type === type)?.value;
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
-
-const propertyTypeLabels: Record<string, string> = {
-  TraditionalHouse: "خانه سنتی",
-  BoutiqueHotel: "هتل بوتیک",
-  EcoLodge: "اقامتگاه بوم‌گردی",
-  Hotel: "هتل",
-  Villa: "ویلا",
-  Apartment: "آپارتمان",
-};
-
-const sectionLabels: Record<string, string> = {
-  PropertyIntroduction: "معرفی اقامتگاه",
-  ImportantNotes: "نکات مهم",
-};
-
-const viewLabels: Record<string, string> = {
-  CourtyardView: "نمای حیاط",
-  GardenView: "نمای باغ",
-  CityView: "نمای شهر",
-  MountainView: "نمای کوه",
-  DesertView: "نمای کویر",
-};
 
 const bedLabels: Record<string, string> = {
   "Single Bed": "تخت یک‌نفره",
@@ -178,17 +150,6 @@ export default function PublicPropertyPage() {
   }, [property]);
 
 
-  const groupedAmenities = useMemo(() => {
-    const groups = new Map<string, PublicProperty["amenities"]>();
-    for (const amenity of property?.amenities ?? []) {
-      groups.set(amenity.category, [
-        ...(groups.get(amenity.category) ?? []),
-        amenity,
-      ]);
-    }
-    return [...groups.entries()];
-  }, [property]);
-
   if (loading) return <PageMessage>در حال بارگذاری اقامتگاه...</PageMessage>;
   if (error || !property) return <PageMessage error="اقامتگاه پیدا نشد." />;
 
@@ -204,39 +165,8 @@ export default function PublicPropertyPage() {
           isCover: true,
         },
       ];
-  const descriptions = property.descriptionSections.length
-    ? property.descriptionSections
-    : [
-        {
-          sectionType: "PropertyIntroduction" as const,
-          title: "",
-          content: property.description,
-          sortOrder: 0,
-        },
-      ];
-  const accessibility = [
-    ["مناسب ویلچر", property.isWheelchairAccessible],
-    ["آسانسور", property.hasElevator],
-    ["اتاق همکف", property.hasGroundFloorRoom],
-    ["سرویس مناسب افراد کم‌توان", property.hasAccessibleBathroom],
-  ].filter(([, value]) => value !== null);
   const resultQuery = searchParams.toString();
-  const resultsHref = resultQuery
-    ? `/properties?${resultQuery}`
-    : "/properties";
-  const publicLocation = getValidPublicLocation(
-    property.latitude,
-    property.longitude,
-  );
-  const mapSearchParams = new URLSearchParams({
-    api: "1",
-    query: publicLocation
-      ? `${publicLocation.latitude},${publicLocation.longitude}`
-      : "",
-  });
-  const mapUrl = publicLocation
-    ? `https://www.google.com/maps/search/?${mapSearchParams.toString()}`
-    : null;
+  const resultsHref = resultQuery ? `/properties?${resultQuery}` : "/properties";
 
   return (
     <PropertyBookingPanel
@@ -253,314 +183,20 @@ export default function PublicPropertyPage() {
       roomTypes={property.roomTypes}
     >
       {({ searchBar, roomSelection }) => (
-        <div className="bg-slate-50 text-slate-900" dir="rtl">
-          {searchBar}
-          <div className="px-5 py-8 sm:px-8">
-            <div className="mx-auto max-w-7xl">
-              <Link
-                className="text-sm font-bold text-blue-700"
-                href={resultsHref}
-              >
-                بازگشت به نتایج جست‌وجو
-              </Link>
-
-              <header className="mt-5 flex flex-wrap items-start justify-between gap-5">
-                <div>
-                  <div className="flex gap-2">
-                    <Badge>
-                      {propertyTypeLabels[property.propertyType] ??
-                        property.propertyType}
-                    </Badge>
-                    <Badge green>تایید شده</Badge>
-                  </div>
-                  <h1 className="mt-3 text-3xl font-bold sm:text-5xl">
-                    {property.name}
-                  </h1>
-                  {property.englishName && (
-                    <p className="mt-2 text-sm text-slate-400" dir="ltr">
-                      {property.englishName}
-                    </p>
-                  )}
-                  <p className="mt-3 text-slate-600">
-                    {property.address}، {property.city}
-                  </p>
-                </div>
-              </header>
-
-              <PromotionCards
-                className="mt-6"
-                promotions={property.promotions}
-                title="پیشنهادهای فعال این اقامتگاه"
-              />
-
-              <section className="relative mt-7 grid h-[430px] grid-cols-2 grid-rows-2 gap-2 overflow-hidden rounded-2xl md:grid-cols-4">
-                <Gallery
-                  image={gallery[0]}
-                  className="col-span-2 row-span-2"
-                  name={property.name}
-                  priority
-                  sizes="(max-width: 767px) 100vw, 50vw"
-                />
-                {[1, 2, 3, 4].map((index) => (
-                  <Gallery
-                    image={gallery[index] ?? gallery[0]}
-                    className={index > 2 ? "hidden md:block" : ""}
-                    key={index}
-                    name={property.name}
-                    sizes="(max-width: 767px) 50vw, 25vw"
-                  />
-                ))}
-                <button
-                  className="absolute bottom-4 left-4 rounded-lg bg-white px-4 py-2 text-sm font-bold shadow-lg"
-                  type="button"
-                >
-                  مشاهده همه تصاویر ({property.images.length})
-                </button>
-              </section>
-
-              <div className="mt-8">
-                <div className="grid gap-8">
-                  <section>
-                    <h2 className="text-2xl font-bold">اطلاعات سریع</h2>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                      <Highlight
-                        title="ساعت ورود"
-                        value={property.checkInTime?.slice(0, 5) ?? "ثبت نشده"}
-                      />
-                      <Highlight
-                        title="ساعت خروج"
-                        value={property.checkOutTime?.slice(0, 5) ?? "ثبت نشده"}
-                      />
-                      <Highlight
-                        title="نوع اقامتگاه"
-                        value={
-                          propertyTypeLabels[property.propertyType] ??
-                          property.propertyType
-                        }
-                      />
-                      <Highlight
-                        title="نوع رزرو"
-                        value={
-                          property.isInstantBooking
-                            ? "رزرو آنی"
-                            : "نیازمند تایید میزبان"
-                        }
-                      />
-                    </div>
-                  </section>
-
-                  <section className="rounded-2xl bg-white p-6 shadow-sm">
-                    <h2 className="text-2xl font-bold">درباره اقامتگاه</h2>
-                    <div className="mt-5 grid gap-6">
-                      {descriptions.map((section) => (
-                        <article key={section.sectionType}>
-                          <h3 className="text-lg font-bold">
-                            {section.title ||
-                              sectionLabels[section.sectionType]}
-                          </h3>
-                          <p className="mt-2 whitespace-pre-line leading-8 text-slate-600">
-                            {section.content}
-                          </p>
-                        </article>
-                      ))}
-                    </div>
-                  </section>
-
-                  {property.commonAreas.length > 0 && (
-                    <section>
-                      <h2 className="text-2xl font-bold">فضاهای مشترک</h2>
-                      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                        {property.commonAreas.map((area) => (
-                          <article
-                            className="rounded-xl border bg-white p-5"
-                            key={area.id}
-                          >
-                            <h3 className="font-bold">{area.name}</h3>
-                            {area.description && (
-                              <p className="mt-2 text-sm leading-7 text-slate-600">
-                                {area.description}
-                              </p>
-                            )}
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-                  {property.settings.length > 0 && (
-                    <section aria-labelledby="property-settings-title">
-                      <h2
-                        className="text-2xl font-bold text-foreground"
-                        id="property-settings-title"
-                      >
-                        بافت و موقعیت محیطی
-                      </h2>
-                      <ul className="mt-4 flex flex-wrap gap-2">
-                        {property.settings.map((setting) => (
-                          <li
-                            className="rounded-lg border border-border bg-card px-3 py-2 text-sm font-semibold text-card-foreground"
-                            key={setting.id}
-                          >
-                            {setting.name}
-                          </li>
-                        ))}
-                      </ul>
-                    </section>
-                  )}
-
-                  {property.views.length > 0 && (
-                    <section>
-                      <h2 className="text-2xl font-bold">چشم‌اندازها</h2>
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        {property.views.map((view) => (
-                          <span
-                            className="rounded-full border bg-white px-3 py-1.5 text-sm font-bold"
-                            key={view}
-                          >
-                            {viewLabels[view] ?? view}
-                          </span>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-                  {accessibility.length > 0 && (
-                    <section>
-                      <h2 className="text-2xl font-bold">دسترسی‌پذیری</h2>
-                      <div className="mt-4 grid gap-3 sm:grid-cols-2">
-                        {accessibility.map(([label, value]) => (
-                          <article
-                            className="rounded-xl border bg-white p-4"
-                            key={String(label)}
-                          >
-                            <p className="text-sm font-bold text-slate-500">
-                              {label}
-                            </p>
-                            <p
-                              className={`mt-2 font-bold ${value ? "text-green-700" : "text-slate-500"}`}
-                            >
-                              {value ? "دارد" : "ندارد"}
-                            </p>
-                          </article>
-                        ))}
-                      </div>
-                    </section>
-                  )}
-
-                  <section>
-                    <h2 className="text-2xl font-bold">امکانات</h2>
-                    {groupedAmenities.length ? (
-                      <div className="mt-5 grid gap-4 sm:grid-cols-2">
-                        {groupedAmenities.map(([category, amenities]) => (
-                          <article
-                            className="rounded-xl border bg-white p-5"
-                            key={category}
-                          >
-                            <h3 className="font-bold">{category}</h3>
-                            <div className="mt-3 flex flex-wrap gap-2">
-                              {amenities.map((amenity) => (
-                                <span
-                                  className="rounded-full bg-slate-100 px-3 py-1.5 text-sm font-semibold"
-                                  key={amenity.id}
-                                >
-                                  {amenity.name}
-                                </span>
-                              ))}
-                            </div>
-                          </article>
-                        ))}
-                      </div>
-                    ) : (
-                      <Empty>هنوز امکاناتی ثبت نشده است.</Empty>
-                    )}
-                  </section>
-
-                  <section
-                    aria-labelledby="property-rooms-title"
-                    className="scroll-mt-80 sm:scroll-mt-64 xl:scroll-mt-44"
-                    id={propertyRoomsAnchorId}
-                  >
-                    <h2
-                      className="text-2xl font-bold"
-                      id="property-rooms-title"
-                    >
-                      اتاق‌ها
-                    </h2>
-                    <div className="mt-5">
-                      {property.roomTypes.length ? (
-                        roomSelection
-                      ) : (
-                        <Empty>هنوز اتاق فعالی ثبت نشده است.</Empty>
-                      )}
-                    </div>
-                  </section>
-
-                  <section className="min-w-0">
-                    <h2 className="text-2xl font-bold">مکان‌های نزدیک</h2>
-                    {property.nearbyPlaces.length ? (
-                      <div className="mt-5 overflow-x-auto rounded-xl border bg-white">
-                        <table className="w-full min-w-[520px] text-sm">
-                          <thead className="bg-slate-100 text-slate-500">
-                            <tr>
-                              <th className="p-3 text-right">مکان</th>
-                              <th className="p-3 text-right">پیاده</th>
-                              <th className="p-3 text-right">با خودرو</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {property.nearbyPlaces.map((place) => (
-                              <tr className="border-t" key={place.id}>
-                                <td className="p-3 font-bold">{place.title}</td>
-                                <td className="p-3">
-                                  {place.walkingMinutes != null
-                                    ? `${place.walkingMinutes} دقیقه`
-                                    : "-"}
-                                </td>
-                                <td className="p-3">
-                                  {place.drivingMinutes != null
-                                    ? `${place.drivingMinutes} دقیقه`
-                                    : "-"}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    ) : (
-                      <Empty>مکان نزدیکی ثبت نشده است.</Empty>
-                    )}
-                  </section>
-
-                  {mapUrl && (
-                    <div className="space-y-3">
-                      <PropertyLocationMap
-                        latitude={property.latitude}
-                        longitude={property.longitude}
-                        propertyName={property.name}
-                      />
-                      <a
-                        className="inline-flex min-h-10 w-fit max-w-full items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background [@media(pointer:coarse)]:min-h-11"
-                        href={mapUrl}
-                        rel="noopener noreferrer"
-                        target="_blank"
-                      >
-                        باز کردن در نقشه
-                      </a>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-
+        <>
+          <MarketplacePropertyDetail
+            key={property.id}
+            property={property}
+            resultsHref={resultsHref}
+            searchBar={searchBar}
+            roomSelection={roomSelection}
+          />
           <RoomTypeDetailsDialog
             galleryFallback={gallery[0].url}
-            onOpenChange={(open) => {
-              if (!open) setDetailsRoomType(null);
-            }}
+            onOpenChange={(open) => { if (!open) setDetailsRoomType(null); }}
             roomType={detailsRoomType}
           />
-        </div>
+        </>
       )}
     </PropertyBookingPanel>
   );
@@ -666,74 +302,6 @@ function RoomTypeDetailsDialog({
 function persianBed(value: string) {
   const match = value.match(/^(\d+) x (.+)$/);
   return match ? `${match[1]} ${bedLabels[match[2]] ?? match[2]}` : value;
-}
-
-function Gallery({
-  image,
-  name,
-  className = "",
-  priority = false,
-  sizes,
-}: {
-  image: PublicImage;
-  name: string;
-  className?: string;
-  priority?: boolean;
-  sizes: string;
-}) {
-  return (
-    <figure className={`relative h-full w-full ${className}`}>
-      <Image
-        alt={image.altText || image.caption || name}
-        className="object-cover"
-        fill
-        priority={priority}
-        sizes={sizes}
-        src={image.url}
-        unoptimized={shouldBypassImageOptimization(image.url)}
-      />
-      {image.caption && (
-        <figcaption className="absolute bottom-2 right-2 rounded-lg bg-white/90 px-2 py-1 text-xs font-bold text-slate-700">
-          {image.caption}
-        </figcaption>
-      )}
-    </figure>
-  );
-}
-
-function Badge({
-  children,
-  green = false,
-}: {
-  children: React.ReactNode;
-  green?: boolean;
-}) {
-  return (
-    <span
-      className={`rounded-full px-3 py-1 text-xs font-bold ${
-        green ? "bg-green-50 text-green-700" : "bg-blue-50 text-blue-700"
-      }`}
-    >
-      {children}
-    </span>
-  );
-}
-
-function Highlight({ title, value }: { title: string; value: string }) {
-  return (
-    <article className="rounded-xl border bg-white p-4">
-      <p className="text-xs font-bold text-slate-400">{title}</p>
-      <p className="mt-2 font-bold">{value}</p>
-    </article>
-  );
-}
-
-function Empty({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mt-4 rounded-xl border border-dashed bg-white p-6 text-center text-slate-500">
-      {children}
-    </p>
-  );
 }
 
 function PageMessage({
