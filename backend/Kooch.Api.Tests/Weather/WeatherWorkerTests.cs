@@ -48,7 +48,7 @@ public sealed class WeatherWorkerTests
         registrations.AddSharedWeather(new ConfigurationBuilder().Build());
         using var services = registrations.BuildServiceProvider();
         Assert.IsType<VisualCrossingWeatherProvider>(services.GetRequiredService<IWeatherProvider>());
-        Assert.IsType<EnvironmentWeatherApiKeySource>(services.GetRequiredService<IWeatherApiKeySource>());
+        Assert.IsType<ConfigurationWeatherApiKeySource>(services.GetRequiredService<IWeatherApiKeySource>());
         Assert.True(services.GetRequiredService<IOptions<WeatherOptions>>().Value.IsValid());
         Assert.False(services.GetRequiredService<IOptions<WeatherOptions>>().Value.Enabled);
     }

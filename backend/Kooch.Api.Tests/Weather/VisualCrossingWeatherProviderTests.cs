@@ -1,6 +1,8 @@
 using System.Net;
 using System.Text.Json;
 using Kooch.Api.Services.Weather;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -8,6 +10,40 @@ namespace Kooch.Api.Tests.Weather;
 
 public sealed class VisualCrossingWeatherProviderTests
 {
+    [Fact]
+    public async Task ConfigurationKey_IsAcceptedWithoutEnvironmentConfiguration()
+    {
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Weather:VisualCrossing:ApiKey"] = "fixture-only",
+        }).Build();
+        var registrations = new ServiceCollection();
+        registrations.AddSharedWeather(configuration);
+        using var services = registrations.BuildServiceProvider();
+        var source = services.GetRequiredService<IWeatherApiKeySource>();
+        var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(Payload()) });
+        using var client = new HttpClient(handler);
+        var provider = new VisualCrossingWeatherProvider(client,
+            services.GetRequiredService<IOptions<WeatherOptions>>(), source, TimeProvider.System);
+
+        Assert.True(provider.IsConfigured);
+        Assert.True(source.GetKey() == "fixture-only");
+        var snapshot = await provider.FetchAsync(default);
+        Assert.Equal(15, snapshot.Days.Length);
+        Assert.Equal(1, handler.Calls);
+    }
+
+    [Fact]
+    public void KeyResolution_RespectsConfigurationProviderPrecedence()
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Weather:VisualCrossing:ApiKey"] = "fixture-default" })
+            .AddInMemoryCollection(new Dictionary<string, string?> { ["Weather:VisualCrossing:ApiKey"] = "fixture-override" })
+            .Build();
+        var source = new ConfigurationWeatherApiKeySource(configuration);
+        Assert.True(source.GetKey() == "fixture-override");
+    }
+
     [Fact]
     public async Task DailyRequest_NormalizesOnlyRequiredFields()
     {

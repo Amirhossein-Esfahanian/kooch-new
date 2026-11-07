@@ -19,9 +19,9 @@ public interface IWeatherApiKeySource
     string? GetKey();
 }
 
-public sealed class EnvironmentWeatherApiKeySource : IWeatherApiKeySource
+public sealed class ConfigurationWeatherApiKeySource(IConfiguration configuration) : IWeatherApiKeySource
 {
-    public string? GetKey() => Environment.GetEnvironmentVariable("Weather__VisualCrossing__ApiKey");
+    public string? GetKey() => configuration["Weather:VisualCrossing:ApiKey"];
 }
 
 public sealed class WeatherProviderException() : Exception("The weather provider request failed.");

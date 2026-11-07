@@ -36,7 +36,7 @@ public sealed class WeatherService(WeatherForecastStore store, IWeatherProvider 
         if (!settings.Enabled) return "disabled";
         if (!settings.IsValid() || !provider.IsConfigured)
         {
-            logger.LogWarning("Weather refresh requires valid configuration and Weather__VisualCrossing__ApiKey.");
+            logger.LogWarning("Weather refresh requires valid configuration and Weather:VisualCrossing:ApiKey.");
             return "configuration_required";
         }
         try
