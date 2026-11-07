@@ -6,9 +6,10 @@ public static class WeatherServiceRegistration
     {
         services.Configure<WeatherOptions>(configuration.GetSection(WeatherOptions.SectionName));
         services.AddSingleton<IWeatherApiKeySource>(new ConfigurationWeatherApiKeySource(configuration));
-        services.AddHttpClient<IWeatherProvider, VisualCrossingWeatherProvider>(client => client.Timeout = Timeout.InfiniteTimeSpan)
+        services.AddHttpClient<VisualCrossingWeatherProvider>(client => client.Timeout = Timeout.InfiniteTimeSpan)
             .ConfigurePrimaryHttpMessageHandler(() => new HttpClientHandler { AllowAutoRedirect = false })
             .RemoveAllLoggers();
+        services.AddTransient<IWeatherProvider>(services => services.GetRequiredService<VisualCrossingWeatherProvider>());
         services.AddScoped<WeatherForecastStore>();
         services.AddScoped<WeatherService>();
         services.AddHostedService<WeatherRefreshHostedService>();

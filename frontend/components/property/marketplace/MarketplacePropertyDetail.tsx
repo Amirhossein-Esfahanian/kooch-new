@@ -6,7 +6,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochIcon } from "@/components/KoochIcon";
 import { KoochDialog } from "@/components/KoochDialog";
-import { CachedWeatherCard } from "@/components/weather/CachedWeatherCard";
+import { MarketplaceWeatherCard } from "@/components/weather/MarketplaceWeatherCard";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
 import { PropertyLocationMap, getValidPublicLocation } from "@/components/property/PropertyLocationMap";
 import type { PublicProperty } from "@/lib/public-properties";
@@ -150,7 +150,7 @@ export function MarketplacePropertyDetail({ property, resultsHref, searchBar, ro
           <p className={styles.address}>{property.address}، {property.city}</p>
           <a className={styles.textLink} href="#property-location" onClick={(event) => { event.preventDefault(); navigation.navigate("property-location"); }}>اطلاعات محدوده و مکان‌های نزدیک</a>
         </KoochCard>
-        <CachedWeatherCard className={styles.sidebarCard} />
+        <MarketplaceWeatherCard className={styles.sidebarCard} />
       </aside>
     </div>
     <KoochDialog contentClassName={styles.amenitiesDialog} onOpenChange={setAllAmenitiesOpen} open={allAmenitiesOpen} size="md" title="همه امکانات اقامتگاه">

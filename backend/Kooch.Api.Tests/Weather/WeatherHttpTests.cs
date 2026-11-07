@@ -58,6 +58,17 @@ public sealed class WeatherHttpTests
         var json = await filled.Content.ReadAsStringAsync();
         Assert.DoesNotContain("lease", json, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("apiKey", json, StringComparison.OrdinalIgnoreCase);
+        fixture.Clock.Now = DateTimeOffset.Parse("2026-11-07T20:29:59Z");
+        using var beforeMidnight = await client.GetAsync("/api/weather");
+        Assert.Equal(TimeSpan.FromSeconds(1), beforeMidnight.Headers.CacheControl!.MaxAge);
+        fixture.Clock.Now = fixture.Clock.Now.AddSeconds(1);
+        using var nextDay = await client.GetAsync("/api/weather?checkIn=2027-04-01&checkOut=2027-04-07");
+        var nextForecast = await nextDay.Content.ReadFromJsonAsync<WeatherResponse>();
+        Assert.Equal(new DateOnly(2026, 11, 8), nextForecast!.Days[0].Date);
+        Assert.Equal(7, nextForecast.Days.Length);
+        Assert.Equal("stale", nextForecast.Status);
+        Assert.Equal(TimeSpan.FromMinutes(30), nextDay.Headers.CacheControl!.MaxAge);
+        Assert.Equal(1, provider.Calls);
         await app.StopAsync();
     }
 

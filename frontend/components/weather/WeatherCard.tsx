@@ -1,23 +1,26 @@
 "use client";
 
-import { useId } from "react";
+import { useId, type ReactNode } from "react";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import type { WeatherState } from "@/hooks/useWeather";
-import { weatherDayLabel, weatherNumber, weatherUpdatedLabel } from "@/lib/weather";
+import { useWeatherToday } from "@/hooks/useWeatherToday";
+import { weatherDayLabel, weatherForToday, weatherNumber, weatherUpdatedLabel } from "@/lib/weather";
 import { WeatherIcon } from "./WeatherIcon";
 import styles from "./WeatherCard.module.css";
 
-export function WeatherCard({ state, onRetry, className = "", showPrecipitation = true }: {
-  state: WeatherState; onRetry?: () => void; className?: string; showPrecipitation?: boolean;
+export function WeatherCard({ state, onRetry, className = "", showPrecipitation = true, notice }: {
+  state: WeatherState; onRetry?: () => void; className?: string; showPrecipitation?: boolean; notice?: ReactNode;
 }) {
   const headingId = useId();
-  const data = state.status === "loaded" ? state.data : null;
+  const today = useWeatherToday();
+  const data = state.status === "loaded" && today ? weatherForToday(state.data, today) : null;
   const days = data && data.status !== "unavailable" ? data.days.slice(0, 7) : [];
   const unit = data?.unitGroup === "us" ? "فارنهایت" : "سانتی‌گراد";
   return <KoochCard aria-busy={state.status === "loading"} aria-labelledby={headingId} className={`${styles.card} ${className}`} dir="rtl">
     <h2 className={styles.heading} id={headingId}>پیش‌بینی آب‌وهوا{data?.locationKey === "kashan" ? "ی کاشان" : ""}</h2>
     <div className={styles.message}>
+      {notice}
       {state.status === "loading" && <p role="status">در حال دریافت آب‌وهوا…</p>}
       {state.status === "error" && <p role="alert">دریافت آب‌وهوا ممکن نشد. دوباره تلاش کنید.</p>}
       {data?.status === "stale" && <p role="status">این پیش‌بینی به‌روز نیست؛ آخرین اطلاعات ذخیره‌شده نمایش داده می‌شود.</p>}

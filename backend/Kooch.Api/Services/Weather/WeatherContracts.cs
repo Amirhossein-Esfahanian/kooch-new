@@ -37,8 +37,36 @@ public enum WeatherProviderFailureKind
 
 public sealed class WeatherProviderException(
     WeatherProviderFailureKind failureKind = WeatherProviderFailureKind.Unknown,
-    int? httpStatusCode = null) : Exception("The weather provider request failed.")
+    int? httpStatusCode = null,
+    WeatherValidationRule? validationRule = null, int? actualDayCount = null,
+    int? minimumDayCount = null, int? maximumDayCount = null) : Exception("The weather provider request failed.")
 {
     public WeatherProviderFailureKind FailureKind { get; } = failureKind;
     public int? HttpStatusCode { get; } = httpStatusCode;
+    public WeatherValidationRule? ValidationRule { get; } = validationRule;
+    public int? ActualDayCount { get; } = actualDayCount;
+    public int? MinimumDayCount { get; } = minimumDayCount;
+    public int? MaximumDayCount { get; } = maximumDayCount;
+}
+
+public enum WeatherValidationRule
+{
+    SnapshotMissing,
+    LocationMismatch,
+    UnitGroupMismatch,
+    LanguageMismatch,
+    ForecastDayCount,
+    DayMissing,
+    TemperatureBounds,
+    TemperatureOrder,
+    PrecipitationProbability,
+    ConditionsMissing,
+    ConditionsLength,
+    IconMissing,
+    IconLength,
+    IconFormat,
+    DateSequence,
+    SensitiveContent,
+    StartDate,
+    CurrentDayCoverage
 }

@@ -1,13 +1,37 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { WeatherCard } from "@/components/weather/WeatherCard";
 import { WeatherIcon } from "@/components/weather/WeatherIcon";
-import { createWeatherLoader, getWeather, type WeatherResponse } from "@/lib/weather";
+import { createWeatherLoader, getWeather, weatherBusinessDate, weatherForToday, weatherMidnightDelay, type WeatherResponse } from "@/lib/weather";
 import { weatherFixture } from "./fixtures/weather";
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+beforeEach(() => { vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date("2026-11-07T08:00:00Z")); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("weather API and shared cache", () => {
+  it("anchors only to Tehran today and expires the memory cache at the local date boundary", async () => {
+    let now = Date.parse("2026-11-07T20:29:59.500Z");
+    expect(weatherBusinessDate(now)).toBe("2026-11-07");
+    expect(weatherMidnightDelay(now)).toBe(500);
+    const fetcher = vi.fn().mockResolvedValue(weatherFixture());
+    const loader = createWeatherLoader(fetcher, () => now);
+    await loader.load();
+    now += 500;
+    expect(weatherBusinessDate(now)).toBe("2026-11-08");
+    await loader.load();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not use booking query dates when fetching weather", async () => {
+    window.history.replaceState(null, "", "/properties/test?checkIn=2027-04-01&checkOut=2027-04-07");
+    const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => weatherFixture() });
+    vi.stubGlobal("fetch", fetcher);
+    await getWeather();
+    expect(fetcher).toHaveBeenCalledWith("/api/backend/weather");
+    expect(weatherForToday(weatherFixture(), weatherBusinessDate()).days[0].date).toBe("2026-11-07");
+    window.history.replaceState(null, "", "/");
+  });
+
   it("uses the public backend proxy and validates the actual contract", async () => {
     const data = weatherFixture();
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => data });
@@ -71,6 +95,26 @@ describe("weather API and shared cache", () => {
 });
 
 describe("reusable weather presentation", () => {
+  it("updates an already open panel at Tehran midnight without relabeling yesterday", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-11-07T20:29:59Z"));
+    const data = weatherFixture();
+    data.days.push({ ...data.days[0], date: "2026-11-14" });
+    const { container } = render(<WeatherCard state={{ status: "loaded", data }} />);
+    expect(container.querySelector("li time")?.getAttribute("datetime")).toBe("2026-11-07");
+    act(() => vi.advanceTimersByTime(1000));
+    expect(container.querySelector("li time")?.getAttribute("datetime")).toBe("2026-11-08");
+    expect(screen.getAllByRole("listitem")).toHaveLength(7);
+    expect(screen.getByRole("status").textContent).toContain("به‌روز نیست");
+  });
+
+  it("does not show an incomplete or gapped current-day window as today's forecast", () => {
+    const data = weatherFixture();
+    expect(weatherForToday(data, "2026-11-08")).toMatchObject({ status: "unavailable", days: [] });
+    data.days[3] = { ...data.days[3], date: "2026-11-15" };
+    expect(weatherForToday(data, "2026-11-07")).toMatchObject({ status: "unavailable", days: [] });
+  });
+
   it("shows Persian dates, real temperature ranges, zero precipitation and attribution", () => {
     render(<WeatherCard state={{ status: "loaded", data: weatherFixture() }} />);
     const card = screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" });

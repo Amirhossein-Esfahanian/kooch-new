@@ -191,6 +191,30 @@ public sealed class WeatherServiceTests
         Assert.Equal(new DateOnly(2026, 11, 8), (await service.GetAsync(default)).Days[0].Date);
     }
 
+    [Theory]
+    [InlineData(7, "unavailable", 0)]
+    [InlineData(8, "stale", 7)]
+    [InlineData(15, "stale", 7)]
+    public async Task StoredSnapshot_AfterTehranMidnight_DropsYesterdayAndRequiresAFullDisplayWindow(int count, string status, int displayed)
+    {
+        await using var fixture = await WeatherDatabase.CreateAsync();
+        fixture.Clock.Now = DateTimeOffset.Parse("2026-11-07T20:29:59Z");
+        await using var context = fixture.Context();
+        var store = new WeatherForecastStore(context);
+        var lease = await store.TryAcquireAsync(fixture.Settings, fixture.Clock.Now.UtcDateTime, default);
+        Assert.True(await store.SaveAsync(lease!, fixture.Snapshot() with { Days = fixture.Snapshot().Days.Take(count).ToArray() },
+            fixture.Clock.Now.UtcDateTime, default));
+        var service = fixture.Service(context, new FakeProvider(fixture));
+        Assert.Equal("available", (await service.GetAsync(default)).Status);
+        fixture.Clock.Now = fixture.Clock.Now.AddSeconds(1);
+        var response = await service.GetAsync(default);
+        Assert.Equal(status, response.Status);
+        Assert.Equal(displayed, response.Days.Length);
+        Assert.DoesNotContain(response.Days, day => day.Date == new DateOnly(2026, 11, 7));
+        if (displayed > 0) Assert.Equal(new DateOnly(2026, 11, 8), response.Days[0].Date);
+        else Assert.Equal("forecast_expired", response.UnavailableReason);
+    }
+
     private sealed class FakeProvider(WeatherDatabase fixture) : IWeatherProvider
     {
         public bool IsConfigured { get; set; } = true;
