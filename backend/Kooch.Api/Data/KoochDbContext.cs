@@ -97,6 +97,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<HolidayCalendarOccasion> HolidayCalendarOccasions => Set<HolidayCalendarOccasion>();
     public DbSet<HolidayCalendarDayOverride> HolidayCalendarDayOverrides => Set<HolidayCalendarDayOverride>();
     public DbSet<HolidayCalendarSyncState> HolidayCalendarSyncStates => Set<HolidayCalendarSyncState>();
+    public DbSet<WeatherForecastCache> WeatherForecastCaches => Set<WeatherForecastCache>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -121,6 +122,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureAuditLogs(modelBuilder);
         ConfigureCoupons(modelBuilder);
         ConfigureHolidayCalendar(modelBuilder);
+        ConfigureWeatherForecastCache(modelBuilder);
         ConfigureGuests(modelBuilder);
         ConfigureBookingSessions(modelBuilder);
         ConfigureReservations(modelBuilder);
@@ -1883,6 +1885,18 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
                 .WithMany(payment => payment.CallbackReceipts)
                 .HasForeignKey(receipt => receipt.PaymentId)
                 .OnDelete(DeleteBehavior.NoAction);
+        });
+    }
+
+    private static void ConfigureWeatherForecastCache(ModelBuilder modelBuilder)
+    {
+        modelBuilder.Entity<WeatherForecastCache>(entity =>
+        {
+            entity.Property(cache => cache.LocationKey).HasMaxLength(200).IsRequired();
+            entity.Property(cache => cache.NormalizedForecastJson).HasColumnType("nvarchar(max)");
+            entity.Property(cache => cache.LeaseOwner).HasMaxLength(200);
+            entity.Property(cache => cache.RowVersion).IsRowVersion();
+            entity.HasIndex(cache => cache.LocationKey).IsUnique();
         });
     }
 
