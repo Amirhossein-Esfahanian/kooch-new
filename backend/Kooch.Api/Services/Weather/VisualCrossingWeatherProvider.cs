@@ -13,7 +13,8 @@ public sealed class VisualCrossingWeatherProvider(HttpClient client, IOptions<We
     public async Task<WeatherSnapshot> FetchAsync(CancellationToken cancellationToken)
     {
         var key = apiKeySource.GetKey();
-        if (!settings.IsValid() || string.IsNullOrWhiteSpace(key)) throw new WeatherProviderException();
+        if (!settings.IsValid() || string.IsNullOrWhiteSpace(key))
+            throw new WeatherProviderException(WeatherProviderFailureKind.Configuration);
         // The provider requires its key in the query. This client's HTTP logging is disabled in DI.
         var uri = new Uri("https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/" +
             Uri.EscapeDataString(settings.Location) + $"/next{settings.ForecastDays}days?include=days&contentType=json" +
@@ -35,7 +36,8 @@ public sealed class VisualCrossingWeatherProvider(HttpClient client, IOptions<We
                         await BackoffAsync(attempt, cancellationToken);
                         continue;
                     }
-                    throw new WeatherProviderException();
+                    throw new WeatherProviderException((int)response.StatusCode is 401 or 403
+                        ? WeatherProviderFailureKind.Authentication : WeatherProviderFailureKind.Http, (int)response.StatusCode);
                 }
 
                 await using var stream = await response.Content.ReadAsStreamAsync(timeout.Token);
@@ -44,7 +46,7 @@ public sealed class VisualCrossingWeatherProvider(HttpClient client, IOptions<We
                 int count;
                 while ((count = await stream.ReadAsync(chunk, timeout.Token)) > 0)
                 {
-                    if (buffer.Length + count > 262144) throw new WeatherProviderException();
+                    if (buffer.Length + count > 262144) throw new WeatherProviderException(WeatherProviderFailureKind.Parsing);
                     buffer.Write(chunk, 0, count);
                 }
                 buffer.Position = 0;
@@ -54,15 +56,15 @@ public sealed class VisualCrossingWeatherProvider(HttpClient client, IOptions<We
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { throw; }
             catch (Exception exception) when (exception is HttpRequestException or OperationCanceledException)
             {
-                if (attempt == settings.RetryCount) throw new WeatherProviderException();
+                if (attempt == settings.RetryCount) throw new WeatherProviderException(WeatherProviderFailureKind.NetworkOrTimeout);
                 await BackoffAsync(attempt, cancellationToken);
             }
             catch (Exception exception) when (exception is JsonException or InvalidOperationException or FormatException or KeyNotFoundException or OverflowException)
             {
-                throw new WeatherProviderException();
+                throw new WeatherProviderException(WeatherProviderFailureKind.Parsing);
             }
         }
-        throw new WeatherProviderException();
+        throw new WeatherProviderException(WeatherProviderFailureKind.NetworkOrTimeout);
     }
 
     private Task BackoffAsync(int attempt, CancellationToken cancellationToken) =>
@@ -71,14 +73,15 @@ public sealed class VisualCrossingWeatherProvider(HttpClient client, IOptions<We
     private WeatherSnapshot Normalize(JsonElement root, string apiKey)
     {
         var days = root.GetProperty("days").EnumerateArray().Select(day => new WeatherDay(
-            DateOnly.ParseExact(day.GetProperty("datetime").GetString()!, "yyyy-MM-dd", CultureInfo.InvariantCulture),
+            DateOnly.ParseExact(day.GetProperty("datetime").GetString()
+                ?? throw new WeatherProviderException(WeatherProviderFailureKind.Parsing), "yyyy-MM-dd", CultureInfo.InvariantCulture),
             day.GetProperty("tempmin").GetDecimal(), day.GetProperty("tempmax").GetDecimal(),
             day.GetProperty("precipprob").GetDecimal(), day.GetProperty("conditions").GetString()!,
             day.GetProperty("icon").GetString()!)).ToArray();
         var snapshot = new WeatherSnapshot(settings.LocationKey, settings.UnitGroup, settings.Language, days);
         if (!WeatherSnapshotValidation.IsValid(snapshot, settings) ||
             days.Any(day => day.Conditions.Contains(apiKey, StringComparison.Ordinal) || day.Icon.Contains(apiKey, StringComparison.Ordinal)))
-            throw new WeatherProviderException();
+            throw new WeatherProviderException(WeatherProviderFailureKind.Validation);
         return snapshot;
     }
 }

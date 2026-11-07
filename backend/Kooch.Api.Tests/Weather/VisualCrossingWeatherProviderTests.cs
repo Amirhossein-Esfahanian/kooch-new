@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using Kooch.Api.Services.Weather;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -57,6 +58,8 @@ public sealed class VisualCrossingWeatherProviderTests
         Assert.True(handler.DailyOnly);
         Assert.Equal("kashan", snapshot.LocationKey);
         Assert.Equal("metric", snapshot.UnitGroup);
+        Assert.Equal(new DateOnly(2026, 11, 7), snapshot.Days[0].Date);
+        Assert.Equal(new DateOnly(2026, 11, 21), snapshot.Days[^1].Date);
     }
 
     [Fact]
@@ -76,6 +79,8 @@ public sealed class VisualCrossingWeatherProviderTests
         Assert.Equal(2, handler.Calls);
         Assert.Null(exception.InnerException);
         Assert.Equal("The weather provider request failed.", exception.Message);
+        Assert.Equal(WeatherProviderFailureKind.NetworkOrTimeout, exception.FailureKind);
+        Assert.Null(exception.HttpStatusCode);
     }
 
     [Theory]
@@ -89,17 +94,22 @@ public sealed class VisualCrossingWeatherProviderTests
         var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler, retries: 2).FetchAsync(default));
         Assert.Equal(1, handler.Calls);
         Assert.DoesNotContain("private", exception.Message);
+        Assert.Equal((int)status, exception.HttpStatusCode);
+        Assert.Equal(status is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden
+            ? WeatherProviderFailureKind.Authentication : WeatherProviderFailureKind.Http, exception.FailureKind);
+        Assert.Null(exception.InnerException);
     }
 
     [Theory]
-    [InlineData("{}")]
-    [InlineData("{\"days\":[]}")]
-    [InlineData("not json")]
-    [InlineData("{\"days\":null}")]
-    public async Task InvalidPayload_IsRejectedWithoutRetry(string json)
+    [InlineData("{}", WeatherProviderFailureKind.Parsing)]
+    [InlineData("{\"days\":[]}", WeatherProviderFailureKind.Validation)]
+    [InlineData("not json", WeatherProviderFailureKind.Parsing)]
+    [InlineData("{\"days\":null}", WeatherProviderFailureKind.Parsing)]
+    public async Task InvalidPayload_IsRejectedWithoutRetry(string json, WeatherProviderFailureKind expectedKind)
     {
         var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(json) });
-        await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler, retries: 2).FetchAsync(default));
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler, retries: 2).FetchAsync(default));
+        Assert.Equal(expectedKind, exception.FailureKind);
         Assert.Equal(1, handler.Calls);
     }
 
@@ -109,7 +119,8 @@ public sealed class VisualCrossingWeatherProviderTests
         var handler = new Handler(_ => throw new InvalidOperationException());
         var provider = Create(handler, key: null);
         Assert.False(provider.IsConfigured);
-        await Assert.ThrowsAsync<WeatherProviderException>(() => provider.FetchAsync(default));
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => provider.FetchAsync(default));
+        Assert.Equal(WeatherProviderFailureKind.Configuration, exception.FailureKind);
         Assert.Equal(0, handler.Calls);
     }
 
@@ -127,7 +138,8 @@ public sealed class VisualCrossingWeatherProviderTests
     public async Task OversizedPayload_IsRejected()
     {
         var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(new string(' ', 262145)) });
-        await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler).FetchAsync(default));
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler).FetchAsync(default));
+        Assert.Equal(WeatherProviderFailureKind.Parsing, exception.FailureKind);
     }
 
     [Fact]
@@ -136,8 +148,59 @@ public sealed class VisualCrossingWeatherProviderTests
         var handler = new WaitingHandler();
         var provider = new VisualCrossingWeatherProvider(new HttpClient(handler),
             Options.Create(new WeatherOptions { TimeoutSeconds = 1, RetryCount = 0 }), new Keys("fixture-only"), TimeProvider.System);
-        await Assert.ThrowsAsync<WeatherProviderException>(() => provider.FetchAsync(default));
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => provider.FetchAsync(default));
+        Assert.Equal(WeatherProviderFailureKind.NetworkOrTimeout, exception.FailureKind);
         Assert.Equal(1, handler.Calls);
+    }
+
+    [Theory]
+    [InlineData("datetime", WeatherProviderFailureKind.Parsing)]
+    [InlineData("tempmin", WeatherProviderFailureKind.Parsing)]
+    [InlineData("tempmax", WeatherProviderFailureKind.Parsing)]
+    [InlineData("precipprob", WeatherProviderFailureKind.Parsing)]
+    [InlineData("conditions", WeatherProviderFailureKind.Validation)]
+    [InlineData("icon", WeatherProviderFailureKind.Validation)]
+    public async Task NullRequiredField_IsRejectedWithoutFabricatingValues(string field, WeatherProviderFailureKind expectedKind)
+    {
+        var json = JsonNode.Parse(Payload())!;
+        json["days"]![0]![field] = null;
+        var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(json.ToJsonString()) });
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler).FetchAsync(default));
+        Assert.Equal(expectedKind, exception.FailureKind);
+    }
+
+    [Theory]
+    [InlineData("cloudy")]
+    [InlineData("partly-cloudy-day")]
+    [InlineData("rain")]
+    [InlineData("snow")]
+    public async Task ValidIcon_IsPreservedWithoutChangingProviderMeaning(string icon)
+    {
+        var json = JsonNode.Parse(Payload())!;
+        json["days"]![0]!["icon"] = icon;
+        var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(json.ToJsonString()) });
+        var snapshot = await Create(handler).FetchAsync(default);
+        Assert.Equal(icon, snapshot.Days[0].Icon);
+    }
+
+    [Fact]
+    public async Task NonconsecutiveDates_AreCategorizedAsValidationFailure()
+    {
+        var json = JsonNode.Parse(Payload())!;
+        json["days"]![1]!["datetime"] = "2026-11-09";
+        var handler = new Handler(_ => new(HttpStatusCode.OK) { Content = new StringContent(json.ToJsonString()) });
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler).FetchAsync(default));
+        Assert.Equal(WeatherProviderFailureKind.Validation, exception.FailureKind);
+    }
+
+    [Fact]
+    public async Task ExhaustedHttpRetries_PreserveOnlySafeStatusAndCategory()
+    {
+        var handler = new Handler(_ => new(HttpStatusCode.ServiceUnavailable));
+        var exception = await Assert.ThrowsAsync<WeatherProviderException>(() => Create(handler, retries: 1).FetchAsync(default));
+        Assert.Equal(2, handler.Calls);
+        Assert.Equal(WeatherProviderFailureKind.Http, exception.FailureKind);
+        Assert.Equal(503, exception.HttpStatusCode);
     }
 
     private static VisualCrossingWeatherProvider Create(Handler handler, int retries = 0, string? key = "fixture-only") =>
@@ -145,6 +208,7 @@ public sealed class VisualCrossingWeatherProviderTests
 
     private static string Payload() => JsonSerializer.Serialize(new
     {
+        timezone = "Asia/Tehran",
         days = Enumerable.Range(0, 15).Select(index => new
         {
             datetime = new DateOnly(2026, 11, 7).AddDays(index).ToString("yyyy-MM-dd"),

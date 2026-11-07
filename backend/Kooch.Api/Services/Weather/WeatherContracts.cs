@@ -24,4 +24,21 @@ public sealed class ConfigurationWeatherApiKeySource(IConfiguration configuratio
     public string? GetKey() => configuration["Weather:VisualCrossing:ApiKey"];
 }
 
-public sealed class WeatherProviderException() : Exception("The weather provider request failed.");
+public enum WeatherProviderFailureKind
+{
+    Unknown,
+    Configuration,
+    Authentication,
+    Http,
+    NetworkOrTimeout,
+    Parsing,
+    Validation
+}
+
+public sealed class WeatherProviderException(
+    WeatherProviderFailureKind failureKind = WeatherProviderFailureKind.Unknown,
+    int? httpStatusCode = null) : Exception("The weather provider request failed.")
+{
+    public WeatherProviderFailureKind FailureKind { get; } = failureKind;
+    public int? HttpStatusCode { get; } = httpStatusCode;
+}

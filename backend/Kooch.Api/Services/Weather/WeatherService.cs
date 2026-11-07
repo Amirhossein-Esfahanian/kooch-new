@@ -47,14 +47,15 @@ public sealed class WeatherService(WeatherForecastStore store, IWeatherProvider 
             {
                 var snapshot = await provider.FetchAsync(cancellationToken);
                 if (!WeatherSnapshotValidation.IsValid(snapshot, settings) || snapshot.Days[0].Date != Today())
-                    throw new WeatherProviderException();
+                    throw new WeatherProviderException(WeatherProviderFailureKind.Validation);
                 return await store.SaveAsync(lease, snapshot, timeProvider.GetUtcNow().UtcDateTime, cancellationToken)
                     ? "refreshed" : "lease_lost";
             }
-            catch (WeatherProviderException)
+            catch (WeatherProviderException exception)
             {
                 await store.DeferAsync(lease, timeProvider.GetUtcNow().UtcDateTime, settings.RefreshMinutes, cancellationToken);
-                logger.LogWarning("Weather provider refresh failed; the last successful snapshot was preserved.");
+                logger.LogWarning("Weather provider refresh failed with category {FailureKind} and HTTP status {HttpStatusCode}; the last successful snapshot was preserved.",
+                    exception.FailureKind, exception.HttpStatusCode);
                 return "provider_unavailable";
             }
         }
