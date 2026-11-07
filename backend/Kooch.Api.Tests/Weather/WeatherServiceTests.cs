@@ -105,6 +105,7 @@ public sealed class WeatherServiceTests
         var after = await context.WeatherForecastCaches.AsNoTracking().SingleAsync();
         Assert.Equal(before.NormalizedForecastJson, after.NormalizedForecastJson);
         Assert.Equal(before.FetchedAtUtc, after.FetchedAtUtc);
+        Assert.Equal(fixture.Clock.Now.UtcDateTime.AddMinutes(fixture.Settings.FailureRetryMinutes), after.LeaseExpiresAtUtc);
         Assert.Equal(2, provider.Calls);
     }
 
@@ -213,6 +214,20 @@ public sealed class WeatherServiceTests
         Assert.DoesNotContain(response.Days, day => day.Date == new DateOnly(2026, 11, 7));
         if (displayed > 0) Assert.Equal(new DateOnly(2026, 11, 8), response.Days[0].Date);
         else Assert.Equal("forecast_expired", response.UnavailableReason);
+    }
+
+    [Fact]
+    public async Task ShortSnapshotLosingTodayCoverage_IsEligibleForAutomaticRefreshBeforeItsNormalAgeExpires()
+    {
+        await using var fixture = await WeatherDatabase.CreateAsync();
+        fixture.Clock.Now = DateTimeOffset.Parse("2026-11-07T20:29:59Z");
+        await using var context = fixture.Context();
+        var store = new WeatherForecastStore(context);
+        var lease = await store.TryAcquireAsync(fixture.Settings, fixture.Clock.Now.UtcDateTime, default);
+        Assert.True(await store.SaveAsync(lease!, fixture.Snapshot() with { Days = fixture.Snapshot().Days.Take(7).ToArray() },
+            fixture.Clock.Now.UtcDateTime, default));
+        fixture.Clock.Now = fixture.Clock.Now.AddSeconds(1);
+        Assert.NotNull(await store.TryAcquireAsync(fixture.Settings, fixture.Clock.Now.UtcDateTime, default));
     }
 
     private sealed class FakeProvider(WeatherDatabase fixture) : IWeatherProvider

@@ -40,9 +40,15 @@ public sealed class WeatherForecastStore(KoochDbContext dbContext)
             finally { dbContext.Entry(cache).State = EntityState.Detached; }
         }
 
-        if (cache.IsDeleted || cache.LeaseExpiresAtUtc > now ||
-            (cache.FetchedAtUtc > now.AddMinutes(-settings.RefreshMinutes) &&
-             WeatherJson.Read(cache.NormalizedForecastJson, settings) is not null)) return null;
+        if (cache.IsDeleted || cache.LeaseExpiresAtUtc > now) return null;
+        if (cache.FetchedAtUtc > now.AddMinutes(-settings.RefreshMinutes) &&
+            WeatherJson.Read(cache.NormalizedForecastJson, settings) is { } snapshot)
+        {
+            // A recent short snapshot can lose its full display window at Tehran midnight.
+            var today = DateOnly.FromDateTime(TimeZoneInfo.ConvertTimeFromUtc(now, IranSiteTime.BusinessTimeZone));
+            if (snapshot.Days[0].Date <= today && snapshot.Days[^1].Date >= today.AddDays(settings.DisplayDays - 1))
+                return null;
+        }
 
         var acquired = await dbContext.WeatherForecastCaches
             .Where(row => row.Id == cache.Id && row.RowVersion == cache.RowVersion &&

@@ -52,12 +52,19 @@ public sealed class WeatherService(WeatherForecastStore store, IWeatherProvider 
                     failure = WeatherValidationRule.CurrentDayCoverage;
                 if (failure is not null)
                     throw new WeatherProviderException(WeatherProviderFailureKind.Validation, validationRule: failure);
-                return await store.SaveAsync(lease, snapshot, timeProvider.GetUtcNow().UtcDateTime, cancellationToken)
-                    ? "refreshed" : "lease_lost";
+                var fetchedAt = timeProvider.GetUtcNow().UtcDateTime;
+                if (!await store.SaveAsync(lease, snapshot, fetchedAt, cancellationToken))
+                {
+                    logger.LogWarning("Weather refresh was not persisted: lease_lost.");
+                    return "lease_lost";
+                }
+                logger.LogInformation("Weather snapshot persisted for {LocationKey}: {DayCount} days, fetched at {FetchedAtUtc}; normal refresh due at {NextRefreshAtUtc}.",
+                    settings.LocationKey, snapshot.Days.Length, fetchedAt, fetchedAt.AddMinutes(settings.RefreshMinutes));
+                return "refreshed";
             }
             catch (WeatherProviderException exception)
             {
-                await store.DeferAsync(lease, timeProvider.GetUtcNow().UtcDateTime, settings.RefreshMinutes, cancellationToken);
+                await store.DeferAsync(lease, timeProvider.GetUtcNow().UtcDateTime, settings.FailureRetryMinutes, cancellationToken);
                 logger.LogWarning("Weather provider refresh failed with category {FailureKind}, validation rule {ValidationRule} and HTTP status {HttpStatusCode}; the last successful snapshot was preserved.",
                     exception.FailureKind, exception.ValidationRule, exception.HttpStatusCode);
                 return "provider_unavailable";
