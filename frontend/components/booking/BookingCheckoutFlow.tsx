@@ -501,6 +501,7 @@ export function BookingCheckoutContent({
             </KoochButton>
             {currentStep === "information" ? (
               <KoochButton
+                data-booking-primary="true"
                 disabled={!identityComplete}
                 onClick={continueToReview}
               >
@@ -508,6 +509,7 @@ export function BookingCheckoutContent({
               </KoochButton>
             ) : (
               <KoochButton
+                data-booking-primary="true"
                 disabled={finalizing}
                 loading={finalizing}
                 onClick={() => void finalizeCheckout()}

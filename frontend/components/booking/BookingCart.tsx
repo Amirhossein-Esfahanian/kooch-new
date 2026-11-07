@@ -201,7 +201,7 @@ export function BookingCartSummary({
                     : "قیمت این انتخاب هنوز برای ادامه رزرو تأیید نشده است."}
             </p>
           </div>
-          {onContinue && <KoochButton className="mt-4 w-full" disabled>ادامه رزرو</KoochButton>}
+          {onContinue && <KoochButton className="mt-4 w-full" data-booking-primary="true" disabled>ادامه رزرو</KoochButton>}
         </>
       ) : items.length === 0 ? (
         <p className="mt-3 text-sm leading-7 text-muted-foreground">
@@ -258,6 +258,7 @@ export function BookingCartSummary({
           {onContinue && (
             <KoochButton
               className="mt-4 hidden w-full sm:inline-flex"
+              data-booking-primary="true"
               loading={loading}
               onClick={onContinue}
             >
@@ -307,7 +308,7 @@ export function BookingCartMobileActionBar({
             {formatCurrency(total, { currencyLabel })}
           </p>
         </div>
-        <KoochButton loading={loading} onClick={onContinue}>
+        <KoochButton data-booking-primary="true" loading={loading} onClick={onContinue}>
           ادامه رزرو
         </KoochButton>
       </div>

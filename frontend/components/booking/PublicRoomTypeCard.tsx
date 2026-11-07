@@ -535,6 +535,7 @@ function OfferQuantityControl({
           availableToAdd === 0 ? `${blockedLabel} ${name}` : `انتخاب ${name}`
         }
         className={fullWidth ? "w-full" : "min-w-28"}
+        data-booking-primary={availableToAdd > 0 ? "true" : undefined}
         disabled={availableToAdd === 0}
         onClick={(event) => {
           restoreFocus.current = document.activeElement === event.currentTarget;

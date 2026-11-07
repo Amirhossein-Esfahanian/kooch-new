@@ -190,7 +190,7 @@ describe("Property booking landing", () => {
     mocks.fetchProperty.mockResolvedValueOnce(data);
     render(<PropertyBookingLanding />);
     const hero = await screen.findByRole("region", { name: "معرفی خانه باغ" });
-    expect(hero.querySelector('img[src*="actual-property.jpg"]')).toBeTruthy();
+    expect(hero.parentElement!.querySelector('img[src*="actual-property.jpg"]')).toBeTruthy();
     expect(screen.queryByRole("region", { name: "امکانات و خدمات اقامتگاه" })).toBeNull();
     expect(screen.queryByRole("link", { name: "امکانات" })).toBeNull();
   });
@@ -321,7 +321,7 @@ describe("Property booking landing", () => {
     expect(screen.getByText("جستجوی واقعی").compareDocumentPosition(screen.getByText("انتخاب تعداد اتاق")) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(hero.querySelector("#room-preview")).toBeNull();
     expect(screen.queryByRole("dialog")).toBeNull();
-    expect(hero.querySelector('[class*="heroPhoto"]')).toBeTruthy();
+    expect(hero.parentElement!.querySelector('[class*="heroPhoto"]')).toBeTruthy();
   });
 
   it("keeps scoped focus and reduced-motion rules without expensive animated effects", () => {
@@ -333,6 +333,57 @@ describe("Property booking landing", () => {
     expect(css).not.toMatch(/\.hero\s*\{[^}]*backdrop-filter/);
     expect(css).not.toMatch(/\.heroPhoto\s*\{[^}]*backdrop-filter/);
     expect(css).not.toContain(":global");
+  });
+
+  it("separates edge-to-edge glass surfaces from centered responsive content", async () => {
+    render(<PropertyBookingLanding />);
+    const hero = await screen.findByRole("region", { name: "معرفی خانه باغ" });
+    const header = hero.querySelector("header")!;
+    const inner = header.firstElementChild!;
+    expect(inner.className).toContain("headerInner");
+    expect(inner.contains(screen.getByRole("navigation", { name: "راهنمای اقامتگاه" }))).toBe(true);
+    expect(inner.contains(screen.getByRole("link", { name: "بررسی موجودی" }))).toBe(true);
+    expect(hero.nextElementSibling).toBe(document.getElementById("booking"));
+    expect(document.getElementById("booking")!.children[1].contains(screen.getByText("جستجوی واقعی"))).toBe(true);
+
+    const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
+    const rule = (selector: string) => css.slice(css.indexOf(`${selector} {`)).split("}")[0];
+    for (const selector of [".header", ".search", ".search > div:first-child"]) {
+      const surface = rule(selector);
+      expect(surface).toContain("width: 100%");
+      expect(surface).toContain("margin: 0");
+      expect(surface).not.toMatch(/max-width: var|100vw|box-shadow: 0|border-radius: \.|margin-top: -/);
+    }
+    for (const selector of [".headerInner", ".search > div:first-child > div"]) {
+      const innerRule = rule(selector);
+      expect(innerRule).toContain("max-width: var(--direct-width)");
+      expect(innerRule).toContain("margin-inline: auto");
+      expect(innerRule).toContain("var(--direct-gutter)");
+      expect(innerRule).toContain("min-width: 0");
+    }
+    expect(css).toMatch(/@media \(min-width: 900px\)\s*\{\s*\.headerInner \{ display: grid/);
+    expect(css).toContain(".headerInner > nav");
+    expect(css).not.toMatch(/margin-top: -|:global/);
+  });
+
+  it("shares one photographic grid backdrop across the hero and sticky search without clipping popovers", async () => {
+    render(<PropertyBookingLanding />);
+    const hero = await screen.findByRole("region", { name: "معرفی خانه باغ" });
+    const booking = document.getElementById("booking")!;
+    const layout = hero.parentElement!;
+    expect(layout.className).toContain("bookingLayout");
+    expect(booking.parentElement).toBe(layout);
+    expect(document.getElementById("property-rooms")!.parentElement).toBe(layout);
+    expect(layout.querySelectorAll('[class*="heroPhoto"]')).toHaveLength(1);
+    expect(hero.querySelector('[class*="heroPhoto"]')).toBeNull();
+    expect(hero.querySelector('img')).toBeNull();
+    const css = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.module.css"), "utf8");
+    expect(css).toMatch(/\.heroPhoto\s*\{[^}]*grid-area: 1 \/ 1 \/ 3 \/ 2/);
+    expect(css).toMatch(/\.scene::before\s*\{[^}]*pointer-events: none;[^}]*linear-gradient/);
+    expect(css).toMatch(/\.booking\s*\{[^}]*position: sticky;[^}]*z-index: 40/);
+    expect(css).not.toMatch(/\.(bookingLayout|hero|booking|search)\s*\{[^}]*overflow:\s*(hidden|clip)/);
+    expect(css).not.toMatch(/\.(bookingLayout|hero|scene|search)\s*\{[^}]*backdrop-filter/);
+    expect(css).toContain('.header .headerInner [role="menu"] { background: var(--card); -webkit-backdrop-filter: none; backdrop-filter: none; }');
   });
 
   it("preserves Property link destinations and uses a gold booking control", async () => {

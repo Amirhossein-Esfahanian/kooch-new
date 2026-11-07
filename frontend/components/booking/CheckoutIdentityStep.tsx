@@ -198,6 +198,7 @@ export function CheckoutIdentityStep({
           </div>
           <KoochButton
             className="sm:w-fit sm:min-w-44"
+            data-booking-primary="true"
             loading={profileSaving}
             type="submit"
           >
@@ -377,6 +378,7 @@ export function CheckoutIdentityStep({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <KoochButton
               className="sm:min-w-40"
+              data-booking-primary="true"
               loading={verifying}
               type="submit"
             >
@@ -479,6 +481,7 @@ export function CheckoutIdentityStep({
 
           <KoochButton
             className="sm:w-fit sm:min-w-48"
+            data-booking-primary="true"
             loading={sending}
             type="submit"
           >

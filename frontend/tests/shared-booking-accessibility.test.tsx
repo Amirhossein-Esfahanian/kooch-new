@@ -44,6 +44,20 @@ function QuantityForm({ capacity = 3 }: { capacity?: number }) {
 }
 
 describe("shared booking accessibility", () => {
+  it("marks only the primary room-selection action, preserving outline and counter controls", () => {
+    const booking: PublicRoomTypeCandidateBookingState = { option: candidate, availableToAdd: 3,
+      selectedQuantity: 0, totalSelectedQuantity: 0, onAdd: vi.fn(), onRemove: vi.fn(), ratePlans: [] };
+    const view = render(<RoomCard booking={booking} />);
+    expect(screen.getByRole("button", { name: "انتخاب اتاق باغ" }).getAttribute("data-booking-primary")).toBe("true");
+    expect(screen.getByRole("button", { name: /جزئیات/ }).hasAttribute("data-booking-primary")).toBe(false);
+    view.rerender(<RoomCard booking={{ ...booking, availableToAdd: 0 }} />);
+    const soldOut = screen.getByRole("button", { name: "تکمیل ظرفیت اتاق باغ" });
+    expect(soldOut.hasAttribute("disabled")).toBe(true);
+    expect(soldOut.hasAttribute("data-booking-primary")).toBe(false);
+    view.rerender(<RoomCard booking={{ ...booking, availableToAdd: 2, selectedQuantity: 1, totalSelectedQuantity: 1 }} />);
+    expect(screen.getByRole("button", { name: "افزایش تعداد اتاق باغ" }).hasAttribute("data-booking-primary")).toBe(false);
+    expect(screen.getByRole("button", { name: "کاهش تعداد اتاق باغ" }).hasAttribute("data-booking-primary")).toBe(false);
+  });
   it("labels room/adult/child groups and counter actions, announces counts and preserves limits", () => {
     render(<GuestForm />);
     fireEvent.click(screen.getByRole("button", { name: /مسافران:/ }));
@@ -144,6 +158,7 @@ describe("draft booking summary", () => {
     expect(within(summary).getByText("در انتظار بررسی قیمت")).toBeTruthy();
     expect(summary.textContent).not.toMatch(/تومان|مبلغ کل|۹۹۹/);
     const button = within(summary).getByRole("button", { name: "ادامه رزرو" });
+    expect(button.getAttribute("data-booking-primary")).toBe("true");
     expect(button.hasAttribute("disabled")).toBe(true);
     fireEvent.click(button);
     expect(onContinue).not.toHaveBeenCalled();

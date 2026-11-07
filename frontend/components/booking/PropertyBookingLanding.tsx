@@ -67,11 +67,15 @@ function LandingContent({ property }: { property: PublicProperty }) {
     setSelectedId(selected.id);
   };
 
-  return (
-    <div className={`dark ${guestStyles.scope} ${styles.landing}`} dir="rtl">
-      <a className={styles.skip} href="#booking">رفتن به بخش رزرو</a>
-      <section aria-label={`معرفی ${property.name}`} className={styles.hero}>
-        <header className={styles.header}>
+  const photo = (
+    <div className={styles.heroPhoto}>
+      <PropertyPhoto alt={property.name} fill priority sizes="100vw" sources={propertyImages} />
+    </div>
+  );
+  const hero = (
+    <section aria-label={`معرفی ${property.name}`} className={styles.hero}>
+      <header className={styles.header}>
+        <div className={styles.headerInner}>
           <a className={styles.wordmark} dir="auto" href="#property-introduction">{property.name}</a>
           <PropertyGuestAccount slug={property.slug} propertyName={property.name} navigation={[
             { href: "#booking", label: "رزرو اقامت" },
@@ -81,35 +85,46 @@ function LandingContent({ property }: { property: PublicProperty }) {
             ...(property.address ? [{ href: "#property-location", label: "نشانی" }] : []),
           ]} />
           <a className={`${styles.headerBooking} ${guestStyles.goldAction}`} href="#booking">بررسی موجودی</a>
-        </header>
+        </div>
+      </header>
 
-        <div className={styles.scene}>
-          <div className={styles.heroPhoto}>
-            <PropertyPhoto alt={property.name} fill priority sizes="100vw" sources={propertyImages} />
-          </div>
-          <div className={styles.identity}>
-            <div className={styles.identityLead}>
-              <h1 className={/[\u0600-\u06ff]/.test(property.name) ? undefined : styles.latinTitle} dir="auto">{property.name}</h1>
-              {property.city && <p className={styles.location}>{property.city}</p>}
-              {(property.shortDescription || property.description) && <p className={styles.intro}>{property.shortDescription || property.description}</p>}
-              <a className={`${styles.bookingLink} ${guestStyles.goldAction}`} href="#booking">انتخاب تاریخ و رزرو <KoochIcon name="search" className="h-5 w-5" /></a>
-            </div>
+      <div className={styles.scene}>
+        <div className={styles.identity}>
+          <div className={styles.identityLead}>
+            <h1 className={/[\u0600-\u06ff]/.test(property.name) ? undefined : styles.latinTitle} dir="auto">{property.name}</h1>
+            {property.city && <p className={styles.location}>{property.city}</p>}
+            {(property.shortDescription || property.description) && <p className={styles.intro}>{property.shortDescription || property.description}</p>}
+            <a className={`${styles.bookingLink} ${guestStyles.goldAction}`} href="#booking">انتخاب تاریخ و رزرو <KoochIcon name="search" className="h-5 w-5" /></a>
           </div>
         </div>
-      </section>
+      </div>
+    </section>
+  );
 
-      <section aria-labelledby="booking-title" className={styles.booking} id="booking">
-        <h2 className="sr-only" id="booking-title">اقامت خود را انتخاب کنید</h2>
-        {property.roomTypes.length > 0 ? (
-          <PropertyBookingPanel portalClassName={`dark ${guestStyles.scope}`} autoCheckInitialContextKey={autoCheckInitialContextKey} entryKind="book" dates={dates} galleryFallback={galleryFallback} guests={guests} onDatesChange={setDates} onGuestsChange={setGuests} onShowRoomDetails={showRoom} propertyId={property.id} propertyName={property.name} propertySlug={property.slug} roomTypes={property.roomTypes}>
-            {({ searchBar, roomSelection }) => <>
+  return (
+    <div className={`dark ${guestStyles.scope} ${styles.landing}`} dir="rtl">
+      <a className={styles.skip} href="#booking">رفتن به بخش رزرو</a>
+      {property.roomTypes.length > 0 ? (
+        <PropertyBookingPanel portalClassName={`dark ${guestStyles.scope}`} autoCheckInitialContextKey={autoCheckInitialContextKey} entryKind="book" dates={dates} galleryFallback={galleryFallback} guests={guests} onDatesChange={setDates} onGuestsChange={setGuests} onShowRoomDetails={showRoom} propertyId={property.id} propertyName={property.name} propertySlug={property.slug} roomTypes={property.roomTypes}>
+          {({ searchBar, roomSelection }) => <div className={styles.bookingLayout}>
+            {photo}
+            {hero}
+            <section aria-labelledby="booking-title" className={styles.booking} id="booking">
+              <h2 className="sr-only" id="booking-title">اقامت خود را انتخاب کنید</h2>
               <div className={styles.search}>{searchBar}</div>
-              <div className={styles.roomsHeading}><h2>اتاق‌های {property.name}</h2><p>قیمت و موجودی برای تاریخ و تعداد مهمانان انتخاب‌شده بررسی می‌شود.</p></div>
-              <div className={styles.bookingRooms} data-room-layout={property.roomTypes.length === 1 ? "single" : property.roomTypes.length === 2 ? "pair" : "grid"} id={propertyRoomsAnchorId} tabIndex={-1}>{roomSelection}</div>
-            </>}
-          </PropertyBookingPanel>
-        ) : <p className={styles.sectionHeading}>در حال حاضر اتاقی برای بررسی رزرو وجود ندارد.</p>}
-      </section>
+            </section>
+            <div className={styles.roomsHeading}><h2>اتاق‌های {property.name}</h2><p>قیمت و موجودی برای تاریخ و تعداد مهمانان انتخاب‌شده بررسی می‌شود.</p></div>
+            <div className={styles.bookingRooms} data-room-layout={property.roomTypes.length === 1 ? "single" : property.roomTypes.length === 2 ? "pair" : "grid"} id={propertyRoomsAnchorId} tabIndex={-1}>{roomSelection}</div>
+          </div>}
+        </PropertyBookingPanel>
+      ) : <div className={styles.bookingLayout}>
+        {photo}
+        {hero}
+        <section aria-labelledby="booking-title" className={styles.booking} id="booking">
+          <h2 className="sr-only" id="booking-title">اقامت خود را انتخاب کنید</h2>
+          <p className={styles.sectionHeading}>در حال حاضر اتاقی برای بررسی رزرو وجود ندارد.</p>
+        </section>
+      </div>}
 
       {property.amenities.length > 0 && <section className={styles.facilities} id="property-facilities" aria-labelledby="facilities-title">
         <h2 id="facilities-title">امکانات و خدمات اقامتگاه</h2>

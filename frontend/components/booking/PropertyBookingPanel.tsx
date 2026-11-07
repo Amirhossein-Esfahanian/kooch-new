@@ -690,6 +690,7 @@ function PropertyBookingPanelContent({
 
             <KoochButton
               className="col-span-1 h-12 w-full px-5"
+              data-booking-primary="true"
               loading={loadingOptions}
               type="submit"
             >

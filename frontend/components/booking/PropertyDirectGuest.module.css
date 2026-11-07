@@ -11,11 +11,21 @@
   --pd-accent: #d3ad77;
   --pd-on-accent: #171317;
   --pd-glass-fallback: #1a1418;
-  --pd-glass: color-mix(in srgb, var(--pd-glass-fallback) 88%, transparent);
-  --pd-button-top: #876139;
-  --pd-button-base: #79542c;
-  --pd-button-hover: #92693b;
+  --pd-glass: color-mix(in srgb, var(--pd-glass-fallback) 68%, transparent);
+  --pd-glass-edge: color-mix(in srgb, var(--pd-bronze) 28%, transparent);
+  --pd-glass-highlight: color-mix(in srgb, var(--pd-ink) 9%, transparent);
+  --pd-button-top: #90673b;
+  --pd-button-shoulder: #875f34;
+  --pd-button-middle: #7d552e;
+  --pd-button-base: #704925;
+  --pd-button-rim: #d5ad78;
+  --pd-button-highlight: #fff1d7;
+  --pd-button-side: #ffe0ab;
+  --pd-button-shade: #402310;
+  --pd-button-shadow: #000000;
+  --pd-button-text-shadow: #2d1b0e;
   --pd-button-text: #ffffff;
+  --pd-cta-min-height: 44px;
   --background: var(--pd-paper);
   --foreground: var(--pd-ink);
   --card: var(--pd-card);
@@ -66,26 +76,6 @@
 }
 .scope ::selection { background: var(--primary); color: var(--primary-foreground); }
 .scope :is(a, button, input):focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
-.scope .goldAction,
-.scope button:global(.bg-primary):not([aria-pressed]):not([aria-selected]):not([role]) {
-  border-color: var(--pd-bronze);
-  background: linear-gradient(175deg, var(--pd-button-top), var(--pd-button-base));
-  color: var(--pd-button-text);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-accent) 55%, transparent), 0 4px 10px color-mix(in srgb, var(--pd-paper) 35%, transparent);
-  transition: background-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-.scope .goldAction:hover,
-.scope button:global(.bg-primary):not([aria-pressed]):not([aria-selected]):not([role]):hover:not(:disabled) {
-  background: linear-gradient(175deg, var(--pd-button-hover), var(--pd-button-base));
-  color: var(--pd-button-text);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-accent) 65%, transparent), 0 6px 12px color-mix(in srgb, var(--pd-paper) 40%, transparent);
-  transform: translateY(-1px);
-}
-.scope .goldAction:active,
-.scope button:global(.bg-primary):not([aria-pressed]):not([aria-selected]):not([role]):active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--pd-paper) 30%, transparent);
-}
 .navigation { position: relative; z-index: 50; display: flex; align-items: center; justify-content: flex-end; justify-self: end; gap: 1rem; padding: .375rem; min-width: 0; max-width: 100%; width: fit-content; border: 0; border-radius: .375rem; background: transparent; }
 .desktopLinks { display: none; align-items: center; flex-wrap: wrap; gap: .25rem 1rem; }
 .desktopLinks a { display: inline-flex; min-height: 44px; align-items: center; font-size: .875rem; font-weight: 600; text-decoration: underline; text-decoration-color: transparent; text-underline-offset: .5rem; }
@@ -108,12 +98,43 @@
 .authDialog .authBody { padding: .25rem 1.5rem 1.5rem; background: transparent; overscroll-behavior: contain; scrollbar-color: var(--border) var(--pd-paper); }
 .authBody :global(.sm\:grid-cols-2) { grid-template-columns: minmax(0, 1fr); }
 .authBody h2 { font-size: 1.125rem; line-height: 1.7; }
-.authBody form { margin-top: 0; gap: 1.125rem; }
+.authBody form { margin-top: 0; gap: 1.125rem; --pd-cta-min-height: 48px; }
 .authBody label { font-size: .875rem; line-height: 1.8; font-weight: 600; }
 .authBody input { min-height: 48px; padding-inline: .875rem; border-radius: .625rem; background: var(--pd-card); font-size: 1rem; line-height: 1.75; }
 .authBody input[dir="ltr"] { text-align: left; }
 .authBody input::placeholder { color: var(--muted-foreground); opacity: 1; }
 .authBody button[type="submit"] { width: 100%; min-height: 48px; border-radius: .625rem; font-size: .9375rem; }
+/* Shared booking controls opt in explicitly; outside .scope their appearance is unchanged. */
+.scope :is(.goldAction, button[data-booking-primary="true"]) {
+  min-height: var(--pd-cta-min-height);
+  border: 1px solid var(--pd-button-rim);
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--pd-button-top) 0%, var(--pd-button-shoulder) 18%, var(--pd-button-middle) 52%, var(--pd-button-base) 100%);
+  color: var(--pd-button-text);
+  font-weight: 600;
+  letter-spacing: normal;
+  text-shadow: 0 1px 1px color-mix(in srgb, var(--pd-button-text-shadow) 42%, transparent);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-button-highlight) 52%, transparent), inset 1px 0 0 color-mix(in srgb, var(--pd-button-side) 12%, transparent), inset 0 -2px 0 color-mix(in srgb, var(--pd-button-shade) 32%, transparent), 0 2px 3px color-mix(in srgb, var(--pd-button-shadow) 26%, transparent), 0 6px 12px color-mix(in srgb, var(--pd-button-shadow) 16%, transparent);
+  transition: transform 140ms ease, box-shadow 140ms ease, filter 140ms ease;
+}
+.scope :is(.goldAction, button[data-booking-primary="true"]):hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(1.05);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-button-highlight) 62%, transparent), inset 1px 0 0 color-mix(in srgb, var(--pd-button-side) 12%, transparent), inset 0 -2px 0 color-mix(in srgb, var(--pd-button-shade) 32%, transparent), 0 2px 3px color-mix(in srgb, var(--pd-button-shadow) 26%, transparent), 0 6px 12px color-mix(in srgb, var(--pd-button-shadow) 20%, transparent);
+}
+.scope :is(.goldAction, button[data-booking-primary="true"]):active:not(:disabled):not([aria-disabled="true"]) {
+  filter: none;
+  transform: translateY(0);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-button-highlight) 35%, transparent), inset 0 -3px 0 color-mix(in srgb, var(--pd-button-shade) 42%, transparent), 0 2px 3px color-mix(in srgb, var(--pd-button-shadow) 20%, transparent);
+}
+.scope :is(.goldAction, button[data-booking-primary="true"]):focus-visible { outline: 2px solid var(--ring); outline-offset: 4px; }
+.scope :is(.goldAction, button[data-booking-primary="true"]):is(:disabled, [aria-disabled="true"]) {
+  opacity: 1;
+  filter: none;
+  transform: none;
+  border-color: var(--pd-button-base);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--pd-button-highlight) 16%, transparent);
+}
 @supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
   /* Bounded floating surfaces only; content-heavy screens stay opaque. */
   .navigation .menu { background: color-mix(in srgb, var(--card) 94%, transparent); -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
@@ -129,6 +150,6 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .scope :is(a, button), .authDialog.authDialog { transition: none; animation: none; }
-  .scope .goldAction, .scope button:global(.bg-primary):not([aria-pressed]):not([aria-selected]):not([role]) { transition: none; transform: none; }
-  .scope .goldAction:hover, .scope .goldAction:active, .scope button:global(.bg-primary):not([aria-pressed]):not([aria-selected]):not([role]):hover:not(:disabled), .scope button:global(.bg-primary):not([aria-pressed]):not([aria-selected]):not([role]):active:not(:disabled) { transform: none; }
+  .scope :is(.goldAction, button[data-booking-primary="true"]) { transition: none; }
+  .scope :is(.goldAction, button[data-booking-primary="true"]):is(:hover, :active):not(:disabled):not([aria-disabled="true"]) { transform: none; }
 }

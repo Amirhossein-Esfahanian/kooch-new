@@ -34,9 +34,12 @@ describe("Property guest account", () => {
     const dialog = await openLogin();
     expect(dialog.className).not.toContain("h-[min(760px,90vh)]");
     expect(dialog.className).toContain("h-auto");
+    expect(within(dialog).getByRole("button", { name: "ارسال کد تأیید" }).getAttribute("data-booking-primary")).toBe("true");
     fireEvent.change(within(dialog).getByLabelText(/شماره موبایل/), { target: { value: "09120000000" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "ارسال کد تأیید" }));
     fireEvent.change(await within(dialog).findByLabelText(/کد تأیید/), { target: { value: "123456" } });
+    expect(within(dialog).getByRole("button", { name: "تأیید و ادامه" }).getAttribute("data-booking-primary")).toBe("true");
+    expect(within(dialog).getByRole("button", { name: "تغییر شماره موبایل" }).hasAttribute("data-booking-primary")).toBe(false);
     fireEvent.click(within(dialog).getByRole("button", { name: "تأیید و ادامه" }));
     await waitFor(() => expect(mocks.push).toHaveBeenCalledExactlyOnceWith("/book/garden/my-bookings"));
     expect(mocks.api.mock.calls.map(([path]) => path)).toEqual(["/auth/request-otp", "/auth/verify-otp"]);
@@ -51,7 +54,7 @@ describe("Property guest account", () => {
     await openLogin();
     fireEvent.change(screen.getByLabelText(/شماره موبایل/), { target: { value: "09120000000" } });
     fireEvent.click(screen.getByRole("button", { name: "ارسال کد تأیید" }));
-    expect(await screen.findByRole("button", { name: "ساخت حساب و ارسال کد" })).toBeTruthy();
+    expect((await screen.findByRole("button", { name: "ساخت حساب و ارسال کد" })).getAttribute("data-booking-primary")).toBe("true");
     expect(screen.getByLabelText(/^نام خانوادگی/)).toBeTruthy();
     expect(mocks.push).not.toHaveBeenCalled();
   });
