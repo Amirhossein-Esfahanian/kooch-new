@@ -37,8 +37,8 @@ let searchHeight = 120;
 let reducedMotion = false;
 let observers: ResizeObserverCallback[] = [];
 const positions: Record<string, number> = {
-  "property-overview": 750, "property-highlights": 1100, "property-rooms": 1500,
-  "property-facilities": 2000, "property-reviews": 2500, "property-location": 2900, "property-policies": 3300,
+  "property-overview": 750, "property-highlights": 1100, "property-facilities": 1500,
+  "property-rooms": 2250, "property-reviews": 2700, "property-location": 3100, "property-policies": 3500,
 };
 
 beforeEach(() => {
@@ -107,8 +107,8 @@ describe("Marketplace property presentation", () => {
     expect(screen.getByText(/اطلاعات زنده یا پیش‌بینی ارائه نمی‌شود/)).toBeTruthy();
     expect(screen.queryByTestId("map-fixture")).toBeNull();
     expect(document.getElementById("property-policies")!.textContent).toContain("جزئیات سیاست لغو در حال حاضر برای نمایش در دسترس نیست.");
-    expect(document.getElementById("property-policies")!.textContent).toContain("یادداشت واقعی");
-    expect(document.getElementById("property-overview")!.textContent).not.toContain("یادداشت واقعی");
+    expect(document.getElementById("property-policies")!.textContent).not.toContain("یادداشت واقعی");
+    expect(document.getElementById("property-overview")!.textContent).toContain("یادداشت واقعی");
     expect(document.body.textContent).not.toMatch(/°|۱۰ از ۱۰|لغو رایگان|رزرو آنی/);
   });
 
@@ -126,11 +126,11 @@ describe("Marketplace property presentation", () => {
     render(<Detail />);
     const navigation = screen.getByRole("navigation", { name: "بخش‌های اقامتگاه" });
     const links = within(navigation).getAllByRole("link");
-    expect(links).toHaveLength(6);
+    expect(links).toHaveLength(7);
     links[0].focus(); fireEvent.keyDown(links[0], { key: "ArrowLeft" }); expect(document.activeElement).toBe(links[1]);
-    fireEvent.keyDown(links[1], { key: "End" }); expect(document.activeElement).toBe(links[5]);
-    fireEvent.click(links[5]);
-    expect(links[5].getAttribute("aria-current")).toBe("location");
+    fireEvent.keyDown(links[1], { key: "End" }); expect(document.activeElement).toBe(links[6]);
+    fireEvent.click(links[6]);
+    expect(links[6].getAttribute("aria-current")).toBe("location");
     expect(document.activeElement).toBe(document.getElementById("property-policies"));
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenLastCalledWith({ behavior: "smooth", block: "start" });
     expect(window.location.search).toBe("?adults=4&childAges=4,9");
@@ -143,11 +143,14 @@ describe("Marketplace property presentation", () => {
     expect(document.activeElement).toBe(screen.getByRole("heading", { level: 1 }));
   });
 
-  it("restores an initial section fragment after content mounts, without discarding search parameters", () => {
-    window.history.replaceState(null, "", "/properties/garden?adults=3#property-location");
+  it.each([
+    ["property-location", "موقعیت مکانی"],
+    ["property-rooms", "اتاق‌ها"],
+  ])("restores the initial %s fragment after content mounts without discarding search parameters", (id, label) => {
+    window.history.replaceState(null, "", `/properties/garden?adults=3#${id}`);
     render(<Detail />);
     const navigation = screen.getByRole("navigation", { name: "بخش‌های اقامتگاه" });
-    expect(within(navigation).getByRole("link", { name: "موقعیت مکانی" }).getAttribute("aria-current")).toBe("location");
+    expect(within(navigation).getByRole("link", { name: label }).getAttribute("aria-current")).toBe("location");
     expect(HTMLElement.prototype.scrollIntoView).toHaveBeenCalledWith({ behavior: "auto", block: "start" });
     expect(window.location.search).toBe("?adults=3");
   });
@@ -175,17 +178,113 @@ describe("Marketplace property presentation", () => {
     view.unmount(); expect(header.classList.contains(styles.siteHeaderHidden)).toBe(false);
   });
 
-  it("keeps responsive, themed styles local, accounts for sticky layers and avoids nested booking columns", () => {
+  it("keeps responsive, themed styles local and restores the full-width shared booking layout", () => {
     const css = readFileSync(resolve(process.cwd(), "components/property/marketplace/MarketplacePropertyDetail.module.css"), "utf8");
     expect(css).toContain('top: calc(var(--header-height) + var(--marketplace-search-height))');
     expect(css).toContain('border-bottom-color: var(--primary)');
     expect(css).toContain('grid-template-columns: minmax(0, 1fr) 300px; direction: ltr');
-    expect(css).toContain('.rooms [data-testid="room-selection-region"] { grid-template-columns: minmax(0, 1fr); }');
+    expect(css).toContain('.fullWidth { grid-column: 1 / -1; }');
+    expect(css).toContain('.sidebar { grid-column: 2; grid-row: 1; }');
+    expect(css).toContain('.fullWidth { direction: rtl; }');
+    expect(css).not.toMatch(/\.rooms \[data-testid="(?:room-selection-region|booking-choices-summary)"\]/);
+    expect(css).toContain('grid-template-columns: repeat(3, minmax(0, 1fr))');
     expect(css).toContain('.searchShell > div:not(:first-child) > p { display: none; }');
     expect(css).toContain('prefers-reduced-motion: reduce');
     expect(css).not.toMatch(/:global|:root|#[a-f\d]{3,8}\b|100vw/);
     const direct = readFileSync(resolve(process.cwd(), "components/booking/PropertyBookingLanding.tsx"), "utf8");
     expect(direct).not.toContain("MarketplaceProperty");
+  });
+
+  it("shows actual identity, base description, introductions and important notes in About without duplicate descriptions", () => {
+    const data = property();
+    data.descriptionSections.push(
+      { sectionType: "PropertyIntroduction", title: "معرفی", content: data.description, sortOrder: 0 },
+      { sectionType: "PropertyIntroduction", title: "درباره بنا", content: "توضیح تکمیلی بنا", sortOrder: 2 },
+    );
+    render(<Detail data={data} />);
+    const about = screen.getByRole("region", { name: "درباره اقامتگاه" });
+    expect(within(about).getByText(data.name)).toBeTruthy();
+    expect(screen.getAllByRole("heading", { name: data.name })).toHaveLength(1);
+    expect(within(about).getByText(data.englishName!).getAttribute("dir")).toBe("ltr");
+    expect(within(about).getByText("خانه سنتی")).toBeTruthy();
+    expect(within(about).getAllByText(data.description)).toHaveLength(1);
+    expect(within(about).getByText("توضیح تکمیلی بنا")).toBeTruthy();
+    expect(within(about).getByText("یادداشت واقعی")).toBeTruthy();
+    expect(screen.queryByText("اطلاعات سریع")).toBeNull();
+  });
+
+  it("keeps common areas and true/false accessibility data only in Highlights, not Facilities", () => {
+    const data = property();
+    data.commonAreas = [{ id: 1, name: "حیاط مشترک", description: "حیاطی برای مهمانان", sortOrder: 0 }];
+    data.isWheelchairAccessible = true;
+    data.amenities = [{ id: 1, name: "اینترنت", category: "خدمات" }];
+    data.views = ["GardenView"];
+    render(<Detail data={data} />);
+    const highlights = screen.getByRole("region", { name: "ویژگی‌های برجسته" });
+    expect(within(highlights).getByText("حیاط مشترک")).toBeTruthy();
+    expect(within(highlights).getByText("حیاطی برای مهمانان")).toBeTruthy();
+    expect(within(highlights).getByText("مناسب ویلچر").nextElementSibling?.textContent).toBe("دارد");
+    expect(within(highlights).getByText("آسانسور").nextElementSibling?.textContent).toBe("ندارد");
+    expect(within(highlights).queryByText("اتاق همکف")).toBeNull();
+    expect(within(highlights).queryByText("ساعت ورود")).toBeNull();
+    expect(within(highlights).queryByText("اینترنت")).toBeNull();
+    expect(within(highlights).queryByText("چشم‌اندازها")).toBeNull();
+    expect(within(screen.getByRole("region", { name: "موقعیت مکانی" })).getByText("نمای باغ")).toBeTruthy();
+    const facilities = screen.getByRole("region", { name: "امکانات" });
+    expect(within(facilities).getByText("اینترنت")).toBeTruthy();
+    expect(within(facilities).queryByText("حیاط مشترک")).toBeNull();
+    expect(within(facilities).queryByText("دسترسی‌پذیری")).toBeNull();
+  });
+
+  it("omits absent common areas and nullable accessibility fields without inventing data or an empty See all action", () => {
+    render(<Detail />);
+    const highlights = screen.getByRole("region", { name: "ویژگی‌های برجسته" });
+    expect(within(highlights).queryByText("فضاهای مشترک")).toBeNull();
+    expect(within(highlights).queryByText("مناسب ویلچر")).toBeNull();
+    expect(within(highlights).getByText("آسانسور").nextElementSibling?.textContent).toBe("ندارد");
+    expect(screen.getByText("هنوز امکاناتی ثبت نشده است.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "مشاهده همه" })).toBeNull();
+  });
+
+  it("previews six amenities with icons and opens all actual amenities in the shared read-only dialog", async () => {
+    const data = property();
+    data.amenities = Array.from({ length: 8 }, (_, index) => ({ id: index + 1, name: `امکان ${index + 1}`, category: index < 4 ? "عمومی" : "خدمات" }));
+    render(<Detail data={data} />);
+    const facilities = screen.getByRole("region", { name: "امکانات" });
+    expect(within(facilities).getAllByRole("listitem")).toHaveLength(6);
+    within(facilities).getAllByRole("listitem").forEach((item) => expect(item.querySelector('[aria-hidden="true"]')).toBeTruthy());
+    expect(within(facilities).queryByText("امکان 7")).toBeNull();
+    const opener = within(facilities).getByRole("button", { name: "مشاهده همه" });
+    opener.focus(); fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: "همه امکانات اقامتگاه" });
+    expect(within(dialog).getAllByRole("listitem")).toHaveLength(8);
+    expect(within(dialog).getByRole("heading", { name: "عمومی" })).toBeTruthy();
+    expect(within(dialog).getByText("امکان 8")).toBeTruthy();
+    expect(within(dialog).queryByRole("button", { name: /ویرایش|حذف/ })).toBeNull();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener));
+  });
+
+  it("places Rooms after Facilities outside the sidebar-constrained main column and supports its anchor and tracking", async () => {
+    render(<Detail />);
+    const facilities = document.getElementById("property-facilities")!;
+    const rooms = document.getElementById("property-rooms")!;
+    expect(facilities.compareDocumentPosition(rooms) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(rooms.parentElement?.classList.contains(styles.contentGrid)).toBe(true);
+    expect(rooms.classList.contains(styles.fullWidth)).toBe(true);
+    const navigation = screen.getByRole("navigation", { name: "بخش‌های اقامتگاه" });
+    const link = within(navigation).getByRole("link", { name: "اتاق‌ها" });
+    expect(link.getAttribute("href")).toBe("#property-rooms");
+    fireEvent.click(link);
+    expect(document.activeElement).toBe(rooms);
+    expect(window.location.hash).toBe("#property-rooms");
+    expect(link.getAttribute("aria-current")).toBe("location");
+    fireEvent.wheel(window);
+    vi.stubGlobal("scrollY", 800); fireEvent.scroll(window);
+    await waitFor(() => expect(within(navigation).getByRole("link", { name: "معرفی اقامتگاه" }).getAttribute("aria-current")).toBe("location"));
+    vi.stubGlobal("scrollY", 2300); fireEvent.scroll(window);
+    await waitFor(() => expect(link.getAttribute("aria-current")).toBe("location"));
   });
 
   it("does not hide a focused site-header control while the user scrolls", async () => {

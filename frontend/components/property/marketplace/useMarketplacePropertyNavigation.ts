@@ -7,6 +7,7 @@ export const propertySections = [
   { id: "property-overview", label: "معرفی اقامتگاه" },
   { id: "property-highlights", label: "ویژگی‌های برجسته" },
   { id: "property-facilities", label: "امکانات" },
+  { id: "property-rooms", label: "اتاق‌ها" },
   { id: "property-reviews", label: "نظرات مهمانان" },
   { id: "property-location", label: "موقعیت مکانی" },
   { id: "property-policies", label: "قوانین و مقررات" },
