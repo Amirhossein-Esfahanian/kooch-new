@@ -5,6 +5,7 @@ import { useState, type ReactNode } from "react";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochIcon } from "@/components/KoochIcon";
+import { KoochSvgIcon } from "@/components/KoochSvgIcon";
 import { KoochDialog } from "@/components/KoochDialog";
 import { MarketplaceWeatherCard } from "@/components/weather/MarketplaceWeatherCard";
 import { PromotionCards } from "@/components/promotions/PromotionCards";
@@ -13,6 +14,12 @@ import type { PublicProperty } from "@/lib/public-properties";
 import { MarketplacePropertyGallery } from "./MarketplacePropertyGallery";
 import { propertySections, useMarketplacePropertyNavigation } from "./useMarketplacePropertyNavigation";
 import styles from "./MarketplacePropertyDetail.module.css";
+
+function PropertyAmenityIcon({ icon }: { icon?: string | null }) {
+  return icon && /^\/(?!\/)[\w/.-]+\.svg$/i.test(icon) && !icon.includes("..")
+    ? <KoochSvgIcon size="sm" src={icon} />
+    : <KoochIcon className="h-4 w-4" name="info" />;
+}
 
 const propertyTypes: Record<string, string> = { TraditionalHouse: "خانه سنتی", BoutiqueHotel: "هتل بوتیک", EcoLodge: "اقامتگاه بوم‌گردی", Hotel: "هتل", Villa: "ویلا", Apartment: "آپارتمان" };
 const viewLabels: Record<string, string> = { CourtyardView: "نمای حیاط", GardenView: "نمای باغ", CityView: "نمای شهر", MountainView: "نمای کوه", DesertView: "نمای کویر" };
@@ -97,7 +104,7 @@ export function MarketplacePropertyDetail({ property, resultsHref, searchBar, ro
             {property.amenities.length > 0 && <KoochButton aria-haspopup="dialog" className={styles.seeAllButton} onClick={() => setAllAmenitiesOpen(true)} variant="ghost">مشاهده همه</KoochButton>}
           </div>
           {property.amenities.length ? <ul className={styles.amenities}>
-            {property.amenities.slice(0, 6).map((amenity) => <li key={amenity.id}><KoochIcon className="h-4 w-4" name="success" />{amenity.name}</li>)}
+            {property.amenities.slice(0, 6).map((amenity) => <li key={amenity.id}><PropertyAmenityIcon icon={amenity.icon} />{amenity.name}</li>)}
           </ul> : <p className={styles.unavailable}>هنوز امکاناتی ثبت نشده است.</p>}
         </section>
       </div>
@@ -159,7 +166,7 @@ export function MarketplacePropertyDetail({ property, resultsHref, searchBar, ro
     <KoochDialog contentClassName={styles.amenitiesDialog} onOpenChange={setAllAmenitiesOpen} open={allAmenitiesOpen} size="md" title="همه امکانات اقامتگاه">
       <div className={styles.amenityCategories}>{[...groups].map(([category, amenities]) => <section key={category}>
         <h3>{category}</h3>
-        <ul className={styles.amenities}>{amenities.map((amenity) => <li key={amenity.id}><KoochIcon className="h-4 w-4" name="success" />{amenity.name}</li>)}</ul>
+        <ul className={styles.amenities}>{amenities.map((amenity) => <li key={amenity.id}><PropertyAmenityIcon icon={amenity.icon} />{amenity.name}</li>)}</ul>
       </section>)}</div>
     </KoochDialog>
   </div>;

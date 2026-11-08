@@ -151,7 +151,7 @@ export interface PublicProperty {
     sortOrder: number;
   }[];
   settings: { id: number; name: string; slug: string }[];
-  amenities: { id: number; name: string; category: string }[];
+  amenities: { id: number; name: string; category: string; icon?: string | null }[];
   nearbyPlaces: {
     id: number;
     title: string;

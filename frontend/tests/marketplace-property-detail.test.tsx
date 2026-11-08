@@ -253,16 +253,21 @@ describe("Marketplace property presentation", () => {
 
   it("previews six amenities with icons and opens all actual amenities in the shared read-only dialog", async () => {
     const data = property();
-    data.amenities = Array.from({ length: 8 }, (_, index) => ({ id: index + 1, name: `امکان ${index + 1}`, category: index < 4 ? "عمومی" : "خدمات" }));
+    data.amenities = Array.from({ length: 8 }, (_, index) => ({ id: index + 1, name: `امکان ${index + 1}`, category: index < 4 ? "عمومی" : "خدمات", icon: index === 0 ? "/uploads/amenities/wifi.svg" : index === 1 ? "javascript:invalid.svg" : null }));
     render(<Detail data={data} />);
     const facilities = screen.getByRole("region", { name: "امکانات" });
     expect(within(facilities).getAllByRole("listitem")).toHaveLength(6);
     within(facilities).getAllByRole("listitem").forEach((item) => expect(item.querySelector('[aria-hidden="true"]')).toBeTruthy());
+    const items = within(facilities).getAllByRole("listitem");
+    expect(items[0].querySelector("span")?.getAttribute("style")).toContain("/uploads/amenities/wifi.svg");
+    expect(items[1].querySelector("span")?.getAttribute("style")).toContain("/svgs/info.svg");
+    expect(items[2].querySelector("span")?.getAttribute("style")).toContain("/svgs/info.svg");
     expect(within(facilities).queryByText("امکان 7")).toBeNull();
     const opener = within(facilities).getByRole("button", { name: "مشاهده همه" });
     opener.focus(); fireEvent.click(opener);
     const dialog = await screen.findByRole("dialog", { name: "همه امکانات اقامتگاه" });
     expect(within(dialog).getAllByRole("listitem")).toHaveLength(8);
+    expect(within(dialog).getAllByRole("listitem")[0].querySelector("span")?.getAttribute("style")).toContain("/uploads/amenities/wifi.svg");
     expect(within(dialog).getByRole("heading", { name: "عمومی" })).toBeTruthy();
     expect(within(dialog).getByText("امکان 8")).toBeTruthy();
     expect(within(dialog).queryByRole("button", { name: /ویرایش|حذف/ })).toBeNull();

@@ -1784,6 +1784,7 @@ public class PropertyService(
                 {
                     Id = join.AmenityId,
                     Name = join.Amenity.Name,
+                    Icon = join.Amenity.Icon,
                     Category = join.Amenity.AmenityCategory.Name
                 })
                 .ToList(),

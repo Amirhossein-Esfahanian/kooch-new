@@ -1,0 +1,14 @@
+.icon { overflow: visible; }
+.sun { color: color-mix(in srgb, var(--theme-warning) 75%, var(--muted-foreground)); }
+.cloud { color: var(--muted-foreground); }
+.rain { color: color-mix(in srgb, var(--primary) 65%, var(--muted-foreground)); }
+/* A finite sequence avoids perpetual motion while reading forecasts. */
+.animated .rays { transform-origin: 12px 12px; animation: rays 4s ease-in-out; }
+.animated .drift { animation: drift 4s ease-in-out; }
+.animated .drops { animation: drops 2s ease-in-out 2; }
+@keyframes rays { 50% { transform: rotate(15deg); } }
+@keyframes drift { 50% { transform: translateX(1px); } }
+@keyframes drops { 50% { transform: translateY(1px); opacity: .65; } }
+@media (prefers-reduced-motion: reduce) {
+  .animated :is(.rays, .drift, .drops) { animation: none; }
+}

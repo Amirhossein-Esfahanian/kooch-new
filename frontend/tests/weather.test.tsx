@@ -4,6 +4,7 @@ import { WeatherCard } from "@/components/weather/WeatherCard";
 import { WeatherIcon } from "@/components/weather/WeatherIcon";
 import type { WeatherState } from "@/hooks/useWeather";
 import styles from "@/components/weather/WeatherCard.module.css";
+import iconStyles from "@/components/weather/WeatherIcon.module.css";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createWeatherLoader, getWeather, weatherBusinessDate, weatherForToday, weatherMidnightDelay, type WeatherResponse } from "@/lib/weather";
@@ -122,6 +123,39 @@ describe("weather API and shared cache", () => {
 });
 
 describe("reusable weather presentation", () => {
+  it("marks Tehran today subtly and gives maximum and minimum distinct hierarchy", () => {
+    render(<WeatherCard layout="horizontal" state={{ status: "loaded", data: weatherFixture() }} />);
+    const tiles = screen.getAllByRole("listitem");
+    expect(tiles[0].classList.contains(styles.today)).toBe(true);
+    expect(tiles[0].querySelector('time[aria-current="date"]')).toBeTruthy();
+    expect(tiles[1].querySelector('[aria-current]')).toBeNull();
+    expect(tiles[0].querySelector(`.${styles.maximum}`)?.textContent).toContain("بیشینه");
+    expect(tiles[0].querySelector(`.${styles.minimum}`)?.textContent).toContain("کمینه");
+  });
+
+  it("keeps motion finite, reduced-motion static, and compact styling scoped to horizontal tiles", () => {
+    const css = readFileSync(resolve(process.cwd(), "components/weather/WeatherIcon.module.css"), "utf8");
+    expect(css).toContain("prefers-reduced-motion: reduce");
+    expect(css).toContain("animation: none");
+    expect(css).not.toContain("infinite");
+    const cardCss = readFileSync(resolve(process.cwd(), "components/weather/WeatherCard.module.css"), "utf8");
+    expect(cardCss).toContain("padding: .625rem .5rem");
+    expect(cardCss).toContain(".horizontal .maximum bdi");
+    expect(cardCss).toContain("var(--muted-foreground)");
+  });
+
+  it.each([
+    ["clear-day", "rays"], ["partly-cloudy-day", "drift"], ["partly-cloudy-night", "drift"],
+    ["rain", "drops"], ["showers-day", "drops"], ["showers-night", "drops"],
+    ["thunder-showers-day", "drops"], ["thunder-showers-night", "drops"],
+  ] as const)("maps %s to restrained %s motion only when enabled", (code, part) => {
+    const { container, rerender } = render(<WeatherIcon code={code} animated />);
+    expect(container.querySelector(`svg.${iconStyles.animated}`)).toBeTruthy();
+    expect(container.querySelector(`.${iconStyles[part]}`)).toBeTruthy();
+    rerender(<WeatherIcon code={code} />);
+    expect(container.querySelector(`svg.${iconStyles.animated}`)).toBeNull();
+  });
+
   it("offers seven accessible horizontal tiles with the same mapped values, dates and attribution", () => {
     render(<WeatherCard layout="horizontal" state={{ status: "loaded", data: weatherFixture() }} />);
     const card = screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" });
@@ -242,7 +276,7 @@ describe("reusable weather presentation", () => {
     expect(screen.getByText("دما به درجهٔ فارنهایت")).toBeTruthy();
   });
 
-  it.each(["clear-night", "cloudy", "rain", "snow", "wind", "fog", "thunder-rain", "unknown"])("renders a decorative vector for %s", (code) => {
+  it.each(["clear-day", "clear-night", "cloudy", "partly-cloudy-day", "partly-cloudy-night", "rain", "showers-day", "showers-night", "snow", "snow-showers-day", "snow-showers-night", "wind", "fog", "thunder-rain", "thunder-showers-day", "thunder-showers-night", "unknown"])("renders a decorative vector for %s", (code) => {
     const { container } = render(<WeatherIcon code={code} />);
     expect(container.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
     expect(screen.queryByRole("img")).toBeNull();

@@ -35,14 +35,14 @@ export function WeatherCard({ state, onRetry, className = "", showPrecipitation 
       <p className={styles.unit}>دما به درجهٔ {unit}</p>
       <ul aria-label="پیش‌بینی روزانه" className={styles.days} tabIndex={layout === "horizontal" ? 0 : undefined}>{days.map((day) => {
         const label = weatherDayLabel(day.date);
-        return <li key={day.date}>
-          <time dateTime={day.date}><strong>{label.weekday}</strong><span>{label.date}</span></time>
-          <span className={styles.icon}><WeatherIcon code={day.icon} /></span>
+        return <li key={day.date} className={day.date === today ? styles.today : undefined}>
+          <time dateTime={day.date} aria-current={day.date === today ? "date" : undefined}><strong>{label.weekday}</strong><span>{label.date}</span></time>
+          <span className={styles.icon}><WeatherIcon code={day.icon} animated={layout === "horizontal"} /></span>
           <div className={styles.forecast}>
             <p className={styles.conditions}>{day.conditions}</p>
             <p className={styles.temperatures}>
-              <span>بیشینه <bdi>{weatherNumber.format(day.maxTemperature)}°</bdi></span>
-              <span>کمینه <bdi>{weatherNumber.format(day.minTemperature)}°</bdi></span>
+              <span className={styles.maximum}>بیشینه <bdi>{weatherNumber.format(day.maxTemperature)}°</bdi></span>
+              <span className={styles.minimum}>کمینه <bdi>{weatherNumber.format(day.minTemperature)}°</bdi></span>
             </p>
             {showPrecipitation && <p className={styles.precipitation}>احتمال بارش {weatherNumber.format(day.precipitationProbability)}٪</p>}
           </div>

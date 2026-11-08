@@ -9,6 +9,28 @@ namespace Kooch.Api.Tests;
 public sealed class PublicPropertyVisibilityTests
 {
     [Theory]
+    [InlineData("/uploads/amenities/wifi.svg")]
+    [InlineData(null)]
+    public async Task PublicDetail_ProjectsConfiguredAmenityIcon(string? icon)
+    {
+        await using var context = CreateContext();
+        var property = Property(1, "Property", "property", "کاشان");
+        var category = new AmenityCategory { Id = 1, Name = "Facilities", Slug = "facilities" };
+        var amenity = new Amenity { Id = 1, Name = "WiFi", Slug = "wifi", Icon = icon, AmenityCategory = category };
+        property.PropertyAmenities.Add(new PropertyAmenity { Amenity = amenity });
+        context.Properties.Add(property);
+        await context.SaveChangesAsync();
+
+        var result = await CreateService(context).GetPublicPropertyBySlugAsync("property");
+
+        Assert.NotNull(result);
+        var item = Assert.Single(result.Amenities);
+        Assert.Equal(icon, item.Icon);
+        Assert.Equal("Facilities", item.Category);
+        Assert.Equal("WiFi", item.Name);
+    }
+
+    [Theory]
     [InlineData(14, 0, 23, 0)]
     [InlineData(22, 0, 6, 0)]
     public async Task PublicDetail_ProjectsReceptionHoursWithoutReordering(

@@ -38,8 +38,8 @@
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto auto 1fr;
   justify-items: center;
-  gap: .75rem;
-  padding: 1rem .5rem;
+  gap: .25rem;
+  padding: .625rem .5rem;
   border: 1px solid var(--border);
   border-radius: .5rem;
   background: var(--background);
@@ -47,11 +47,14 @@
   scroll-snap-align: start;
 }
 .horizontal .icon > :is(svg, span) { width: 2rem; height: 2rem; }
-.horizontal .forecast { display: grid; grid-template-rows: 1fr auto auto; width: 100%; gap: .5rem; }
-.horizontal .conditions { min-block-size: 3.8em; }
-.horizontal .temperatures { display: grid; gap: .25rem; font-size: .8125rem; }
+.horizontal .forecast { display: grid; grid-template-rows: 1fr auto auto; width: 100%; gap: .25rem; }
+.horizontal .conditions { min-block-size: 1.9em; }
+.horizontal .temperatures { display: grid; gap: .125rem; font-size: .75rem; }
 .horizontal .temperatures span { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
-.horizontal .temperatures bdi { font-size: 1rem; font-weight: 600; }
+.horizontal .maximum bdi { font-size: 1.375rem; font-weight: 600; line-height: 1.4; }
+.horizontal .minimum { color: var(--muted-foreground); }
+.horizontal .minimum bdi { font-size: .875rem; font-weight: 400; }
+.horizontal .days .today { background: color-mix(in srgb, var(--primary) 4%, var(--card)); border-color: color-mix(in srgb, var(--primary) 28%, var(--border)); }
 .horizontal .footer { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; margin-top: .5rem; }
 .horizontal .footer :is(.updated, .attribution) { margin-top: 0; }
 @media (min-width: 1024px) {
