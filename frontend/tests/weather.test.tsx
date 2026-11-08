@@ -31,7 +31,7 @@ describe("weather API and shared cache", () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => weatherFixture() });
     vi.stubGlobal("fetch", fetcher);
     await getWeather();
-    expect(fetcher).toHaveBeenCalledWith("/api/backend/weather");
+    expect(fetcher).toHaveBeenCalledWith("/api/backend/weather", { cache: "no-store" });
     expect(weatherForToday(weatherFixture(), weatherBusinessDate()).days[0].date).toBe("2026-11-07");
     window.history.replaceState(null, "", "/");
   });
@@ -41,7 +41,7 @@ describe("weather API and shared cache", () => {
     const fetcher = vi.fn().mockResolvedValue({ ok: true, json: async () => data });
     vi.stubGlobal("fetch", fetcher);
     expect(await getWeather()).toEqual(data);
-    expect(fetcher).toHaveBeenCalledWith("/api/backend/weather");
+    expect(fetcher).toHaveBeenCalledWith("/api/backend/weather", { cache: "no-store" });
   });
 
   it.each([
@@ -72,14 +72,15 @@ describe("weather API and shared cache", () => {
 
   it("deduplicates concurrent requests and reuses cached data for 30 minutes", async () => {
     let finish!: (value: WeatherResponse) => void;
-    let now = 0;
+    const startedAt = Date.now();
+    let now = startedAt;
     const fetcher = vi.fn(() => new Promise<WeatherResponse>((resolve) => { finish = resolve; }));
     const loader = createWeatherLoader(fetcher, () => now);
     const first = loader.load();
     expect(loader.load()).toBe(first);
     finish(weatherFixture());
     await first;
-    now = 30 * 60 * 1000 - 1;
+    now = startedAt + 30 * 60 * 1000 - 1;
     expect(await loader.load()).toEqual(weatherFixture());
     expect(fetcher).toHaveBeenCalledTimes(1);
     now++;
@@ -94,6 +95,28 @@ describe("weather API and shared cache", () => {
     const loader = createWeatherLoader(fetcher);
     await expect(loader.load()).rejects.toThrow();
     expect(await loader.load()).toEqual(weatherFixture());
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["no_snapshot", "setup_required", "forecast_expired"])("does not retain unavailable/%s after the backend recovers", async (reason) => {
+    const unavailable: WeatherResponse = { ...weatherFixture(), status: "unavailable", unavailableReason: reason, fetchedAtUtc: null, days: [] };
+    const fetcher = vi.fn().mockResolvedValueOnce(unavailable).mockResolvedValueOnce(weatherFixture());
+    const loader = createWeatherLoader(fetcher);
+    expect((await loader.load()).status).toBe("unavailable");
+    expect((await loader.load()).status).toBe("available");
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    await loader.load();
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retain a formerly available forecast that lacks seven current Tehran days", async () => {
+    const expired = weatherFixture();
+    const current = weatherFixture();
+    current.days = current.days.map((day) => ({ ...day, date: new Date(Date.parse(`${day.date}T12:00:00Z`) + 86400000).toISOString().slice(0, 10) }));
+    const fetcher = vi.fn().mockResolvedValueOnce(expired).mockResolvedValueOnce(current);
+    const loader = createWeatherLoader(fetcher, () => Date.parse("2026-11-08T08:00:00Z"));
+    await loader.load();
+    expect((await loader.load()).days[0].date).toBe("2026-11-08");
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 });

@@ -38,7 +38,7 @@ function isWeatherDay(value: unknown): value is WeatherDay {
 }
 
 export async function getWeather(): Promise<WeatherResponse> {
-  const response = await fetch("/api/backend/weather");
+  const response = await fetch("/api/backend/weather", { cache: "no-store" });
   if (!response.ok) throw new Error("دریافت اطلاعات آب‌وهوا ممکن نشد.");
   const value: unknown = await response.json();
   return parseWeatherResponse(value);
@@ -67,7 +67,9 @@ export function createWeatherLoader(fetcher = getWeather, now = () => Date.now()
       if (cached && cached.expiresAt > now() && cached.businessDate === businessDate) return Promise.resolve(cached.response);
       if (pending) return pending;
       pending = fetcher().then((response) => {
-        cached = { response, expiresAt: now() + 30 * 60 * 1000, businessDate };
+        cached = weatherForToday(response, businessDate).status === "unavailable"
+          ? null
+          : { response, expiresAt: now() + 30 * 60 * 1000, businessDate };
         return response;
       }).finally(() => { pending = null; });
       return pending;
