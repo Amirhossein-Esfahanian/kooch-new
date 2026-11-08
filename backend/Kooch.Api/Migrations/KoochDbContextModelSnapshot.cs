@@ -4998,6 +4998,9 @@ namespace Kooch.Api.Migrations
                     b.Property<int>("ClientId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ComfortRating")
+                        .HasColumnType("int");
+
                     b.Property<string>("Comment")
                         .IsRequired()
                         .HasMaxLength(4000)
@@ -5015,6 +5018,9 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("DeletedByUserId")
                         .HasColumnType("int");
 
+                    b.Property<int?>("FacilitiesRating")
+                        .HasColumnType("int");
+
                     b.Property<bool>("IsDeleted")
                         .HasColumnType("bit");
 
@@ -5024,13 +5030,23 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("LocationRating")
                         .HasColumnType("int");
 
+                    b.Property<int?>("ModerationStatus")
+                        .HasColumnType("int");
+
                     b.Property<int>("PropertyId")
                         .HasColumnType("int");
 
                     b.Property<int>("Rating")
                         .HasColumnType("int");
 
+                    b.Property<int?>("RatingSum")
+                        .HasColumnType("int");
+
                     b.Property<int?>("ReservationId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
                         .HasColumnType("int");
 
                     b.Property<int?>("StaffRating")
@@ -5055,11 +5071,15 @@ namespace Kooch.Api.Migrations
 
                     b.HasIndex("PropertyId");
 
-                    b.HasIndex("ReservationId");
+                    b.HasIndex("ReservationId")
+                        .IsUnique()
+                        .HasFilter("[ReservationId] IS NOT NULL");
 
                     b.ToTable("Reviews", t =>
                         {
-                            t.HasCheckConstraint("CK_Review_DetailedRatings", "([CleanlinessRating] IS NULL OR [CleanlinessRating] BETWEEN 1 AND 5) AND ([LocationRating] IS NULL OR [LocationRating] BETWEEN 1 AND 5) AND ([StaffRating] IS NULL OR [StaffRating] BETWEEN 1 AND 5) AND ([ValueRating] IS NULL OR [ValueRating] BETWEEN 1 AND 5)");
+                            t.HasCheckConstraint("CK_Review_DetailedRatings", "([CleanlinessRating] IS NULL OR [CleanlinessRating] BETWEEN 1 AND 10) AND ([LocationRating] IS NULL OR [LocationRating] BETWEEN 1 AND 10) AND ([StaffRating] IS NULL OR [StaffRating] BETWEEN 1 AND 10) AND ([ValueRating] IS NULL OR [ValueRating] BETWEEN 1 AND 10)");
+
+                            t.HasCheckConstraint("CK_Review_VerifiedScores", "([RatingSum] IS NULL AND [ModerationStatus] IS NULL AND [ComfortRating] IS NULL AND [FacilitiesRating] IS NULL) OR ([RatingSum] IS NOT NULL AND [ReservationId] IS NOT NULL AND [ModerationStatus] IS NOT NULL AND [ModerationStatus] IN (0, 1, 2) AND [Revision] >= 1 AND [CleanlinessRating] IS NOT NULL AND [StaffRating] IS NOT NULL AND [ComfortRating] IS NOT NULL AND [FacilitiesRating] IS NOT NULL AND [LocationRating] IS NOT NULL AND [ValueRating] IS NOT NULL AND [CleanlinessRating] BETWEEN 1 AND 10 AND [StaffRating] BETWEEN 1 AND 10 AND [ComfortRating] BETWEEN 1 AND 10 AND [FacilitiesRating] BETWEEN 1 AND 10 AND [LocationRating] BETWEEN 1 AND 10 AND [ValueRating] BETWEEN 1 AND 10 AND [RatingSum] = [CleanlinessRating] + [StaffRating] + [ComfortRating] + [FacilitiesRating] + [LocationRating] + [ValueRating] AND ([IsPublished] = 0 OR [ModerationStatus] = 1))");
                         });
                 });
 

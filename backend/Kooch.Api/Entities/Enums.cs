@@ -49,7 +49,9 @@ public enum AuditAction
     PropertyMemberIdentityUpdated,
     RoomCapacityChanged,
     PropertyInformationChanged,
-    SiteSettingsChanged
+    SiteSettingsChanged,
+    ReviewSubmitted,
+    ReviewEdited
 }
 public enum PermissionKey
 {

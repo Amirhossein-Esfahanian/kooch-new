@@ -2297,11 +2297,19 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     {
         modelBuilder.Entity<Review>(entity =>
         {
+            entity.Property(review => review.Revision).IsConcurrencyToken();
+            entity.HasIndex(review => review.ReservationId).IsUnique().HasFilter("[ReservationId] IS NOT NULL");
             entity.Property(review => review.Title).HasMaxLength(200);
             entity.Property(review => review.Comment).HasMaxLength(4000).IsRequired();
             entity.ToTable(table => table.HasCheckConstraint(
                 "CK_Review_DetailedRatings",
-                "([CleanlinessRating] IS NULL OR [CleanlinessRating] BETWEEN 1 AND 5) AND ([LocationRating] IS NULL OR [LocationRating] BETWEEN 1 AND 5) AND ([StaffRating] IS NULL OR [StaffRating] BETWEEN 1 AND 5) AND ([ValueRating] IS NULL OR [ValueRating] BETWEEN 1 AND 5)"));
+                "([CleanlinessRating] IS NULL OR [CleanlinessRating] BETWEEN 1 AND 10) AND ([LocationRating] IS NULL OR [LocationRating] BETWEEN 1 AND 10) AND ([StaffRating] IS NULL OR [StaffRating] BETWEEN 1 AND 10) AND ([ValueRating] IS NULL OR [ValueRating] BETWEEN 1 AND 10)"));
+            entity.ToTable(table => table.HasCheckConstraint("CK_Review_VerifiedScores",
+                "([RatingSum] IS NULL AND [ModerationStatus] IS NULL AND [ComfortRating] IS NULL AND [FacilitiesRating] IS NULL) OR " +
+                "([RatingSum] IS NOT NULL AND [ReservationId] IS NOT NULL AND [ModerationStatus] IS NOT NULL AND [ModerationStatus] IN (0, 1, 2) AND [Revision] >= 1 AND " +
+                "[CleanlinessRating] IS NOT NULL AND [StaffRating] IS NOT NULL AND [ComfortRating] IS NOT NULL AND [FacilitiesRating] IS NOT NULL AND [LocationRating] IS NOT NULL AND [ValueRating] IS NOT NULL AND " +
+                "[CleanlinessRating] BETWEEN 1 AND 10 AND [StaffRating] BETWEEN 1 AND 10 AND [ComfortRating] BETWEEN 1 AND 10 AND [FacilitiesRating] BETWEEN 1 AND 10 AND [LocationRating] BETWEEN 1 AND 10 AND [ValueRating] BETWEEN 1 AND 10 AND " +
+                "[RatingSum] = [CleanlinessRating] + [StaffRating] + [ComfortRating] + [FacilitiesRating] + [LocationRating] + [ValueRating] AND ([IsPublished] = 0 OR [ModerationStatus] = 1))"));
             entity.HasOne(review => review.Property)
                 .WithMany(property => property.Reviews)
                 .HasForeignKey(review => review.PropertyId)

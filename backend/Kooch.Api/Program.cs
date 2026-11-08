@@ -138,6 +138,7 @@ builder.Services.AddScoped<ReservationActivityService>();
 builder.Services.AddScoped<AdminTaskService>();
 builder.Services.AddScoped<AdminAnnouncementService>();
 builder.Services.AddScoped<ReservationCancellationRequestService>();
+builder.Services.AddScoped<GuestReviewService>();
 builder.Services.AddScoped<ReservationCashbackQueryService>();
 builder.Services.AddScoped<ICommissionPolicyResolver, CommissionPolicyResolver>();
 builder.Services.AddScoped<IPaymentFinancializationService, PaymentFinancializationService>();
