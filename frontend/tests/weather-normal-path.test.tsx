@@ -28,7 +28,7 @@ it("automatically renders recovered normal cached weather without clicking the s
   const row = await screen.findByRole("list", { name: "پیش‌بینی روزانه" });
   expect(within(row).getAllByRole("listitem")).toHaveLength(7);
   expect(row.tabIndex).toBe(0);
-  expect(screen.getByText(/آخرین به‌روزرسانی/)).toBeTruthy();
+  expect(screen.queryByText(/آخرین به‌روزرسانی|احتمال بارش|دما به درجه/)).toBeNull();
   expect(screen.getByRole("link", { name: /Visual Crossing/ })).toBeTruthy();
   expect(screen.getByRole("button", { name: "دریافت مستقیم آب‌وهوا" })).toBeTruthy();
   expect(screen.queryByText("داده آزمایشی مستقیم")).toBeNull();

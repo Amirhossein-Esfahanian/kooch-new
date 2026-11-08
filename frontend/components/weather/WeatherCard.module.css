@@ -1,22 +1,21 @@
 .card { min-width: 0; color: var(--card-foreground); }
 .heading { font-size: 1rem; font-weight: 600; line-height: 1.8; }
-.message, .updated, .attribution, .unit { color: var(--muted-foreground); font-size: .8125rem; line-height: 1.9; }
+.message { color: var(--muted-foreground); font-size: .8125rem; line-height: 1.9; }
 .message:empty { display: none; }
-.message:not(:empty), .updated { margin-top: .75rem; }
+.message:not(:empty) { margin-top: .75rem; }
 .retry { margin-top: .75rem; min-height: 44px; }
-.unit { margin-block: .5rem; }
-.days { display: grid; }
+.days { display: grid; margin-top: .5rem; }
 .days li { display: grid; grid-template-columns: minmax(4rem, .8fr) auto minmax(0, 1.5fr); align-items: center; gap: .75rem; padding-block: .75rem; }
 .days li + li { border-top: 1px solid var(--border); }
 .days time { display: grid; gap: .125rem; font-size: .8125rem; line-height: 1.8; }
 .days time strong { font-weight: 600; }
-.days time span, .precipitation { color: var(--muted-foreground); font-size: .75rem; }
+.days time span { color: var(--muted-foreground); font-size: .75rem; }
 .icon { display: inline-flex; color: var(--primary); }
 .forecast { min-width: 0; font-size: .8125rem; line-height: 1.9; overflow-wrap: anywhere; }
-.temperatures { display: flex; flex-wrap: wrap; gap: .125rem .75rem; font-size: .75rem; }
+.temperatures { display: flex; flex-wrap: wrap; gap: .125rem .75rem; margin-top: .625rem; font-size: .75rem; }
 .temperatures bdi { display: inline-block; font-variant-numeric: tabular-nums; }
-.attribution { margin-top: .75rem; }
-.attribution a { color: var(--primary); text-decoration: underline; text-underline-offset: .2rem; }
+.attribution { margin-top: .5rem; color: var(--muted-foreground); font-size: .6875rem; line-height: 1.8; }
+.attribution a { display: inline-flex; align-items: center; padding-block: .25rem; color: inherit; text-decoration: underline; text-underline-offset: .2rem; }
 .attribution a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
 .horizontal { max-width: 100%; }
 .horizontal .days {
@@ -47,7 +46,7 @@
   scroll-snap-align: start;
 }
 .horizontal .icon > :is(svg, span) { width: 2rem; height: 2rem; }
-.horizontal .forecast { display: grid; grid-template-rows: 1fr auto auto; width: 100%; gap: .25rem; }
+.horizontal .forecast { display: grid; grid-template-rows: 1fr auto; width: 100%; }
 .horizontal .conditions { min-block-size: 1.9em; }
 .horizontal .temperatures { display: grid; gap: .125rem; font-size: .75rem; }
 .horizontal .temperatures span { display: flex; align-items: baseline; justify-content: space-between; gap: .5rem; }
@@ -56,7 +55,8 @@
 .horizontal .minimum bdi { font-size: .875rem; font-weight: 400; }
 .horizontal .days .today { background: color-mix(in srgb, var(--primary) 4%, var(--card)); border-color: color-mix(in srgb, var(--primary) 28%, var(--border)); }
 .horizontal .footer { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .5rem 1.5rem; margin-top: .5rem; }
-.horizontal .footer :is(.updated, .attribution) { margin-top: 0; }
+.horizontal .footer .attribution { margin-top: 0; }
+@media (pointer: coarse) { .attribution a { min-block-size: 44px; } }
 @media (min-width: 1024px) {
   .horizontal .days { grid-auto-flow: row; grid-auto-columns: auto; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }

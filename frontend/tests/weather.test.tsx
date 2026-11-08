@@ -142,6 +142,10 @@ describe("reusable weather presentation", () => {
     expect(cardCss).toContain("padding: .625rem .5rem");
     expect(cardCss).toContain(".horizontal .maximum bdi");
     expect(cardCss).toContain("var(--muted-foreground)");
+    expect(cardCss).toContain("margin-top: .625rem");
+    expect(cardCss).toContain("font-size: .6875rem");
+    expect(cardCss).toContain(".attribution a:focus-visible");
+    expect(cardCss).toContain("min-block-size: 44px");
   });
 
   it.each([
@@ -173,9 +177,9 @@ describe("reusable weather presentation", () => {
       expect(tile.textContent).toContain("آفتابی");
       expect(tile.textContent).toContain("بیشینه");
       expect(tile.textContent).toContain("کمینه");
-      expect(tile.textContent).toContain("احتمال بارش ۰٪");
+      expect(tile.textContent).not.toContain("احتمال بارش");
     }
-    expect(within(card).getByText(/آخرین به‌روزرسانی/)).toBeTruthy();
+    expect(within(card).queryByText(/آخرین به‌روزرسانی|دما به درجه/)).toBeNull();
     expect(within(card).getByRole("link", { name: /Visual Crossing/ })).toBeTruthy();
   });
 
@@ -220,7 +224,7 @@ describe("reusable weather presentation", () => {
     expect(weatherForToday(data, "2026-11-07")).toMatchObject({ status: "unavailable", days: [] });
   });
 
-  it("shows Persian dates, real temperature ranges, zero precipitation and attribution", () => {
+  it("shows Persian dates, real temperature ranges and attribution without precipitation or timestamps", () => {
     render(<WeatherCard state={{ status: "loaded", data: weatherFixture() }} />);
     const card = screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" });
     expect(card.getAttribute("dir")).toBe("rtl");
@@ -230,25 +234,27 @@ describe("reusable weather presentation", () => {
     expect(days[0].textContent).toContain("۱۶ آبان");
     expect(days[0].textContent).toContain("بیشینه ۲۰°");
     expect(days[0].textContent).toContain("کمینه ‎−۴°");
-    expect(days[0].textContent).toContain("احتمال بارش ۰٪");
-    expect(screen.getByText(/آخرین به‌روزرسانی/).textContent).toContain("۱۱:۳۰");
+    expect(days[0].textContent).not.toContain("احتمال بارش");
+    expect(screen.queryByText(/آخرین به‌روزرسانی|دما به درجه/)).toBeNull();
     expect(screen.getByRole("link", { name: /Visual Crossing/ }).getAttribute("href")).toContain("visualcrossing.com");
     expect(days[0].querySelector("time")?.dateTime).toBe("2026-11-07");
   });
 
-  it("caps at seven actual days and allows precipitation to be omitted", () => {
+  it("caps at seven actual days without changing the underlying precipitation or fetched timestamp", () => {
     const data = weatherFixture();
     data.days.push({ ...data.days[0], date: "2026-11-14" });
-    render(<WeatherCard showPrecipitation={false} state={{ status: "loaded", data }} />);
+    const original = structuredClone(data);
+    render(<WeatherCard state={{ status: "loaded", data }} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(7);
     expect(screen.queryByText(/احتمال بارش/)).toBeNull();
+    expect(data).toEqual(original);
   });
 
-  it("labels stale data while retaining the last real forecast and timestamp", () => {
+  it("labels stale data while retaining the last real forecast without a visible timestamp", () => {
     render(<WeatherCard state={{ status: "loaded", data: { ...weatherFixture(), status: "stale" } }} />);
     expect(screen.getByRole("status").textContent).toContain("به‌روز نیست");
     expect(screen.getAllByRole("listitem")).toHaveLength(7);
-    expect(screen.getByText(/آخرین به‌روزرسانی/)).toBeTruthy();
+    expect(screen.queryByText(/آخرین به‌روزرسانی/)).toBeNull();
   });
 
   it.each(["setup_required", "no_snapshot", "forecast_expired", "storage_unavailable"])("handles %s without forecast values", (reason) => {
@@ -273,7 +279,7 @@ describe("reusable weather presentation", () => {
   it("uses appropriate units and does not assume other configured locations are Kashan", () => {
     render(<WeatherCard state={{ status: "loaded", data: { ...weatherFixture(), locationKey: "other", unitGroup: "us" } }} />);
     expect(screen.queryByText(/کاشان/)).toBeNull();
-    expect(screen.getByText("دما به درجهٔ فارنهایت")).toBeTruthy();
+    expect(screen.getAllByText("فارنهایت")[0].classList.contains("sr-only")).toBe(true);
   });
 
   it.each(["clear-day", "clear-night", "cloudy", "partly-cloudy-day", "partly-cloudy-night", "rain", "showers-day", "showers-night", "snow", "snow-showers-day", "snow-showers-night", "wind", "fog", "thunder-rain", "thunder-showers-day", "thunder-showers-night", "unknown"])("renders a decorative vector for %s", (code) => {

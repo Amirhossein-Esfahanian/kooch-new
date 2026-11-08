@@ -251,6 +251,25 @@ describe("Marketplace property presentation", () => {
     expect(screen.queryByRole("button", { name: "مشاهده همه" })).toBeNull();
   });
 
+  it.each([
+    ["/svgs/amenities/wifi.svg", "/svgs/amenities/wifi.svg"],
+    ["/uploads/amenities/12/abc123.svg", "/uploads/amenities/12/abc123.svg"],
+    [null, "/svgs/info.svg"],
+    ["wifi", "/svgs/info.svg"],
+    ["javascript:invalid.svg", "/svgs/info.svg"],
+    ["//untrusted.example/icon.svg", "/svgs/info.svg"],
+    ["/uploads/../private.svg", "/svgs/info.svg"],
+  ])("preserves configured amenity source %s or uses a neutral fallback", (icon, expected) => {
+    const data = property();
+    data.amenities = [{ id: 1, name: "امکان واقعی", category: "خدمات", icon }];
+    render(<Detail data={data} />);
+    const facilities = screen.getByRole("region", { name: "امکانات" });
+    const graphic = within(facilities).getByRole("listitem").querySelector("span");
+    expect(graphic?.getAttribute("style")).toContain(expected);
+    expect(graphic?.getAttribute("aria-hidden")).toBe("true");
+    expect(graphic?.getAttribute("style")).not.toContain("success.svg");
+  });
+
   it("previews six amenities with icons and opens all actual amenities in the shared read-only dialog", async () => {
     const data = property();
     data.amenities = Array.from({ length: 8 }, (_, index) => ({ id: index + 1, name: `امکان ${index + 1}`, category: index < 4 ? "عمومی" : "خدمات", icon: index === 0 ? "/uploads/amenities/wifi.svg" : index === 1 ? "javascript:invalid.svg" : null }));

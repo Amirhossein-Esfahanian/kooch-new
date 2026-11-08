@@ -5,14 +5,14 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import type { WeatherState } from "@/hooks/useWeather";
 import { useWeatherToday } from "@/hooks/useWeatherToday";
-import { weatherDayLabel, weatherForToday, weatherNumber, weatherUpdatedLabel } from "@/lib/weather";
+import { weatherDayLabel, weatherForToday, weatherNumber } from "@/lib/weather";
 import { WeatherIcon } from "./WeatherIcon";
 import styles from "./WeatherCard.module.css";
 
 export type WeatherCardLayout = "vertical" | "horizontal";
 
-export function WeatherCard({ state, onRetry, className = "", showPrecipitation = true, notice, layout = "vertical" }: {
-  state: WeatherState; onRetry?: () => void; className?: string; showPrecipitation?: boolean; notice?: ReactNode; layout?: WeatherCardLayout;
+export function WeatherCard({ state, onRetry, className = "", notice, layout = "vertical" }: {
+  state: WeatherState; onRetry?: () => void; className?: string; notice?: ReactNode; layout?: WeatherCardLayout;
 }) {
   const headingId = useId();
   const today = useWeatherToday();
@@ -32,7 +32,6 @@ export function WeatherCard({ state, onRetry, className = "", showPrecipitation 
     </div>
     {state.status === "error" && onRetry && <KoochButton className={styles.retry} onClick={onRetry} size="sm" variant="outline">تلاش دوباره</KoochButton>}
     {days.length > 0 && <>
-      <p className={styles.unit}>دما به درجهٔ {unit}</p>
       <ul aria-label="پیش‌بینی روزانه" className={styles.days} tabIndex={layout === "horizontal" ? 0 : undefined}>{days.map((day) => {
         const label = weatherDayLabel(day.date);
         return <li key={day.date} className={day.date === today ? styles.today : undefined}>
@@ -43,14 +42,13 @@ export function WeatherCard({ state, onRetry, className = "", showPrecipitation 
             <p className={styles.temperatures}>
               <span className={styles.maximum}>بیشینه <bdi>{weatherNumber.format(day.maxTemperature)}°</bdi></span>
               <span className={styles.minimum}>کمینه <bdi>{weatherNumber.format(day.minTemperature)}°</bdi></span>
+              <span className="sr-only">{unit}</span>
             </p>
-            {showPrecipitation && <p className={styles.precipitation}>احتمال بارش {weatherNumber.format(day.precipitationProbability)}٪</p>}
           </div>
         </li>;
       })}</ul>
     </>}
     <div className={styles.footer}>
-      {data?.fetchedAtUtc && <p className={styles.updated}>آخرین به‌روزرسانی: <time dateTime={data.fetchedAtUtc}>{weatherUpdatedLabel(data.fetchedAtUtc)}</time> (تهران)</p>}
       <p className={styles.attribution}>منبع: <a href="https://www.visualcrossing.com/weather-data" rel="noopener noreferrer" target="_blank" lang="en" dir="ltr">Visual Crossing<span className="sr-only"> (باز شدن در پنجرهٔ جدید)</span></a></p>
     </div>
   </KoochCard>;
