@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 using Xunit;
 
@@ -41,6 +42,36 @@ public sealed class GuestReviewTests
     private static GuestReviewService Service(KoochDbContext db, DateTimeOffset? now = null) => new(db, new Clock(now ?? Now));
     private static GuestReviewService Invitations(KoochDbContext db) => new(db, new Clock(Now),
         Options.Create(new ReviewInvitationOptions { PermanentOptOutEnabled = true }));
+
+    [Theory]
+    [InlineData(null, false)]
+    [InlineData("true", true)]
+    [InlineData("false", false)]
+    public void InvitationConfigurationBindsOverrideAndKeepsDefaultDisabled(string? configured, bool enabled)
+    {
+        var builder = new ConfigurationBuilder().SetBasePath(AppContext.BaseDirectory)
+            .AddJsonFile("appsettings.json");
+        if (configured is not null)
+            builder.AddInMemoryCollection(new Dictionary<string, string?>
+            { ["ReviewInvitations:PermanentOptOutEnabled"] = configured });
+        var configuration = builder.Build();
+        var options = configuration.GetSection(ReviewInvitationOptions.SectionName).Get<ReviewInvitationOptions>();
+        Assert.NotNull(options);
+        Assert.Equal(enabled, options.PermanentOptOutEnabled);
+    }
+
+    [Fact]
+    public async Task ExplicitlyDisabledInvitationPreferencesRejectWithoutWriting()
+    {
+        await using var db = Memory(); await Seed(db);
+        var service = new GuestReviewService(db, new Clock(Now),
+            Options.Create(new ReviewInvitationOptions { PermanentOptOutEnabled = false }));
+        Assert.False(Assert.Single((await service.EligibleAsync(1)).Items).InvitationPreferenceAvailable);
+        await Assert.ThrowsAsync<ReviewInvitationPreferencesUnavailableException>(() => service.SuppressInvitationAsync(1, 1));
+        Assert.Empty(db.ReviewInvitationSuppressions);
+        Assert.Empty(db.Reviews);
+        Assert.Empty(db.AuditLogs);
+    }
 
     [Fact]
     public async Task InvitationOptOutIsPerUserAndReservation_PersistsAcrossContexts_WithoutChangingEligibility()
