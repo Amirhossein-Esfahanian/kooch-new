@@ -9,6 +9,8 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { GuestReviewInvitation } from "@/components/reviews/GuestReviewInvitation";
+import { reviewLinkClass } from "@/lib/guest-reviews";
 
 export default function AccountPage() {
   const router = useRouter();
@@ -52,7 +54,16 @@ export default function AccountPage() {
           title="حساب کاربری"
         />
 
+        {session.user?.userId && <GuestReviewInvitation key={session.user.userId} userId={session.user.userId} />}
+
         <div className="grid gap-4 md:grid-cols-2">
+          <KoochCard className="flex h-full flex-col items-start gap-4">
+            <div className="min-w-0 flex-1">
+              <h2 className="text-lg font-bold text-foreground">نظرات من</h2>
+              <p className="mt-2 text-sm leading-7 text-muted-foreground">اقامت‌های قابل ارزیابی و وضعیت نظرهای ارسال‌شده خود را ببینید.</p>
+            </div>
+            <Link className={reviewLinkClass} href="/account/reviews">مشاهده نظرات من</Link>
+          </KoochCard>
           <KoochCard className="flex h-full flex-col items-start gap-4">
             <div className="min-w-0 flex-1">
               <h2 className="text-lg font-bold text-foreground">

@@ -31,6 +31,9 @@ public sealed class GuestReviewPersistenceTests
         Assert.Equal(45, result.RatingSum);
         Assert.Equal(7.5m, result.OverallRating);
         Assert.Equal(result, await service.GetAsync(1, 1));
+        var listed = Assert.Single((await service.ListAsync(1)).Items);
+        Assert.Equal(result, listed.Review);
+        Assert.True(listed.CanEdit);
         Assert.Single((await service.EligibleAsync(1)).Items); // Pending review can be edited.
         Assert.Single(await db.Reviews.ToListAsync());
         Assert.Single(await db.AuditLogs.ToListAsync());

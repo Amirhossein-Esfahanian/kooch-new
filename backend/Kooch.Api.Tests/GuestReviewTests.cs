@@ -248,6 +248,102 @@ public sealed class GuestReviewTests
     }
 
     [Fact]
+    public async Task ListReturnsOnlyAuthorsOwnedReviews_AndDoesNotWrite()
+    {
+        await using var db = Memory(); await Seed(db);
+        db.Guests.Add(new Guest { Id = 1, UserId = 2 });
+        (await db.Reservations.SingleAsync()).GuestId = 1; await db.SaveChangesAsync();
+        await Service(db).SaveAsync(2, 1, Scores(), false);
+        Assert.Empty((await Service(db).ListAsync(1)).Items); // Booker cannot read the guest author's review.
+        var item = Assert.Single((await Service(db).ListAsync(2)).Items);
+        Assert.Equal("Stay", item.PropertyName);
+        Assert.Equal(new DateOnly(2026, 11, 5), item.CheckInDate);
+        Assert.Equal(8m, item.Review.OverallRating);
+        Assert.True(item.CanEdit);
+        Assert.Single(db.AuditLogs); // Reads did not append audit records.
+        (await db.Guests.SingleAsync()).IsDeleted = true; await db.SaveChangesAsync();
+        Assert.Empty((await Service(db).ListAsync(2)).Items);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Service(db).ListAsync(0));
+    }
+
+    [Theory]
+    [InlineData(ReviewModerationStatus.PendingApproval, true)]
+    [InlineData(ReviewModerationStatus.Rejected, true)]
+    [InlineData(ReviewModerationStatus.Approved, false)]
+    public async Task ListIncludesStatuses_WithBackendWindowAndRefundEditEligibility(ReviewModerationStatus status, bool editable)
+    {
+        await using var db = Memory(); await Seed(db);
+        await Service(db).SaveAsync(1, 1, Scores(), false);
+        (await db.Reviews.SingleAsync()).ModerationStatus = status; await db.SaveChangesAsync();
+        var item = Assert.Single((await Service(db).ListAsync(1)).Items);
+        Assert.Equal(status, item.Review.ModerationStatus); Assert.Equal(editable, item.CanEdit);
+        Assert.False(Assert.Single((await Service(db, Now.AddDays(31)).ListAsync(1)).Items).CanEdit);
+        db.RefundRecords.Add(new RefundRecord { ReservationId = 1, PropertyId = 1, PaymentId = 1,
+            Currency = "IRR", Reason = "fixture", ReferenceNumber = "fixture" }); await db.SaveChangesAsync();
+        Assert.False(Assert.Single((await Service(db).ListAsync(1)).Items).CanEdit);
+    }
+
+    [Theory]
+    [InlineData("deleted")] [InlineData("legacy")] [InlineData("property-mismatch")]
+    [InlineData("reservation-deleted")] [InlineData("property-deleted")] [InlineData("ownership-lost")]
+    public async Task ListExcludesUnsafeAndDeletedReviews(string kind)
+    {
+        await using var db = Memory(); await Seed(db);
+        await Service(db).SaveAsync(1, 1, Scores(), false);
+        var review = await db.Reviews.SingleAsync();
+        if (kind == "deleted") review.IsDeleted = true;
+        if (kind == "legacy") { review.RatingSum = null; review.ModerationStatus = null; }
+        if (kind == "property-mismatch") review.PropertyId = 999;
+        if (kind == "reservation-deleted") (await db.Reservations.SingleAsync()).IsDeleted = true;
+        if (kind == "property-deleted") (await db.Properties.SingleAsync()).IsDeleted = true;
+        if (kind == "ownership-lost") (await db.Reservations.SingleAsync()).ClientId = 2;
+        await db.SaveChangesAsync();
+        Assert.Empty((await Service(db).ListAsync(1)).Items);
+    }
+
+    [Fact]
+    public async Task ListControllerUsesAuthenticatedIdentity_NotPlatformRole_AndRejectsMissingClaims()
+    {
+        await using var db = Memory(); await Seed(db);
+        await Service(db).SaveAsync(1, 1, Scores(), false);
+        var controller = new AccountReviewsController(Service(db))
+        {
+            ControllerContext = new Microsoft.AspNetCore.Mvc.ControllerContext
+            { HttpContext = new Microsoft.AspNetCore.Http.DefaultHttpContext() }
+        };
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.List());
+        controller.HttpContext.User = new System.Security.Claims.ClaimsPrincipal(new System.Security.Claims.ClaimsIdentity([
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.NameIdentifier, "2"),
+            new System.Security.Claims.Claim(System.Security.Claims.ClaimTypes.Role, nameof(UserRole.SuperAdmin))
+        ], "fixture"));
+        Assert.Empty((await controller.List()).Items);
+        (await db.Users.SingleAsync(u => u.Id == 2)).IsActive = false; await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => controller.List());
+    }
+
+    [Fact]
+    public async Task ListPaginationIsBoundedAndDeterministicNewestFirst()
+    {
+        await using var db = Memory(); await Seed(db);
+        await Service(db).SaveAsync(1, 1, Scores(), false);
+        db.Reservations.Add(new Reservation { Id = 2, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
+            ReservationNumber = "REVIEW-2", Status = ReservationStatus.Completed,
+            CheckInDate = new DateOnly(2026, 11, 5), CheckOutDate = new DateOnly(2026, 11, 7) });
+        await db.SaveChangesAsync(); await Service(db).SaveAsync(1, 2, Scores(), false);
+        foreach (var review in db.Reviews) review.CreatedAtUtc = Now.UtcDateTime;
+        await db.SaveChangesAsync();
+        var first = await Service(db).ListAsync(1, 1, 1);
+        Assert.Equal(2, first.TotalCount); Assert.Equal(2, first.TotalPages);
+        Assert.Equal(2, Assert.Single(first.Items).Review.ReservationId);
+        Assert.Equal(1, Assert.Single((await Service(db).ListAsync(1, 2, 1)).Items).Review.ReservationId);
+        Assert.Empty((await Service(db).ListAsync(1, 3, 1)).Items);
+        await Assert.ThrowsAsync<ArgumentException>(() => Service(db).ListAsync(1, 0));
+        await Assert.ThrowsAsync<ArgumentException>(() => Service(db).ListAsync(1, 1, 101));
+        Assert.NotNull(typeof(AccountReviewsController).GetMethod("List")!
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Mvc.HttpGetAttribute), true).SingleOrDefault());
+    }
+
+    [Fact]
     public void ModelPreservesLegacyFields_AndHasFilteredUniquenessAndExactScoreChecks()
     {
         using var db = new KoochDbContext(new DbContextOptionsBuilder<KoochDbContext>()

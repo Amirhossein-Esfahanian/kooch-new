@@ -11,6 +11,12 @@ namespace Kooch.Api.Controllers;
 [Route("api/account/reviews")]
 public sealed class AccountReviewsController(GuestReviewService reviews) : AuthenticatedControllerBase
 {
+    [HttpGet]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public Task<PagedResult<GuestReviewListItemResponse>> List([FromQuery] int page = 1,
+        [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default) =>
+        reviews.ListAsync(GetCurrentUser().UserId, page, pageSize, cancellationToken);
+
     [HttpGet("eligible-reservations")]
     public Task<PagedResult<EligibleReviewReservationResponse>> Eligible([FromQuery] int page = 1,
         [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default) =>

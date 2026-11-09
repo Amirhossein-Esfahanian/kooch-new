@@ -10,6 +10,44 @@ namespace Kooch.Api.Services;
 
 public sealed class GuestReviewService(KoochDbContext context, TimeProvider clock)
 {
+    public async Task<PagedResult<GuestReviewListItemResponse>> ListAsync(
+        int userId, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    {
+        await EnsureUserAsync(userId, ct);
+        if (page < 1 || pageSize is < 1 or > 100 || page > 100000)
+            throw new ArgumentException("Invalid review pagination.");
+        var owned = context.Reservations.ForGuestUser(userId)
+            .Where(r => !r.IsDeleted && !r.Property.IsDeleted);
+        // Legacy ratings have no six-category verified-stay contract. Never reinterpret them.
+        var query = context.Reviews.AsNoTracking().Where(v => !v.IsDeleted && v.ClientId == userId &&
+            v.RatingSum != null && v.ReservationId != null &&
+            (v.ModerationStatus == ReviewModerationStatus.PendingApproval ||
+             v.ModerationStatus == ReviewModerationStatus.Approved || v.ModerationStatus == ReviewModerationStatus.Rejected) &&
+            owned.Any(r => r.Id == v.ReservationId && r.PropertyId == v.PropertyId));
+        var total = await query.CountAsync(ct);
+        var items = await query.OrderByDescending(v => v.CreatedAtUtc).ThenByDescending(v => v.Id)
+            .Skip((page - 1) * pageSize).Take(pageSize)
+            .Select(v => new { Review = v, v.Reservation!.ReservationNumber, v.Reservation.Property.Name,
+                v.Reservation.CheckInDate, v.Reservation.CheckOutDate }).ToListAsync(ct);
+        var ids = items.Select(v => v.Review.ReservationId!.Value).ToArray();
+        var localNow = TimeZoneInfo.ConvertTime(clock.GetUtcNow(), IranSiteTime.BusinessTimeZone);
+        var today = DateOnly.FromDateTime(localNow.DateTime);
+        var localTime = TimeOnly.FromDateTime(localNow.DateTime);
+        var earliest = today.AddDays(-30);
+        var editableIds = await EligibleStays(userId).Where(r => ids.Contains(r.Id) &&
+                r.CheckOutDate >= earliest && r.CheckOutDate <= today &&
+                (r.CheckOutDate < today || (r.Property.CheckOutTime ?? new TimeOnly(12, 0)) <= localTime))
+            .Select(r => r.Id).ToListAsync(ct);
+        return new PagedResult<GuestReviewListItemResponse>
+        {
+            Page = page, PageSize = pageSize, TotalCount = total, TotalPages = (int)Math.Ceiling(total / (double)pageSize),
+            Items = items.Select(v => new GuestReviewListItemResponse(v.ReservationNumber, v.Name,
+                v.CheckInDate, v.CheckOutDate, v.CheckOutDate.AddDays(30), Response(v.Review),
+                editableIds.Contains(v.Review.ReservationId!.Value) && v.Review.ModerationStatus is
+                    ReviewModerationStatus.PendingApproval or ReviewModerationStatus.Rejected)).ToList()
+        };
+    }
+
     public async Task<PagedResult<EligibleReviewReservationResponse>> EligibleAsync(
         int userId, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {

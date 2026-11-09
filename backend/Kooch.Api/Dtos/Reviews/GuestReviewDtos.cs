@@ -26,3 +26,7 @@ public sealed record GuestReviewResponse(
 public sealed record EligibleReviewReservationResponse(
     int ReservationId, string? ReservationNumber, int PropertyId, string PropertyName,
     DateOnly CheckOutDate, DateOnly SubmissionDeadlineLocalDate, int? ReviewId, int? Revision);
+
+public sealed record GuestReviewListItemResponse(
+    string? ReservationNumber, string PropertyName, DateOnly CheckInDate, DateOnly CheckOutDate,
+    DateOnly SubmissionDeadlineLocalDate, GuestReviewResponse Review, bool CanEdit);
