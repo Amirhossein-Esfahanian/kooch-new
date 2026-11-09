@@ -5083,6 +5083,51 @@ namespace Kooch.Api.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Kooch.Api.Entities.ReviewInvitationSuppression", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("ReservationId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReservationId");
+
+                    b.HasIndex("UserId", "ReservationId")
+                        .IsUnique();
+
+                    b.ToTable("ReviewInvitationSuppressions");
+                });
+
             modelBuilder.Entity("Kooch.Api.Entities.Room", b =>
                 {
                     b.Property<int>("Id")
@@ -8097,6 +8142,25 @@ namespace Kooch.Api.Migrations
                     b.Navigation("Property");
 
                     b.Navigation("Reservation");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.ReviewInvitationSuppression", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.Reservation", "Reservation")
+                        .WithMany()
+                        .HasForeignKey("ReservationId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Kooch.Api.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Reservation");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Room", b =>

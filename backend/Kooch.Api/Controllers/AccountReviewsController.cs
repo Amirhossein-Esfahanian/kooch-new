@@ -11,6 +11,10 @@ namespace Kooch.Api.Controllers;
 [Route("api/account/reviews")]
 public sealed class AccountReviewsController(GuestReviewService reviews) : AuthenticatedControllerBase
 {
+    [HttpPut("reservations/{reservationId:int}/invitation-suppression")]
+    public Task<ReviewInvitationPreferenceResponse> SuppressInvitation(int reservationId, CancellationToken cancellationToken) =>
+        reviews.SuppressInvitationAsync(GetCurrentUser().UserId, reservationId, cancellationToken);
+
     [HttpGet]
     [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public Task<PagedResult<GuestReviewListItemResponse>> List([FromQuery] int page = 1,
@@ -18,6 +22,7 @@ public sealed class AccountReviewsController(GuestReviewService reviews) : Authe
         reviews.ListAsync(GetCurrentUser().UserId, page, pageSize, cancellationToken);
 
     [HttpGet("eligible-reservations")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
     public Task<PagedResult<EligibleReviewReservationResponse>> Eligible([FromQuery] int page = 1,
         [FromQuery] int pageSize = 20, CancellationToken cancellationToken = default) =>
         reviews.EligibleAsync(GetCurrentUser().UserId, page, pageSize, cancellationToken);

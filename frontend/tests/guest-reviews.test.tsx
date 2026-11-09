@@ -14,7 +14,6 @@ vi.mock("@/lib/guest-reviews", async original => ({
   getEligibleReviewStays: mocks.eligible, getGuestReviews: mocks.list, getGuestReview: mocks.get, saveGuestReview: mocks.save,
 }));
 import AccountPage from "@/app/account/page";
-import { GuestReviewInvitation } from "@/components/reviews/GuestReviewInvitation";
 import { GuestReviewForm } from "@/components/reviews/GuestReviewForm";
 import { GuestReviewsPage } from "@/components/reviews/GuestReviewsPage";
 import { reviewCategories, type EligibleReviewStay, type GuestReview, type GuestReviewListItem } from "@/lib/guest-reviews";
@@ -36,37 +35,11 @@ beforeEach(() => {
   mocks.eligible.mockResolvedValue(paged([])); mocks.list.mockResolvedValue(paged([])); mocks.get.mockResolvedValue(review); mocks.save.mockResolvedValue(review);
 });
 
-describe("guest invitation and account navigation", () => {
-  it("does not show an invitation for no eligible stays or request failure", async () => {
-    const view = render(<GuestReviewInvitation userId={1} />);
-    await waitFor(() => expect(mocks.eligible).toHaveBeenCalled());
-    expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull();
-    view.unmount(); mocks.eligible.mockRejectedValueOnce(new Error("offline"));
-    render(<GuestReviewInvitation userId={1} />);
-    await waitFor(() => expect(mocks.eligible).toHaveBeenCalledTimes(2));
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
-  it("shows one grouped invitation in backend checkout order with per-stay links", async () => {
-    mocks.eligible.mockResolvedValue(paged([stay, { ...stay, reservationId: 2, propertyName: "خانه دوم", checkOutDate: "2026-11-06" }]));
-    render(<GuestReviewInvitation userId={1} />);
-    expect(await screen.findAllByText("اقامتتان چطور بود؟")).toHaveLength(1);
-    expect(screen.getAllByRole("listitem").map(node => node.textContent)).toEqual([expect.stringContaining(stay.propertyName), expect.stringContaining("خانه دوم")]);
-    expect(screen.getByRole("link", { name: `ثبت نظر برای ${stay.propertyName}` }).getAttribute("href")).toBe("/account/reviews?reservationId=1");
-    expect(screen.queryByRole("dialog")).toBeNull();
-  });
-  it("dismisses only this visit; returning to account permits the invitation again", async () => {
-    mocks.eligible.mockResolvedValue(paged([stay]));
-    const view = render(<GuestReviewInvitation userId={1} />);
-    fireEvent.click(await screen.findByRole("button", { name: "فعلاً نه" }));
-    expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull();
-    expect(mocks.save).not.toHaveBeenCalled();
-    view.unmount(); render(<GuestReviewInvitation userId={1} />);
-    expect(await screen.findByText("اقامتتان چطور بود؟")).toBeTruthy();
-  });
+describe("account navigation", () => {
   it("keeps reviews independently reachable with no eligible reservation", async () => {
     render(<AccountPage />);
     expect(screen.getByRole("link", { name: "مشاهده نظرات من" }).getAttribute("href")).toBe("/account/reviews");
-    await waitFor(() => expect(mocks.eligible).toHaveBeenCalled());
+    expect(mocks.eligible).not.toHaveBeenCalled(); // Global shell owns the single invitation.
   });
 });
 
@@ -135,6 +108,13 @@ describe("six-category form", () => {
 });
 
 describe("private paginated review page", () => {
+  it("opens the invited form on a later eligibility page without trusting a URL as permission", async () => {
+    mocks.query = "reservationId=1&eligiblePage=3";
+    mocks.eligible.mockResolvedValue(paged([stay], 3, 3));
+    render(<GuestReviewsPage />);
+    await screen.findByRole("heading", { name: `ثبت نظر — ${stay.propertyName}` });
+    expect(mocks.eligible).toHaveBeenCalledWith(3, expect.any(AbortSignal));
+  });
   it("renders real pending, rejected and approved states and honors canEdit instead of dates", async () => {
     mocks.list.mockResolvedValue(paged([item,
       { ...item, review: { ...review, id: 5, moderationStatus: "Rejected" } },

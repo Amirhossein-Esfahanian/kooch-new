@@ -48,6 +48,7 @@ public class ApiExceptionFilter : IExceptionFilter
         var statusCode = context.Exception switch
         {
             PropertyDirectBookingContextUnavailableException => StatusCodes.Status503ServiceUnavailable,
+            ReviewInvitationPreferencesUnavailableException => StatusCodes.Status503ServiceUnavailable,
             KeyNotFoundException => StatusCodes.Status404NotFound,
             UnauthorizedAccessException => StatusCodes.Status403Forbidden,
             InvalidOperationException => StatusCodes.Status409Conflict,

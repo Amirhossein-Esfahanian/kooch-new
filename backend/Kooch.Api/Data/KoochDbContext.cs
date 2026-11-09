@@ -59,6 +59,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<WelcomeGiftCampaign> WelcomeGiftCampaigns => Set<WelcomeGiftCampaign>();
     public DbSet<WelcomeGiftGrant> WelcomeGiftGrants => Set<WelcomeGiftGrant>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<ReviewInvitationSuppression> ReviewInvitationSuppressions => Set<ReviewInvitationSuppression>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
     public DbSet<PropertyAmenity> PropertyAmenities => Set<PropertyAmenity>();
@@ -138,6 +139,13 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureWalletWithdrawals(modelBuilder);
         ConfigureReservationFunding(modelBuilder);
         ConfigureReviews(modelBuilder);
+        modelBuilder.Entity<ReviewInvitationSuppression>(entity =>
+        {
+            // Unfiltered uniqueness also prevents duplicate preferences after soft deletion.
+            entity.HasIndex(row => new { row.UserId, row.ReservationId }).IsUnique();
+            entity.HasOne(row => row.User).WithMany().HasForeignKey(row => row.UserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne(row => row.Reservation).WithMany().HasForeignKey(row => row.ReservationId).OnDelete(DeleteBehavior.NoAction);
+        });
         ConfigureAmenities(modelBuilder);
         ConfigureImages(modelBuilder);
         ConfigureTravelPurposes(modelBuilder);

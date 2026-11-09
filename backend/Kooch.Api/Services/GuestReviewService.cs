@@ -5,10 +5,12 @@ using Kooch.Api.Dtos.Reservations;
 using Kooch.Api.Entities;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Kooch.Api.Services;
 
-public sealed class GuestReviewService(KoochDbContext context, TimeProvider clock)
+public sealed partial class GuestReviewService(KoochDbContext context, TimeProvider clock,
+    IOptions<ReviewInvitationOptions>? invitationOptions = null)
 {
     public async Task<PagedResult<GuestReviewListItemResponse>> ListAsync(
         int userId, int page = 1, int pageSize = 20, CancellationToken ct = default)
@@ -71,11 +73,13 @@ public sealed class GuestReviewService(KoochDbContext context, TimeProvider cloc
                 ReviewId = context.Reviews.Where(v => v.ReservationId == r.Id && v.ClientId == userId).Select(v => (int?)v.Id).FirstOrDefault(),
                 Revision = context.Reviews.Where(v => v.ReservationId == r.Id && v.ClientId == userId).Select(v => (int?)v.Revision).FirstOrDefault() })
             .ToListAsync(ct);
+        var preferences = await InvitationPreferencesAsync(userId, items.Select(r => r.Id).ToArray(), ct);
         return new PagedResult<EligibleReviewReservationResponse>
         {
             Page = page, PageSize = pageSize, TotalCount = total, TotalPages = (int)Math.Ceiling(total / (double)pageSize),
             Items = items.Select(r => new EligibleReviewReservationResponse(r.Id, r.ReservationNumber, r.PropertyId,
-                r.Name, r.CheckOutDate, r.CheckOutDate.AddDays(30), r.ReviewId, r.Revision)).ToList()
+                r.Name, r.CheckOutDate, r.CheckOutDate.AddDays(30), r.ReviewId, r.Revision,
+                preferences.Suppressed.Contains(r.Id), preferences.Available)).ToList()
         };
     }
 

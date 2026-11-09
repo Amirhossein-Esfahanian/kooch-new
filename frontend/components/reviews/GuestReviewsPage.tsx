@@ -8,6 +8,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { GuestReviewForm } from "@/components/reviews/GuestReviewForm";
+import { ReviewInvitationOptOut } from "@/components/reviews/ReviewInvitationOptOut";
 import type { PagedResult } from "@/lib/account-reservations";
 import { getEligibleReviewStays, getGuestReviews, reviewCategories, reviewDate, reviewError, reviewLinkClass, reviewStatus,
   type EligibleReviewStay, type GuestReviewListItem } from "@/lib/guest-reviews";
@@ -45,7 +46,9 @@ function ReviewFailure({ message }: { message: string }) {
 function ReviewsContent() {
   const router = useRouter();
   const params = useSearchParams();
-  const [eligiblePage, setEligiblePage] = useState(1);
+  const requestedPageValue = Number(params.get("eligiblePage") ?? "1");
+  const requestedPage = Number.isInteger(requestedPageValue) && requestedPageValue >= 1 && requestedPageValue <= 100000 ? requestedPageValue : 1;
+  const [eligiblePage, setEligiblePage] = useState(requestedPage);
   const [reviewsPage, setReviewsPage] = useState(1);
   const [version, setVersion] = useState(0);
   const [selected, setSelected] = useState<EligibleReviewStay | null>(null);
@@ -55,14 +58,15 @@ function ReviewsContent() {
   const submitted = useReviewPage(getGuestReviews, reviewsPage, version);
   const requested = params.get("reservationId");
   const handled = useRef<string | null>(null);
+  useEffect(() => { if (requested) setEligiblePage(requestedPage); }, [requested, requestedPage]);
   useEffect(() => {
-    if (!requested || handled.current === requested || !eligible.data) return;
+    if (!requested || handled.current === requested || !eligible.data || eligible.data.page !== requestedPage) return;
     handled.current = requested;
     const stay = /^[1-9]\d{0,9}$/.test(requested)
       ? eligible.data.items.find(item => String(item.reservationId) === requested) : undefined;
     if (stay) setSelected(stay);
     else setMessage("اقامت انتخاب‌شده در فهرست مجاز این صفحه نیست. اقامت‌های قابل ثبت نظر را بررسی کنید.");
-  }, [requested, eligible.data]);
+  }, [requested, requestedPage, eligible.data]);
   function closeForm() {
     setSelected(null); router.replace("/account/reviews", { scroll: false });
     listHeading.current?.focus();
@@ -88,10 +92,14 @@ function ReviewsContent() {
           <ul className="mt-3 divide-y divide-border">
             {eligible.data.items.map(stay => <li key={stay.reservationId} className="flex flex-wrap items-center justify-between gap-3 py-4">
               <div><h3 className="font-semibold">{stay.propertyName}</h3><p className="mt-1 text-sm text-muted-foreground">خروج: {reviewDate(stay.checkOutDate)} · مهلت: {reviewDate(stay.submissionDeadlineLocalDate)}</p></div>
-              <KoochButton variant="outline" onClick={() => { setSelected(stay); setMessage(""); }} aria-label={`${stay.reviewId === null ? "ثبت نظر" : "ویرایش نظر"} برای ${stay.propertyName}`}>{stay.reviewId === null ? "ثبت نظر" : "ویرایش نظر"}</KoochButton>
+              <div className="grid gap-2">
+                <KoochButton variant="outline" onClick={() => { setSelected(stay); setMessage(""); }} aria-label={`${stay.reviewId === null ? "ثبت نظر" : "ویرایش نظر"} برای ${stay.propertyName}`}>{stay.reviewId === null ? "ثبت نظر" : "ویرایش نظر"}</KoochButton>
+                {stay.reviewId === null && <ReviewInvitationOptOut stay={stay} />}
+              </div>
             </li>)}
           </ul>
           <Pagination label="صفحه‌بندی اقامت‌های قابل ثبت نظر" page={eligiblePage} pages={eligible.data.totalPages} onChange={setEligiblePage} />
+          {eligible.data.items.some(stay => stay.reviewId === null && !stay.invitationPreferenceAvailable) && <p className="mt-3 text-xs leading-6 text-muted-foreground">تنظیم یادآوری دائمی پس از تکمیل راه‌اندازی فعال می‌شود؛ ثبت نظر همچنان در دسترس است.</p>}
         </>}
       </KoochCard>
       <KoochCard aria-labelledby="submitted-heading">

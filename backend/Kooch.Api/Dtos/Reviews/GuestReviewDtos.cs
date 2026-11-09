@@ -25,7 +25,10 @@ public sealed record GuestReviewResponse(
 
 public sealed record EligibleReviewReservationResponse(
     int ReservationId, string? ReservationNumber, int PropertyId, string PropertyName,
-    DateOnly CheckOutDate, DateOnly SubmissionDeadlineLocalDate, int? ReviewId, int? Revision);
+    DateOnly CheckOutDate, DateOnly SubmissionDeadlineLocalDate, int? ReviewId, int? Revision,
+    bool InvitationSuppressed = false, bool InvitationPreferenceAvailable = false);
+
+public sealed record ReviewInvitationPreferenceResponse(int ReservationId, bool InvitationSuppressed);
 
 public sealed record GuestReviewListItemResponse(
     string? ReservationNumber, string PropertyName, DateOnly CheckInDate, DateOnly CheckOutDate,

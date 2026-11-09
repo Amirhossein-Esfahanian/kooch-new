@@ -9,7 +9,6 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { GuestReviewInvitation } from "@/components/reviews/GuestReviewInvitation";
 import { reviewLinkClass } from "@/lib/guest-reviews";
 
 export default function AccountPage() {
@@ -53,8 +52,6 @@ export default function AccountPage() {
           eyebrow="محیط مهمان"
           title="حساب کاربری"
         />
-
-        {session.user?.userId && <GuestReviewInvitation key={session.user.userId} userId={session.user.userId} />}
 
         <div className="grid gap-4 md:grid-cols-2">
           <KoochCard className="flex h-full flex-col items-start gap-4">

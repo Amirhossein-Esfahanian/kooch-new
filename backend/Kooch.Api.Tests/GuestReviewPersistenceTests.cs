@@ -9,12 +9,64 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Kooch.Api.Tests;
 
 public sealed class GuestReviewPersistenceTests
 {
+    [Fact]
+    public void InvitationMigrationIsOneAdditiveTable_WithDurableUnfilteredUniqueness()
+    {
+        var migration = new AddReviewInvitationSuppressions { ActiveProvider = "Microsoft.EntityFrameworkCore.SqlServer" };
+        var table = Assert.Single(migration.UpOperations.OfType<CreateTableOperation>());
+        Assert.Equal("ReviewInvitationSuppressions", table.Name);
+        Assert.Empty(migration.UpOperations.OfType<AlterColumnOperation>());
+        Assert.Empty(migration.UpOperations.OfType<DropColumnOperation>());
+        Assert.Empty(migration.UpOperations.OfType<SqlOperation>());
+        var unique = Assert.Single(migration.UpOperations.OfType<CreateIndexOperation>(), operation => operation.IsUnique);
+        Assert.Equal(new[] { "UserId", "ReservationId" }, unique.Columns); Assert.Null(unique.Filter);
+        Assert.All(table.ForeignKeys, fk => Assert.Equal(ReferentialAction.NoAction, fk.OnDelete));
+        Assert.Equal("ReviewInvitationSuppressions", Assert.Single(migration.DownOperations.OfType<DropTableOperation>()).Name);
+    }
+
+    [Fact]
+    public async Task CompetingPreferenceInsertsCannotPersistTwoRows()
+    {
+        await using var fixture = await Database.Create();
+        async Task<bool> Insert()
+        {
+            await using var db = fixture.Context();
+            db.ReviewInvitationSuppressions.Add(new ReviewInvitationSuppression { UserId = 1, ReservationId = 1 });
+            try { await db.SaveChangesAsync(); return true; }
+            catch (DbUpdateException) { return false; }
+        }
+        var results = await Task.WhenAll(Task.Run(Insert), Task.Run(Insert));
+        Assert.Single(results, success => success);
+        await using var verify = fixture.Context();
+        Assert.Single(await verify.ReviewInvitationSuppressions.ToListAsync());
+    }
+    [Fact]
+    public async Task RelationalInvitationPreference_IsDurableUniqueAndDoesNotWriteReservationOrReview()
+    {
+        await using var fixture = await Database.Create();
+        await using (var db = fixture.Context())
+        {
+            var service = new GuestReviewService(db, new Clock(), Options.Create(new ReviewInvitationOptions { PermanentOptOutEnabled = true }));
+            await service.SuppressInvitationAsync(1, 1);
+            await service.SuppressInvitationAsync(1, 1);
+            Assert.Single(db.ReviewInvitationSuppressions); Assert.Empty(db.Reviews); Assert.Empty(db.AuditLogs);
+            Assert.Equal(ReservationStatus.Completed, (await db.Reservations.SingleAsync()).Status);
+        }
+        await using (var db = fixture.Context())
+        {
+            var service = new GuestReviewService(db, new Clock(), Options.Create(new ReviewInvitationOptions { PermanentOptOutEnabled = true }));
+            Assert.True(Assert.Single((await service.EligibleAsync(1)).Items).InvitationSuppressed);
+            db.ReviewInvitationSuppressions.Add(new ReviewInvitationSuppression { UserId = 1, ReservationId = 1 });
+            await Assert.ThrowsAsync<DbUpdateException>(() => db.SaveChangesAsync());
+        }
+    }
     private sealed class Clock : TimeProvider
     { public override DateTimeOffset GetUtcNow() => DateTimeOffset.Parse("2026-11-08T10:00:00Z"); }
     private static GuestReviewRequest Scores() => new()
@@ -159,7 +211,7 @@ public sealed class GuestReviewPersistenceTests
             await using var db = fixture.Context();
             // Only disposable test tables; mirror the actual mapped columns and Review constraints.
             // Other domain tables/SQL Server-only financial checks are deliberately outside this fixture.
-            Type[] tables = [typeof(User), typeof(Property), typeof(Guest), typeof(Reservation), typeof(Review), typeof(AuditLog), typeof(CancellationFinancialResolution), typeof(RefundRecord)];
+            Type[] tables = [typeof(User), typeof(Property), typeof(Guest), typeof(Reservation), typeof(Review), typeof(ReviewInvitationSuppression), typeof(AuditLog), typeof(CancellationFinancialResolution), typeof(RefundRecord)];
             var model = db.GetService<IDesignTimeModel>().Model;
             foreach (var type in tables)
             {
@@ -180,6 +232,7 @@ public sealed class GuestReviewPersistenceTests
                 await db.Database.ExecuteSqlRawAsync(createTable);
             }
             await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IX_Reviews_ReservationId ON Reviews(ReservationId) WHERE ReservationId IS NOT NULL");
+            await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IX_ReviewInvitationSuppressions_UserId_ReservationId ON ReviewInvitationSuppressions(UserId,ReservationId)");
             await GuestReviewTests.Seed(db);
             return fixture;
         }

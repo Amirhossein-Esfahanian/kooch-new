@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.Extensions.Options;
 using Xunit;
 
 namespace Kooch.Api.Tests;
@@ -38,6 +39,64 @@ public sealed class GuestReviewTests
         db.ChangeTracker.Clear();
     }
     private static GuestReviewService Service(KoochDbContext db, DateTimeOffset? now = null) => new(db, new Clock(now ?? Now));
+    private static GuestReviewService Invitations(KoochDbContext db) => new(db, new Clock(Now),
+        Options.Create(new ReviewInvitationOptions { PermanentOptOutEnabled = true }));
+
+    [Fact]
+    public async Task InvitationOptOutIsPerUserAndReservation_PersistsAcrossContexts_WithoutChangingEligibility()
+    {
+        await using var db = Memory(); await Seed(db);
+        db.Reservations.Add(new Reservation { Id = 2, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
+            ReservationNumber = "REVIEW-2", Status = ReservationStatus.Completed,
+            CheckInDate = new DateOnly(2026, 11, 5), CheckOutDate = new DateOnly(2026, 11, 7) });
+        db.Guests.Add(new Guest { Id = 1, UserId = 2 });
+        (await db.Reservations.SingleAsync(r => r.Id == 1)).GuestId = 1; await db.SaveChangesAsync();
+        Assert.True((await Invitations(db).SuppressInvitationAsync(1, 1)).InvitationSuppressed);
+        db.ChangeTracker.Clear();
+        Assert.True((await Invitations(db).SuppressInvitationAsync(1, 1)).InvitationSuppressed);
+        Assert.Single(db.ReviewInvitationSuppressions);
+        var stays = (await Invitations(db).EligibleAsync(1)).Items;
+        Assert.Equal(2, stays.Count);
+        Assert.True(stays.Single(r => r.ReservationId == 1).InvitationSuppressed);
+        Assert.False(stays.Single(r => r.ReservationId == 2).InvitationSuppressed); // New stay, same property.
+        Assert.All(stays, r => Assert.True(r.InvitationPreferenceAvailable));
+        Assert.False(Assert.Single((await Invitations(db).EligibleAsync(2)).Items).InvitationSuppressed);
+        db.Reservations.Add(new Reservation { Id = 3, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
+            ReservationNumber = "REVIEW-3", Status = ReservationStatus.Completed,
+            CheckInDate = new DateOnly(2026, 11, 6), CheckOutDate = new DateOnly(2026, 11, 8) });
+        await db.SaveChangesAsync();
+        Assert.False((await Invitations(db).EligibleAsync(1)).Items.Single(r => r.ReservationId == 3).InvitationSuppressed);
+        await Invitations(db).SaveAsync(1, 1, Scores(), false); // Opt-out never prevents voluntary submission.
+        Assert.Single(db.Reviews);
+    }
+
+    [Fact]
+    public async Task InvitationOptOutRejectsOtherUsersAndDeletedOwnership_NoRoleBypass()
+    {
+        await using var db = Memory(); await Seed(db);
+        (await db.Users.SingleAsync(u => u.Id == 2)).Role = UserRole.SuperAdmin; await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => Invitations(db).SuppressInvitationAsync(2, 1));
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => Invitations(db).SuppressInvitationAsync(0, 1));
+        db.Guests.Add(new Guest { Id = 1, UserId = 2, IsDeleted = true });
+        (await db.Reservations.SingleAsync()).GuestId = 1; await db.SaveChangesAsync();
+        await Assert.ThrowsAsync<KeyNotFoundException>(() => Invitations(db).SuppressInvitationAsync(2, 1));
+        Assert.Empty(db.ReviewInvitationSuppressions);
+    }
+
+    [Fact]
+    public async Task InvitationPreferencesDefaultOff_AndSoftDeletedPreferenceRestoresIdempotently()
+    {
+        await using var db = Memory(); await Seed(db);
+        Assert.False(Assert.Single((await Service(db).EligibleAsync(1)).Items).InvitationPreferenceAvailable);
+        await Assert.ThrowsAsync<ReviewInvitationPreferencesUnavailableException>(() => Service(db).SuppressInvitationAsync(1, 1));
+        Assert.Empty(db.ReviewInvitationSuppressions);
+        await Invitations(db).SuppressInvitationAsync(1, 1);
+        var preference = await db.ReviewInvitationSuppressions.SingleAsync(); preference.IsDeleted = true; await db.SaveChangesAsync();
+        Assert.False(Assert.Single((await Invitations(db).EligibleAsync(1)).Items).InvitationSuppressed);
+        await Invitations(db).SuppressInvitationAsync(1, 1);
+        Assert.Single(db.ReviewInvitationSuppressions.IgnoreQueryFilters());
+        Assert.True(Assert.Single((await Invitations(db).EligibleAsync(1)).Items).InvitationSuppressed);
+    }
 
     [Theory]
     [InlineData(null)] [InlineData("")] [InlineData("توضیح اختیاری")]

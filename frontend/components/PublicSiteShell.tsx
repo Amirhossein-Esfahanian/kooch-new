@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { Header } from "@/components/Header";
 import { Footer } from "@/components/Footer";
+import { GuestReviewInvitation } from "@/components/reviews/GuestReviewInvitation";
 
 export function PublicSiteShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -12,6 +13,7 @@ export function PublicSiteShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <GuestReviewInvitation />
       {!propertyLanding && <Header />}
       <main className="flex-1">{children}</main>
       {!propertyLanding && <Footer />}
