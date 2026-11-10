@@ -4,7 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
-import { KoochSelect, KoochTextarea } from "@/components/KoochFormControls";
+import { KoochTextarea } from "@/components/KoochFormControls";
+import { ScorePill } from "@/components/ScorePill";
 import { getGuestReview, reviewCategories, reviewDate, reviewError, reviewLinkClass, saveGuestReview,
   type EligibleReviewStay, type GuestReviewRequest, type ReviewScoreKey } from "@/lib/guest-reviews";
 
@@ -45,7 +46,7 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
     setAttempted(true); setError("");
     if (!complete || comment.length > 4000) {
       const invalid = reviewCategories.find(([key]) => !scores[key]);
-      if (invalid) (event.currentTarget.elements.namedItem(invalid[0]) as HTMLElement | null)?.focus();
+      if (invalid) event.currentTarget.querySelector<HTMLInputElement>(`input[name="${invalid[0]}"]`)?.focus();
       return;
     }
     inFlight.current = true; setBusy(true);
@@ -70,13 +71,9 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
             {reviewCategories.map(([key, label]) => {
               const invalid = attempted && !scores[key];
               return <div className="grid gap-2" key={key}>
-                <label className="text-sm font-semibold" htmlFor={`review-${key}`}>{label} <span aria-hidden="true">*</span></label>
-                <KoochSelect id={`review-${key}`} name={key} className="min-h-11" required value={scores[key] ?? ""}
-                  onChange={event => setScores(current => ({ ...current, [key]: event.target.value }))}
-                  aria-invalid={Boolean(invalid)} aria-describedby={invalid ? `${key}-error` : undefined}>
-                  <option value="">انتخاب امتیاز</option>
-                  {Array.from({ length: 10 }, (_, index) => <option value={index + 1} key={index}>{(index + 1).toLocaleString("fa-IR")}</option>)}
-                </KoochSelect>
+                <ScorePill name={key} label={label} required value={scores[key] ? Number(scores[key]) : null}
+                  onChange={score => setScores(current => ({ ...current, [key]: String(score) }))}
+                  disabled={busy || loadFailed} invalid={Boolean(invalid)} describedBy={invalid ? `${key}-error` : undefined} />
                 {invalid && <p className="text-sm text-destructive" id={`${key}-error`} role="alert">امتیاز {label} را انتخاب کنید.</p>}
               </div>;
             })}

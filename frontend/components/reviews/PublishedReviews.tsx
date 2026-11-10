@@ -6,14 +6,8 @@ import { reviewCategories, type ReviewScoreKey } from "@/lib/guest-reviews";
 import { formatDate } from "@/lib/account-reservations";
 import type { PublicGuestReview, PublicReviewPage } from "@/lib/property-reviews";
 import styles from "./PublishedReviews.module.css";
-
-export function getRatingQuality(score: number) {
-  if (score < 4) return { tone: "weak", label: "ضعیف" } as const;
-  if (score < 6) return { tone: "average", label: "متوسط" } as const;
-  if (score < 8) return { tone: "good", label: "خوب" } as const;
-  if (score < 9) return { tone: "veryGood", label: "بسیار خوب" } as const;
-  return { tone: "excellent", label: "عالی" } as const;
-}
+import { getRatingQuality } from "@/lib/rating-quality";
+export { getRatingQuality } from "@/lib/rating-quality";
 
 export function ReviewScoreList({ scores, appearance = "quality" }: { scores: Partial<Record<ReviewScoreKey, number | null>>; appearance?: "quality" | "brand" }) {
   return <dl className={`${styles.scores} ${appearance === "brand" ? styles.sidebarScores : ""}`}>

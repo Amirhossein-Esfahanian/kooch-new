@@ -27,7 +27,7 @@ const review: GuestReview = { id: 4, reservationId: 1, propertyId: 2, ratingSum:
 const item: GuestReviewListItem = { review, propertyName: stay.propertyName, reservationNumber: "R-1",
   checkInDate: "2026-11-05", checkOutDate: stay.checkOutDate, submissionDeadlineLocalDate: stay.submissionDeadlineLocalDate, canEdit: true };
 const paged = <T,>(items: T[], page = 1, totalPages = 1) => ({ items, page, pageSize: 20, totalCount: items.length, totalPages });
-const fill = (score = "8") => reviewCategories.forEach(([, label]) => fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value: score } }));
+const fill = (score = "8") => reviewCategories.forEach(([, label]) => fireEvent.click(within(screen.getByRole("radiogroup", { name: label })).getByRole("radio", { name: `${Number(score).toLocaleString("fa-IR")} از ۱۰` })));
 
 beforeEach(() => {
   vi.clearAllMocks(); mocks.query = "";
@@ -53,18 +53,20 @@ describe("account navigation", () => {
 describe("six-category form", () => {
   it("starts blank, requires all six choices, labels invalid fields and focuses the first missing score", () => {
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />);
-    expect(screen.getAllByRole("combobox")).toHaveLength(6);
-    expect(screen.getAllByRole("combobox").every(node => (node as HTMLSelectElement).value === "")).toBe(true);
+    expect(screen.getAllByRole("radiogroup")).toHaveLength(6);
+    expect(screen.getAllByRole("radio")).toHaveLength(60);
+    expect(screen.queryAllByRole("radio", { checked: true })).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     expect(screen.getAllByRole("alert")).toHaveLength(6);
-    expect(screen.getAllByRole("combobox").every(node => node.getAttribute("aria-invalid") === "true")).toBe(true);
-    expect(document.activeElement).toBe(screen.getAllByRole("combobox")[0]);
+    expect(screen.getAllByRole("radiogroup").every(node => node.getAttribute("aria-invalid") === "true")).toBe(true);
+    expect(screen.getAllByRole("radiogroup").every(node => node.getAttribute("aria-required") === "true")).toBe(true);
+    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
     expect(mocks.save).not.toHaveBeenCalled();
   });
   it("calculates an exact mean and submits only six raw scores and an optional empty comment", async () => {
     const onSaved = vi.fn();
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={onSaved} />);
-    fill("1"); fireEvent.change(screen.getByLabelText("ارزش نسبت به قیمت", { exact: false }), { target: { value: "2" } });
+    fill("1"); fireEvent.click(within(screen.getByRole("radiogroup", { name: reviewCategories[5][1] })).getByRole("radio", { name: "۲ از ۱۰" }));
     expect(screen.getByLabelText("میانگین امتیاز").textContent).toContain("۱٫۲");
     expect(screen.getByText(/نوشتن توضیح همچنان اختیاری است/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
@@ -76,7 +78,11 @@ describe("six-category form", () => {
   it("prefills only an existing review, preserves revision and uses edit/resubmission", async () => {
     render(<GuestReviewForm stay={{ ...stay, reviewId: 4, revision: 3 }} onClose={vi.fn()} onSaved={vi.fn()} />);
     await screen.findByDisplayValue("تجربه اقامت");
-    expect(screen.getByLabelText("نظافت", { exact: false }).getAttribute("aria-invalid")).toBeNull();
+    expect(screen.getByRole("radiogroup", { name: "نظافت" }).getAttribute("aria-invalid")).toBeNull();
+    reviewCategories.forEach(([key, label]) => {
+      expect((within(screen.getByRole("radiogroup", { name: label })).getByRole("radio", { checked: true }) as HTMLInputElement).value).toBe(String(review[key]));
+    });
+    expect(screen.getByLabelText("میانگین امتیاز").textContent).toContain("۷٫۵");
     fireEvent.click(screen.getByRole("button", { name: "ذخیره و ارسال برای بررسی" }));
     await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
     expect(mocks.save.mock.calls[0][1]).toMatchObject({ revision: 3, cleanlinessRating: 8, comment: "تجربه اقامت" });
@@ -102,7 +108,7 @@ describe("six-category form", () => {
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />); fill();
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringMatching(expected));
-    expect((screen.getAllByRole("combobox")[0] as HTMLSelectElement).value).toBe("8");
+    expect((screen.getAllByRole("radio", { checked: true })[0] as HTMLInputElement).value).toBe("8");
     if (status === 401) expect(screen.getByRole("link", { name: "ورود دوباره" })).toBeTruthy();
   });
   it("cannot save after existing-review retrieval fails", async () => {
