@@ -101,7 +101,7 @@ function ModerationContent() {
   }
   return <main dir="rtl" className="mx-auto w-full max-w-[1480px] space-y-6 p-4 lg:p-6">
     <KoochPageHeader eyebrow={null} appearance="plain" title="مدیریت نظرات" description="نظرهای مهمانان را بررسی کنید؛ تأیید هر نظر به معنی انتشار آن است." />
-    <ReviewModerationNavigation active="reviews" />
+    <ReviewModerationNavigation />
     <KoochCard>
       <form onSubmit={filter} className="grid items-end gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <label className="grid gap-2 text-sm">وضعیت<KoochSelect value={draft.status} disabled={saving} onChange={event => updateFilters({ ...draft, status: event.target.value as AdminReviewFilters["status"] })}>

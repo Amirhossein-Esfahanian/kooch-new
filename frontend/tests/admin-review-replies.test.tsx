@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { ApiRequestError } from "@/lib/owner-api";
 const mocks = vi.hoisted(() => ({ list: vi.fn(), moderate: vi.fn(), session: { authenticated: true, loading: false, workspaces: ["admin"], platformRole: "SuperAdmin", user: { userId: 3 } } }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({ useAuthSession: () => mocks.session }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/admin/reviews/replies" }));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({ AdminLayout: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
 vi.mock("@/lib/property-reviews", async original => ({ ...await original<typeof import("@/lib/property-reviews")>(), getAdminReplies: mocks.list, moderateOwnerReply: mocks.moderate }));
 import { AdminReviewRepliesPage } from "@/components/reviews/AdminReviewRepliesPage";

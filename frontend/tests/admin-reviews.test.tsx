@@ -7,6 +7,7 @@ import type { AdminReview } from "@/lib/admin-reviews";
 const mocks = vi.hoisted(() => ({ list: vi.fn(), get: vi.fn(), moderate: vi.fn(), publication: vi.fn(),
   session: { authenticated: true, loading: false, workspaces: ["admin"], platformRole: "SuperAdmin", user: { userId: 3 } } }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({ useAuthSession: () => mocks.session }));
+vi.mock("next/navigation", () => ({ usePathname: () => "/admin/reviews" }));
 vi.mock("@/components/dashboard/DashboardLayouts", () => ({ AdminLayout: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
 vi.mock("@/lib/admin-reviews", async original => ({ ...await original<typeof import("@/lib/admin-reviews")>(),
   getAdminReviews: mocks.list, getAdminReview: mocks.get, moderateReview: mocks.moderate, setReviewPublication: mocks.publication }));

@@ -50,7 +50,7 @@ function ReplyQueue() {
   const label = (value: string) => value === "PendingApproval" ? "پاسخ در انتظار تأیید" : value === "Rejected" ? "پاسخ ردشده" : "پاسخ تأییدشده";
   return <main dir="rtl" className="mx-auto w-full max-w-[1480px] space-y-6 p-4 lg:p-6">
     <KoochPageHeader eyebrow={null} appearance="plain" title="بررسی پاسخ‌های اقامتگاه" description="پاسخ رسمی اقامتگاه جدا از نظر مهمان بررسی می‌شود؛ متن یا امتیاز مهمان تغییر نمی‌کند." />
-    <ReviewModerationNavigation active="replies" />
+    <ReviewModerationNavigation />
     <div className="flex flex-wrap items-end justify-between gap-3"><label className="grid gap-2 text-sm">وضعیت پاسخ<KoochSelect value={status} onChange={event => { setStatus(event.target.value); setPage(1); }}><option value="PendingApproval">در انتظار تأیید</option><option value="Approved">تأییدشده</option><option value="Rejected">ردشده</option><option value="All">همه</option></KoochSelect></label><KoochButton variant="outline" onClick={() => { setSelected(null); setVersion(v => v + 1); }}>دریافت دوباره پاسخ‌ها</KoochButton></div>
     {message && <p role="status">{message}</p>}
     {error ? <p role="alert">{error}</p> : !data ? <p role="status">در حال دریافت پاسخ‌ها…</p> : <>
