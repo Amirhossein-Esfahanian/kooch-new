@@ -7,7 +7,8 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochSelect, KoochTextarea } from "@/components/KoochFormControls";
 import { KoochDialog } from "@/components/KoochDialog";
-import { PublishedReviewContent } from "./PublishedReviews";
+import { OwnerReviewCard } from "./OwnerReviewCard";
+import styles from "./OwnerReviewsPage.module.css";
 import { getOwnerReviews, propertyReviewError, saveOwnerReply, type OwnerReview, type OwnerReviewFilter } from "@/lib/property-reviews";
 import type { PagedResult } from "@/lib/account-reservations";
 
@@ -37,18 +38,14 @@ function OwnerReviewContent({ propertyId, canReply }: { propertyId: number; canR
     } catch (failure) { if (!controller.signal.aborted) { setSaveError(propertyReviewError(failure)); setNeedsReload(true); } }
     finally { saving.current = false; if (!controller.signal.aborted) setBusy(false); }
   }
-  return <main dir="rtl" className="mx-auto max-w-[1480px] space-y-6 p-4 lg:p-6">
+  return <main dir="rtl" className={styles.page}>
     <KoochPageHeader eyebrow={null} appearance="plain" title="نظرات اقامتگاه" description="نظرهای منتشرشدهٔ اقامتگاه فعال و وضعیت پاسخ رسمی را ببینید." />
-    <div className="flex flex-wrap items-end justify-between gap-3"><label className="grid gap-2 text-sm">وضعیت پاسخ<KoochSelect value={filter} onChange={event => { setFilter(event.target.value as OwnerReviewFilter); setPage(1); }}><option value="All">همه</option><option value="Unanswered">بدون پاسخ</option><option value="PendingApproval">پاسخ در انتظار تأیید</option><option value="Answered">پاسخ‌داده‌شده</option></KoochSelect></label><KoochButton variant="outline" onClick={() => setVersion(v => v + 1)}>دریافت دوباره فهرست</KoochButton></div>
+    <div className={styles.toolbar}><label className={styles.filter}>وضعیت پاسخ<KoochSelect value={filter} onChange={event => { setFilter(event.target.value as OwnerReviewFilter); setPage(1); }}><option value="All">همه</option><option value="Unanswered">بدون پاسخ</option><option value="PendingApproval">پاسخ در انتظار تأیید</option><option value="Answered">پاسخ‌داده‌شده</option></KoochSelect></label><KoochButton variant="outline" onClick={() => setVersion(v => v + 1)}>دریافت دوباره فهرست</KoochButton></div>
     {message && <p role="status">{message}</p>}
     {error ? <p role="alert">{error}</p> : !data ? <p role="status">در حال دریافت نظرات…</p> : <>
       {!data.items.length && <p role="status">نظر منتشرشده‌ای با این فیلتر وجود ندارد.</p>}
-      <ul className="divide-y divide-border">{data.items.map(item => <li key={item.review.id} className="space-y-4 py-6"><PublishedReviewContent review={item.review} />
-        {item.reply && <div className="space-y-2 text-sm"><p>نسخهٔ پاسخ: {item.reply.moderationStatus === "PendingApproval" ? "در انتظار تأیید" : item.reply.moderationStatus === "Rejected" ? "ردشده" : "تأییدشده"}</p>
-          {item.reply.moderationStatus !== "Approved" && <p className="whitespace-pre-wrap break-words leading-7">{item.reply.body}</p>}
-          {item.reply.rejectionReason && <p className="whitespace-pre-wrap break-words">دلیل رد پاسخ: {item.reply.rejectionReason}</p>}
-          {item.reply.publishedBody && item.reply.moderationStatus !== "Approved" && <p className="text-muted-foreground">نسخهٔ تأییدشدهٔ قبلی همچنان عمومی است.</p>}</div>}
-        {canReply && <KoochButton variant="outline" onClick={() => { setSelected(item); setBody(item.reply?.body ?? ""); setSaveError(""); setNeedsReload(false); }}>{item.reply ? "ویرایش پاسخ" : "ثبت پاسخ اقامتگاه"}</KoochButton>}
+      <ul className={styles.list}>{data.items.map(item => <li key={item.review.id}>
+        <OwnerReviewCard item={item} canReply={canReply} onReply={() => { setSelected(item); setBody(item.reply?.body ?? ""); setSaveError(""); setNeedsReload(false); }} />
       </li>)}</ul>
       {data.totalPages > 1 && <nav aria-label="صفحه‌بندی نظرات اقامتگاه" className="flex flex-wrap items-center gap-3"><KoochButton variant="outline" disabled={page <= 1} onClick={() => setPage(v => v - 1)}>صفحه قبل</KoochButton><span>صفحه {page.toLocaleString("fa-IR")} از {data.totalPages.toLocaleString("fa-IR")}</span><KoochButton variant="outline" disabled={page >= data.totalPages} onClick={() => setPage(v => v + 1)}>صفحه بعد</KoochButton></nav>}
     </>}
