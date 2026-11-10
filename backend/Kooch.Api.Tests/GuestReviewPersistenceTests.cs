@@ -196,7 +196,7 @@ public sealed class GuestReviewPersistenceTests
         }
     }
 
-    private sealed class Database : IAsyncDisposable
+    internal sealed class Database : IAsyncDisposable
     {
         private readonly string path = Path.Combine(Path.GetTempPath(), $"kooch-review-test-{Guid.NewGuid():N}.db");
         public KoochDbContext Context(IInterceptor? interceptor = null)
@@ -211,7 +211,7 @@ public sealed class GuestReviewPersistenceTests
             await using var db = fixture.Context();
             // Only disposable test tables; mirror the actual mapped columns and Review constraints.
             // Other domain tables/SQL Server-only financial checks are deliberately outside this fixture.
-            Type[] tables = [typeof(User), typeof(Property), typeof(Guest), typeof(Reservation), typeof(Review), typeof(ReviewInvitationSuppression), typeof(AuditLog), typeof(CancellationFinancialResolution), typeof(RefundRecord)];
+            Type[] tables = [typeof(User), typeof(Property), typeof(UserPropertyAccess), typeof(Guest), typeof(Reservation), typeof(Review), typeof(ReviewOwnerReply), typeof(ReviewInvitationSuppression), typeof(AuditLog), typeof(CancellationFinancialResolution), typeof(RefundRecord)];
             var model = db.GetService<IDesignTimeModel>().Model;
             foreach (var type in tables)
             {
@@ -227,11 +227,13 @@ public sealed class GuestReviewPersistenceTests
                     return $"[{p.GetColumnName()}] {sqlType}" + defaultSql;
                 }).ToList();
                 if (type == typeof(Review)) columns.AddRange(entity.GetCheckConstraints().Select(c => $"CONSTRAINT [{c.Name}] CHECK ({c.Sql})"));
+                if (type == typeof(ReviewOwnerReply)) columns.AddRange(entity.GetCheckConstraints().Select(c => $"CONSTRAINT [{c.Name}] CHECK ({c.Sql.Replace("LEN(", "length(")})"));
                 // SQL identifiers/constraints originate solely from the trusted EF model, never request data.
                 var createTable = $"CREATE TABLE [{entity.GetTableName()}] ({string.Join(",", columns)})";
                 await db.Database.ExecuteSqlRawAsync(createTable);
             }
             await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IX_Reviews_ReservationId ON Reviews(ReservationId) WHERE ReservationId IS NOT NULL");
+            await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IX_ReviewOwnerReplies_ReviewId ON ReviewOwnerReplies(ReviewId)");
             await db.Database.ExecuteSqlRawAsync("CREATE UNIQUE INDEX IX_ReviewInvitationSuppressions_UserId_ReservationId ON ReviewInvitationSuppressions(UserId,ReservationId)");
             await GuestReviewTests.Seed(db);
             return fixture;

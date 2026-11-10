@@ -52,6 +52,15 @@ beforeEach(() => {
 });
 
 describe("Admin header layout", () => {
+  it("exposes review moderation only to SuperAdmin, not a delegated ManageReviews permission", () => {
+    auth.current.platformRole = "AdminAssistant";
+    auth.current.platformPermissions = ["ManageReviews"];
+    const view = render(<AdminLayout>محتوا</AdminLayout>);
+    expect(screen.queryByRole("link", { name: "مدیریت نظرات" })).toBeNull();
+    auth.current.platformRole = "SuperAdmin";
+    view.rerender(<AdminLayout>محتوا</AdminLayout>);
+    expect(screen.getByRole("link", { name: "مدیریت نظرات" }).getAttribute("href")).toBe("/admin/reviews");
+  });
   it("enables Admin button styling and updates it with the existing theme toggle", () => {
     render(<AdminLayout><KoochButton>ایجاد</KoochButton></AdminLayout>);
     const action = screen.getByRole("button", { name: "ایجاد" });

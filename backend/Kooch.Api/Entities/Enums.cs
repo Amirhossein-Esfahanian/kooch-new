@@ -51,7 +51,15 @@ public enum AuditAction
     PropertyInformationChanged,
     SiteSettingsChanged,
     ReviewSubmitted,
-    ReviewEdited
+    ReviewEdited,
+    ReviewApproved,
+    ReviewRejected,
+    ReviewUnpublished,
+    ReviewRepublished,
+    ReviewReplySubmitted,
+    ReviewReplyEdited,
+    ReviewReplyApproved,
+    ReviewReplyRejected
 }
 public enum PermissionKey
 {

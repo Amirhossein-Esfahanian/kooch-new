@@ -5,6 +5,7 @@ import { resolve } from "node:path";
 import { MarketplacePropertyDetail } from "@/components/property/marketplace/MarketplacePropertyDetail";
 import styles from "@/components/property/marketplace/MarketplacePropertyDetail.module.css";
 import type { PublicProperty } from "@/lib/public-properties";
+vi.mock("@/hooks/usePublicPropertyReviews", () => ({ usePublicPropertyReviews: () => ({ data: { summary: { count: 0, overallRating: null, categories: {} }, reviews: { items: [], totalPages: 0 } }, error: false, page: 1, setPage: vi.fn(), retry: vi.fn() }) }));
 
 vi.mock("@/hooks/useWeather", () => ({ useWeather: () => ({ state: { status: "loaded", data: {
   status: "unavailable", unavailableReason: "no_snapshot", locationKey: "kashan", provider: "VisualCrossing",
@@ -107,7 +108,7 @@ describe("Marketplace property presentation", () => {
     render(<Detail data={{ ...property(), images: [], latitude: null, longitude: null }} />);
     expect(screen.getByRole("button", { name: "مشاهده همه تصاویر" }).hasAttribute("disabled")).toBe(true);
     expect(screen.getByText("تصویری برای این اقامتگاه ثبت نشده است.")).toBeTruthy();
-    expect(screen.getByText("امتیاز قابل‌نمایشی در دسترس نیست.")).toBeTruthy();
+    expect(screen.getAllByText("هنوز امتیازی ثبت نشده").length).toBeGreaterThan(0);
     expect(screen.getByRole("region", { name: "پیش‌بینی آب‌وهوای کاشان" })).toBeTruthy();
     expect(screen.getByText("پیش‌بینی آب‌وهوا در حال حاضر در دسترس نیست.")).toBeTruthy();
     expect(screen.queryByTestId("map-fixture")).toBeNull();

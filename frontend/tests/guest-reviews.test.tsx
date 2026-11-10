@@ -35,6 +35,13 @@ beforeEach(() => {
   mocks.eligible.mockResolvedValue(paged([])); mocks.list.mockResolvedValue(paged([])); mocks.get.mockResolvedValue(review); mocks.save.mockResolvedValue(review);
 });
 
+it("shows safe rejection feedback and retains the existing resubmission entry", async () => {
+  mocks.list.mockResolvedValue(paged([{ ...item, review: { ...review, moderationStatus: "Rejected", rejectionReason: "لطفاً اطلاعات تماس را حذف کنید." } }]));
+  render(<GuestReviewsPage />);
+  await screen.findByText("دلیل رد نظر: لطفاً اطلاعات تماس را حذف کنید.");
+  expect(screen.getByRole("button", { name: "ویرایش و ارسال مجدد" })).toBeTruthy();
+});
+
 describe("account navigation", () => {
   it("keeps reviews independently reachable with no eligible reservation", async () => {
     render(<AccountPage />);

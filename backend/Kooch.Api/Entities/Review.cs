@@ -16,6 +16,10 @@ public class Review : BaseEntity
     public int? RatingSum { get; set; }
     public ReviewModerationStatus? ModerationStatus { get; set; }
     public int Revision { get; set; }
+    public string? RejectionReason { get; set; }
+    public string? UnpublicationReason { get; set; }
+    public int? ModeratedByUserId { get; set; }
+    public DateTime? ModeratedAtUtc { get; set; }
     public string? Title { get; set; }
     public string Comment { get; set; } = string.Empty;
     public bool IsPublished { get; set; }

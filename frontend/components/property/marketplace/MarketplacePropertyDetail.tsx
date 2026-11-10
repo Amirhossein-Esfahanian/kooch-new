@@ -20,6 +20,8 @@ import {
   useMarketplacePropertyNavigation,
 } from "./useMarketplacePropertyNavigation";
 import styles from "./MarketplacePropertyDetail.module.css";
+import { usePublicPropertyReviews } from "@/hooks/usePublicPropertyReviews";
+import { PublishedRating, PublishedReviewList } from "@/components/reviews/PublishedReviews";
 
 function PropertyAmenityIcon({ icon }: { icon?: string | null }) {
   return icon &&
@@ -59,6 +61,7 @@ export function MarketplacePropertyDetail({
   roomSelection: ReactNode;
 }) {
   const navigation = useMarketplacePropertyNavigation();
+  const reviews = usePublicPropertyReviews(property.slug);
   const [allAmenitiesOpen, setAllAmenitiesOpen] = useState(false);
   const introduction = property.descriptionSections.filter(
     (section) => section.sectionType === "PropertyIntroduction",
@@ -321,6 +324,16 @@ export function MarketplacePropertyDetail({
         </div>
 
         <section
+          aria-labelledby="reviews-title"
+          className={`${styles.section} ${styles.fullWidth}`}
+          id="property-reviews"
+          tabIndex={-1}
+        >
+          <h2 id="reviews-title">نظرات مهمانان</h2>
+          <PublishedReviewList data={reviews.data} error={reviews.error} page={reviews.page} onPage={reviews.setPage} retry={reviews.retry} />
+        </section>
+
+        <section
           aria-labelledby="location-title"
           className={`${styles.section} ${styles.fullWidth} min-w-0`}
           id="property-location"
@@ -429,21 +442,10 @@ export function MarketplacePropertyDetail({
             جزئیات سیاست لغو در حال حاضر برای نمایش در دسترس نیست.
           </p>
         </section>
-        <section
-          aria-labelledby="reviews-title"
-          className={`${styles.section} ${styles.fullWidth}`}
-          id="property-reviews"
-          tabIndex={-1}
-        >
-          <h2 id="reviews-title">نظرات مهمانان</h2>
-          <p className={styles.unavailable}>
-            اطلاعات نظرات و امتیاز مهمانان در حال حاضر برای نمایش در دسترس نیست.
-          </p>
-        </section>
         <aside aria-label="خلاصه اقامتگاه و موقعیت" className={styles.sidebar}>
           <KoochCard className={styles.sidebarCard}>
             <h2>امتیاز و نظرات</h2>
-            <p className={styles.prose}>امتیاز قابل‌نمایشی در دسترس نیست.</p>
+            {reviews.error ? <p className={styles.unavailable}>امتیاز در حال حاضر در دسترس نیست.</p> : <PublishedRating summary={reviews.data?.summary ?? null} />}
             <a
               className={styles.textLink}
               href="#property-reviews"

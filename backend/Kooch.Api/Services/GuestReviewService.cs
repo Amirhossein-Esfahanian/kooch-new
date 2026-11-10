@@ -10,7 +10,8 @@ using Microsoft.Extensions.Options;
 namespace Kooch.Api.Services;
 
 public sealed partial class GuestReviewService(KoochDbContext context, TimeProvider clock,
-    IOptions<ReviewInvitationOptions>? invitationOptions = null)
+    IOptions<ReviewInvitationOptions>? invitationOptions = null,
+    IPropertyAuthorizationService? propertyAuthorization = null)
 {
     public async Task<PagedResult<GuestReviewListItemResponse>> ListAsync(
         int userId, int page = 1, int pageSize = 20, CancellationToken ct = default)
@@ -136,6 +137,10 @@ public sealed partial class GuestReviewService(KoochDbContext context, TimeProvi
         review.Comment = request.Comment?.Trim() ?? string.Empty;
         review.ModerationStatus = ReviewModerationStatus.PendingApproval;
         review.IsPublished = false;
+        review.RejectionReason = null;
+        review.UnpublicationReason = null;
+        review.ModeratedByUserId = null;
+        review.ModeratedAtUtc = null;
         review.Revision++;
         review.UpdatedByUserId = userId;
         try
@@ -190,5 +195,6 @@ public sealed partial class GuestReviewService(KoochDbContext context, TimeProvi
     private static GuestReviewResponse Response(Review v) => new(v.Id, v.ReservationId!.Value, v.PropertyId,
         v.CleanlinessRating!.Value, v.StaffRating!.Value, v.ComfortRating!.Value, v.FacilitiesRating!.Value,
         v.LocationRating!.Value, v.ValueRating!.Value, v.RatingSum!.Value, v.RatingSum.Value / 6m,
-        v.Comment, v.ModerationStatus!.Value, v.IsPublished, v.Revision);
+        v.Comment, v.ModerationStatus!.Value, v.IsPublished, v.Revision,
+        v.ModerationStatus == ReviewModerationStatus.Rejected ? v.RejectionReason : null);
 }

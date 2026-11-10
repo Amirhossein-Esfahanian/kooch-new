@@ -5030,6 +5030,12 @@ namespace Kooch.Api.Migrations
                     b.Property<int?>("LocationRating")
                         .HasColumnType("int");
 
+                    b.Property<DateTime?>("ModeratedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ModeratedByUserId")
+                        .HasColumnType("int");
+
                     b.Property<int?>("ModerationStatus")
                         .HasColumnType("int");
 
@@ -5041,6 +5047,10 @@ namespace Kooch.Api.Migrations
 
                     b.Property<int?>("RatingSum")
                         .HasColumnType("int");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
 
                     b.Property<int?>("ReservationId")
                         .HasColumnType("int");
@@ -5056,6 +5066,10 @@ namespace Kooch.Api.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("nvarchar(200)");
 
+                    b.Property<string>("UnpublicationReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
                     b.Property<DateTime?>("UpdatedAtUtc")
                         .HasColumnType("datetime2");
 
@@ -5068,6 +5082,8 @@ namespace Kooch.Api.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("ClientId");
+
+                    b.HasIndex("ModeratedByUserId");
 
                     b.HasIndex("PropertyId");
 
@@ -5126,6 +5142,88 @@ namespace Kooch.Api.Migrations
                         .IsUnique();
 
                     b.ToTable("ReviewInvitationSuppressions");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.ReviewOwnerReply", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("int");
+
+                    SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("Body")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<DateTime>("CreatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("CreatedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("DeletedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("DeletedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("ModeratedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("ModeratedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ModerationStatus")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("PublishedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("PublishedBody")
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<int?>("PublishedRevision")
+                        .HasColumnType("int");
+
+                    b.Property<string>("RejectionReason")
+                        .HasMaxLength(1000)
+                        .HasColumnType("nvarchar(1000)");
+
+                    b.Property<int>("ReviewId")
+                        .HasColumnType("int");
+
+                    b.Property<int>("Revision")
+                        .IsConcurrencyToken()
+                        .HasColumnType("int");
+
+                    b.Property<int>("SubmittedByUserId")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdatedAtUtc")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int?>("UpdatedByUserId")
+                        .HasColumnType("int");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ModeratedByUserId");
+
+                    b.HasIndex("ReviewId")
+                        .IsUnique();
+
+                    b.HasIndex("SubmittedByUserId");
+
+                    b.ToTable("ReviewOwnerReplies", t =>
+                        {
+                            t.HasCheckConstraint("CK_ReviewOwnerReplies_State", "[Revision] >= 1 AND [ModerationStatus] IN (0,1,2) AND LEN(LTRIM(RTRIM([Body]))) > 0 AND (([PublishedBody] IS NULL AND [PublishedRevision] IS NULL AND [PublishedAtUtc] IS NULL) OR ([PublishedBody] IS NOT NULL AND [PublishedRevision] IS NOT NULL AND [PublishedRevision] >= 1 AND [PublishedRevision] <= [Revision] AND [PublishedAtUtc] IS NOT NULL))");
+                        });
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Room", b =>
@@ -8126,6 +8224,11 @@ namespace Kooch.Api.Migrations
                         .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
+                    b.HasOne("Kooch.Api.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModeratedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
                     b.HasOne("Kooch.Api.Entities.Property", "Property")
                         .WithMany("Reviews")
                         .HasForeignKey("PropertyId")
@@ -8161,6 +8264,28 @@ namespace Kooch.Api.Migrations
                     b.Navigation("Reservation");
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("Kooch.Api.Entities.ReviewOwnerReply", b =>
+                {
+                    b.HasOne("Kooch.Api.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("ModeratedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.HasOne("Kooch.Api.Entities.Review", "Review")
+                        .WithOne()
+                        .HasForeignKey("Kooch.Api.Entities.ReviewOwnerReply", "ReviewId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.HasOne("Kooch.Api.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("SubmittedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
+
+                    b.Navigation("Review");
                 });
 
             modelBuilder.Entity("Kooch.Api.Entities.Room", b =>

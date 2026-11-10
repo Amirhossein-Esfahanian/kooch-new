@@ -21,7 +21,7 @@ public sealed record GuestReviewResponse(
     int CleanlinessRating, int StaffRating, int ComfortRating,
     int FacilitiesRating, int LocationRating, int ValueRating,
     int RatingSum, decimal OverallRating, string Comment,
-    ReviewModerationStatus ModerationStatus, bool IsPublished, int Revision);
+    ReviewModerationStatus ModerationStatus, bool IsPublished, int Revision, string? RejectionReason = null);
 
 public sealed record EligibleReviewReservationResponse(
     int ReservationId, string? ReservationNumber, int PropertyId, string PropertyName,

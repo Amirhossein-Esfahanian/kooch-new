@@ -15,6 +15,7 @@ export type GuestReview = Record<ReviewScoreKey, number> & {
   id: number; reservationId: number; propertyId: number; ratingSum: number;
   overallRating: number; comment: string; moderationStatus: "PendingApproval" | "Approved" | "Rejected";
   isPublished: boolean; revision: number;
+  rejectionReason?: string | null;
 };
 export interface EligibleReviewStay {
   reservationId: number; reservationNumber: string | null; propertyId: number; propertyName: string;

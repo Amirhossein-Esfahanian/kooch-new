@@ -36,6 +36,7 @@ type DashboardMenuItem = {
   label: string;
   exact?: boolean;
   platformPermission?: string;
+  superAdminOnly?: boolean;
 };
 
 type OwnerDashboardMenuItem = DashboardMenuItem & {
@@ -81,6 +82,7 @@ const adminMenuItems: DashboardMenuItem[] = [
     platformPermission: "ManageUsers",
   },
   { label: "مدیریت مهمان‌ها", icon: "/svgs/users.svg", href: "/admin/guests" },
+  { label: "مدیریت نظرات", icon: "/svgs/list.svg", href: "/admin/reviews", platformPermission: "ManageReviews", superAdminOnly: true },
   {
     label: "مدیریت امکانات",
     icon: "/svgs/folder-gear.svg",
@@ -143,9 +145,10 @@ function canViewAdminMenuItem(
   platformRole?: string | null,
 ) {
   return (
+    (!item.superAdminOnly || platformRole === "SuperAdmin") && (
     !item.platformPermission ||
     platformRole === "SuperAdmin" ||
-    platformPermissions.includes(item.platformPermission)
+    platformPermissions.includes(item.platformPermission))
   );
 }
 function MenuIcon({ icon }: { icon: string }) {

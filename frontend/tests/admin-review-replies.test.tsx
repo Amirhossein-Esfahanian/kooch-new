@@ -1,0 +1,32 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { beforeEach, expect, it, vi } from "vitest";
+import type { ReactNode } from "react";
+import { ApiRequestError } from "@/lib/owner-api";
+const mocks = vi.hoisted(() => ({ list: vi.fn(), moderate: vi.fn(), session: { authenticated: true, loading: false, workspaces: ["admin"], platformRole: "SuperAdmin", user: { userId: 3 } } }));
+vi.mock("@/components/auth/AuthSessionProvider", () => ({ useAuthSession: () => mocks.session }));
+vi.mock("@/components/dashboard/DashboardLayouts", () => ({ AdminLayout: ({ children }: { children: ReactNode }) => <div>{children}</div> }));
+vi.mock("@/lib/property-reviews", async original => ({ ...await original<typeof import("@/lib/property-reviews")>(), getAdminReplies: mocks.list, moderateOwnerReply: mocks.moderate }));
+import { AdminReviewRepliesPage } from "@/components/reviews/AdminReviewRepliesPage";
+import { metadata } from "@/app/admin/reviews/replies/page";
+const item = { propertyId: 2, propertyName: "سرای آزمایش", reply: { id: 4, reviewId: 1, body: "پاسخ جدید", moderationStatus: "PendingApproval", revision: 3, publishedBody: "پاسخ قبلی", rejectionReason: null }, guestReview: { id: 1, guestDisplayName: "مهمان", submittedAtUtc: "2026-11-08T10:00:00Z", cleanlinessRating: 1, staffRating: 2, comfortRating: 3, facilitiesRating: 4, locationRating: 5, valueRating: 6, overallRating: 3.5, comment: "", ownerReply: { text: "پاسخ قبلی", publishedAtUtc: null } } };
+beforeEach(() => { vi.clearAllMocks(); mocks.session.platformRole = "SuperAdmin"; mocks.list.mockResolvedValue({ items: [item], page: 1, totalPages: 2, totalCount: 2, pageSize: 20 }); mocks.moderate.mockResolvedValue(item.reply); });
+it.each(["Owner", "AdminAssistant", "Client"])("does not request private moderation queue for %s", role => { mocks.session.platformRole = role; render(<AdminReviewRepliesPage />); expect(mocks.list).not.toHaveBeenCalled(); });
+it("has separate review queue links, status/page filters, explicit approval and shared dialog", async () => {
+  render(<AdminReviewRepliesPage />); fireEvent.click(await screen.findByRole("button", { name: "بررسی پاسخ" }));
+  expect(screen.getByText("پاسخ قبلی")).toBeTruthy(); expect(screen.getByText("پاسخ جدید", { selector: "p.whitespace-pre-wrap" })).toBeTruthy();
+  fireEvent.click(await screen.findByRole("button", { name: "تأیید پاسخ" })); expect(mocks.moderate).not.toHaveBeenCalled();
+  fireEvent.keyDown(document, { key: "Escape" }); expect(screen.getByRole("dialog", { name: "بررسی پاسخ اقامتگاه" })).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "تأیید پاسخ" })); fireEvent.click(screen.getByRole("button", { name: "تأیید و نمایش پاسخ" }));
+  await waitFor(() => expect(mocks.moderate).toHaveBeenCalledWith(4, 3, "approve", "", expect.any(AbortSignal)));
+  await screen.findByText(/پاسخ اقامتگاه تأیید شد/); fireEvent.change(screen.getByLabelText("وضعیت پاسخ"), { target: { value: "Rejected" } });
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith("Rejected", 1, expect.any(AbortSignal)));
+  fireEvent.click(screen.getByRole("button", { name: "صفحه بعد" })); await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith("Rejected", 2, expect.any(AbortSignal)));
+  expect(screen.getByRole("link", { name: "نظرات مهمانان" }).getAttribute("href")).toBe("/admin/reviews"); expect(metadata.robots).toEqual({ index: false, follow: false });
+});
+it("requires meaningful rejection feedback, restores focus and blocks stale decisions", async () => {
+  mocks.moderate.mockRejectedValue(new ApiRequestError("conflict", 409)); render(<AdminReviewRepliesPage />); fireEvent.click(await screen.findByRole("button", { name: "بررسی پاسخ" }));
+  fireEvent.click(await screen.findByRole("button", { name: "رد پاسخ" })); const reason = screen.getByLabelText("دلیل رد پاسخ (الزامی)");
+  await waitFor(() => expect(document.activeElement).toBe(reason)); expect((screen.getByRole("button", { name: "ثبت دلیل و رد پاسخ" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(reason, { target: { value: "اطلاعات شخصی را حذف کنید" } }); fireEvent.click(screen.getByRole("button", { name: "ثبت دلیل و رد پاسخ" }));
+  await screen.findByRole("alert"); expect(mocks.moderate).toHaveBeenCalledOnce(); expect(screen.queryByRole("button", { name: "تأیید پاسخ" })).toBeNull();
+});

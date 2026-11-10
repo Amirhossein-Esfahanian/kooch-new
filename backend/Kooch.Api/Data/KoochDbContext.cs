@@ -59,6 +59,7 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
     public DbSet<WelcomeGiftCampaign> WelcomeGiftCampaigns => Set<WelcomeGiftCampaign>();
     public DbSet<WelcomeGiftGrant> WelcomeGiftGrants => Set<WelcomeGiftGrant>();
     public DbSet<Review> Reviews => Set<Review>();
+    public DbSet<ReviewOwnerReply> ReviewOwnerReplies => Set<ReviewOwnerReply>();
     public DbSet<ReviewInvitationSuppression> ReviewInvitationSuppressions => Set<ReviewInvitationSuppression>();
     public DbSet<Amenity> Amenities => Set<Amenity>();
     public DbSet<AmenityCategory> AmenityCategories => Set<AmenityCategory>();
@@ -139,6 +140,21 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         ConfigureWalletWithdrawals(modelBuilder);
         ConfigureReservationFunding(modelBuilder);
         ConfigureReviews(modelBuilder);
+        modelBuilder.Entity<ReviewOwnerReply>(entity =>
+        {
+            entity.HasIndex(reply => reply.ReviewId).IsUnique();
+            entity.Property(reply => reply.Revision).IsConcurrencyToken();
+            entity.Property(reply => reply.Body).HasMaxLength(2000).IsRequired();
+            entity.Property(reply => reply.PublishedBody).HasMaxLength(2000);
+            entity.Property(reply => reply.RejectionReason).HasMaxLength(1000);
+            entity.HasOne(reply => reply.Review).WithOne().HasForeignKey<ReviewOwnerReply>(reply => reply.ReviewId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(reply => reply.SubmittedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.HasOne<User>().WithMany().HasForeignKey(reply => reply.ModeratedByUserId).OnDelete(DeleteBehavior.NoAction);
+            entity.ToTable(table => table.HasCheckConstraint("CK_ReviewOwnerReplies_State",
+                "[Revision] >= 1 AND [ModerationStatus] IN (0,1,2) AND LEN(LTRIM(RTRIM([Body]))) > 0 AND " +
+                "(([PublishedBody] IS NULL AND [PublishedRevision] IS NULL AND [PublishedAtUtc] IS NULL) OR " +
+                "([PublishedBody] IS NOT NULL AND [PublishedRevision] IS NOT NULL AND [PublishedRevision] >= 1 AND [PublishedRevision] <= [Revision] AND [PublishedAtUtc] IS NOT NULL))"));
+        });
         modelBuilder.Entity<ReviewInvitationSuppression>(entity =>
         {
             // Unfiltered uniqueness also prevents duplicate preferences after soft deletion.
@@ -2306,6 +2322,10 @@ public class KoochDbContext(DbContextOptions<KoochDbContext> options) : DbContex
         modelBuilder.Entity<Review>(entity =>
         {
             entity.Property(review => review.Revision).IsConcurrencyToken();
+            entity.Property(review => review.RejectionReason).HasMaxLength(1000);
+            entity.Property(review => review.UnpublicationReason).HasMaxLength(1000);
+            entity.HasOne<User>().WithMany().HasForeignKey(review => review.ModeratedByUserId)
+                .OnDelete(DeleteBehavior.NoAction);
             entity.HasIndex(review => review.ReservationId).IsUnique().HasFilter("[ReservationId] IS NOT NULL");
             entity.Property(review => review.Title).HasMaxLength(200);
             entity.Property(review => review.Comment).HasMaxLength(4000).IsRequired();

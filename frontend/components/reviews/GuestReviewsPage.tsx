@@ -115,6 +115,7 @@ function ReviewsContent() {
               <p className="font-semibold tabular-nums">امتیاز کلی: {item.review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} از ۱۰</p>
               <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2 lg:grid-cols-3">{reviewCategories.map(([key, label]) => <div key={key} className="flex justify-between gap-3"><dt className="text-muted-foreground">{label}</dt><dd className="tabular-nums">{item.review[key].toLocaleString("fa-IR")}</dd></div>)}</dl>
               {item.review.comment && <p className="whitespace-pre-wrap break-words text-sm leading-7">{item.review.comment}</p>}
+              {item.review.moderationStatus === "Rejected" && item.review.rejectionReason && <p className="whitespace-pre-wrap break-words rounded-lg bg-muted p-3 text-sm leading-7">دلیل رد نظر: {item.review.rejectionReason}</p>}
               <div className="flex flex-wrap gap-3">
                 {item.canEdit ? <KoochButton variant="outline" onClick={() => { setMessage(""); setSelected({
                   reservationId: item.review.reservationId, reservationNumber: item.reservationNumber,
