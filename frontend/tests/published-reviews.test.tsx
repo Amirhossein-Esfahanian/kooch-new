@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, renderHook, act, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { PublishedRating, PublishedReviewList, ReviewScoreList } from "@/components/reviews/PublishedReviews";
+import { getRatingQuality, PublishedRating, PublishedReviewContent, PublishedReviewList, ReviewScoreList } from "@/components/reviews/PublishedReviews";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { PublicReviewPage } from "@/lib/property-reviews";
@@ -17,7 +17,7 @@ const listProps = { error: false, page: 1, onPage: vi.fn(), retry: vi.fn() };
 it("separates property averages/count from individual ratings and keeps category details collapsed", () => {
   render(<PublishedReviewList {...listProps} data={publicPage} />);
   const summary = screen.getByRole("region", { name: "خلاصه امتیازهای اقامتگاه" });
-  expect(within(summary).getByText("بر اساس ۲ نظر منتشرشده")).toBeTruthy();
+  expect(within(summary).getByText("بر اساس ۲ نظر")).toBeTruthy();
   expect(within(summary).getByText("۱٫۶")).toBeTruthy();
   const averages = within(summary).getAllByRole("meter"); expect(averages).toHaveLength(6);
   expect(averages[0].getAttribute("aria-valuenow")).toBe("1.5"); expect(averages[5].getAttribute("aria-valuenow")).toBe("2");
@@ -46,7 +46,7 @@ it("gives each review an independent disclosure and preserves real comment/appro
 it("uses a compact sidebar score and exact published count without a repeated category grid", () => {
   const view = render(<PublishedRating summary={publicPage.summary} />);
   expect(screen.getByText("۱٫۶")).toBeTruthy(); expect(screen.getByText("از ۱۰")).toBeTruthy();
-  expect(screen.getByText("بر اساس ۲ نظر منتشرشده")).toBeTruthy(); expect(screen.queryByRole("meter")).toBeNull();
+  expect(screen.getByText("بر اساس ۲ نظر")).toBeTruthy(); expect(screen.queryByRole("meter")).toBeNull();
   view.rerender(<PublishedRating summary={{ ...publicPage.summary, count: 0, overallRating: null }} />);
   expect(screen.getByText("هنوز امتیازی ثبت نشده")).toBeTruthy(); expect(screen.queryByText("از ۱۰")).toBeNull();
 });
@@ -61,13 +61,59 @@ it("keeps width, RTL spacing, responsive bars and disclosure focus scoped to pub
   expect(css).toContain("max-width: 56rem"); expect(css).toContain("repeat(2, minmax(0, 1fr))");
   expect(css).toContain("padding-inline-end"); expect(css).toContain("@media (max-width: 420px)");
   expect(css).toContain(":focus-visible"); expect(css).toContain("min-height: 2.75rem"); expect(css).toContain("var(--ring)"); expect(css).not.toContain(":global");
+  expect(css).toContain("grid-template-columns: minmax(0, 10rem) minmax(0, 1fr)");
+  expect(css).toContain("direction: rtl"); expect(css).toContain("@media (min-width: 640px)");
+  ["weak", "average", "good", "veryGood", "excellent"].forEach(tone => expect(css).toContain(`.qualityTone[data-quality="${tone}"]`));
+  expect(css).toContain("var(--theme-danger)"); expect(css).toContain("var(--theme-warning)"); expect(css).toContain("var(--theme-success)");
 });
 it("displays server averages to one decimal, rating-only reviews, public reply and bounded pagination", () => {
   const next = vi.fn(); render(<PublishedReviewList data={publicPage} error={false} page={1} onPage={next} retry={vi.fn()} />);
   expect(screen.getByText("۱٫۶")).toBeTruthy(); expect(screen.getByText("بدون توضیح")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "پاسخ اقامتگاه" })).toBeTruthy(); expect(screen.getByText("پاسخ تأییدشده")).toBeTruthy();
-  expect((screen.getByRole("button", { name: "صفحه قبل" }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "صفحه بعد" })); expect(next).toHaveBeenCalledWith(2);
+  screen.getAllByRole("button", { name: "صفحه قبل" }).forEach(button => expect((button as HTMLButtonElement).disabled).toBe(true));
+  fireEvent.click(screen.getAllByRole("button", { name: "صفحه بعد" })[0]); expect(next).toHaveBeenCalledWith(2);
+});
+
+it.each([
+  [0, "weak", "ضعیف"], [3.99, "weak", "ضعیف"], [4, "average", "متوسط"], [5.99, "average", "متوسط"],
+  [6, "good", "خوب"], [7.99, "good", "خوب"], [8, "veryGood", "بسیار خوب"], [8.99, "veryGood", "بسیار خوب"],
+  [9, "excellent", "عالی"], [10, "excellent", "عالی"],
+])("shares exact quality boundaries for score %s", (score, tone, label) => {
+  expect(getRatingQuality(score as number)).toEqual({ tone, label });
+  render(<><PublishedRating summary={{ ...publicPage.summary, overallRating: score as number }} />
+    <PublishedReviewContent review={{ ...publicPage.reviews.items[0], overallRating: score as number, cleanlinessRating: score as number }} /></>);
+  expect(screen.getAllByText(label as string)).toHaveLength(2);
+  expect(document.querySelectorAll(`[data-quality="${tone}"]`).length).toBeGreaterThanOrEqual(3);
+});
+
+it("omits repeated category scales, labels review dates and does not invent missing stay metadata", () => {
+  const view = render(<ReviewScoreList scores={publicPage.summary.categories} />);
+  expect(screen.queryByText(/از ۱۰|\/۱۰/)).toBeNull();
+  expect(screen.getAllByRole("meter")[0].getAttribute("aria-valuetext")).toContain("از ۱۰");
+  view.rerender(<PublishedReviewContent review={publicPage.reviews.items[0]} />);
+  expect(screen.getByText(/تاریخ ثبت نظر:/)).toBeTruthy();
+  expect(screen.queryByText(/نوع اتاق|تاریخ اقامت/)).toBeNull();
+});
+
+it.each([1, 2, 21])("uses Persian counted noun for %s reviews", count => {
+  render(<PublishedRating summary={{ ...publicPage.summary, count }} />);
+  expect(screen.getByText(`بر اساس ${count.toLocaleString("fa-IR")} نظر`)).toBeTruthy();
+});
+
+it("renders identical top/bottom controls from server totalCount and one parent page state", () => {
+  const onPage = vi.fn();
+  const props = { ...listProps, onPage, data: { ...publicPage, reviews: { ...publicPage.reviews, totalCount: 35, totalPages: 4 } } };
+  const view = render(<PublishedReviewList {...props} />);
+  const controls = screen.getAllByRole("navigation", { name: /صفحه‌بندی نظرات مهمانان/ }); expect(controls).toHaveLength(2);
+  controls.forEach(nav => {
+    expect(within(nav).getByText("۳۵ نظر")).toBeTruthy();
+    fireEvent.click(within(nav).getByRole("button", { name: "صفحه بعد" }));
+  });
+  expect(onPage.mock.calls).toEqual([[2], [2]]);
+  view.rerender(<PublishedReviewList {...props} page={4} />);
+  screen.getAllByRole("button", { name: "صفحه بعد" }).forEach(button => expect((button as HTMLButtonElement).disabled).toBe(true));
+  expect(screen.getAllByText("صفحه ۴ از ۴")).toHaveLength(2);
+  expect(request).not.toHaveBeenCalled();
 });
 it("never fabricates a zero rating and supports loading, unavailable and retry", () => {
   const retry = vi.fn(); const props = { page: 1, onPage: vi.fn(), retry };

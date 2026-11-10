@@ -6,12 +6,20 @@ import { formatDateTime } from "@/lib/account-reservations";
 import type { PublicGuestReview, PublicReviewPage } from "@/lib/property-reviews";
 import styles from "./PublishedReviews.module.css";
 
+export function getRatingQuality(score: number) {
+  if (score < 4) return { tone: "weak", label: "ضعیف" } as const;
+  if (score < 6) return { tone: "average", label: "متوسط" } as const;
+  if (score < 8) return { tone: "good", label: "خوب" } as const;
+  if (score < 9) return { tone: "veryGood", label: "بسیار خوب" } as const;
+  return { tone: "excellent", label: "عالی" } as const;
+}
+
 export function ReviewScoreList({ scores }: { scores: Partial<Record<ReviewScoreKey, number | null>> }) {
   return <dl className={styles.scores}>
     {reviewCategories.map(([key, label]) => {
       const value = scores[key];
-      return <div className={styles.category} key={key}><dt>{label}</dt><dd>
-        <span className={styles.categoryValue}>{value?.toLocaleString("fa-IR", { maximumFractionDigits: 1 }) ?? "—"}{value != null && <span> /۱۰</span>}</span>
+      return <div className={`${styles.category} ${styles.qualityTone}`} data-quality={value != null ? getRatingQuality(value).tone : undefined} key={key}><dt>{label}</dt><dd>
+        <span className={styles.categoryValue}>{value?.toLocaleString("fa-IR", { maximumFractionDigits: 1 }) ?? "—"}</span>
         {value != null && <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={10} aria-valuenow={value} aria-valuetext={`${value.toLocaleString("fa-IR", { maximumFractionDigits: 1 })} از ۱۰`} className={styles.track}>
           <span aria-hidden="true" style={{ width: `${value * 10}%` }} />
         </div>}
@@ -22,21 +30,44 @@ export function ReviewScoreList({ scores }: { scores: Partial<Record<ReviewScore
 export function PublishedRating({ summary, variant = "compact" }: { summary: PublicReviewPage["summary"] | null; variant?: "compact" | "summary" }) {
   if (!summary) return <p role="status">در حال دریافت امتیاز…</p>;
   if (summary.count === 0 || summary.overallRating === null) return <p>هنوز امتیازی ثبت نشده</p>;
-  return <div className={`${styles.rating} ${variant === "summary" ? styles.prominent : ""}`}>
+  const quality = getRatingQuality(summary.overallRating);
+  return <div data-quality={quality.tone} className={`${styles.rating} ${styles.qualityTone} ${variant === "summary" ? styles.prominent : ""}`}>
     <p className={styles.ratingValue}><strong>{summary.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
-    <p className={styles.count}>بر اساس {summary.count.toLocaleString("fa-IR")} نظر منتشرشده</p>
+    <p className={styles.quality}>{quality.label}</p>
+    <p className={styles.count}>بر اساس {summary.count.toLocaleString("fa-IR")} نظر</p>
   </div>;
 }
 export function PublishedReviewContent({ review }: { review: PublicGuestReview }) {
+  const quality = getRatingQuality(review.overallRating);
   return <KoochCard className={styles.card} aria-labelledby={`public-review-${review.id}`}>
-    <header className={styles.reviewHeader}><div className={styles.identity}>
+    <header className={styles.reviewHeader}>
+      <div className={styles.identity}>
       <h3 id={`public-review-${review.id}`}>{review.guestDisplayName}</h3>
-      <time dateTime={review.submittedAtUtc}>{formatDateTime(review.submittedAtUtc)}</time>
-    </div><p className={styles.guestScore}><span className="sr-only">امتیاز این نظر: </span><strong>{review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p></header>
-    <p className={`${styles.comment} ${review.comment ? "" : styles.ratingOnly}`}>{review.comment || "بدون توضیح"}</p>
-    <details className={styles.disclosure}><summary>جزئیات امتیازها</summary><ReviewScoreList scores={review} /></details>
-    {review.ownerReply && <section className={styles.reply} aria-label="پاسخ اقامتگاه"><h4>پاسخ اقامتگاه</h4><p className={styles.comment}>{review.ownerReply.text}</p></section>}
+      </div>
+      <div className={styles.qualityTone} data-quality={quality.tone}>
+        <p className={styles.guestScore}><span className="sr-only">امتیاز این نظر: </span><strong>{review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
+        <p className={styles.quality}>{quality.label}</p>
+      </div>
+      <p className={styles.reviewDate}>تاریخ ثبت نظر: <time dateTime={review.submittedAtUtc}>{formatDateTime(review.submittedAtUtc)}</time></p>
+    </header>
+    <div className={styles.reviewBody}>
+      <p className={`${styles.comment} ${review.comment ? "" : styles.ratingOnly}`}>{review.comment || "بدون توضیح"}</p>
+      {review.ownerReply && <section className={styles.reply} aria-label="پاسخ اقامتگاه"><h4>پاسخ اقامتگاه</h4><p className={styles.comment}>{review.ownerReply.text}</p></section>}
+      <details className={styles.disclosure}><summary>جزئیات امتیازها</summary><ReviewScoreList scores={review} /></details>
+    </div>
   </KoochCard>;
+}
+
+function ReviewPagination({ reviews, page, onPage, position }: {
+  reviews: PublicReviewPage["reviews"]; page: number; onPage: (page: number) => void; position: "بالا" | "پایین";
+}) {
+  if (reviews.totalPages <= 1) return null;
+  return <nav aria-label={`صفحه‌بندی نظرات مهمانان (${position})`} className={styles.pagination}>
+    <span className={styles.totalCount}>{reviews.totalCount.toLocaleString("fa-IR")} نظر</span>
+    <KoochButton variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>صفحه قبل</KoochButton>
+    <span>صفحه {page.toLocaleString("fa-IR")} از {reviews.totalPages.toLocaleString("fa-IR")}</span>
+    <KoochButton variant="outline" disabled={page >= reviews.totalPages} onClick={() => onPage(page + 1)}>صفحه بعد</KoochButton>
+  </nav>;
 }
 export function PublishedReviewList({ data, error, page, onPage, retry }: {
   data: PublicReviewPage | null; error: boolean; page: number; onPage: (page: number) => void; retry: () => void;
@@ -49,8 +80,9 @@ export function PublishedReviewList({ data, error, page, onPage, retry }: {
         <div className={styles.summaryHeader}><h3>امتیاز اقامتگاه</h3><PublishedRating summary={data.summary} variant="summary" /></div>
         <ReviewScoreList scores={data.summary.categories} />
       </section>
+      <ReviewPagination reviews={data.reviews} page={page} onPage={onPage} position="بالا" />
       <ul className={styles.reviewList} aria-label="نظرات منتشرشدهٔ مهمانان">{data.reviews.items.map(review => <li key={review.id}><PublishedReviewContent review={review} /></li>)}</ul>
+      <ReviewPagination reviews={data.reviews} page={page} onPage={onPage} position="پایین" />
     </> : <PublishedRating summary={data.summary} />}
-    {data.reviews.totalPages > 1 && <nav aria-label="صفحه‌بندی نظرات مهمانان" className="flex flex-wrap items-center gap-3"><KoochButton variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>صفحه قبل</KoochButton><span className="text-sm">صفحه {page.toLocaleString("fa-IR")} از {data.reviews.totalPages.toLocaleString("fa-IR")}</span><KoochButton variant="outline" disabled={page >= data.reviews.totalPages} onClick={() => onPage(page + 1)}>صفحه بعد</KoochButton></nav>}
   </div>;
 }
