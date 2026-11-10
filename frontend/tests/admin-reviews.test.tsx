@@ -63,6 +63,35 @@ it("does not fabricate reply availability for an older response contract", async
   expect(screen.queryByText("پاسخی ثبت نشده است.")).toBeNull();
 });
 
+it("distinguishes an explicit absent reply from an unavailable detail response", async () => {
+  mocks.get.mockResolvedValue({ ...item, ownerReply: null }); await openReview();
+  expect(screen.getByText("پاسخی ثبت نشده است.")).toBeTruthy();
+  expect(screen.queryByText("اطلاعات پاسخ اقامتگاه در دسترس نیست.")).toBeNull();
+});
+
+it.each(["PendingApproval", "Rejected"] as const)("keeps an unpublished %s reply private without inventing an approved version", async moderationStatus => {
+  mocks.get.mockResolvedValue({ ...item, ownerReply: { id: 4, reviewId: 1, revision: 1, moderationStatus,
+    body: "پاسخ خصوصی اقامتگاه", publishedBody: null, publishedAtUtc: null, rejectionReason: null } });
+  await openReview(); const reply = screen.getByRole("region", { name: "پاسخ اقامتگاه" });
+  expect(within(reply).getByText("پاسخ خصوصی اقامتگاه")).toBeTruthy();
+  expect(within(reply).getByText("نسخهٔ ارسال‌شده (غیرعمومی)")).toBeTruthy();
+  expect(within(reply).queryByText("نسخهٔ تأییدشدهٔ عمومی")).toBeNull();
+});
+
+it("announces detail load failure rather than claiming that no owner reply exists", async () => {
+  mocks.get.mockRejectedValue(new ApiRequestError("unavailable", 503)); render(<AdminReviewsPage />);
+  fireEvent.click(await screen.findByRole("button", { name: "بررسی نظر 1 برای سرای آزمایش" }));
+  await screen.findByRole("alert"); expect(screen.queryByText("پاسخی ثبت نشده است.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "تأیید نظر" })).toBeNull();
+});
+
+it("keeps rating styles dialog-scoped with compact grouped values and a narrow-mobile fallback", () => {
+  const css = readFileSync(resolve("components/reviews/AdminReviewsPage.module.css"), "utf8");
+  expect(css).toContain(".detailScore"); expect(css).toContain(".categoryValue");
+  expect(css).toContain("repeat(2, minmax(0, 1fr))"); expect(css).toContain("@media (max-width: 380px)");
+  expect(css).toContain(".ratingTrack"); expect(css).toContain("var(--primary)"); expect(css).not.toContain(":global");
+});
+
 it.each([true, false])("requires a deliberate publication action for published=%s", async published => {
   const approved = { ...item, unpublicationReason: published ? null : "دلیل داخلی بررسی", review: { ...item.review, moderationStatus: "Approved" as const, isPublished: published, revision: 2 } };
   mocks.get.mockResolvedValue(approved); mocks.publication.mockResolvedValue(approved);
@@ -112,7 +141,13 @@ it("defaults to All, paginates on the server and resets every changed filter to 
 });
 it("loads fresh detail, six categories, optional comment and deliberate publication confirmation", async () => {
   await openReview(); expect(mocks.get).toHaveBeenCalledWith(1, expect.any(AbortSignal));
-  expect(screen.getByText("امتیاز کلی: ۳٫۵ از ۱۰")).toBeTruthy();
+  const score = screen.getByRole("group", { name: "امتیاز کلی" });
+  expect(within(score).getByText("۳٫۵")).toBeTruthy(); expect(within(score).getByText("از ۱۰")).toBeTruthy();
+  const meters = within(screen.getByRole("dialog")).getAllByRole("meter"); expect(meters).toHaveLength(6);
+  meters.forEach((meter, index) => {
+    expect(meter.getAttribute("aria-valuenow")).toBe(String(index + 1)); expect(meter.getAttribute("aria-valuemax")).toBe("10");
+    expect((meter.firstElementChild as HTMLElement).style.width).toBe(`${(index + 1) * 10}%`);
+  });
   for (const text of ["نظافت", "برخورد کارکنان", "راحتی و آسایش", "امکانات", "موقعیت و دسترسی", "ارزش نسبت به قیمت"]) expect(screen.getByText(text)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "تأیید نظر" }));
   expect(mocks.moderate).not.toHaveBeenCalled();

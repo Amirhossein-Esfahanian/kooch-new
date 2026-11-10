@@ -9,15 +9,25 @@ export function AdminReviewDetail({ item, status }: { item: AdminReview; status:
     : reply?.moderationStatus === "Rejected" ? "ردشده" : "تأییدشده";
   return <>
     <section className={styles.context} aria-label="اطلاعات مهمان و اقامت">
-      <div><h2 className="font-bold">{item.guestDisplayName}</h2>
+      <div className={styles.contextIdentity}><h2 className="font-bold">{item.guestDisplayName}</h2>
         <p>{item.propertyName} · اقامتگاه {item.review.propertyId.toLocaleString("fa-IR")}</p>
         <p>رزرو {item.reservationNumber ?? item.review.reservationId}</p>
         <p className="text-muted-foreground">{reviewDate(item.checkInDate)} تا {reviewDate(item.checkOutDate)}</p>
         <p className="text-muted-foreground">ارسال: {formatDateTime(item.submittedAtUtc)}</p>
       </div>
-      <p className={styles.detailScore}>امتیاز کلی: {item.review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} از ۱۰</p>
+      <div className={styles.detailScore} role="group" aria-label="امتیاز کلی">
+        <span className={styles.detailScoreLabel}>امتیاز کلی</span>
+        <p><strong>{item.review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
+      </div>
     </section>
-    <dl className={styles.categories}>{reviewCategories.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{item.review[key].toLocaleString("fa-IR")}</dd></div>)}</dl>
+    <dl className={styles.categories}>{reviewCategories.map(([key, label]) => <div key={key} className={styles.category}>
+      <dt>{label}</dt><dd>
+        <span className={styles.categoryValue}>{item.review[key].toLocaleString("fa-IR")}<span> /۱۰</span></span>
+        <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={10} aria-valuenow={item.review[key]} aria-valuetext={`${item.review[key].toLocaleString("fa-IR")} از ۱۰`} className={styles.ratingTrack}>
+          <span aria-hidden="true" style={{ width: `${item.review[key] * 10}%` }} />
+        </div>
+      </dd>
+    </div>)}</dl>
     <section className={styles.detailSection} aria-label="متن نظر مهمان"><h3>متن نظر مهمان</h3><p className={styles.prose}>{item.review.comment || "بدون توضیح"}</p></section>
     <section className={styles.detailSection} aria-label="وضعیت و آخرین تصمیم"><h3>وضعیت و آخرین تصمیم</h3>
       <p>{status} · {item.review.isPublished ? "منتشرشده" : "منتشرنشده"} · نسخه {item.review.revision.toLocaleString("fa-IR")}</p>
