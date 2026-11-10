@@ -97,16 +97,22 @@ public sealed partial class GuestReviewService
         if (request.PropertyId.HasValue) query = query.Where(r => r.Review.PropertyId == request.PropertyId);
         if (!string.IsNullOrWhiteSpace(request.Search)) { var search = request.Search.Trim(); query = query.Where(r => r.Review.Property.Name.Contains(search)); }
         var count = await query.CountAsync(ct);
-        var ordered = request.Status == ReviewModerationStatus.PendingApproval ? query.OrderBy(r => r.UpdatedAtUtc ?? r.CreatedAtUtc).ThenBy(r => r.Id)
-            : query.OrderByDescending(r => r.UpdatedAtUtc ?? r.CreatedAtUtc).ThenByDescending(r => r.Id);
-        var rows = await ordered.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
+        // Moderation also updates UpdatedAtUtc; only submission/edit audits identify a new owner revision.
+        var submissions = query.Select(r => new { Reply = r, SubmittedAtUtc = context.AuditLogs
+            .Where(a => a.EntityType == nameof(ReviewOwnerReply) && a.EntityId == r.Id &&
+                (a.Action == AuditAction.ReviewReplySubmitted || a.Action == AuditAction.ReviewReplyEdited))
+            .Max(a => (DateTime?)a.OccurredAtUtc) ?? r.CreatedAtUtc });
+        var pageRows = await submissions.OrderByDescending(r => r.SubmittedAtUtc).ThenByDescending(r => r.Reply.Id)
+            .Skip((request.Page - 1) * request.PageSize).Take(request.PageSize).ToListAsync(ct);
+        var rows = pageRows.Select(r => r.Reply).ToList();
+        var submittedAt = pageRows.ToDictionary(r => r.Reply.Id, r => r.SubmittedAtUtc);
         var ids = rows.Select(r => r.ReviewId).ToArray();
         var guests = await PublicProjection(PublishedReviews().AsNoTracking().Where(v => ids.Contains(v.Id))).ToDictionaryAsync(v => v.Id, ct);
         var names = await context.Reviews.Where(v => ids.Contains(v.Id)).Select(v => new { v.Id, v.PropertyId, v.Property.Name }).ToDictionaryAsync(v => v.Id, ct);
         return new() { Page = request.Page, PageSize = request.PageSize, TotalCount = count,
             TotalPages = (int)Math.Ceiling(count / (double)request.PageSize), Items = rows.Where(r => guests.ContainsKey(r.ReviewId) && names.ContainsKey(r.ReviewId))
                 .Select(r => new AdminOwnerReplyResponse(ReplyResponse(r), names[r.ReviewId].PropertyId, names[r.ReviewId].Name,
-                    guests[r.ReviewId].Response(), r.SubmittedByUserId, r.ModeratedByUserId, r.ModeratedAtUtc)).ToList() };
+                    guests[r.ReviewId].Response(), r.SubmittedByUserId, r.ModeratedByUserId, r.ModeratedAtUtc, submittedAt[r.Id])).ToList() };
     }
 
     public async Task<OwnerReplyResponse> ModerateReplyAsync(int userId, int replyId, ModerateReviewRequest request,

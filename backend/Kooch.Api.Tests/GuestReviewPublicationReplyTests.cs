@@ -225,6 +225,60 @@ public sealed class GuestReviewPublicationReplyTests
     }
 
     [Fact]
+    public async Task ReplyQueueOrdersSubmissionAuditsBeforePagination_NotModerationUpdates()
+    {
+        await using var fixture = await GuestReviewPersistenceTests.Database.Create();
+        await using var db = fixture.Context(); var firstReview = await Seed(db, false); var service = Service(db);
+        var reviewIds = new List<int> { firstReview };
+        foreach (var reservationId in new[] { 2, 3 })
+        {
+            db.Reservations.Add(new Reservation { Id = reservationId, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
+                ReservationNumber = $"REPLY-{reservationId}", Status = ReservationStatus.Completed,
+                CheckInDate = new(2026, 11, 5), CheckOutDate = new(2026, 11, 7) });
+            await db.SaveChangesAsync();
+            var guest = await service.SaveAsync(1, reservationId, Scores(), false);
+            await service.ModerateAsync(3, guest.Id, new() { Revision = 1 }, true); reviewIds.Add(guest.Id);
+        }
+        var replies = new List<OwnerReplyResponse>();
+        foreach (var id in reviewIds) replies.Add(await service.SaveOwnerReplyAsync(2, 1, id, new() { Body = "Official response" }));
+        for (var i = 0; i < replies.Count; i++)
+        {
+            var timestamp = new DateTime(2026, 11, i == 0 ? 1 : 2);
+            // Historical timestamps are changed only in the disposable SQLite fixture.
+            var affected = await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE AuditLogs SET OccurredAtUtc = {timestamp} WHERE EntityType = {nameof(ReviewOwnerReply)} AND EntityId = {replies[i].Id} AND Action = {nameof(AuditAction.ReviewReplySubmitted)}");
+            Assert.Equal(1, affected);
+        }
+        var query = new AdminReviewQuery { PageSize = 1 };
+        var page = await service.ListRepliesForModerationAsync(3, query);
+        Assert.Equal(3, page.TotalCount); Assert.Equal(3, page.TotalPages);
+        Assert.Equal(replies[2].Id, Assert.Single(page.Items).Reply.Id);
+        Assert.Equal(new DateTime(2026, 11, 2), Assert.Single(page.Items).SubmittedAtUtc);
+        query.Page = 2; Assert.Equal(replies[1].Id, Assert.Single((await service.ListRepliesForModerationAsync(3, query)).Items).Reply.Id);
+        await service.ModerateReplyAsync(3, replies[0].Id, new() { Revision = 1 }, true);
+        query.Page = 1; Assert.Equal(replies[2].Id, Assert.Single((await service.ListRepliesForModerationAsync(3, query)).Items).Reply.Id);
+        await service.SaveOwnerReplyAsync(2, 1, firstReview, new() { Body = "New owner revision", Revision = 2 });
+        var auditsBeforeRead = await db.AuditLogs.CountAsync();
+        query.Status = ReviewModerationStatus.PendingApproval;
+        var edited = Assert.Single((await service.ListRepliesForModerationAsync(3, query)).Items);
+        Assert.Equal(replies[0].Id, edited.Reply.Id); Assert.Equal(new Clock().GetUtcNow().UtcDateTime, edited.SubmittedAtUtc);
+        await service.ModerateReplyAsync(3, edited.Reply.Id, new() { Revision = 3, RejectionReason = "A clear rejection reason" }, false);
+        query.Status = ReviewModerationStatus.Rejected;
+        Assert.Equal(edited.SubmittedAtUtc, Assert.Single((await service.ListRepliesForModerationAsync(3, query)).Items).SubmittedAtUtc);
+        Assert.Equal(auditsBeforeRead + 1, await db.AuditLogs.CountAsync());
+    }
+
+    [Fact]
+    public async Task ReplyQueueUsesCreationDateForHistoricalRepliesWithoutSubmissionAudits()
+    {
+        await using var fixture = await GuestReviewPersistenceTests.Database.Create();
+        await using var db = fixture.Context(); var id = await Seed(db, false);
+        var reply = new ReviewOwnerReply { ReviewId = id, Body = "Historical official response", SubmittedByUserId = 2 };
+        db.ReviewOwnerReplies.Add(reply); await db.SaveChangesAsync();
+        var result = Assert.Single((await Service(db).ListRepliesForModerationAsync(3, new())).Items);
+        Assert.Equal(reply.CreatedAtUtc, result.SubmittedAtUtc);
+    }
+
+    [Fact]
     public void AdditiveMigrationPreservesOldRecordsAndEnforcesOneOfficialResponse()
     {
         var migration = new AddReviewPublicationAndOwnerReplies { ActiveProvider = "Microsoft.EntityFrameworkCore.SqlServer" };

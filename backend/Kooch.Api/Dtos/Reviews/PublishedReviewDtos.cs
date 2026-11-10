@@ -23,4 +23,5 @@ public sealed record OwnerReplyResponse(int Id, int ReviewId, string Body, Revie
     int Revision, string? RejectionReason, string? PublishedBody, DateTime? PublishedAtUtc);
 public sealed record OwnerReviewResponse(PublicGuestReview Review, OwnerReplyResponse? Reply);
 public sealed record AdminOwnerReplyResponse(OwnerReplyResponse Reply, int PropertyId, string PropertyName,
-    PublicGuestReview GuestReview, int SubmittedByUserId, int? ModeratedByUserId, DateTime? ModeratedAtUtc);
+    PublicGuestReview GuestReview, int SubmittedByUserId, int? ModeratedByUserId, DateTime? ModeratedAtUtc,
+    DateTime SubmittedAtUtc);

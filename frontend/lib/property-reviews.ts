@@ -18,7 +18,8 @@ export interface OwnerReply {
 export interface OwnerReview { review: PublicGuestReview; reply: OwnerReply | null }
 export type OwnerReviewFilter = "All" | "Unanswered" | "PendingApproval" | "Answered";
 export interface AdminOwnerReply { reply: OwnerReply; propertyId: number; propertyName: string;
-  guestReview: PublicGuestReview; submittedByUserId: number; moderatedByUserId: number | null; moderatedAtUtc: string | null }
+  guestReview: PublicGuestReview; submittedByUserId: number; moderatedByUserId: number | null; moderatedAtUtc: string | null;
+  submittedAtUtc?: string }
 
 export const getPublicPropertyReviews = (slug: string, page: number, signal?: AbortSignal) =>
   apiRequest<PublicReviewPage>(`/properties/${encodeURIComponent(slug)}/reviews?page=${page}&pageSize=10`, { signal, cache: "no-store" });
