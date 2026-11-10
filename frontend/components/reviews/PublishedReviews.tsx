@@ -1,36 +1,56 @@
 "use client";
 import { KoochButton } from "@/components/KoochButton";
+import { KoochCard } from "@/components/KoochCard";
 import { reviewCategories, type ReviewScoreKey } from "@/lib/guest-reviews";
 import { formatDateTime } from "@/lib/account-reservations";
 import type { PublicGuestReview, PublicReviewPage } from "@/lib/property-reviews";
+import styles from "./PublishedReviews.module.css";
 
 export function ReviewScoreList({ scores }: { scores: Partial<Record<ReviewScoreKey, number | null>> }) {
-  return <dl className="grid gap-x-6 gap-y-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
-    {reviewCategories.map(([key, label]) => <div className="flex justify-between gap-3" key={key}><dt>{label}</dt><dd className="tabular-nums">{scores[key]?.toLocaleString("fa-IR", { maximumFractionDigits: 1 }) ?? "—"}</dd></div>)}
+  return <dl className={styles.scores}>
+    {reviewCategories.map(([key, label]) => {
+      const value = scores[key];
+      return <div className={styles.category} key={key}><dt>{label}</dt><dd>
+        <span className={styles.categoryValue}>{value?.toLocaleString("fa-IR", { maximumFractionDigits: 1 }) ?? "—"}{value != null && <span> /۱۰</span>}</span>
+        {value != null && <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={10} aria-valuenow={value} aria-valuetext={`${value.toLocaleString("fa-IR", { maximumFractionDigits: 1 })} از ۱۰`} className={styles.track}>
+          <span aria-hidden="true" style={{ width: `${value * 10}%` }} />
+        </div>}
+      </dd></div>;
+    })}
   </dl>;
 }
-export function PublishedRating({ summary }: { summary: PublicReviewPage["summary"] | null }) {
+export function PublishedRating({ summary, variant = "compact" }: { summary: PublicReviewPage["summary"] | null; variant?: "compact" | "summary" }) {
   if (!summary) return <p role="status">در حال دریافت امتیاز…</p>;
   if (summary.count === 0 || summary.overallRating === null) return <p>هنوز امتیازی ثبت نشده</p>;
-  return <p className="text-sm leading-7"><strong className="text-xl tabular-nums">{summary.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong> از ۱۰ — بر اساس {summary.count.toLocaleString("fa-IR")} نظر</p>;
+  return <div className={`${styles.rating} ${variant === "summary" ? styles.prominent : ""}`}>
+    <p className={styles.ratingValue}><strong>{summary.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
+    <p className={styles.count}>بر اساس {summary.count.toLocaleString("fa-IR")} نظر منتشرشده</p>
+  </div>;
 }
 export function PublishedReviewContent({ review }: { review: PublicGuestReview }) {
-  return <div className="min-w-0 space-y-4 break-words">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="font-semibold">{review.guestDisplayName}</p><p className="text-sm text-muted-foreground">{formatDateTime(review.submittedAtUtc)}</p></div>
-    <p className="font-semibold tabular-nums">امتیاز کلی: {review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} از ۱۰</p>
-    <ReviewScoreList scores={review} />
-    <p className="whitespace-pre-wrap text-sm leading-7">{review.comment || "بدون توضیح"}</p>
-    {review.ownerReply && <div className="space-y-2 rounded-lg bg-muted p-4"><h4 className="text-sm font-bold">پاسخ اقامتگاه</h4><p className="whitespace-pre-wrap text-sm leading-7">{review.ownerReply.text}</p></div>}
-  </div>;
+  return <KoochCard className={styles.card} aria-labelledby={`public-review-${review.id}`}>
+    <header className={styles.reviewHeader}><div className={styles.identity}>
+      <h3 id={`public-review-${review.id}`}>{review.guestDisplayName}</h3>
+      <time dateTime={review.submittedAtUtc}>{formatDateTime(review.submittedAtUtc)}</time>
+    </div><p className={styles.guestScore}><span className="sr-only">امتیاز این نظر: </span><strong>{review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p></header>
+    <p className={`${styles.comment} ${review.comment ? "" : styles.ratingOnly}`}>{review.comment || "بدون توضیح"}</p>
+    <details className={styles.disclosure}><summary>جزئیات امتیازها</summary><ReviewScoreList scores={review} /></details>
+    {review.ownerReply && <section className={styles.reply} aria-label="پاسخ اقامتگاه"><h4>پاسخ اقامتگاه</h4><p className={styles.comment}>{review.ownerReply.text}</p></section>}
+  </KoochCard>;
 }
 export function PublishedReviewList({ data, error, page, onPage, retry }: {
   data: PublicReviewPage | null; error: boolean; page: number; onPage: (page: number) => void; retry: () => void;
 }) {
   if (error) return <div className="space-y-3"><p role="alert">نظرات در حال حاضر در دسترس نیست.</p><KoochButton variant="outline" onClick={retry}>دریافت دوباره نظرات</KoochButton></div>;
   if (!data) return <p role="status">در حال دریافت نظرات…</p>;
-  return <div className="space-y-6">
-    <PublishedRating summary={data.summary} />
-    {data.summary.count > 0 && <><ReviewScoreList scores={data.summary.categories} /><ul className="divide-y divide-border">{data.reviews.items.map(review => <li key={review.id} className="py-6"><PublishedReviewContent review={review} /></li>)}</ul></>}
+  return <div className={styles.root}>
+    {data.summary.count > 0 ? <>
+      <section aria-label="خلاصه امتیازهای اقامتگاه" className={styles.summary}>
+        <div className={styles.summaryHeader}><h3>امتیاز اقامتگاه</h3><PublishedRating summary={data.summary} variant="summary" /></div>
+        <ReviewScoreList scores={data.summary.categories} />
+      </section>
+      <ul className={styles.reviewList} aria-label="نظرات منتشرشدهٔ مهمانان">{data.reviews.items.map(review => <li key={review.id}><PublishedReviewContent review={review} /></li>)}</ul>
+    </> : <PublishedRating summary={data.summary} />}
     {data.reviews.totalPages > 1 && <nav aria-label="صفحه‌بندی نظرات مهمانان" className="flex flex-wrap items-center gap-3"><KoochButton variant="outline" disabled={page <= 1} onClick={() => onPage(page - 1)}>صفحه قبل</KoochButton><span className="text-sm">صفحه {page.toLocaleString("fa-IR")} از {data.reviews.totalPages.toLocaleString("fa-IR")}</span><KoochButton variant="outline" disabled={page >= data.reviews.totalPages} onClick={() => onPage(page + 1)}>صفحه بعد</KoochButton></nav>}
   </div>;
 }
