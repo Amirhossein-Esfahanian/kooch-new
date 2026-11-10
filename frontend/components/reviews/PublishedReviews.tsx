@@ -3,7 +3,7 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochInfoHint } from "@/components/KoochInfoHint";
 import { reviewCategories, type ReviewScoreKey } from "@/lib/guest-reviews";
-import { formatDate, formatDateTime } from "@/lib/account-reservations";
+import { formatDate } from "@/lib/account-reservations";
 import type { PublicGuestReview, PublicReviewPage } from "@/lib/property-reviews";
 import styles from "./PublishedReviews.module.css";
 
@@ -56,10 +56,10 @@ export function PublishedRating({ summary, variant = "compact" }: { summary: Pub
 }
 export function PublishedReviewContent({ review }: { review: PublicGuestReview }) {
   const quality = getRatingQuality(review.overallRating);
-  return <KoochCard className={styles.card} aria-labelledby={`public-review-${review.id}`}>
+  return <KoochCard padding="sm" className={styles.card} aria-labelledby={`public-review-${review.id}`}>
     <header className={styles.reviewHeader}>
       <div className={styles.identity}>
-      <h3 id={`public-review-${review.id}`}>{review.guestDisplayName}</h3>
+        <h3 id={`public-review-${review.id}`}>{review.guestDisplayName}</h3>
       </div>
       <div className={styles.qualityTone} data-quality={quality.tone}>
         <p className={styles.guestScore}><span className="sr-only">امتیاز این نظر: </span><strong>{review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
@@ -68,12 +68,10 @@ export function PublishedReviewContent({ review }: { review: PublicGuestReview }
       {review.roomTypeName && <p className={styles.reviewDate}>نوع اتاق: {review.roomTypeName}</p>}
       {review.checkInDate && <p className={styles.reviewDate}>ورود: <time dateTime={review.checkInDate}>{formatDate(review.checkInDate)}</time></p>}
       {review.checkOutDate && <p className={styles.reviewDate}>خروج: <time dateTime={review.checkOutDate}>{formatDate(review.checkOutDate)}</time></p>}
-      <p className={styles.reviewDate}>تاریخ ثبت نظر: <time dateTime={review.submittedAtUtc}>{formatDateTime(review.submittedAtUtc)}</time></p>
     </header>
     <div className={styles.reviewBody}>
       <p className={`${styles.comment} ${review.comment ? "" : styles.ratingOnly}`}>{review.comment || "بدون توضیح"}</p>
       {review.ownerReply && <section className={styles.reply} aria-label="پاسخ اقامتگاه"><h4>پاسخ اقامتگاه</h4><p className={styles.comment}>{review.ownerReply.text}</p></section>}
-      <details className={styles.disclosure}><summary>جزئیات امتیازها</summary><ReviewScoreList scores={review} /></details>
     </div>
   </KoochCard>;
 }

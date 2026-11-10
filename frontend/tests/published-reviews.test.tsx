@@ -15,33 +15,33 @@ export const publicPage: PublicReviewPage = {
 beforeEach(() => { vi.clearAllMocks(); request.mockResolvedValue(publicPage); });
 const listProps = { error: false, page: 1, onPage: vi.fn(), retry: vi.fn() };
 
-it("separates property averages/count from individual ratings and keeps category details collapsed", () => {
+it("groups the property rating beside its six averages and omits individual category details and submission dates", () => {
   render(<PublishedReviewList {...listProps} data={publicPage} />);
   const summary = screen.getByRole("region", { name: "خلاصه امتیازهای اقامتگاه" });
   expect(within(summary).getByText("بر اساس ۲ نظر")).toBeTruthy();
   expect(within(summary).getByText("۱٫۶")).toBeTruthy();
   const averages = within(summary).getAllByRole("meter"); expect(averages).toHaveLength(6);
   expect(averages[0].getAttribute("aria-valuenow")).toBe("1.5"); expect(averages[5].getAttribute("aria-valuenow")).toBe("2");
+  const ratingColumn = summary.firstElementChild!;
+  expect(within(ratingColumn as HTMLElement).getByRole("heading", { name: "امتیاز اقامتگاه" })).toBeTruthy();
+  expect(within(ratingColumn as HTMLElement).getByRole("button", { name: "نمایش امتیازهای اخیر" })).toBeTruthy();
+  expect(ratingColumn.nextElementSibling?.tagName).toBe("DL");
   const list = screen.getByRole("list", { name: "نظرات منتشرشدهٔ مهمانان" }); const card = within(list).getByRole("region", { name: "مهمان" });
-  expect(within(card).getByText("۱٫۰")).toBeTruthy(); expect(card.querySelector("time")?.getAttribute("datetime")).toBe(publicPage.reviews.items[0].submittedAtUtc);
-  const details = card.querySelector("details")!; expect(details.open).toBe(false);
-  const toggle = within(card).getByText("جزئیات امتیازها"); expect(toggle.tagName).toBe("SUMMARY");
-  toggle.focus(); expect(document.activeElement).toBe(toggle); fireEvent.click(toggle); expect(details.open).toBe(true);
-  const individual = within(details).getAllByRole("meter"); expect(individual).toHaveLength(6);
-  individual.forEach(meter => { expect(meter.getAttribute("aria-valuenow")).toBe("1"); expect(meter.getAttribute("aria-valuemax")).toBe("10"); });
-  fireEvent.click(toggle); expect(details.open).toBe(false);
+  expect(within(card).getByText("۱٫۰")).toBeTruthy(); expect(card.querySelector("time")).toBeNull();
+  expect(card.classList.contains("p-3")).toBe(true); expect(card.classList.contains("p-5")).toBe(false);
+  expect(card.querySelector("details")).toBeNull(); expect(within(card).queryByRole("meter")).toBeNull();
+  expect(within(card).queryByText("جزئیات امتیازها")).toBeNull();
 });
 
-it("gives each review an independent disclosure and preserves real comment/approved reply text", () => {
+it("preserves real multiline comments and approved replies in the wide content column", () => {
   const first = publicPage.reviews.items[0]; const comment = "متن واقعی مهمان\nدر دو خط";
   render(<PublishedReviewList {...listProps} data={{ ...publicPage, reviews: { ...publicPage.reviews,
     items: [first, { ...first, id: 2, guestDisplayName: "مهمان دوم", comment, ownerReply: null }] } }} />);
   const list = screen.getByRole("list", { name: "نظرات منتشرشدهٔ مهمانان" }); const cards = within(list).getAllByRole("listitem");
-  fireEvent.click(within(cards[0]).getByText("جزئیات امتیازها"));
-  expect(cards[0].querySelector("details")?.open).toBe(true); expect(cards[1].querySelector("details")?.open).toBe(false);
   expect(within(cards[1]).getByText(comment, { normalizer: value => value }).textContent).toBe(comment);
   expect(within(cards[0]).getByRole("region", { name: "پاسخ اقامتگاه" }).textContent).toContain("پاسخ تأییدشده");
   expect(within(cards[1]).queryByRole("region", { name: "پاسخ اقامتگاه" })).toBeNull();
+  expect(within(cards[1]).getByText(comment, { normalizer: value => value }).parentElement?.previousElementSibling?.tagName).toBe("HEADER");
 });
 
 it("uses a compact sidebar score and exact published count without a repeated category grid", () => {
@@ -57,11 +57,16 @@ it("does not fabricate numeric values for unavailable category averages", () => 
   expect(screen.queryByRole("meter")).toBeNull();
 });
 
-it("keeps width, RTL spacing, responsive bars and disclosure focus scoped to published reviews", () => {
+it("keeps summary/card columns, compact spacing and heading-margin resets scoped to published reviews", () => {
   const css = readFileSync(resolve("components/reviews/PublishedReviews.module.css"), "utf8");
   expect(css).toContain("max-width: 56rem"); expect(css).toContain("repeat(2, minmax(0, 1fr))");
   expect(css).toContain("padding-inline-end"); expect(css).toContain("@media (max-width: 420px)");
-  expect(css).toContain(":focus-visible"); expect(css).toContain("min-height: 2.75rem"); expect(css).toContain("var(--ring)"); expect(css).not.toContain(":global");
+  expect(css).not.toContain(".disclosure"); expect(css).not.toContain(":global");
+  expect(css).toContain("padding-block-start: 1.5rem");
+  expect(css).toContain(".summaryHeader { display: grid;");
+  expect(css).toContain(".summary .summaryHeader h3 { margin: 0;");
+  expect(css).toContain(".card .identity h3 { margin: 0;");
+  expect(css).toContain(".summary { grid-template-columns:");
   expect(css).toContain("grid-template-columns: minmax(0, 10rem) minmax(0, 1fr)");
   expect(css).toContain("direction: rtl"); expect(css).toContain("@media (min-width: 640px)");
   ["weak", "average", "good", "veryGood", "excellent"].forEach(tone => expect(css).toContain(`.qualityTone[data-quality="${tone}"]`));
@@ -84,15 +89,15 @@ it.each([
   render(<><PublishedRating summary={{ ...publicPage.summary, overallRating: score as number }} />
     <PublishedReviewContent review={{ ...publicPage.reviews.items[0], overallRating: score as number, cleanlinessRating: score as number }} /></>);
   expect(screen.getAllByText(label as string)).toHaveLength(2);
-  expect(document.querySelectorAll(`[data-quality="${tone}"]`).length).toBeGreaterThanOrEqual(3);
+  expect(document.querySelectorAll(`[data-quality="${tone}"]`).length).toBeGreaterThanOrEqual(2);
 });
 
-it("omits repeated category scales, labels review dates and does not invent missing stay metadata", () => {
+it("omits repeated category scales, hides submission dates and does not invent missing stay metadata", () => {
   const view = render(<ReviewScoreList scores={publicPage.summary.categories} />);
   expect(screen.queryByText(/از ۱۰|\/۱۰/)).toBeNull();
   expect(screen.getAllByRole("meter")[0].getAttribute("aria-valuetext")).toContain("از ۱۰");
   view.rerender(<PublishedReviewContent review={publicPage.reviews.items[0]} />);
-  expect(screen.getByText(/تاریخ ثبت نظر:/)).toBeTruthy();
+  expect(screen.queryByText(/تاریخ ثبت نظر:/)).toBeNull();
   expect(screen.queryByText(/نوع اتاق|تاریخ اقامت/)).toBeNull();
 });
 
@@ -177,14 +182,15 @@ it("caps recent ratings at ten and handles missing/empty data without fabricated
   expect(screen.getByText("امتیازهای اخیر در دسترس نیست.")).toBeTruthy();
 });
 
-it("renders actual room and stay dates only when supplied, retaining the labeled submission date", () => {
+it("renders actual room and stay dates only when supplied while hiding review submission dates", () => {
   const review = { ...publicPage.reviews.items[0], roomTypeName: "سوئیت باغ", checkInDate: "2026-11-05", checkOutDate: "2026-11-07" };
   const view = render(<PublishedReviewContent review={review} />);
   const header = view.container.querySelector("header")!;
   expect(within(header).getByText("نوع اتاق: سوئیت باغ")).toBeTruthy();
   expect(header.querySelector('time[datetime="2026-11-05"]')).toBeTruthy();
   expect(header.querySelector('time[datetime="2026-11-07"]')).toBeTruthy();
-  expect(within(header).getByText(/تاریخ ثبت نظر:/)).toBeTruthy();
+  expect(within(header).queryByText(/تاریخ ثبت نظر:/)).toBeNull();
+  expect(header.querySelector(`time[datetime="${review.submittedAtUtc}"]`)).toBeNull();
   view.rerender(<PublishedReviewContent review={{ ...review, roomTypeName: null, checkInDate: null, checkOutDate: null }} />);
   expect(screen.queryByText(/نوع اتاق:|ورود:|خروج:/)).toBeNull();
 });
