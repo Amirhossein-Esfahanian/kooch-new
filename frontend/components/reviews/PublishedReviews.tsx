@@ -1,8 +1,9 @@
 "use client";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
+import { KoochInfoHint } from "@/components/KoochInfoHint";
 import { reviewCategories, type ReviewScoreKey } from "@/lib/guest-reviews";
-import { formatDateTime } from "@/lib/account-reservations";
+import { formatDate, formatDateTime } from "@/lib/account-reservations";
 import type { PublicGuestReview, PublicReviewPage } from "@/lib/property-reviews";
 import styles from "./PublishedReviews.module.css";
 
@@ -32,7 +33,23 @@ export function PublishedRating({ summary, variant = "compact" }: { summary: Pub
   if (summary.count === 0 || summary.overallRating === null) return <p>هنوز امتیازی ثبت نشده</p>;
   const quality = getRatingQuality(summary.overallRating);
   return <div data-quality={quality.tone} className={`${styles.rating} ${styles.qualityTone} ${variant === "summary" ? styles.prominent : ""}`}>
-    <p className={styles.ratingValue}><strong>{summary.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
+    <div className={styles.ratingValue}><strong>{summary.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span>
+      <KoochInfoHint openOnHoverFocus constrainToViewport ariaLabel="نمایش امتیازهای اخیر" content={
+        <div dir="rtl">
+          <p className={styles.recentTitle}>امتیازهای اخیر</p>
+          <p className={styles.count}>از جدیدترین به قدیمی‌ترین (راست به چپ)</p>
+          {summary.recentRatings?.length ? <ol className={styles.recentRatings} aria-label="امتیازهای اخیر، از جدیدترین به قدیمی‌ترین">
+            {summary.recentRatings.slice(0, 10).map((score, index) => {
+              const recentQuality = getRatingQuality(score);
+              return <li className={`${styles.qualityTone} ${styles.recentPill}`} data-quality={recentQuality.tone} key={index}
+                aria-label={`${(index + 1).toLocaleString("fa-IR")}: ${score.toLocaleString("fa-IR", { maximumFractionDigits: 1 })} از ۱۰، ${recentQuality.label}`}>
+                {score.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+              </li>;
+            })}
+          </ol> : <p>امتیازهای اخیر در دسترس نیست.</p>}
+        </div>
+      } />
+    </div>
     <p className={styles.quality}>{quality.label}</p>
     <p className={styles.count}>بر اساس {summary.count.toLocaleString("fa-IR")} نظر</p>
   </div>;
@@ -48,6 +65,9 @@ export function PublishedReviewContent({ review }: { review: PublicGuestReview }
         <p className={styles.guestScore}><span className="sr-only">امتیاز این نظر: </span><strong>{review.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span>از ۱۰</span></p>
         <p className={styles.quality}>{quality.label}</p>
       </div>
+      {review.roomTypeName && <p className={styles.reviewDate}>نوع اتاق: {review.roomTypeName}</p>}
+      {review.checkInDate && <p className={styles.reviewDate}>ورود: <time dateTime={review.checkInDate}>{formatDate(review.checkInDate)}</time></p>}
+      {review.checkOutDate && <p className={styles.reviewDate}>خروج: <time dateTime={review.checkOutDate}>{formatDate(review.checkOutDate)}</time></p>}
       <p className={styles.reviewDate}>تاریخ ثبت نظر: <time dateTime={review.submittedAtUtc}>{formatDateTime(review.submittedAtUtc)}</time></p>
     </header>
     <div className={styles.reviewBody}>

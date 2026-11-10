@@ -7,6 +7,7 @@ import type { PublicReviewPage } from "@/lib/property-reviews";
 const request = vi.hoisted(() => vi.fn());
 vi.mock("@/lib/property-reviews", async original => ({ ...await original<typeof import("@/lib/property-reviews")>(), getPublicPropertyReviews: request }));
 import { usePublicPropertyReviews } from "@/hooks/usePublicPropertyReviews";
+import { KoochInfoHint } from "@/components/KoochInfoHint";
 export const publicPage: PublicReviewPage = {
   summary: { count: 2, overallRating: 19 / 12, categories: { cleanlinessRating: 1.5, staffRating: 1.5, comfortRating: 1.5, facilitiesRating: 1.5, locationRating: 1.5, valueRating: 2 } },
   reviews: { items: [{ id: 1, guestDisplayName: "مهمان", submittedAtUtc: "2026-11-08T10:00:00Z", cleanlinessRating: 1, staffRating: 1, comfortRating: 1, facilitiesRating: 1, locationRating: 1, valueRating: 1, overallRating: 1, comment: "", ownerReply: { text: "پاسخ تأییدشده", publishedAtUtc: null } }], page: 1, pageSize: 1, totalCount: 2, totalPages: 2 },
@@ -132,4 +133,79 @@ it("loads once per page, refreshes on focus and ignores aborted old-property req
   rerender({ slug: "new-property" }); await waitFor(() => expect(request).toHaveBeenLastCalledWith("new-property", 1, expect.any(AbortSignal)));
   await act(async () => resolveOld({ ...publicPage, summary: { ...publicPage.summary, count: 999 } }));
   expect(result.current.data?.summary.count).toBe(2);
+});
+
+it("shows bounded recent ratings in server order with shared quality colors, keyboard focus and Escape", () => {
+  const scores = [9, 4, 6, 8, 3];
+  render(<PublishedRating summary={{ ...publicPage.summary, recentRatings: scores }} />);
+  const trigger = screen.getByRole("button", { name: "نمایش امتیازهای اخیر" });
+  expect(trigger.getAttribute("aria-expanded")).toBe("false");
+  fireEvent.focus(trigger); expect(trigger.getAttribute("aria-expanded")).toBe("true");
+  const list = screen.getByRole("list", { name: "امتیازهای اخیر، از جدیدترین به قدیمی‌ترین" });
+  const pills = within(list).getAllByRole("listitem"); expect(pills).toHaveLength(5);
+  pills.forEach((pill, index) => {
+    expect(pill.getAttribute("data-quality")).toBe(getRatingQuality(scores[index]).tone);
+    expect(pill.textContent).toBe(scores[index].toLocaleString("fa-IR", { minimumFractionDigits: 1 }));
+  });
+  expect(screen.getByText(/راست به چپ/)).toBeTruthy();
+  fireEvent.keyDown(trigger, { key: "Escape" }); expect(screen.queryByRole("note")).toBeNull();
+  fireEvent.click(trigger); expect(screen.getByRole("note")).toBeTruthy();
+  fireEvent.pointerDown(document.body); expect(screen.queryByRole("note")).toBeNull();
+  expect(request).not.toHaveBeenCalled();
+});
+
+it("supports hover into the popover and dismisses on pointer exit without stealing focus", () => {
+  vi.useFakeTimers();
+  try {
+    render(<PublishedRating summary={{ ...publicPage.summary, recentRatings: [8] }} />);
+    const trigger = screen.getByRole("button", { name: "نمایش امتیازهای اخیر" });
+    const root = trigger.parentElement!;
+    fireEvent.mouseEnter(root); expect(screen.getByRole("note")).toBeTruthy();
+    fireEvent.mouseLeave(root); fireEvent.mouseEnter(screen.getByRole("note"));
+    act(() => vi.advanceTimersByTime(200)); expect(screen.getByRole("note")).toBeTruthy();
+    fireEvent.mouseLeave(root); act(() => vi.advanceTimersByTime(200)); expect(screen.queryByRole("note")).toBeNull();
+  } finally { vi.useRealTimers(); }
+});
+
+it("caps recent ratings at ten and handles missing/empty data without fabricated scores", () => {
+  const view = render(<PublishedRating summary={{ ...publicPage.summary, recentRatings: Array.from({ length: 12 }, () => 8) }} />);
+  fireEvent.click(screen.getByRole("button", { name: "نمایش امتیازهای اخیر" }));
+  expect(within(screen.getByRole("list")).getAllByRole("listitem")).toHaveLength(10);
+  view.rerender(<PublishedRating summary={publicPage.summary} />);
+  expect(screen.getByText("امتیازهای اخیر در دسترس نیست.")).toBeTruthy(); expect(screen.queryByRole("list")).toBeNull();
+  view.rerender(<PublishedRating summary={{ ...publicPage.summary, recentRatings: [] }} />);
+  expect(screen.getByText("امتیازهای اخیر در دسترس نیست.")).toBeTruthy();
+});
+
+it("renders actual room and stay dates only when supplied, retaining the labeled submission date", () => {
+  const review = { ...publicPage.reviews.items[0], roomTypeName: "سوئیت باغ", checkInDate: "2026-11-05", checkOutDate: "2026-11-07" };
+  const view = render(<PublishedReviewContent review={review} />);
+  const header = view.container.querySelector("header")!;
+  expect(within(header).getByText("نوع اتاق: سوئیت باغ")).toBeTruthy();
+  expect(header.querySelector('time[datetime="2026-11-05"]')).toBeTruthy();
+  expect(header.querySelector('time[datetime="2026-11-07"]')).toBeTruthy();
+  expect(within(header).getByText(/تاریخ ثبت نظر:/)).toBeTruthy();
+  view.rerender(<PublishedReviewContent review={{ ...review, roomTypeName: null, checkInDate: null, checkOutDate: null }} />);
+  expect(screen.queryByText(/نوع اتاق:|ورود:|خروج:/)).toBeNull();
+});
+
+it("preserves default shared info-hint click behavior without opting into review interactions", () => {
+  render(<KoochInfoHint content="توضیح موجود" />);
+  const trigger = screen.getByRole("button", { name: "نمایش توضیح" });
+  fireEvent.focus(trigger); expect(screen.queryByRole("note")).toBeNull();
+  fireEvent.click(trigger); expect(screen.getByRole("note")).toBeTruthy();
+  fireEvent.click(trigger); expect(screen.queryByRole("note")).toBeNull();
+});
+
+it("keeps the recent-ratings popover within the viewport and associates its content with the trigger", () => {
+  const rect = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function(this: HTMLElement) {
+    return this.getAttribute("role") === "note" ? new DOMRect(0, 0, 288, 150) : new DOMRect(10, 10, 24, 24);
+  });
+  try {
+    render(<PublishedRating summary={{ ...publicPage.summary, recentRatings: [9] }} />);
+    const trigger = screen.getByRole("button", { name: "نمایش امتیازهای اخیر" }); fireEvent.click(trigger);
+    const note = screen.getByRole("note");
+    expect(note.style.position).toBe("fixed"); expect(note.style.left).toBe("16px");
+    expect(trigger.getAttribute("aria-describedby")).toBe(note.id);
+  } finally { rect.mockRestore(); }
 });

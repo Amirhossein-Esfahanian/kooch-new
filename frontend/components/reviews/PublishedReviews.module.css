@@ -12,6 +12,9 @@
 .ratingValue > span { font-size: 0.8125rem; color: var(--muted-foreground); }
 .prominent .ratingValue strong { font-size: 2rem; }
 .count { font-size: 0.8125rem; color: var(--muted-foreground); line-height: 1.75; }
+.recentTitle { font-weight: 700; color: var(--popover-foreground); }
+.recentRatings { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.5rem; margin-block-start: 0.75rem; padding: 0; list-style: none; }
+.recentPill { padding: 0.25rem; border: 1px solid var(--rating-ink); border-radius: 1rem; color: var(--rating-ink); background: var(--card); text-align: center; font-weight: 700; font-variant-numeric: tabular-nums; }
 .summary { display: grid; gap: 1.25rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: 0.5rem; background: var(--muted); }
 .summaryHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .summaryHeader h3 { font-size: 1rem; font-weight: 700; }

@@ -6,9 +6,10 @@ export type ReviewScores = Record<ReviewScoreKey, number>;
 export type PublicGuestReview = ReviewScores & {
   id: number; guestDisplayName: string; submittedAtUtc: string; overallRating: number; comment: string;
   ownerReply: { text: string; publishedAtUtc: string | null } | null;
+  roomTypeName?: string | null; checkInDate?: string | null; checkOutDate?: string | null;
 };
 export interface PublicReviewPage {
-  summary: { count: number; overallRating: number | null; categories: Record<ReviewScoreKey, number | null> };
+  summary: { count: number; overallRating: number | null; categories: Record<ReviewScoreKey, number | null>; recentRatings?: number[] };
   reviews: PagedResult<PublicGuestReview>;
 }
 export interface OwnerReply {

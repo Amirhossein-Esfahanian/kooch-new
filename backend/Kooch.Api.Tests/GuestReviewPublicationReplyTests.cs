@@ -105,13 +105,14 @@ public sealed class GuestReviewPublicationReplyTests
     }
 
     [Theory]
-    [InlineData("pending")] [InlineData("rejected")] [InlineData("deleted")] [InlineData("legacy")]
+    [InlineData("pending")] [InlineData("rejected")] [InlineData("deleted")] [InlineData("legacy")] [InlineData("unpublished")]
     [InlineData("bad-score")] [InlineData("bad-sum")] [InlineData("incomplete")]
     [InlineData("reservation-deleted")] [InlineData("property-mismatch")] [InlineData("author-deleted")]
     public async Task PublicListsAndAggregatesShareStrictVisibility(string kind)
     {
         await using var db = Memory(); await Seed(db); var review = await db.Reviews.SingleAsync();
         if (kind == "pending") { review.ModerationStatus = ReviewModerationStatus.PendingApproval; review.IsPublished = false; }
+        if (kind == "unpublished") review.IsPublished = false;
         if (kind == "rejected") { review.ModerationStatus = ReviewModerationStatus.Rejected; review.IsPublished = false; }
         if (kind == "deleted") review.IsDeleted = true;
         if (kind == "legacy") { review.RatingSum = null; review.ModerationStatus = null; }
@@ -123,6 +124,62 @@ public sealed class GuestReviewPublicationReplyTests
         if (kind == "author-deleted") (await db.Users.SingleAsync(u => u.Id == 1)).IsDeleted = true;
         await db.SaveChangesAsync(); var result = await Service(db).GetPublicReviewsAsync("stay");
         Assert.Equal(0, result.Summary.Count); Assert.Null(result.Summary.OverallRating); Assert.Null(result.Summary.Categories.CleanlinessRating); Assert.Empty(result.Reviews.Items);
+        Assert.Empty(result.Summary.RecentRatings);
+    }
+
+    [Fact]
+    public async Task RecentRatingsAreBoundedNewestFirstAcrossPages_WithRealStayMetadataAndNoPrivateFields()
+    {
+        await using var fixture = await GuestReviewPersistenceTests.Database.Create(); await using var db = fixture.Context();
+        await Seed(db, false);
+        db.RoomTypes.Add(new RoomType { Id = 1, PropertyId = 1, Name = "Garden suite" });
+        for (var id = 2; id <= 12; id++)
+        {
+            db.Reservations.Add(new Reservation { Id = id, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
+                ReservationNumber = $"PRIVATE-{id}", GuestNote = "Private stay note", Status = ReservationStatus.Completed,
+                CheckInDate = new(2026, 11, 5), CheckOutDate = new(2026, 11, 7) });
+            await db.SaveChangesAsync();
+            var review = await Service(db).SaveAsync(1, id, Scores(id % 10 + 1), false);
+            await Service(db).ModerateAsync(3, review.Id, new() { Revision = 1 }, true);
+        }
+        // Same submission timestamp exercises ReviewId DESC as a deterministic tie-breaker.
+        var rows = await db.Reviews.OrderBy(r => r.Id).ToListAsync();
+        foreach (var row in rows) row.CreatedAtUtc = new(2026, 11, 8, 10, 0, 0, DateTimeKind.Utc);
+        // An earlier submission with the largest Id must not displace a newer submission.
+        rows[^1].CreatedAtUtc = rows[0].CreatedAtUtc.AddDays(-1);
+        await db.SaveChangesAsync();
+        var expected = rows.OrderByDescending(r => r.CreatedAtUtc).ThenByDescending(r => r.Id).Take(10).Select(r => r.RatingSum!.Value / 6m).ToArray();
+        var first = await Service(db).GetPublicReviewsAsync("stay", 1, 1);
+        var second = await Service(db).GetPublicReviewsAsync("stay", 2, 1);
+        Assert.Equal(expected, first.Summary.RecentRatings); Assert.Equal(expected, second.Summary.RecentRatings);
+        Assert.Equal(12, first.Reviews.TotalCount); Assert.Single(first.Reviews.Items);
+        var item = Assert.Single(first.Reviews.Items);
+        Assert.Equal("Garden suite", item.RoomTypeName); Assert.Equal(new DateOnly(2026, 11, 5), item.CheckInDate);
+        Assert.Equal(new DateOnly(2026, 11, 7), item.CheckOutDate);
+        var json = JsonSerializer.Serialize(first);
+        foreach (var field in new[] { "ReservationId", "ReservationNumber", "ClientId", "GuestId", "GuestNote", "Mobile", "Email", "Payment", "FinalAmount", "PRIVATE-" })
+            Assert.DoesNotContain(field, json);
+        Assert.DoesNotContain(db.ChangeTracker.Entries(), e => e.State is EntityState.Added or EntityState.Modified or EntityState.Deleted);
+    }
+
+    [Fact]
+    public async Task StayMetadataIsNullable_AndRoomNameRequiresSamePropertyAndNonDeletedRoomType()
+    {
+        await using var fixture = await GuestReviewPersistenceTests.Database.Create(); await using var db = fixture.Context(); await Seed(db, false);
+        var result = Assert.Single((await Service(db).GetPublicReviewsAsync("stay")).Reviews.Items);
+        Assert.Null(result.RoomTypeName); Assert.NotNull(result.CheckInDate);
+        db.RoomTypes.Add(new RoomType { Id = 1, PropertyId = 999, Name = "Other property private name" });
+        await db.SaveChangesAsync();
+        Assert.Null(Assert.Single((await Service(db).GetPublicReviewsAsync("stay")).Reviews.Items).RoomTypeName);
+        var room = await db.RoomTypes.SingleAsync(); room.PropertyId = 1; room.IsDeleted = true;
+        await db.SaveChangesAsync();
+        var deletedRoom = Assert.Single((await Service(db).GetPublicReviewsAsync("stay")).Reviews.Items);
+        Assert.Null(deletedRoom.RoomTypeName); Assert.NotNull(deletedRoom.CheckInDate);
+        var reservation = await db.Reservations.SingleAsync(); reservation.CheckOutDate = reservation.CheckInDate;
+        await db.SaveChangesAsync();
+        var invalid = Assert.Single((await Service(db).GetPublicReviewsAsync("stay")).Reviews.Items);
+        Assert.Null(invalid.RoomTypeName); Assert.Null(invalid.CheckInDate); Assert.Null(invalid.CheckOutDate);
+        Assert.Single((await Service(db).GetPublicReviewsAsync("stay")).Summary.RecentRatings);
     }
 
     [Theory] [InlineData(false)] [InlineData(true)]

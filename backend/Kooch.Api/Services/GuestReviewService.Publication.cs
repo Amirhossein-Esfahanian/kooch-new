@@ -69,18 +69,29 @@ public sealed partial class GuestReviewService
 
     private sealed record PublicReviewRow(int Id, string GuestDisplayName, DateTime SubmittedAtUtc,
         int CleanlinessRating, int StaffRating, int ComfortRating, int FacilitiesRating,
-        int LocationRating, int ValueRating, int RatingSum, string Comment, PublicOwnerReply? OwnerReply)
+        int LocationRating, int ValueRating, int RatingSum, string Comment, PublicOwnerReply? OwnerReply,
+        string? RoomTypeName, DateOnly? CheckInDate, DateOnly? CheckOutDate)
     {
         // Divide only after the bounded SQL projection, avoiding SQL decimal scale rounding.
         public PublicGuestReview Response() => new(Id, GuestDisplayName, SubmittedAtUtc, CleanlinessRating,
-            StaffRating, ComfortRating, FacilitiesRating, LocationRating, ValueRating, RatingSum / 6m, Comment, OwnerReply);
+            StaffRating, ComfortRating, FacilitiesRating, LocationRating, ValueRating, RatingSum / 6m, Comment, OwnerReply)
+            { RoomTypeName = RoomTypeName, CheckInDate = CheckInDate, CheckOutDate = CheckOutDate };
     }
-    private IQueryable<PublicReviewRow> PublicProjection(IQueryable<Review> query) => query.Select(v => new PublicReviewRow(
+    private IQueryable<PublicReviewRow> PublicProjection(IQueryable<Review> query, bool includeStayMetadata = false) => query.Select(v => new PublicReviewRow(
         v.Id, v.Client.FirstName == "" ? "مهمان" : v.Client.FirstName, v.CreatedAtUtc,
         v.CleanlinessRating!.Value, v.StaffRating!.Value, v.ComfortRating!.Value, v.FacilitiesRating!.Value,
         v.LocationRating!.Value, v.ValueRating!.Value, v.RatingSum!.Value, v.Comment,
         context.ReviewOwnerReplies.Where(r => r.ReviewId == v.Id && !r.IsDeleted && r.PublishedBody != null)
-            .Select(r => new PublicOwnerReply(r.PublishedBody!, r.PublishedAtUtc)).FirstOrDefault()));
+            .Select(r => new PublicOwnerReply(r.PublishedBody!, r.PublishedAtUtc)).FirstOrDefault(),
+        includeStayMetadata && v.Reservation != null && !v.Reservation.IsDeleted && v.Reservation.PropertyId == v.PropertyId
+            ? context.RoomTypes.Where(room => room.Id == v.Reservation.RoomTypeId && !room.IsDeleted && room.PropertyId == v.PropertyId)
+                .Select(room => room.Name).FirstOrDefault() : null,
+        includeStayMetadata && v.Reservation != null && !v.Reservation.IsDeleted && v.Reservation.PropertyId == v.PropertyId &&
+            v.Reservation.CheckInDate > DateOnly.MinValue && v.Reservation.CheckOutDate > v.Reservation.CheckInDate
+            ? v.Reservation.CheckInDate : (DateOnly?)null,
+        includeStayMetadata && v.Reservation != null && !v.Reservation.IsDeleted && v.Reservation.PropertyId == v.PropertyId &&
+            v.Reservation.CheckInDate > DateOnly.MinValue && v.Reservation.CheckOutDate > v.Reservation.CheckInDate
+            ? v.Reservation.CheckOutDate : (DateOnly?)null));
 
     public async Task<PublicPropertyReviewsResponse> GetPublicReviewsAsync(string slug, int page = 1, int pageSize = 10, CancellationToken ct = default)
     {
@@ -103,8 +114,11 @@ public sealed partial class GuestReviewService
             : new PublicReviewSummary(count, totals!.Sum / (6m * count),
                 new(totals.Cleanliness / (decimal)count, totals.Staff / (decimal)count, totals.Comfort / (decimal)count,
                     totals.Facilities / (decimal)count, totals.Location / (decimal)count, totals.Value / (decimal)count));
+        var recentSums = await query.OrderByDescending(v => v.CreatedAtUtc).ThenByDescending(v => v.Id)
+            .Select(v => v.RatingSum!.Value).Take(10).ToListAsync(ct);
+        summary = summary with { RecentRatings = recentSums.Select(sum => sum / 6m).ToArray() };
         var items = await PublicProjection(query.OrderByDescending(v => v.CreatedAtUtc).ThenByDescending(v => v.Id)
-            .Skip((page - 1) * pageSize).Take(pageSize)).ToListAsync(ct);
+            .Skip((page - 1) * pageSize).Take(pageSize), includeStayMetadata: true).ToListAsync(ct);
         if (transaction is not null) await transaction.CommitAsync(ct);
         return new(summary, new() { Page = page, PageSize = pageSize, TotalCount = count,
             TotalPages = (int)Math.Ceiling(count / (double)pageSize), Items = items.Select(v => v.Response()).ToList() });

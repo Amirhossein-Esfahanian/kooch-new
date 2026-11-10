@@ -6,11 +6,19 @@ namespace Kooch.Api.Dtos.Reviews;
 
 public sealed record ReviewCategoryAverages(decimal? CleanlinessRating, decimal? StaffRating, decimal? ComfortRating,
     decimal? FacilitiesRating, decimal? LocationRating, decimal? ValueRating);
-public sealed record PublicReviewSummary(int Count, decimal? OverallRating, ReviewCategoryAverages Categories);
+public sealed record PublicReviewSummary(int Count, decimal? OverallRating, ReviewCategoryAverages Categories)
+{
+    public IReadOnlyList<decimal> RecentRatings { get; init; } = [];
+}
 public sealed record PublicOwnerReply(string Text, DateTime? PublishedAtUtc);
 public sealed record PublicGuestReview(int Id, string GuestDisplayName, DateTime SubmittedAtUtc,
     int CleanlinessRating, int StaffRating, int ComfortRating, int FacilitiesRating, int LocationRating, int ValueRating,
-    decimal OverallRating, string Comment, PublicOwnerReply? OwnerReply);
+    decimal OverallRating, string Comment, PublicOwnerReply? OwnerReply)
+{
+    public string? RoomTypeName { get; init; }
+    public DateOnly? CheckInDate { get; init; }
+    public DateOnly? CheckOutDate { get; init; }
+}
 public sealed record PublicPropertyReviewsResponse(PublicReviewSummary Summary, PagedResult<PublicGuestReview> Reviews);
 
 public sealed class OwnerReplyRequest

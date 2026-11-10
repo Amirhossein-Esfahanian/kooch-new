@@ -211,7 +211,7 @@ public sealed class GuestReviewPersistenceTests
             await using var db = fixture.Context();
             // Only disposable test tables; mirror the actual mapped columns and Review constraints.
             // Other domain tables/SQL Server-only financial checks are deliberately outside this fixture.
-            Type[] tables = [typeof(User), typeof(Property), typeof(UserPropertyAccess), typeof(Guest), typeof(Reservation), typeof(Review), typeof(ReviewOwnerReply), typeof(ReviewInvitationSuppression), typeof(AuditLog), typeof(CancellationFinancialResolution), typeof(RefundRecord)];
+            Type[] tables = [typeof(User), typeof(Property), typeof(UserPropertyAccess), typeof(Guest), typeof(RoomType), typeof(Reservation), typeof(Review), typeof(ReviewOwnerReply), typeof(ReviewInvitationSuppression), typeof(AuditLog), typeof(CancellationFinancialResolution), typeof(RefundRecord)];
             var model = db.GetService<IDesignTimeModel>().Model;
             foreach (var type in tables)
             {
