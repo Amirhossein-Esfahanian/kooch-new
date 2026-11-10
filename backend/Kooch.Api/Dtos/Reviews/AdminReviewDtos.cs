@@ -22,7 +22,8 @@ public sealed class ModerateReviewRequest
 public sealed record AdminReviewResponse(
     GuestReviewResponse Review, string PropertyName, string GuestDisplayName,
     string? ReservationNumber, DateOnly CheckInDate, DateOnly CheckOutDate,
-    DateTime SubmittedAtUtc, int? ModeratedByUserId, DateTime? ModeratedAtUtc, string? UnpublicationReason = null);
+    DateTime SubmittedAtUtc, int? ModeratedByUserId, DateTime? ModeratedAtUtc, string? UnpublicationReason = null,
+    OwnerReplyResponse? OwnerReply = null);
 
 public sealed class ReviewPublicationRequest
 {

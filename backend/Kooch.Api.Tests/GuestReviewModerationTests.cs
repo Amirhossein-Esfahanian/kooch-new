@@ -84,7 +84,7 @@ public sealed class GuestReviewModerationTests
     }
 
     [Fact]
-    public async Task PendingListIsOldestFirst_BoundedFilteredAndExcludesLegacyAndDeleted()
+    public async Task ListsAreNewestFirst_BoundedFilteredAndExcludeLegacyAndDeleted()
     {
         await using var db = Memory(); var id = await Seed(db);
         db.Reservations.Add(new Reservation { Id = 2, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
@@ -96,11 +96,15 @@ public sealed class GuestReviewModerationTests
         db.Reviews.Add(new Review { ClientId = 1, PropertyId = 1, Rating = 4, IsPublished = true }); await db.SaveChangesAsync();
         var query = new AdminReviewQuery { Status = ReviewModerationStatus.PendingApproval, PageSize = 1, PropertyId = 1, Search = "Stay" };
         var first = await Service(db).ListForModerationAsync(3, query);
-        Assert.Equal(2, first.TotalCount); Assert.Equal(2, first.TotalPages); Assert.Equal(id, Assert.Single(first.Items).Review.Id);
-        query.Page = 2; Assert.Equal(second.Id, Assert.Single((await Service(db).ListForModerationAsync(3, query)).Items).Review.Id);
+        Assert.Equal(2, first.TotalCount); Assert.Equal(2, first.TotalPages); Assert.Equal(second.Id, Assert.Single(first.Items).Review.Id);
+        query.Page = 2; Assert.Equal(id, Assert.Single((await Service(db).ListForModerationAsync(3, query)).Items).Review.Id);
         query.Search = "REVIEW-1"; query.Page = 1; Assert.Single((await Service(db).ListForModerationAsync(3, query)).Items);
         query.PropertyId = 999; Assert.Empty((await Service(db).ListForModerationAsync(3, query)).Items);
         await Service(db).ModerateAsync(3, id, new() { Revision = 1 }, true);
+        Assert.Equal(new[] { second.Id, id }, (await Service(db).ListForModerationAsync(3, new())).Items.Select(v => v.Review.Id));
+        (await db.Reviews.SingleAsync(v => v.Id == id)).CreatedAtUtc = new DateTime(2026, 11, 8);
+        await db.SaveChangesAsync();
+        Assert.Equal(new[] { second.Id, id }, (await Service(db).ListForModerationAsync(3, new())).Items.Select(v => v.Review.Id));
         Assert.Single((await Service(db).ListForModerationAsync(3, new() { Status = ReviewModerationStatus.Approved })).Items);
         Assert.Empty((await Service(db).ListForModerationAsync(3, new() { Status = ReviewModerationStatus.Rejected })).Items);
         (await db.Reviews.SingleAsync(v => v.Id == second.Id)).IsDeleted = true; await db.SaveChangesAsync();
@@ -109,6 +113,31 @@ public sealed class GuestReviewModerationTests
         await Assert.ThrowsAsync<ArgumentException>(() => Service(db).ListForModerationAsync(3, new() { Page = 0 }));
         await Assert.ThrowsAsync<ArgumentException>(() => Service(db).ListForModerationAsync(3, new() { PageSize = 101 }));
         await Assert.ThrowsAsync<ArgumentException>(() => Service(db).ListForModerationAsync(3, new() { Status = (ReviewModerationStatus)999 }));
+    }
+
+    [Theory]
+    [InlineData(ReviewModerationStatus.PendingApproval)]
+    [InlineData(ReviewModerationStatus.Approved)]
+    [InlineData(ReviewModerationStatus.Rejected)]
+    public async Task EveryStatusUsesSubmissionDescendingThenIdentityDescending(ReviewModerationStatus status)
+    {
+        await using var fixture = await GuestReviewPersistenceTests.Database.Create();
+        await using var db = fixture.Context(); var id = await Seed(db, false);
+        db.Reservations.Add(new Reservation { Id = 2, ClientId = 1, PropertyId = 1, RoomTypeId = 1,
+            ReservationNumber = "REVIEW-2", Status = ReservationStatus.Completed,
+            CheckInDate = new(2026, 11, 5), CheckOutDate = new(2026, 11, 7) });
+        await db.SaveChangesAsync(); var second = await Service(db).SaveAsync(1, 2, Scores(), false);
+        if (status != ReviewModerationStatus.PendingApproval)
+            foreach (var reviewId in new[] { id, second.Id })
+                await Service(db).ModerateAsync(3, reviewId, new() { Revision = 1, RejectionReason = "A meaningful reason" }, status == ReviewModerationStatus.Approved);
+        // Set historical timestamps only in disposable SQLite; application timestamps are immutable.
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE Reviews SET CreatedAtUtc = {new DateTime(2026, 11, 8)} WHERE Id = {id} OR Id = {second.Id}");
+        var query = new AdminReviewQuery { Status = status, PageSize = 1 };
+        Assert.Equal(second.Id, Assert.Single((await Service(db).ListForModerationAsync(3, query)).Items).Review.Id);
+        await db.Database.ExecuteSqlInterpolatedAsync($"UPDATE Reviews SET CreatedAtUtc = {new DateTime(2026, 11, 9)} WHERE Id = {id}");
+        Assert.Equal(id, Assert.Single((await Service(db).ListForModerationAsync(3, query)).Items).Review.Id);
+        query.Page = 2;
+        Assert.Equal(second.Id, Assert.Single((await Service(db).ListForModerationAsync(3, query)).Items).Review.Id);
     }
 
     [Fact]

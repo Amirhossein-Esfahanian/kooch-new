@@ -22,7 +22,7 @@ public sealed partial class GuestReviewService
         .Select(v => new AdminReviewResponse(Response(v), v.Property.Name,
             v.Client.FirstName == "" ? "مهمان" : v.Client.FirstName,
             v.Reservation!.ReservationNumber, v.Reservation.CheckInDate, v.Reservation.CheckOutDate,
-            v.CreatedAtUtc, v.ModeratedByUserId, v.ModeratedAtUtc, v.UnpublicationReason));
+            v.CreatedAtUtc, v.ModeratedByUserId, v.ModeratedAtUtc, v.UnpublicationReason, null));
 
     public async Task<PagedResult<AdminReviewResponse>> ListForModerationAsync(
         int userId, AdminReviewQuery request, CancellationToken ct = default)
@@ -42,9 +42,7 @@ public sealed partial class GuestReviewService
                 v.Reservation!.ReservationNumber != null && v.Reservation.ReservationNumber.Contains(search));
         }
         var total = await query.CountAsync(ct);
-        var sorted = request.Status == ReviewModerationStatus.PendingApproval
-            ? query.OrderBy(v => v.CreatedAtUtc).ThenBy(v => v.Id)
-            : query.OrderByDescending(v => v.CreatedAtUtc).ThenByDescending(v => v.Id);
+        var sorted = query.OrderByDescending(v => v.CreatedAtUtc).ThenByDescending(v => v.Id);
         var items = await ModerationProjection(sorted.Skip((request.Page - 1) * request.PageSize).Take(request.PageSize)).ToListAsync(ct);
         return new() { Page = request.Page, PageSize = request.PageSize, TotalCount = total,
             TotalPages = (int)Math.Ceiling(total / (double)request.PageSize), Items = items };
@@ -53,8 +51,10 @@ public sealed partial class GuestReviewService
     public async Task<AdminReviewResponse> GetForModerationAsync(int userId, int reviewId, CancellationToken ct = default)
     {
         await EnsureModeratorAsync(userId, ct);
-        return await ModerationProjection(ModeratableReviews().AsNoTracking().Where(v => v.Id == reviewId))
+        var result = await ModerationProjection(ModeratableReviews().AsNoTracking().Where(v => v.Id == reviewId))
             .SingleOrDefaultAsync(ct) ?? throw new KeyNotFoundException("Review not found.");
+        var reply = await context.ReviewOwnerReplies.AsNoTracking().SingleOrDefaultAsync(r => r.ReviewId == reviewId, ct);
+        return result with { OwnerReply = reply is null ? null : ReplyResponse(reply) };
     }
 
     public async Task<AdminReviewResponse> ModerateAsync(int userId, int reviewId, ModerateReviewRequest request,

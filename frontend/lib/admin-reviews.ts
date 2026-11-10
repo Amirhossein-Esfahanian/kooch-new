@@ -1,6 +1,7 @@
 import { apiRequest, ApiRequestError } from "@/lib/owner-api";
 import type { GuestReview } from "@/lib/guest-reviews";
 import type { PagedResult } from "@/lib/account-reservations";
+import type { OwnerReply } from "@/lib/property-reviews";
 
 export type ReviewModerationStatus = GuestReview["moderationStatus"];
 export interface AdminReview {
@@ -14,6 +15,7 @@ export interface AdminReview {
   moderatedByUserId: number | null;
   moderatedAtUtc: string | null;
   unpublicationReason?: string | null;
+  ownerReply?: OwnerReply | null;
 }
 export interface AdminReviewFilters {
   status: ReviewModerationStatus | "All" | "Unpublished";

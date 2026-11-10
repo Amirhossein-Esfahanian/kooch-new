@@ -12,6 +12,8 @@ vi.mock("@/lib/admin-reviews", async original => ({ ...await original<typeof imp
   getAdminReviews: mocks.list, getAdminReview: mocks.get, moderateReview: mocks.moderate, setReviewPublication: mocks.publication }));
 import { AdminReviewsPage } from "@/components/reviews/AdminReviewsPage";
 import { metadata } from "@/app/admin/reviews/page";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const item: AdminReview = { propertyName: "سرای آزمایش", guestDisplayName: "مهمان", reservationNumber: "R-1",
   checkInDate: "2026-11-01", checkOutDate: "2026-11-03", submittedAtUtc: "2026-11-08T10:00:00Z",
@@ -30,6 +32,36 @@ async function openReview() {
   await screen.findByText("بدون توضیح");
   await screen.findByRole("dialog");
 }
+
+it("renders bounded compact list items rather than a table, preserves server order and shows total count", async () => {
+  const newer = { ...item, guestDisplayName: "مهمان تازه", submittedAtUtc: "2026-11-09T10:00:00Z", review: { ...item.review, id: 2 } };
+  mocks.list.mockResolvedValue({ ...paged([newer, item]), totalCount: 43, totalPages: 3 }); render(<AdminReviewsPage />);
+  const list = await screen.findByRole("list", { name: "فهرست نظرات مهمانان" });
+  const rows = within(list).getAllByRole("listitem"); expect(rows).toHaveLength(2); expect(rows[0].textContent).toContain("مهمان تازه");
+  expect(rows[1].textContent).toContain("مهمان"); expect(screen.queryByRole("table")).toBeNull();
+  expect(within(rows[0]).getByRole("button").textContent).toBe("بررسی");
+  expect(within(rows[0]).getByText("سرای آزمایش")).toBeTruthy(); expect(rows[0].textContent).toContain("رزرو R-1");
+  expect(screen.getByText("تعداد کل: ۴۳ نظر")).toBeTruthy(); expect(mocks.list).toHaveBeenCalledOnce();
+  const css = readFileSync(resolve("components/reviews/AdminReviewsPage.module.css"), "utf8");
+  expect(css).toContain("minmax(0, 1fr)"); expect(css).toContain("@media (max-width: 639px)"); expect(css).toContain("100dvh - 2rem");
+  expect(css).toContain("min-height: 2.75rem"); expect(css).not.toContain(":global");
+});
+
+it.each(["PendingApproval", "Rejected", "Approved"] as const)("shows actual %s reply state and distinguishes approved text from revisions", async moderationStatus => {
+  mocks.get.mockResolvedValue({ ...item, ownerReply: { id: 4, reviewId: 1, revision: 3, moderationStatus,
+    body: "متن نسخه جدید", publishedBody: "پاسخ عمومی قبلی", publishedAtUtc: "2026-11-08T10:00:00Z", rejectionReason: moderationStatus === "Rejected" ? "دلیل رد پاسخ" : null } });
+  await openReview(); const reply = screen.getByRole("region", { name: "پاسخ اقامتگاه" });
+  expect(within(reply).getByText("نسخهٔ تأییدشدهٔ عمومی")).toBeTruthy(); expect(within(reply).getByText("پاسخ عمومی قبلی")).toBeTruthy();
+  expect(within(reply).getByText(`وضعیت نسخهٔ پاسخ: ${moderationStatus === "PendingApproval" ? "در انتظار تأیید" : moderationStatus === "Rejected" ? "ردشده" : "تأییدشده"}`)).toBeTruthy();
+  if (moderationStatus !== "Approved") { expect(within(reply).getByText("متن نسخه جدید")).toBeTruthy(); expect(within(reply).getByText("نسخهٔ ارسال‌شده (غیرعمومی)")).toBeTruthy(); }
+  else expect(within(reply).queryByText("متن نسخه جدید")).toBeNull();
+  expect(screen.getByRole("region", { name: "وضعیت و آخرین تصمیم" })).toBeTruthy();
+});
+
+it("does not fabricate reply availability for an older response contract", async () => {
+  await openReview(); expect(screen.getByText("اطلاعات پاسخ اقامتگاه در دسترس نیست.")).toBeTruthy();
+  expect(screen.queryByText("پاسخی ثبت نشده است.")).toBeNull();
+});
 
 it.each([true, false])("requires a deliberate publication action for published=%s", async published => {
   const approved = { ...item, unpublicationReason: published ? null : "دلیل داخلی بررسی", review: { ...item.review, moderationStatus: "Approved" as const, isPublished: published, revision: 2 } };
@@ -58,17 +90,25 @@ it("shows loading, a retryable error, and empty states", async () => {
   fireEvent.click(screen.getByRole("button", { name: "دریافت دوباره فهرست" }));
   await screen.findByText("نظری با این فیلتر وجود ندارد.");
 });
-it("uses pending by default, filters on demand and requests subsequent pages", async () => {
+it("defaults to All, paginates on the server and resets every changed filter to page one", async () => {
   mocks.list.mockResolvedValue(paged([item], 2)); render(<AdminReviewsPage />);
   await screen.findByText("سرای آزمایش");
-  expect(mocks.list).toHaveBeenLastCalledWith({ status: "PendingApproval", propertyId: "", search: "" }, 1, expect.any(AbortSignal));
+  expect((screen.getByLabelText("وضعیت") as HTMLSelectElement).value).toBe("All");
+  expect(screen.getByRole("option", { name: "همه نظرات" })).toBeTruthy();
+  expect(mocks.list).toHaveBeenLastCalledWith({ status: "All", propertyId: "", search: "" }, 1, expect.any(AbortSignal));
   fireEvent.click(screen.getByRole("button", { name: "صفحه بعد" }));
   await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(expect.anything(), 2, expect.any(AbortSignal)));
-  fireEvent.change(screen.getByLabelText("وضعیت"), { target: { value: "All" } });
+  fireEvent.change(screen.getByLabelText("وضعیت"), { target: { value: "PendingApproval" } });
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ status: "PendingApproval", propertyId: "", search: "" }, 1, expect.any(AbortSignal)));
+  fireEvent.click(screen.getByRole("button", { name: "صفحه بعد" }));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(expect.anything(), 2, expect.any(AbortSignal)));
   fireEvent.change(screen.getByLabelText("شناسه اقامتگاه"), { target: { value: "2" } });
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ status: "PendingApproval", propertyId: "2", search: "" }, 1, expect.any(AbortSignal)));
+  fireEvent.click(screen.getByRole("button", { name: "صفحه بعد" }));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith(expect.anything(), 2, expect.any(AbortSignal)));
   fireEvent.change(screen.getByLabelText("اقامتگاه یا شماره رزرو"), { target: { value: "R-1" } });
   fireEvent.click(screen.getByRole("button", { name: "اعمال فیلتر" }));
-  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ status: "All", propertyId: "2", search: "R-1" }, 1, expect.any(AbortSignal)));
+  await waitFor(() => expect(mocks.list).toHaveBeenLastCalledWith({ status: "PendingApproval", propertyId: "2", search: "R-1" }, 1, expect.any(AbortSignal)));
 });
 it("loads fresh detail, six categories, optional comment and deliberate publication confirmation", async () => {
   await openReview(); expect(mocks.get).toHaveBeenCalledWith(1, expect.any(AbortSignal));

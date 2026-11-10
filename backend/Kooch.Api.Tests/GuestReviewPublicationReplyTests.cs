@@ -50,6 +50,11 @@ public sealed class GuestReviewPublicationReplyTests
         var published = Assert.Single((await service.GetPublicReviewsAsync("stay")).Reviews.Items);
         Assert.Equal("First official response", published.OwnerReply!.Text);
         await service.SaveOwnerReplyAsync(2, 1, id, new() { Body = "Edited official response", Revision = 2 });
+        var adminDetail = await service.GetForModerationAsync(3, id);
+        Assert.Equal(ReviewModerationStatus.PendingApproval, adminDetail.OwnerReply!.ModerationStatus);
+        Assert.Equal("Edited official response", adminDetail.OwnerReply.Body);
+        Assert.Equal("First official response", adminDetail.OwnerReply.PublishedBody);
+        Assert.Null(Assert.Single((await service.ListForModerationAsync(3, new())).Items).OwnerReply);
         Assert.Equal("First official response", Assert.Single((await service.GetPublicReviewsAsync("stay")).Reviews.Items).OwnerReply!.Text);
         await service.ModerateReplyAsync(3, reply.Id, new() { Revision = 3, RejectionReason = "Remove personal information." }, false);
         var rejected = Assert.Single((await service.ListOwnerReviewsAsync(2, 1)).Items).Reply!;
@@ -63,6 +68,7 @@ public sealed class GuestReviewPublicationReplyTests
         var unpublished = await service.SetPublicationAsync(3, id, new() { Revision = 2, Reason = "Internal publication review" }, false);
         Assert.Equal(ReviewModerationStatus.Approved, unpublished.Review.ModerationStatus); Assert.False(unpublished.Review.IsPublished);
         Assert.Equal("Internal publication review", unpublished.UnpublicationReason);
+        Assert.Equal("Corrected official response", unpublished.OwnerReply!.PublishedBody);
         var empty = await service.GetPublicReviewsAsync("stay"); Assert.Equal(0, empty.Summary.Count); Assert.Null(empty.Summary.OverallRating); Assert.Empty(empty.Reviews.Items);
         Assert.Empty((await service.ListOwnerReviewsAsync(2, 1)).Items);
         Assert.Empty((await service.ListRepliesForModerationAsync(3, new())).Items);
