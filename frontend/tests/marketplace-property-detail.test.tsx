@@ -68,6 +68,22 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe("Marketplace property presentation", () => {
+  it("keeps the smaller reviews link opposite the sidebar heading and preserves section navigation", () => {
+    render(<Detail />);
+    const aside = screen.getByRole("complementary", { name: "خلاصه اقامتگاه و موقعیت" });
+    const heading = within(aside).getByRole("heading", { name: "امتیاز و نظرات" });
+    const link = within(aside).getByRole("link", { name: "مشاهده نظرات" });
+    expect(link.parentElement).toBe(heading.parentElement);
+    expect(link.getAttribute("href")).toBe("#property-reviews");
+    expect(within(aside).queryByRole("button", { name: "نمایش امتیازهای اخیر" })).toBeNull();
+    fireEvent.click(link);
+    expect(window.location.hash).toBe("#property-reviews");
+    expect(document.getElementById("property-reviews")!.scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" });
+    const css = readFileSync(resolve("components/property/marketplace/MarketplacePropertyDetail.module.css"), "utf8");
+    expect(css).toContain(".ratingHeader { display: flex;");
+    expect(css).toContain(".ratingHeader .ratingLink { margin: 0; min-height: 2rem; font-size: .75rem;");
+    expect(css).toContain("@media (pointer: coarse) { .ratingHeader .ratingLink { min-height: 44px; }");
+  });
   it("keeps only Persian identity and the results link above five actual mosaic tiles", () => {
     render(<Detail />);
     const header = screen.getByRole("heading", { level: 1 }).closest("header")!;

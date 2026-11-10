@@ -19,6 +19,16 @@
 .summaryHeader { display: grid; align-content: start; gap: 0.375rem; min-width: 0; }
 .summary .summaryHeader h3 { margin: 0; font-size: 1rem; font-weight: 700; }
 .scores { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.625rem 1rem; max-width: 44rem; min-width: 0; }
+.sidebarRating { display: grid; gap: 0.75rem; min-width: 0; }
+.sidebarOverview { display: flex; align-items: center; gap: 0.75rem; }
+.sidebarScore { display: grid; justify-items: center; gap: 0.125rem; flex-shrink: 0; }
+.sidebarBadge { display: grid; place-items: center; min-width: 3rem; min-height: 2.75rem; padding-inline: 0.375rem; border-radius: 0.5rem; background: var(--primary); color: var(--primary-foreground); font-size: 1.5rem; font-weight: 700; line-height: 1.25; font-variant-numeric: tabular-nums; }
+.sidebarScale { color: var(--muted-foreground); font-size: 0.6875rem; }
+.sidebarQuality { color: var(--foreground); font-size: 0.875rem; font-weight: 700; }
+.sidebarScores.sidebarScores { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.625rem 0.75rem; }
+.sidebarScores .category { --rating-ink: var(--primary); font-size: 0.75rem; }
+.sidebarScores .category dt { padding-inline-end: 1.75rem; }
+.sidebarScores .track { height: 0.1875rem; margin-block-start: 0.25rem; }
 .category { position: relative; min-width: 0; font-size: 0.8125rem; line-height: 1.75; }
 .category dt { padding-inline-end: 2.5rem; overflow-wrap: anywhere; }
 .categoryValue { position: absolute; inset-inline-end: 0; inset-block-start: 0; color: var(--rating-ink, var(--foreground)); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }

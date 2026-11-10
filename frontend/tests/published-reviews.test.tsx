@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, renderHook, act, within } from "@testing-library/react";
 import { beforeEach, expect, it, vi } from "vitest";
-import { getRatingQuality, PublishedRating, PublishedReviewContent, PublishedReviewList, ReviewScoreList } from "@/components/reviews/PublishedReviews";
+import { getRatingQuality, PublishedRating, PublishedSidebarRating, PublishedReviewContent, PublishedReviewList, ReviewScoreList } from "@/components/reviews/PublishedReviews";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { PublicReviewPage } from "@/lib/property-reviews";
@@ -14,6 +14,40 @@ export const publicPage: PublicReviewPage = {
 };
 beforeEach(() => { vi.clearAllMocks(); request.mockResolvedValue(publicPage); });
 const listProps = { error: false, page: 1, onPage: vi.fn(), retry: vi.fn() };
+
+it("renders a compact blue sidebar badge and six averages without a recent-ratings popover", () => {
+  const view = render(<PublishedSidebarRating summary={publicPage.summary} />);
+  expect(screen.getByText("۱٫۶")).toBeTruthy(); expect(screen.getByText("ضعیف")).toBeTruthy();
+  expect(screen.getByText("بر اساس ۲ نظر")).toBeTruthy(); expect(screen.getByText("از ۱۰")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "نمایش امتیازهای اخیر" })).toBeNull();
+  const meters = screen.getAllByRole("meter"); expect(meters).toHaveLength(6);
+  expect(meters[0].getAttribute("aria-valuenow")).toBe("1.5");
+  expect(meters[5].getAttribute("aria-valuenow")).toBe("2");
+  expect(view.container.querySelector("[data-quality]")).toBeNull();
+  expect(screen.queryByText("/۱۰")).toBeNull();
+});
+
+it("never invents sidebar ratings for zero reviews or null averages and preserves loading", () => {
+  const view = render(<PublishedSidebarRating summary={null} />); expect(screen.getByRole("status")).toBeTruthy();
+  view.rerender(<PublishedSidebarRating summary={{ ...publicPage.summary, count: 0 }} />);
+  expect(screen.getByText("هنوز امتیازی ثبت نشده")).toBeTruthy(); expect(screen.queryByRole("meter")).toBeNull();
+  view.rerender(<PublishedSidebarRating summary={{ ...publicPage.summary, overallRating: null }} />);
+  expect(screen.getByText("هنوز امتیازی ثبت نشده")).toBeTruthy(); expect(screen.queryByText("از ۱۰")).toBeNull();
+  view.rerender(<PublishedSidebarRating summary={{ ...publicPage.summary, categories: { ...publicPage.summary.categories, cleanlinessRating: null } }} />);
+  expect(screen.getByText("—")).toBeTruthy(); expect(screen.getAllByRole("meter")).toHaveLength(5);
+});
+
+it("isolates thin uniform blue sidebar bars from the main quality-colored summary", () => {
+  const view = render(<><PublishedSidebarRating summary={publicPage.summary} /><PublishedRating summary={publicPage.summary} variant="summary" /></>);
+  expect(screen.getAllByText("ضعیف")).toHaveLength(2);
+  expect(screen.getAllByRole("button", { name: "نمایش امتیازهای اخیر" })).toHaveLength(1);
+  expect(view.container.querySelectorAll('[data-quality="weak"]')).toHaveLength(1);
+  const css = readFileSync(resolve("components/reviews/PublishedReviews.module.css"), "utf8");
+  expect(css).toContain(".sidebarScores .category { --rating-ink: var(--primary);");
+  expect(css).toContain(".sidebarScores .track { height: 0.1875rem;");
+  expect(css).toContain("background: var(--primary); color: var(--primary-foreground)");
+  expect(css).toContain(".sidebarScores.sidebarScores { grid-template-columns: repeat(2, minmax(0, 1fr))");
+});
 
 it("groups the property rating beside its six averages and omits individual category details and submission dates", () => {
   render(<PublishedReviewList {...listProps} data={publicPage} />);

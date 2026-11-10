@@ -15,11 +15,11 @@ export function getRatingQuality(score: number) {
   return { tone: "excellent", label: "عالی" } as const;
 }
 
-export function ReviewScoreList({ scores }: { scores: Partial<Record<ReviewScoreKey, number | null>> }) {
-  return <dl className={styles.scores}>
+export function ReviewScoreList({ scores, appearance = "quality" }: { scores: Partial<Record<ReviewScoreKey, number | null>>; appearance?: "quality" | "brand" }) {
+  return <dl className={`${styles.scores} ${appearance === "brand" ? styles.sidebarScores : ""}`}>
     {reviewCategories.map(([key, label]) => {
       const value = scores[key];
-      return <div className={`${styles.category} ${styles.qualityTone}`} data-quality={value != null ? getRatingQuality(value).tone : undefined} key={key}><dt>{label}</dt><dd>
+      return <div className={`${styles.category} ${appearance === "quality" ? styles.qualityTone : ""}`} data-quality={appearance === "quality" && value != null ? getRatingQuality(value).tone : undefined} key={key}><dt>{label}</dt><dd>
         <span className={styles.categoryValue}>{value?.toLocaleString("fa-IR", { maximumFractionDigits: 1 }) ?? "—"}</span>
         {value != null && <div role="meter" aria-label={label} aria-valuemin={0} aria-valuemax={10} aria-valuenow={value} aria-valuetext={`${value.toLocaleString("fa-IR", { maximumFractionDigits: 1 })} از ۱۰`} className={styles.track}>
           <span aria-hidden="true" style={{ width: `${value * 10}%` }} />
@@ -27,6 +27,20 @@ export function ReviewScoreList({ scores }: { scores: Partial<Record<ReviewScore
       </dd></div>;
     })}
   </dl>;
+}
+export function PublishedSidebarRating({ summary }: { summary: PublicReviewPage["summary"] | null }) {
+  if (!summary) return <p role="status">در حال دریافت امتیاز…</p>;
+  if (summary.count === 0 || summary.overallRating === null) return <p>هنوز امتیازی ثبت نشده</p>;
+  return <div className={styles.sidebarRating}>
+    <div className={styles.sidebarOverview}>
+      <div className={styles.sidebarScore}>
+        <strong className={styles.sidebarBadge}>{summary.overallRating.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong>
+        <span className={styles.sidebarScale}>از ۱۰</span>
+      </div>
+      <div><p className={styles.sidebarQuality}>{getRatingQuality(summary.overallRating).label}</p><p className={styles.count}>بر اساس {summary.count.toLocaleString("fa-IR")} نظر</p></div>
+    </div>
+    <ReviewScoreList scores={summary.categories} appearance="brand" />
+  </div>;
 }
 export function PublishedRating({ summary, variant = "compact" }: { summary: PublicReviewPage["summary"] | null; variant?: "compact" | "summary" }) {
   if (!summary) return <p role="status">در حال دریافت امتیاز…</p>;

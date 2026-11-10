@@ -21,7 +21,7 @@ import {
 } from "./useMarketplacePropertyNavigation";
 import styles from "./MarketplacePropertyDetail.module.css";
 import { usePublicPropertyReviews } from "@/hooks/usePublicPropertyReviews";
-import { PublishedRating, PublishedReviewList } from "@/components/reviews/PublishedReviews";
+import { PublishedSidebarRating, PublishedReviewList } from "@/components/reviews/PublishedReviews";
 
 function PropertyAmenityIcon({ icon }: { icon?: string | null }) {
   return icon &&
@@ -443,19 +443,20 @@ export function MarketplacePropertyDetail({
           </p>
         </section>
         <aside aria-label="خلاصه اقامتگاه و موقعیت" className={styles.sidebar}>
-          <KoochCard className={styles.sidebarCard}>
-            <h2>امتیاز و نظرات</h2>
-            {reviews.error ? <p className={styles.unavailable}>امتیاز در حال حاضر در دسترس نیست.</p> : <PublishedRating summary={reviews.data?.summary ?? null} />}
+          <KoochCard padding="sm" className={`${styles.sidebarCard} ${styles.ratingCard}`}>
+            <div className={styles.ratingHeader}><h2>امتیاز و نظرات</h2>
             <a
-              className={styles.textLink}
+              className={`${styles.textLink} ${styles.ratingLink}`}
               href="#property-reviews"
               onClick={(event) => {
                 event.preventDefault();
                 navigation.navigate("property-reviews");
               }}
             >
-              مشاهده بخش نظرات
+              مشاهده نظرات
             </a>
+            </div>
+            {reviews.error ? <p className={styles.unavailable}>امتیاز در حال حاضر در دسترس نیست.</p> : <PublishedSidebarRating summary={reviews.data?.summary ?? null} />}
           </KoochCard>
           <KoochCard className={styles.sidebarCard}>
             {mapUrl ? (

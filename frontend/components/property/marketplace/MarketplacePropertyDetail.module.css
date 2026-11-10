@@ -73,6 +73,11 @@
 .sidebarCard.sidebarCard { border-radius: .75rem; }
 .sidebarCard h2 { font-size: 1rem; line-height: 1.8; font-weight: 600; }
 .sidebarCard .textLink { display: inline-flex; align-items: center; min-height: 44px; margin-top: .5rem; }
+.ratingCard { display: grid; gap: .625rem; }
+.ratingHeader { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .25rem .75rem; }
+.ratingHeader .ratingLink { margin: 0; min-height: 2rem; font-size: .75rem; }
+.ratingLink:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: .25rem; }
+@media (pointer: coarse) { .ratingHeader .ratingLink { min-height: 44px; } }
 .sidebarCard section > div { height: 14rem; }
 .sidebarCard [role="status"] { background: var(--card); color: var(--muted-foreground); }
 .address { margin-top: 1rem; font-size: .875rem; line-height: 1.9; overflow-wrap: anywhere; }
