@@ -29,7 +29,7 @@ export function ScorePill({ name, label, value, onChange, required = false, disa
     const focused = radios.indexOf(event.target as HTMLInputElement);
     if (focused < 0 || radios[focused].matches(":disabled")) return;
     event.preventDefault();
-    const forward = event.key === "ArrowDown" || event.key === (dir === "rtl" ? "ArrowLeft" : "ArrowRight");
+    const forward = event.key === "ArrowDown" || event.key === "ArrowRight";
     const next = event.key === "Home" ? 0 : event.key === "End" ? 9 : (focused + (forward ? 1 : -1) + 10) % 10;
     onChange(next + 1);
     radios[next].focus();
@@ -43,9 +43,9 @@ export function ScorePill({ name, label, value, onChange, required = false, disa
     <div className={styles.control} ref={group} role="radiogroup" aria-labelledby={`${id}-label`}
       aria-required={required} aria-invalid={invalid || undefined} aria-disabled={disabled || undefined}
       aria-describedby={[`${id}-feedback`, describedBy].filter(Boolean).join(" ")} onKeyDown={navigate}>
-      <div className={styles.track}>
+      <div className={styles.track} dir="ltr">
         {selected !== null && <span className={styles.selectionViewport} aria-hidden="true"><span className={styles.selection}
-          style={{ transform: `translateX(${(dir === "rtl" ? -1 : 1) * (selected - 1) * 100}%)` }} /></span>}
+          style={{ transform: `translateX(${(selected - 1) * 100}%)` }} /></span>}
         {Array.from({ length: 10 }, (_, index) => index + 1).map(score => <label className={styles.option} key={score}>
           <input type="radio" name={name} value={score} checked={selected === score} required={required} disabled={disabled}
             tabIndex={selected === score || selected === null && score === 1 ? 0 : -1}

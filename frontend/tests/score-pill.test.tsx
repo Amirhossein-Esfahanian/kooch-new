@@ -24,15 +24,16 @@ it("starts unselected and supports all ten controlled choices with real radio va
     expect(screen.getByText(getRatingQuality(score).label)).toBeTruthy();
     expect(view.container.firstElementChild?.getAttribute("data-quality")).toBe(getRatingQuality(score).tone);
     expect(radios.filter(radio => radio.tabIndex === 0)).toEqual([radios[score - 1]]);
+    expect(view.container.querySelector('[aria-hidden="true"] > [style]')?.getAttribute("style")).toContain(`translateX(${(score - 1) * 100}%)`);
   }
-  expect(view.container.querySelector('[aria-hidden="true"] > [style]')?.getAttribute("style")).toContain("translateX(-900%)");
+  expect(view.container.querySelector('[aria-hidden="true"] > [style]')?.getAttribute("style")).toContain("translateX(900%)");
 });
 
 it.each(["rtl", "ltr"] as const)("supports directional arrows, wrapping, Home/End and focus in %s", dir => {
   render(<Selector dir={dir} />);
   const radios = screen.getAllByRole("radio"); radios[0].focus();
-  const forward = dir === "rtl" ? "ArrowLeft" : "ArrowRight";
-  const backward = dir === "rtl" ? "ArrowRight" : "ArrowLeft";
+  const forward = "ArrowRight";
+  const backward = "ArrowLeft";
   fireEvent.keyDown(radios[0], { key: forward }); expect(document.activeElement).toBe(radios[1]);
   expect((radios[1] as HTMLInputElement).checked).toBe(true);
   fireEvent.keyDown(radios[1], { key: backward }); expect(document.activeElement).toBe(radios[0]);
@@ -64,6 +65,7 @@ it("associates validation/help with its group and respects disabled controls", (
 it("uses a narrow-safe ten-column layout, visible focus and CSS-only reduced-motion-safe movement", () => {
   const css = readFileSync(resolve("components/ScorePill.module.css"), "utf8");
   expect(css).toContain("repeat(10, minmax(0, 1fr))"); expect(css).toContain("min-width: 0");
+  expect(css).toContain(".track { direction: ltr;");
   expect(css).toContain("min-height: 2.125rem"); expect(css).toContain("padding: 0.0625rem"); expect(css).toContain(":focus-visible");
   expect(css).toContain(".selectionViewport { position: absolute; inset: 0;");
   expect(css).toContain("@media (pointer: coarse)"); expect(css).toContain("height: calc(100% + 4px)");
@@ -71,6 +73,19 @@ it("uses a narrow-safe ten-column layout, visible focus and CSS-only reduced-mot
   expect(css).toContain("inset-inline-start: 0"); expect(css).toContain("cubic-bezier(0.34, 1.56, 0.64, 1)");
   expect(css).toContain("@media (prefers-reduced-motion: reduce) { .selection { transition: none; }");
   expect(css).not.toContain(":global");
+});
+
+it("keeps the form-facing heading RTL while ordering actual radio values 1–10 left to right", () => {
+  const view = render(<Selector />);
+  const group = screen.getByRole("radiogroup", { name: "نظافت" });
+  const radios = within(group).getAllByRole("radio") as HTMLInputElement[];
+  expect(view.container.firstElementChild?.getAttribute("dir")).toBe("rtl");
+  expect(group.firstElementChild?.getAttribute("dir")).toBe("ltr");
+  expect(radios.map(radio => radio.value)).toEqual(Array.from({ length: 10 }, (_, index) => String(index + 1)));
+  expect(radios[0].closest("label")?.textContent).toBe("۱");
+  expect(radios[9].closest("label")?.textContent).toBe("۱۰");
+  const label = document.getElementById(group.getAttribute("aria-labelledby")!)!;
+  expect(label.closest('[dir]')?.getAttribute("dir")).toBe("rtl");
 });
 
 it("places quality feedback opposite the category label with no extra feedback row or unselected score", () => {

@@ -1,4 +1,16 @@
-.card { display: grid; gap: 0.5rem; width: 100%; min-width: 0; max-height: min(28rem, calc(100dvh - 8rem - env(safe-area-inset-bottom, 0px) - env(safe-area-inset-top, 0px))); overflow-y: auto; overscroll-behavior: contain; padding: 0.875rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); color: var(--card-foreground); box-shadow: 0 4px 16px color-mix(in srgb, var(--foreground) 8%, transparent); overflow-wrap: anywhere; }
+.toaster.toaster[data-sonner-toaster] {
+  --review-invitation-top: calc(max(var(--header-height, 65px), env(safe-area-inset-top, 0px)) + 1rem);
+  --review-invitation-right: max(1.5rem, env(safe-area-inset-right, 0px));
+  --review-invitation-left: max(1.5rem, env(safe-area-inset-left, 0px));
+  position: fixed;
+  top: var(--review-invitation-top);
+  right: var(--review-invitation-right);
+  left: auto;
+  width: min(22rem, calc(100vw - var(--review-invitation-right) - var(--review-invitation-left)));
+}
+/* Do not slide through the header during Sonner's entrance or dismissal. */
+.toaster[data-sonner-toaster] [data-sonner-toast] { width: 100%; left: 0; right: 0; transform: none; }
+.card { display: grid; gap: 0.5rem; width: 100%; min-width: 0; max-height: min(28rem, calc(100dvh - var(--review-invitation-top) - max(1rem, env(safe-area-inset-bottom, 0px)))); overflow-y: auto; overscroll-behavior: contain; padding: 0.875rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); color: var(--card-foreground); box-shadow: 0 4px 16px color-mix(in srgb, var(--foreground) 8%, transparent); overflow-wrap: anywhere; }
 .header { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
 .header h2 { margin: 0; font-size: 1rem; font-weight: 700; line-height: 1.5; }
 .close.close { width: 2rem; height: 2rem; min-height: 2rem; flex-shrink: 0; color: var(--muted-foreground); }
@@ -22,3 +34,10 @@
   .primary, .secondary.secondary, .optOut button, .details summary { min-height: 2.75rem; }
 }
 @media (max-width: 420px) { .card { padding: 0.75rem; } }
+@media (max-width: 600px) {
+  .toaster.toaster[data-sonner-toaster] {
+    --review-invitation-top: calc(max(var(--header-height, 65px), env(safe-area-inset-top, 0px)) + 0.75rem);
+    --review-invitation-right: max(0.75rem, env(safe-area-inset-right, 0px));
+    --review-invitation-left: max(0.75rem, env(safe-area-inset-left, 0px));
+  }
+}

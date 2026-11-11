@@ -98,9 +98,9 @@ function AuthenticatedInvitation({ userId, allowed }: { userId: number; allowed:
       remove={reservationId => setStays(current => current.filter(stay => stay.reservationId !== reservationId))} />,
     { id, toasterId: "guest-reviews", duration: Infinity, dismissible: false, closeButton: false });
   }, [allowed, dismissed, id, stays, userId]);
-  return allowed ? <Toaster id="guest-reviews" dir="rtl" position="bottom-left" containerAriaLabel="یادآوری نظر اقامت"
-    offset={{ bottom: "max(24px, env(safe-area-inset-bottom))", left: "24px" }}
-    mobileOffset={{ bottom: "calc(96px + env(safe-area-inset-bottom))", left: "12px", right: "12px" }} /> : null;
+  return allowed ? <Toaster id="guest-reviews" dir="rtl" position="top-right" className={styles.toaster} containerAriaLabel="یادآوری نظر اقامت"
+    offset={{ top: "var(--review-invitation-top)", right: "var(--review-invitation-right)" }}
+    mobileOffset={{ top: "var(--review-invitation-top)", left: "var(--review-invitation-left)", right: "var(--review-invitation-right)" }} /> : null;
 }
 
 export function GuestReviewInvitation() {

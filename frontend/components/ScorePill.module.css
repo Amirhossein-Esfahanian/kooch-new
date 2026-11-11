@@ -9,7 +9,7 @@
 .control { padding: 0.0625rem; border: 1px solid var(--border); border-radius: 999px; background: var(--muted); min-width: 0; }
 .control[aria-invalid="true"] { border-color: var(--destructive); }
 .control[aria-disabled="true"] { opacity: 0.6; }
-.track { position: relative; isolation: isolate; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); border-radius: inherit; }
+.track { direction: ltr; position: relative; isolation: isolate; display: grid; grid-template-columns: repeat(10, minmax(0, 1fr)); border-radius: inherit; }
 .selectionViewport { position: absolute; inset: 0; border-radius: inherit; overflow: hidden; pointer-events: none; }
 .selection { position: absolute; inset-block: 0; inset-inline-start: 0; width: 10%; border-radius: 999px; background: var(--score-ink); transition: transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1), background-color 160ms ease-out; pointer-events: none; }
 .option { position: relative; display: grid; place-items: center; min-width: 0; min-height: 2.125rem; cursor: pointer; font-size: 0.8125rem; font-weight: 600; font-variant-numeric: tabular-nums; }

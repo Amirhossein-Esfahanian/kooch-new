@@ -78,7 +78,7 @@ describe("single site-wide Sonner review invitation", () => {
     await waitFor(() => expect(mocks.eligible).toHaveBeenCalledOnce());
     expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull(); expect(screen.queryByRole("alert")).toBeNull();
   });
-  it("has a persistent RTL toast, later-page form link and safe-area mobile offset", async () => {
+  it("has a persistent top-right RTL toast, later-page form link and shared header offsets", async () => {
     mocks.eligible.mockResolvedValue([{ ...stay, invitationPage: 3 }]); render(<GuestReviewInvitation />);
     const title = await screen.findByText("اقامتت چطور بود؟");
     expect(title.closest("section")?.getAttribute("dir")).toBe("rtl");
@@ -87,7 +87,11 @@ describe("single site-wide Sonner review invitation", () => {
     const active = toast.getToasts().find(t => t.id === `guest-review-invitation-${user}`);
     expect(active && "duration" in active ? active.duration : undefined).toBe(Infinity);
     expect(active && "dismissible" in active ? active.dismissible : undefined).toBe(false);
-    expect(document.querySelector('[data-sonner-toaster]')?.getAttribute("style")).toContain("safe-area-inset-bottom");
+    const toaster = document.querySelector('[data-sonner-toaster]')!;
+    expect(toaster.getAttribute("data-x-position")).toBe("right"); expect(toaster.getAttribute("data-y-position")).toBe("top");
+    expect(toaster.getAttribute("style")).toContain("--offset-top: var(--review-invitation-top)");
+    expect(toaster.getAttribute("style")).toContain("--mobile-offset-top: var(--review-invitation-top)");
+    expect(toaster.getAttribute("style")).toContain("--mobile-offset-right: var(--review-invitation-right)");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
   it("keeps one toast across route navigation without fetching on every route", async () => {
@@ -144,7 +148,19 @@ describe("single site-wide Sonner review invitation", () => {
     const css = readFileSync(resolve("components/reviews/GuestReviewInvitation.module.css"), "utf8");
     expect(css).toContain("var(--card)"); expect(css).toContain("var(--border)"); expect(css).toContain(":focus-visible");
     expect(css).toContain("@media (pointer: coarse)"); expect(css).toContain("min-height: 2.75rem");
-    expect(css).toContain("overflow-wrap: anywhere"); expect(css).toContain("100dvh - 8rem"); expect(css).not.toContain(":global");
+    expect(css).toContain("overflow-wrap: anywhere"); expect(css).toContain("100dvh - var(--review-invitation-top)"); expect(css).not.toContain(":global");
+  });
+  it("uses the live header token and viewport-safe fixed width without changing card or eligibility behavior", async () => {
+    mocks.eligible.mockResolvedValue([stay]); render(<GuestReviewInvitation />);
+    await screen.findByRole("heading", { name: "اقامتت چطور بود؟" });
+    const css = readFileSync(resolve("components/reviews/GuestReviewInvitation.module.css"), "utf8");
+    expect(css).toContain("var(--header-height, 65px)"); expect(css).toContain("position: fixed");
+    expect(css).toContain("width: min(22rem, calc(100vw - var(--review-invitation-right) - var(--review-invitation-left)))");
+    expect(css).toContain(".toaster.toaster[data-sonner-toaster]");
+    expect(css).toContain(".toaster[data-sonner-toaster] [data-sonner-toast] { width: 100%; left: 0; right: 0; transform: none; }");
+    expect(css).toContain("@media (max-width: 600px)");
+    ["top", "right", "left", "bottom"].forEach(edge => expect(css).toContain(`env(safe-area-inset-${edge}, 0px)`));
+    expect(mocks.eligible).toHaveBeenCalledOnce(); expect(mocks.suppress).not.toHaveBeenCalled();
   });
 });
 
