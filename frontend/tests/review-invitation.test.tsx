@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 const mocks = vi.hoisted(() => ({
@@ -11,7 +11,9 @@ vi.mock("@/lib/guest-reviews", async original => ({
   ...await original<typeof import("@/lib/guest-reviews")>(),
   getAllReviewInvitationStays: mocks.eligible, suppressReviewInvitation: mocks.suppress,
 }));
-import { GuestReviewInvitation } from "@/components/reviews/GuestReviewInvitation";
+import { GuestReviewInvitation, reviewInvitationsAllowed } from "@/components/reviews/GuestReviewInvitation";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { ReviewInvitationOptOut } from "@/components/reviews/ReviewInvitationOptOut";
 import { guestReviewsChangedEvent, type EligibleReviewStay } from "@/lib/guest-reviews";
 
@@ -29,20 +31,58 @@ beforeEach(() => {
 });
 
 describe("single site-wide Sonner review invitation", () => {
+  it.each(["/account/reviews", "/account/reviews/", "/account/reviews?reservationId=1&eligiblePage=3", "/account/reviews/new", "/account/reviews/new?reservationId=1", "/book/stay", "/booking/sessions/code/success"])("does not render or fetch on excluded route %s", path => {
+    mocks.path = path; mocks.eligible.mockResolvedValue([stay]);
+    render(<GuestReviewInvitation />);
+    expect(reviewInvitationsAllowed(path)).toBe(false);
+    expect(mocks.eligible).not.toHaveBeenCalled();
+    expect(screen.queryByRole("heading", { name: "اقامتت چطور بود؟" })).toBeNull();
+    expect(document.querySelector('[data-sonner-toaster]')).toBeNull();
+  });
+  it("hides an existing toast immediately on the review form without dismissing the browser session", async () => {
+    mocks.eligible.mockResolvedValue([stay]); const view = render(<GuestReviewInvitation />);
+    await screen.findByRole("heading", { name: "اقامتت چطور بود؟" });
+    mocks.path = "/account/reviews?reservationId=1"; view.rerender(<GuestReviewInvitation />);
+    expect(screen.queryByRole("heading", { name: "اقامتت چطور بود؟" })).toBeNull();
+    mocks.path = "/properties/stay"; view.rerender(<GuestReviewInvitation />);
+    await screen.findByRole("heading", { name: "اقامتت چطور بود؟" });
+    expect(mocks.eligible).toHaveBeenCalledTimes(2); expect(mocks.suppress).not.toHaveBeenCalled();
+    expect(reviewInvitationsAllowed("/account/reviews-archive")).toBe(true);
+  });
+  it("uses the close button for the same session-only dismissal as not now", async () => {
+    mocks.eligible.mockResolvedValue([stay]); const view = render(<GuestReviewInvitation />);
+    const close = await screen.findByRole("button", { name: "بستن دعوت‌نامه نظر برای این نشست" });
+    close.focus(); expect(document.activeElement).toBe(close); fireEvent.click(close);
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "اقامتت چطور بود؟" })).toBeNull());
+    view.unmount(); render(<GuestReviewInvitation />);
+    expect(mocks.eligible).toHaveBeenCalledOnce(); expect(mocks.suppress).not.toHaveBeenCalled();
+  });
+  it("permanently suppresses only the current stay without dismissing future invitations", async () => {
+    mocks.eligible.mockResolvedValue([stay]); render(<GuestReviewInvitation />);
+    fireEvent.click(await screen.findByRole("button", { name: /دیگر برای این اقامت نمایش نده: سرای اول/ }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "اقامتت چطور بود؟" })).toBeNull());
+    expect(mocks.suppress).toHaveBeenCalledExactlyOnceWith(1, expect.any(AbortSignal));
+    mocks.eligible.mockResolvedValue([{ ...stay, reservationId: 99, propertyName: "اقامت آینده" }]);
+    fireEvent(window, new Event(guestReviewsChangedEvent));
+    await screen.findByText("اقامت آینده");
+    expect(screen.getByRole("link", { name: "ثبت نظر" }).getAttribute("href")).toContain("reservationId=99");
+    expect(mocks.suppress).toHaveBeenCalledOnce();
+  });
   it.each(["anonymous", "loading"])("does not fetch or display for %s auth", async mode => {
     mocks.session.authenticated = mode !== "anonymous"; mocks.session.loading = mode === "loading";
     render(<GuestReviewInvitation />);
-    expect(mocks.eligible).not.toHaveBeenCalled(); expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull();
+    expect(mocks.eligible).not.toHaveBeenCalled(); expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull();
   });
   it("silently handles empty or unavailable APIs", async () => {
     mocks.eligible.mockRejectedValueOnce(new Error("offline")); render(<GuestReviewInvitation />);
     await waitFor(() => expect(mocks.eligible).toHaveBeenCalledOnce());
-    expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull(); expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull(); expect(screen.queryByRole("alert")).toBeNull();
   });
   it("has a persistent RTL toast, later-page form link and safe-area mobile offset", async () => {
     mocks.eligible.mockResolvedValue([{ ...stay, invitationPage: 3 }]); render(<GuestReviewInvitation />);
-    const title = await screen.findByText("اقامتتان چطور بود؟");
+    const title = await screen.findByText("اقامتت چطور بود؟");
     expect(title.closest("section")?.getAttribute("dir")).toBe("rtl");
+    expect(screen.getByText("سرای اول").closest("p")?.textContent).toBe("تجربه‌ات در سرای اول رو با بقیه به اشتراک بذار.");
     expect(screen.getByRole("link", { name: "ثبت نظر" }).getAttribute("href")).toBe("/account/reviews?reservationId=1&eligiblePage=3");
     const active = toast.getToasts().find(t => t.id === `guest-review-invitation-${user}`);
     expect(active && "duration" in active ? active.duration : undefined).toBe(Infinity);
@@ -52,14 +92,14 @@ describe("single site-wide Sonner review invitation", () => {
   });
   it("keeps one toast across route navigation without fetching on every route", async () => {
     mocks.eligible.mockResolvedValue([stay]); const view = render(<GuestReviewInvitation />);
-    await screen.findByText("اقامتتان چطور بود؟"); mocks.path = "/properties/stay";
+    await screen.findByText("اقامتت چطور بود؟"); mocks.path = "/properties/stay";
     view.rerender(<GuestReviewInvitation />);
-    expect(screen.getAllByText("اقامتتان چطور بود؟")).toHaveLength(1); expect(mocks.eligible).toHaveBeenCalledOnce();
+    expect(screen.getAllByText("اقامتت چطور بود؟")).toHaveLength(1); expect(mocks.eligible).toHaveBeenCalledOnce();
   });
   it("persists temporary dismissal across remount and login within this browser session", async () => {
     mocks.eligible.mockResolvedValue([stay]); const view = render(<GuestReviewInvitation />);
     fireEvent.click(await screen.findByRole("button", { name: "فعلاً نه" }));
-    await waitFor(() => expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull());
     view.unmount(); render(<GuestReviewInvitation />);
     expect(mocks.eligible).toHaveBeenCalledOnce(); expect(mocks.suppress).not.toHaveBeenCalled();
   });
@@ -67,31 +107,44 @@ describe("single site-wide Sonner review invitation", () => {
     mocks.eligible.mockResolvedValue([stay]); const view = render(<GuestReviewInvitation />);
     fireEvent.click(await screen.findByRole("button", { name: "فعلاً نه" }));
     mocks.session = { ...mocks.session, user: { userId: ++user } }; view.rerender(<GuestReviewInvitation />);
-    await screen.findByText("اقامتتان چطور بود؟"); expect(mocks.eligible).toHaveBeenCalledTimes(2);
+    await screen.findByText("اقامتت چطور بود؟"); expect(mocks.eligible).toHaveBeenCalledTimes(2);
     mocks.session = { ...mocks.session, authenticated: false }; view.rerender(<GuestReviewInvitation />);
-    expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull();
+    expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull();
   });
   it("hides on Direct routes and refreshes after a review event", async () => {
     mocks.eligible.mockResolvedValue([stay]); const view = render(<GuestReviewInvitation />);
-    await screen.findByText("اقامتتان چطور بود؟");
+    await screen.findByText("اقامتت چطور بود؟");
     mocks.path = "/book/fin-garden-boutique-stay"; view.rerender(<GuestReviewInvitation />);
-    expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull();
+    expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull();
     mocks.path = "/account"; view.rerender(<GuestReviewInvitation />);
-    await screen.findByText("اقامتتان چطور بود؟");
+    await screen.findByText("اقامتت چطور بود؟");
     mocks.eligible.mockResolvedValue([]); fireEvent(window, new Event(guestReviewsChangedEvent));
-    await waitFor(() => expect(screen.queryByText("اقامتتان چطور بود؟")).toBeNull());
+    await waitFor(() => expect(screen.queryByText("اقامتت چطور بود؟")).toBeNull());
     expect(mocks.eligible).toHaveBeenCalledTimes(3); // Re-entering the public-site boundary refreshes once.
   });
   it("groups multiple stays and suppresses only the explicitly chosen reservation", async () => {
     mocks.eligible.mockResolvedValue([stay, { ...stay, reservationId: 2, reservationNumber: "R-2", propertyName: "سرای دوم" }]);
-    render(<GuestReviewInvitation />); await screen.findByText(/برای ۲ اقامت/);
-    expect(screen.getAllByText("اقامتتان چطور بود؟")).toHaveLength(1);
+    render(<GuestReviewInvitation />); await screen.findByText(/۱ اقامت دیگر/);
+    expect(screen.getAllByText("اقامتت چطور بود؟")).toHaveLength(1);
     expect(screen.getByRole("link", { name: "ثبت نظر" }).getAttribute("href")).toBe("/account/reviews");
     fireEvent.click(screen.getByText("تنظیم یادآوری برای هر اقامت"));
     fireEvent.click(screen.getByRole("button", { name: /دیگر برای این اقامت نمایش نده: سرای اول/ }));
     await waitFor(() => expect(mocks.suppress).toHaveBeenCalledWith(1, expect.any(AbortSignal)));
     await waitFor(() => expect(screen.getByRole("link", { name: "ثبت نظر" }).getAttribute("href")).toBe("/account/reviews?reservationId=2&eligiblePage=1"));
     expect(mocks.suppress).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "ثبت نظر" }));
+  });
+  it("scopes the compact card and text opt-out styling, retaining focus and touch targets", async () => {
+    mocks.eligible.mockResolvedValue([stay]); render(<GuestReviewInvitation />);
+    const heading = await screen.findByRole("heading", { name: "اقامتت چطور بود؟" });
+    const card = heading.closest("section")!;
+    const primary = within(card).getByRole("link", { name: "ثبت نظر" });
+    primary.focus(); expect(document.activeElement).toBe(primary);
+    expect(within(card).getByRole("button", { name: "فعلاً نه" })).toBeTruthy();
+    const css = readFileSync(resolve("components/reviews/GuestReviewInvitation.module.css"), "utf8");
+    expect(css).toContain("var(--card)"); expect(css).toContain("var(--border)"); expect(css).toContain(":focus-visible");
+    expect(css).toContain("@media (pointer: coarse)"); expect(css).toContain("min-height: 2.75rem");
+    expect(css).toContain("overflow-wrap: anywhere"); expect(css).toContain("100dvh - 8rem"); expect(css).not.toContain(":global");
   });
 });
 

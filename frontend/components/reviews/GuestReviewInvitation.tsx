@@ -7,12 +7,14 @@ import { usePathname } from "next/navigation";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { ReviewInvitationOptOut } from "@/components/reviews/ReviewInvitationOptOut";
-import { getAllReviewInvitationStays, guestReviewsChangedEvent, reviewDate, reviewLinkClass, type EligibleReviewStay } from "@/lib/guest-reviews";
+import { getAllReviewInvitationStays, guestReviewsChangedEvent, reviewDate, type EligibleReviewStay } from "@/lib/guest-reviews";
 import { dismissReviewInvitationForSession, isReviewInvitationDismissed } from "@/lib/review-invitation-session";
+import styles from "./GuestReviewInvitation.module.css";
 
 // Keep Marketplace account invitations out of Property-branded journeys.
 export function reviewInvitationsAllowed(path: string) {
-  return !/^\/(?:book|booking)(?:\/|$)/.test(path);
+  const pathname = path.split(/[?#]/, 1)[0];
+  return !/^\/(?:book|booking)(?:\/|$)/.test(pathname) && !/^\/account\/reviews(?:\/|$)/.test(pathname);
 }
 
 function InvitationContent({ userId, stays, dismiss, remove, navigate }: {
@@ -21,30 +23,28 @@ function InvitationContent({ userId, stays, dismiss, remove, navigate }: {
   const session = useAuthSession();
   const pathname = usePathname();
   const action = useRef<HTMLAnchorElement>(null);
-  if (!session.authenticated || session.loading || session.user?.userId !== userId || !reviewInvitationsAllowed(pathname ?? "")) return null;
+  if (!stays.length || !session.authenticated || session.loading || session.user?.userId !== userId || !reviewInvitationsAllowed(pathname ?? "")) return null;
   const single = stays.length === 1 ? stays[0] : null;
   const suppress = (id: number) => { if (stays.length > 1) action.current?.focus(); remove(id); };
-  return <section dir="rtl" aria-labelledby="global-review-invitation-title"
-    className="max-h-[calc(100dvh-8rem)] w-full overflow-y-auto rounded-lg border border-border bg-card p-4 text-card-foreground shadow-sm motion-reduce:transition-none">
-    <div className="flex items-start justify-between gap-3">
-      <h2 id="global-review-invitation-title" className="pt-2 text-base font-bold">اقامتتان چطور بود؟</h2>
-      <KoochButton variant="ghost" size="icon" className="min-h-11 min-w-11" aria-label="بستن دعوت‌نامه نظر برای این نشست" onClick={dismiss}>
+  return <section dir="rtl" aria-labelledby="global-review-invitation-title" className={styles.card}>
+    <div className={styles.header}>
+      <h2 id="global-review-invitation-title">اقامتت چطور بود؟</h2>
+      <KoochButton variant="ghost" size="icon" className={styles.close} aria-label="بستن دعوت‌نامه نظر برای این نشست" onClick={dismiss}>
         <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden="true"><path d="m6 6 12 12M18 6 6 18" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
       </KoochButton>
     </div>
-    {single ? <p className="mt-1 break-words text-sm leading-7">{single.propertyName} · خروج {reviewDate(single.checkOutDate)}</p>
-      : <p className="mt-1 text-sm leading-7">برای {stays.length.toLocaleString("fa-IR")} اقامت می‌توانید نظر بدهید.</p>}
-    <div className="mt-2 flex flex-wrap items-center gap-2">
-      <Link ref={action} className={reviewLinkClass} onClick={navigate} href={single ? `/account/reviews?reservationId=${single.reservationId}&eligiblePage=${single.invitationPage ?? 1}` : "/account/reviews"}>ثبت نظر</Link>
-      <KoochButton variant="ghost" className="min-h-11" onClick={dismiss}>فعلاً نه</KoochButton>
+    <p className={styles.message}>تجربه‌ات در <strong>{stays[0].propertyName}</strong>{!single && ` و ${(stays.length - 1).toLocaleString("fa-IR")} اقامت دیگر`} رو با بقیه به اشتراک بذار.</p>
+    <div className={styles.actions}>
+      <Link ref={action} className={styles.primary} onClick={navigate} href={single ? `/account/reviews?reservationId=${single.reservationId}&eligiblePage=${single.invitationPage ?? 1}` : "/account/reviews"}>ثبت نظر</Link>
+      <KoochButton variant="ghost" size="sm" className={styles.secondary} onClick={dismiss}>فعلاً نه</KoochButton>
     </div>
-    {single ? <ReviewInvitationOptOut key={single.reservationId} stay={single} onSuppressed={suppress} /> : <details className="mt-2 text-sm">
-      <summary className="min-h-11 cursor-pointer rounded-md py-3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">تنظیم یادآوری برای هر اقامت</summary>
-      <ul className="max-h-48 overflow-y-auto overscroll-contain divide-y divide-border">
-        {stays.map(stay => <li key={stay.reservationId} className="py-3">
-          <p className="break-words font-semibold">{stay.propertyName}</p>
-          <p className="mt-1 text-xs leading-6 text-muted-foreground">خروج {reviewDate(stay.checkOutDate)} · رزرو {stay.reservationNumber ?? stay.reservationId.toLocaleString("fa-IR")}</p>
-          <ReviewInvitationOptOut stay={stay} onSuppressed={suppress} />
+    {single ? <div className={styles.optOut}><ReviewInvitationOptOut key={single.reservationId} stay={single} onSuppressed={suppress} /></div> : <details className={styles.details}>
+      <summary>تنظیم یادآوری برای هر اقامت</summary>
+      <ul className={styles.stays}>
+        {stays.map(stay => <li key={stay.reservationId}>
+          <p className={styles.propertyName}>{stay.propertyName}</p>
+          <p className={styles.stayMeta}>خروج {reviewDate(stay.checkOutDate)} · رزرو {stay.reservationNumber ?? stay.reservationId.toLocaleString("fa-IR")}</p>
+          <div className={styles.optOut}><ReviewInvitationOptOut stay={stay} onSuppressed={suppress} /></div>
         </li>)}
       </ul>
     </details>}
