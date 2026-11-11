@@ -18,6 +18,9 @@ import { GuestReviewForm } from "@/components/reviews/GuestReviewForm";
 import { GuestReviewsPage } from "@/components/reviews/GuestReviewsPage";
 import { reviewCategories, type EligibleReviewStay, type GuestReview, type GuestReviewListItem } from "@/lib/guest-reviews";
 import { metadata } from "@/app/account/reviews/page";
+import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const stay: EligibleReviewStay = { reservationId: 1, reservationNumber: "R-1", propertyId: 2, propertyName: "سرای آزمایش",
   checkOutDate: "2026-11-07", submissionDeadlineLocalDate: "2026-12-07", reviewId: null, revision: null };
@@ -51,6 +54,21 @@ describe("account navigation", () => {
 });
 
 describe("six-category form", () => {
+  it("separates the discreet reservation link from the primary and outlined action pair", () => {
+    const onClose = vi.fn(); render(<GuestReviewForm stay={stay} onClose={onClose} onSaved={vi.fn()} />);
+    const submit = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
+    const back = screen.getByRole("button", { name: "بازگشت به فهرست" });
+    const reservation = screen.getByRole("link", { name: "مشاهده رزرو" });
+    expect(submit.parentElement).toBe(back.parentElement);
+    expect(reservation.parentElement).toBe(submit.parentElement?.parentElement);
+    expect(reservation.parentElement).not.toBe(submit.parentElement);
+    expect(submit.className).toContain("bg-primary"); expect(back.className).toContain("bg-background");
+    expect(reservation.getAttribute("href")).toBe("/account/reservations/R-1");
+    back.focus(); fireEvent.click(back); expect(onClose).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
+    const css = readFileSync(resolve("components/reviews/GuestReviewForm.module.css"), "utf8");
+    expect(css).toContain("@media (max-width: 480px)"); expect(css).toContain(".buttons > button { width: 100%; }");
+    expect(css).toContain("color: var(--muted-foreground)"); expect(css).not.toContain(":global");
+  });
   it("starts blank, requires all six choices, labels invalid fields and focuses the first missing score", () => {
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />);
     expect(screen.getAllByRole("radiogroup")).toHaveLength(6);
@@ -98,6 +116,7 @@ describe("six-category form", () => {
     const button = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
     fireEvent.click(button); fireEvent.click(button);
     expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "بازگشت به فهرست" }) as HTMLButtonElement).disabled).toBe(true);
     expect(mocks.save).toHaveBeenCalledOnce(); resolve(review);
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
   });
@@ -124,6 +143,84 @@ describe("six-category form", () => {
 });
 
 describe("private paginated review page", () => {
+  it("reuses real blue category meters with a quality badge, stay context and a distinct guest comment", async () => {
+    mocks.list.mockResolvedValue(paged([item])); render(<GuestReviewsPage />);
+    const card = await screen.findByRole("article", { name: stay.propertyName });
+    expect(within(card).getByRole("heading", { name: stay.propertyName })).toBeTruthy();
+    expect(card.querySelector('time[datetime="2026-11-05"]')).toBeTruthy();
+    expect(card.querySelector('time[datetime="2026-11-07"]')).toBeTruthy();
+    expect(within(card).getByText("خوب")).toBeTruthy(); expect(card.querySelector('[data-quality="good"]')).toBeTruthy();
+    expect(within(card).getByText("۷٫۵")).toBeTruthy();
+    const meters = within(card).getAllByRole("meter"); expect(meters).toHaveLength(6);
+    reviewCategories.forEach(([key, label]) => expect(within(card).getByRole("meter", { name: label }).getAttribute("aria-valuenow")).toBe(String(review[key])));
+    expect(within(card).getByText("متن نظر").parentElement).toBe(within(card).getByText(review.comment).parentElement);
+    expect(within(card).getByText("در انتظار تأیید")).toBeTruthy();
+    expect(within(card).getByRole("button", { name: "ویرایش نظر" })).toBeTruthy();
+    expect(within(card).getByRole("link", { name: "مشاهده رزرو" }).getAttribute("href")).toBe("/account/reservations/R-1");
+    const css = readFileSync(resolve("components/reviews/GuestReviewsPage.module.css"), "utf8");
+    expect(css).toContain("grid-template-columns: minmax(0, 8rem) minmax(0, 1fr)");
+    expect(css).toContain("background: var(--score-ink); color: var(--card)");
+  });
+  it("keeps rating-only and approved-unpublished reviews honest without missing-metadata placeholders", async () => {
+    mocks.list.mockResolvedValue(paged([{ ...item, reservationNumber: null, checkInDate: "", checkOutDate: "", canEdit: false,
+      review: { ...review, comment: "", moderationStatus: "Approved", isPublished: false } }]));
+    render(<GuestReviewsPage />);
+    const card = await screen.findByRole("article", { name: stay.propertyName });
+    expect(within(card).getByText("بدون توضیح")).toBeTruthy();
+    expect(within(card).getByText("تأییدشده؛ هنوز منتشر نشده")).toBeTruthy();
+    expect(within(card).queryByText("منتشرشده")).toBeNull();
+    expect(within(card).queryByRole("link", { name: "مشاهده رزرو" })).toBeNull();
+    expect(within(card).queryByRole("button")).toBeNull(); expect(card.querySelector("time")).toBeNull();
+    expect(within(card).getByText("این نظر اکنون قابل ویرایش نیست.")).toBeTruthy();
+  });
+  it("preserves the exact page-header card and keeps compact refresh beside the eligible heading", async () => {
+    const reference = render(<KoochPageHeader eyebrow="محیط مهمان" title="نظرات من" description="اقامت‌های قابل ارزیابی و وضعیت نظرهای ارسال‌شده خود را ببینید." />);
+    const expectedHeader = reference.container.querySelector("header")!.outerHTML; reference.unmount();
+    render(<GuestReviewsPage />);
+    const header = screen.getByRole("heading", { level: 1, name: "نظرات من" }).closest("header")!;
+    expect(header.outerHTML).toBe(expectedHeader);
+    expect(header.parentElement?.firstElementChild).toBe(header);
+    expect(header.parentElement?.className).toBe("mx-auto grid max-w-5xl gap-6");
+    const eligible = screen.getByRole("heading", { name: "اقامت‌های قابل ثبت نظر" });
+    const refresh = screen.getByRole("button", { name: "دریافت دوباره فهرست" });
+    expect(refresh.parentElement).toBe(eligible.parentElement); expect(refresh.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
+    expect(screen.getByRole("link", { name: "بازگشت به حساب کاربری" }).getAttribute("href")).toBe("/account");
+    await screen.findByText(/اکنون اقامت واجد شرایطی/);
+  });
+  it("keeps separate real reservations for the same property and uses primary-blue review actions", async () => {
+    mocks.eligible.mockResolvedValue(paged([{ ...stay, invitationPreferenceAvailable: true },
+      { ...stay, reservationId: 2, reservationNumber: "R-2", checkOutDate: "2026-11-06", invitationPreferenceAvailable: true }]));
+    render(<GuestReviewsPage />);
+    const list = await screen.findByRole("list", { name: "اقامت‌های قابل ثبت نظر" });
+    const rows = within(list).getAllByRole("listitem"); expect(rows).toHaveLength(2);
+    expect(within(rows[0]).getByText("R-1")).toBeTruthy(); expect(within(rows[1]).getByText("R-2")).toBeTruthy();
+    expect(rows[0].querySelector('time[datetime="2026-11-07"]')).toBeTruthy();
+    expect(rows[1].querySelector('time[datetime="2026-11-06"]')).toBeTruthy();
+    const action = within(rows[1]).getByRole("button", { name: /ثبت نظر برای سرای آزمایش، رزرو R-2/ });
+    expect(action.className).toContain("bg-primary");
+    expect(screen.queryByRole("button", { name: /دیگر برای این اقامت/ })).toBeNull();
+    fireEvent.click(action);
+    expect(screen.getByRole("link", { name: "مشاهده رزرو" }).getAttribute("href")).toBe("/account/reservations/R-2");
+  });
+  it("does not invent reservation numbers or check-in dates or show opt-out setup copy", async () => {
+    mocks.eligible.mockResolvedValue(paged([{ ...stay, reservationNumber: null, invitationPreferenceAvailable: false }]));
+    render(<GuestReviewsPage />);
+    const list = await screen.findByRole("list", { name: "اقامت‌های قابل ثبت نظر" });
+    expect(list.textContent).not.toMatch(/رزرو:|ورود:/);
+    expect(list.querySelector("time")?.getAttribute("datetime")).toBe(stay.checkOutDate);
+    expect(screen.queryByText(/دیگر برای این اقامت نمایش نده|تنظیم یادآوری دائمی/)).toBeNull();
+  });
+  it("keeps the submitted empty state compact without an empty list or unrelated styling", async () => {
+    render(<GuestReviewsPage />);
+    const section = screen.getByRole("region", { name: "نظرهای ارسال‌شده" });
+    await within(section).findByText("هنوز نظری برای اقامت‌های تأییدشده ثبت نکرده‌اید.");
+    expect(section.classList.contains("p-3")).toBe(true); expect(within(section).queryByRole("list")).toBeNull();
+    const css = readFileSync(resolve("components/reviews/GuestReviewsPage.module.css"), "utf8");
+    expect(css).toContain(".content { display: grid; gap: 0.75rem;");
+    expect(css).toContain("@media (max-width: 480px)"); expect(css).toContain("flex-direction: column");
+    expect(css).toContain("@media (pointer: coarse)"); expect(css).toContain("overflow-wrap: anywhere");
+    expect(css).not.toContain(":global");
+  });
   it("opens the invited form on a later eligibility page without trusting a URL as permission", async () => {
     mocks.query = "reservationId=1&eligiblePage=3";
     mocks.eligible.mockResolvedValue(paged([stay], 3, 3));

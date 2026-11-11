@@ -1,0 +1,9 @@
+.actions { display: grid; gap: 0.25rem; min-width: 0; }
+.buttons { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.reservationLink.reservationLink { justify-self: start; min-height: 2rem; padding: 0.125rem 0; color: var(--muted-foreground); font-size: 0.8125rem; font-weight: 400; }
+.reservationLink.reservationLink:hover { color: var(--primary); }
+@media (max-width: 480px) {
+  .buttons { display: grid; grid-template-columns: minmax(0, 1fr); }
+  .buttons > button { width: 100%; }
+}
+@media (pointer: coarse) { .reservationLink.reservationLink { min-height: 2.75rem; } }

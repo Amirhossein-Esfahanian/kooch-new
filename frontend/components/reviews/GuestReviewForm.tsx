@@ -8,6 +8,7 @@ import { KoochTextarea } from "@/components/KoochFormControls";
 import { ScorePill } from "@/components/ScorePill";
 import { getGuestReview, reviewCategories, reviewDate, reviewError, reviewLinkClass, saveGuestReview,
   type EligibleReviewStay, type GuestReviewRequest, type ReviewScoreKey } from "@/lib/guest-reviews";
+import styles from "./GuestReviewForm.module.css";
 
 export function GuestReviewForm({ stay, onClose, onSaved }: {
   stay: EligibleReviewStay; onClose: () => void; onSaved: () => void;
@@ -86,10 +87,12 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
           </div>
           {error && <p className="text-sm leading-7 text-destructive" role="alert">{error}</p>}
           {error.includes("نشست") && <Link className={reviewLinkClass} href="/login?returnTo=%2Faccount%2Freviews">ورود دوباره</Link>}
-          <div className="flex flex-wrap gap-3">
+          <div className={styles.actions}>
+            <div className={styles.buttons}>
             <KoochButton type="submit" loading={busy} disabled={loadFailed || (edit && revision === undefined)}>{edit ? "ذخیره و ارسال برای بررسی" : "ارسال نظر برای بررسی"}</KoochButton>
             <KoochButton variant="outline" disabled={busy} onClick={onClose}>بازگشت به فهرست</KoochButton>
-            {stay.reservationNumber && <Link className={reviewLinkClass} href={`/account/reservations/${encodeURIComponent(stay.reservationNumber)}`}>مشاهده رزرو</Link>}
+            </div>
+            {stay.reservationNumber && <Link className={`${reviewLinkClass} ${styles.reservationLink}`} href={`/account/reservations/${encodeURIComponent(stay.reservationNumber)}`}>مشاهده رزرو</Link>}
           </div>
         </form>
       )}
