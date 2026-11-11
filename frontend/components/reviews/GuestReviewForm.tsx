@@ -61,16 +61,16 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
   }
   return (
     <KoochCard aria-labelledby="review-form-title" dir="rtl">
-      <h2 className="text-xl font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" id="review-form-title" ref={heading} tabIndex={-1}>{edit ? "ویرایش نظر" : "ثبت نظر"} — {stay.propertyName}</h2>
-      <p className="mt-2 text-sm leading-7 text-muted-foreground">خروج: {reviewDate(stay.checkOutDate)} · مهلت ثبت و ویرایش: {reviewDate(stay.submissionDeadlineLocalDate)}</p>
-      <p className="mt-1 text-sm leading-7 text-muted-foreground">برای هر بخش امتیازی از ۱ تا ۱۰ انتخاب کنید. متن نظر اختیاری است و نظر پس از بررسی منتشر می‌شود.</p>
+      <h2 className="text-lg font-bold leading-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" id="review-form-title" ref={heading} tabIndex={-1}>{edit ? "ویرایش نظر" : "ثبت نظر"} — {stay.propertyName}</h2>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">خروج: {reviewDate(stay.checkOutDate)} · مهلت ثبت و ویرایش: {reviewDate(stay.submissionDeadlineLocalDate)}</p>
+      <p className="mt-0.5 text-sm leading-6 text-muted-foreground">برای هر بخش امتیازی از ۱ تا ۱۰ انتخاب کنید. متن نظر اختیاری است و نظر پس از بررسی منتشر می‌شود.</p>
       {loading ? <p className="py-6" role="status">در حال دریافت نظر…</p> : (
-        <form className="mt-5 grid gap-5" onSubmit={submit} noValidate aria-busy={busy}>
-          <fieldset disabled={busy || loadFailed} className="grid min-w-0 gap-4 sm:grid-cols-2">
-            <legend className="mb-3 font-semibold">امتیازهای اقامت (همه الزامی)</legend>
+        <form className="mt-3 grid gap-3" onSubmit={submit} noValidate aria-busy={busy}>
+          <fieldset disabled={busy || loadFailed} className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
+            <legend className="mb-2 font-semibold">امتیازهای اقامت (همه الزامی)</legend>
             {reviewCategories.map(([key, label]) => {
               const invalid = attempted && !scores[key];
-              return <div className="grid gap-2" key={key}>
+              return <div className="grid min-w-0 content-start gap-1" key={key}>
                 <ScorePill name={key} label={label} required value={scores[key] ? Number(scores[key]) : null}
                   onChange={score => setScores(current => ({ ...current, [key]: String(score) }))}
                   disabled={busy || loadFailed} invalid={Boolean(invalid)} describedBy={invalid ? `${key}-error` : undefined} />
@@ -78,7 +78,7 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
               </div>;
             })}
           </fieldset>
-          <output className="rounded-lg bg-muted px-4 py-3 text-sm font-semibold tabular-nums" aria-live="polite" aria-label="میانگین امتیاز">میانگین: {average === null ? "پس از انتخاب شش امتیاز" : `${average.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} از ۱۰`}</output>
+          <output className="rounded-lg bg-muted px-4 py-2 text-sm font-semibold tabular-nums" aria-live="polite" aria-label="میانگین امتیاز">میانگین: {average === null ? "پس از انتخاب شش امتیاز" : `${average.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} از ۱۰`}</output>
           <div className="grid gap-2">
             <label className="text-sm font-semibold" htmlFor="review-comment">تجربه شما (اختیاری)</label>
             <KoochTextarea id="review-comment" value={comment} onChange={event => setComment(event.target.value)} maxLength={4000} disabled={busy || loadFailed} aria-describedby="review-comment-help" />

@@ -36,13 +36,16 @@ export function ScorePill({ name, label, value, onChange, required = false, disa
   }
 
   return <div className={styles.root} dir={dir} data-quality={quality?.tone}>
-    <div id={`${id}-label`} className={styles.label}>{label}{required && <span aria-hidden="true"> *</span>}</div>
+    <div className={styles.headingRow}>
+      <div id={`${id}-label`} className={styles.label}>{label}{required && <span aria-hidden="true"> *</span>}</div>
+      <p id={`${id}-feedback`} className={styles.feedback} aria-live="polite" aria-atomic="true">{quality?.label ?? ""}</p>
+    </div>
     <div className={styles.control} ref={group} role="radiogroup" aria-labelledby={`${id}-label`}
       aria-required={required} aria-invalid={invalid || undefined} aria-disabled={disabled || undefined}
       aria-describedby={[`${id}-feedback`, describedBy].filter(Boolean).join(" ")} onKeyDown={navigate}>
       <div className={styles.track}>
-        {selected !== null && <span className={styles.selection} aria-hidden="true"
-          style={{ transform: `translateX(${(dir === "rtl" ? -1 : 1) * (selected - 1) * 100}%)` }} />}
+        {selected !== null && <span className={styles.selectionViewport} aria-hidden="true"><span className={styles.selection}
+          style={{ transform: `translateX(${(dir === "rtl" ? -1 : 1) * (selected - 1) * 100}%)` }} /></span>}
         {Array.from({ length: 10 }, (_, index) => index + 1).map(score => <label className={styles.option} key={score}>
           <input type="radio" name={name} value={score} checked={selected === score} required={required} disabled={disabled}
             tabIndex={selected === score || selected === null && score === 1 ? 0 : -1}
@@ -51,6 +54,5 @@ export function ScorePill({ name, label, value, onChange, required = false, disa
         </label>)}
       </div>
     </div>
-    <p id={`${id}-feedback`} className={styles.feedback} aria-live="polite" aria-atomic="true">{quality?.label ?? "انتخاب امتیاز"}</p>
   </div>;
 }

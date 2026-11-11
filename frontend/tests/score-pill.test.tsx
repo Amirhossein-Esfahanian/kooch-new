@@ -25,7 +25,7 @@ it("starts unselected and supports all ten controlled choices with real radio va
     expect(view.container.firstElementChild?.getAttribute("data-quality")).toBe(getRatingQuality(score).tone);
     expect(radios.filter(radio => radio.tabIndex === 0)).toEqual([radios[score - 1]]);
   }
-  expect(view.container.querySelector('[aria-hidden="true"][style]')?.getAttribute("style")).toContain("translateX(-900%)");
+  expect(view.container.querySelector('[aria-hidden="true"] > [style]')?.getAttribute("style")).toContain("translateX(-900%)");
 });
 
 it.each(["rtl", "ltr"] as const)("supports directional arrows, wrapping, Home/End and focus in %s", dir => {
@@ -64,8 +64,28 @@ it("associates validation/help with its group and respects disabled controls", (
 it("uses a narrow-safe ten-column layout, visible focus and CSS-only reduced-motion-safe movement", () => {
   const css = readFileSync(resolve("components/ScorePill.module.css"), "utf8");
   expect(css).toContain("repeat(10, minmax(0, 1fr))"); expect(css).toContain("min-width: 0");
-  expect(css).toContain("min-height: 2.75rem"); expect(css).toContain(":focus-visible");
+  expect(css).toContain("min-height: 2.125rem"); expect(css).toContain("padding: 0.0625rem"); expect(css).toContain(":focus-visible");
+  expect(css).toContain(".selectionViewport { position: absolute; inset: 0;");
+  expect(css).toContain("@media (pointer: coarse)"); expect(css).toContain("height: calc(100% + 4px)");
+  expect(css).toContain(".selection { inset-block: 3px; }");
   expect(css).toContain("inset-inline-start: 0"); expect(css).toContain("cubic-bezier(0.34, 1.56, 0.64, 1)");
   expect(css).toContain("@media (prefers-reduced-motion: reduce) { .selection { transition: none; }");
   expect(css).not.toContain(":global");
+});
+
+it("places quality feedback opposite the category label with no extra feedback row or unselected score", () => {
+  const view = render(<Selector />);
+  const group = screen.getByRole("radiogroup", { name: "نظافت" });
+  const label = document.getElementById(group.getAttribute("aria-labelledby")!)!;
+  const feedback = document.getElementById(group.getAttribute("aria-describedby")!)!;
+  expect(feedback.textContent).toBe("");
+  expect(feedback.parentElement).toBe(label.parentElement);
+  expect(label.parentElement?.nextElementSibling).toBe(group);
+  expect(view.container.firstElementChild?.children).toHaveLength(2);
+  fireEvent.click(screen.getByRole("radio", { name: "۷ از ۱۰" }));
+  expect(feedback.textContent).toBe("خوب"); expect(feedback.getAttribute("aria-live")).toBe("polite");
+  expect(feedback.parentElement).toBe(label.parentElement);
+  const css = readFileSync(resolve("components/ScorePill.module.css"), "utf8");
+  expect(css).toContain("grid-template-columns: minmax(0, 1fr) auto");
+  expect(css).not.toContain("min-height: 1.5rem");
 });

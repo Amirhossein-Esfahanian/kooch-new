@@ -55,6 +55,9 @@ describe("six-category form", () => {
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />);
     expect(screen.getAllByRole("radiogroup")).toHaveLength(6);
     expect(screen.getAllByRole("radio")).toHaveLength(60);
+    const fieldset = screen.getByRole("group", { name: "امتیازهای اقامت (همه الزامی)" });
+    expect(fieldset.classList.contains("sm:grid-cols-2")).toBe(true);
+    expect(fieldset.classList.contains("gap-y-3")).toBe(true);
     expect(screen.queryAllByRole("radio", { checked: true })).toHaveLength(0);
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     expect(screen.getAllByRole("alert")).toHaveLength(6);
