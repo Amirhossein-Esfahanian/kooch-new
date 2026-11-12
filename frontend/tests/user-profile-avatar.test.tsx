@@ -55,6 +55,62 @@ beforeEach(() => {
   missingAvatar();
 });
 
+describe("Public profile avatar", () => {
+  function trigger() { return screen.getByRole("button", { name: /^منوی کاربر / }); }
+  it.each([undefined, "public"] as const)("automatically loads one shared photo for the %s trigger and dropdown", async variant => {
+    existingAvatar();
+    render(<KoochUserMenu variant={variant} />);
+    const image = await within(trigger()).findByRole("img", { name: "تصویر پروفایل" });
+    fireEvent.click(trigger());
+    const headerImage = within(screen.getByRole("menu")).getByRole("img", { name: "تصویر پروفایل" });
+    expect(image.getAttribute("src")).toBe("blob:avatar-1");
+    expect(headerImage.getAttribute("src")).toBe(image.getAttribute("src"));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(image.className).toContain("object-cover");
+    expect(headerImage.className).not.toContain("icon");
+  });
+  it("keeps initials and the account SVG on a missing photo", async () => {
+    render(<KoochUserMenu />);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    fireEvent.click(trigger());
+    expect(within(trigger()).queryByRole("img")).toBeNull();
+    expect(within(trigger()).getByText("ا")).toBeTruthy();
+    expect(screen.getByRole("menu").querySelector('img[src="/svgs/account/account.svg"]')).toBeTruthy();
+  });
+  it.each(["trigger", "dropdown"])("clears both photo displays when the %s image fails", async target => {
+    existingAvatar(); render(<KoochUserMenu />);
+    await within(trigger()).findByRole("img"); fireEvent.click(trigger());
+    const menu = screen.getByRole("menu");
+    fireEvent.error(within(target === "trigger" ? trigger() : menu).getByRole("img", { name: "تصویر پروفایل" }));
+    expect(within(trigger()).queryByRole("img")).toBeNull();
+    expect(within(menu).queryByRole("img", { name: "تصویر پروفایل" })).toBeNull();
+    expect(menu.querySelector('img[src="/svgs/account/account.svg"]')).toBeTruthy();
+    expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:avatar-1");
+  });
+  it("propagates profile-dialog upload and delete to the trigger and dropdown without login, reload or duplicate fetches", async () => {
+    existingAvatar();
+    vi.mocked(URL.createObjectURL).mockReturnValueOnce("blob:old").mockReturnValueOnce("blob:new");
+    render(<KoochUserMenu />);
+    await within(trigger()).findByRole("img"); fireEvent.click(trigger());
+    fireEvent.click(screen.getByRole("menuitem", { name: "تنظیمات حساب" }));
+    await screen.findByRole("dialog"); expect(fetch).toHaveBeenCalledTimes(1);
+    fireEvent.change(screen.getByLabelText("انتخاب تصویر پروفایل"), { target: { files: [new File(["photo"], "photo.png", { type: "image/png" })] } });
+    await waitFor(() => expect(within(trigger()).getByRole("img").getAttribute("src")).toBe("blob:new"));
+    expect(fetch).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" })); fireEvent.click(trigger());
+    expect(within(screen.getByRole("menu")).getByRole("img", { name: "تصویر پروفایل" }).getAttribute("src")).toBe("blob:new");
+    fireEvent.click(screen.getByRole("menuitem", { name: "تنظیمات حساب" }));
+    fireEvent.click(await screen.findByRole("button", { name: "حذف تصویر" }));
+    await waitFor(() => expect(within(trigger()).queryByRole("img")).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" })); fireEvent.click(trigger());
+    expect(screen.getByRole("menu").querySelector('img[src="/svgs/account/account.svg"]')).toBeTruthy();
+    expect(within(trigger()).getByText("ا")).toBeTruthy();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(mocks.apiRequest).toHaveBeenCalledWith("/account/profile/avatar", { method: "DELETE" });
+    expect(mocks.clearSession).not.toHaveBeenCalled();
+  });
+});
+
 describe("Sidebar profile avatar", () => {
   function trigger() { return screen.getByRole("button", { name: /منوی کاربر/ }); }
 

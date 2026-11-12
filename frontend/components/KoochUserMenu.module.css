@@ -6,6 +6,9 @@
 .publicMenu .item { display: flex; align-items: center; gap: 0.75rem; min-height: 2.75rem; padding: 0.625rem 0.75rem; border-radius: 0.5rem; color: inherit; text-decoration: none; text-align: start; font-size: 0.875rem; font-weight: 500; transition: background-color 140ms ease-out, color 140ms ease-out; }
 .icon { width: 1.375rem; height: 1.375rem; flex-shrink: 0; object-fit: contain; }
 .identity > .icon { width: 1.5rem; height: 1.5rem; }
+.avatarFrame.avatarFrame { border-radius: 50%; }
+.photo { display: block; border-radius: 50%; object-fit: cover; filter: none; }
+.identityPhoto { width: 2rem; height: 2rem; flex-shrink: 0; }
 :global(.dark) .publicMenu .icon { filter: invert(1); }
 .publicMenu .item:hover, .identity:hover { background: var(--muted); }
 .publicMenu .item[aria-current="page"] { background: var(--muted); color: var(--primary); font-weight: 700; }

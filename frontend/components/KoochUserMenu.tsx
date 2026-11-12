@@ -37,7 +37,8 @@ function routeWorkspace(pathname: string): AuthWorkspace | null {
 }
 
 export function KoochUserMenu(props: Parameters<typeof UserMenuContent>[0]) {
-  return <UserProfileAvatarProvider eager={props.variant === "sidebar"}><UserMenuContent {...props} /></UserProfileAvatarProvider>;
+  const eager = props.variant === undefined || props.variant === "public" || props.variant === "sidebar";
+  return <UserProfileAvatarProvider eager={eager}><UserMenuContent {...props} /></UserProfileAvatarProvider>;
 }
 
 function UserMenuContent({
@@ -212,11 +213,11 @@ function UserMenuContent({
           type="button"
           title={isSidebar && collapsed ? userName : undefined}
         >
-          {!isProperty && <span className={`grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg text-xs font-bold ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
-            {isSidebar && avatarUrl ? (
+          {!isProperty && <span className={`grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-lg text-xs font-bold ${isPublic ? styles.avatarFrame : ""} ${isSidebar ? "bg-primary text-primary-foreground" : "bg-[var(--theme-primary)] text-white"}`}>
+            {(isSidebar || isPublic) && avatarUrl ? (
               // Authenticated private media is rendered from the existing blob loader.
               // eslint-disable-next-line @next/next/no-img-element
-              <img alt="تصویر پروفایل" className="h-full w-full object-cover" height={32} onError={clearAvatar} src={avatarUrl} width={32} />
+              <img alt="تصویر پروفایل" className={`h-full w-full object-cover ${isPublic ? styles.photo : ""}`} height={32} onError={clearAvatar} src={avatarUrl} width={32} />
             ) : userName.charAt(0)}
           </span>}
           {isSidebar ? (
@@ -245,7 +246,11 @@ function UserMenuContent({
           >
             {isPublic && <>
               <button type="button" role="menuitem" aria-label="تنظیمات حساب" onClick={openAccountSettings} className={styles.identity}>
-                <Image className={styles.icon} src="/svgs/account/account.svg" alt="" width={24} height={24} />
+                {avatarUrl ? (
+                  // Authenticated blob URL comes from the same provider as the trigger.
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img className={`${styles.photo} ${styles.identityPhoto}`} src={avatarUrl} alt="تصویر پروفایل" width={32} height={32} onError={clearAvatar} />
+                ) : <Image className={styles.icon} src="/svgs/account/account.svg" alt="" width={24} height={24} />}
                 <span className={styles.identityText}><span className={styles.name} dir="auto">{userName}</span><span className={styles.subtitle}>حساب کاربری</span></span>
               </button>
               {session.workspaces.includes("account") && guestLinks.map(link => {

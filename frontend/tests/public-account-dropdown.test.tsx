@@ -113,6 +113,9 @@ it("clamps the public menu to mobile viewport bounds without changing its trigge
   expect(css).toContain("top: calc(100% + 0.5rem)"); expect(css).toContain("overflow-y: auto");
   expect(css).toContain("min-height: 2.75rem"); expect(css).toContain(":focus-visible");
   expect(css).toContain("prefers-reduced-motion");
+  expect(css).toContain(".photo { display: block; border-radius: 50%; object-fit: cover; filter: none; }");
+  expect(css).toContain(":global(.dark) .publicMenu .icon { filter: invert(1); }");
+  expect(css).not.toMatch(/\.photo[^}]*invert\(/);
 });
 
 it("leaves the Property Direct menu separate from Marketplace links and SVGs", () => {
