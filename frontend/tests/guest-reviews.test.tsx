@@ -55,6 +55,50 @@ describe("account navigation", () => {
 });
 
 describe("six-category form", () => {
+  it.each(["create", "edit", "resubmit"])("enforces an explicit final-action boundary for %s, including Enter, Back and native submit events", async flow => {
+    const edit = flow !== "create";
+    mocks.get.mockResolvedValue({ ...review, moderationStatus: flow === "resubmit" ? "Rejected" : "PendingApproval" });
+    const onSaved = vi.fn();
+    render(<GuestReviewForm stay={{ ...stay, reviewId: edit ? 4 : null }} onClose={vi.fn()} onSaved={onSaved} />);
+    const dialog = await screen.findByRole("dialog");
+    const group = await within(dialog).findByRole("radiogroup", { name: "نظافت" });
+    if (!edit) fill();
+    fireEvent.click(within(group).getByRole("radio", { name: "۶ از ۱۰" }));
+    fireEvent.keyDown(within(group).getByRole("radio", { checked: true }), { key: "Enter" });
+    fireEvent.submit(dialog.querySelector("form")!);
+    expect(within(dialog).getByRole("heading", { name: "امتیازدهی" })).toBeTruthy(); expect(mocks.save).not.toHaveBeenCalled();
+    const proceed = within(dialog).getByRole("button", { name: "ادامه" }) as HTMLButtonElement;
+    fireEvent.click(proceed);
+    expect(within(dialog).getByRole("heading", { name: "بررسی و ثبت" })).toBeTruthy(); expect(mocks.save).not.toHaveBeenCalled();
+    // Even a native submit/requestSubmit without an explicit final click must be ignored in step 2.
+    fireEvent.submit(dialog.querySelector("form")!); expect(mocks.save).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText("تجربه شما (اختیاری)"), { target: { value: "متن مرحله دوم" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "بازگشت به امتیازها" }));
+    expect(mocks.save).not.toHaveBeenCalled();
+    expect((within(screen.getByRole("radiogroup", { name: "نظافت" })).getByRole("radio", { checked: true }) as HTMLInputElement).value).toBe("6");
+    nextStep(); expect(within(dialog).getByDisplayValue("متن مرحله دوم")).toBeTruthy();
+    const final = within(dialog).getByRole("button", { name: edit ? "ذخیره و ارسال برای بررسی" : "ارسال نظر برای بررسی" });
+    expect(final).not.toBe(proceed);
+    within(dialog).getAllByRole("button").forEach(button => expect((button as HTMLButtonElement).type).toBe("button"));
+    fireEvent.click(final); fireEvent.click(final);
+    await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
+    expect(mocks.save).toHaveBeenCalledOnce();
+    expect(mocks.save.mock.calls[0][0]).toBe(stay.reservationId);
+    expect(mocks.save.mock.calls[0][1]).toMatchObject({ cleanlinessRating: 6, comment: "متن مرحله دوم", ...(edit ? { revision: 3 } : {}) });
+    expect(mocks.save.mock.calls[0][2]).toBe(edit);
+  });
+  it("does not promote the clicked Continue node into a native submit action during the step transition", async () => {
+    render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog"); fill();
+    const continueButton = screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement;
+    fireEvent.click(continueButton);
+    // Browser activation runs after the click/React commit; reproduce a pending native default action.
+    if (continueButton.type === "submit" && continueButton.form) fireEvent.submit(continueButton.form);
+    expect(mocks.save).not.toHaveBeenCalled();
+    expect(within(dialog).getByRole("heading", { name: "بررسی و ثبت" })).toBeTruthy();
+    expect(continueButton.type).toBe("button");
+    expect(screen.getByRole("button", { name: "ارسال نظر برای بررسی" })).not.toBe(continueButton);
+  });
   it.each(["close", "backdrop", "Escape"])("confirms unsaved changes on %s and preserves both steps when the confirmation is cancelled", async method => {
     const onClose = vi.fn(); render(<GuestReviewForm stay={stay} onClose={onClose} onSaved={vi.fn()} />);
     await screen.findByRole("dialog"); fill("6"); nextStep();
@@ -114,10 +158,9 @@ describe("six-category form", () => {
     expect(screen.queryAllByRole("radio", { checked: true })).toHaveLength(0);
     expect((screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.submit(dialog.querySelector("form")!);
-    expect(screen.getAllByRole("alert")).toHaveLength(6);
-    expect(screen.getAllByRole("radiogroup").every(node => node.getAttribute("aria-invalid") === "true")).toBe(true);
+    expect(screen.queryAllByRole("alert")).toHaveLength(0);
     expect(screen.getAllByRole("radiogroup").every(node => node.getAttribute("aria-required") === "true")).toBe(true);
-    expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
+    expect(screen.getByRole("heading", { name: "امتیازدهی" })).toBeTruthy();
     expect(mocks.save).not.toHaveBeenCalled();
     reviewCategories.slice(0, 5).forEach(([, label]) => fireEvent.click(within(screen.getByRole("radiogroup", { name: label })).getByRole("radio", { name: "۸ از ۱۰" })));
     expect((screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement).disabled).toBe(true);

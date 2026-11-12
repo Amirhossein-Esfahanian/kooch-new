@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type FormEvent } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochAlert } from "@/components/KoochAlert";
@@ -26,6 +26,7 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const baseline = useRef<{ scores: Partial<Record<ReviewScoreKey, string>>; comment: string }>({ scores: {}, comment: "" });
   const formId = useId();
+  const form = useRef<HTMLFormElement>(null);
   const keepEditing = useRef<HTMLButtonElement>(null);
   const inFlight = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -60,16 +61,15 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
     else onClose();
   }
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (inFlight.current || loading || loadFailed) return;
+  // Only the final action calls this; implicit/native form submission is deliberately suppressed.
+  async function submit() {
+    if (step !== 2 || confirmDiscard || inFlight.current || loading || loadFailed) return;
     setAttempted(true); setError("");
     if (!complete || comment.length > 4000) {
       const invalid = reviewCategories.find(([key]) => !scores[key]);
-      if (invalid) event.currentTarget.querySelector<HTMLInputElement>(`input[name="${invalid[0]}"]`)?.focus();
+      if (invalid) form.current?.querySelector<HTMLInputElement>(`input[name="${invalid[0]}"]`)?.focus();
       return;
     }
-    if (step === 1) { setStep(2); return; }
     inFlight.current = true; setBusy(true);
     const body = { ...Object.fromEntries(reviewCategories.map(([key]) => [key, Number(scores[key])])), comment,
       ...(edit ? { revision } : {}) } as GuestReviewRequest;
@@ -86,14 +86,14 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
       description={`خروج: ${reviewDate(stay.checkOutDate)} · مهلت ثبت و ویرایش: ${reviewDate(stay.submissionDeadlineLocalDate)}`}
       initialFocusRef={heading} className={styles.dialog} bodyClassName={styles.body} footerClassName={styles.footer}
       footer={confirmDiscard ? <div className={styles.buttons}>
-        <KoochButton variant="outline" ref={keepEditing} onClick={() => setConfirmDiscard(false)}>ادامه ویرایش</KoochButton>
-        <KoochButton variant="destructive" onClick={onClose}>صرف‌نظر از تغییرات</KoochButton>
+        <KoochButton type="button" variant="outline" ref={keepEditing} onClick={() => setConfirmDiscard(false)}>ادامه ویرایش</KoochButton>
+        <KoochButton type="button" variant="destructive" onClick={onClose}>صرف‌نظر از تغییرات</KoochButton>
       </div> : <div className={styles.actions}>
         <div className={styles.buttons}>
-          {step === 1 ? <KoochButton disabled={loading || loadFailed || !complete} onClick={() => setStep(2)}>ادامه</KoochButton>
-            : <KoochButton type="submit" form={formId} loading={busy} disabled={loadFailed || !complete || (edit && revision === undefined)}>{edit ? "ذخیره و ارسال برای بررسی" : "ارسال نظر برای بررسی"}</KoochButton>}
-          {step === 2 && <KoochButton variant="outline" disabled={busy} onClick={() => setStep(1)}>بازگشت به امتیازها</KoochButton>}
-          <KoochButton variant="outline" disabled={busy} onClick={requestClose}>بازگشت به فهرست</KoochButton>
+          {step === 1 ? <KoochButton key="continue" type="button" disabled={loading || loadFailed || !complete} onClick={event => { event.preventDefault(); setStep(2); }}>ادامه</KoochButton>
+            : <KoochButton key="submit-review" type="button" form={formId} onClick={() => void submit()} loading={busy} disabled={loadFailed || !complete || (edit && revision === undefined)}>{edit ? "ذخیره و ارسال برای بررسی" : "ارسال نظر برای بررسی"}</KoochButton>}
+          {step === 2 && <KoochButton type="button" variant="outline" disabled={busy} onClick={() => setStep(1)}>بازگشت به امتیازها</KoochButton>}
+          <KoochButton type="button" variant="outline" disabled={busy} onClick={requestClose}>بازگشت به فهرست</KoochButton>
         </div>
         {stay.reservationNumber && <Link className={`${reviewLinkClass} ${styles.reservationLink}`} href={`/account/reservations/${encodeURIComponent(stay.reservationNumber)}`}>مشاهده رزرو</Link>}
       </div>}>
@@ -104,7 +104,7 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
       <h3 className={styles.stepTitle} tabIndex={-1} ref={heading}>{step === 1 ? "امتیازدهی" : "بررسی و ثبت"}</h3>
       {stay.reservationNumber && <p className={styles.context}>رزرو: <bdi dir="ltr">{stay.reservationNumber}</bdi></p>}
       {loading ? <p className="py-6" role="status">در حال دریافت نظر…</p> : (
-        <form id={formId} className="mt-3 grid gap-3" onSubmit={submit} noValidate aria-busy={busy}>
+        <form id={formId} ref={form} className="mt-3 grid gap-3" onSubmit={event => { event.preventDefault(); event.stopPropagation(); }} noValidate aria-busy={busy}>
           {step === 1 ? <>
           <p className={styles.context}>برای هر بخش امتیازی از ۱ تا ۱۰ انتخاب کنید. متن نظر اختیاری است و نظر پس از بررسی منتشر می‌شود.</p>
           <fieldset disabled={busy || loadFailed} className="grid min-w-0 gap-x-4 gap-y-3 sm:grid-cols-2">
