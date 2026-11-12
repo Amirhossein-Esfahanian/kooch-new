@@ -75,6 +75,23 @@ it("uses a narrow-safe ten-column layout, visible focus and CSS-only reduced-mot
   expect(css).not.toContain(":global");
 });
 
+it("emphasizes the selected number and inset pill edge without changing compact track geometry", () => {
+  const css = readFileSync(resolve("components/ScorePill.module.css"), "utf8");
+  expect(css).toContain("font-size: 0.875rem; font-weight: 600; line-height: 1;");
+  expect(css).toContain(".option input:checked + .number { color: var(--card); font-weight: 800; }");
+  expect(css).toContain("box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--card) 24%, transparent)");
+  expect(css).toContain("width: 10%; border-radius: 999px;");
+  expect(css).not.toMatch(/scale\(/);
+  const view = render(<Selector />);
+  const options = screen.getAllByRole("radio").map(radio => radio.closest("label"));
+  for (const score of [1, 10, 5]) {
+    fireEvent.click(screen.getAllByRole("radio")[score - 1]);
+    expect(screen.getAllByRole("radio").map(radio => radio.closest("label"))).toEqual(options);
+    expect(view.container.querySelector('[aria-hidden="true"] > [style]')?.getAttribute("style"))
+      .toContain(`translateX(${(score - 1) * 100}%)`);
+  }
+});
+
 it("keeps the form-facing heading RTL while ordering actual radio values 1–10 left to right", () => {
   const view = render(<Selector />);
   const group = screen.getByRole("radiogroup", { name: "نظافت" });
