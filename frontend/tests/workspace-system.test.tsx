@@ -208,7 +208,7 @@ describe("Workspace routes", () => {
     await waitForSession();
 
     expect(
-      screen.getByRole("heading", { name: "حساب کاربری" }),
+      screen.getByRole("main", { name: "حساب کاربری" }),
     ).toBeTruthy();
     expect(
       screen

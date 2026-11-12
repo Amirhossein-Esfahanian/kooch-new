@@ -50,7 +50,7 @@ describe("account navigation", () => {
   it("keeps reviews independently reachable with no eligible reservation", async () => {
     render(<AccountPage />);
     expect(screen.getByRole("link", { name: "مشاهده نظرات من" }).getAttribute("href")).toBe("/account/reviews");
-    expect(mocks.eligible).not.toHaveBeenCalled(); // Global shell owns the single invitation.
+    await waitFor(() => expect(mocks.eligible).toHaveBeenCalledOnce()); // Overview reads the eligibility metric; the global shell still owns invitations.
   });
 });
 

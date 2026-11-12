@@ -14,8 +14,10 @@ export function AccountContentSkeleton() {
       <AccountSkeleton className={styles.title} />
       <AccountSkeleton className={styles.description} />
     </div>
+    <AccountSkeleton variant="block" className={styles.nextStay} />
     <div className={styles.cards} aria-hidden="true">
-      {[0, 1, 2, 3].map(index => <AccountSkeleton key={index} variant="block" />)}
+      {[0, 1, 2].map(index => <AccountSkeleton key={index} variant="block" />)}
     </div>
+    <div className={styles.actions} aria-hidden="true"><AccountSkeleton className={styles.short} /><AccountSkeleton /><AccountSkeleton /></div>
   </div>;
 }

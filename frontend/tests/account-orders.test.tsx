@@ -175,6 +175,6 @@ describe("account orders", () => {
     render(<AccountPage />);
     expect(screen.queryByRole("link", { name: "مشاهده سفارش‌های من" })).toBeNull();
     expect(screen.getByRole("link", { name: "مشاهده رزروهای من" }).getAttribute("href")).toBe("/account/reservations");
-    expect(screen.getByText(/سفارش‌های چنداقامتگاهی و رزروهای مستقل/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "اقامت بعدی شما" })).toBeTruthy();
   });
 });
