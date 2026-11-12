@@ -123,6 +123,7 @@ it("keeps sections usable on partial failure and retries only the failed wallet 
   expect(within(walletCard).queryByText("۰")).toBeNull();
   expect(await screen.findByRole("heading", { name: "سرای نزدیک" })).toBeTruthy();
   expect(screen.queryByText("private server diagnostic")).toBeNull();
+  expect(within(walletCard).getByRole("button", { name: "تلاش دوباره" }).closest("a")).toBeNull();
   failWallet = false; fireEvent.click(within(walletCard).getByRole("button", { name: "تلاش دوباره" }));
   await within(walletCard).findByText("۷٬۰۰۰٬۰۰۰");
   expect(mocks.api.mock.calls.filter(([path]) => String(path).includes("status=Confirmed"))).toHaveLength(1);
@@ -174,7 +175,7 @@ it("keeps auth guards, makes no private requests before auth and cancels pending
 
 it("uses only the supplied SVGs and scoped responsive styling, keeping all existing account entry links", async () => {
   render(<AccountPage />);
-  const assets = ["dashboard.svg", "reservations.svg", "reviews.svg", "wallet.svg"];
+  const assets = ["reservations.svg", "reviews.svg", "wallet.svg"];
   assets.forEach(file => expect(existsSync(resolve("public/svgs/account", file))).toBe(true));
   expect(Array.from(document.querySelectorAll("img")).map(image => image.getAttribute("src"))).toEqual(assets.map(file => `/svgs/account/${file}`));
   expect(screen.getByRole("link", { name: "مشاهده رزروهای من" }).getAttribute("href")).toBe("/account/reservations");
@@ -185,6 +186,25 @@ it("uses only the supplied SVGs and scoped responsive styling, keeping all exist
   const css = readFileSync(resolve("components/account/AccountOverview.module.css"), "utf8");
   expect(css).toContain("grid-template-columns: repeat(3, minmax(0, 1fr))");
   expect(css).toContain("overflow-wrap: anywhere"); expect(css).toContain(":focus-visible");
+  expect(css).toContain(".metricHeading a::after");
+  expect(css).toContain("position: absolute; inset: 0");
+  expect(css).toContain(".metric .unavailable button");
+  expect(css).toContain("prefers-reduced-motion: reduce");
   expect(css).not.toContain("100vw"); expect(css).not.toContain("animation:");
   await screen.findByRole("heading", { name: "سرای نزدیک" });
+});
+
+it("groups the welcome and stay details without decorative artwork or duplicate navigation", async () => {
+  render(<AccountPage />);
+  const welcome = screen.getByRole("heading", { name: "سلام، مینا احمدی" }).closest("header")!;
+  expect(welcome.querySelector("img")).toBeNull();
+  expect(welcome.textContent).toContain("اقامت بعدی و کارهای باقی‌ماندهٔ سفرتان");
+  const next = screen.getByRole("region", { name: "اقامت بعدی شما" });
+  const property = await within(next).findByRole("heading", { name: "سرای نزدیک" });
+  expect(property.parentElement?.textContent).toContain("پرداخت شده");
+  expect(next.querySelectorAll("dl time")).toHaveLength(2);
+  expect(within(next).getAllByRole("link", { name: "مشاهده جزئیات اقامت" })).toHaveLength(1);
+  for (const name of ["مشاهده رزروهای من", "مشاهده نظرات من", "مشاهده کیف پول"]) {
+    expect(within(metric(name)).getAllByRole("link")).toHaveLength(1);
+  }
 });
