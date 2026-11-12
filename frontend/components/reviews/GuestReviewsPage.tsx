@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { resolveSessionDestination, useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
-import { KoochCard } from "@/components/KoochCard";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { GuestReviewsSkeleton } from "./GuestReviewsSkeleton";
 import { GuestReviewForm } from "@/components/reviews/GuestReviewForm";
 import { ReviewScoreList } from "@/components/reviews/PublishedReviews";
 import { getRatingQuality } from "@/lib/rating-quality";
@@ -31,7 +30,7 @@ function useReviewPage<T>(fetchPage: (page: number, signal?: AbortSignal) => Pro
 
 function Pagination({ page, pages, onChange, label }: { page: number; pages: number; onChange: (page: number) => void; label: string }) {
   if (pages <= 1) return null;
-  return <nav aria-label={label} className="mt-4 flex flex-wrap items-center gap-3">
+  return <nav aria-label={label} className={styles.pagination}>
     <KoochButton variant="outline" disabled={page <= 1} onClick={() => onChange(page - 1)}>صفحه قبل</KoochButton>
     <span className="text-sm tabular-nums">صفحه {page.toLocaleString("fa-IR")} از {pages.toLocaleString("fa-IR")}</span>
     <KoochButton variant="outline" disabled={page >= pages} onClick={() => onChange(page + 1)}>صفحه بعد</KoochButton>
@@ -39,7 +38,7 @@ function Pagination({ page, pages, onChange, label }: { page: number; pages: num
 }
 
 function ReviewFailure({ message }: { message: string }) {
-  return <div className="mt-3">
+  return <div className={styles.failure}>
     <p role="alert" className="text-sm leading-7 text-destructive">{message}</p>
     {message.includes("نشست") && <Link href="/login?returnTo=%2Faccount%2Freviews" className={reviewLinkClass}>ورود دوباره</Link>}
   </div>;
@@ -80,54 +79,60 @@ function ReviewsContent() {
   function refresh() {
     closeForm(); setVersion(value => value + 1);
   }
-  return <main dir="rtl" className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8">
-    <div className="mx-auto grid max-w-5xl gap-6">
-      <KoochPageHeader eyebrow="محیط مهمان" title="نظرات من" description="اقامت‌های قابل ارزیابی و وضعیت نظرهای ارسال‌شده خود را ببینید." />
+  return <main dir="rtl" className={styles.page}>
+      <header className={styles.pageHeader}>
+        <h1>نظرات من</h1>
+        <p>تجربهٔ اقامتتان را به اشتراک بگذارید و وضعیت نظرهای خود را دنبال کنید.</p>
+      </header>
       <div className={styles.content}>
-      <div className={styles.toolbar}>
-        <Link href="/account" className={`${reviewLinkClass} ${styles.backLink}`}>بازگشت به حساب کاربری</Link>
-      </div>
-      {message && <p className="rounded-lg border border-border bg-muted p-4 text-sm leading-7" role="status">{message}</p>}
+      {message && <p className={styles.message} role="status">{message}</p>}
       {selected && <GuestReviewForm key={selected.reservationId} stay={selected} onClose={closeForm} onSaved={() => {
         setSavedReservationIds(current => new Set(current).add(selected.reservationId));
         refresh(); setMessage("نظر شما ثبت شد و در انتظار تأیید است؛ هنوز منتشر نشده است.");
       }} />}
-      <KoochCard padding="sm" aria-labelledby="eligible-heading">
+      <section className={styles.section} aria-labelledby="eligible-heading">
         <div className={styles.sectionHeader}>
           <h2 id="eligible-heading" ref={listHeading} tabIndex={-1} className="text-base font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">اقامت‌های قابل ثبت نظر</h2>
           <KoochButton variant="ghost" size="icon" className={styles.refresh} onClick={refresh} aria-label="دریافت دوباره فهرست" title="دریافت دوباره فهرست">
             <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden="true"><path d="M20 7v5h-5M4 17v-5h5M5.5 7.5a7 7 0 0 1 12-2L20 9M4 15l2.5 3.5a7 7 0 0 0 12-2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
           </KoochButton>
         </div>
-        {eligible.error ? <ReviewFailure message={eligible.error} /> : !eligible.data ? <p role="status" className="py-3 text-sm text-muted-foreground">در حال دریافت اقامت‌ها…</p> : <>
+        {eligible.error ? <ReviewFailure message={eligible.error} /> : !eligible.data ? <GuestReviewsSkeleton variant="eligible" /> : <>
           {!unreviewedStays.length && <p className={styles.empty}>اکنون اقامت واجد شرایطی بدون نظر در این صفحه ندارید. پس از اقامت تکمیل‌شده، تا ۳۰ روز از خروج می‌توانید نظر بدهید.</p>}
           {unreviewedStays.length > 0 && <ul className={styles.stays} aria-label="اقامت‌های قابل ثبت نظر">
             {unreviewedStays.map(stay => <li key={stay.reservationId} className={styles.stayRow}>
-              <div className={styles.stayInfo}><h3>{stay.propertyName}</h3><p className={styles.stayMeta}>خروج: <time dateTime={stay.checkOutDate}>{reviewDate(stay.checkOutDate)}</time> · مهلت: {reviewDate(stay.submissionDeadlineLocalDate)}</p>
-                {stay.reservationNumber && <p className={styles.stayMeta}>رزرو: <bdi dir="ltr">{stay.reservationNumber}</bdi></p>}
+              <div className={styles.stayInfo}>
+                {stay.reservationNumber && <p className={styles.reference}>رزرو: <bdi dir="ltr">{stay.reservationNumber}</bdi></p>}
+                <h3>{stay.propertyName}</h3>
+                <dl className={styles.stayDates}>
+                  <div><dt>خروج</dt><dd><time dateTime={stay.checkOutDate}>{reviewDate(stay.checkOutDate)}</time></dd></div>
+                  {stay.submissionDeadlineLocalDate && <div><dt>مهلت ثبت نظر</dt><dd><time dateTime={stay.submissionDeadlineLocalDate}>{reviewDate(stay.submissionDeadlineLocalDate)}</time></dd></div>}
+                </dl>
               </div>
               <KoochButton variant="primary" size="sm" onClick={() => { setSelected(stay); setMessage(""); }} aria-label={`ثبت نظر برای ${stay.propertyName}${stay.reservationNumber ? `، رزرو ${stay.reservationNumber}` : `، خروج ${reviewDate(stay.checkOutDate)}`}`}>ثبت نظر</KoochButton>
             </li>)}
           </ul>}
           <Pagination label="صفحه‌بندی اقامت‌های قابل ثبت نظر" page={eligiblePage} pages={eligible.data.totalPages} onChange={setEligiblePage} />
         </>}
-      </KoochCard>
-      <KoochCard padding="sm" aria-labelledby="submitted-heading">
-        <h2 id="submitted-heading" className="text-base font-bold">نظرهای ارسال‌شده</h2>
-        {submitted.error ? <ReviewFailure message={submitted.error} /> : !submitted.data ? <p role="status" className="py-3 text-sm text-muted-foreground">در حال دریافت نظرها…</p> : <>
+      </section>
+      <section className={styles.section} aria-labelledby="submitted-heading">
+        <div className={styles.sectionHeader}><h2 id="submitted-heading" className="text-base font-bold">نظرهای ارسال‌شده</h2></div>
+        {submitted.error ? <ReviewFailure message={submitted.error} /> : !submitted.data ? <GuestReviewsSkeleton variant="submitted" /> : <>
           {!submitted.data.items.length && <p className={styles.empty}>هنوز نظری برای اقامت‌های تأییدشده ثبت نکرده‌اید.</p>}
           {submitted.data.items.length > 0 && <ul className={styles.submittedList} aria-label="نظرهای ارسال‌شده">
             {submitted.data.items.map(item => <li key={item.review.id} className={styles.submittedItem}>
               <article aria-labelledby={`submitted-review-${item.review.id}`} className={styles.submittedCard}>
               <header className={styles.reviewHeader}>
-                <div className={styles.reviewIdentity}><h3 id={`submitted-review-${item.review.id}`}>{item.propertyName}</h3>
+                <div className={styles.reviewIdentity}>
+                  {item.reservationNumber && <p className={styles.reference}>رزرو: <bdi dir="ltr">{item.reservationNumber}</bdi></p>}
+                  <h3 id={`submitted-review-${item.review.id}`}>{item.propertyName}</h3>
                   {(item.checkInDate || item.checkOutDate) && <p className={styles.stayMeta}>
                     {item.checkInDate && <>ورود: <time dateTime={item.checkInDate}>{reviewDate(item.checkInDate)}</time></>}
                     {item.checkInDate && item.checkOutDate && " · "}
                     {item.checkOutDate && <>خروج: <time dateTime={item.checkOutDate}>{reviewDate(item.checkOutDate)}</time></>}
                   </p>}
                 </div>
-                <span className={styles.reviewStatus}>{reviewStatus(item.review)}</span>
+                <span className={styles.reviewStatus} data-status={item.review.moderationStatus} data-published={item.review.isPublished}>{reviewStatus(item.review)}</span>
               </header>
               <div className={styles.ratingRow}>
                 <div className={styles.overall} data-quality={getRatingQuality(item.review.overallRating).tone}>
@@ -151,9 +156,8 @@ function ReviewsContent() {
           </ul>}
           <Pagination label="صفحه‌بندی نظرهای ارسال‌شده" page={reviewsPage} pages={submitted.data.totalPages} onChange={setReviewsPage} />
         </>}
-      </KoochCard>
+      </section>
       </div>
-    </div>
   </main>;
 }
 

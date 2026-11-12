@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiRequestError } from "@/lib/owner-api";
 
@@ -18,7 +18,6 @@ import { GuestReviewForm } from "@/components/reviews/GuestReviewForm";
 import { GuestReviewsPage } from "@/components/reviews/GuestReviewsPage";
 import { reviewCategories, type EligibleReviewStay, type GuestReview, type GuestReviewListItem } from "@/lib/guest-reviews";
 import { metadata } from "@/app/account/reviews/page";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -380,18 +379,20 @@ describe("private paginated review page", () => {
     expect(within(card).queryByRole("button")).toBeNull(); expect(card.querySelector("time")).toBeNull();
     expect(within(card).getByText("این نظر اکنون قابل ویرایش نیست.")).toBeTruthy();
   });
-  it("preserves the exact page-header card and keeps compact refresh beside the eligible heading", async () => {
-    const reference = render(<KoochPageHeader eyebrow="محیط مهمان" title="نظرات من" description="اقامت‌های قابل ارزیابی و وضعیت نظرهای ارسال‌شده خود را ببینید." />);
-    const expectedHeader = reference.container.querySelector("header")!.outerHTML; reference.unmount();
+  it("uses the approved compact workspace header without duplicate navigation and keeps refresh beside eligibility", async () => {
     render(<GuestReviewsPage />);
     const header = screen.getByRole("heading", { level: 1, name: "نظرات من" }).closest("header")!;
-    expect(header.outerHTML).toBe(expectedHeader);
     expect(header.parentElement?.firstElementChild).toBe(header);
-    expect(header.parentElement?.className).toBe("mx-auto grid max-w-5xl gap-6");
+    expect(within(header).getByText("تجربهٔ اقامتتان را به اشتراک بگذارید و وضعیت نظرهای خود را دنبال کنید.")).toBeTruthy();
+    expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     const eligible = screen.getByRole("heading", { name: "اقامت‌های قابل ثبت نظر" });
     const refresh = screen.getByRole("button", { name: "دریافت دوباره فهرست" });
     expect(refresh.parentElement).toBe(eligible.parentElement); expect(refresh.querySelector('svg[aria-hidden="true"]')).toBeTruthy();
-    expect(screen.getByRole("link", { name: "بازگشت به حساب کاربری" }).getAttribute("href")).toBe("/account");
+    expect(screen.queryByRole("link", { name: "بازگشت به حساب کاربری" })).toBeNull();
+    expect(screen.queryByRole("navigation")).toBeNull();
+    const css = readFileSync(resolve("components/reviews/GuestReviewsPage.module.css"), "utf8");
+    expect(css).toContain("var(--primary) 7%, var(--card)");
+    expect(css).toContain("padding-block-start: 0; padding-inline-end: 0");
     await screen.findByText(/اکنون اقامت واجد شرایطی/);
   });
   it("keeps separate real reservations for the same property and uses primary-blue review actions", async () => {
@@ -403,6 +404,8 @@ describe("private paginated review page", () => {
     expect(within(rows[0]).getByText("R-1")).toBeTruthy(); expect(within(rows[1]).getByText("R-2")).toBeTruthy();
     expect(rows[0].querySelector('time[datetime="2026-11-07"]')).toBeTruthy();
     expect(rows[1].querySelector('time[datetime="2026-11-06"]')).toBeTruthy();
+    expect(within(rows[1]).getByText("مهلت ثبت نظر")).toBeTruthy();
+    expect(rows[1].querySelector(`time[datetime="${stay.submissionDeadlineLocalDate}"]`)).toBeTruthy();
     const action = within(rows[1]).getByRole("button", { name: /ثبت نظر برای سرای آزمایش، رزرو R-2/ });
     expect(action.className).toContain("bg-primary");
     expect(screen.queryByRole("button", { name: /دیگر برای این اقامت/ })).toBeNull();
@@ -422,12 +425,57 @@ describe("private paginated review page", () => {
     render(<GuestReviewsPage />);
     const section = screen.getByRole("region", { name: "نظرهای ارسال‌شده" });
     await within(section).findByText("هنوز نظری برای اقامت‌های تأییدشده ثبت نکرده‌اید.");
-    expect(section.classList.contains("p-3")).toBe(true); expect(within(section).queryByRole("list")).toBeNull();
+    expect(within(section).queryByRole("list")).toBeNull();
     const css = readFileSync(resolve("components/reviews/GuestReviewsPage.module.css"), "utf8");
-    expect(css).toContain(".content { display: grid; gap: 0.75rem;");
+    expect(css).toContain(".content { display: grid; gap: 1.5rem;");
     expect(css).toContain("@media (max-width: 480px)"); expect(css).toContain("flex-direction: column");
-    expect(css).toContain("@media (pointer: coarse)"); expect(css).toContain("overflow-wrap: anywhere");
+    expect(css).toContain("min-height: 2.75rem"); expect(css).toContain("overflow-wrap: anywhere");
+    expect(css).toContain(":focus-visible");
+    expect(css).not.toMatch(/#[\da-f]{3,8}\b|100vw|box-shadow:|animation:/i);
     expect(css).not.toContain(":global");
+  });
+  it("shows independent content-shaped skeletons only during actual list loading without fake actions or navigation", async () => {
+    let finishEligible!: () => void;
+    mocks.eligible.mockReturnValue(new Promise(resolve => { finishEligible = () => resolve(paged([stay])); }));
+    mocks.list.mockReturnValue(new Promise(() => {}));
+    render(<GuestReviewsPage />);
+    const eligibleSection = screen.getByRole("region", { name: "اقامت‌های قابل ثبت نظر" });
+    const submittedSection = screen.getByRole("region", { name: "نظرهای ارسال‌شده" });
+    for (const section of [eligibleSection, submittedSection]) {
+      const loading = within(section).getByRole("status");
+      expect(loading.getAttribute("aria-busy")).toBe("true");
+      expect(loading.querySelectorAll("a, button, input, header, nav, aside")).toHaveLength(0);
+    }
+    expect(screen.queryByRole("button", { name: /ثبت نظر برای/ })).toBeNull();
+    expect(screen.queryByText(/هنوز نظری|اکنون اقامت واجد شرایطی/)).toBeNull();
+    await act(async () => finishEligible());
+    expect(within(eligibleSection).queryByRole("status")).toBeNull();
+    expect(within(eligibleSection).getByRole("button", { name: /ثبت نظر برای/ })).toBeTruthy();
+    expect(within(submittedSection).getByRole("status").getAttribute("aria-busy")).toBe("true");
+    const skeletonCss = readFileSync(resolve("components/account/AccountSkeleton.module.css"), "utf8");
+    expect(skeletonCss).toContain("prefers-reduced-motion: reduce");
+    expect(skeletonCss).toContain("animation: none");
+  });
+  it("keeps submitted reviews usable during eligibility failure and retries through the existing refresh action", async () => {
+    mocks.eligible.mockRejectedValueOnce(new Error("offline")).mockResolvedValue(paged([{ ...stay, reservationId: 2, reservationNumber: "R-2" }]));
+    mocks.list.mockResolvedValue(paged([item]));
+    render(<GuestReviewsPage />);
+    const eligibleSection = screen.getByRole("region", { name: "اقامت‌های قابل ثبت نظر" });
+    expect(await within(eligibleSection).findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("ارتباط با سرور"));
+    expect(await screen.findByRole("article", { name: stay.propertyName })).toBeTruthy();
+    expect(within(eligibleSection).queryByText(/اکنون اقامت واجد شرایطی/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "دریافت دوباره فهرست" }));
+    await within(eligibleSection).findByRole("button", { name: /ثبت نظر برای سرای آزمایش، رزرو R-2/ });
+    expect(mocks.eligible).toHaveBeenCalledTimes(2); expect(mocks.list).toHaveBeenCalledTimes(2);
+    expect(screen.getAllByRole("article", { name: stay.propertyName })).toHaveLength(1);
+  });
+  it("omits an unavailable review deadline rather than fabricating one", async () => {
+    mocks.eligible.mockResolvedValue(paged([{ ...stay, submissionDeadlineLocalDate: "" }]));
+    render(<GuestReviewsPage />);
+    const list = await screen.findByRole("list", { name: "اقامت‌های قابل ثبت نظر" });
+    expect(within(list).queryByText("مهلت ثبت نظر")).toBeNull();
+    expect(list.querySelectorAll("time")).toHaveLength(1);
+    expect(within(list).getByRole("button", { name: /ثبت نظر برای/ })).toBeTruthy();
   });
   it("opens the invited form on a later eligibility page without trusting a URL as permission", async () => {
     mocks.query = "reservationId=1&eligiblePage=3";
