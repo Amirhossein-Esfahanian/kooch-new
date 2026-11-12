@@ -1,17 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { Suspense, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { resolveSessionDestination, useAuthSession } from "@/components/auth/AuthSessionProvider";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
 import { GuestReservationsList } from "@/components/account/GuestReservationsList";
 import { GuestOrdersList } from "@/components/account/GuestOrdersList";
+import { GuestBookingListSkeleton } from "@/components/account/GuestBookingListSkeleton";
 import styles from "./page.module.css";
 
 const tabs = [
-  { value: "reservations", label: "رزروهای مستقل" },
-  { value: "orders", label: "سفارش‌های چنداقامتگاهی" },
+  { value: "reservations", label: "رزروها" },
+  { value: "orders", label: "سفارش‌ها" },
 ] as const;
 
 function ReservationPanels() {
@@ -80,26 +79,14 @@ export default function AccountReservationsPage() {
   }, [authenticated, router, session, sessionLoading, workspaces]);
 
   return (
-    <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8" dir="rtl">
-      <div className="mx-auto grid max-w-6xl gap-5">
-        <KoochPageHeader
-          actions={
-            <Link
-              className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold text-foreground transition hover:bg-muted"
-              href="/account"
-            >
-              بازگشت به حساب کاربری
-            </Link>
-          }
-          description="رزروهایی که با حساب مهمان شما ثبت شده‌اند."
-          eyebrow="حساب کاربری"
-          title="رزروهای من"
-        />
-
-        <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">در حال آماده‌سازی رزروها…</p>}>
+    <main className={styles.page} dir="rtl">
+        <header className={styles.header}>
+          <h1>رزروهای من</h1>
+          <p>جزئیات اقامت، وضعیت رزرو و پیگیری سفارش‌های شما.</p>
+        </header>
+        <Suspense fallback={<GuestBookingListSkeleton kind="reservations" />}>
           <ReservationPanels />
         </Suspense>
-      </div>
     </main>
   );
 }

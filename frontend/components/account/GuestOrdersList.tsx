@@ -20,6 +20,8 @@ import {
   type AccountBookingSessionListItem,
 } from "@/lib/booking-sessions";
 import { formatCurrency, useSiteCurrencyLabel } from "@/lib/currency";
+import { GuestBookingListSkeleton } from "./GuestBookingListSkeleton";
+import styles from "./GuestBookingLists.module.css";
 
 const PAGE_SIZE = 10;
 
@@ -63,72 +65,32 @@ export function GuestOrdersList({ page: controlledPage, onPageChange }: GuestOrd
   }, [auth.loading, auth.authenticated, hasAccountWorkspace, loadOrders]);
 
   return (
-    <>
-        {error && <KoochAlert variant="destructive">{error}</KoochAlert>}
+    <div className={styles.list}>
+      {error && <KoochAlert variant="destructive" icon={null} className={styles.error}>
+        <p>{error}</p>
+        <KoochButton type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadOrders()}>تلاش دوباره</KoochButton>
+      </KoochAlert>}
 
-        {loading ? (
-          <KoochCard
-            className="py-12 text-center text-sm font-semibold text-muted-foreground"
-            role="status"
-          >
-            در حال بارگذاری سفارش‌ها...
-          </KoochCard>
-        ) : orders.length === 0 ? (
-          <KoochCard className="grid justify-items-center gap-3 py-12 text-center">
-            <h2 className="text-lg font-bold">هنوز سفارشی ثبت نشده است</h2>
-            <p className="max-w-xl text-sm leading-7 text-muted-foreground">
-              پس از انتخاب و ثبت یک یا چند اتاق، سفارش شما در این بخش نمایش داده
-              می‌شود.
-            </p>
-            <Link
-              className="font-semibold text-primary hover:underline"
-              href="/"
-            >
-              مشاهده اقامتگاه‌ها
-            </Link>
-          </KoochCard>
-        ) : (
-          <section aria-label="فهرست سفارش‌ها" className="grid gap-4">
-            {orders.map((order) => (
-              <OrderCard
-                currencyLabel={currencyLabel}
-                key={order.sessionCode}
-                order={order}
-              />
-            ))}
-          </section>
-        )}
+      {loading ? <GuestBookingListSkeleton kind="orders" /> : orders.length === 0 ? (
+        !error && <KoochCard className={styles.empty}>
+          <h2>هنوز سفارشی ثبت نشده است</h2>
+          <p>پس از انتخاب و ثبت یک یا چند اتاق، سفارش شما در این بخش نمایش داده می‌شود.</p>
+          <Link className={styles.detailLink} href="/">مشاهده اقامتگاه‌ها</Link>
+        </KoochCard>
+      ) : (
+        <section aria-label="فهرست سفارش‌ها" className={styles.list}>
+          {orders.map(order => <OrderCard currencyLabel={currencyLabel} key={order.sessionCode} order={order} />)}
+        </section>
+      )}
 
-        {totalPages > 1 && (
-          <nav
-            aria-label="صفحه‌بندی سفارش‌ها"
-            className="flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground"
-          >
-            <span>
-              صفحه {page.toLocaleString("fa-IR")} از{" "}
-              {totalPages.toLocaleString("fa-IR")}
-            </span>
-            <div className="flex gap-2">
-              <KoochButton
-                disabled={page <= 1 || loading}
-                onClick={() => setPage(page - 1)}
-                size="sm"
-                variant="outline"
-              >
-                قبلی
-              </KoochButton>
-              <KoochButton
-                disabled={page >= totalPages || loading}
-                onClick={() => setPage(page + 1)}
-                size="sm"
-                variant="outline"
-              >
-                بعدی
-              </KoochButton>
-            </div>
-          </nav>
-        )}
-    </>
+      {totalPages > 1 && <nav aria-label="صفحه‌بندی سفارش‌ها" className={styles.pagination}>
+        <span>صفحه {page.toLocaleString("fa-IR")} از {totalPages.toLocaleString("fa-IR")}</span>
+        <div>
+          <KoochButton disabled={page <= 1 || loading} onClick={() => setPage(page - 1)} size="sm" variant="outline">قبلی</KoochButton>
+          <KoochButton disabled={page >= totalPages || loading} onClick={() => setPage(page + 1)} size="sm" variant="outline">بعدی</KoochButton>
+        </div>
+      </nav>}
+    </div>
   );
 }
 
@@ -156,85 +118,39 @@ function OrderCard({
       : "تاریخ اقامت ثبت نشده";
 
   return (
-    <KoochCard className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-muted-foreground">کد سفارش</p>
-          <Link
-            className="mt-1 block truncate font-bold text-primary hover:underline"
-            dir="ltr"
-            href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}
-          >
-            {order.sessionCode}
-          </Link>
+    <KoochCard className={styles.card}>
+      <div className={styles.cardHeader}>
+        <div className={styles.identity}>
+          <div className={styles.reference}><span>کد سفارش</span>
+            <Link dir="ltr" href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}>{order.sessionCode}</Link>
+          </div>
+          <h2>{order.property.name}</h2>
         </div>
-        <div className="min-w-0">
-          <p className="text-xs font-bold text-muted-foreground">
-            اقامتگاه و تاریخ
-          </p>
-          <p className="mt-1 truncate text-sm font-bold">
-            {order.property.name}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">{stayDates}</p>
-        </div>
-        <div>
-          <p className="text-xs font-bold text-muted-foreground">
-            {order.derivedStatus === "Mixed"
-              ? "رزروها و مبلغ اولیه سفارش"
-              : "رزروها و مبلغ کل"}
-          </p>
-          <p className="mt-1 text-sm font-bold">
-            {order.reservationCount.toLocaleString("fa-IR")} رزرو مستقل
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {formatCurrency(order.totalAmount, { currencyLabel })}
-          </p>
-        </div>
-        <div className="flex flex-wrap content-start gap-2">
+        <div className={styles.statuses}>
           <KoochBadge variant={orderStatusVariant(order.derivedStatus)}>
             {orderStatusLabels[order.derivedStatus] ?? "وضعیت ترکیبی"}
           </KoochBadge>
-          {order.paymentStatus && (
-            <KoochBadge
-              variant={
-                order.paymentStatus === "Successful"
-                  ? "success"
-                  : order.paymentStatus === "Failed"
-                    ? "destructive"
-                    : "muted"
-              }
-            >
-              {paymentStatusLabels[order.paymentStatus] ?? order.paymentStatus}
-            </KoochBadge>
-          )}
+          {order.paymentStatus && <KoochBadge variant={order.paymentStatus === "Successful" ? "success" : order.paymentStatus === "Failed" ? "destructive" : "muted"}>
+            {paymentStatusLabels[order.paymentStatus] ?? order.paymentStatus}
+          </KoochBadge>}
         </div>
       </div>
-      <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-        {order.paymentDeadlineUtc && (
-          <div
-            aria-live="off"
-            className="min-w-36 text-xs text-muted-foreground"
-          >
-            <span className="block font-bold text-foreground">مهلت پرداخت</span>
-            <span>{formatDuration(remainingSeconds)}</span>
-          </div>
-        )}
-        <Link
-          className="inline-flex min-h-10 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-semibold transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-          href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}
-        >
-          جزئیات
-        </Link>
-        {canContinuePayment && order.derivedStatus !== "Mixed" && (
-          <Link
-            className="inline-flex min-h-11 items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-            href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}
-          >
-            {order.paymentStatus === "Failed"
-              ? "تلاش مجدد برای پرداخت"
-              : "ادامه پرداخت"}
-          </Link>
-        )}
+      <dl className={`${styles.facts} ${styles.orderFacts}`}>
+        <div><dt>تاریخ اقامت</dt><dd>{stayDates}</dd></div>
+        <div><dt>رزروهای سفارش</dt><dd>{order.reservationCount.toLocaleString("fa-IR")} رزرو مستقل</dd></div>
+        <div><dt>{order.derivedStatus === "Mixed" ? "رزروها و مبلغ اولیه سفارش" : "رزروها و مبلغ کل"}</dt>
+          <dd>{formatCurrency(order.totalAmount, { currencyLabel })}</dd></div>
+      </dl>
+      <div className={styles.cardFooter}>
+        {order.paymentDeadlineUtc && <div aria-live="off" className={styles.deadline}>
+          <span>مهلت پرداخت</span><span>{formatDuration(remainingSeconds)}</span>
+        </div>}
+        <div className={styles.actions}>
+          <Link className={styles.detailLink} href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}>جزئیات</Link>
+          {canContinuePayment && order.derivedStatus !== "Mixed" && <Link className={styles.paymentLink} href={`/account/booking-sessions/${encodeURIComponent(order.sessionCode)}`}>
+            {order.paymentStatus === "Failed" ? "تلاش مجدد برای پرداخت" : "ادامه پرداخت"}
+          </Link>}
+        </div>
       </div>
     </KoochCard>
   );

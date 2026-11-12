@@ -6,15 +6,8 @@ import { KoochBadge } from "@/components/KoochBadge";
 import { useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
-import {
-  KoochTable,
-  KoochTableBody,
-  KoochTableCell,
-  KoochTableEmpty,
-  KoochTableHead,
-  KoochTableHeader,
-  KoochTableRow,
-} from "@/components/KoochTable";
+import { GuestBookingListSkeleton } from "./GuestBookingListSkeleton";
+import styles from "./GuestBookingLists.module.css";
 import {
   type AccountReservation,
   type PagedResult,
@@ -64,7 +57,7 @@ function ReservationPaymentCountdown({
   }, [onExpired, remainingSeconds]);
 
   return (
-    <div className="grid gap-1">
+    <div className={styles.countdown}>
       <KoochBadge variant={expired ? "destructive" : "warning"}>
         {expired ? "مهلت گذشته" : formatDuration(remainingSeconds)}
       </KoochBadge>
@@ -121,137 +114,61 @@ export function GuestReservationsList({ page: controlledPage, onPageChange }: Gu
   }, [authenticated, hasAccountWorkspace, loadReservations, sessionLoading]);
 
   return (
-    <>
-        {error && (
-          <KoochCard
-            className="border-destructive/30 bg-destructive/10 text-destructive"
-            padding="sm"
-          >
-            <p className="text-sm font-semibold">{error}</p>
-          </KoochCard>
-        )}
+    <div className={styles.list}>
+      {error && <KoochCard className={styles.error} padding="sm" role="alert">
+        <p>{error}</p>
+        <KoochButton type="button" variant="outline" size="sm" disabled={loading} onClick={() => void loadReservations()}>تلاش دوباره</KoochButton>
+      </KoochCard>}
 
-        <KoochTable>
-          <KoochTableHeader>
-            <KoochTableRow>
-              <KoochTableHead>شماره رزرو</KoochTableHead>
-              <KoochTableHead>اقامتگاه</KoochTableHead>
-              <KoochTableHead>اتاق</KoochTableHead>
-              <KoochTableHead>ورود</KoochTableHead>
-              <KoochTableHead>خروج</KoochTableHead>
-              <KoochTableHead>وضعیت</KoochTableHead>
-              <KoochTableHead>مبلغ کل ({currencyLabel})</KoochTableHead>
-              <KoochTableHead>باقی‌مانده ({currencyLabel})</KoochTableHead>
-              <KoochTableHead>پرداخت</KoochTableHead>
-              <KoochTableHead>عملیات</KoochTableHead>
-            </KoochTableRow>
-          </KoochTableHeader>
-          <KoochTableBody>
-            {loading ? (
-              <KoochTableEmpty colSpan={10}>در حال بارگذاری...</KoochTableEmpty>
-            ) : reservations.length === 0 ? (
-              <KoochTableEmpty colSpan={10}>
-                هنوز رزروی برای حساب شما ثبت نشده است.
-              </KoochTableEmpty>
-            ) : (
-              reservations.map((reservation) => {
-                const eligible = isPaymentEligible(reservation);
-                return (
-                  <KoochTableRow key={reservation.reservationId}>
-                    <KoochTableCell className="font-semibold">
-                      {reservation.reservationNumber}
-                    </KoochTableCell>
-                    <KoochTableCell>{reservation.propertyName}</KoochTableCell>
-                    <KoochTableCell>
-                      {reservation.roomName || reservation.roomTypeName}
-                    </KoochTableCell>
-                    <KoochTableCell className="whitespace-nowrap">
-                      {formatDate(reservation.checkInDate)}
-                    </KoochTableCell>
-                    <KoochTableCell className="whitespace-nowrap">
-                      {formatDate(reservation.checkOutDate)}
-                    </KoochTableCell>
-                    <KoochTableCell>
-                      <KoochBadge variant={statusVariant(reservation.status)}>
-                        {statusLabels[reservation.status] ?? reservation.status}
-                      </KoochBadge>
-                    </KoochTableCell>
-                    <KoochTableCell className="whitespace-nowrap font-semibold">
-                      {formatCurrency(
-                        reservation.finalAmount ?? reservation.totalPrice,
-                        { showCurrency: false },
-                      )}
-                    </KoochTableCell>
-                    <KoochTableCell className="whitespace-nowrap">
-                      {formatCurrency(reservation.remainingAmount, {
-                        showCurrency: false,
-                      })}
-                    </KoochTableCell>
-                    <KoochTableCell>
-                      {reservation.status === "ApprovedAwaitingPayment" ? (
-                        <ReservationPaymentCountdown
-                          onExpired={loadReservations}
-                          reservation={reservation}
-                        />
-                      ) : (
-                        "-"
-                      )}
-                    </KoochTableCell>
-                    <KoochTableCell>
-                      <div className="flex flex-wrap gap-2">
-                        <Link
-                          className="inline-flex min-h-9 items-center justify-center rounded-md border border-border bg-background px-3 py-1.5 text-xs font-semibold text-foreground transition hover:bg-muted"
-                          href={`/account/reservations/${encodeURIComponent(
-                            reservation.reservationNumber,
-                          )}`}
-                        >
-                          جزئیات
-                        </Link>
-                        {eligible && (
-                          <Link
-                            className="inline-flex min-h-9 items-center justify-center rounded-md border border-primary bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)]"
-                            href={`/account/reservations/${encodeURIComponent(
-                              reservation.reservationNumber,
-                            )}`}
-                          >
-                            پرداخت
-                          </Link>
-                        )}
-                      </div>
-                    </KoochTableCell>
-                  </KoochTableRow>
-                );
-              })
-            )}
-          </KoochTableBody>
-        </KoochTable>
+      {loading ? <GuestBookingListSkeleton kind="reservations" /> : reservations.length === 0 ? (
+        !error && <KoochCard className={styles.empty}>
+          <h2>هنوز رزروی برای حساب شما ثبت نشده است.</h2>
+          <p>رزروهای مستقل شما و جزئیات هر اقامت در این بخش نمایش داده می‌شوند.</p>
+          <Link className={styles.detailLink} href="/properties">جستجوی اقامتگاه</Link>
+        </KoochCard>
+      ) : (
+        <section aria-label="فهرست رزروها" className={styles.list}>
+          {reservations.map(reservation => {
+            const eligible = isPaymentEligible(reservation);
+            return <KoochCard key={reservation.reservationId} className={styles.card}>
+              <div className={styles.cardHeader}>
+                <div className={styles.identity}>
+                  <p className={styles.reference}>شماره رزرو <bdi dir="ltr">{reservation.reservationNumber}</bdi></p>
+                  <h2>{reservation.propertyName}</h2>
+                  <p>{reservation.roomName || reservation.roomTypeName}</p>
+                </div>
+                <KoochBadge variant={statusVariant(reservation.status)}>
+                  {statusLabels[reservation.status] ?? reservation.status}
+                </KoochBadge>
+              </div>
+              <dl className={styles.facts}>
+                <div><dt>ورود</dt><dd><time dateTime={reservation.checkInDate}>{formatDate(reservation.checkInDate)}</time></dd></div>
+                <div><dt>خروج</dt><dd><time dateTime={reservation.checkOutDate}>{formatDate(reservation.checkOutDate)}</time></dd></div>
+                <div><dt>مبلغ کل ({currencyLabel})</dt><dd>{formatCurrency(reservation.finalAmount ?? reservation.totalPrice, { showCurrency: false })}</dd></div>
+                <div><dt>باقی‌مانده ({currencyLabel})</dt><dd>{formatCurrency(reservation.remainingAmount, { showCurrency: false })}</dd></div>
+              </dl>
+              <div className={styles.cardFooter}>
+                {reservation.status === "ApprovedAwaitingPayment" && <div className={styles.deadline}>
+                  <span>مهلت پرداخت</span>
+                  <ReservationPaymentCountdown onExpired={loadReservations} reservation={reservation} />
+                </div>}
+                <div className={styles.actions}>
+                  <Link className={styles.detailLink} href={`/account/reservations/${encodeURIComponent(reservation.reservationNumber)}`}>جزئیات</Link>
+                  {eligible && <Link className={styles.paymentLink} href={`/account/reservations/${encodeURIComponent(reservation.reservationNumber)}`}>پرداخت</Link>}
+                </div>
+              </div>
+            </KoochCard>;
+          })}
+        </section>
+      )}
 
-        {totalPages > 1 && (
-          <div className="flex flex-wrap items-center justify-end gap-3 text-sm text-muted-foreground">
-            <span>
-              صفحه {new Intl.NumberFormat("fa-IR").format(currentPage)} از{" "}
-              {new Intl.NumberFormat("fa-IR").format(totalPages)}
-            </span>
-            <div className="flex items-center gap-2">
-              <KoochButton
-                disabled={currentPage <= 1 || loading}
-                onClick={() => setCurrentPage(currentPage - 1)}
-                size="sm"
-                variant="outline"
-              >
-                قبلی
-              </KoochButton>
-              <KoochButton
-                disabled={currentPage >= totalPages || loading}
-                onClick={() => setCurrentPage(currentPage + 1)}
-                size="sm"
-                variant="outline"
-              >
-                بعدی
-              </KoochButton>
-            </div>
-          </div>
-        )}
-    </>
+      {totalPages > 1 && <nav aria-label="صفحه‌بندی رزروها" className={styles.pagination}>
+        <span>صفحه {new Intl.NumberFormat("fa-IR").format(currentPage)} از {new Intl.NumberFormat("fa-IR").format(totalPages)}</span>
+        <div>
+          <KoochButton disabled={currentPage <= 1 || loading} onClick={() => setCurrentPage(currentPage - 1)} size="sm" variant="outline">قبلی</KoochButton>
+          <KoochButton disabled={currentPage >= totalPages || loading} onClick={() => setCurrentPage(currentPage + 1)} size="sm" variant="outline">بعدی</KoochButton>
+        </div>
+      </nav>}
+    </div>
   );
 }

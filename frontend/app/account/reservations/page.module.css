@@ -1,10 +1,18 @@
-.tabs { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; min-width: 0; border-block-end: 1px solid var(--border); }
-.tab { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; max-width: 100%; padding: 0.625rem 0.25rem 0.75rem; color: var(--foreground); font-size: 0.875rem; font-weight: 600; text-align: center; overflow-wrap: anywhere; direction: inherit; }
+.page { display: grid; align-content: start; gap: 1rem; max-width: 80rem; min-width: 0; margin-inline: auto; padding: 1rem; color: var(--foreground); }
+.header { min-width: 0; padding: 1.125rem 1.25rem; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); border-radius: 0.75rem; background: color-mix(in srgb, var(--primary) 7%, var(--card)); }
+.header h1 { font-size: clamp(1.25rem, 2vw, 1.625rem); font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
+.header p { margin-block-start: 0.25rem; color: color-mix(in srgb, var(--foreground) 76%, var(--primary)); font-size: 0.875rem; line-height: 1.8; }
+.tabs { display: flex; flex-wrap: wrap; gap: 0.25rem 0.5rem; min-width: 0; padding-inline: 0.5rem; border-block-end: 1px solid var(--border); }
+.tab { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; max-width: 100%; padding: 0.625rem 1rem 0.75rem; border-radius: 0.5rem 0.5rem 0 0; color: var(--muted-foreground); font-size: 0.875rem; font-weight: 600; text-align: center; overflow-wrap: anywhere; direction: inherit; }
 .tab::after { content: ""; position: absolute; inset-inline: 0; inset-block-end: 0; height: 3px; background: var(--primary); opacity: 0; transform: scaleX(0.75); transition: opacity 140ms ease-out, transform 140ms ease-out; }
 .tab:hover, .tab[aria-selected="true"] { color: var(--primary); }
+.tab[aria-selected="true"] { background: color-mix(in srgb, var(--primary) 6%, var(--card)); }
 .tab:hover::after { opacity: 0.35; }
 .tab[aria-selected="true"]::after { opacity: 1; transform: scaleX(1); }
 .tab:focus-visible, .panel:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 0.125rem; }
-.panel { display: grid; gap: 1.25rem; min-width: 0; }
+.panel { display: grid; gap: 0.875rem; min-width: 0; }
 .panel[hidden] { display: none; }
+@media (min-width: 640px) { .page { padding-inline: 1.5rem; } }
+@media (min-width: 1024px) { .page { padding-block-start: 0; padding-inline-end: 0; } }
+@media (max-width: 639px) { .header { padding: 1rem; } }
 @media (prefers-reduced-motion: reduce) { .tab::after { transition: none; } }

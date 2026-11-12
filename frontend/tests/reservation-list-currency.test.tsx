@@ -87,19 +87,19 @@ describe("reservation list currency context", () => {
     mocks.apiRequest.mockResolvedValue({ items: [{ ...reservation, totalPrice: 1_250_000, paidAmount: 750_000 }], totalPages: 2 });
     render(<AccountReservationsPage />);
     const nav = screen.getByRole("tablist", { name: "رزروهای من" });
-    const standalone = within(nav).getByRole("tab", { name: "رزروهای مستقل" });
+    const standalone = within(nav).getByRole("tab", { name: "رزروها" });
     expect(standalone.getAttribute("aria-selected")).toBe("true");
-    const orders = within(nav).getByRole("tab", { name: "سفارش‌های چنداقامتگاهی" });
+    const orders = within(nav).getByRole("tab", { name: "سفارش‌ها" });
     expect(orders.getAttribute("aria-selected")).toBe("false");
     expect(within(nav).queryByRole("link")).toBeNull();
     expect(await screen.findByText("KCH-17")).toBeTruthy();
-    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("region", { name: "فهرست رزروها" })).toBeTruthy();
     expect(screen.getByRole("link", { name: "جزئیات" }).getAttribute("href")).toBe("/account/reservations/KCH-17");
     expect(mocks.apiRequest).toHaveBeenCalledTimes(1);
     expect(mocks.apiRequest).toHaveBeenCalledWith("/account/reservations?page=1&pageSize=10&sort=createddesc");
     fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
     await waitFor(() => expect(mocks.apiRequest).toHaveBeenLastCalledWith("/account/reservations?page=2&pageSize=10&sort=createddesc"));
-    expect(screen.getByRole("table")).toBeTruthy();
+    expect(await screen.findByRole("region", { name: "فهرست رزروها" })).toBeTruthy();
   });
 
   it("shows a configured unit once per monetary column for shared Admin and Owner tables", () => {
@@ -186,14 +186,10 @@ describe("reservation list currency context", () => {
 
     expect(await screen.findByText("KCH-17")).toBeTruthy();
     expect(
-      screen.getByRole("columnheader", {
-        name: "مبلغ کل (ریال آزمایشی)",
-      }),
+      screen.getByText("مبلغ کل (ریال آزمایشی)"),
     ).toBeTruthy();
     expect(
-      screen.getByRole("columnheader", {
-        name: "باقی‌مانده (ریال آزمایشی)",
-      }),
+      screen.getByText("باقی‌مانده (ریال آزمایشی)"),
     ).toBeTruthy();
     expect(screen.getAllByText(/ریال آزمایشی/)).toHaveLength(2);
     expect(screen.getByText("۱٬۲۵۰٬۰۰۰")).toBeTruthy();
@@ -209,11 +205,11 @@ describe("reservation list currency context", () => {
 
     await waitFor(() =>
       expect(
-        screen.getByRole("columnheader", { name: "مبلغ کل (تومان)" }),
+        screen.getByText("مبلغ کل (تومان)"),
       ).toBeTruthy(),
     );
     expect(
-      screen.getByRole("columnheader", { name: "باقی‌مانده (تومان)" }),
+      screen.getByText("باقی‌مانده (تومان)"),
     ).toBeTruthy();
   });
 });

@@ -1,8 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useState } from "react";
-import { beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { GuestOrdersList } from "@/components/account/GuestOrdersList";
 import { GuestReservationsList } from "@/components/account/GuestReservationsList";
+import { formatDate, type AccountReservation } from "@/lib/account-reservations";
 
 const mocks = vi.hoisted(() => ({
   session: { authenticated: true, loading: false, workspaces: ["account"] },
@@ -19,6 +22,13 @@ beforeEach(() => {
   mocks.orders.mockResolvedValue({ items: [], totalPages: 4 });
   mocks.reservations.mockResolvedValue({ items: [], totalPages: 4 });
 });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
+
+const reservation: AccountReservation = {
+  reservationId: 37, reservationNumber: "R/37", propertyName: "سرای باغ", roomTypeName: "اتاق دو تخته", roomName: "اتاق انار",
+  checkInDate: "2030-11-09", checkOutDate: "2030-11-10", nightsCount: 1, adults: 2, children: 0, roomCount: 1,
+  totalPrice: 900, finalAmount: 800, paidAmount: 300, remainingAmount: 500, currency: "IRR", status: "Confirmed",
+};
 
 it.each(["orders", "reservations"] as const)("allows parent-controlled %s pagination without independently changing the parent's page", async kind => {
   const Component = kind === "orders" ? GuestOrdersList : GuestReservationsList;
@@ -76,4 +86,96 @@ it.each(["orders", "reservations"] as const)("preserves %s provider error feedba
   const Component = kind === "orders" ? GuestOrdersList : GuestReservationsList;
   render(<Component />);
   expect(await screen.findByText("خطای آزمایشی")).toBeTruthy();
+});
+
+it("retains every reservation detail and amount in a responsive card with the existing encoded destination", async () => {
+  mocks.reservations.mockResolvedValue({ items: [reservation], totalPages: 1 });
+  render(<GuestReservationsList />);
+  const list = await screen.findByRole("region", { name: "فهرست رزروها" });
+  expect(within(list).getByRole("heading", { name: "سرای باغ" })).toBeTruthy();
+  for (const value of ["R/37", "اتاق انار", "تایید شده", "800", "500"]) expect(within(list).getByText(value)).toBeTruthy();
+  expect(within(list).getByText("مبلغ کل (تومان)")).toBeTruthy();
+  expect(within(list).getByText("باقی‌مانده (تومان)")).toBeTruthy();
+  expect(list.querySelector('time[datetime="2030-11-09"]')?.textContent).toBe(formatDate(reservation.checkInDate));
+  expect(list.querySelector('time[datetime="2030-11-10"]')).toBeTruthy();
+  expect(within(list).getByRole("link", { name: "جزئیات" }).getAttribute("href")).toBe("/account/reservations/R%2F37");
+  expect(within(list).queryByRole("link", { name: "پرداخت" })).toBeNull();
+});
+
+it("preserves room-type fallback, zero amounts and backend-authoritative payment eligibility", async () => {
+  mocks.reservations.mockResolvedValue({ items: [{ ...reservation, roomName: null, finalAmount: 0, remainingAmount: 0, isPaymentEligible: true }], totalPages: 1 });
+  render(<GuestReservationsList />);
+  const list = await screen.findByRole("region", { name: "فهرست رزروها" });
+  expect(within(list).getByText("اتاق دو تخته")).toBeTruthy();
+  expect(within(list).getAllByText("0")).toHaveLength(2);
+  expect(within(list).getByRole("link", { name: "پرداخت" }).getAttribute("href")).toBe("/account/reservations/R%2F37");
+});
+
+it("refreshes an expired reservation countdown once without changing its payment rules", async () => {
+  mocks.reservations.mockResolvedValueOnce({ items: [{ ...reservation, status: "ApprovedAwaitingPayment", paymentExpiresAtUtc: "2000-01-01T12:00:00Z", remainingPaymentSeconds: 0, isPaymentEligible: false }], totalPages: 1 })
+    .mockReturnValueOnce(new Promise(() => {}));
+  render(<GuestReservationsList />);
+  expect(await screen.findByText("مهلت گذشته")).toBeTruthy();
+  await waitFor(() => expect(mocks.reservations).toHaveBeenCalledTimes(2));
+  expect(screen.queryByRole("link", { name: "پرداخت" })).toBeNull();
+});
+
+it("keeps the real server-synchronized payment countdown ticking beside the existing payment action", async () => {
+  vi.useFakeTimers();
+  mocks.reservations.mockResolvedValue({ items: [{ ...reservation, status: "ApprovedAwaitingPayment", paymentExpiresAtUtc: "2099-01-01T12:00:00Z", remainingPaymentSeconds: 120, isPaymentEligible: true }], totalPages: 1 });
+  render(<GuestReservationsList />);
+  await act(async () => {});
+  expect(screen.getByText("۰۲:۰۰")).toBeTruthy();
+  expect(screen.getByText("مهلت پرداخت")).toBeTruthy();
+  expect(screen.getByRole("link", { name: "پرداخت" }).getAttribute("href")).toBe("/account/reservations/R%2F37");
+  act(() => { vi.advanceTimersByTime(1000); });
+  expect(screen.getByText("۰۱:۵۹")).toBeTruthy();
+  expect(mocks.reservations).toHaveBeenCalledTimes(1);
+});
+
+it.each(["orders", "reservations"] as const)("renders content-shaped %s skeletons only while actually loading", async kind => {
+  let finish!: (value: { items: never[]; totalPages: number }) => void;
+  mocks[kind].mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  const Component = kind === "orders" ? GuestOrdersList : GuestReservationsList;
+  render(<Component />);
+  const status = screen.getByRole("status");
+  expect(status.getAttribute("aria-busy")).toBe("true");
+  expect(status.querySelectorAll("a, button, header, aside, nav")).toHaveLength(0);
+  expect(screen.queryByText(/هنوز/)).toBeNull();
+  await act(async () => finish({ items: [], totalPages: 0 }));
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(screen.getByRole("heading", { name: kind === "orders" ? "هنوز سفارشی ثبت نشده است" : "هنوز رزروی برای حساب شما ثبت نشده است." })).toBeTruthy();
+});
+
+it.each(["orders", "reservations"] as const)("keeps %s errors distinct from an empty list and supports a scoped retry", async kind => {
+  mocks[kind].mockRejectedValueOnce(new Error("خطای آزمایشی"));
+  const Component = kind === "orders" ? GuestOrdersList : GuestReservationsList;
+  render(<Component />);
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("خطای آزمایشی"));
+  expect(screen.queryByText(/هنوز/)).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
+  await screen.findByRole("heading", { name: kind === "orders" ? "هنوز سفارشی ثبت نشده است" : "هنوز رزروی برای حساب شما ثبت نشده است." });
+  expect(mocks[kind]).toHaveBeenCalledTimes(2);
+});
+
+it("retains loaded reservations and pagination if a later page request fails", async () => {
+  mocks.reservations.mockResolvedValueOnce({ items: [reservation], totalPages: 2 }).mockRejectedValueOnce(new Error("صفحه دریافت نشد"));
+  render(<GuestReservationsList />);
+  await screen.findByRole("heading", { name: "سرای باغ" });
+  fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("صفحه دریافت نشد"));
+  expect(screen.getByRole("heading", { name: "سرای باغ" })).toBeTruthy();
+  expect(screen.getByRole("navigation", { name: "صفحه‌بندی رزروها" })).toBeTruthy();
+});
+
+it("keeps list styling scoped, token-based and mobile-safe while reusing reduced-motion skeletons", () => {
+  const css = readFileSync(resolve("components/account/GuestBookingLists.module.css"), "utf8");
+  expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+  expect(css).toContain("grid-template-columns: repeat(4, minmax(0, 1fr))");
+  expect(css).toContain("overflow-wrap: anywhere"); expect(css).toContain(":focus-visible");
+  expect(css).toContain("min-height: 2.75rem"); expect(css).toContain("var(--card)");
+  expect(css).not.toMatch(/#[\da-f]{3,8}\b|100vw|:global|box-shadow:/i);
+  const skeletonCss = readFileSync(resolve("components/account/AccountSkeleton.module.css"), "utf8");
+  expect(skeletonCss).toContain("prefers-reduced-motion: reduce");
+  expect(skeletonCss).toContain("animation: none");
 });

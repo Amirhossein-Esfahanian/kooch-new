@@ -23,8 +23,8 @@ vi.mock("@/lib/currency", () => ({ useSiteCurrencyLabel: () => "تومان", for
 import AccountReservationsPage from "@/app/account/reservations/page";
 
 function navigate(query: string) { mocks.query = query; mocks.listeners.forEach(listener => listener()); }
-const reservationTab = () => screen.getByRole("tab", { name: "رزروهای مستقل" });
-const orderTab = () => screen.getByRole("tab", { name: "سفارش‌های چنداقامتگاهی" });
+const reservationTab = () => screen.getByRole("tab", { name: "رزروها" });
+const orderTab = () => screen.getByRole("tab", { name: "سفارش‌ها" });
 const nextEnabled = async () => waitFor(() => expect((screen.getByRole("button", { name: "بعدی" }) as HTMLButtonElement).disabled).toBe(false));
 
 beforeEach(() => {
@@ -48,7 +48,8 @@ it("preserves the exact header node and unrelated queries while switching only t
   render(<AccountReservationsPage />); await nextEnabled();
   const header = screen.getByRole("heading", { name: "رزروهای من" }).closest("header")!;
   const original = header.outerHTML;
-  expect(within(header).getByRole("link", { name: "بازگشت به حساب کاربری" }).getAttribute("href")).toBe("/account");
+  expect(within(header).queryByRole("link", { name: "بازگشت به حساب کاربری" })).toBeNull();
+  expect(screen.getAllByRole("heading", { name: "رزروهای من" })).toHaveLength(1);
   fireEvent.click(orderTab());
   expect(mocks.push).toHaveBeenCalledWith("/account/reservations?source=mail&source=guest&tab=orders", { scroll: false });
   await waitFor(() => expect(mocks.orders).toHaveBeenCalledOnce());
