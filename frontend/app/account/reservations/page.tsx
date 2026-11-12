@@ -11,6 +11,7 @@ import {
 import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
+import { UnderlineTabs } from "@/components/UnderlineTabs";
 import {
   KoochTable,
   KoochTableBody,
@@ -147,6 +148,11 @@ export default function AccountReservationsPage() {
           eyebrow="حساب کاربری"
           title="رزروهای من"
         />
+
+        <UnderlineTabs ariaLabel="مسیرهای رزروهای من" items={[
+          { href: "/account/reservations", label: "رزروهای مستقل" },
+          { href: "/account/orders", label: "سفارش‌های چنداقامتگاهی" },
+        ]} />
 
         {error && (
           <KoochCard

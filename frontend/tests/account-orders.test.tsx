@@ -171,10 +171,10 @@ describe("account orders", () => {
     expect(screen.queryByRole("link", { name: "ادامه پرداخت" })).toBeNull();
   });
 
-  it("keeps grouped orders and legacy independent reservations visibly separate", () => {
+  it("uses one dashboard entry for both reservation workflows without removing the orders route", () => {
     render(<AccountPage />);
-    expect(screen.getByRole("link", { name: "مشاهده سفارش‌های من" }).getAttribute("href")).toBe("/account/orders");
-    expect(screen.getByRole("link", { name: "مشاهده رزروهای مستقل" }).getAttribute("href")).toBe("/account/reservations");
-    expect(screen.getByText(/رزروهای مستقل و قدیمی/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "مشاهده سفارش‌های من" })).toBeNull();
+    expect(screen.getByRole("link", { name: "مشاهده رزروهای من" }).getAttribute("href")).toBe("/account/reservations");
+    expect(screen.getByText(/سفارش‌های چنداقامتگاهی و رزروهای مستقل/)).toBeTruthy();
   });
 });

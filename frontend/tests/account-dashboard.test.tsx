@@ -27,7 +27,9 @@ it("makes each whole compact card a single link to a working existing destinatio
   render(<AccountPage />);
   const navigation = screen.getByRole("navigation", { name: "بخش‌های حساب کاربری" });
   const links = within(navigation).getAllByRole("link");
-  expect(links.map(link => link.getAttribute("href"))).toEqual(["/account/reservations", "/account/orders", "/account/reviews", "/account/wallet"]);
+  expect(links.map(link => link.getAttribute("href"))).toEqual(["/account/reservations", "/account/reviews", "/account/wallet"]);
+  expect(within(navigation).getAllByRole("heading", { name: "رزروهای من" })).toHaveLength(1);
+  expect(within(navigation).queryByRole("link", { name: "مشاهده سفارش‌های من" })).toBeNull();
   links.forEach(link => {
     expect(within(link).getByRole("heading", { level: 2 })).toBeTruthy();
     expect(link.querySelectorAll("button, a, input, [tabindex]")).toHaveLength(0);
@@ -44,7 +46,7 @@ it("uses the exact supplied public SVG paths without replacing assets or inventi
   render(<AccountPage />);
   const nav = screen.getByRole("navigation", { name: "بخش‌های حساب کاربری" });
   const images = Array.from(nav.querySelectorAll("img"));
-  expect(images.map(image => image.getAttribute("src"))).toEqual(["/svgs/account/reservations.svg", "/svgs/account/reservations.svg", "/svgs/account/reviews.svg", "/svgs/account/wallet.svg"]);
+  expect(images.map(image => image.getAttribute("src"))).toEqual(["/svgs/account/reservations.svg", "/svgs/account/reviews.svg", "/svgs/account/wallet.svg"]);
   images.forEach(image => { expect(image.alt).toBe(""); expect(image.getAttribute("width")).toBe("40"); });
 });
 

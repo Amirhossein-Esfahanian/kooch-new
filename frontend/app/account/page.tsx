@@ -13,8 +13,7 @@ import { KoochPageHeader } from "@/components/KoochPageHeader";
 import styles from "./page.module.css";
 
 const accountLinks = [
-  { title: "رزروهای من", description: "رزروهای مستقل و قدیمی خود را مشاهده و پیگیری کنید.", href: "/account/reservations", icon: "reservations.svg", label: "مشاهده رزروهای مستقل" },
-  { title: "سفارش‌های من", description: "سفارش‌های چنداتاقه و وضعیت پرداخت آن‌ها را پیگیری کنید.", href: "/account/orders", icon: "reservations.svg", label: "مشاهده سفارش‌های من" },
+  { title: "رزروهای من", description: "به سفارش‌های چنداقامتگاهی و رزروهای مستقل خود دسترسی داشته باشید.", href: "/account/reservations", icon: "reservations.svg", label: "مشاهده رزروهای من" },
   { title: "نظرات من", description: "تجربه اقامت را بنویسید و وضعیت نظرها را ببینید.", href: "/account/reviews", icon: "reviews.svg", label: "مشاهده نظرات من" },
   { title: "کیف پول من", description: "موجودی و درخواست‌های برداشت خود را بررسی کنید.", href: "/account/wallet", icon: "wallet.svg", label: "مشاهده کیف پول" },
 ] as const;

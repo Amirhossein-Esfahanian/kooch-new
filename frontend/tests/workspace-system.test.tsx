@@ -212,14 +212,10 @@ describe("Workspace routes", () => {
     ).toBeTruthy();
     expect(
       screen
-        .getByRole("link", { name: "مشاهده رزروهای مستقل" })
+        .getByRole("link", { name: "مشاهده رزروهای من" })
         .getAttribute("href"),
     ).toBe("/account/reservations");
-    expect(
-      screen
-        .getByRole("link", { name: "مشاهده سفارش‌های من" })
-        .getAttribute("href"),
-    ).toBe("/account/orders");
+    expect(screen.queryByRole("link", { name: "مشاهده سفارش‌های من" })).toBeNull();
   });
 
   it("redirects a single Workspace directly without creating a preference", async () => {

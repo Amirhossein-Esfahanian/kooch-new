@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => mocks.router,
+  usePathname: () => "/account/reservations",
 }));
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
@@ -79,6 +80,27 @@ describe("reservation list currency context", () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
+  });
+
+  it("keeps the standalone list and pagination visible under compact route navigation without combining API data", async () => {
+    mocks.apiRequest.mockResolvedValue({ items: [{ ...reservation, totalPrice: 1_250_000, paidAmount: 750_000 }], totalPages: 2 });
+    render(<AccountReservationsPage />);
+    const nav = screen.getByRole("navigation", { name: "مسیرهای رزروهای من" });
+    const standalone = within(nav).getByRole("link", { name: "رزروهای مستقل" });
+    expect(standalone.getAttribute("href")).toBe("/account/reservations");
+    expect(standalone.getAttribute("aria-current")).toBe("page");
+    const orders = within(nav).getByRole("link", { name: "سفارش‌های چنداقامتگاهی" });
+    expect(orders.getAttribute("href")).toBe("/account/orders");
+    expect(orders.hasAttribute("aria-current")).toBe(false);
+    expect(within(nav).queryByRole("tab")).toBeNull();
+    expect(await screen.findByText("KCH-17")).toBeTruthy();
+    expect(screen.getByRole("table")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "جزئیات" }).getAttribute("href")).toBe("/account/reservations/KCH-17");
+    expect(mocks.apiRequest).toHaveBeenCalledTimes(1);
+    expect(mocks.apiRequest).toHaveBeenCalledWith("/account/reservations?page=1&pageSize=10&sort=createddesc");
+    fireEvent.click(screen.getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(mocks.apiRequest).toHaveBeenLastCalledWith("/account/reservations?page=2&pageSize=10&sort=createddesc"));
+    expect(screen.getByRole("table")).toBeTruthy();
   });
 
   it("shows a configured unit once per monetary column for shared Admin and Owner tables", () => {
