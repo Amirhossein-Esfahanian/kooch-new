@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   resolveSessionDestination,
@@ -9,6 +11,14 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
 import { UserProfileAvatarProvider, useUserProfileAvatar } from "@/components/auth/UserProfileAvatarProvider";
+import styles from "./KoochUserMenu.module.css";
+
+const guestLinks = [
+  { href: "/account", label: "حساب کاربری", icon: "dashboard.svg" },
+  { href: "/account/reservations", label: "رزروهای من", icon: "reservations.svg" },
+  { href: "/account/reviews", label: "نظرات من", icon: "reviews.svg" },
+  { href: "/account/wallet", label: "کیف پول من", icon: "wallet.svg" },
+] as const;
 
 const workspaceOptions: ReadonlyArray<{
   key: AuthWorkspace;
@@ -61,23 +71,41 @@ function UserMenuContent({
   const { avatarUrl, clearAvatar } = useUserProfileAvatar();
   const [internalOpen, setInternalOpen] = useState(false);
   const [profileDialogOpen, setProfileDialogOpen] = useState(false);
+  const [publicMenuLeft, setPublicMenuLeft] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
   const menuOpen = open ?? internalOpen;
   const isSidebar = variant === "sidebar";
   const isProperty = variant === "property";
+  const isPublic = variant === "public";
   const currentWorkspace = routeWorkspace(pathname);
   const userName = session.user?.fullName || session.user?.email || "کاربر کوچ";
   const secondaryIdentifier = session.user?.email || session.user?.phoneNumber;
   const visibleWorkspaces = isProperty ? [] : workspaceOptions.filter((workspace) =>
-    session.workspaces.includes(workspace.key),
+    session.workspaces.includes(workspace.key) && !(isPublic && workspace.key === "account"),
   );
 
   const setMenuOpen = useCallback((nextOpen: boolean) => {
     if (open === undefined) setInternalOpen(nextOpen);
     onOpenChange?.(nextOpen);
   }, [onOpenChange, open]);
+
+  useLayoutEffect(() => {
+    if (!isPublic || !menuOpen) return;
+    function positionMenu() {
+      const anchor = triggerRef.current?.parentElement?.getBoundingClientRect();
+      const menu = menuRef.current;
+      if (!anchor || !menu) return;
+      const margin = 12;
+      const width = menu.getBoundingClientRect().width || Math.min(280, window.innerWidth - margin * 2);
+      const left = Math.max(margin, Math.min(anchor.left, window.innerWidth - margin - width));
+      setPublicMenuLeft(left - anchor.left);
+    }
+    positionMenu();
+    window.addEventListener("resize", positionMenu);
+    return () => window.removeEventListener("resize", positionMenu);
+  }, [isPublic, menuOpen]);
 
   useEffect(() => {
     if (!menuOpen || !(isSidebar || isProperty)) return;
@@ -137,7 +165,7 @@ function UserMenuContent({
       setMenuOpen(false);
       triggerRef.current?.focus();
       return;
-    } else if (event.key === "Tab" && (isSidebar || isProperty)) {
+    } else if (event.key === "Tab" && (isSidebar || isProperty || isPublic)) {
       setMenuOpen(false);
       triggerRef.current?.focus();
     }
@@ -169,7 +197,7 @@ function UserMenuContent({
           <button
             aria-label="بستن منوی کاربر"
             className="fixed inset-0 z-[60] cursor-default"
-            onClick={() => setMenuOpen(false)}
+            onClick={() => { setMenuOpen(false); if (isPublic) triggerRef.current?.focus(); }}
             type="button"
           />
         )}
@@ -207,12 +235,28 @@ function UserMenuContent({
         {menuOpen && (
           <div
             aria-label={isProperty ? "حساب من" : "انتخاب محیط کاربری و حساب"}
-            className={`absolute z-[90] w-64 border p-1 text-sm font-bold shadow-xl ${isSidebar ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-6rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg" : "left-0 top-12 overflow-hidden rounded-xl"} ${menuClass} ${menuClassName}`}
+            className={`absolute z-[90] w-64 border p-1 text-sm font-bold shadow-xl ${isSidebar ? "bottom-full right-0 mb-2 max-h-[calc(100dvh-6rem)] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg" : "left-0 top-12 overflow-hidden rounded-xl"} ${menuClass} ${isPublic ? styles.publicMenu : ""} ${menuClassName}`}
+            dir={isPublic ? "rtl" : undefined}
+            style={isPublic ? { left: publicMenuLeft } : undefined}
             onKeyDown={handleMenuKeyDown}
             ref={menuRef}
             id={menuId}
             role="menu"
           >
+            {isPublic && <>
+              <button type="button" role="menuitem" aria-label="تنظیمات حساب" onClick={openAccountSettings} className={styles.identity}>
+                <Image className={styles.icon} src="/svgs/account/account.svg" alt="" width={24} height={24} />
+                <span className={styles.identityText}><span className={styles.name} dir="auto">{userName}</span><span className={styles.subtitle}>حساب کاربری</span></span>
+              </button>
+              {session.workspaces.includes("account") && guestLinks.map(link => {
+                const active = pathname === link.href || (link.href !== "/account" && pathname.startsWith(`${link.href}/`))
+                  || (link.href === "/account/reservations" && (pathname === "/account/orders" || pathname.startsWith("/account/booking-sessions/")));
+                return <Link key={link.href} href={link.href} role="menuitem" className={styles.item} aria-current={active ? "page" : undefined}
+                  onClick={() => { setMenuOpen(false); triggerRef.current?.focus(); }}>
+                  <Image className={styles.icon} src={`/svgs/account/${link.icon}`} alt="" width={22} height={22} /><span>{link.label}</span>
+                </Link>;
+              })}
+            </>}
             {isProperty && propertyLinks.map((link) => <a key={link.href} href={link.href} role="menuitem" className="flex min-h-11 items-center rounded-lg px-3 py-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => setMenuOpen(false)}>{link.label}</a>)}
             {isProperty && !session.authenticated && onPropertyLogin && <button className="block min-h-11 w-full rounded-lg px-3 py-2 text-start focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" role="menuitem" type="button" onClick={() => { setMenuOpen(false); triggerRef.current?.focus(); onPropertyLogin(); }}>ورود / ثبت‌نام</button>}
             {isProperty && propertySlug && <button className={`block min-h-11 w-full rounded-lg px-3 py-2 text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${itemClass}`} role="menuitem" type="button" onClick={() => { setMenuOpen(false); if (!session.authenticated && onPropertyLogin) { triggerRef.current?.focus(); onPropertyLogin(); } else router.push(`/book/${encodeURIComponent(propertySlug)}/my-bookings`); }}>رزروهای من</button>}
@@ -221,7 +265,7 @@ function UserMenuContent({
                 aria-current={
                   currentWorkspace === workspace.key ? "page" : undefined
                 }
-                className={`block min-h-10 w-full rounded-lg px-3 py-2 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
+                className={`block min-h-10 w-full rounded-lg px-3 py-2 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${isPublic ? styles.item : itemClass}`}
                 key={workspace.key}
                 onClick={() => chooseWorkspace(workspace.key)}
                 role="menuitem"
@@ -230,7 +274,7 @@ function UserMenuContent({
                 {workspace.label}
               </button>
             ))}
-            {!isProperty && <><div className="my-1 border-t border-border" role="separator" />
+            {!isProperty && !isPublic && <><div className="my-1 border-t border-border" role="separator" />
             <button
               className={`block min-h-10 w-full rounded-lg px-3 py-2 text-right transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
               onClick={openAccountSettings}
@@ -240,13 +284,15 @@ function UserMenuContent({
               تنظیمات حساب
             </button>
             </>}
+            {isPublic && <div className={styles.divider} role="separator" />}
             {(!isProperty || session.authenticated) && <button
-              className={`block ${isProperty ? "min-h-11" : "min-h-10"} w-full rounded-lg px-3 py-2 text-right text-destructive transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${itemClass}`}
+              className={`block ${isProperty ? "min-h-11" : "min-h-10"} w-full rounded-lg px-3 py-2 text-right text-destructive transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${isPublic ? `${styles.item} ${styles.logout}` : itemClass}`}
               onClick={logout}
               role="menuitem"
               type="button"
             >
-              {isProperty ? "خروج از حساب" : "خروج"}
+              {isPublic && <Image className={styles.icon} src="/svgs/account/logout.svg" alt="" width={22} height={22} />}
+              {isProperty || isPublic ? "خروج از حساب" : "خروج"}
             </button>}
           </div>
         )}

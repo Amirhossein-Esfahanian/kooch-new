@@ -152,7 +152,7 @@ describe("Workspace routing and menu", () => {
     await waitForSession();
 
     fireEvent.click(screen.getByRole("button", { name: /منوی کاربر/ }));
-    expect(screen.getByRole("menuitem", { name: "محیط مهمان" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "حساب کاربری" })).toBeTruthy();
     expect(
       screen.getByRole("menuitem", { name: "پنل اقامتگاه‌ها" }),
     ).toBeTruthy();
@@ -175,7 +175,7 @@ describe("Workspace routing and menu", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /منوی کاربر/ }));
 
-    expect(screen.getByRole("menuitem", { name: "محیط مهمان" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "حساب کاربری" })).toBeTruthy();
     expect(
       screen.queryByRole("menuitem", { name: "پنل اقامتگاه‌ها" }),
     ).toBeNull();
@@ -193,7 +193,7 @@ describe("Workspace routing and menu", () => {
     await waitForSession();
 
     fireEvent.click(screen.getByRole("button", { name: /منوی کاربر/ }));
-    fireEvent.click(screen.getByRole("menuitem", { name: "خروج" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "خروج از حساب" }));
 
     expect(getToken()).toBeNull();
     expect(localStorage.getItem(workspaceKey)).toBe(rememberedPreference);
