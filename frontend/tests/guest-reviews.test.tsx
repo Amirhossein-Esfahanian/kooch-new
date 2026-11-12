@@ -31,6 +31,7 @@ const item: GuestReviewListItem = { review, propertyName: stay.propertyName, res
   checkInDate: "2026-11-05", checkOutDate: stay.checkOutDate, submissionDeadlineLocalDate: stay.submissionDeadlineLocalDate, canEdit: true };
 const paged = <T,>(items: T[], page = 1, totalPages = 1) => ({ items, page, pageSize: 20, totalCount: items.length, totalPages });
 const fill = (score = "8") => reviewCategories.forEach(([, label]) => fireEvent.click(within(screen.getByRole("radiogroup", { name: label })).getByRole("radio", { name: `${Number(score).toLocaleString("fa-IR")} از ۱۰` })));
+const nextStep = () => fireEvent.click(screen.getByRole("button", { name: "ادامه" }));
 
 beforeEach(() => {
   vi.clearAllMocks(); mocks.query = "";
@@ -54,8 +55,38 @@ describe("account navigation", () => {
 });
 
 describe("six-category form", () => {
-  it("separates the discreet reservation link from the primary and outlined action pair", () => {
+  it.each(["close", "backdrop", "Escape"])("confirms unsaved changes on %s and preserves both steps when the confirmation is cancelled", async method => {
     const onClose = vi.fn(); render(<GuestReviewForm stay={stay} onClose={onClose} onSaved={vi.fn()} />);
+    await screen.findByRole("dialog"); fill("6"); nextStep();
+    fireEvent.change(screen.getByLabelText("تجربه شما (اختیاری)"), { target: { value: "تجربه ذخیره‌نشده" } });
+    const requestClose = () => method === "Escape" ? fireEvent.keyDown(document, { key: "Escape" })
+      : fireEvent.click(screen.getByRole("button", { name: method === "close" ? "بستن" : "بستن دیالوگ" }));
+    requestClose(); expect(screen.getByRole("alert").textContent).toContain("تغییرات ذخیره‌نشده");
+    expect(onClose).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "ادامه ویرایش" })));
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.getByDisplayValue("تجربه ذخیره‌نشده")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت به امتیازها" }));
+    expect(screen.getAllByRole("radio", { checked: true }).map(node => (node as HTMLInputElement).value)).toEqual(Array(6).fill("6"));
+    nextStep(); expect(screen.getByDisplayValue("تجربه ذخیره‌نشده")).toBeTruthy();
+    requestClose(); fireEvent.click(screen.getByRole("button", { name: "صرف‌نظر از تغییرات" }));
+    expect(onClose).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
+  });
+  it("closes clean create/edit forms normally and compares edits with the actual saved baseline", async () => {
+    const onClose = vi.fn(); const view = render(<GuestReviewForm stay={stay} onClose={onClose} onSaved={vi.fn()} />);
+    await screen.findByRole("dialog"); fireEvent.click(screen.getByRole("button", { name: "بستن" }));
+    expect(onClose).toHaveBeenCalledOnce(); view.unmount(); onClose.mockClear();
+    render(<GuestReviewForm stay={{ ...stay, reviewId: 4 }} onClose={onClose} onSaved={vi.fn()} />);
+    const group = await screen.findByRole("radiogroup", { name: "نظافت" });
+    fireEvent.click(within(group).getByRole("radio", { name: "۹ از ۱۰" }));
+    fireEvent.click(within(group).getByRole("radio", { name: "۸ از ۱۰" }));
+    nextStep(); expect(screen.getByDisplayValue("تجربه اقامت")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "بستن" }));
+    expect(onClose).toHaveBeenCalledOnce(); expect(screen.queryByRole("alert")).toBeNull();
+  });
+  it("separates the discreet reservation link from the final action pair and confirms discarding", async () => {
+    const onClose = vi.fn(); render(<GuestReviewForm stay={stay} onClose={onClose} onSaved={vi.fn()} />);
+    await screen.findByRole("dialog"); fill(); nextStep();
     const submit = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
     const back = screen.getByRole("button", { name: "بازگشت به فهرست" });
     const reservation = screen.getByRole("link", { name: "مشاهده رزرو" });
@@ -64,31 +95,43 @@ describe("six-category form", () => {
     expect(reservation.parentElement).not.toBe(submit.parentElement);
     expect(submit.className).toContain("bg-primary"); expect(back.className).toContain("bg-background");
     expect(reservation.getAttribute("href")).toBe("/account/reservations/R-1");
-    back.focus(); fireEvent.click(back); expect(onClose).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
+    back.focus(); fireEvent.click(back); expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert").textContent).toContain("تغییرات ذخیره‌نشده");
+    fireEvent.click(screen.getByRole("button", { name: "صرف‌نظر از تغییرات" }));
+    expect(onClose).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
     const css = readFileSync(resolve("components/reviews/GuestReviewForm.module.css"), "utf8");
     expect(css).toContain("@media (max-width: 480px)"); expect(css).toContain(".buttons > button { width: 100%; }");
     expect(css).toContain("color: var(--muted-foreground)"); expect(css).not.toContain(":global");
   });
-  it("starts blank, requires all six choices, labels invalid fields and focuses the first missing score", () => {
+  it("starts blank, gates continuation on all six scores and retains required validation", async () => {
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />);
+    const dialog = await screen.findByRole("dialog");
     expect(screen.getAllByRole("radiogroup")).toHaveLength(6);
     expect(screen.getAllByRole("radio")).toHaveLength(60);
     const fieldset = screen.getByRole("group", { name: "امتیازهای اقامت (همه الزامی)" });
     expect(fieldset.classList.contains("sm:grid-cols-2")).toBe(true);
     expect(fieldset.classList.contains("gap-y-3")).toBe(true);
     expect(screen.queryAllByRole("radio", { checked: true })).toHaveLength(0);
-    fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
+    expect((screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.submit(dialog.querySelector("form")!);
     expect(screen.getAllByRole("alert")).toHaveLength(6);
     expect(screen.getAllByRole("radiogroup").every(node => node.getAttribute("aria-invalid") === "true")).toBe(true);
     expect(screen.getAllByRole("radiogroup").every(node => node.getAttribute("aria-required") === "true")).toBe(true);
     expect(document.activeElement).toBe(screen.getAllByRole("radio")[0]);
     expect(mocks.save).not.toHaveBeenCalled();
+    reviewCategories.slice(0, 5).forEach(([, label]) => fireEvent.click(within(screen.getByRole("radiogroup", { name: label })).getByRole("radio", { name: "۸ از ۱۰" })));
+    expect((screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement).disabled).toBe(true);
+    fill(); expect((screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement).disabled).toBe(false);
+    nextStep(); expect(screen.getByRole("heading", { name: "بررسی و ثبت" })).toBeTruthy();
+    expect(mocks.save).not.toHaveBeenCalled();
   });
   it("calculates an exact mean and submits only six raw scores and an optional empty comment", async () => {
     const onSaved = vi.fn();
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={onSaved} />);
+    await screen.findByRole("dialog");
     fill("1"); fireEvent.click(within(screen.getByRole("radiogroup", { name: reviewCategories[5][1] })).getByRole("radio", { name: "۲ از ۱۰" }));
     expect(screen.getByLabelText("میانگین امتیاز").textContent).toContain("۱٫۲");
+    nextStep();
     expect(screen.getByText(/نوشتن توضیح همچنان اختیاری است/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledOnce());
@@ -98,12 +141,13 @@ describe("six-category form", () => {
   });
   it("prefills only an existing review, preserves revision and uses edit/resubmission", async () => {
     render(<GuestReviewForm stay={{ ...stay, reviewId: 4, revision: 3 }} onClose={vi.fn()} onSaved={vi.fn()} />);
-    await screen.findByDisplayValue("تجربه اقامت");
+    await screen.findByRole("radiogroup", { name: "نظافت" });
     expect(screen.getByRole("radiogroup", { name: "نظافت" }).getAttribute("aria-invalid")).toBeNull();
     reviewCategories.forEach(([key, label]) => {
       expect((within(screen.getByRole("radiogroup", { name: label })).getByRole("radio", { checked: true }) as HTMLInputElement).value).toBe(String(review[key]));
     });
     expect(screen.getByLabelText("میانگین امتیاز").textContent).toContain("۷٫۵");
+    nextStep(); expect(screen.getByDisplayValue("تجربه اقامت")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "ذخیره و ارسال برای بررسی" }));
     await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
     expect(mocks.save.mock.calls[0][1]).toMatchObject({ revision: 3, cleanlinessRating: 8, comment: "تجربه اقامت" });
@@ -112,7 +156,7 @@ describe("six-category form", () => {
   it("blocks duplicate submits while pending", async () => {
     let resolve!: (value: GuestReview) => void;
     mocks.save.mockReturnValue(new Promise<GuestReview>(done => { resolve = done; }));
-    render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />); fill();
+    render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />); await screen.findByRole("dialog"); fill(); nextStep();
     const button = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
     fireEvent.click(button); fireEvent.click(button);
     expect((button as HTMLButtonElement).disabled).toBe(true);
@@ -127,22 +171,56 @@ describe("six-category form", () => {
     [400, "", /اطلاعات پذیرفته نشد/], [500, "", /ارتباط با سرور/],
   ])("handles server error %s %s without losing choices", async (status, message, expected) => {
     mocks.save.mockRejectedValueOnce(new ApiRequestError(message, status));
-    render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />); fill();
+    render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />); await screen.findByRole("dialog"); fill(); nextStep();
+    fireEvent.change(screen.getByLabelText("تجربه شما (اختیاری)"), { target: { value: "متن حفظ‌شده" } });
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringMatching(expected));
-    expect((screen.getAllByRole("radio", { checked: true })[0] as HTMLInputElement).value).toBe("8");
+    expect(screen.getByDisplayValue("متن حفظ‌شده")).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
     if (status === 401) expect(screen.getByRole("link", { name: "ورود دوباره" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت به امتیازها" }));
+    expect((screen.getAllByRole("radio", { checked: true })[0] as HTMLInputElement).value).toBe("8");
+    nextStep(); expect(screen.getByDisplayValue("متن حفظ‌شده")).toBeTruthy();
   });
   it("cannot save after existing-review retrieval fails", async () => {
     mocks.get.mockRejectedValueOnce(new ApiRequestError("", 404));
     render(<GuestReviewForm stay={{ ...stay, reviewId: 4 }} onClose={vi.fn()} onSaved={vi.fn()} />);
     await screen.findByRole("alert");
-    expect((screen.getByRole("button", { name: "ذخیره و ارسال برای بررسی" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "ادامه" }) as HTMLButtonElement).disabled).toBe(true);
     expect(mocks.save).not.toHaveBeenCalled();
   });
 });
 
 describe("private paginated review page", () => {
+  it("opens from the correct reservation without navigation and uses the shared focus trap, scroll lock and focus restoration", async () => {
+    mocks.eligible.mockResolvedValue(paged([stay])); render(<GuestReviewsPage />);
+    const opener = await screen.findByRole("button", { name: /ثبت نظر برای سرای آزمایش/ });
+    opener.focus(); fireEvent.click(opener);
+    const dialog = await screen.findByRole("dialog", { name: `ثبت نظر — ${stay.propertyName}` });
+    expect(mocks.router.replace).not.toHaveBeenCalled(); expect(mocks.router.push).not.toHaveBeenCalled();
+    expect(dialog.getAttribute("aria-modal")).toBe("true"); expect(document.body.style.overflow).toBe("hidden");
+    await waitFor(() => expect(document.activeElement).toBe(within(dialog).getByRole("heading", { name: "امتیازدهی" })));
+    // jsdom has no layout; expose only this dialog's controls to the shared primitive's visibility filter.
+    dialog.querySelectorAll<HTMLElement>("button, input, a[href]").forEach(node => Object.defineProperty(node, "offsetParent", { configurable: true, get: () => document.body }));
+    const first = within(dialog).getByRole("button", { name: "بستن" });
+    const last = within(dialog).getByRole("link", { name: "مشاهده رزرو" });
+    last.focus(); fireEvent.keyDown(document, { key: "Tab" }); expect(document.activeElement).toBe(first);
+    first.focus(); fireEvent.keyDown(document, { key: "Tab", shiftKey: true }); expect(document.activeElement).toBe(last);
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener)); expect(document.body.style.overflow).not.toBe("hidden");
+  });
+  it.each(["PendingApproval", "Rejected"] as const)("opens %s editing in the same prefilled wizard", async status => {
+    mocks.list.mockResolvedValue(paged([{ ...item, review: { ...review, moderationStatus: status } }]));
+    render(<GuestReviewsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: status === "Rejected" ? "ویرایش و ارسال مجدد" : "ویرایش نظر" }));
+    const dialog = await screen.findByRole("dialog", { name: `ویرایش نظر — ${stay.propertyName}` });
+    const group = await within(dialog).findByRole("radiogroup", { name: "نظافت" });
+    expect((within(group).getByRole("radio", { checked: true }) as HTMLInputElement).value).toBe("8");
+    expect(mocks.get).toHaveBeenCalledWith(1, expect.any(AbortSignal));
+    nextStep(); expect(within(dialog).getByDisplayValue("تجربه اقامت")).toBeTruthy();
+    expect(mocks.save).not.toHaveBeenCalled();
+  });
   it("reuses real blue category meters with a quality badge, stay context and a distinct guest comment", async () => {
     mocks.list.mockResolvedValue(paged([item])); render(<GuestReviewsPage />);
     const card = await screen.findByRole("article", { name: stay.propertyName });
@@ -200,6 +278,7 @@ describe("private paginated review page", () => {
     expect(action.className).toContain("bg-primary");
     expect(screen.queryByRole("button", { name: /دیگر برای این اقامت/ })).toBeNull();
     fireEvent.click(action);
+    await screen.findByRole("dialog", { name: `ثبت نظر — ${stay.propertyName}` });
     expect(screen.getByRole("link", { name: "مشاهده رزرو" }).getAttribute("href")).toBe("/account/reservations/R-2");
   });
   it("does not invent reservation numbers or check-in dates or show opt-out setup copy", async () => {
@@ -250,12 +329,15 @@ describe("private paginated review page", () => {
     expect(await screen.findByText(/اقامت انتخاب‌شده در فهرست مجاز/)).toBeTruthy();
     expect(mocks.get).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
   });
-  it("opens the invited stay inline, submits, refreshes both lists and announces pending status", async () => {
+  it("opens the invited stay in a modal, submits, refreshes both lists and announces pending status", async () => {
     mocks.query = "reservationId=1"; mocks.eligible.mockResolvedValue(paged([stay]));
     render(<GuestReviewsPage />);
     await screen.findByRole("heading", { name: `ثبت نظر — ${stay.propertyName}` }); fill();
+    expect(screen.getByRole("main").querySelector('[role="dialog"]')).toBeNull();
+    nextStep();
     fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     expect(await screen.findByText(/نظر شما ثبت شد و در انتظار تأیید است/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
     await waitFor(() => expect(mocks.eligible).toHaveBeenCalledTimes(2));
     expect(mocks.list).toHaveBeenCalledTimes(2);
     expect(mocks.router.replace).toHaveBeenCalledWith("/account/reviews", { scroll: false });
