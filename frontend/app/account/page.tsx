@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -9,7 +10,14 @@ import {
 } from "@/components/auth/AuthSessionProvider";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { reviewLinkClass } from "@/lib/guest-reviews";
+import styles from "./page.module.css";
+
+const accountLinks = [
+  { title: "رزروهای من", description: "رزروهای مستقل و قدیمی خود را مشاهده و پیگیری کنید.", href: "/account/reservations", icon: "reservations.svg", label: "مشاهده رزروهای مستقل" },
+  { title: "سفارش‌های من", description: "سفارش‌های چنداتاقه و وضعیت پرداخت آن‌ها را پیگیری کنید.", href: "/account/orders", icon: "reservations.svg", label: "مشاهده سفارش‌های من" },
+  { title: "نظرات من", description: "تجربه اقامت را بنویسید و وضعیت نظرها را ببینید.", href: "/account/reviews", icon: "reviews.svg", label: "مشاهده نظرات من" },
+  { title: "کیف پول من", description: "موجودی و درخواست‌های برداشت خود را بررسی کنید.", href: "/account/wallet", icon: "wallet.svg", label: "مشاهده کیف پول" },
+] as const;
 
 export default function AccountPage() {
   const router = useRouter();
@@ -53,63 +61,15 @@ export default function AccountPage() {
           title="حساب کاربری"
         />
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <KoochCard className="flex h-full flex-col items-start gap-4">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-foreground">نظرات من</h2>
-              <p className="mt-2 text-sm leading-7 text-muted-foreground">اقامت‌های قابل ارزیابی و وضعیت نظرهای ارسال‌شده خود را ببینید.</p>
-            </div>
-            <Link className={reviewLinkClass} href="/account/reviews">مشاهده نظرات من</Link>
-          </KoochCard>
-          <KoochCard className="flex h-full flex-col items-start gap-4">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-foreground">
-                سفارش‌های من
-              </h2>
-              <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                سفارش‌های چنداتاقه، وضعیت کلی پرداخت و همه شماره‌های رزرو مرتبط
-                را پیگیری کنید.
-              </p>
-            </div>
-            <Link
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-primary bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground transition hover:bg-[var(--primary-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              href="/account/orders"
-            >
-              مشاهده سفارش‌های من
-            </Link>
-          </KoochCard>
-
-          <KoochCard className="flex h-full flex-col items-start gap-4">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-foreground">رزروهای من</h2>
-              <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                رزروهای مستقل و قدیمی که به سفارش گروهی متصل نیستند همچنان در
-                این بخش قابل مشاهده‌اند.
-              </p>
-            </div>
-            <Link
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              href="/account/reservations"
-            >
-              مشاهده رزروهای مستقل
-            </Link>
-          </KoochCard>
-
-          <KoochCard className="flex h-full flex-col items-start gap-4">
-            <div className="min-w-0 flex-1">
-              <h2 className="text-lg font-bold text-foreground">کیف پول من</h2>
-              <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                موجودی قابل استفاده، مبلغ قابل برداشت و وضعیت درخواست‌های برداشت خود را ببینید.
-              </p>
-            </div>
-            <Link
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-md border border-border bg-background px-5 py-2.5 text-sm font-semibold text-foreground transition hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-              href="/account/wallet"
-            >
-              مشاهده کیف پول
-            </Link>
-          </KoochCard>
-        </div>
+        <nav className={styles.navigation} aria-label="بخش‌های حساب کاربری">
+          {accountLinks.map(item => <Link key={item.href} className={styles.link} href={item.href} aria-label={item.label}>
+            <KoochCard className={styles.card} padding="sm">
+              <span className={styles.iconSurface} aria-hidden="true"><Image className={styles.icon} src={`/svgs/account/${item.icon}`} alt="" width={40} height={40} /></span>
+              <div className={styles.content}><h2>{item.title}</h2><p>{item.description}</p></div>
+              <span className={styles.affordance} aria-hidden="true">مشاهده</span>
+            </KoochCard>
+          </Link>)}
+        </nav>
       </div>
     </main>
   );
