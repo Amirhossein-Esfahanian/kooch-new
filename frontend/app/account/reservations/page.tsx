@@ -1,12 +1,70 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { resolveSessionDestination, useAuthSession } from "@/components/auth/AuthSessionProvider";
 import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { UnderlineTabs } from "@/components/UnderlineTabs";
 import { GuestReservationsList } from "@/components/account/GuestReservationsList";
+import { GuestOrdersList } from "@/components/account/GuestOrdersList";
+import styles from "./page.module.css";
+
+const tabs = [
+  { value: "reservations", label: "رزروهای مستقل" },
+  { value: "orders", label: "سفارش‌های چنداقامتگاهی" },
+] as const;
+
+function ReservationPanels() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const active = params.get("tab") === "orders" ? "orders" : "reservations";
+  const [reservationPage, setReservationPage] = useState(1);
+  const [orderPage, setOrderPage] = useState(1);
+  const [focused, setFocused] = useState(active);
+  const buttons = useRef<Array<HTMLButtonElement | null>>([]);
+  const id = useId();
+
+  useEffect(() => { setFocused(active); }, [active]);
+
+  function activate(value: typeof active) {
+    if (value === active) return;
+    const next = new URLSearchParams(params.toString());
+    next.set("tab", value);
+    router.push(`/account/reservations?${next.toString()}`, { scroll: false });
+  }
+
+  function navigate(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault(); activate(tabs[index].value); return;
+    }
+    let next: number;
+    if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+      const rtl = getComputedStyle(event.currentTarget).direction === "rtl";
+      const forward = event.key === "ArrowLeft" ? rtl : !rtl;
+      next = (index + (forward ? 1 : -1) + tabs.length) % tabs.length;
+    } else return;
+    event.preventDefault();
+    setFocused(tabs[next].value); buttons.current[next]?.focus();
+  }
+
+  return <>
+    <div className={styles.tabs} role="tablist" aria-label="رزروهای من" aria-orientation="horizontal" dir="rtl">
+      {tabs.map((tab, index) => <button key={tab.value} type="button" role="tab" id={`${id}-${tab.value}-tab`}
+        aria-controls={`${id}-${tab.value}-panel`} aria-selected={active === tab.value}
+        tabIndex={focused === tab.value ? 0 : -1} className={styles.tab}
+        ref={node => { buttons.current[index] = node; }} onFocus={() => setFocused(tab.value)}
+        onClick={() => activate(tab.value)} onKeyDown={event => navigate(event, index)}>{tab.label}</button>)}
+    </div>
+    {tabs.map(tab => <section key={tab.value} id={`${id}-${tab.value}-panel`} role="tabpanel"
+      aria-labelledby={`${id}-${tab.value}-tab`} tabIndex={0} hidden={active !== tab.value} className={styles.panel}>
+      {active === tab.value && (tab.value === "reservations"
+        ? <GuestReservationsList page={reservationPage} onPageChange={setReservationPage} />
+        : <GuestOrdersList page={orderPage} onPageChange={setOrderPage} />)}
+    </section>)}
+  </>;
+}
 
 export default function AccountReservationsPage() {
   const router = useRouter();
@@ -38,11 +96,9 @@ export default function AccountReservationsPage() {
           title="رزروهای من"
         />
 
-        <UnderlineTabs ariaLabel="مسیرهای رزروهای من" items={[
-          { href: "/account/reservations", label: "رزروهای مستقل" },
-          { href: "/account/orders", label: "سفارش‌های چنداقامتگاهی" },
-        ]} />
-        <GuestReservationsList />
+        <Suspense fallback={<p role="status" className="text-sm text-muted-foreground">در حال آماده‌سازی رزروها…</p>}>
+          <ReservationPanels />
+        </Suspense>
       </div>
     </main>
   );

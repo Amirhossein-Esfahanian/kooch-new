@@ -1,0 +1,10 @@
+.tabs { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; min-width: 0; border-block-end: 1px solid var(--border); }
+.tab { position: relative; display: inline-flex; align-items: center; justify-content: center; min-height: 2.75rem; max-width: 100%; padding: 0.625rem 0.25rem 0.75rem; color: var(--foreground); font-size: 0.875rem; font-weight: 600; text-align: center; overflow-wrap: anywhere; direction: inherit; }
+.tab::after { content: ""; position: absolute; inset-inline: 0; inset-block-end: 0; height: 3px; background: var(--primary); opacity: 0; transform: scaleX(0.75); transition: opacity 140ms ease-out, transform 140ms ease-out; }
+.tab:hover, .tab[aria-selected="true"] { color: var(--primary); }
+.tab:hover::after { opacity: 0.35; }
+.tab[aria-selected="true"]::after { opacity: 1; transform: scaleX(1); }
+.tab:focus-visible, .panel:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 0.125rem; }
+.panel { display: grid; gap: 1.25rem; min-width: 0; }
+.panel[hidden] { display: none; }
+@media (prefers-reduced-motion: reduce) { .tab::after { transition: none; } }

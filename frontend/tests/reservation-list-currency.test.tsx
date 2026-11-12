@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("next/navigation", () => ({
   useRouter: () => mocks.router,
   usePathname: () => "/account/reservations",
+  useSearchParams: () => new URLSearchParams(),
 }));
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
@@ -82,17 +83,15 @@ describe("reservation list currency context", () => {
     vi.unstubAllGlobals();
   });
 
-  it("keeps the standalone list and pagination visible under compact route navigation without combining API data", async () => {
+  it("keeps the standalone list and pagination visible under in-page tabs without combining API data", async () => {
     mocks.apiRequest.mockResolvedValue({ items: [{ ...reservation, totalPrice: 1_250_000, paidAmount: 750_000 }], totalPages: 2 });
     render(<AccountReservationsPage />);
-    const nav = screen.getByRole("navigation", { name: "مسیرهای رزروهای من" });
-    const standalone = within(nav).getByRole("link", { name: "رزروهای مستقل" });
-    expect(standalone.getAttribute("href")).toBe("/account/reservations");
-    expect(standalone.getAttribute("aria-current")).toBe("page");
-    const orders = within(nav).getByRole("link", { name: "سفارش‌های چنداقامتگاهی" });
-    expect(orders.getAttribute("href")).toBe("/account/orders");
-    expect(orders.hasAttribute("aria-current")).toBe(false);
-    expect(within(nav).queryByRole("tab")).toBeNull();
+    const nav = screen.getByRole("tablist", { name: "رزروهای من" });
+    const standalone = within(nav).getByRole("tab", { name: "رزروهای مستقل" });
+    expect(standalone.getAttribute("aria-selected")).toBe("true");
+    const orders = within(nav).getByRole("tab", { name: "سفارش‌های چنداقامتگاهی" });
+    expect(orders.getAttribute("aria-selected")).toBe("false");
+    expect(within(nav).queryByRole("link")).toBeNull();
     expect(await screen.findByText("KCH-17")).toBeTruthy();
     expect(screen.getByRole("table")).toBeTruthy();
     expect(screen.getByRole("link", { name: "جزئیات" }).getAttribute("href")).toBe("/account/reservations/KCH-17");
