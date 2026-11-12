@@ -54,10 +54,14 @@ function ReviewsContent() {
   const [reviewsPage, setReviewsPage] = useState(1);
   const [version, setVersion] = useState(0);
   const [selected, setSelected] = useState<EligibleReviewStay | null>(null);
+  const [savedReservationIds, setSavedReservationIds] = useState<Set<number>>(() => new Set());
   const [message, setMessage] = useState("");
   const listHeading = useRef<HTMLHeadingElement>(null);
   const eligible = useReviewPage(getEligibleReviewStays, eligiblePage, version);
   const submitted = useReviewPage(getGuestReviews, reviewsPage, version);
+  const reviewedReservationIds = new Set(submitted.data?.items.map(item => item.review.reservationId));
+  const unreviewedStays = eligible.data?.items.filter(stay => stay.reviewId === null
+    && !reviewedReservationIds.has(stay.reservationId) && !savedReservationIds.has(stay.reservationId)) ?? [];
   const requested = params.get("reservationId");
   const handled = useRef<string | null>(null);
   useEffect(() => { if (requested) setEligiblePage(requestedPage); }, [requested, requestedPage]);
@@ -85,6 +89,7 @@ function ReviewsContent() {
       </div>
       {message && <p className="rounded-lg border border-border bg-muted p-4 text-sm leading-7" role="status">{message}</p>}
       {selected && <GuestReviewForm key={selected.reservationId} stay={selected} onClose={closeForm} onSaved={() => {
+        setSavedReservationIds(current => new Set(current).add(selected.reservationId));
         refresh(); setMessage("نظر شما ثبت شد و در انتظار تأیید است؛ هنوز منتشر نشده است.");
       }} />}
       <KoochCard padding="sm" aria-labelledby="eligible-heading">
@@ -95,13 +100,13 @@ function ReviewsContent() {
           </KoochButton>
         </div>
         {eligible.error ? <ReviewFailure message={eligible.error} /> : !eligible.data ? <p role="status" className="py-3 text-sm text-muted-foreground">در حال دریافت اقامت‌ها…</p> : <>
-          {!eligible.data.items.length && <p className={styles.empty}>اکنون اقامت واجد شرایطی برای ثبت یا ویرایش نظر ندارید. پس از اقامت تکمیل‌شده، تا ۳۰ روز از خروج می‌توانید نظر بدهید.</p>}
-          {eligible.data.items.length > 0 && <ul className={styles.stays} aria-label="اقامت‌های قابل ثبت نظر">
-            {eligible.data.items.map(stay => <li key={stay.reservationId} className={styles.stayRow}>
+          {!unreviewedStays.length && <p className={styles.empty}>اکنون اقامت واجد شرایطی بدون نظر در این صفحه ندارید. پس از اقامت تکمیل‌شده، تا ۳۰ روز از خروج می‌توانید نظر بدهید.</p>}
+          {unreviewedStays.length > 0 && <ul className={styles.stays} aria-label="اقامت‌های قابل ثبت نظر">
+            {unreviewedStays.map(stay => <li key={stay.reservationId} className={styles.stayRow}>
               <div className={styles.stayInfo}><h3>{stay.propertyName}</h3><p className={styles.stayMeta}>خروج: <time dateTime={stay.checkOutDate}>{reviewDate(stay.checkOutDate)}</time> · مهلت: {reviewDate(stay.submissionDeadlineLocalDate)}</p>
                 {stay.reservationNumber && <p className={styles.stayMeta}>رزرو: <bdi dir="ltr">{stay.reservationNumber}</bdi></p>}
               </div>
-              <KoochButton variant="primary" size="sm" onClick={() => { setSelected(stay); setMessage(""); }} aria-label={`${stay.reviewId === null ? "ثبت نظر" : "ویرایش نظر"} برای ${stay.propertyName}${stay.reservationNumber ? `، رزرو ${stay.reservationNumber}` : `، خروج ${reviewDate(stay.checkOutDate)}`}`}>{stay.reviewId === null ? "ثبت نظر" : "ویرایش نظر"}</KoochButton>
+              <KoochButton variant="primary" size="sm" onClick={() => { setSelected(stay); setMessage(""); }} aria-label={`ثبت نظر برای ${stay.propertyName}${stay.reservationNumber ? `، رزرو ${stay.reservationNumber}` : `، خروج ${reviewDate(stay.checkOutDate)}`}`}>ثبت نظر</KoochButton>
             </li>)}
           </ul>}
           <Pagination label="صفحه‌بندی اقامت‌های قابل ثبت نظر" page={eligiblePage} pages={eligible.data.totalPages} onChange={setEligiblePage} />

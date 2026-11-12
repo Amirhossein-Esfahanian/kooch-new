@@ -270,6 +270,57 @@ describe("six-category form", () => {
 });
 
 describe("private paginated review page", () => {
+  it.each(["PendingApproval", "Rejected", "Approved"] as const)("keeps %s reviews only in submitted cards, matching reservations rather than property or dates", async status => {
+    mocks.eligible.mockResolvedValue(paged([stay, { ...stay, reservationId: 2, reservationNumber: "R-2" }]));
+    mocks.list.mockResolvedValue(paged([{ ...item, canEdit: status !== "Approved",
+      review: { ...review, moderationStatus: status, isPublished: false, rejectionReason: status === "Rejected" ? "دلیل قابل نمایش" : null } }]));
+    render(<GuestReviewsPage />);
+    const card = await screen.findByRole("article", { name: stay.propertyName });
+    const eligibleList = screen.getByRole("list", { name: "اقامت‌های قابل ثبت نظر" });
+    expect(within(eligibleList).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(eligibleList).getByText("R-2")).toBeTruthy();
+    expect(within(eligibleList).queryByText("R-1")).toBeNull();
+    expect(within(eligibleList).queryByRole("button", { name: /ویرایش/ })).toBeNull();
+    expect(within(card).queryByRole("button", { name: status === "Rejected" ? "ویرایش و ارسال مجدد" : "ویرایش نظر" }) !== null).toBe(status !== "Approved");
+    if (status === "Rejected") expect(within(card).getByText("دلیل رد نظر: دلیل قابل نمایش")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "دریافت دوباره فهرست" }));
+    await waitFor(() => expect(mocks.list).toHaveBeenCalledTimes(2));
+    await screen.findByRole("article", { name: stay.propertyName });
+    expect(within(screen.getByRole("list", { name: "اقامت‌های قابل ثبت نظر" })).getAllByRole("listitem")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: /ثبت نظر برای.*R-1/ })).toBeNull();
+  });
+  it("uses eligible reviewId to exclude reviewed reservations outside the current submitted page even if that list fails", async () => {
+    mocks.eligible.mockResolvedValue(paged([{ ...stay, reviewId: 4 }, { ...stay, reservationId: 2, reservationNumber: "R-2" }], 1, 2));
+    mocks.list.mockRejectedValue(new Error("offline"));
+    render(<GuestReviewsPage />);
+    const list = await screen.findByRole("list", { name: "اقامت‌های قابل ثبت نظر" });
+    expect(within(list).getAllByRole("listitem")).toHaveLength(1);
+    expect(within(list).getByText("R-2")).toBeTruthy();
+    expect(await screen.findByRole("alert")).toBeTruthy();
+    expect(screen.getByRole("navigation", { name: "صفحه‌بندی اقامت‌های قابل ثبت نظر" })).toBeTruthy();
+  });
+  it("removes a just-submitted stay immediately, refreshes both lists and keeps the single permitted edit action through refresh", async () => {
+    mocks.eligible.mockResolvedValue(paged([stay]));
+    let resolveSubmitted!: (value: ReturnType<typeof paged<GuestReviewListItem>>) => void;
+    mocks.list.mockResolvedValueOnce(paged([])).mockReturnValueOnce(new Promise(done => { resolveSubmitted = done; })).mockResolvedValue(paged([item]));
+    render(<GuestReviewsPage />);
+    fireEvent.click(await screen.findByRole("button", { name: /ثبت نظر برای.*R-1/ }));
+    await screen.findByRole("dialog"); fill(); nextStep();
+    fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
+    await screen.findByText(/نظر شما ثبت شد و در انتظار تأیید است/);
+    await waitFor(() => expect(mocks.eligible).toHaveBeenCalledTimes(2));
+    await screen.findByText(/اکنون اقامت واجد شرایطی بدون نظر/);
+    expect(screen.queryByRole("button", { name: /ثبت نظر برای/ })).toBeNull();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    resolveSubmitted(paged([item]));
+    await screen.findByRole("article", { name: stay.propertyName });
+    expect(screen.getAllByRole("button", { name: "ویرایش نظر" })).toHaveLength(1);
+    fireEvent.click(screen.getByRole("button", { name: "دریافت دوباره فهرست" }));
+    await screen.findByRole("article", { name: stay.propertyName });
+    expect(screen.queryByRole("button", { name: /ثبت نظر برای/ })).toBeNull();
+    expect(screen.getAllByRole("button", { name: "ویرایش نظر" })).toHaveLength(1);
+    expect(mocks.save).toHaveBeenCalledOnce();
+  });
   it("opens from the correct reservation without navigation and uses the shared focus trap, scroll lock and focus restoration", async () => {
     mocks.eligible.mockResolvedValue(paged([stay])); render(<GuestReviewsPage />);
     const opener = await screen.findByRole("button", { name: /ثبت نظر برای سرای آزمایش/ });
