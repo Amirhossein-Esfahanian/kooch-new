@@ -7,6 +7,8 @@ import { KoochDialog } from "@/components/KoochDialog";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochTextarea } from "@/components/KoochFormControls";
 import { ScorePill } from "@/components/ScorePill";
+import { ReviewScoreList } from "@/components/reviews/PublishedReviews";
+import { getRatingQuality } from "@/lib/rating-quality";
 import { getGuestReview, reviewCategories, reviewDate, reviewError, reviewLinkClass, saveGuestReview,
   type EligibleReviewStay, type GuestReviewRequest, type ReviewScoreKey } from "@/lib/guest-reviews";
 import styles from "./GuestReviewForm.module.css";
@@ -83,26 +85,33 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
   return (
     <KoochDialog open onOpenChange={open => { if (!open) requestClose(); }} closeDisabled={busy}
       title={`${edit ? "ویرایش نظر" : "ثبت نظر"} — ${stay.propertyName}`} size="md" dir="rtl"
-      description={`خروج: ${reviewDate(stay.checkOutDate)} · مهلت ثبت و ویرایش: ${reviewDate(stay.submissionDeadlineLocalDate)}`}
+      description={<span className={styles.headerContext}>
+        <span>خروج: <time dateTime={stay.checkOutDate}>{reviewDate(stay.checkOutDate)}</time></span>
+        {stay.reservationNumber && <span>رزرو: <bdi dir="ltr">{stay.reservationNumber}</bdi></span>}
+        <span>مهلت ثبت و ویرایش: {reviewDate(stay.submissionDeadlineLocalDate)}</span>
+        {stay.reservationNumber && <Link className={`${reviewLinkClass} ${styles.reservationLink}`} href={`/account/reservations/${encodeURIComponent(stay.reservationNumber)}`}>مشاهده رزرو</Link>}
+      </span>}
       initialFocusRef={heading} className={styles.dialog} bodyClassName={styles.body} footerClassName={styles.footer}
       footer={confirmDiscard ? <div className={styles.buttons}>
         <KoochButton type="button" variant="outline" ref={keepEditing} onClick={() => setConfirmDiscard(false)}>ادامه ویرایش</KoochButton>
         <KoochButton type="button" variant="destructive" onClick={onClose}>صرف‌نظر از تغییرات</KoochButton>
-      </div> : <div className={styles.actions}>
-        <div className={styles.buttons}>
+      </div> : <div className={styles.buttons}>
+          {step === 1 ? <KoochButton key="cancel" type="button" variant="outline" disabled={busy} onClick={requestClose}>انصراف</KoochButton>
+            : <KoochButton key="back" type="button" variant="outline" disabled={busy} onClick={() => setStep(1)}>بازگشت به امتیازها</KoochButton>}
           {step === 1 ? <KoochButton key="continue" type="button" disabled={loading || loadFailed || !complete} onClick={event => { event.preventDefault(); setStep(2); }}>ادامه</KoochButton>
-            : <KoochButton key="submit-review" type="button" form={formId} onClick={() => void submit()} loading={busy} disabled={loadFailed || !complete || (edit && revision === undefined)}>{edit ? "ذخیره و ارسال برای بررسی" : "ارسال نظر برای بررسی"}</KoochButton>}
-          {step === 2 && <KoochButton type="button" variant="outline" disabled={busy} onClick={() => setStep(1)}>بازگشت به امتیازها</KoochButton>}
-          <KoochButton type="button" variant="outline" disabled={busy} onClick={requestClose}>بازگشت به فهرست</KoochButton>
-        </div>
-        {stay.reservationNumber && <Link className={`${reviewLinkClass} ${styles.reservationLink}`} href={`/account/reservations/${encodeURIComponent(stay.reservationNumber)}`}>مشاهده رزرو</Link>}
+            : <KoochButton key="submit-review" type="button" form={formId} onClick={() => void submit()} loading={busy} disabled={loadFailed || !complete || (edit && revision === undefined)}>ارسال نظر برای بررسی</KoochButton>}
       </div>}>
       {confirmDiscard ? <KoochAlert variant="question" title="تغییرات ذخیره‌نشده" role="alert">
         امتیازها یا متن نظر تغییر کرده‌اند. بدون ثبت از این فرم خارج می‌شوید؟
       </KoochAlert> : <>
-      <ol className={styles.steps} aria-label="مراحل ثبت نظر"><li aria-current={step === 1 ? "step" : undefined}>۱. امتیازدهی</li><li aria-current={step === 2 ? "step" : undefined}>۲. بررسی و ثبت</li></ol>
+      <ol className={styles.steps} aria-label="مراحل ثبت نظر">
+        <li aria-current={step === 1 ? "step" : undefined} data-state={step === 1 ? "active" : "completed"}>
+          <span className={styles.stepNumber} aria-hidden="true">{step === 1 ? "۱" : <svg viewBox="0 0 16 16" fill="none"><path d="m3 8 3 3 7-7" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" /></svg>}</span>
+          امتیازدهی{step === 2 && <span className="sr-only"> (تکمیل‌شده)</span>}
+        </li>
+        <li aria-current={step === 2 ? "step" : undefined} data-state={step === 2 ? "active" : "upcoming"}><span className={styles.stepNumber} aria-hidden="true">۲</span>بررسی و ثبت</li>
+      </ol>
       <h3 className={styles.stepTitle} tabIndex={-1} ref={heading}>{step === 1 ? "امتیازدهی" : "بررسی و ثبت"}</h3>
-      {stay.reservationNumber && <p className={styles.context}>رزرو: <bdi dir="ltr">{stay.reservationNumber}</bdi></p>}
       {loading ? <p className="py-6" role="status">در حال دریافت نظر…</p> : (
         <form id={formId} ref={form} className="mt-3 grid gap-3" onSubmit={event => { event.preventDefault(); event.stopPropagation(); }} noValidate aria-busy={busy}>
           {step === 1 ? <>
@@ -119,8 +128,14 @@ export function GuestReviewForm({ stay, onClose, onSaved }: {
               </div>;
             })}
           </fieldset>
-          </> : <dl className={styles.summary} aria-label="امتیازهای انتخاب‌شده">{reviewCategories.map(([key, label]) => <div key={key}><dt>{label}</dt><dd>{Number(scores[key]).toLocaleString("fa-IR")}</dd></div>)}</dl>}
-          <output className="rounded-lg bg-muted px-4 py-2 text-sm font-semibold tabular-nums" aria-live="polite" aria-label="میانگین امتیاز">میانگین: {average === null ? "پس از انتخاب شش امتیاز" : `${average.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })} از ۱۰`}</output>
+          </> : <section aria-label="امتیازهای انتخاب‌شده"><ReviewScoreList appearance="brand" scores={Object.fromEntries(reviewCategories.map(([key]) => [key, Number(scores[key])]))} /></section>}
+          <output className={styles.overall} data-quality={average === null ? undefined : getRatingQuality(average).tone} aria-live="polite" aria-label="میانگین امتیاز">
+            <span>میانگین امتیاز</span>
+            {average === null ? <span className={styles.context}>پس از انتخاب شش امتیاز</span> : <>
+              <strong>{average.toLocaleString("fa-IR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}</strong><span className={styles.context}>از ۱۰</span>
+              <span className={styles.quality}>{getRatingQuality(average).label}</span>
+            </>}
+          </output>
           {step === 2 && <div className="grid gap-2">
             <label className="text-sm font-semibold" htmlFor="review-comment">تجربه شما (اختیاری)</label>
             <KoochTextarea id="review-comment" value={comment} onChange={event => setComment(event.target.value)} maxLength={4000} disabled={busy || loadFailed} aria-describedby="review-comment-help" />

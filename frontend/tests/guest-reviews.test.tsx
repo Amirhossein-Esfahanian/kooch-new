@@ -77,7 +77,7 @@ describe("six-category form", () => {
     expect(mocks.save).not.toHaveBeenCalled();
     expect((within(screen.getByRole("radiogroup", { name: "نظافت" })).getByRole("radio", { checked: true }) as HTMLInputElement).value).toBe("6");
     nextStep(); expect(within(dialog).getByDisplayValue("متن مرحله دوم")).toBeTruthy();
-    const final = within(dialog).getByRole("button", { name: edit ? "ذخیره و ارسال برای بررسی" : "ارسال نظر برای بررسی" });
+    const final = within(dialog).getByRole("button", { name: "ارسال نظر برای بررسی" });
     expect(final).not.toBe(proceed);
     within(dialog).getAllByRole("button").forEach(button => expect((button as HTMLButtonElement).type).toBe("button"));
     fireEvent.click(final); fireEvent.click(final);
@@ -128,24 +128,59 @@ describe("six-category form", () => {
     fireEvent.click(screen.getByRole("button", { name: "بستن" }));
     expect(onClose).toHaveBeenCalledOnce(); expect(screen.queryByRole("alert")).toBeNull();
   });
-  it("separates the discreet reservation link from the final action pair and confirms discarding", async () => {
+  it("keeps real stay context and reservation link in the header with only the correct action pair in each step", async () => {
     const onClose = vi.fn(); render(<GuestReviewForm stay={stay} onClose={onClose} onSaved={vi.fn()} />);
-    await screen.findByRole("dialog"); fill(); nextStep();
-    const submit = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
-    const back = screen.getByRole("button", { name: "بازگشت به فهرست" });
+    const dialog = await screen.findByRole("dialog");
+    const header = dialog.querySelector('[data-slot="dialog-header"]')!;
+    const footer = dialog.querySelector('[data-slot="dialog-footer"]')!;
+    expect(within(header as HTMLElement).getByText("R-1")).toBeTruthy();
+    expect(header.querySelector("time")?.getAttribute("datetime")).toBe(stay.checkOutDate);
+    expect(within(dialog).getAllByText("R-1")).toHaveLength(1);
     const reservation = screen.getByRole("link", { name: "مشاهده رزرو" });
-    expect(submit.parentElement).toBe(back.parentElement);
-    expect(reservation.parentElement).toBe(submit.parentElement?.parentElement);
-    expect(reservation.parentElement).not.toBe(submit.parentElement);
-    expect(submit.className).toContain("bg-primary"); expect(back.className).toContain("bg-background");
+    expect(header.contains(reservation)).toBe(true); expect(footer.contains(reservation)).toBe(false);
     expect(reservation.getAttribute("href")).toBe("/account/reservations/R-1");
-    back.focus(); fireEvent.click(back); expect(onClose).not.toHaveBeenCalled();
+    expect(within(footer as HTMLElement).getAllByRole("button").map(button => button.textContent)).toEqual(["انصراف", "ادامه"]);
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" })); expect(onClose).toHaveBeenCalledOnce();
+    onClose.mockClear(); fill();
+    fireEvent.click(screen.getByRole("button", { name: "انصراف" })); expect(onClose).not.toHaveBeenCalled();
     expect(screen.getByRole("alert").textContent).toContain("تغییرات ذخیره‌نشده");
-    fireEvent.click(screen.getByRole("button", { name: "صرف‌نظر از تغییرات" }));
-    expect(onClose).toHaveBeenCalledOnce(); expect(mocks.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "ادامه ویرایش" })); nextStep();
+    const submit = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
+    const back = screen.getByRole("button", { name: "بازگشت به امتیازها" });
+    expect(submit.parentElement).toBe(back.parentElement);
+    expect(submit.className).toContain("bg-primary"); expect(back.className).toContain("bg-background");
+    expect(within(footer as HTMLElement).getAllByRole("button").map(button => button.textContent)).toEqual(["بازگشت به امتیازها", "ارسال نظر برای بررسی"]);
+    expect(screen.queryByRole("button", { name: "بازگشت به فهرست" })).toBeNull();
+    expect(mocks.save).not.toHaveBeenCalled();
     const css = readFileSync(resolve("components/reviews/GuestReviewForm.module.css"), "utf8");
     expect(css).toContain("@media (max-width: 480px)"); expect(css).toContain(".buttons > button { width: 100%; }");
     expect(css).toContain("color: var(--muted-foreground)"); expect(css).not.toContain(":global");
+  });
+  it("shows completed/current steps and six real blue score meters with the calculated Persian quality", async () => {
+    render(<GuestReviewForm stay={{ ...stay, reviewId: 4 }} onClose={vi.fn()} onSaved={vi.fn()} />);
+    await screen.findByRole("radiogroup", { name: "نظافت" });
+    const steps = screen.getByRole("list", { name: "مراحل ثبت نظر" });
+    const entries = within(steps).getAllByRole("listitem");
+    expect(entries[0].getAttribute("aria-current")).toBe("step");
+    expect(entries[1].getAttribute("data-state")).toBe("upcoming");
+    nextStep();
+    expect(entries[0].getAttribute("data-state")).toBe("completed");
+    expect(entries[0].textContent).toContain("تکمیل‌شده");
+    expect(entries[1].getAttribute("aria-current")).toBe("step");
+    const summary = screen.getByRole("region", { name: "امتیازهای انتخاب‌شده" });
+    expect(within(summary).getAllByRole("meter")).toHaveLength(6);
+    reviewCategories.forEach(([key, label]) => {
+      const meter = within(summary).getByRole("meter", { name: label });
+      expect(meter.getAttribute("aria-valuenow")).toBe(String(review[key]));
+      expect((meter.firstElementChild as HTMLElement).style.width).toBe(`${review[key] * 10}%`);
+    });
+    expect(summary.querySelectorAll("[data-quality]")).toHaveLength(0);
+    const overall = screen.getByLabelText("میانگین امتیاز");
+    expect(overall.textContent).toContain("۷٫۵"); expect(overall.textContent).toContain("خوب");
+    expect(overall.getAttribute("data-quality")).toBe("good");
+    fireEvent.click(screen.getByRole("button", { name: "بازگشت به امتیازها" }));
+    expect(entries[0].getAttribute("aria-current")).toBe("step");
+    expect(mocks.save).not.toHaveBeenCalled();
   });
   it("starts blank, gates continuation on all six scores and retains required validation", async () => {
     render(<GuestReviewForm stay={stay} onClose={vi.fn()} onSaved={vi.fn()} />);
@@ -191,7 +226,7 @@ describe("six-category form", () => {
     });
     expect(screen.getByLabelText("میانگین امتیاز").textContent).toContain("۷٫۵");
     nextStep(); expect(screen.getByDisplayValue("تجربه اقامت")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "ذخیره و ارسال برای بررسی" }));
+    fireEvent.click(screen.getByRole("button", { name: "ارسال نظر برای بررسی" }));
     await waitFor(() => expect(mocks.save).toHaveBeenCalledOnce());
     expect(mocks.save.mock.calls[0][1]).toMatchObject({ revision: 3, cleanlinessRating: 8, comment: "تجربه اقامت" });
     expect(mocks.save.mock.calls[0][2]).toBe(true);
@@ -203,7 +238,7 @@ describe("six-category form", () => {
     const button = screen.getByRole("button", { name: "ارسال نظر برای بررسی" });
     fireEvent.click(button); fireEvent.click(button);
     expect((button as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByRole("button", { name: "بازگشت به فهرست" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "بازگشت به امتیازها" }) as HTMLButtonElement).disabled).toBe(true);
     expect(mocks.save).toHaveBeenCalledOnce(); resolve(review);
     await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
   });
@@ -246,7 +281,7 @@ describe("private paginated review page", () => {
     // jsdom has no layout; expose only this dialog's controls to the shared primitive's visibility filter.
     dialog.querySelectorAll<HTMLElement>("button, input, a[href]").forEach(node => Object.defineProperty(node, "offsetParent", { configurable: true, get: () => document.body }));
     const first = within(dialog).getByRole("button", { name: "بستن" });
-    const last = within(dialog).getByRole("link", { name: "مشاهده رزرو" });
+    const last = within(dialog).getByRole("button", { name: "انصراف" });
     last.focus(); fireEvent.keyDown(document, { key: "Tab" }); expect(document.activeElement).toBe(first);
     first.focus(); fireEvent.keyDown(document, { key: "Tab", shiftKey: true }); expect(document.activeElement).toBe(last);
     fireEvent.keyDown(document, { key: "Escape" });
