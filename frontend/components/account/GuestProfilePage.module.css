@@ -1,0 +1,12 @@
+.page { display: grid; align-content: start; gap: 1rem; max-width: 80rem; min-width: 0; margin-inline: auto; padding: 1rem; color: var(--foreground); }
+.header { min-width: 0; padding: 1.125rem 1.25rem; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); border-radius: 0.75rem; background: color-mix(in srgb, var(--primary) 7%, var(--card)); }
+.header h1 { font-size: clamp(1.25rem, 2vw, 1.625rem); font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
+.header p { margin-block-start: 0.25rem; color: color-mix(in srgb, var(--foreground) 76%, var(--primary)); font-size: 0.875rem; line-height: 1.8; }
+.editor, .skeleton { display: grid; gap: 1rem; min-width: 0; }
+.editor form, .editor section { min-width: 0; }
+.editor p { overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem; padding-block: 0.5rem; }
+.page button:focus-visible, .page input:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+@media (min-width: 640px) { .page { padding-inline: 1.5rem; } }
+@media (min-width: 1024px) { .page { padding-block-start: 0; padding-inline-end: 0; } }
+@media (max-width: 479px) { .header { padding: 1rem; } .actions > button { flex: 1 1 auto; } }

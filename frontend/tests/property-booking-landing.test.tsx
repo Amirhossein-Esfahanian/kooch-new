@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import type { ComponentProps } from "react";
+import type { ComponentProps, ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({ fetchProperty: vi.fn(), slug: "garden-house", 
 vi.mock("next/navigation", () => ({ useParams: () => ({ slug: mocks.slug }), usePathname: () => mocks.pathname, useSearchParams: () => new URLSearchParams(mocks.query) }));
 vi.mock("@/components/Header", () => ({ Header: () => <header>Marketplace header Kooch</header> }));
 vi.mock("@/components/Footer", () => ({ Footer: () => <footer>Marketplace footer Kooch</footer> }));
+vi.mock("@/components/reviews/GuestReviewInvitation", () => ({ GuestReviewInvitation: () => null }));
+vi.mock("@/components/auth/UserProfileAvatarProvider", () => ({ UserProfileAvatarProvider: ({ children }: { children: ReactNode }) => children }));
 vi.mock("@/lib/public-properties", async (original) => ({ ...await original<typeof import("@/lib/public-properties")>(), fetchPublicApi: mocks.fetchProperty }));
 vi.mock("@/components/booking/PropertyBookingPanel", () => ({
   propertyRoomsAnchorId: "property-rooms",

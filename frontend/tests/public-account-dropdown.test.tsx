@@ -31,7 +31,7 @@ it("uses all six exact public SVGs with real identity and the four links in the 
   expect(menu.getAttribute("dir")).toBe("rtl");
   expect(within(menu).getByText("مینا احمدی")).toBeTruthy();
   expect(trigger.textContent).toContain("م");
-  const links = Array.from(menu.querySelectorAll("a[role=menuitem]"));
+  const links = Array.from(menu.querySelectorAll('a[role=menuitem]:not([href="/account/profile"])'));
   expect(links.map(link => link.textContent)).toEqual(["حساب کاربری", "رزروهای من", "نظرات من", "کیف پول من"]);
   expect(links.map(link => link.getAttribute("href"))).toEqual(["/account", "/account/reservations", "/account/reviews", "/account/wallet"]);
   const assets = ["account.svg", "dashboard.svg", "reservations.svg", "reviews.svg", "wallet.svg", "logout.svg"];
@@ -86,15 +86,19 @@ it("preserves keyboard traversal, Escape/outside dismissal, focus restoration an
   expect(mocks.clear).toHaveBeenCalledOnce(); expect(mocks.push).toHaveBeenCalledWith("/login");
 });
 
-it("retains authorized role actions and the existing profile dialog without exposing restricted workspaces", () => {
+it("retains authorized role actions and links the guest identity to the profile page without exposing restricted workspaces", () => {
   mocks.workspaces = ["account", "owner", "admin"];
   const view = render(<KoochUserMenu />); let { menu } = openMenu();
   expect(within(menu).getByRole("menuitem", { name: "پنل مدیریت" })).toBeTruthy();
   fireEvent.click(within(menu).getByRole("menuitem", { name: "پنل اقامتگاه‌ها" }));
   expect(mocks.push).toHaveBeenCalledWith("/owner/properties/2");
   fireEvent.click(screen.getByRole("button", { name: "منوی کاربر مینا احمدی" }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "تنظیمات حساب" }));
-  expect(screen.getByRole("dialog", { name: "تنظیمات حساب" })).toBeTruthy();
+  const profile = screen.getByRole("menuitem", { name: "پروفایل من" });
+  expect(profile.getAttribute("href")).toBe("/account/profile");
+  profile.addEventListener("click", event => event.preventDefault());
+  fireEvent.click(profile);
+  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
   view.unmount(); mocks.workspaces = ["account"]; render(<KoochUserMenu />); menu = openMenu().menu;
   expect(within(menu).queryByRole("menuitem", { name: "پنل مدیریت" })).toBeNull();
   expect(within(menu).queryByRole("menuitem", { name: "پنل اقامتگاه‌ها" })).toBeNull();

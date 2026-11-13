@@ -191,6 +191,17 @@ function UserMenuContent({
     : "border-border bg-popover text-popover-foreground";
   const itemClass = darkMode && !isSidebar ? "hover:bg-white/10" : "hover:bg-muted";
 
+  const profileIdentity = (
+    <>
+      {avatarUrl ? (
+        // Authenticated blob URL comes from the same provider as the trigger.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img className={`${styles.photo} ${styles.identityPhoto}`} src={avatarUrl} alt="تصویر پروفایل" width={32} height={32} onError={clearAvatar} />
+      ) : <Image className={styles.icon} src="/svgs/account/account.svg" alt="" width={24} height={24} />}
+      <span className={styles.identityText}><span className={styles.name} dir="auto">{userName}</span><span className={styles.subtitle}>حساب کاربری</span></span>
+    </>
+  );
+
   return (
     <>
       <div className={isSidebar ? "relative w-full" : "relative"}>
@@ -245,14 +256,11 @@ function UserMenuContent({
             role="menu"
           >
             {isPublic && <>
-              <button type="button" role="menuitem" aria-label="تنظیمات حساب" onClick={openAccountSettings} className={styles.identity}>
-                {avatarUrl ? (
-                  // Authenticated blob URL comes from the same provider as the trigger.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img className={`${styles.photo} ${styles.identityPhoto}`} src={avatarUrl} alt="تصویر پروفایل" width={32} height={32} onError={clearAvatar} />
-                ) : <Image className={styles.icon} src="/svgs/account/account.svg" alt="" width={24} height={24} />}
-                <span className={styles.identityText}><span className={styles.name} dir="auto">{userName}</span><span className={styles.subtitle}>حساب کاربری</span></span>
-              </button>
+              {session.workspaces.includes("account")
+                ? <Link href="/account/profile" role="menuitem" aria-label="پروفایل من" className={styles.identity}
+                    aria-current={pathname === "/account/profile" || pathname.startsWith("/account/profile/") ? "page" : undefined}
+                    onClick={() => { setMenuOpen(false); triggerRef.current?.focus(); }}>{profileIdentity}</Link>
+                : <button type="button" role="menuitem" aria-label="تنظیمات حساب" onClick={openAccountSettings} className={styles.identity}>{profileIdentity}</button>}
               {session.workspaces.includes("account") && guestLinks.map(link => {
                 const active = pathname === link.href || (link.href !== "/account" && pathname.startsWith(`${link.href}/`))
                   || (link.href === "/account/reservations" && (pathname === "/account/orders" || pathname.startsWith("/account/booking-sessions/")));

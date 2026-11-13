@@ -11,6 +11,7 @@ const sections = [
   { href: "/account/reviews", label: "نظرات من", icon: "reviews.svg" },
   { href: "/account/wallet", label: "کیف پول", icon: "wallet.svg" },
   { href: "/account/welcome-gifts", label: "هدایای من", icon: "gift.svg" },
+  { href: "/account/profile", label: "پروفایل من", icon: "account.svg" },
 ] as const;
 
 export function AccountNavigation() {
