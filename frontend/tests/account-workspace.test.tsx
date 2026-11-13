@@ -15,14 +15,14 @@ vi.mock("@/components/Footer", () => ({ Footer: () => <footer>پاورقی عم�
 vi.mock("@/components/reviews/GuestReviewInvitation", () => ({ GuestReviewInvitation: () => null }));
 beforeEach(() => { navigation.pathname = "/account"; });
 
-it("provides the four real guest destinations and exact supplied SVG assets without inventing a profile route", () => {
+it("provides the guest destinations and supplied gift SVG next to Wallet without inventing a profile route", () => {
   render(<AccountLayout><p>محتوای حساب</p></AccountLayout>);
   const nav = screen.getByRole("navigation", { name: "ناوبری محیط مهمان" });
   const links = within(nav).getAllByRole("link");
-  expect(links.map(link => link.textContent)).toEqual(["نمای کلی", "رزروهای من", "نظرات من", "کیف پول"]);
-  expect(links.map(link => link.getAttribute("href"))).toEqual(["/account", "/account/reservations", "/account/reviews", "/account/wallet"]);
+  expect(links.map(link => link.textContent)).toEqual(["نمای کلی", "رزروهای من", "نظرات من", "کیف پول", "هدایای من"]);
+  expect(links.map(link => link.getAttribute("href"))).toEqual(["/account", "/account/reservations", "/account/reviews", "/account/wallet", "/account/welcome-gifts"]);
   expect(screen.queryByRole("link", { name: /پروفایل|تنظیمات/ })).toBeNull();
-  const paths = ["account.svg", "dashboard.svg", "reservations.svg", "reviews.svg", "wallet.svg"];
+  const paths = ["account.svg", "dashboard.svg", "reservations.svg", "reviews.svg", "wallet.svg", "gift.svg"];
   expect(Array.from(screen.getByRole("complementary").querySelectorAll("img")).map(image => image.getAttribute("src")))
     .toEqual(paths.map(path => `/svgs/account/${path}`));
   paths.forEach(path => expect(existsSync(resolve("public/svgs/account", path))).toBe(true));
@@ -34,6 +34,7 @@ it.each([
   ["/account/orders", "رزروهای من"], ["/account/booking-sessions/BS-37", "رزروهای من"],
   ["/account/reviews", "نظرات من"], ["/account/reviews/edit", "نظرات من"],
   ["/account/wallet", "کیف پول"], ["/account/wallet/transactions", "کیف پول"],
+  ["/account/welcome-gifts", "هدایای من"], ["/account/welcome-gifts/", "هدایای من"],
 ])("highlights exactly one section for %s", (pathname, label) => {
   navigation.pathname = pathname;
   render(<AccountLayout><p>محتوا</p></AccountLayout>);
