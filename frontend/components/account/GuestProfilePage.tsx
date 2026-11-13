@@ -24,8 +24,8 @@ export function GuestProfilePage() {
       <span className="sr-only">در حال آماده‌سازی پروفایل…</span>
       <AccountSkeleton variant="block" /><AccountSkeleton variant="block" /><AccountSkeleton variant="block" />
     </div> : <UserProfileAvatarProvider>
-      <KoochUserProfileForm key={session.user?.userId ?? "account"} active onCancel={() => router.push("/account")} onSaved={() => {}}>
-        {({ form, actions }) => <div className={styles.editor}>{form}<footer className={styles.actions}>{actions}</footer></div>}
+      <KoochUserProfileForm key={session.user?.userId ?? "account"} active actionsWhenDirty onCancel={() => {}} onSaved={() => {}}>
+        {({ form, actions }) => <div className={styles.editor}>{form}{actions && <footer className={styles.actions}>{actions}</footer>}</div>}
       </KoochUserProfileForm>
     </UserProfileAvatarProvider>}
   </main>;

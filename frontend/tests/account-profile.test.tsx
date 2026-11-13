@@ -47,6 +47,8 @@ it("reuses every existing profile section and local save behavior on the private
   expect(JSON.parse(localStorage.getItem("kooch_user_profile")!)).toMatchObject({ name: "نام تازه", mobile: "09120000000", smsNotifications: false });
   expect(mocks.api).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
   expect(screen.queryByRole("dialog")).toBeNull();
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
   view.unmount();
   const close = vi.fn();
   render(<KoochUserProfileDialog open onOpenChange={close} />);
@@ -66,15 +68,21 @@ it("preserves required-name validation and persistence failures with entered val
   fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
   await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("ذخیره تنظیمات پروفایل انجام نشد."));
   expect(nameInput()).toHaveProperty("value", "نام ذخیره‌نشده");
+  expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "انصراف" })).toBeTruthy();
   expect(mocks.push).not.toHaveBeenCalled();
 });
 
-it("keeps cancellation as navigation without saving and retains notification controls", () => {
+it("cancels page edits by restoring saved fields and preferences without saving or navigating", () => {
   render(<ProfilePage />);
   expect(screen.getAllByRole("checkbox")).toHaveLength(3);
   fireEvent.change(nameInput(), { target: { value: "ذخیره نشود" } });
+  fireEvent.click(screen.getByRole("checkbox", { name: "پیامک" }));
   fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
-  expect(mocks.push).toHaveBeenCalledWith("/account");
+  expect(nameInput()).toHaveProperty("value", "مینا احمدی");
+  expect(screen.getByRole("checkbox", { name: "پیامک" })).toHaveProperty("checked", true);
+  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
+  expect(mocks.push).not.toHaveBeenCalled();
   expect(localStorage.getItem("kooch_user_profile")).toBeNull();
 });
 
@@ -103,6 +111,50 @@ it("shares the actual avatar provider between public header and profile page for
   expect(mocks.api).toHaveBeenCalledWith("/account/profile/avatar", { method: "DELETE" });
   expect(localStorage.getItem("kooch_user_profile")).toBeNull();
   expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:old");
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
+});
+
+it("shows page actions only while fields differ from the loaded baseline", () => {
+  render(<ProfilePage />);
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
+  for (const [label, original, edited] of [
+    [/نام و نام خانوادگی/, "مینا احمدی", "نام دیگر"],
+    ["شماره موبایل", "", "09120000000"],
+    ["ایمیل", "mina@example.test", "other@example.test"],
+  ] as const) {
+    const input = screen.getByRole("textbox", { name: label });
+    fireEvent.change(input, { target: { value: edited } });
+    expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "انصراف" })).toBeTruthy();
+    fireEvent.change(input, { target: { value: original } });
+    expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  }
+  expect(mocks.success).not.toHaveBeenCalled();
+});
+
+it("uses the latest successful save as the new cancel and dirty baseline", () => {
+  render(<ProfilePage />);
+  fireEvent.change(nameInput(), { target: { value: "نام ذخیره‌شده" } });
+  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  fireEvent.change(nameInput(), { target: { value: "ویرایش دوم" } });
+  fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+  expect(nameInput()).toHaveProperty("value", "نام ذخیره‌شده");
+  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
+  expect(JSON.parse(localStorage.getItem("kooch_user_profile")!).name).toBe("نام ذخیره‌شده");
+  expect(mocks.success).toHaveBeenCalledTimes(1);
+});
+
+it("keeps both dialog actions available when pristine and cancel still closes it", async () => {
+  const close = vi.fn();
+  render(<KoochUserProfileDialog open onOpenChange={close} />);
+  const cancel = await screen.findByRole("button", { name: "انصراف" });
+  expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
+  fireEvent.click(cancel);
+  expect(close).toHaveBeenCalledWith(false);
+  expect(localStorage.getItem("kooch_user_profile")).toBeNull();
 });
 
 it("keeps avatar errors visible and the previous image intact after a failed removal", async () => {

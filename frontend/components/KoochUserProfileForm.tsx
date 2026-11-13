@@ -81,15 +81,19 @@ function initials(name: string, firstName?: string, lastName?: string) {
 type ProfileContent = { form: ReactNode; actions: ReactNode };
 
 export function KoochUserProfileForm({
-  active, onCancel, onSaved, children,
+  active, onCancel, onSaved, children, actionsWhenDirty = false,
 }: {
   active: boolean;
   onCancel: () => void;
   onSaved: () => void;
+  actionsWhenDirty?: boolean;
   children: (content: ProfileContent) => ReactNode;
 }) {
   const { user } = useAuthSession();
   const [form, setForm] = useState<ProfileForm>(defaultForm);
+  const [savedForm, setSavedForm] = useState<ProfileForm>(defaultForm);
+  const isDirty = (Object.keys(defaultForm) as (keyof ProfileForm)[])
+    .some(key => form[key] !== savedForm[key]);
   const [saving, setSaving] = useState(false);
   const { avatarUrl, ensureAvatar, refreshAvatar, clearAvatar } = useUserProfileAvatar();
   const [avatarPending, setAvatarPending] = useState(false);
@@ -97,7 +101,9 @@ export function KoochUserProfileForm({
 
   useEffect(() => {
     if (active) {
-      setForm(readProfile(user?.fullName ?? "", user?.email ?? ""));
+      const saved = readProfile(user?.fullName ?? "", user?.email ?? "");
+      setForm(saved);
+      setSavedForm(saved);
     }
   }, [active, user?.email, user?.fullName]);
 
@@ -151,6 +157,7 @@ export function KoochUserProfileForm({
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (actionsWhenDirty && !isDirty) return;
 
     if (!form.name.trim()) {
       toast.error("نام کاربر را وارد کنید.");
@@ -168,6 +175,7 @@ export function KoochUserProfileForm({
 
       localStorage.setItem(storageKey, JSON.stringify(profileToStore));
       setForm(profileToStore);
+      setSavedForm(profileToStore);
       toast.success("تنظیمات پروفایل در این مرورگر ذخیره شد.");
       onSaved();
     } catch {
@@ -178,10 +186,10 @@ export function KoochUserProfileForm({
   }
 
   return children({
-    actions: (
+    actions: !actionsWhenDirty || isDirty ? (
       <>
           <KoochButton
-            onClick={onCancel}
+            onClick={actionsWhenDirty ? () => setForm(savedForm) : onCancel}
             type="button"
             variant="outline"
           >
@@ -191,7 +199,7 @@ export function KoochUserProfileForm({
             ذخیره تغییرات
           </KoochButton>
         </>
-    ),
+    ) : null,
     form: (
       <form
         className="grid gap-4"
