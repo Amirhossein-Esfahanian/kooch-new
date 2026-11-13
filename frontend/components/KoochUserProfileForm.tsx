@@ -81,12 +81,13 @@ function initials(name: string, firstName?: string, lastName?: string) {
 type ProfileContent = { form: ReactNode; actions: ReactNode };
 
 export function KoochUserProfileForm({
-  active, onCancel, onSaved, children, actionsWhenDirty = false,
+  active, onCancel, onSaved, children, actionsWhenDirty = false, browserSettingsOnly = false,
 }: {
   active: boolean;
   onCancel: () => void;
   onSaved: () => void;
   actionsWhenDirty?: boolean;
+  browserSettingsOnly?: boolean;
   children: (content: ProfileContent) => ReactNode;
 }) {
   const { user } = useAuthSession();
@@ -105,7 +106,7 @@ export function KoochUserProfileForm({
       setForm(saved);
       setSavedForm(saved);
     }
-  }, [active, user?.email, user?.fullName]);
+  }, [active, user?.email, browserSettingsOnly ? undefined : user?.fullName]);
 
   useEffect(() => {
     if (!active || !user) return;
@@ -159,7 +160,7 @@ export function KoochUserProfileForm({
     event.preventDefault();
     if (actionsWhenDirty && !isDirty) return;
 
-    if (!form.name.trim()) {
+    if (!browserSettingsOnly && !form.name.trim()) {
       toast.error("نام کاربر را وارد کنید.");
       return;
     }
@@ -196,7 +197,7 @@ export function KoochUserProfileForm({
             انصراف
           </KoochButton>
           <KoochButton form="kooch-profile-form" loading={saving} type="submit">
-            ذخیره تغییرات
+            {browserSettingsOnly ? "ذخیره تنظیمات مرورگر" : "ذخیره تغییرات"}
           </KoochButton>
         </>
     ) : null,
@@ -226,7 +227,7 @@ export function KoochUserProfileForm({
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-base font-bold text-foreground">
-              {form.name.trim() || user?.fullName || "کاربر کوچ"}
+              {(browserSettingsOnly ? user?.fullName : form.name.trim()) || user?.fullName || "کاربر کوچ"}
             </p>
             <p
               className="mt-1 truncate text-sm text-muted-foreground"
@@ -257,20 +258,20 @@ export function KoochUserProfileForm({
 
         <section className="grid gap-4 rounded-lg border border-border bg-card p-4">
           <div>
-            <h3 className="text-sm font-bold text-foreground">اطلاعات حساب</h3>
+            <h3 className="text-sm font-bold text-foreground">{browserSettingsOnly ? "اطلاعات تماس در این مرورگر" : "اطلاعات حساب"}</h3>
             <p className="mt-1 text-xs text-muted-foreground">
-              اطلاعات اصلی حساب کاربری را در این بخش مشاهده و ویرایش کنید.
+              {browserSettingsOnly ? "این مقادیر فقط در این مرورگر ذخیره می‌شوند و شماره یا ایمیل ورود شما را تغییر نمی‌دهند." : "اطلاعات اصلی حساب کاربری را در این بخش مشاهده و ویرایش کنید."}
             </p>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <KoochField className="md:col-span-2" label="نام و نام خانوادگی" required>
+            {!browserSettingsOnly && <KoochField className="md:col-span-2" label="نام و نام خانوادگی" required>
               <KoochInput
                 onChange={(event) => update("name", event.target.value)}
                 required
                 value={form.name}
               />
-            </KoochField>
+            </KoochField>}
 
             <KoochField label="شماره موبایل">
               <KoochInput

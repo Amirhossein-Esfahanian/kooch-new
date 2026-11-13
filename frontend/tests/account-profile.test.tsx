@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 const mocks = vi.hoisted(() => ({
   api: vi.fn(), push: vi.fn(), replace: vi.fn(), success: vi.fn(), error: vi.fn(), pathname: "/account/profile",
-  session: { authenticated: true, loading: false, workspaces: ["account"], user: { userId: 9, fullName: "مینا احمدی", firstName: "مینا", lastName: "احمدی", email: "mina@example.test" }, clearSession: vi.fn() },
+  session: { authenticated: true, loading: false, workspaces: ["account"], user: { userId: 9, fullName: "مینا احمدی", firstName: "مینا", lastName: "احمدی", email: "mina@example.test" }, refreshSession: vi.fn(), clearSession: vi.fn() },
 }));
 vi.mock("next/navigation", () => ({ usePathname: () => mocks.pathname, useRouter: () => ({ push: mocks.push, replace: mocks.replace }) }));
 vi.mock("@/components/auth/AuthSessionProvider", () => ({ useAuthSession: () => mocks.session, resolveSessionDestination: () => "/owner" }));
@@ -23,67 +23,121 @@ import { KoochUserProfileDialog } from "@/components/KoochUserProfileDialog";
 
 beforeEach(() => {
   vi.clearAllMocks(); localStorage.clear(); mocks.pathname = "/account/profile";
-  mocks.session = { authenticated: true, loading: false, workspaces: ["account"], user: { userId: 9, fullName: "مینا احمدی", firstName: "مینا", lastName: "احمدی", email: "mina@example.test" }, clearSession: vi.fn() };
-  mocks.api.mockResolvedValue(undefined);
+  mocks.session = { authenticated: true, loading: false, workspaces: ["account"], user: { userId: 9, fullName: "مینا احمدی", firstName: "مینا", lastName: "احمدی", email: "mina@example.test" }, refreshSession: vi.fn(), clearSession: vi.fn() };
+  mocks.api.mockResolvedValue({ firstName: "نام تازه", lastName: "احمدی" });
+  mocks.session.refreshSession.mockResolvedValue({});
   vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ status: 404, ok: false }));
   vi.stubGlobal("URL", Object.assign(URL, { createObjectURL: vi.fn().mockReturnValue("blob:profile"), revokeObjectURL: vi.fn() }));
 });
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-const nameInput = () => screen.getByRole("textbox", { name: /نام و نام خانوادگی/ });
+const nameInput = () => screen.getByRole("textbox", { name: /^نام\*?$/ });
 
-it("reuses every existing profile section and local save behavior on the private page, without pretending it updates server identity", async () => {
-  const view = render(<ProfilePage />);
-  expect(screen.getByRole("heading", { name: "پروفایل من" })).toBeTruthy();
-  expect(nameInput()).toHaveProperty("value", "مینا احمدی");
-  expect(screen.getByRole("textbox", { name: "ایمیل" })).toHaveProperty("type", "email");
-  expect(screen.getByRole("heading", { name: "امنیت حساب" })).toBeTruthy();
-  expect(screen.getByText(/فقط در همین مرورگر ذخیره می‌شوند/)).toBeTruthy();
+it("initializes names exclusively from the session, never fullName or legacy browser drafts", () => {
+  localStorage.setItem("kooch_user_profile", JSON.stringify({ name: "پیش‌نویس قدیمی" }));
+  mocks.session.user.fullName = "نام کامل متفاوت";
+  render(<ProfilePage />);
+  expect(nameInput()).toHaveProperty("value", "مینا");
+  expect(screen.getByRole("textbox", { name: /^نام خانوادگی\*?$/ })).toHaveProperty("value", "احمدی");
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
   expect(metadata?.robots).toEqual({ index: false, follow: false });
+  expect(mocks.api).not.toHaveBeenCalled();
+});
+
+it("sends only the two names on explicit save and refreshes session after success", async () => {
+  render(<ProfilePage />);
   fireEvent.change(nameInput(), { target: { value: "  نام تازه  " } });
+  expect(mocks.api).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
+  await waitFor(() => expect(mocks.session.refreshSession).toHaveBeenCalledTimes(1));
+  expect(mocks.api).toHaveBeenCalledExactlyOnceWith("/auth/me/profile", { method: "PATCH", body: JSON.stringify({ firstName: "نام تازه", lastName: "احمدی" }) });
+  expect(nameInput()).toHaveProperty("value", "نام تازه");
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  expect(localStorage.getItem("kooch_user_profile")).toBeNull();
+  fireEvent.change(nameInput(), { target: { value: "ویرایش دوم" } });
+  fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+  expect(nameInput()).toHaveProperty("value", "نام تازه");
+});
+
+it("reverting or cancelling restores the names baseline without requests", () => {
+  render(<ProfilePage />);
+  fireEvent.change(nameInput(), { target: { value: "دیگر" } });
+  expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
+  fireEvent.change(nameInput(), { target: { value: "مینا" } });
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  fireEvent.change(screen.getByRole("textbox", { name: /^نام خانوادگی\*?$/ }), { target: { value: "دیگر" } });
+  fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+  expect(screen.getByRole("textbox", { name: /^نام خانوادگی\*?$/ })).toHaveProperty("value", "احمدی");
+  expect(mocks.api).not.toHaveBeenCalled();
+});
+
+it("keeps failed PATCH edits and actions with an error; cancel restores server names", async () => {
+  mocks.api.mockRejectedValue(new Error("ذخیره انجام نشد"));
+  render(<ProfilePage />);
+  fireEvent.change(nameInput(), { target: { value: "نام تازه" } });
+  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", "ذخیره انجام نشد");
+  expect(nameInput()).toHaveProperty("value", "نام تازه");
+  expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
+  expect(mocks.session.refreshSession).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
+  expect(nameInput()).toHaveProperty("value", "مینا");
+});
+
+it.each(["", " ", "x".repeat(101)])("validates required names and the API length limit (%s)", value => {
+  render(<ProfilePage />);
+  fireEvent.change(nameInput(), { target: { value } });
+  fireEvent.submit(screen.getByRole("form", { name: "نام حساب کاربری" }));
+  expect(screen.getByRole("alert")).toBeTruthy();
+  expect(mocks.api).not.toHaveBeenCalled();
+});
+
+it("does not misreport a successful PATCH when session refresh fails", async () => {
+  mocks.session.refreshSession.mockRejectedValue(new Error("refresh failure"));
+  render(<ProfilePage />);
+  fireEvent.change(nameInput(), { target: { value: "نام تازه" } });
+  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
+  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("نام ذخیره شد؛ تازه‌سازی اطلاعات حساب انجام نشد."));
+  expect(mocks.success).toHaveBeenCalledWith("نام و نام خانوادگی ذخیره شد.");
+  expect(screen.queryByRole("alert")).toBeNull();
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+});
+
+it("updates the header after refresh without remounting the editor or losing browser-setting edits", async () => {
+  let finishRefresh!: () => void;
+  mocks.session.refreshSession.mockImplementationOnce(() => new Promise(resolve => {
+    mocks.session.loading = true;
+    finishRefresh = () => {
+      mocks.session.loading = false;
+      mocks.session.user.firstName = "نام تازه";
+      mocks.session.user.fullName = "نام تازه احمدی";
+      resolve({});
+    };
+  }));
+  const view = render(<PublicSiteShell><ProfilePage /></PublicSiteShell>);
+  fireEvent.change(screen.getByRole("textbox", { name: "شماره موبایل" }), { target: { value: "09120000000" } });
+  fireEvent.change(nameInput(), { target: { value: "نام تازه" } });
+  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
+  await waitFor(() => expect(mocks.session.refreshSession).toHaveBeenCalledTimes(1));
+  view.rerender(<PublicSiteShell><ProfilePage /></PublicSiteShell>);
+  expect(nameInput()).toHaveProperty("value", "نام تازه");
+  finishRefresh();
+  await waitFor(() => expect(nameInput()).toHaveProperty("disabled", false));
+  view.rerender(<PublicSiteShell><ProfilePage /></PublicSiteShell>);
+  expect(screen.getByRole("button", { name: "منوی کاربر نام تازه احمدی" })).toBeTruthy();
+  expect(screen.getByRole("textbox", { name: "شماره موبایل" })).toHaveProperty("value", "09120000000");
+  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
+  expect(screen.getByRole("button", { name: "ذخیره تنظیمات مرورگر" })).toBeTruthy();
+});
+
+it("saves browser-only preferences separately without PATCH or importing names", async () => {
+  render(<ProfilePage />);
   fireEvent.change(screen.getByRole("textbox", { name: "شماره موبایل" }), { target: { value: "09120000000" } });
   fireEvent.click(screen.getByRole("checkbox", { name: "پیامک" }));
-  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
-  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith("تنظیمات پروفایل در این مرورگر ذخیره شد."));
-  expect(JSON.parse(localStorage.getItem("kooch_user_profile")!)).toMatchObject({ name: "نام تازه", mobile: "09120000000", smsNotifications: false });
-  expect(mocks.api).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).toBeNull();
   expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
-  view.unmount();
-  const close = vi.fn();
-  render(<KoochUserProfileDialog open onOpenChange={close} />);
-  await waitFor(() => expect(nameInput()).toHaveProperty("value", "نام تازه"));
-  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
-  await waitFor(() => expect(close).toHaveBeenCalledWith(false));
-});
-
-it("preserves required-name validation and persistence failures with entered values intact", async () => {
-  const view = render(<ProfilePage />);
-  fireEvent.change(nameInput(), { target: { value: " " } });
-  fireEvent.submit(view.container.querySelector("form")!);
-  expect(mocks.error).toHaveBeenCalledWith("نام کاربر را وارد کنید.");
-  expect(localStorage.getItem("kooch_user_profile")).toBeNull();
-  fireEvent.change(nameInput(), { target: { value: "نام ذخیره‌نشده" } });
-  vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("fixture storage failure"); });
-  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
-  await waitFor(() => expect(mocks.error).toHaveBeenCalledWith("ذخیره تنظیمات پروفایل انجام نشد."));
-  expect(nameInput()).toHaveProperty("value", "نام ذخیره‌نشده");
-  expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "انصراف" })).toBeTruthy();
-  expect(mocks.push).not.toHaveBeenCalled();
-});
-
-it("cancels page edits by restoring saved fields and preferences without saving or navigating", () => {
-  render(<ProfilePage />);
-  expect(screen.getAllByRole("checkbox")).toHaveLength(3);
-  fireEvent.change(nameInput(), { target: { value: "ذخیره نشود" } });
-  fireEvent.click(screen.getByRole("checkbox", { name: "پیامک" }));
-  fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
-  expect(nameInput()).toHaveProperty("value", "مینا احمدی");
-  expect(screen.getByRole("checkbox", { name: "پیامک" })).toHaveProperty("checked", true);
-  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
-  expect(mocks.push).not.toHaveBeenCalled();
-  expect(localStorage.getItem("kooch_user_profile")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "ذخیره تنظیمات مرورگر" }));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalled());
+  expect(JSON.parse(localStorage.getItem("kooch_user_profile")!)).toMatchObject({ mobile: "09120000000", smsNotifications: false });
+  expect(mocks.api).not.toHaveBeenCalled();
 });
 
 it("shares the actual avatar provider between public header and profile page for immediate upload/removal updates", async () => {
@@ -115,38 +169,6 @@ it("shares the actual avatar provider between public header and profile page for
   expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
 });
 
-it("shows page actions only while fields differ from the loaded baseline", () => {
-  render(<ProfilePage />);
-  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
-  for (const [label, original, edited] of [
-    [/نام و نام خانوادگی/, "مینا احمدی", "نام دیگر"],
-    ["شماره موبایل", "", "09120000000"],
-    ["ایمیل", "mina@example.test", "other@example.test"],
-  ] as const) {
-    const input = screen.getByRole("textbox", { name: label });
-    fireEvent.change(input, { target: { value: edited } });
-    expect(screen.getByRole("button", { name: "ذخیره تغییرات" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "انصراف" })).toBeTruthy();
-    fireEvent.change(input, { target: { value: original } });
-    expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
-  }
-  expect(mocks.success).not.toHaveBeenCalled();
-});
-
-it("uses the latest successful save as the new cancel and dirty baseline", () => {
-  render(<ProfilePage />);
-  fireEvent.change(nameInput(), { target: { value: "نام ذخیره‌شده" } });
-  fireEvent.click(screen.getByRole("button", { name: "ذخیره تغییرات" }));
-  expect(screen.queryByRole("button", { name: "ذخیره تغییرات" })).toBeNull();
-  fireEvent.change(nameInput(), { target: { value: "ویرایش دوم" } });
-  fireEvent.click(screen.getByRole("button", { name: "انصراف" }));
-  expect(nameInput()).toHaveProperty("value", "نام ذخیره‌شده");
-  expect(screen.queryByRole("button", { name: "انصراف" })).toBeNull();
-  expect(JSON.parse(localStorage.getItem("kooch_user_profile")!).name).toBe("نام ذخیره‌شده");
-  expect(mocks.success).toHaveBeenCalledTimes(1);
-});
-
 it("keeps both dialog actions available when pristine and cancel still closes it", async () => {
   const close = vi.fn();
   render(<KoochUserProfileDialog open onOpenChange={close} />);
@@ -168,7 +190,7 @@ it("keeps avatar errors visible and the previous image intact after a failed rem
 
 it.each(["loading", "anonymous", "wrong-workspace"])("guards profile editing and avatar access for %s sessions", state => {
   mocks.session.loading = state === "loading";
-  mocks.session.authenticated = state !== "anonymous";
+  mocks.session.authenticated = state !== "anonymous" && state !== "loading";
   if (state === "wrong-workspace") mocks.session.workspaces = ["owner"];
   render(<ProfilePage />);
   expect(screen.getByRole("status").getAttribute("aria-busy")).toBe("true");
