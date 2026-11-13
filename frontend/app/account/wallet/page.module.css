@@ -1,0 +1,35 @@
+.page { display: grid; align-content: start; gap: 1rem; max-width: 80rem; min-width: 0; margin-inline: auto; padding: 1rem; color: var(--foreground); }
+.header { min-width: 0; padding: 1.125rem 1.25rem; border: 1px solid color-mix(in srgb, var(--primary) 22%, var(--border)); border-radius: 0.75rem; background: color-mix(in srgb, var(--primary) 7%, var(--card)); }
+.header h1 { font-size: clamp(1.25rem, 2vw, 1.625rem); font-weight: 700; line-height: 1.6; overflow-wrap: anywhere; }
+.header p { margin-block-start: 0.25rem; color: color-mix(in srgb, var(--foreground) 76%, var(--primary)); font-size: 0.875rem; line-height: 1.8; }
+.balanceCard.balanceCard { display: grid; min-width: 0; gap: 1rem; padding: 1.25rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
+.primaryBalance { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1rem; min-width: 0; }
+.primaryBalance > div { min-width: 0; }
+.primaryBalance h2 { color: var(--muted-foreground); font-size: 0.875rem; font-weight: 600; line-height: 1.8; }
+.mainAmount { margin-block-start: 0.25rem; font-size: clamp(1.5rem, 3vw, 2rem); font-weight: 700; line-height: 1.6; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.balanceCard bdi { font-size: 0.75rem; font-weight: 400; color: var(--muted-foreground); }
+.secondaryBalances { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0.875rem; padding-block-start: 1rem; border-block-start: 1px solid var(--border); }
+.secondaryBalances > div { display: grid; gap: 0.25rem; min-width: 0; }
+.secondaryBalances h3 { color: var(--muted-foreground); font-size: 0.8125rem; font-weight: 500; line-height: 1.8; }
+.secondaryBalances p { font-size: 1.125rem; font-weight: 600; line-height: 1.8; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.section { display: grid; gap: 0.75rem; min-width: 0; margin-block-start: 0.5rem; }
+.section > h2 { font-size: 1.0625rem; font-weight: 700; line-height: 1.8; }
+.section table { overflow-wrap: anywhere; }
+.empty { display: grid; gap: 0.25rem; min-width: 0; padding: 1rem 1.25rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
+.empty p:first-child { font-size: 0.875rem; font-weight: 600; line-height: 1.8; }
+.empty p + p, .unavailable { color: var(--muted-foreground); font-size: 0.8125rem; line-height: 1.8; }
+.page button:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+.skeleton { min-width: 0; }
+.skeletonGroup { display: grid; gap: 0.625rem; }
+.skeletonLabel { width: 8rem; }
+.skeletonAmount { width: 13rem; height: 2.5rem; }
+.skeletonValue { width: 10rem; height: 1.5rem; }
+.skeletonRows { display: grid; min-width: 0; padding: 0.25rem 1rem; border: 1px solid var(--border); border-radius: 0.75rem; background: var(--card); }
+.transactionSkeletonRow, .withdrawalSkeletonRow { display: grid; gap: 1rem; min-width: 0; padding-block: 1rem; }
+.transactionSkeletonRow { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.withdrawalSkeletonRow { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.skeletonRows > div + div { border-block-start: 1px solid var(--border); }
+@media (min-width: 480px) { .secondaryBalances { grid-template-columns: repeat(2, minmax(0, 1fr)); } .secondaryBalances > div + div { padding-inline-start: 1rem; border-inline-start: 1px solid var(--border); } }
+@media (min-width: 640px) { .page { padding-inline: 1.5rem; } }
+@media (min-width: 1024px) { .page { padding-block-start: 0; padding-inline-end: 0; } }
+@media (max-width: 479px) { .header, .balanceCard.balanceCard, .empty { padding: 1rem; } .primaryBalance > button { width: 100%; } }

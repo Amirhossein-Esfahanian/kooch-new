@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -14,11 +13,12 @@ import { KoochButton } from "@/components/KoochButton";
 import { KoochCard } from "@/components/KoochCard";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochField, KoochInput } from "@/components/KoochFormControls";
-import { KoochPageHeader } from "@/components/KoochPageHeader";
-import { KoochTable, KoochTableBody, KoochTableCell, KoochTableEmpty, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
+import { KoochTable, KoochTableBody, KoochTableCell, KoochTableHead, KoochTableHeader, KoochTableRow } from "@/components/KoochTable";
+import { AccountSkeleton } from "@/components/account/AccountSkeleton";
 import { formatDateTime, formatNumber } from "@/lib/account-reservations";
 import { formatCurrency } from "@/lib/currency";
 import { apiRequest } from "@/lib/owner-api";
+import styles from "./page.module.css";
 
 type Balance = { currency: string; balance: number; withdrawableBalance: number; nonWithdrawableBalance: number };
 type WithdrawalStatus = "Pending" | "Approved" | "Paid" | "Rejected" | "Cancelled";
@@ -36,6 +36,22 @@ const statusLabels: Record<WithdrawalStatus, string> = {
   Cancelled: "لغوشده",
 };
 const errorText = (error: unknown) => error instanceof Error ? error.message : "درخواست انجام نشد؛ دوباره تلاش کنید.";
+const currencyLabel = (currency: string) => currency === "IRR" ? "ریال" : currency;
+
+function WalletSkeleton({ kind }: { kind: "balance" | "transactions" | "withdrawals" }) {
+  const label = kind === "balance" ? "در حال بارگذاری موجودی..." : kind === "transactions" ? "در حال بارگذاری تراکنش‌ها..." : "در حال بارگذاری درخواست‌ها...";
+  return <div className={styles.skeleton} role="status" aria-busy="true">
+    <span className="sr-only">{label}</span>
+    {kind === "balance" ? <div className={styles.balanceCard} aria-hidden="true">
+      <div className={styles.primaryBalance}><div className={styles.skeletonGroup}><AccountSkeleton className={styles.skeletonLabel} /><AccountSkeleton className={styles.skeletonAmount} /></div></div>
+      <div className={styles.secondaryBalances}>{[0, 1].map(index => <div className={styles.skeletonGroup} key={index}><AccountSkeleton className={styles.skeletonLabel} /><AccountSkeleton className={styles.skeletonValue} /></div>)}</div>
+    </div> : <div className={styles.skeletonRows} aria-hidden="true">
+      {[0, 1, 2].map(index => <div className={kind === "transactions" ? styles.transactionSkeletonRow : styles.withdrawalSkeletonRow} key={index}>
+        {Array.from({ length: kind === "transactions" ? 3 : 4 }, (_, field) => <AccountSkeleton key={field} />)}
+      </div>)}
+    </div>}
+  </div>;
+}
 
 export default function AccountWalletPage() {
   const router = useRouter();
@@ -197,73 +213,74 @@ export default function AccountWalletPage() {
     return <div role="status" className="grid min-h-[50vh] place-items-center px-5 text-sm font-semibold text-muted-foreground">در حال آماده‌سازی کیف پول...</div>;
   }
 
-  const money = (amount: number, currency: string) => <>{formatCurrency(amount, { showCurrency: false })} <bdi dir="ltr">{currency}</bdi></>;
-  return <main className="min-h-screen bg-background px-4 py-6 text-foreground sm:px-6 lg:px-8" dir="rtl">
-    <div className="mx-auto grid max-w-6xl gap-5">
-      <KoochPageHeader eyebrow="حساب کاربری" title="کیف پول من"
-        description="موجودی‌های قابل استفاده و درخواست‌های برداشت خود را پیگیری کنید."
-        actions={<Link className="text-sm font-semibold text-primary hover:underline" href="/account">بازگشت به حساب کاربری</Link>} />
+  const money = (amount: number, currency: string) => <>{formatCurrency(amount, { showCurrency: false })} <bdi dir={currency === "IRR" ? "rtl" : "ltr"}>{currencyLabel(currency)}</bdi></>;
+  return <main className={styles.page} dir="rtl">
+      <header className={styles.header}><h1>کیف پول من</h1>
+        <p>موجودی‌های قابل استفاده و درخواست‌های برداشت خود را پیگیری کنید.</p>
+      </header>
 
       {supportVisible && <KoochAlert variant="success" role="status">
         درخواست برداشت شما ثبت شد. برای تکمیل فرایند و هماهنگی اطلاعات پرداخت، لطفاً با پشتیبانی تماس بگیرید یا تیکت ثبت کنید.
       </KoochAlert>}
 
       {balanceError && <KoochAlert variant="destructive" role="alert">{balanceError} <KoochButton size="sm" variant="outline" onClick={() => void loadBalance()}>تلاش دوباره</KoochButton></KoochAlert>}
-      {balanceLoading && !balance ? <KoochCard role="status" className="py-10 text-center text-sm text-muted-foreground">در حال بارگذاری موجودی...</KoochCard> : balance && <section aria-label="خلاصه کیف پول" className="grid gap-4">
-        <KoochCard className="grid gap-4 sm:flex sm:items-center sm:justify-between">
-          <div className="grid gap-1">
-            <h2 className="text-sm font-semibold text-muted-foreground">موجودی قابل استفاده</h2>
-            <p className="text-2xl font-bold tabular-nums text-foreground">{money(balance.balance, balance.currency)}</p>
+      {balanceLoading && !balance ? <WalletSkeleton kind="balance" /> : balance && <KoochCard aria-label="خلاصه کیف پول" className={styles.balanceCard}>
+        <div className={styles.primaryBalance}>
+          <div>
+            <h2>موجودی قابل استفاده</h2>
+            <p className={styles.mainAmount}>{money(balance.balance, balance.currency)}</p>
           </div>
           {balance.withdrawableBalance > 0 && <KoochButton disabled={balanceLoading} onClick={openRequest}>درخواست برداشت</KoochButton>}
-        </KoochCard>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <KoochCard className="grid gap-1" padding="sm"><h3 className="text-sm font-semibold text-muted-foreground">قابل برداشت</h3><p className="text-lg font-bold tabular-nums">{money(balance.withdrawableBalance, balance.currency)}</p></KoochCard>
-          <KoochCard className="grid gap-1" padding="sm"><h3 className="text-sm font-semibold text-muted-foreground">اعتبار غیرقابل برداشت</h3><p className="text-lg font-bold tabular-nums">{money(balance.nonWithdrawableBalance, balance.currency)}</p></KoochCard>
         </div>
-      </section>}
+        <div className={styles.secondaryBalances}>
+          <div><h3>قابل برداشت</h3><p>{money(balance.withdrawableBalance, balance.currency)}</p></div>
+          <div><h3>اعتبار غیرقابل برداشت</h3><p>{money(balance.nonWithdrawableBalance, balance.currency)}</p></div>
+        </div>
+      </KoochCard>}
 
-      <section aria-label="تراکنش‌های کیف پول" className="grid min-w-0 gap-3">
-        <h2 className="text-lg font-semibold">تراکنش‌های کیف پول</h2>
+      <section aria-label="تراکنش‌های کیف پول" className={styles.section}>
+        <h2>تراکنش‌های کیف پول</h2>
         {transactionsError && <KoochAlert variant="destructive" role="alert">
           {transactionsError}{" "}
           {!transactionPage && <KoochButton size="sm" variant="outline" onClick={() => setTransactionRefresh(value => value + 1)}>تلاش دوباره</KoochButton>}
         </KoochAlert>}
-        <KoochTable className="!min-w-0">
+        {!balance && balanceError ? <p className={styles.unavailable}>برای نمایش تراکنش‌ها، دریافت موجودی را دوباره امتحان کنید.</p>
+          : transactionsLoading ? <WalletSkeleton kind="transactions" />
+          : !transactionPage && transactionsError ? <p className={styles.unavailable}>تراکنش‌ها در دسترس نیستند.</p>
+          : !transactions.length ? <div className={styles.empty}><p>هنوز تراکنشی در کیف پول شما ثبت نشده است.</p><p>افزایش و کاهش موجودی پس از ثبت در این بخش نمایش داده می‌شود.</p></div>
+          : <KoochTable className="!min-w-0">
           <KoochTableHeader><KoochTableRow><KoochTableHead>نوع</KoochTableHead><KoochTableHead>مبلغ</KoochTableHead><KoochTableHead>زمان</KoochTableHead></KoochTableRow></KoochTableHeader>
           <KoochTableBody>
-            {transactionsLoading ? <KoochTableEmpty colSpan={3}>در حال بارگذاری تراکنش‌ها...</KoochTableEmpty>
-              : !transactionPage && transactionsError ? <KoochTableEmpty colSpan={3}>تراکنش‌ها در دسترس نیستند.</KoochTableEmpty>
-              : !transactions.length ? <KoochTableEmpty colSpan={3}>هنوز تراکنشی در کیف پول شما ثبت نشده است.</KoochTableEmpty>
-              : transactions.map(item => <KoochTableRow key={item.id}>
+            {transactions.map(item => <KoochTableRow key={item.id}>
                 <KoochTableCell><KoochBadge variant={item.direction === "Credit" ? "success" : "destructive"}>{item.direction === "Credit" ? "افزایش موجودی" : "کاهش موجودی"}</KoochBadge></KoochTableCell>
                 <KoochTableCell className="tabular-nums">{money(item.amount, item.currency)}</KoochTableCell>
                 <KoochTableCell><time dateTime={item.createdAtUtc}>{formatDateTime(item.createdAtUtc)}</time></KoochTableCell>
               </KoochTableRow>)}
           </KoochTableBody>
-        </KoochTable>
+        </KoochTable>}
         {transactionPage > 0 && transactionPage < transactionTotalPages && <div className="flex justify-center">
           <KoochButton size="sm" variant="outline" loading={moreTransactionsLoading} disabled={moreTransactionsLoading} onClick={() => void loadMoreTransactions()}>نمایش بیشتر</KoochButton>
         </div>}
       </section>
 
-      <section aria-label="تاریخچه درخواست‌های برداشت" className="grid min-w-0 gap-3">
-        <h2 className="text-lg font-semibold">درخواست‌های برداشت</h2>
+      <section aria-label="تاریخچه درخواست‌های برداشت" className={styles.section}>
+        <h2>درخواست‌های برداشت</h2>
         {historyError && <KoochAlert variant="destructive" role="alert">{historyError} <KoochButton size="sm" variant="outline" onClick={() => setRefresh(value => value + 1)}>تلاش دوباره</KoochButton></KoochAlert>}
-        <KoochTable>
+        {historyLoading ? <WalletSkeleton kind="withdrawals" /> : historyError ? <p className={styles.unavailable}>تاریخچه در دسترس نیست.</p>
+          : !history?.items.length ? <div className={styles.empty}><p>هنوز درخواست برداشتی ثبت نکرده‌اید.</p><p>وضعیت درخواست‌های برداشت شما در این بخش نمایش داده می‌شود.</p></div>
+          : <KoochTable className="!min-w-0">
           <KoochTableHeader><KoochTableRow><KoochTableHead>مبلغ</KoochTableHead><KoochTableHead>واحد پول</KoochTableHead><KoochTableHead>وضعیت</KoochTableHead><KoochTableHead>زمان درخواست</KoochTableHead></KoochTableRow></KoochTableHeader>
           <KoochTableBody>
-            {historyLoading ? <KoochTableEmpty colSpan={4}>در حال بارگذاری درخواست‌ها...</KoochTableEmpty> : historyError ? <KoochTableEmpty colSpan={4}>تاریخچه در دسترس نیست.</KoochTableEmpty> : !history?.items.length ? <KoochTableEmpty colSpan={4}>هنوز درخواست برداشتی ثبت نکرده‌اید.</KoochTableEmpty> : history.items.map(item =>
-              <KoochTableRow key={item.id}><KoochTableCell className="tabular-nums">{formatCurrency(item.amount, { showCurrency: false })}</KoochTableCell><KoochTableCell><bdi dir="ltr">{item.currency}</bdi></KoochTableCell><KoochTableCell><KoochBadge variant="muted">{statusLabels[item.status]}</KoochBadge></KoochTableCell><KoochTableCell><time dateTime={item.requestedAtUtc}>{formatDateTime(item.requestedAtUtc)}</time></KoochTableCell></KoochTableRow>)}
+            {history.items.map(item =>
+              <KoochTableRow key={item.id}><KoochTableCell className="tabular-nums">{formatCurrency(item.amount, { showCurrency: false })}</KoochTableCell><KoochTableCell><bdi dir={item.currency === "IRR" ? "rtl" : "ltr"}>{currencyLabel(item.currency)}</bdi></KoochTableCell><KoochTableCell><KoochBadge variant="muted">{statusLabels[item.status]}</KoochBadge></KoochTableCell><KoochTableCell><time dateTime={item.requestedAtUtc}>{formatDateTime(item.requestedAtUtc)}</time></KoochTableCell></KoochTableRow>)}
           </KoochTableBody>
-        </KoochTable>
+        </KoochTable>}
         {(history?.totalPages ?? 0) > 1 && <nav aria-label="صفحه‌بندی درخواست‌های برداشت" className="flex flex-wrap items-center justify-end gap-2">
           <KoochButton size="sm" variant="outline" disabled={historyLoading || page <= 1} onClick={() => setPage(value => value - 1)}>قبلی</KoochButton>
           <span className="text-sm text-muted-foreground">صفحه {formatNumber(page)} از {formatNumber(history?.totalPages ?? 0)}</span>
           <KoochButton size="sm" variant="outline" disabled={historyLoading || page >= (history?.totalPages ?? 0)} onClick={() => setPage(value => value + 1)}>بعدی</KoochButton>
         </nav>}
       </section>
-    </div>
 
     <KoochDialog open={dialogOpen} onOpenChange={open => { if (!form.formState.isSubmitting) setDialogOpen(open); }} title="درخواست برداشت" size="sm" closeDisabled={form.formState.isSubmitting}
       footer={<div className="flex justify-end gap-2"><KoochButton variant="outline" disabled={form.formState.isSubmitting} onClick={() => setDialogOpen(false)}>انصراف</KoochButton><KoochButton form="wallet-withdrawal-form" type="submit" loading={form.formState.isSubmitting} disabled={!balance || balanceLoading}>ثبت درخواست</KoochButton></div>}>
@@ -272,7 +289,7 @@ export default function AccountWalletPage() {
         <KoochField label="مبلغ درخواستی" required error={form.formState.errors.amount?.message}>
           <KoochInput type="number" inputMode="decimal" min="0" step="0.01" {...form.register("amount", { valueAsNumber: true })} />
         </KoochField>
-        <p className="text-xs text-muted-foreground">واحد پول: <bdi dir="ltr">{balance?.currency}</bdi></p>
+        <p className="text-xs text-muted-foreground">واحد پول: <bdi dir={balance?.currency === "IRR" ? "rtl" : "ltr"}>{balance ? currencyLabel(balance.currency) : ""}</bdi></p>
         {submitError && <p role="alert" className="text-sm text-destructive">{submitError}</p>}
       </form>
     </KoochDialog>

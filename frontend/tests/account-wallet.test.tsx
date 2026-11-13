@@ -1,5 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 const api = vi.hoisted(() => vi.fn());
 const navigation = vi.hoisted(() => ({ replace: vi.fn() }));
@@ -53,7 +55,7 @@ describe("Guest account wallet", () => {
     expect(within(ledger).getByText("کاهش موجودی")).not.toBeNull();
     expect(within(ledger).getByText(/۱۵۰٬۰۰۰/)).not.toBeNull();
     expect(within(ledger).getByText(/۲۵٬۰۰۰/)).not.toBeNull();
-    expect(within(ledger).getAllByText("IRR")).toHaveLength(2);
+    expect(within(ledger).getAllByText("ریال")).toHaveLength(2);
     expect(within(ledger).queryByText("در انتظار بررسی")).toBeNull();
     expect(within(ledger).queryByText(/901|902|cashback|برداشت/)).toBeNull();
     expect(await screen.findByText("در انتظار بررسی")).not.toBeNull();
@@ -152,7 +154,7 @@ describe("Guest account wallet", () => {
     expect(screen.getByText(/۵٬۰۰۰٬۰۰۰/)).not.toBeNull();
     expect(within(screen.getByText("اعتبار غیرقابل برداشت").parentElement as HTMLElement).getByText(/۲٬۰۰۰٬۰۰۰/)).not.toBeNull();
     expect(api).toHaveBeenCalledWith("/account/wallet?currency=IRR");
-    expect(within(screen.getByRole("region", { name: "خلاصه کیف پول" })).getAllByText("IRR")).toHaveLength(3);
+    expect(within(screen.getByRole("region", { name: "خلاصه کیف پول" })).getAllByText("ریال")).toHaveLength(3);
     expect(screen.queryByText(/تومان/)).toBeNull();
   });
 
@@ -234,6 +236,7 @@ describe("Guest account wallet", () => {
     history = [];
     render(<Page />);
     expect(await screen.findByText("هنوز درخواست برداشتی ثبت نکرده‌اید.")).not.toBeNull();
+    expect(within(screen.getByRole("region", { name: "تاریخچه درخواست‌های برداشت" })).queryByRole("table")).toBeNull();
   });
 
   it("does not mislabel an unavailable history as empty", async () => {
@@ -278,5 +281,95 @@ describe("Guest account wallet", () => {
     expect(amount.value).toBe("1000000");
     expect(within(dialog).getByText("موجودی کافی نیست")).not.toBeNull();
     await waitFor(() => expect(api.mock.calls.filter(([path]) => path === "/account/wallet?currency=IRR")).toHaveLength(2));
+  });
+
+  it("groups all three zero balances in one card with no withdrawal action or empty tables", async () => {
+    currentBalance = { currency: "IRR", balance: 0, withdrawableBalance: 0, nonWithdrawableBalance: 0 };
+    history = []; transactionItems = [];
+    render(<Page />);
+    const summary = await screen.findByRole("region", { name: "خلاصه کیف پول" });
+    expect(within(summary).getAllByText("۰", { exact: false })).toHaveLength(3);
+    expect(summary.querySelectorAll("section")).toHaveLength(0);
+    expect(within(summary).getByText("موجودی قابل استفاده")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "درخواست برداشت" })).toBeNull();
+    await screen.findByText("هنوز تراکنشی در کیف پول شما ثبت نشده است.");
+    await screen.findByText("هنوز درخواست برداشتی ثبت نکرده‌اید.");
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.getByRole("heading", { name: "کیف پول من", level: 1 })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "بازگشت به حساب کاربری" })).toBeNull();
+    expect(screen.getByRole("main").getAttribute("dir")).toBe("rtl");
+  });
+
+  it("keeps non-IRR currencies literal without converting amounts or changing request currencies", async () => {
+    currentBalance = { currency: "EUR", balance: 25, withdrawableBalance: 20, nonWithdrawableBalance: 5 };
+    history = [{ ...request, currency: "EUR", amount: 10 }];
+    transactionItems = [{ ...credit, currency: "USD", amount: 15 }];
+    render(<Page />);
+    const summary = await screen.findByRole("region", { name: "خلاصه کیف پول" });
+    expect(within(summary).getAllByText("EUR")).toHaveLength(3);
+    expect(within(summary).getByText("۲۵", { exact: false })).toBeTruthy();
+    const ledger = screen.getByRole("region", { name: "تراکنش‌های کیف پول" });
+    expect(await within(ledger).findByText("USD")).toBeTruthy();
+    expect(screen.queryByText("ریال")).toBeNull();
+    expect(screen.queryByText(/تومان/)).toBeNull();
+    expect(api).toHaveBeenCalledWith("/account/wallet?currency=IRR");
+    expect(api).toHaveBeenCalledWith("/account/wallet/transactions?currency=EUR&page=1&pageSize=20");
+  });
+
+  it("uses content-shaped skeletons during actual balance/history loading without fake values or tables", () => {
+    api.mockReturnValue(new Promise(() => {}));
+    render(<Page />);
+    expect(screen.getAllByRole("status")).toHaveLength(3);
+    screen.getAllByRole("status").forEach(status => {
+      expect(status.getAttribute("aria-busy")).toBe("true");
+      expect(status.querySelectorAll("a, button, header, aside, nav")).toHaveLength(0);
+    });
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByText("۰", { exact: true })).toBeNull();
+  });
+
+  it("does not show a permanent transaction skeleton or fabricated empty history when the balance currency is unavailable", async () => {
+    const original = api.getMockImplementation()!;
+    let reads = 0;
+    api.mockImplementation(async (path: string, init?: RequestInit) => {
+      if (path === "/account/wallet?currency=IRR" && reads++ === 0) throw new Error("دریافت موجودی ناموفق بود");
+      return original(path, init);
+    });
+    render(<Page />);
+    const ledger = screen.getByRole("region", { name: "تراکنش‌های کیف پول" });
+    await within(ledger).findByText("برای نمایش تراکنش‌ها، دریافت موجودی را دوباره امتحان کنید.");
+    expect(within(ledger).queryByRole("status")).toBeNull();
+    expect(within(ledger).queryByText("هنوز تراکنشی در کیف پول شما ثبت نشده است.")).toBeNull();
+    expect(api.mock.calls.some(([path]) => path.includes("/transactions?"))).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "تلاش دوباره" }));
+    expect(await within(ledger).findByText("افزایش موجودی")).toBeTruthy();
+  });
+
+  it("preserves populated tables and server-side withdrawal pagination", async () => {
+    const original = api.getMockImplementation()!;
+    api.mockImplementation(async (path: string, init?: RequestInit) => path.startsWith("/account/wallet/withdrawals?")
+      ? { ...paged(history), page: path.includes("page=2") ? 2 : 1, totalPages: 2, totalCount: 11 }
+      : original(path, init));
+    render(<Page />);
+    const withdrawals = screen.getByRole("region", { name: "تاریخچه درخواست‌های برداشت" });
+    await within(withdrawals).findByRole("table");
+    expect(await within(screen.getByRole("region", { name: "تراکنش‌های کیف پول" })).findByRole("table")).toBeTruthy();
+    const pagination = within(withdrawals).getByRole("navigation");
+    fireEvent.click(within(pagination).getByRole("button", { name: "بعدی" }));
+    await waitFor(() => expect(api).toHaveBeenCalledWith("/account/wallet/withdrawals?page=2&pageSize=10"));
+    await within(withdrawals).findByRole("table");
+    expect((within(pagination).getByRole("button", { name: "بعدی" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(within(withdrawals).getByText("ریال")).toBeTruthy();
+  });
+
+  it("uses scoped theme tokens and responsive balance/skeleton layouts without new motion or icons", () => {
+    const css = readFileSync(resolve("app/account/wallet/page.module.css"), "utf8");
+    expect(css).toContain("grid-template-columns: repeat(2, minmax(0, 1fr))");
+    expect(css).toContain("var(--primary) 7%, var(--card)");
+    expect(css).toContain("overflow-wrap: anywhere"); expect(css).toContain(":focus-visible");
+    expect(css).not.toMatch(/#[\da-f]{3,8}\b|100vw|:global|animation:|box-shadow:/i);
+    const skeletonCss = readFileSync(resolve("components/account/AccountSkeleton.module.css"), "utf8");
+    expect(skeletonCss).toContain("prefers-reduced-motion: reduce");
+    expect(skeletonCss).toContain("animation: none");
   });
 });
