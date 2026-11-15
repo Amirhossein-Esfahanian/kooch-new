@@ -5,8 +5,18 @@ using Kooch.Api.Serialization;
 
 namespace Kooch.Api.Dtos.Reservations;
 
+public class ManualBookingCreateResponse
+{
+    public int BookingSessionId { get; set; }
+    public string SessionCode { get; set; } = string.Empty;
+    public decimal TotalAmount { get; set; }
+    public string Currency { get; set; } = string.Empty;
+    public IReadOnlyList<ReservationResponse> Reservations { get; set; } = [];
+}
+
 public class ReservationListItemResponse
 {
+    public int? BookingSessionId { get; set; }
     public int ReservationId { get; set; }
     public int Id { get; set; }
     public string ReservationNumber { get; set; } = string.Empty;

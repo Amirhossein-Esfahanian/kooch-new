@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { toast } from "sonner";
 import { KoochAlert } from "@/components/KoochAlert";
 import { KoochBadge } from "@/components/KoochBadge";
@@ -11,6 +12,7 @@ import { KoochDialog } from "@/components/KoochDialog";
 import {
   KoochField,
   KoochInput,
+  KoochMultiSelect,
   KoochSearchableSelect,
   KoochSelect,
   KoochTextarea,
@@ -100,6 +102,20 @@ type ReservationPricePreviewResponse = {
   discountAmount: number;
   finalAmount: number;
   currency: string;
+};
+
+type ManualBookingCreateResponse = {
+  bookingSessionId: number;
+  sessionCode: string;
+  totalAmount: number;
+  currency: string;
+  reservations: Array<{
+    id: number;
+    reservationNumber: string;
+    roomName: string | null;
+    roomTypeName: string;
+    finalAmount: number;
+  }>;
 };
 
 type EffectiveReservationRules = {
@@ -478,6 +494,7 @@ export function ManualReservationDialog({
   const [guestDraft, setGuestDraft] = useState<GuestDraft>(emptyGuestDraft);
   const [guestDialogOpen, setGuestDialogOpen] = useState(false);
   const [confirmCreateOpen, setConfirmCreateOpen] = useState(false);
+  const [createdOrder, setCreatedOrder] = useState<ManualBookingCreateResponse | null>(null);
   const [pricePreview, setPricePreview] =
     useState<ReservationPricePreviewResponse | null>(null);
   const [pricePreviewLoading, setPricePreviewLoading] = useState(false);
@@ -1362,7 +1379,7 @@ export function ManualReservationDialog({
         throw new Error("Reservation id is missing.");
       }
 
-      await apiRequest(endpoint, {
+      const result = await apiRequest<ManualBookingCreateResponse>(endpoint, {
         method: isEditMode ? "PUT" : "POST",
         body: JSON.stringify(
           buildReservationMutationPayload({
@@ -1390,6 +1407,7 @@ export function ManualReservationDialog({
       toast.success(isEditMode ? "رزرو به‌روز شد." : "رزرو اضافه شد.");
       setConfirmCreateOpen(false);
       setDialogOpen(false);
+      if (!isEditMode) setCreatedOrder(result);
       await onCreated();
     } catch (caught) {
       if (isCapacityConflict(caught)) {
@@ -1728,6 +1746,17 @@ export function ManualReservationDialog({
                 </KoochField>
 
                 <KoochField className="md:col-span-2" label="اتاق" required>
+                  {!isEditMode ? (
+                    <KoochMultiSelect
+                      disabled={!selectedPropertyId || loadingRooms || nightsCount <= 0}
+                      options={roomOptions.filter(option => !draft.roomIds.length ||
+                        rooms.find(room => room.roomId.toString() === String(option.value))?.roomTypeId.toString() === draft.roomTypeId)}
+                      value={draft.roomIds}
+                      onChange={value => updateSelectedRooms(value.map(String))}
+                      placeholder="انتخاب اتاق‌ها"
+                      searchPlaceholder="جستجوی اتاق..."
+                    />
+                  ) : (
                   <KoochSearchableSelect
                     disabled={
                       isLockedEdit ||
@@ -1750,6 +1779,7 @@ export function ManualReservationDialog({
                     searchPlaceholder="جستجوی اتاق..."
                     value={draft.roomIds[0] ?? ""}
                   />
+                  )}
                 </KoochField>
 
                 <KoochField
@@ -1982,6 +2012,34 @@ export function ManualReservationDialog({
             />
           </KoochField>
         </form>
+      </KoochDialog>
+
+      <KoochDialog
+        open={createdOrder !== null}
+        onOpenChange={open => { if (!open) setCreatedOrder(null); }}
+        title="سفارش دستی ثبت شد"
+        footer={<KoochButton onClick={() => setCreatedOrder(null)}>بستن</KoochButton>}
+      >
+        {createdOrder && (
+          <div className="space-y-3" dir="rtl">
+            <p>شماره سفارش: <bdi>{createdOrder.sessionCode}</bdi></p>
+            <p>مبلغ کل سفارش: {toPersianDigits(formatCurrency(createdOrder.totalAmount, {
+              currencyLabel: createdOrder.currency === "IRR" ? "ریال" : createdOrder.currency,
+            }))}</p>
+            <ul className="space-y-2" aria-label="رزروهای ایجادشده">
+              {createdOrder.reservations.map(item => (
+                <li key={item.id} className="rounded-lg border border-border p-3">
+                  <Link className="text-primary underline" href={`/admin/reservations?reservationId=${item.id}`}>
+                    {item.reservationNumber} — {item.roomName || item.roomTypeName}
+                  </Link>
+                  <p>{toPersianDigits(formatCurrency(item.finalAmount, {
+                    currencyLabel: createdOrder.currency === "IRR" ? "ریال" : createdOrder.currency,
+                  }))}</p>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </KoochDialog>
 
       <KoochConfirmDialog

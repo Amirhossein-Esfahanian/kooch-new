@@ -16,6 +16,9 @@ public partial class PaymentService
         // The session lock serializes checkout keys and callbacks across processes. Capacity and
         // reservations follow, then WalletAccount; Wallet never acquires booking/payment locks.
         var session = await LockBookingSessionAsync(request.BookingSessionId, ct);
+        // Reject manual orders before replay, wallet holds, or online funding side effects.
+        ReservationPaymentFlow.EnsureOnlineOrder(await dbContext.Reservations.AsNoTracking()
+            .Where(reservation => reservation.BookingSessionId == session.Id).ToListAsync(ct));
         var requestHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(
             $"{session.Id}|{request.Provider}|{request.WalletAmount.ToString("0.00", CultureInfo.InvariantCulture)}")));
         var prior = await dbContext.BookingFundingAttempts.Include(a => a.Items).Include(a => a.Payment).ThenInclude(p => p!.Items)

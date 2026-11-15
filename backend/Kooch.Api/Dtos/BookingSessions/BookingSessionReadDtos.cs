@@ -7,6 +7,8 @@ namespace Kooch.Api.Dtos.BookingSessions;
 
 public sealed class BookingSessionDetailsResponse
 {
+    [JsonIgnore]
+    public bool UsesIndividualReservationPayments { get; set; }
     public int BookingSessionId { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     public string Currency { get; set; } = string.Empty;
@@ -105,6 +107,8 @@ public sealed class BookingSessionReservationDetailsResponse
 
 public sealed class AccountBookingSessionResponse
 {
+    [JsonIgnore]
+    public bool UsesIndividualReservationPayments { get; set; }
     public string SessionCode { get; set; } = string.Empty;
     [JsonConverter(typeof(JsonNumberEnumConverter<CommissionType>))]
     public CommissionType? CommissionType { get; set; }

@@ -162,6 +162,13 @@ public sealed class PromotionService(
         var targetPropertyId = ownerPropertyId ?? source.PropertyId;
         await EnsureMutationAccessAsync(userId, role, ownerPropertyId, targetPropertyId, cancellationToken);
 
+        if (ownerPropertyId.HasValue &&
+            source.PropertyId != ownerPropertyId.Value &&
+            !(source.PropertyId is null && source.Source == PromotionSource.Admin && source.IsPublished))
+        {
+            throw new UnauthorizedAccessException("اجازه کپی این پروموشن را برای این اقامتگاه ندارید.");
+        }
+
         var copySource = ownerPropertyId.HasValue ? PromotionSource.Owner : source.Source;
         var copy = CopyPromotion(source, targetPropertyId, userId, copySource, false);
 

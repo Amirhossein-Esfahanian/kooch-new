@@ -316,6 +316,8 @@ public sealed class ReservationServiceHardeningTests
             roomTypeId: 21);
         first.BookingSessionId = session.Id;
         second.BookingSessionId = session.Id;
+        first.Source = ReservationSource.Website;
+        second.Source = ReservationSource.Website;
         await harness.DbContext.SaveChangesAsync();
 
         await harness.Service.ApproveAsync(first.Id, harness.Owner);
@@ -673,7 +675,7 @@ public sealed class ReservationServiceHardeningTests
         if (accepted)
         {
             var result = await harness.Service.CreateAsync(request, harness.SuperAdmin);
-            Assert.Equal(200m, result.FinalAmount);
+            Assert.Equal(200m, Assert.Single(result.Reservations).FinalAmount);
             Assert.Equal(2, (await harness.DbContext.Reservations.SingleAsync()).ChildCount);
         }
         else
@@ -707,7 +709,7 @@ public sealed class ReservationServiceHardeningTests
             CheckInDate = harness.CheckIn, CheckOutDate = harness.CheckOut,
             Adults = adults, Children = 1, ChildAges = [8]
         }, harness.SuperAdmin);
-        Assert.Equal(300m, result.FinalAmount);
+        Assert.Equal(300m, Assert.Single(result.Reservations).FinalAmount);
         var saved = await harness.DbContext.Reservations.SingleAsync();
         Assert.Equal(300m, saved.FinalAmount);
         Assert.Equal(300m, saved.TotalPrice);

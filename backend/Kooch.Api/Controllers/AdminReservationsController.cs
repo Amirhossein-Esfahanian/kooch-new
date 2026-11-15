@@ -93,13 +93,13 @@ public class AdminReservationsController(
     }
 
     [HttpPost]
-    [ProducesResponseType<ReservationResponse>(StatusCodes.Status201Created)]
-    public async Task<ActionResult<ReservationResponse>> Create(
+    [ProducesResponseType<ManualBookingCreateResponse>(StatusCodes.Status201Created)]
+    public async Task<ActionResult<ManualBookingCreateResponse>> Create(
         ReservationCreateRequest request,
         CancellationToken cancellationToken)
     {
-        var reservation = await reservationService.CreateAsync(request, GetCurrentUser(), cancellationToken);
-        return CreatedAtAction(nameof(GetById), new { id = reservation.Id }, reservation);
+        var order = await reservationService.CreateAsync(request, GetCurrentUser(), cancellationToken);
+        return StatusCode(StatusCodes.Status201Created, order);
     }
 
     [HttpPut("{id:int}")]
@@ -119,7 +119,9 @@ public class AdminReservationsController(
         CancellationToken cancellationToken)
     {
         await EnsurePropertyPermissionAsync(request.PropertyId, "bookings.create", cancellationToken);
-        return Ok(await reservationPricingService.PreviewReservationPriceAsync(request, cancellationToken));
+        return Ok(request.RoomCount == 1
+            ? await reservationPricingService.PreviewReservationPriceAsync(request, cancellationToken)
+            : await reservationService.PreviewManualBookingPriceAsync(request, cancellationToken));
     }
 
     [HttpPut("{id:int}/approve")]

@@ -240,7 +240,7 @@ public class ReservationService(
         return response;
     }
 
-    public async Task<ReservationResponse> CreateAsync(
+    public async Task<ManualBookingCreateResponse> CreateAsync(
         ReservationCreateRequest request,
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default)
@@ -258,148 +258,201 @@ public class ReservationService(
                 "A reservation cannot be created as confirmed without a successful payment.");
         }
 
-        var property = await dbContext.Properties.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Id == request.PropertyId, cancellationToken)
-            ?? throw new KeyNotFoundException("Property not found.");
+        var selectedRoomIds = request.RoomIds is { Count: > 0 }
+            ? request.RoomIds.ToArray() : [request.RoomId];
+        if (selectedRoomIds.Length is < 1 or > 100 || selectedRoomIds.Any(id => id <= 0) ||
+            selectedRoomIds.Distinct().Count() != selectedRoomIds.Length)
+            throw new ArgumentException("Select between 1 and 100 distinct rooms.");
+        if (request.Adults < 1 || request.Children < 0 || request.ChildAges is null ||
+            request.ChildAges.Count != request.Children || request.ChildAges.Any(age => age is < 0 or > 17))
+            throw new ArgumentException("Guest counts and child ages are invalid.");
 
-        var room = await dbContext.Rooms.AsNoTracking()
-            .Include(item => item.RoomType)
-            .SingleOrDefaultAsync(item => item.Id == request.RoomId && item.IsActive, cancellationToken)
-            ?? throw new KeyNotFoundException("Room not found.");
-        if (room.RoomType.PropertyId != request.PropertyId)
-        {
-            throw new ArgumentException("Selected room does not belong to the selected property.");
-        }
-        if (!room.RoomType.IsActive)
-        {
-            throw new KeyNotFoundException("Room type not found.");
-        }
-
-        var roomType = room.RoomType;
-        request.RoomTypeId = roomType.Id;
-
-        var guest = await dbContext.Guests.AsNoTracking()
-            .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
-            ?? throw new KeyNotFoundException("Guest not found.");
-        var selectedRoomIds = new List<int> { room.Id };
-        const int roomCount = 1;
-
-        var availability = await availabilityService.GetAvailabilityAsync(
-            request.PropertyId,
-            request.RoomTypeId,
-            request.CheckInDate,
-            request.CheckOutDate,
-            roomCount,
-            excludedReservationId: null,
-            cancellationToken: cancellationToken);
-        ValidateAvailabilityForCreate(availability, roomCount);
-
-        var pricePreview = await pricingService.PreviewReservationPriceAsync(
-            new ReservationPricePreviewRequest
-            {
-                PropertyId = request.PropertyId,
-                RoomTypeId = request.RoomTypeId,
-                CheckInDate = request.CheckInDate,
-                CheckOutDate = request.CheckOutDate,
-                Adults = request.Adults,
-                Children = request.Children,
-                ChildAges = request.ChildAges,
-                RoomCount = roomCount,
-                GuestType = request.GuestType
-            },
-            cancellationToken);
-
-        var isOnRequest = availability.HasOnRequestNight;
-        var requestedStatus = request.Status ?? (isOnRequest
-            ? ReservationStatus.PendingApproval
-            : ReservationStatus.Pending);
-        statusWorkflow.ValidateManualCreationStatus(isOnRequest, requestedStatus);
-        requestedStatus = ReservationStatusNormalizer.Normalize(requestedStatus);
-        var now = DateTime.UtcNow;
-        var reservation = new Reservation
-        {
-            ClientId = currentUser.UserId,
-            GuestId = request.GuestId,
-            PropertyId = request.PropertyId,
-            RoomTypeId = request.RoomTypeId,
-            RoomId = room.Id,
-            CheckInDate = request.CheckInDate,
-            CheckOutDate = request.CheckOutDate,
-            AdultCount = pricePreview.Adults,
-            ChildCount = pricePreview.Children,
-            TotalPrice = pricePreview.FinalAmount,
-            BaseAmount = pricePreview.BaseAmount,
-            DiscountAmount = pricePreview.DiscountAmount,
-            ExtraGuestAmount = pricePreview.ExtraGuestAmount,
-            ServiceFeeAmount = pricePreview.ServiceFeeAmount,
-            FinalAmount = pricePreview.FinalAmount,
-            Currency = pricePreview.Currency,
-            Status = requestedStatus,
-            ConfirmedAtUtc = requestedStatus == ReservationStatus.Confirmed ? now : null,
-            Source = ReservationSource.AdminCreated,
-            GuestNote = request.Notes
-        };
-
+        // Use the same room-type lock order as checkout. All validation, authoritative
+        // pricing and the graph save occur inside this transaction, before any notification.
         await using var transaction = await dbContext.Database.BeginTransactionAsync(
             IsolationLevel.Serializable,
             cancellationToken);
-
-        property = await PropertyApprovalWriteScope.LockApprovedForNewBookingAsync(
+        var property = await PropertyApprovalWriteScope.LockApprovedForNewBookingAsync(
             dbContext, request.PropertyId, cancellationToken);
-        await LockRoomTypeAsync(request.RoomTypeId, cancellationToken);
-        availability = await availabilityService.GetAvailabilityAsync(
-            request.PropertyId,
-            request.RoomTypeId,
-            request.CheckInDate,
-            request.CheckOutDate,
-            roomCount,
-            excludedReservationId: null,
-            cancellationToken: cancellationToken);
-        ValidateAvailabilityForCreate(availability, roomCount);
-        isOnRequest = availability.HasOnRequestNight;
-        requestedStatus = request.Status ?? (isOnRequest
-            ? ReservationStatus.PendingApproval
-            : ReservationStatus.Pending);
-        statusWorkflow.ValidateManualCreationStatus(isOnRequest, requestedStatus);
-        reservation.Status = ReservationStatusNormalizer.Normalize(requestedStatus);
-        reservation.ConfirmedAtUtc = reservation.Status == ReservationStatus.Confirmed
-            ? now
-            : null;
-        reservation.ApprovalExpiresAtUtc = reservation.Status == ReservationStatus.PendingApproval
-            ? now.AddMinutes(await ReservationOwnerApprovalWindowSettings.GetMinutesAsync(
-                dbContext,
-                cancellationToken))
-            : null;
-        await ValidateFinalCapacityAsync(
-            request.RoomTypeId,
-            request.CheckInDate,
-            request.CheckOutDate,
-            selectedRoomIds,
-            excludedReservationId: null,
-            cancellationToken: cancellationToken);
-
-        reservation.ReservationNumber = await reservationNumberGenerator.GenerateAsync(
-            now,
-            cancellationToken);
-        dbContext.Reservations.Add(reservation);
-        await reservationNumberGenerator.SaveWithReservationNumberRetryAsync(dbContext, cancellationToken);
-
-        if (reservation.Status == ReservationStatus.PendingApproval)
+        var rooms = await dbContext.Rooms.AsNoTracking().Include(room => room.RoomType)
+            .Where(room => selectedRoomIds.Contains(room.Id)).ToListAsync(cancellationToken);
+        if (rooms.Count != selectedRoomIds.Length || rooms.Any(room => !room.IsActive || !room.RoomType.IsActive))
+            throw new KeyNotFoundException("An active selected room was not found.");
+        if (rooms.Any(room => room.RoomType.PropertyId != property.Id))
+            throw new ArgumentException("Every selected room must belong to the selected property.");
+        var selectedRoomTypes = rooms.ToDictionary(room => room.Id, room => room.RoomTypeId);
+        foreach (var roomTypeId in rooms.Select(room => room.RoomTypeId).Distinct().Order())
+            await LockRoomTypeAsync(roomTypeId, cancellationToken);
+        foreach (var roomId in selectedRoomIds.Order())
         {
-            await notificationDispatcher.NotifyPendingApprovalAsync(
-                [reservation.Id],
-                cancellationToken);
+            if (dbContext.Database.IsSqlServer())
+                _ = await dbContext.Rooms.FromSqlInterpolated(
+                    $"SELECT * FROM Rooms WITH (UPDLOCK, HOLDLOCK) WHERE Id = {roomId}")
+                    .AsNoTracking().SingleAsync(cancellationToken);
         }
-        else
+        // Re-read protected attributes after acquiring creation locks.
+        rooms = await dbContext.Rooms.AsNoTracking().Include(room => room.RoomType)
+            .Where(room => selectedRoomIds.Contains(room.Id)).ToListAsync(cancellationToken);
+        if (rooms.Count != selectedRoomIds.Length || rooms.Any(room => !room.IsActive ||
+            !room.RoomType.IsActive || room.RoomType.PropertyId != property.Id ||
+            selectedRoomTypes[room.Id] != room.RoomTypeId))
+            throw new InvalidOperationException("Selected rooms changed. Please select them again.");
+        var guest = await dbContext.Guests.AsNoTracking()
+            .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
+            ?? throw new KeyNotFoundException("Guest not found.");
+        var orderedRooms = selectedRoomIds.Select(id => rooms.Single(room => room.Id == id)).ToArray();
+        var allocation = await AllocateManualGuestsAsync(property, orderedRooms.Select(room => room.RoomType).ToArray(),
+            request.Adults, request.ChildAges, cancellationToken);
+
+        var onRequest = new Dictionary<int, bool>();
+        foreach (var group in orderedRooms.GroupBy(room => room.RoomTypeId))
         {
-            await notificationService.SendAsync(
-                CreateNotificationRequest(reservation, request, guest, isOnRequest),
-                cancellationToken);
+            var availability = await availabilityService.GetAvailabilityAsync(property.Id, group.Key,
+                request.CheckInDate, request.CheckOutDate, group.Count(),
+                excludedReservationId: null, cancellationToken: cancellationToken);
+            ValidateAvailabilityForCreate(availability, group.Count());
+            await ValidateFinalCapacityAsync(group.Key, request.CheckInDate, request.CheckOutDate,
+                group.Select(room => room.Id).ToArray(), excludedReservationId: null,
+                cancellationToken: cancellationToken);
+            onRequest[group.Key] = availability.HasOnRequestNight;
         }
 
+        var now = DateTime.UtcNow;
+        var session = new BookingSession
+        {
+            ClientId = currentUser.UserId, GuestId = guest.Id, PropertyId = property.Id,
+            CreatedByUserId = currentUser.UserId
+        };
+        var responses = new List<ReservationResponse>();
+        for (var index = 0; index < orderedRooms.Length; index++)
+        {
+            var room = orderedRooms[index];
+            var occupants = allocation[index];
+            var price = await pricingService.PreviewReservationPriceAsync(new ReservationPricePreviewRequest
+            {
+                PropertyId = property.Id, RoomTypeId = room.RoomTypeId,
+                CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
+                Adults = occupants.Adults, Children = occupants.ChildAges.Count,
+                ChildAges = occupants.ChildAges, RoomCount = 1, GuestType = request.GuestType
+            }, cancellationToken);
+            if (price.PropertyId != property.Id || price.RoomTypeId != room.RoomTypeId ||
+                price.FinalAmount < 0 || string.IsNullOrWhiteSpace(price.Currency))
+                throw new InvalidOperationException("Invalid room pricing result.");
+            if (index == 0) session.Currency = price.Currency;
+            if (!string.Equals(session.Currency, price.Currency, StringComparison.Ordinal))
+                throw new InvalidOperationException("All rooms in an order must use the same currency.");
+            var status = request.Status ?? (onRequest[room.RoomTypeId]
+                ? ReservationStatus.PendingApproval : ReservationStatus.Pending);
+            statusWorkflow.ValidateManualCreationStatus(onRequest[room.RoomTypeId], status);
+            var reservation = new Reservation
+            {
+                ClientId = currentUser.UserId, GuestId = guest.Id, PropertyId = property.Id,
+                RoomTypeId = room.RoomTypeId, RoomId = room.Id,
+                CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
+                AdultCount = price.Adults, ChildCount = price.Children,
+                TotalPrice = price.FinalAmount, BaseAmount = price.BaseAmount,
+                DiscountAmount = price.DiscountAmount, ExtraGuestAmount = price.ExtraGuestAmount,
+                ServiceFeeAmount = price.ServiceFeeAmount, FinalAmount = price.FinalAmount,
+                Currency = price.Currency, Status = ReservationStatusNormalizer.Normalize(status),
+                ApprovalExpiresAtUtc = status == ReservationStatus.PendingApproval
+                    ? now.AddMinutes(await ReservationOwnerApprovalWindowSettings.GetMinutesAsync(dbContext, cancellationToken))
+                    : null,
+                Source = ReservationSource.AdminCreated, GuestNote = request.Notes,
+                CreatedByUserId = currentUser.UserId
+            };
+            session.Reservations.Add(reservation);
+            var response = ToResponse(reservation, property, room.RoomType, guest, request, price);
+            response.RoomName = room.Name;
+            responses.Add(response);
+        }
+
+        var codeGenerator = new BookingSessionCodeGenerator(dbContext);
+        session.SessionCode = await codeGenerator.GenerateAsync(cancellationToken);
+        var numbers = await reservationNumberGenerator.GenerateBatchAsync(orderedRooms.Length, now, cancellationToken);
+        for (var index = 0; index < numbers.Count; index++)
+            session.Reservations.ElementAt(index).ReservationNumber = numbers[index];
+        dbContext.BookingSessions.Add(session);
+        await codeGenerator.SaveWithSessionCodeRetryAsync(dbContext, reservationNumberGenerator, cancellationToken);
+        for (var index = 0; index < orderedRooms.Length; index++)
+        {
+            var reservation = session.Reservations.ElementAt(index);
+            responses[index].Id = reservation.Id;
+            responses[index].ReservationId = reservation.Id;
+            responses[index].ReservationNumber = reservation.ReservationNumber!;
+            responses[index].BookingSessionId = session.Id;
+            if (reservation.Status == ReservationStatus.PendingApproval)
+                await notificationDispatcher.NotifyPendingApprovalAsync([reservation.Id], cancellationToken);
+            else
+                await notificationService.SendAsync(CreateNotificationRequest(reservation, request, guest,
+                    onRequest[reservation.RoomTypeId]), cancellationToken);
+        }
         await transaction.CommitAsync(cancellationToken);
+        return new ManualBookingCreateResponse
+        {
+            BookingSessionId = session.Id, SessionCode = session.SessionCode,
+            Currency = session.Currency, TotalAmount = session.Reservations.Sum(item => item.FinalAmount),
+            Reservations = responses
+        };
+    }
 
-        return ToResponse(reservation, property, roomType, guest, request, pricePreview);
+    public async Task<ReservationPricePreviewResponse> PreviewManualBookingPriceAsync(
+        ReservationPricePreviewRequest request, CancellationToken cancellationToken = default)
+    {
+        if (request.RoomCount == 1)
+            return await pricingService.PreviewReservationPriceAsync(request, cancellationToken);
+        ValidateDateRange(request.CheckInDate, request.CheckOutDate);
+        if (request.RoomCount is < 1 or > 100 || request.Children < 0 || request.ChildAges is null ||
+            request.ChildAges.Count != request.Children)
+            throw new ArgumentException("Room count and child ages are invalid.");
+        var property = await dbContext.Properties.AsNoTracking().SingleOrDefaultAsync(p => p.Id == request.PropertyId, cancellationToken)
+            ?? throw new KeyNotFoundException("Property not found.");
+        var type = await dbContext.RoomTypes.AsNoTracking()
+            .SingleOrDefaultAsync(t => t.Id == request.RoomTypeId && t.PropertyId == property.Id && t.IsActive, cancellationToken)
+            ?? throw new KeyNotFoundException("Room type not found.");
+        var allocation = await AllocateManualGuestsAsync(property, Enumerable.Repeat(type, request.RoomCount).ToArray(),
+            request.Adults, request.ChildAges, cancellationToken);
+        var prices = new List<ReservationPricePreviewResponse>();
+        foreach (var room in allocation)
+            prices.Add(await pricingService.PreviewReservationPriceAsync(new ReservationPricePreviewRequest
+            {
+                PropertyId = property.Id, RoomTypeId = type.Id, RatePlanId = request.RatePlanId,
+                CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate, RoomCount = 1,
+                Adults = room.Adults, Children = room.ChildAges.Count, ChildAges = room.ChildAges, GuestType = request.GuestType
+            }, cancellationToken));
+        if (prices.Any(price => price.Currency != prices[0].Currency))
+            throw new InvalidOperationException("All rooms in an order must use the same currency.");
+        return new ReservationPricePreviewResponse
+        {
+            PropertyId = property.Id, RoomTypeId = type.Id, GuestType = request.GuestType,
+            CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
+            NightsCount = request.CheckOutDate.DayNumber - request.CheckInDate.DayNumber, RoomCount = request.RoomCount,
+            Adults = prices.Sum(price => price.Adults), Children = prices.Sum(price => price.Children), Currency = prices[0].Currency,
+            BaseAmount = prices.Sum(price => price.BaseAmount), DiscountAmount = prices.Sum(price => price.DiscountAmount),
+            ExtraGuestAmount = prices.Sum(price => price.ExtraGuestAmount), ChildAmount = prices.Sum(price => price.ChildAmount),
+            ServiceFeeAmount = prices.Sum(price => price.ServiceFeeAmount), TaxAmount = prices.Sum(price => price.TaxAmount),
+            FinalAmount = prices.Sum(price => price.FinalAmount),
+            Nights = prices.SelectMany(price => price.Nights).GroupBy(night => night.Date).OrderBy(group => group.Key)
+                .Select(group => new ReservationNightPriceSnapshot
+                {
+                    Date = group.Key, BasePrice = group.Sum(night => night.BasePrice),
+                    ExtraGuestAmount = group.Sum(night => night.ExtraGuestAmount), ChildAmount = group.Sum(night => night.ChildAmount),
+                    DiscountAmount = group.Sum(night => night.DiscountAmount), FinalAmount = group.Sum(night => night.FinalAmount)
+                }).ToArray()
+        };
+    }
+
+    private async Task<IReadOnlyList<RoomGuestAllocation>> AllocateManualGuestsAsync(Property property,
+        IReadOnlyList<RoomType> types, int adults, IReadOnlyList<int> childAges, CancellationToken ct)
+    {
+        var resolver = new ChildPricingRuleResolver(dbContext);
+        var rules = ChildOccupancyRules.FromResolved(resolver.Resolve(property.FreeChildAgeLimit,
+            property.MaxFreeChildren, property.ChildPrice, await resolver.GetGlobalDefaultsAsync(ct)));
+        var result = GuestRoomAllocator.Allocate(rules, adults, childAges, types.Select(type =>
+            new GuestRoomTypeSelection(type.Id, new RoomTypeOccupancyCapacity(type.MaxAdults, type.MaxChildren,
+                type.AllowExtraGuest, type.MaxExtraGuests), 1)).ToArray());
+        if (!result.IsValid || result.Rooms.Any(room => room.Adults < 1))
+            throw new InvalidOperationException("Guests cannot be accommodated in the selected rooms.");
+        return result.Rooms;
     }
 
     public async Task<ReservationResponse> UpdateAsync(
@@ -578,6 +631,7 @@ public class ReservationService(
                 item.PropertyId,
                 item.RoomTypeId,
                 item.Status,
+                item.Source,
                 item.BookingSessionId
             })
             .SingleOrDefaultAsync(cancellationToken)
@@ -596,7 +650,8 @@ public class ReservationService(
             reservationSummary.Status,
             ReservationStatus.ApprovedAwaitingPayment);
 
-        if (reservationSummary.BookingSessionId.HasValue)
+        if (reservationSummary.BookingSessionId.HasValue &&
+            reservationSummary.Source != ReservationSource.AdminCreated)
         {
             return await ApproveSessionReservationAsync(
                 reservationId,
@@ -1500,7 +1555,7 @@ public class ReservationService(
             ?? throw new KeyNotFoundException("Reservation not found.");
         await EnsurePaymentLinkManagerAsync(currentUser, reservation.PropertyId, cancellationToken);
 
-        if (reservation.BookingSessionId.HasValue)
+        if (ReservationPaymentFlow.RequiresSessionPayment(reservation))
         {
             throw new InvalidOperationException(
                 "Booking session reservations must use the session payment flow.");
@@ -2165,6 +2220,7 @@ public class ReservationService(
             .Take(pageSize)
             .Select(reservation => new ReservationListProjection
             {
+                BookingSessionId = reservation.BookingSessionId,
                 Id = reservation.Id,
                 ReservationNumber = reservation.ReservationNumber,
                 PropertyId = reservation.PropertyId,
@@ -2193,9 +2249,13 @@ public class ReservationService(
                 ManualAdjustment = reservation.ManualAdjustment,
                 TotalPrice = reservation.TotalPrice,
                 FinalAmount = reservation.FinalAmount,
-                PaidAmount = reservation.Payments
+                PaidAmount = (reservation.Payments
                     .Where(payment => payment.Status == PaymentStatus.Successful)
-                    .Sum(payment => (decimal?)payment.Amount) ?? 0,
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) +
+                    (reservation.Source == ReservationSource.AdminCreated
+                        ? reservation.PaymentItems.Where(item => item.Payment.Channel == PaymentChannel.Manual &&
+                            item.Payment.Status == PaymentStatus.Successful).Sum(item => (decimal?)item.AllocatedAmount) ?? 0
+                        : 0),
                 Currency = reservation.Currency,
                 Status = reservation.Status,
                 HasPendingCancellationRequest = includePendingCancellationRequest &&
@@ -2369,36 +2429,26 @@ public class ReservationService(
             query = query.Where(reservation => reservation.FinalAmount <= filters.TotalPriceMax.Value);
         }
 
-        if (filters.PaidAmountMin.HasValue)
+        if (filters.PaidAmountMin.HasValue || filters.PaidAmountMax.HasValue ||
+            filters.RemainingAmountMin.HasValue || filters.RemainingAmountMax.HasValue)
         {
-            query = query.Where(reservation =>
-                (reservation.Payments
-                    .Where(payment => payment.Status == PaymentStatus.Successful)
-                    .Sum(payment => (decimal?)payment.Amount) ?? 0) >= filters.PaidAmountMin.Value);
-        }
-
-        if (filters.PaidAmountMax.HasValue)
-        {
-            query = query.Where(reservation =>
-                (reservation.Payments
-                    .Where(payment => payment.Status == PaymentStatus.Successful)
-                    .Sum(payment => (decimal?)payment.Amount) ?? 0) <= filters.PaidAmountMax.Value);
-        }
-
-        if (filters.RemainingAmountMin.HasValue)
-        {
-            query = query.Where(reservation =>
-                reservation.FinalAmount - (reservation.Payments
-                    .Where(payment => payment.Status == PaymentStatus.Successful)
-                    .Sum(payment => (decimal?)payment.Amount) ?? 0) >= filters.RemainingAmountMin.Value);
-        }
-
-        if (filters.RemainingAmountMax.HasValue)
-        {
-            query = query.Where(reservation =>
-                reservation.FinalAmount - (reservation.Payments
-                    .Where(payment => payment.Status == PaymentStatus.Successful)
-                    .Sum(payment => (decimal?)payment.Amount) ?? 0) <= filters.RemainingAmountMax.Value);
+            var balances = query.Select(reservation => new
+            {
+                Reservation = reservation,
+                Paid = (reservation.Payments.Where(payment => payment.Status == PaymentStatus.Successful)
+                    .Sum(payment => (decimal?)payment.Amount) ?? 0) +
+                    (reservation.Source == ReservationSource.AdminCreated
+                        ? reservation.PaymentItems.Where(item => item.Payment.Channel == PaymentChannel.Manual &&
+                            item.Payment.Status == PaymentStatus.Successful).Sum(item => (decimal?)item.AllocatedAmount) ?? 0
+                        : 0)
+            });
+            if (filters.PaidAmountMin.HasValue) balances = balances.Where(item => item.Paid >= filters.PaidAmountMin.Value);
+            if (filters.PaidAmountMax.HasValue) balances = balances.Where(item => item.Paid <= filters.PaidAmountMax.Value);
+            if (filters.RemainingAmountMin.HasValue) balances = balances.Where(item =>
+                item.Reservation.FinalAmount - item.Paid >= filters.RemainingAmountMin.Value);
+            if (filters.RemainingAmountMax.HasValue) balances = balances.Where(item =>
+                item.Reservation.FinalAmount - item.Paid <= filters.RemainingAmountMax.Value);
+            query = balances.Select(item => item.Reservation);
         }
 
         if (filters.Source.HasValue)
@@ -2419,7 +2469,9 @@ public class ReservationService(
         if (filters.PaymentStatus.HasValue)
         {
             query = query.Where(reservation =>
-                reservation.Payments.Any(payment => payment.Status == filters.PaymentStatus.Value));
+                reservation.Payments.Any(payment => payment.Status == filters.PaymentStatus.Value) ||
+                (reservation.Source == ReservationSource.AdminCreated && reservation.PaymentItems.Any(item =>
+                    item.Payment.Channel == PaymentChannel.Manual && item.Payment.Status == filters.PaymentStatus.Value)));
         }
 
         if (filters.PaymentDeadlineFrom.HasValue)
@@ -2517,6 +2569,7 @@ public class ReservationService(
 
         return new ReservationListItemResponse
         {
+            BookingSessionId = row.BookingSessionId,
             ReservationId = row.Id,
             Id = row.Id,
             ReservationNumber = row.ReservationNumber ?? string.Empty,
@@ -2612,6 +2665,7 @@ public class ReservationService(
     {
         return new ReservationResponse
         {
+            BookingSessionId = reservation.BookingSessionId,
             ReservationId = reservation.Id,
             Id = reservation.Id,
             ReservationNumber = reservation.ReservationNumber ?? string.Empty,
@@ -2725,11 +2779,16 @@ public class ReservationService(
                 payment.Status == PaymentStatus.Successful)
             .Select(payment => (decimal?)payment.Amount)
             .SumAsync(cancellationToken) ?? 0;
+        if (reservation.Source == ReservationSource.AdminCreated)
+            paidAmount += await dbContext.PaymentItems.AsNoTracking()
+                .Where(item => item.ReservationId == reservation.Id && item.Payment.Channel == PaymentChannel.Manual &&
+                    item.Payment.Status == PaymentStatus.Successful)
+                .SumAsync(item => (decimal?)item.AllocatedAmount, cancellationToken) ?? 0;
         var remainingAmount = Math.Max(0, reservation.FinalAmount - paidAmount);
 
         response.PaidAmount = paidAmount;
         response.RemainingAmount = remainingAmount;
-        response.IsPaymentEligible = !reservation.BookingSessionId.HasValue &&
+        response.IsPaymentEligible = !ReservationPaymentFlow.RequiresSessionPayment(reservation) &&
             IsPaymentEligible(
                 reservation.Status,
                 reservation.PaymentExpiresAtUtc,
@@ -2874,6 +2933,7 @@ public class ReservationService(
     {
         return new ReservationResponse
         {
+            BookingSessionId = reservation.BookingSessionId,
             ReservationId = reservation.Id,
             Id = reservation.Id,
             ReservationNumber = reservation.ReservationNumber ?? string.Empty,
@@ -2961,6 +3021,7 @@ public class ReservationService(
 
     private sealed class ReservationListProjection
     {
+        public int? BookingSessionId { get; set; }
         public int Id { get; set; }
         public string? ReservationNumber { get; set; }
         public int PropertyId { get; set; }

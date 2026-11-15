@@ -142,6 +142,7 @@ public partial class PaymentService : IPaymentService
         if (await dbContext.BookingFundingAttempts.AnyAsync(a => a.BookingSessionId == session.Id && a.IdempotencyKey == request.IdempotencyKey, cancellationToken))
             throw new InvalidOperationException("This checkout key already belongs to a wallet funding attempt.");
         var reservations = await LockSessionReservationsAsync(session.Id, cancellationToken);
+        ReservationPaymentFlow.EnsureOnlineOrder(reservations);
         var now = DateTime.UtcNow;
         var candidate = BuildInitiationCandidate(
             session,
@@ -214,7 +215,7 @@ public partial class PaymentService : IPaymentService
 
         var reservation = await dbContext.Reservations
             .SingleAsync(item => item.Id == reservationId, cancellationToken);
-        if (reservation.BookingSessionId.HasValue)
+        if (ReservationPaymentFlow.RequiresSessionPayment(reservation))
         {
             throw new InvalidOperationException(
                 "Booking session reservations must use the session payment flow.");
@@ -367,7 +368,7 @@ public partial class PaymentService : IPaymentService
         }
 
         var reservation = token.Reservation;
-        if (reservation.BookingSessionId.HasValue)
+        if (ReservationPaymentFlow.RequiresSessionPayment(reservation))
         {
             return Invalid(
                 normalizedReservationNumber,

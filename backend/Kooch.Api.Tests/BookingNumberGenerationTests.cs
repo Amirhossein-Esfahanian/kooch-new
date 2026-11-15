@@ -41,8 +41,10 @@ public sealed class BookingNumberGenerationTests
         context.ChangeTracker.Clear();
         var reservation = await context.Reservations.SingleAsync();
         Assert.True(reservation.Id > 0);
-        Assert.Equal(result.Id, reservation.Id);
-        Assert.Equal(result.ReservationNumber, reservation.ReservationNumber);
+        var created = Assert.Single(result.Reservations);
+        Assert.Equal(created.Id, reservation.Id);
+        Assert.Equal(created.ReservationNumber, reservation.ReservationNumber);
+        Assert.Equal(result.BookingSessionId, reservation.BookingSessionId);
         Assert.Matches("^R-[0-9]{6}$", reservation.ReservationNumber!);
     }
 

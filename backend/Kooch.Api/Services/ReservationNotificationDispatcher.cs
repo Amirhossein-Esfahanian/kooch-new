@@ -96,7 +96,8 @@ public sealed class ReservationNotificationDispatcher(
                 item.CheckInDate,
                 item.CheckOutDate,
                 item.ApprovalExpiresAtUtc,
-                item.BookingSession == null ? null : item.BookingSession.SessionCode))
+                item.BookingSession == null || item.Source == ReservationSource.AdminCreated
+                    ? null : item.BookingSession.SessionCode))
             .SingleOrDefaultAsync(cancellationToken);
         if (reservation is null)
         {
@@ -134,7 +135,8 @@ public sealed class ReservationNotificationDispatcher(
                 reservation.CheckInDate,
                 reservation.CheckOutDate,
                 reservation.ApprovalExpiresAtUtc,
-                reservation.BookingSession == null ? null : reservation.BookingSession.SessionCode))
+                reservation.BookingSession == null || reservation.Source == ReservationSource.AdminCreated
+                    ? null : reservation.BookingSession.SessionCode))
             .ToListAsync(cancellationToken);
 
     private static ReservationNotificationSnapshot AssertSingle(

@@ -11,6 +11,7 @@ import { KoochCard } from "@/components/KoochCard";
 import { KoochConfirmDialog } from "@/components/KoochConfirmDialog";
 import { KoochDialog } from "@/components/KoochDialog";
 import { KoochDatePicker } from "@/components/KoochDatePicker";
+import { ManualOrderSettlement } from "./ManualOrderSettlement";
 import {
   KoochCheckbox,
   KoochField,
@@ -64,6 +65,7 @@ interface ReservationDetailsDialogProps {
     reservation: ReservationTableItem,
   ) => void | Promise<void>;
   onRefresh?: (reservation: ReservationTableItem) => void | Promise<void>;
+  onOrderSettled?: (reservation: ReservationTableItem) => void | Promise<void>;
   manualPayments?: AdminManualPayment[];
   manualPaymentsLoading?: boolean;
   onCreateManualPayment?: (
@@ -1548,6 +1550,7 @@ export function ReservationDetailsDialog({
   onViewVoucher,
   onRejectManualPayment,
   onRefresh,
+  onOrderSettled,
   onSendPaymentLink,
   onStatusChange,
   onOpenChange,
@@ -1737,6 +1740,10 @@ export function ReservationDetailsDialog({
               >
                 ویرایش
               </KoochButton>
+            )}
+            {reservation?.bookingSessionId && reservation.source === "AdminCreated" && onOrderSettled && (
+              <ManualOrderSettlement key={reservation.bookingSessionId} bookingSessionId={reservation.bookingSessionId}
+                onSettled={() => onOrderSettled(reservation)} />
             )}
             {reservation &&
               !isReadOnly &&

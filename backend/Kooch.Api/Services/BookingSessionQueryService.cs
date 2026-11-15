@@ -55,6 +55,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             .Take(pageSize)
             .Select(session => new AccountBookingSessionListProjection
             {
+                HasManualReservations = session.Reservations.Any(reservation => reservation.Source == ReservationSource.AdminCreated),
                 SessionCode = session.SessionCode,
                 PropertyId = session.PropertyId,
                 PropertyName = session.Property.Name,
@@ -207,6 +208,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
                 session.SessionCode == normalizedSessionCode)
             .Select(session => new AccountBookingSessionResponse
             {
+                UsesIndividualReservationPayments = session.Reservations.Any(reservation => reservation.Source == ReservationSource.AdminCreated),
                 SessionCode = session.SessionCode,
                 CommissionType = session.CommissionType,
                 ExpectedArrivalTime = session.ExpectedArrivalTime,
@@ -293,6 +295,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             .Where(predicate)
             .Select(session => new BookingSessionDetailsResponse
             {
+                UsesIndividualReservationPayments = session.Reservations.Any(reservation => reservation.Source == ReservationSource.AdminCreated),
                 BookingSessionId = session.Id,
                 SessionCode = session.SessionCode,
                 Currency = session.Currency,
@@ -377,6 +380,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             response.Currency,
             payableScopeResolver,
             timeProvider.GetUtcNow().UtcDateTime);
+        if (response.UsesIndividualReservationPayments) ClearAggregatePaymentReadiness(response.Summary);
         response.SpecialRequest = ResolveSharedSpecialRequest(
             response.Reservations.Select(reservation => reservation.GuestNote));
         return response;
@@ -421,6 +425,22 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             .Distinct()
             .ToArray();
         response.CommonPaymentDeadlineUtc = deadlines.Length is 1 ? deadlines[0] : null;
+        if (response.UsesIndividualReservationPayments)
+        {
+            ClearAggregatePaymentReadiness(response.Summary);
+            response.CommonPaymentDeadlineUtc = null;
+        }
+    }
+
+    private static void ClearAggregatePaymentReadiness(BookingSessionDerivedSummaryResponse summary)
+    {
+        summary.IsPaymentReady = false;
+        summary.CanContinueWithApprovedReservations = false;
+        summary.PayableReservationCount = 0;
+        summary.PayableAmount = 0;
+        summary.ContinuationPaymentDeadlineUtc = null;
+        summary.EarliestPaymentDeadlineUtc = null;
+        summary.HasInconsistentPaymentDeadlines = false;
     }
 
     private static string? ResolveSharedSpecialRequest(IEnumerable<string?> notes)
@@ -547,7 +567,7 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             projection.MinimumPaymentDeadlineUtc.HasValue &&
             projection.MinimumPaymentDeadlineUtc == projection.MaximumPaymentDeadlineUtc &&
             projection.MinimumPaymentDeadlineUtc > now;
-        var isPaymentReady = projection.AllAwaitingPayment &&
+        var isPaymentReady = !projection.HasManualReservations && projection.AllAwaitingPayment &&
             !projection.HasMissingPaymentDeadline &&
             hasConsistentFutureDeadline;
         var derivedStatus = projection.WalletOnlyFundingApplied ? "PaymentSuccessful" : projection.PaymentStatus switch
@@ -580,13 +600,14 @@ public sealed class BookingSessionQueryService : IBookingSessionQueryService
             Currency = projection.Currency,
             DerivedStatus = derivedStatus,
             PaymentStatus = projection.PaymentStatus,
-            PaymentDeadlineUtc = projection.PaymentDeadlineUtc,
+            PaymentDeadlineUtc = projection.HasManualReservations ? null : projection.PaymentDeadlineUtc,
             IsPaymentReady = isPaymentReady
         };
     }
 
     private sealed class AccountBookingSessionListProjection
     {
+        public bool HasManualReservations { get; set; }
         public string SessionCode { get; set; } = string.Empty;
         public int PropertyId { get; set; }
         public string PropertyName { get; set; } = string.Empty;

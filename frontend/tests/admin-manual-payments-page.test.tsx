@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   push: vi.fn(),
 }));
 
-vi.mock("next/navigation", () => ({ useRouter: () => ({ push: mocks.push }) }));
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: mocks.push, replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+}));
 
 vi.mock("@/components/auth/AuthSessionProvider", () => ({
   useAuthSession: () => ({

@@ -1308,6 +1308,10 @@ function AdminReservationsContent() {
           onEdit={editReservation}
           onRejectManualPayment={canManagePayments ? rejectManualPayment : undefined}
           onRefresh={viewReservation}
+          onOrderSettled={canManagePayments ? async reservation => {
+            const id = reservation.reservationId ?? reservation.id;
+            if (id) await refreshReservationAndPayments(id);
+          } : undefined}
           onSendPaymentLink={sendPaymentLink}
           onStatusChange={updateReservationStatus}
           onOpenChange={(open) => {

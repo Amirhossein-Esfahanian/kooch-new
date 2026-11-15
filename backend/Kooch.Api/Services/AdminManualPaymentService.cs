@@ -6,11 +6,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Kooch.Api.Services;
 
-public sealed class AdminManualPaymentService(
+public sealed partial class AdminManualPaymentService(
     KoochDbContext dbContext,
     IEffectiveAvailabilityService effectiveAvailabilityService,
     IPaymentFinancializationService paymentFinancializationService,
-    IReservationVoucherService reservationVoucherService)
+    IReservationVoucherService reservationVoucherService,
+    IPermissionService? permissionService = null,
+    IPropertyAuthorizationService? propertyAuthorizationService = null)
     : IAdminManualPaymentService
 {
     public AdminManualPaymentService(
@@ -45,7 +47,7 @@ public sealed class AdminManualPaymentService(
 
         return await dbContext.Payments.AsNoTracking()
             .Where(payment =>
-                payment.ReservationId == reservationId &&
+                (payment.ReservationId == reservationId || payment.Items.Any(item => item.ReservationId == reservationId)) &&
                 payment.Channel == PaymentChannel.Manual &&
                 payment.ManualDetails != null)
             .OrderByDescending(payment => payment.ManualDetails!.SubmittedAtUtc)
@@ -54,7 +56,8 @@ public sealed class AdminManualPaymentService(
             {
                 PaymentId = payment.Id,
                 ReservationId = reservationId,
-                Amount = payment.Amount,
+                Amount = payment.ReservationId == reservationId ? payment.Amount :
+                    payment.Items.Where(item => item.ReservationId == reservationId).Sum(item => item.AllocatedAmount),
                 Currency = payment.Currency,
                 Status = payment.Status,
                 Method = payment.ManualDetails!.Method,
@@ -338,7 +341,7 @@ public sealed class AdminManualPaymentService(
         string currency,
         DateTime now)
     {
-        if (reservation.BookingSessionId.HasValue)
+        if (ReservationPaymentFlow.RequiresSessionPayment(reservation))
         {
             throw new InvalidOperationException(
                 "Booking session reservations must use the session payment flow.");

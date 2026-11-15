@@ -222,7 +222,7 @@ public sealed class StayXGetOneFreePromotionTests
             CheckInDate = Start, CheckOutDate = Start.AddDays(4), Adults = 3
         }, harness.SuperAdmin);
         db.ChangeTracker.Clear();
-        var persisted = await db.Reservations.SingleAsync(item => item.Id == response.Id);
+        var persisted = await db.Reservations.SingleAsync(item => item.Id == response.Reservations.Single().Id);
         Assert.Equal(preview.FinalAmount, persisted.FinalAmount);
         Assert.Equal(preview.FinalAmount, persisted.TotalPrice);
         Assert.Equal(preview.DiscountAmount, persisted.DiscountAmount);

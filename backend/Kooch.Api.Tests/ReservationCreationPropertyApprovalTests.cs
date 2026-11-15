@@ -26,16 +26,13 @@ public sealed class ReservationCreationPropertyApprovalTests
         if (status == PropertyStatus.Approved)
         {
             var created = await harness.Service.CreateAsync(request, harness.SuperAdmin);
-            Assert.Equal(ReservationStatus.Pending, created.Status);
+            Assert.Equal(ReservationStatus.Pending, Assert.Single(created.Reservations).Status);
             Assert.Single(await harness.DbContext.Reservations.ToListAsync());
         }
         else
         {
             var error = await Assert.ThrowsAsync<InvalidOperationException>(() => harness.Service.CreateAsync(request, harness.SuperAdmin));
-            // Existing pricing validation already rejects Rejected/Suspended before persistence.
-            Assert.Equal(status is PropertyStatus.Rejected or PropertyStatus.Suspended
-                ? "Property is not available for reservations."
-                : "Only Approved Properties can accept new bookings.", error.Message);
+            Assert.Equal("Only Approved Properties can accept new bookings.", error.Message);
             Assert.Empty(await harness.DbContext.Reservations.ToListAsync());
             Assert.Empty(await harness.DbContext.BookingSessions.ToListAsync());
             Assert.Empty(await harness.DbContext.AuditLogs.ToListAsync());

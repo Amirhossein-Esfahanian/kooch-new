@@ -128,6 +128,7 @@ export interface ReservationTimelineEvent {
 }
 
 export interface ReservationTableItem {
+  bookingSessionId?: number | null;
   id?: number;
   reservationId?: number;
   reservationNumber: string;

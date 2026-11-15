@@ -5,6 +5,9 @@ namespace Kooch.Api.Services;
 
 public interface IReservationService
 {
+    Task<ReservationPricePreviewResponse> PreviewManualBookingPriceAsync(ReservationPricePreviewRequest request,
+        CancellationToken cancellationToken = default);
+
     Task ApplyPropertyGuestPhoneVisibilityAsync(
         int propertyId,
         ReservationResponse response,
@@ -44,7 +47,7 @@ public interface IReservationService
         string reservationNumber,
         CancellationToken cancellationToken = default);
 
-    Task<ReservationResponse> CreateAsync(
+    Task<ManualBookingCreateResponse> CreateAsync(
         ReservationCreateRequest request,
         (int UserId, UserRole Role) currentUser,
         CancellationToken cancellationToken = default);
