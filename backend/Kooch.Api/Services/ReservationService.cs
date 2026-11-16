@@ -258,11 +258,6 @@ public class ReservationService(
                 "A reservation cannot be created as confirmed without a successful payment.");
         }
 
-        var selectedRoomIds = request.RoomIds is { Count: > 0 }
-            ? request.RoomIds.ToArray() : [request.RoomId];
-        if (selectedRoomIds.Length is < 1 or > 100 || selectedRoomIds.Any(id => id <= 0) ||
-            selectedRoomIds.Distinct().Count() != selectedRoomIds.Length)
-            throw new ArgumentException("Select between 1 and 100 distinct rooms.");
         if (request.Adults < 1 || request.Children < 0 || request.ChildAges is null ||
             request.ChildAges.Count != request.Children || request.ChildAges.Any(age => age is < 0 or > 17))
             throw new ArgumentException("Guest counts and child ages are invalid.");
@@ -274,16 +269,11 @@ public class ReservationService(
             cancellationToken);
         var property = await PropertyApprovalWriteScope.LockApprovedForNewBookingAsync(
             dbContext, request.PropertyId, cancellationToken);
-        var rooms = await dbContext.Rooms.AsNoTracking().Include(room => room.RoomType)
-            .Where(room => selectedRoomIds.Contains(room.Id)).ToListAsync(cancellationToken);
-        if (rooms.Count != selectedRoomIds.Length || rooms.Any(room => !room.IsActive || !room.RoomType.IsActive))
-            throw new KeyNotFoundException("An active selected room was not found.");
-        if (rooms.Any(room => room.RoomType.PropertyId != property.Id))
-            throw new ArgumentException("Every selected room must belong to the selected property.");
-        var selectedRoomTypes = rooms.ToDictionary(room => room.Id, room => room.RoomTypeId);
-        foreach (var roomTypeId in rooms.Select(room => room.RoomTypeId).Distinct().Order())
+        var orderedRooms = await ResolveManualUnitsAsync(request, property.Id, cancellationToken);
+        var identities = orderedRooms.Select(unit => (unit.RoomTypeId, unit.Id)).ToArray();
+        foreach (var roomTypeId in orderedRooms.Select(room => room.RoomTypeId).Distinct().Order())
             await LockRoomTypeAsync(roomTypeId, cancellationToken);
-        foreach (var roomId in selectedRoomIds.Order())
+        foreach (var roomId in orderedRooms.Where(unit => unit.Id.HasValue).Select(unit => unit.Id!.Value).Order())
         {
             if (dbContext.Database.IsSqlServer())
                 _ = await dbContext.Rooms.FromSqlInterpolated(
@@ -291,16 +281,12 @@ public class ReservationService(
                     .AsNoTracking().SingleAsync(cancellationToken);
         }
         // Re-read protected attributes after acquiring creation locks.
-        rooms = await dbContext.Rooms.AsNoTracking().Include(room => room.RoomType)
-            .Where(room => selectedRoomIds.Contains(room.Id)).ToListAsync(cancellationToken);
-        if (rooms.Count != selectedRoomIds.Length || rooms.Any(room => !room.IsActive ||
-            !room.RoomType.IsActive || room.RoomType.PropertyId != property.Id ||
-            selectedRoomTypes[room.Id] != room.RoomTypeId))
+        orderedRooms = await ResolveManualUnitsAsync(request, property.Id, cancellationToken);
+        if (!identities.SequenceEqual(orderedRooms.Select(unit => (unit.RoomTypeId, unit.Id))))
             throw new InvalidOperationException("Selected rooms changed. Please select them again.");
         var guest = await dbContext.Guests.AsNoTracking()
             .SingleOrDefaultAsync(item => item.Id == request.GuestId, cancellationToken)
             ?? throw new KeyNotFoundException("Guest not found.");
-        var orderedRooms = selectedRoomIds.Select(id => rooms.Single(room => room.Id == id)).ToArray();
         var allocation = await AllocateManualGuestsAsync(property, orderedRooms.Select(room => room.RoomType).ToArray(),
             request.Adults, request.ChildAges, cancellationToken);
 
@@ -311,8 +297,12 @@ public class ReservationService(
                 request.CheckInDate, request.CheckOutDate, group.Count(),
                 excludedReservationId: null, cancellationToken: cancellationToken);
             ValidateAvailabilityForCreate(availability, group.Count());
+            var effectiveRange = await effectiveAvailabilityService.GetRangeAsync([group.Key],
+                request.CheckInDate, request.CheckOutDate, cancellationToken: cancellationToken);
+            if (!effectiveRange.TryGetValue(group.Key, out var range) || !range.HasCapacityForFullRange(group.Count()))
+                throw CapacityChangedException();
             await ValidateFinalCapacityAsync(group.Key, request.CheckInDate, request.CheckOutDate,
-                group.Select(room => room.Id).ToArray(), excludedReservationId: null,
+                group.Where(room => room.Id.HasValue).Select(room => room.Id!.Value).ToArray(), excludedReservationId: null,
                 cancellationToken: cancellationToken);
             onRequest[group.Key] = availability.HasOnRequestNight;
         }
@@ -328,7 +318,7 @@ public class ReservationService(
         {
             var room = orderedRooms[index];
             var occupants = allocation[index];
-            var price = await pricingService.PreviewReservationPriceAsync(new ReservationPricePreviewRequest
+            var price = await pricingService.PreviewManualCreationPriceAsync(new ReservationPricePreviewRequest
             {
                 PropertyId = property.Id, RoomTypeId = room.RoomTypeId,
                 CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
@@ -362,7 +352,7 @@ public class ReservationService(
             };
             session.Reservations.Add(reservation);
             var response = ToResponse(reservation, property, room.RoomType, guest, request, price);
-            response.RoomName = room.Name;
+            response.RoomName = room.Room?.Name;
             responses.Add(response);
         }
 
@@ -399,7 +389,9 @@ public class ReservationService(
         ReservationPricePreviewRequest request, CancellationToken cancellationToken = default)
     {
         if (request.RoomCount == 1)
-            return await pricingService.PreviewReservationPriceAsync(request, cancellationToken);
+            return request.ForManualCreation
+                ? await pricingService.PreviewManualCreationPriceAsync(request, cancellationToken)
+                : await pricingService.PreviewReservationPriceAsync(request, cancellationToken);
         ValidateDateRange(request.CheckInDate, request.CheckOutDate);
         if (request.RoomCount is < 1 or > 100 || request.Children < 0 || request.ChildAges is null ||
             request.ChildAges.Count != request.Children)
@@ -413,12 +405,17 @@ public class ReservationService(
             request.Adults, request.ChildAges, cancellationToken);
         var prices = new List<ReservationPricePreviewResponse>();
         foreach (var room in allocation)
-            prices.Add(await pricingService.PreviewReservationPriceAsync(new ReservationPricePreviewRequest
+        {
+            var perRoomRequest = new ReservationPricePreviewRequest
             {
                 PropertyId = property.Id, RoomTypeId = type.Id, RatePlanId = request.RatePlanId,
                 CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate, RoomCount = 1,
                 Adults = room.Adults, Children = room.ChildAges.Count, ChildAges = room.ChildAges, GuestType = request.GuestType
-            }, cancellationToken));
+            };
+            prices.Add(request.ForManualCreation
+                ? await pricingService.PreviewManualCreationPriceAsync(perRoomRequest, cancellationToken)
+                : await pricingService.PreviewReservationPriceAsync(perRoomRequest, cancellationToken));
+        }
         if (prices.Any(price => price.Currency != prices[0].Currency))
             throw new InvalidOperationException("All rooms in an order must use the same currency.");
         return new ReservationPricePreviewResponse
@@ -441,6 +438,41 @@ public class ReservationService(
                     DiscountAmount = group.Sum(night => night.DiscountAmount), FinalAmount = group.Sum(night => night.FinalAmount)
                 }).ToArray()
         };
+    }
+
+    private sealed record ManualBookingUnit(RoomType RoomType, Room? Room)
+    {
+        public int RoomTypeId => RoomType.Id;
+        public int? Id => Room?.Id;
+    }
+
+    private async Task<ManualBookingUnit[]> ResolveManualUnitsAsync(ReservationCreateRequest request,
+        int propertyId, CancellationToken ct)
+    {
+        if (request.RoomIds is null || request.RoomTypeSelections is null)
+            throw new ArgumentException("Room selections are required.");
+        var ids = request.RoomIds.Count > 0 ? request.RoomIds.ToArray()
+            : request.RoomId > 0 ? [request.RoomId] : Array.Empty<int>();
+        var selections = request.RoomTypeSelections;
+        if (ids.Any(id => id <= 0) || ids.Distinct().Count() != ids.Length ||
+            selections.Any(s => s is null || s.RoomTypeId <= 0 || s.Quantity is < 1 or > 100) ||
+            selections.Select(s => s.RoomTypeId).Distinct().Count() != selections.Count ||
+            ids.Length + selections.Sum(s => (long)s.Quantity) is < 1 or > 100)
+            throw new ArgumentException("Select between 1 and 100 valid room units.");
+        var rooms = await dbContext.Rooms.AsNoTracking().Include(r => r.RoomType)
+            .Where(r => ids.Contains(r.Id)).ToListAsync(ct);
+        if (rooms.Count != ids.Length || rooms.Any(r => !r.IsActive || !r.RoomType.IsActive || r.RoomType.TotalInventory <= 0))
+            throw new KeyNotFoundException("An active selected room was not found.");
+        if (rooms.Any(r => r.RoomType.PropertyId != propertyId || r.RoomType.InventoryMode != InventoryMode.NamedRooms))
+            throw new ArgumentException("Named rooms must belong to this property and use NamedRooms inventory.");
+        var typeIds = selections.Select(s => s.RoomTypeId).ToArray();
+        var types = await dbContext.RoomTypes.AsNoTracking().Where(t => typeIds.Contains(t.Id)).ToListAsync(ct);
+        if (types.Count != typeIds.Length || types.Any(t => !t.IsActive || t.TotalInventory <= 0 || t.PropertyId != propertyId ||
+                t.InventoryMode != InventoryMode.TypeBasedInventory))
+            throw new ArgumentException("Quantity selections require active TypeBased room types in this property.");
+        return ids.Select(id => { var room = rooms.Single(r => r.Id == id); return new ManualBookingUnit(room.RoomType, room); })
+            .Concat(selections.SelectMany(s => Enumerable.Repeat(new ManualBookingUnit(types.Single(t => t.Id == s.RoomTypeId), null), s.Quantity)))
+            .ToArray();
     }
 
     private async Task<IReadOnlyList<RoomGuestAllocation>> AllocateManualGuestsAsync(Property property,

@@ -181,6 +181,35 @@ public class AvailableRoomResponse
     public ReservationBookingModeFilter BookingMode { get; set; }
 }
 
+public sealed class ManualBookingAvailabilityResponse
+{
+    public IReadOnlyList<ManualBookingRoomTypeOption> Options { get; set; } = [];
+    public IReadOnlyList<ManualBookingExcludedOption> Excluded { get; set; } = [];
+}
+
+public sealed class ManualBookingRoomTypeOption
+{
+    public int RoomTypeId { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public InventoryMode InventoryMode { get; set; }
+    public int AvailableCount { get; set; }
+    public ReservationBookingModeFilter BookingMode { get; set; }
+    public IReadOnlyList<AvailableRoomResponse> Rooms { get; set; } = [];
+}
+
+public enum ManualBookingExclusionReason { NoAvailability, MissingNightlyPricing, NoEligibleNamedRooms, GuestCapacityExceeded }
+
+public sealed record ManualBookingExcludedOption(int RoomTypeId, string Name,
+    ManualBookingExclusionReason Reason, IReadOnlyList<DateOnly> MissingDates);
+
+public sealed class ManualRoomTypeSelection
+{
+    [Range(1, int.MaxValue)]
+    public int RoomTypeId { get; set; }
+    [Range(1, 100)]
+    public int Quantity { get; set; }
+}
+
 public class PagedResult<T>
 {
     public IReadOnlyList<T> Items { get; set; } = [];
@@ -200,7 +229,7 @@ public class ReservationCreateRequest : IValidatableObject
 
     public int RoomTypeId { get; set; }
 
-    [Range(1, int.MaxValue)]
+    [Range(0, int.MaxValue)]
     public int RoomId { get; set; }
 
     [Range(1, int.MaxValue)]
@@ -221,6 +250,8 @@ public class ReservationCreateRequest : IValidatableObject
     public int RoomCount { get; set; } = 1;
 
     public IReadOnlyList<int> RoomIds { get; set; } = [];
+
+    public IReadOnlyList<ManualRoomTypeSelection> RoomTypeSelections { get; set; } = [];
 
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
 
@@ -396,6 +427,7 @@ public class ReservationPaymentLinkResponse
 
 public class ReservationPricePreviewRequest : IValidatableObject
 {
+    public bool ForManualCreation { get; set; }
     [Range(1, int.MaxValue)]
     public int PropertyId { get; set; }
 

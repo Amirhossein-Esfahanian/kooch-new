@@ -130,6 +130,7 @@ builder.Services.AddScoped<IReservationStatusWorkflow, ReservationStatusWorkflow
 builder.Services.AddScoped<IEffectiveAvailabilityService, EffectiveAvailabilityService>();
 builder.Services.AddScoped<PublicRoomTypeCalendarService>();
 builder.Services.AddScoped<IReservationAvailabilityService, ReservationAvailabilityService>();
+builder.Services.AddScoped<ManualBookingAvailabilityService>();
 builder.Services.AddScoped<ReservationPricingService>();
 builder.Services.AddScoped<IReservationPricingService>(services => services.GetRequiredService<ReservationPricingService>());
 builder.Services.AddScoped<DatedPropertyStartingPriceService>();

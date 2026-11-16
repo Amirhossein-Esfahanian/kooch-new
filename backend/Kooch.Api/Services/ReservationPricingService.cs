@@ -11,6 +11,10 @@ public class ReservationPricingService(
     IChildPricingRuleResolver childPricingRuleResolver,
     IReservationRulesResolver reservationRulesResolver) : IReservationPricingService
 {
+    public Task<ReservationPricePreviewResponse> PreviewManualCreationPriceAsync(
+        ReservationPricePreviewRequest request, CancellationToken cancellationToken = default) =>
+        PreviewCoreAsync(request, requireCompleteDailyPricing: false, cancellationToken, requireValidManualPricing: true);
+
     public async Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
         ReservationPricePreviewRequest request,
         CancellationToken cancellationToken = default) =>
@@ -24,7 +28,8 @@ public class ReservationPricingService(
     private async Task<ReservationPricePreviewResponse> PreviewCoreAsync(
         ReservationPricePreviewRequest request,
         bool requireCompleteDailyPricing,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool requireValidManualPricing = false)
     {
         ValidateRequest(request);
 
@@ -56,6 +61,18 @@ public class ReservationPricingService(
             .ToDictionaryAsync(item => item.Date, cancellationToken);
         if (requireCompleteDailyPricing)
             EnsureCompleteDailyPricing(request, prices);
+
+        if (requireValidManualPricing)
+        {
+            var missingDates = GetReservationNights(request.CheckInDate, request.CheckOutDate)
+                .Where(date =>
+                {
+                    var nightlyBase = prices.GetValueOrDefault(date)?.BasePrice ?? roomType.BasePrice ?? 0;
+                    return nightlyBase <= 0 || nightlyBase + (ratePlan?.PriceModifierValue ?? 0) <= 0;
+                }).ToArray();
+            if (missingDates.Length > 0)
+                throw new IncompleteDailyPricingException(request.RoomTypeId, missingDates);
+        }
 
         var promotions = await dbContext.Promotions.AsNoTracking()
             .Include(item => item.PromotionRoomTypes)

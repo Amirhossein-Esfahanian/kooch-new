@@ -17,6 +17,7 @@ public sealed class ReservationCreationPropertyApprovalTests
     {
         await using var harness = await ReservationTestHarness.CreateAsync(useAuthoritativePricing: true);
         (await harness.DbContext.Properties.SingleAsync()).Status = status;
+        (await harness.DbContext.RoomTypes.SingleAsync(type => type.Id == 20)).BasePrice = 100;
         await harness.DbContext.SaveChangesAsync();
         var request = new ReservationCreateRequest
         {

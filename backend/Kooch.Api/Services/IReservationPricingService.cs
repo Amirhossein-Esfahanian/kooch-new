@@ -4,6 +4,10 @@ namespace Kooch.Api.Services;
 
 public interface IReservationPricingService
 {
+    Task<ReservationPricePreviewResponse> PreviewManualCreationPriceAsync(
+        ReservationPricePreviewRequest request, CancellationToken cancellationToken = default) =>
+        PreviewReservationPriceAsync(request, cancellationToken);
+
     Task<ReservationPricePreviewResponse> PreviewReservationPriceAsync(
         ReservationPricePreviewRequest request,
         CancellationToken cancellationToken = default);

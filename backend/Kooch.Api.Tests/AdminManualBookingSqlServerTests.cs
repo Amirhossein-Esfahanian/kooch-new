@@ -11,7 +11,7 @@ using Xunit;
 namespace Kooch.Api.Tests;
 
 // The opt-in fixture creates a GUID-named database and deletes only that database.
-public sealed class AdminManualBookingSqlServerTests(SqlServerWalletDatabase database)
+public sealed partial class AdminManualBookingSqlServerTests(SqlServerWalletDatabase database)
     : IClassFixture<SqlServerWalletDatabase>
 {
     private static readonly DateOnly Arrival = new(2035, 4, 1);
@@ -454,6 +454,7 @@ public sealed class AdminManualBookingSqlServerTests(SqlServerWalletDatabase dat
         var ids = await PropertyApprovalTestData.SeedAsync(db);
         var type = await db.RoomTypes.FindAsync(ids.RoomTypeId);
         type!.BasePrice = 100; type.TotalInventory = 3; type.MaxAdults = 2; type.MaxChildren = 1;
+        type.InventoryMode = InventoryMode.NamedRooms;
         var rooms = Enumerable.Range(1, 3).Select(i => new Room { RoomTypeId = ids.RoomTypeId, Name = $"SQL room {i}", IsActive = true }).ToArray();
         db.Rooms.AddRange(rooms);
         var guest = new Guest { FirstName = "SQL", LastName = "Synthetic", UserId = ids.OwnerId };

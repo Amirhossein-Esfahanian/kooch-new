@@ -15,7 +15,8 @@ public class AdminReservationsController(
     IReservationAvailabilityService reservationAvailabilityService,
     IReservationRulesResolver reservationRulesResolver,
     IPermissionService permissionService,
-    ReservationCancellationRequestService cancellationRequestService) : AuthenticatedControllerBase
+    ReservationCancellationRequestService cancellationRequestService,
+    ManualBookingAvailabilityService? manualBookingAvailability = null) : AuthenticatedControllerBase
 {
     [HttpGet("effective-rules")]
     [ProducesResponseType<EffectiveReservationRules>(StatusCodes.Status200OK)]
@@ -28,16 +29,22 @@ public class AdminReservationsController(
         return Ok(await reservationRulesResolver.ResolveAsync(propertyId, roomTypeId, cancellationToken));
     }
 
+    /// <summary>Legacy edit lookup returns room records; forCreation=true returns typed options and exclusion reasons.</summary>
     [HttpGet("available-rooms")]
-    [ProducesResponseType<IReadOnlyList<AvailableRoomResponse>>(StatusCodes.Status200OK)]
-    public async Task<ActionResult<IReadOnlyList<AvailableRoomResponse>>> GetAvailableRooms(
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetAvailableRooms(
         [FromQuery] int propertyId,
         [FromQuery] DateOnly checkInDate,
         [FromQuery] DateOnly checkOutDate,
         [FromQuery] int? excludeReservationId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        [FromQuery] bool forCreation = false,
+        [FromQuery] PricingGuestType guestType = PricingGuestType.Iranian)
     {
         await EnsurePropertyPermissionAsync(propertyId, "bookings.view", cancellationToken);
+        if (forCreation)
+            return Ok(await (manualBookingAvailability ?? throw new InvalidOperationException("Manual availability is not configured."))
+                .GetAsync(propertyId, checkInDate, checkOutDate, guestType, cancellationToken));
         return Ok(await reservationAvailabilityService.GetAvailableRoomsAsync(
             propertyId,
             checkInDate,
@@ -119,7 +126,7 @@ public class AdminReservationsController(
         CancellationToken cancellationToken)
     {
         await EnsurePropertyPermissionAsync(request.PropertyId, "bookings.create", cancellationToken);
-        return Ok(request.RoomCount == 1
+        return Ok(request.RoomCount == 1 && !request.ForManualCreation
             ? await reservationPricingService.PreviewReservationPriceAsync(request, cancellationToken)
             : await reservationService.PreviewManualBookingPriceAsync(request, cancellationToken));
     }

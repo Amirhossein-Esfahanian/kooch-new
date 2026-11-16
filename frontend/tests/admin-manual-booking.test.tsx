@@ -17,10 +17,12 @@ beforeEach(() => {
   mocks.api.mockImplementation(async (path: string) => {
     if (path === "/admin/properties") return [{ id: 10, name: "اقامتگاه آزمون" }, { id: 11, name: "اقامتگاه دوم" }];
     if (path.startsWith("/admin/guests")) return [{ id: 40, firstName: "مهمان", lastName: "آزمون", mobile: "09123456789" }];
-    if (path.startsWith("/admin/reservations/available-rooms")) return [30, 32, 33].map(roomId => ({
+    if (path.startsWith("/admin/reservations/available-rooms")) return { options: [{
+      roomTypeId: 20, name: "دبل", inventoryMode: "NamedRooms", availableCount: 3, bookingMode: "Instant",
+      rooms: [30, 32, 33].map(roomId => ({
       id: roomId, roomTypeId: 20, name: `اتاق ${roomId}`, capacity: 2,
       bookingMode: "Instant", allowExtraGuest: false, maxExtraGuests: 0,
-    }));
+    })) }], excluded: [] };
     if (path.startsWith("/admin/reservations/effective-rules")) return {
       propertyId: 10, roomTypeId: 20, baseCapacity: 2, maxDeclaredChildren: 0,
       extraGuestAllowed: false, maxExtraGuests: 0, childRate: 0, ruleSource: "SiteDefault",
@@ -108,7 +110,7 @@ it("creates all selected rooms and shows every reservation and the authoritative
 it("does not fetch before prerequisites and distinguishes genuinely empty availability", async () => {
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation((path: string, ...args: unknown[]) => path.startsWith("/admin/reservations/available-rooms")
-    ? Promise.resolve([]) : original(path, ...args));
+    ? Promise.resolve({ options: [], excluded: [] }) : original(path, ...args));
   render(<ManualReservationDialog context="admin" fixedPropertyId={10} onCreated={vi.fn()} />);
   fireEvent.click(screen.getByRole("button", { name: "افزودن رزرو" }));
   expect((await screen.findByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement).disabled).toBe(true);
@@ -178,7 +180,9 @@ it("uses the OnRequest status and never offers confirmed creation", async () => 
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
     const response = await original(path, ...args);
-    return path.includes("available-rooms") ? response.map((room: object) => ({ ...room, bookingMode: "OnRequest" })) : response;
+    return path.includes("available-rooms") ? { ...response, options: response.options.map((option: { rooms: object[] }) => ({
+      ...option, bookingMode: "OnRequest", rooms: option.rooms.map(room => ({ ...room, bookingMode: "OnRequest" }))
+    })) } : response;
   });
   await openStay(); await selectRooms();
   fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
@@ -279,7 +283,9 @@ it("retains only still-available selected rooms after a date change and re-price
   const original = mocks.api.getMockImplementation()!;
   mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
     const result = await original(path, ...args);
-    if (path.includes("available-rooms")) return result.filter((room: { id: number }) => room.id !== 32);
+    if (path.includes("available-rooms")) return { ...result, options: result.options.map((option: { rooms: { id: number }[] }) => ({
+      ...option, rooms: option.rooms.filter(room => room.id !== 32)
+    })) };
     if (path === "/admin/reservations/price-preview") return {
       ...result, roomCount: 2, finalAmount: 400, roomPrices: result.roomPrices.slice(0, 2),
     };
@@ -330,4 +336,79 @@ it("does not advance a closed/reopened wizard from a previous availability respo
   const next = await screen.findByRole("button", { name: "انتخاب اتاق‌ها" });
   expect(screen.queryByRole("button", { name: "بررسی نهایی" })).toBeNull();
   expect((next as HTMLButtonElement).disabled).toBe(true);
+});
+
+it("books TypeBased quantities without physical room IDs and keeps mixed missing-price feedback visible", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation((path: string, ...args: unknown[]) => path.includes("available-rooms")
+    ? Promise.resolve({ options: [{ roomTypeId: 20, name: "سوئیت تعدادی", inventoryMode: "TypeBasedInventory",
+      availableCount: 3, bookingMode: "Instant", rooms: [] }], excluded: [{ roomTypeId: 21, name: "بدون نرخ",
+      reason: "MissingNightlyPricing", missingDates: ["2035-02-02"] }] }) : original(path, ...args));
+  await openStay();
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  const type = await screen.findByLabelText("نوع اتاق (موجودی تعدادی)");
+  expect(screen.getByText(/قیمت معتبر برای شب‌های/).textContent).toContain("۲۰۳۵-۰۲-۰۲");
+  expect(screen.queryByRole("button", { name: /^اتاق/ })).toBeNull();
+  fireEvent.change(type, { target: { value: "20" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /تعداد واحد/ }), { target: { value: "4" } });
+  expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByRole("spinbutton", { name: /تعداد واحد/ }), { target: { value: "3" } });
+  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
+  const preview = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/price-preview").at(-1)!;
+  expect(JSON.parse(preview[1].body)).toMatchObject({ forManualCreation: true, roomTypeId: 20, roomCount: 3 });
+  fireEvent.click(screen.getByRole("button", { name: "بررسی نهایی" }));
+  expect(within(screen.getByRole("list", { name: "قیمت اتاق‌های انتخاب‌شده" })).getAllByRole("listitem")).toHaveLength(3);
+  fireEvent.click(screen.getByRole("button", { name: "تایید و ایجاد رزرو" }));
+  await screen.findByRole("dialog", { name: "سفارش دستی ثبت شد" });
+  const create = mocks.api.mock.calls.find(([path]) => path === "/admin/reservations")!;
+  expect(JSON.parse(create[1].body)).toMatchObject({ roomId: 0, roomIds: [], roomCount: 3,
+    roomTypeSelections: [{ roomTypeId: 20, quantity: 3 }], adults: 3 });
+});
+
+it("stays on Step 1 with server reasons and missing dates when every option is blocked", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation((path: string, ...args: unknown[]) => path.includes("available-rooms")
+    ? Promise.resolve({ options: [], excluded: [
+      { roomTypeId: 20, name: "بدون قیمت", reason: "MissingNightlyPricing", missingDates: ["2035-02-01"] },
+      { roomTypeId: 21, name: "پر", reason: "NoAvailability", missingDates: [] },
+      { roomTypeId: 22, name: "نام‌دار", reason: "NoEligibleNamedRooms", missingDates: [] }
+    ] }) : original(path, ...args));
+  await openStay();
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  expect(await screen.findByText(/قیمت معتبر برای شب‌های/)).toBeTruthy();
+  expect(screen.getByText(/اتاق نام‌دار فعال و آزاد/)).toBeTruthy();
+  expect(screen.getByText(/موجودی قابل فروش ندارد/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "بررسی نهایی" })).toBeNull();
+  expect(screen.getByRole("button", { name: "انتخاب تاریخ جدید" })).toBeTruthy();
+});
+
+it("preserves a TypeBased quantity on unchanged navigation and revalidates it when dates change", async () => {
+  const original = mocks.api.getMockImplementation()!;
+  mocks.api.mockImplementation(async (path: string, ...args: unknown[]) => {
+    if (path.includes("available-rooms")) return { options: [{ roomTypeId: 20, name: "سوئیت تعدادی",
+      inventoryMode: "TypeBasedInventory", availableCount: path.includes("2035-02-05") ? 2 : 3,
+      bookingMode: "Instant", rooms: [] }], excluded: [] };
+    const result = await original(path, ...args);
+    if (path === "/admin/reservations/price-preview") {
+      const count = JSON.parse((args[0] as { body: string }).body).roomCount as number;
+      return { ...result, roomCount: count, finalAmount: count * 200, roomPrices: result.roomPrices.slice(0, count) };
+    }
+    return result;
+  });
+  await openStay();
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  fireEvent.change(await screen.findByLabelText("نوع اتاق (موجودی تعدادی)"), { target: { value: "20" } });
+  fireEvent.change(screen.getByRole("spinbutton", { name: /تعداد واحد/ }), { target: { value: "3" } });
+  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  expect((await screen.findByRole("spinbutton", { name: /تعداد واحد/ }) as HTMLInputElement).value).toBe("3");
+  fireEvent.click(screen.getByRole("button", { name: "بازگشت" }));
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب تاریخ جدید" }));
+  expect((screen.getByLabelText("بزرگسالان") as HTMLInputElement).value).toBe("3");
+  fireEvent.click(screen.getByRole("button", { name: "انتخاب اتاق‌ها" }));
+  expect((await screen.findByRole("spinbutton", { name: /تعداد واحد/ }) as HTMLInputElement).value).toBe("2");
+  await waitFor(() => expect((screen.getByRole("button", { name: "بررسی نهایی" }) as HTMLButtonElement).disabled).toBe(false));
+  const preview = mocks.api.mock.calls.filter(([path]) => path === "/admin/reservations/price-preview").at(-1)!;
+  expect(JSON.parse(preview[1].body)).toMatchObject({ checkInDate: "2035-02-05", roomCount: 2, adults: 3 });
 });
