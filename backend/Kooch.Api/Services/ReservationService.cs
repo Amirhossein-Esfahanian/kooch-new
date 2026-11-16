@@ -423,6 +423,8 @@ public class ReservationService(
             throw new InvalidOperationException("All rooms in an order must use the same currency.");
         return new ReservationPricePreviewResponse
         {
+            RoomPrices = prices.Select(price => new ManualRoomPricePreview(
+                price.Adults, price.Children, price.FinalAmount, price.Currency)).ToArray(),
             PropertyId = property.Id, RoomTypeId = type.Id, GuestType = request.GuestType,
             CheckInDate = request.CheckInDate, CheckOutDate = request.CheckOutDate,
             NightsCount = request.CheckOutDate.DayNumber - request.CheckInDate.DayNumber, RoomCount = request.RoomCount,

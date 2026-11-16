@@ -256,6 +256,10 @@ public sealed partial class AdminManualBookingTests
         Assert.Equal(900m, preview.FinalAmount);
         Assert.Equal(order.TotalAmount, preview.FinalAmount);
         Assert.Equal(3, preview.RoomCount);
+        Assert.NotNull(preview.RoomPrices);
+        Assert.Equal(order.Reservations.Select(room => room.FinalAmount), preview.RoomPrices.Select(room => room.FinalAmount));
+        Assert.Equal(order.Reservations.Select(room => room.Adults), preview.RoomPrices.Select(room => room.Adults));
+        Assert.Equal(order.Reservations.Select(room => room.Children), preview.RoomPrices.Select(room => room.Children));
         Assert.Equal(preview.FinalAmount, preview.Nights.Sum(night => night.FinalAmount));
     }
 

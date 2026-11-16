@@ -17,6 +17,91 @@ public sealed class AdminManualBookingSqlServerTests(SqlServerWalletDatabase dat
     private static readonly DateOnly Arrival = new(2035, 4, 1);
 
     [SqlServerWalletFact]
+    public async Task Availability_KnownPhysicalRoomsHaveApiFields_ClosedNightReturnsNoRooms()
+    {
+        var seed = await SeedAsync();
+        await using var db = Open();
+        var service = new ReservationAvailabilityService(db, new EffectiveAvailabilityService(db));
+        var rooms = await service.GetAvailableRoomsAsync(seed.PropertyId, Arrival, Arrival.AddDays(2));
+        Assert.Equal(seed.Rooms.Order(), rooms.Select(r => r.Id).Order());
+        var options = new System.Text.Json.JsonSerializerOptions(System.Text.Json.JsonSerializerDefaults.Web);
+        options.Converters.Add(new System.Text.Json.Serialization.JsonStringEnumConverter());
+        var response = System.Text.Json.JsonSerializer.SerializeToElement(rooms, options);
+        Assert.Equal(3, response.GetArrayLength());
+        Assert.Equal(seed.RoomTypeId, response[0].GetProperty("roomTypeId").GetInt32());
+        Assert.Equal("OnRequest", response[0].GetProperty("bookingMode").GetString());
+        Assert.True(response[0].GetProperty("capacity").GetInt32() > 0);
+        Assert.False(string.IsNullOrWhiteSpace(response[0].GetProperty("name").GetString()));
+        var closed = await db.Availabilities.SingleAsync(a => a.RoomTypeId == seed.RoomTypeId && a.Date == Arrival);
+        closed.Status = AvailabilityStatus.Unavailable; closed.AvailableCount = 0;
+        await db.SaveChangesAsync();
+        await using var fresh = Open();
+        Assert.Empty(await new ReservationAvailabilityService(fresh, new EffectiveAvailabilityService(fresh))
+            .GetAvailableRoomsAsync(seed.PropertyId, Arrival, Arrival.AddDays(2)));
+    }
+
+    [SqlServerWalletFact]
+    public async Task Availability_PositiveCalendarWithoutPhysicalRooms_IsNotBookable()
+    {
+        var seed = await SeedAsync();
+        var checkIn = new DateOnly(2026, 11, 18); // 1405/08/27; checkout is exclusive.
+        var checkOut = checkIn.AddDays(1);
+        await using (var setup = Open())
+        {
+            var type = await setup.RoomTypes.SingleAsync(t => t.Id == seed.RoomTypeId);
+            type.InventoryMode = InventoryMode.NamedRooms;
+            type.TotalInventory = 1;
+            setup.Rooms.RemoveRange(await setup.Rooms.Where(r => r.RoomTypeId == type.Id).ToListAsync());
+            setup.Availabilities.AddRange(new Availability
+            {
+                RoomTypeId = type.Id, Date = checkIn, AvailableCount = 1, Status = AvailabilityStatus.Available
+            }, new Availability
+            {
+                RoomTypeId = type.Id, Date = checkOut, AvailableCount = 0,
+                Status = AvailabilityStatus.Unavailable, IsClosed = true
+            });
+            await setup.SaveChangesAsync();
+        }
+
+        await using (var read = Open())
+        {
+            var effective = new EffectiveAvailabilityService(read);
+            var calendar = await new AvailabilityService(read, new PropertyAccessService(read),
+                    new RecordingAuditLogService(), effective)
+                .GetPropertyInventoryAsync(seed.AdminId, UserRole.SuperAdmin, seed.PropertyId, checkIn, checkOut);
+            var nights = Assert.Single(calendar.RoomTypes).Days;
+            Assert.Equal(1, nights.Single(d => d.Date == checkIn).AvailableCount);
+            Assert.Equal(AvailabilityStatus.Available, nights.Single(d => d.Date == checkIn).Status);
+            Assert.Empty(await new ReservationAvailabilityService(read, effective)
+                .GetAvailableRoomsAsync(seed.PropertyId, checkIn, checkOut));
+        }
+
+        int roomId;
+        await using (var setup = Open())
+        {
+            var room = new Room { RoomTypeId = seed.RoomTypeId, Name = "Configured physical test room", IsActive = true };
+            setup.Rooms.Add(room);
+            await setup.SaveChangesAsync();
+            roomId = room.Id;
+        }
+        await using (var read = Open())
+        {
+            var room = Assert.Single(await new ReservationAvailabilityService(read, new EffectiveAvailabilityService(read))
+                .GetAvailableRoomsAsync(seed.PropertyId, checkIn, checkOut));
+            Assert.Equal(roomId, room.Id); // The closed checkout day must not exclude this one-night stay.
+            Assert.Equal(ReservationBookingModeFilter.Instant, room.BookingMode);
+        }
+        await using (var setup = Open())
+        {
+            (await setup.Rooms.SingleAsync(r => r.Id == roomId)).IsActive = false;
+            await setup.SaveChangesAsync();
+        }
+        await using var finalRead = Open();
+        Assert.Empty(await new ReservationAvailabilityService(finalRead, new EffectiveAvailabilityService(finalRead))
+            .GetAvailableRoomsAsync(seed.PropertyId, checkIn, checkOut));
+    }
+
+    [SqlServerWalletFact]
     public async Task CreateOneRoom_ReconcilesOrderWithoutOnlineSideEffects()
     {
         var seed = await SeedAsync();

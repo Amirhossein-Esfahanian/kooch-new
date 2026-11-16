@@ -102,6 +102,7 @@ type ReservationPricePreviewResponse = {
   discountAmount: number;
   finalAmount: number;
   currency: string;
+  roomPrices?: Array<{ adults: number; children: number; finalAmount: number; currency: string }>;
 };
 
 type ManualBookingCreateResponse = {
@@ -504,6 +505,11 @@ export function ManualReservationDialog({
   const [rulesLoading, setRulesLoading] = useState(false);
   const [rulesError, setRulesError] = useState("");
   const [loadingRooms, setLoadingRooms] = useState(false);
+  const [availabilityError, setAvailabilityError] = useState("");
+  const [availabilityLoaded, setAvailabilityLoaded] = useState(false);
+  const [wizardStep, setWizardStep] = useState<1 | 2 | 3>(1);
+  const [submissionError, setSubmissionError] = useState("");
+  const stepHeadingRef = useRef<HTMLHeadingElement>(null);
   const [availabilityReloadKey, setAvailabilityReloadKey] = useState(0);
   const [selectedStatus, setSelectedStatus] =
     useState<ReservationTableStatus>("Pending");
@@ -511,6 +517,7 @@ export function ManualReservationDialog({
   const [submitting, setSubmitting] = useState(false);
   const pricePreviewRequestId = useRef(0);
   const availabilityAbortRef = useRef<AbortController | null>(null);
+  const availabilityRequestId = useRef(0);
   const rulesAbortRef = useRef<AbortController | null>(null);
   const pricePreviewAbortRef = useRef<AbortController | null>(null);
   const guestSearchAbortRef = useRef<AbortController | null>(null);
@@ -520,6 +527,11 @@ export function ManualReservationDialog({
   const reservationRef = useRef(reservation);
   reservationRef.current = reservation;
   const isEditMode = mode === "edit";
+  const isWizard = !isEditMode && context === "admin";
+  const wizardAvailabilityReady = !isWizard || availabilityLoaded;
+  const showStay = !isWizard || wizardStep === 1;
+  const showRooms = !isWizard || wizardStep === 2;
+  const showReview = !isWizard || wizardStep === 3;
   const dialogOpen = isEditMode ? Boolean(controlledOpen) : open;
   const reservationIdentity =
     reservation?.reservationId ??
@@ -542,6 +554,7 @@ export function ManualReservationDialog({
     (reservation.status === "Paid" || isTerminalReadOnly);
 
   function setDialogOpen(nextOpen: boolean) {
+    if (!nextOpen && isWizard) invalidateWizardAvailability();
     if (isEditMode) {
       onOpenChange?.(nextOpen);
       return;
@@ -638,7 +651,7 @@ export function ManualReservationDialog({
     : "Pending";
   const createStatusOptions: ReservationTableStatus[] = hasOnRequest
     ? ["PendingApproval"]
-    : ["Pending", "Confirmed"];
+    : ["Pending"];
   const editStatusOptions =
     isEditMode && reservation
       ? [
@@ -665,6 +678,89 @@ export function ManualReservationDialog({
     pricePreview !== null
       ? pricePreview.finalAmount + existingManualAdjustment
       : (reservation?.finalAmount ?? reservation?.totalPrice ?? null);
+  const stayInputsValid = Boolean(selectedPropertyId && draft.guestId && hasValidDateRange &&
+    /^\d+$/.test(draft.adults) && Number(draft.adults) >= 1 && Number(draft.adults) <= 100 &&
+    /^\d+$/.test(draft.children) && Number(draft.children) <= 100 &&
+    draft.childAges.length === Number(draft.children) &&
+    draft.childAges.every(age => /^\d+$/.test(age) && Number(age) <= 17));
+  const roomPrices = pricePreview
+    ? selectedRoomCount === 1 ? [pricePreview] : pricePreview.roomPrices ?? []
+    : [];
+  const roomsReady = Boolean(availabilityLoaded && !loadingRooms && !availabilityError &&
+    selectedRoomCount > 0 && draft.roomIds.every(id => rooms.some(room => String(room.roomId) === id)) &&
+    effectiveRules && !rulesLoading && !rulesError && pricePreview && !pricePreviewLoading && !pricePreviewError &&
+    roomPrices.length === selectedRoomCount && roomPrices.every(price => price.currency === pricePreview.currency) &&
+    Math.abs(roomPrices.reduce((sum, price) => sum + price.finalAmount, 0) - pricePreview.finalAmount) < 0.01);
+
+  function goToStep(step: 1 | 2 | 3) {
+    setWizardStep(step);
+    setSubmissionError("");
+  }
+
+  function invalidateWizardAvailability() {
+    availabilityRequestId.current += 1;
+    availabilityAbortRef.current?.abort();
+    rulesAbortRef.current?.abort();
+    pricePreviewAbortRef.current?.abort();
+    pricePreviewRequestId.current += 1;
+    setRooms([]);
+    setLoadingRooms(false);
+    setAvailabilityLoaded(false);
+    setAvailabilityError("");
+    setEffectiveRules(null);
+    setRulesLoading(false);
+    setRulesError("");
+    setPricePreview(null);
+    setPricePreviewLoading(false);
+    setPricePreviewError("");
+  }
+
+  async function checkWizardAvailability() {
+    if (!isWizard || !dialogOpen || !stayInputsValid || loadingRooms) return;
+    invalidateWizardAvailability();
+    const requestId = availabilityRequestId.current;
+    const controller = new AbortController();
+    availabilityAbortRef.current = controller;
+    const params = new URLSearchParams({
+      propertyId: draft.propertyId,
+      checkInDate: draft.checkInDate,
+      checkOutDate: draft.checkOutDate,
+    });
+    setLoadingRooms(true);
+    try {
+      const items = await apiRequest<AvailableRoomApiResponse[]>(
+        `/admin/reservations/available-rooms?${params.toString()}`,
+        { signal: controller.signal },
+      );
+      if (controller.signal.aborted || availabilityRequestId.current !== requestId) return;
+      const availableRooms = items.map(normalizeAvailableRoom)
+        .filter((room): room is AvailableRoomResponse => room !== null);
+      if (availableRooms.length !== items.length)
+        throw new Error("پاسخ فهرست اتاق‌ها معتبر نیست؛ دوباره تلاش کنید.");
+      setRooms(availableRooms);
+      setAvailabilityLoaded(true);
+      setDraft(current => {
+        const roomIds = current.roomIds.filter(id => availableRooms.some(room => String(room.roomId) === id));
+        const roomTypeId = availableRooms.find(room => String(room.roomId) === roomIds[0])?.roomTypeId.toString() ?? "";
+        return { ...current, roomIds, roomTypeId };
+      });
+      if (availableRooms.length > 0) goToStep(2);
+    } catch (caught) {
+      if (controller.signal.aborted || availabilityRequestId.current !== requestId) return;
+      setAvailabilityError(caught instanceof Error ? caught.message : "دریافت اتاق‌ها انجام نشد.");
+    } finally {
+      if (availabilityRequestId.current === requestId) setLoadingRooms(false);
+    }
+  }
+
+  useEffect(() => () => {
+    availabilityRequestId.current += 1;
+    availabilityAbortRef.current?.abort();
+  }, []);
+
+  useEffect(() => {
+    if (isWizard && dialogOpen) stepHeadingRef.current?.focus();
+  }, [wizardStep, isWizard, dialogOpen]);
   const editChangeSummary: Array<{
     label: string;
     before: string;
@@ -844,7 +940,7 @@ export function ManualReservationDialog({
   function updateChildren(value: string) {
     const childrenCount = Math.min(
       toNonNegativeInt(value),
-      maxDeclaredChildren,
+      isWizard ? 100 : maxDeclaredChildren,
     );
     setDraft((current) => ({
       ...current,
@@ -892,7 +988,7 @@ export function ManualReservationDialog({
     const roomBaseCapacity = selectedRooms
       .filter((room) => room.roomTypeId.toString() === roomTypeId)
       .reduce((total, room) => total + room.baseCapacity, 0);
-    pendingRoomCapacityResetRef.current = roomTypeId || null;
+    pendingRoomCapacityResetRef.current = isWizard ? null : roomTypeId || null;
     setEffectiveRules(null);
     setRulesError("");
     setPricePreview(null);
@@ -903,11 +999,11 @@ export function ManualReservationDialog({
       roomTypeId,
       roomIds,
       adults:
-        roomIds.length > 0
+        isWizard ? current.adults : roomIds.length > 0
           ? Math.max(1, roomBaseCapacity).toString()
           : initialDraft.adults,
-      children: initialDraft.children,
-      childAges: [],
+      children: isWizard ? current.children : initialDraft.children,
+      childAges: isWizard ? current.childAges : [],
     }));
   }
 
@@ -939,6 +1035,10 @@ export function ManualReservationDialog({
     setGuestDraft(emptyGuestDraft);
     setGuestDialogOpen(false);
     setConfirmCreateOpen(false);
+    setWizardStep(1);
+    setSubmissionError("");
+    setAvailabilityError("");
+    setAvailabilityLoaded(false);
     setPricePreview(null);
     setPricePreviewLoading(false);
     setPricePreviewError("");
@@ -968,7 +1068,7 @@ export function ManualReservationDialog({
     setSelectedStatus((current) => {
       const isAllowed = hasOnRequest
         ? current === "PendingApproval"
-        : current === "Pending" || current === "Confirmed";
+        : current === "Pending";
       return isAllowed ? current : defaultCreateStatus;
     });
   }, [defaultCreateStatus, dialogOpen, hasOnRequest, isEditMode]);
@@ -981,6 +1081,7 @@ export function ManualReservationDialog({
       context !== "admin" ||
       !selectedPropertyId ||
       !draft.roomTypeId ||
+      !wizardAvailabilityReady ||
       selectedRoomCount <= 0
     ) {
       setEffectiveRules(null);
@@ -1003,11 +1104,12 @@ export function ManualReservationDialog({
       { signal: controller.signal },
     )
       .then((rules) => {
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         const shouldResetAdults =
           pendingRoomCapacityResetRef.current === draft.roomTypeId;
         pendingRoomCapacityResetRef.current = null;
         setEffectiveRules(rules);
+        if (isWizard) return;
         setDraft((current) => {
           const roomCount = current.roomIds.length;
           const maximumAdults =
@@ -1032,13 +1134,13 @@ export function ManualReservationDialog({
         });
       })
       .catch((caught: Error) => {
-        if (cancelled) return;
+        if (cancelled || controller.signal.aborted) return;
         if (caught.name === "AbortError") return;
         setEffectiveRules(null);
         setRulesError(caught.message || "قوانین رزرو اتاق بارگذاری نشد.");
       })
       .finally(() => {
-        if (!cancelled) setRulesLoading(false);
+        if (!cancelled && !controller.signal.aborted) setRulesLoading(false);
       });
 
     return () => {
@@ -1052,9 +1154,12 @@ export function ManualReservationDialog({
     isLockedEdit,
     selectedPropertyId,
     selectedRoomCount,
+    isWizard,
+    wizardAvailabilityReady,
   ]);
 
   useEffect(() => {
+    if (isWizard) return;
     availabilityAbortRef.current?.abort();
     if (isLockedEdit) {
       setLoadingRooms(false);
@@ -1068,6 +1173,8 @@ export function ManualReservationDialog({
     ) {
       setRooms([]);
       setLoadingRooms(false);
+      setAvailabilityLoaded(false);
+      setAvailabilityError("");
       return;
     }
 
@@ -1085,6 +1192,8 @@ export function ManualReservationDialog({
     }
 
     setLoadingRooms(true);
+    setAvailabilityError("");
+    setAvailabilityLoaded(false);
     apiRequest<AvailableRoomApiResponse[]>(
       `/admin/reservations/available-rooms?${params.toString()}`,
       { signal: controller.signal },
@@ -1095,6 +1204,7 @@ export function ManualReservationDialog({
             .map(normalizeAvailableRoom)
             .filter((room): room is AvailableRoomResponse => room !== null);
           setRooms(availableRooms);
+          setAvailabilityLoaded(true);
         }
       })
       .catch((caught: Error) => {
@@ -1123,6 +1233,7 @@ export function ManualReservationDialog({
     reservation?.reservationId,
     selectedPropertyId,
     availabilityReloadKey,
+    isWizard,
   ]);
 
   useEffect(() => {
@@ -1156,7 +1267,7 @@ export function ManualReservationDialog({
     const requestId = pricePreviewRequestId.current + 1;
     pricePreviewRequestId.current = requestId;
 
-    if (!dialogOpen || context !== "admin" || isLockedEdit) {
+    if (!dialogOpen || context !== "admin" || isLockedEdit || !wizardAvailabilityReady) {
       setPricePreview(null);
       setPricePreviewLoading(false);
       setPricePreviewError("");
@@ -1258,6 +1369,7 @@ export function ManualReservationDialog({
     draft.checkOutDate,
     draft.children,
     draft.guestType,
+    draft.guestId,
     draft.roomTypeId,
     effectiveRules,
     hasValidDateRange,
@@ -1268,6 +1380,8 @@ export function ManualReservationDialog({
     selectedRoomIdsKey,
     rulesError,
     rulesLoading,
+    isWizard,
+    wizardAvailabilityReady,
   ]);
 
   async function addGuest() {
@@ -1308,6 +1422,7 @@ export function ManualReservationDialog({
 
   function submitReservation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isWizard) return; // Step navigation and Enter must never create an order.
 
     if (submitting || submissionInFlightRef.current) return;
 
@@ -1360,6 +1475,7 @@ export function ManualReservationDialog({
   }
 
   async function createReservation() {
+    if (isWizard && (wizardStep !== 3 || !stayInputsValid || !roomsReady)) return;
     if (submissionInFlightRef.current || submitting || pricePreviewLoading)
       return;
     submissionInFlightRef.current = true;
@@ -1427,6 +1543,11 @@ export function ManualReservationDialog({
           roomIds: [],
         }));
         setAvailabilityReloadKey((current) => current + 1);
+        if (isWizard) {
+          invalidateWizardAvailability();
+          setWizardStep(1);
+          setAvailabilityError("ظرفیت اتاق تغییر کرده است. لطفاً دوباره اتاق‌ها را بررسی کنید.");
+        }
         toast.error(
           caught instanceof Error
             ? caught.message
@@ -1454,7 +1575,23 @@ export function ManualReservationDialog({
       )}
       <KoochDialog
         footer={
-          <>
+          isWizard ? <div className="flex w-full flex-wrap items-center justify-between gap-2">
+            <KoochButton disabled={submitting} onClick={() => wizardStep === 1 ? setDialogOpen(false) : goToStep(wizardStep === 3 ? 2 : 1)} type="button" variant="outline">
+              {wizardStep === 1 ? "انصراف" : "بازگشت"}
+            </KoochButton>
+            {wizardStep < 3 ? <KoochButton type="button"
+              loading={wizardStep === 1 && loadingRooms}
+              disabled={wizardStep === 1 ? !stayInputsValid || loadingRooms : !roomsReady}
+              onClick={() => wizardStep === 1 ? void checkWizardAvailability() : goToStep(3)}>
+              {wizardStep === 1 ? "انتخاب اتاق‌ها" : "بررسی نهایی"}
+            </KoochButton> : <KoochButton type="button" loading={submitting}
+              disabled={!stayInputsValid || !roomsReady || submitting}
+              onClick={async () => {
+                if (wizardStep !== 3 || !stayInputsValid || !roomsReady) return;
+                try { await createReservation(); }
+                catch (caught) { setSubmissionError(caught instanceof Error ? caught.message : "ذخیره رزرو انجام نشد."); }
+              }}>تایید و ایجاد رزرو</KoochButton>}
+          </div> : <>
             <KoochButton
               disabled={submitting}
               onClick={() => setDialogOpen(false)}
@@ -1490,7 +1627,20 @@ export function ManualReservationDialog({
           id="manual-reservation-form"
           onSubmit={submitReservation}
         >
-          <KoochCard className="grid gap-3" padding="sm" variant="muted">
+          {isWizard && <>
+            <ol aria-label="مراحل ایجاد رزرو" className="grid grid-cols-3 gap-2 border-b border-border pb-4 text-xs sm:text-sm">
+              {["اطلاعات اقامت", "انتخاب اتاق", "بررسی و ثبت"].map((label, index) => <li key={label}
+                aria-current={wizardStep === index + 1 ? "step" : undefined}
+                className={`min-w-0 border-b-2 pb-2 text-center font-semibold ${wizardStep === index + 1 ? "border-primary text-primary" : "border-border text-muted-foreground"}`}>
+                {toPersianDigits(String(index + 1))}. {label}
+              </li>)}
+            </ol>
+            <h3 className="text-base font-bold outline-none" ref={stepHeadingRef} tabIndex={-1}>
+              {["اطلاعات اقامت و مهمانان", "اتاق‌های قابل رزرو", "بررسی و ثبت سفارش"][wizardStep - 1]}
+            </h3>
+            {submissionError && <KoochAlert title="ثبت سفارش انجام نشد" variant="destructive">{submissionError}</KoochAlert>}
+          </>}
+          {showReview && <KoochCard className="grid gap-3" padding="sm" variant="muted">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <p className="text-xs font-bold text-muted-foreground">
@@ -1524,7 +1674,7 @@ export function ManualReservationDialog({
                 ))}
               </div>
             )}
-          </KoochCard>
+          </KoochCard>}
 
           {isEditMode && (
             <section aria-label="اطلاعات مهمان ثبت‌شده" className="grid gap-2">
@@ -1573,7 +1723,7 @@ export function ManualReservationDialog({
           ) : (
             <>
               <div className="grid gap-4 md:grid-cols-2">
-                {rulesLoading ? (
+                {showRooms && (rulesLoading ? (
                   <KoochCard className="md:col-span-2" padding="sm">
                     <p className="text-sm font-semibold text-muted-foreground">
                       در حال بارگذاری قوانین اتاق...
@@ -1608,15 +1758,20 @@ export function ManualReservationDialog({
                       برای نمایش قوانین رزرو، ابتدا اتاق را انتخاب کنید.
                     </p>
                   </KoochCard>
-                )}
+                ))}
 
-                {context === "admin" && (
+                {context === "admin" && showStay && (
                   <KoochField label="اقامتگاه" required>
                     <KoochSearchableSelect
                       disabled={isLockedEdit}
                       emptyText="اقامتگاهی پیدا نشد."
                       onChange={(value) => {
                         if (value === draft.propertyId) return;
+                        if (isWizard) {
+                          invalidateWizardAvailability();
+                          setDraft(current => ({ ...current, propertyId: value, roomTypeId: "", roomIds: [] }));
+                          return;
+                        }
                         availabilityAbortRef.current?.abort();
                         rulesAbortRef.current?.abort();
                         pricePreviewAbortRef.current?.abort();
@@ -1650,7 +1805,7 @@ export function ManualReservationDialog({
                   </KoochField>
                 )}
 
-                {!isEditMode && (
+                {!isEditMode && showStay && (
                   <KoochField className="md:col-span-2" label="مهمان" required>
                     <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
                       <KoochSearchableSelect
@@ -1688,7 +1843,7 @@ export function ManualReservationDialog({
                   </KoochField>
                 )}
 
-                <KoochField
+                {showStay && <KoochField
                   className="md:col-span-2"
                   label="بازه اقامت"
                   required
@@ -1711,6 +1866,11 @@ export function ManualReservationDialog({
                       ) {
                         return;
                       }
+                      if (isWizard) {
+                        invalidateWizardAvailability();
+                        setDraft(current => ({ ...current, checkInDate: nextCheckInDate, checkOutDate: nextCheckOutDate }));
+                        return;
+                      }
                       availabilityAbortRef.current?.abort();
                       rulesAbortRef.current?.abort();
                       pricePreviewAbortRef.current?.abort();
@@ -1726,7 +1886,7 @@ export function ManualReservationDialog({
                         checkOutDate: nextCheckOutDate,
                         roomTypeId: "",
                         roomIds: [],
-                        adults: initialDraft.adults,
+                        adults: isWizard ? current.adults : initialDraft.adults,
                       }));
                     }}
                     placeholderEnd=""
@@ -1743,18 +1903,39 @@ export function ManualReservationDialog({
                       {new Intl.NumberFormat("fa-IR").format(nightsCount)}
                     </p>
                   )}
-                </KoochField>
+                </KoochField>}
 
-                <KoochField className="md:col-span-2" label="اتاق" required>
+                {isWizard && showStay && <div className="md:col-span-2" aria-live="polite" aria-busy={loadingRooms}>
+                  {loadingRooms ? <p role="status" className="text-sm text-muted-foreground">در حال دریافت اتاق‌های موجود…</p>
+                    : availabilityError ? <KoochAlert title="خطا در دریافت اتاق‌ها" variant="destructive">
+                      <p>{availabilityError}</p>
+                      <KoochButton type="button" size="sm" variant="outline" disabled={!stayInputsValid}
+                        onClick={() => void checkWizardAvailability()}>تلاش دوباره برای دریافت اتاق‌ها</KoochButton>
+                    </KoochAlert>
+                    : availabilityLoaded && rooms.length === 0 ? <p role="status" className="text-sm text-muted-foreground">برای این اقامتگاه در بازهٔ انتخاب‌شده اتاق قابل رزرو نیست.</p> : null}
+                </div>}
+
+                {showRooms && <div className="grid gap-3 md:col-span-2" aria-busy={loadingRooms}>
+                  {!isEditMode && !isWizard && <>
+                    {!selectedPropertyId || !hasValidDateRange ? <p role="status" className="text-sm text-muted-foreground">ابتدا اقامتگاه و بازهٔ معتبر اقامت را انتخاب کنید.</p>
+                      : loadingRooms ? <p role="status" className="text-sm text-muted-foreground">در حال دریافت اتاق‌های موجود…</p>
+                      : availabilityError ? <KoochAlert title="خطا در دریافت اتاق‌ها" variant="destructive">
+                        <p>{availabilityError}</p>
+                        <KoochButton type="button" size="sm" variant="outline" onClick={() => setAvailabilityReloadKey(value => value + 1)}>تلاش دوباره برای دریافت اتاق‌ها</KoochButton>
+                      </KoochAlert>
+                      : availabilityLoaded && rooms.length === 0 ? <p role="status" className="text-sm text-muted-foreground">برای این اقامتگاه و بازهٔ اقامت، اتاق قابل رزرو موجود نیست. تاریخ‌ها را تغییر دهید.</p> : null}
+                  </>}
+                  <KoochField label="اتاق" required>
                   {!isEditMode ? (
                     <KoochMultiSelect
-                      disabled={!selectedPropertyId || loadingRooms || nightsCount <= 0}
+                      disabled={!selectedPropertyId || loadingRooms || nightsCount <= 0 || Boolean(availabilityError) || !availabilityLoaded || rooms.length === 0}
                       options={roomOptions.filter(option => !draft.roomIds.length ||
                         rooms.find(room => room.roomId.toString() === String(option.value))?.roomTypeId.toString() === draft.roomTypeId)}
                       value={draft.roomIds}
                       onChange={value => updateSelectedRooms(value.map(String))}
                       placeholder="انتخاب اتاق‌ها"
                       searchPlaceholder="جستجوی اتاق..."
+                      emptyText="اتاقی با این جستجو پیدا نشد."
                     />
                   ) : (
                   <KoochSearchableSelect
@@ -1780,11 +1961,13 @@ export function ManualReservationDialog({
                     value={draft.roomIds[0] ?? ""}
                   />
                   )}
-                </KoochField>
+                  </KoochField>
+                  {!isEditMode && draft.roomIds.length > 0 && <p className="text-xs text-muted-foreground">انتخاب چند اتاق از همین نوع اتاق ممکن است؛ برای تغییر نوع، انتخاب‌ها را پاک کنید.</p>}
+                </div>}
 
-                <KoochField
+                {showStay && <KoochField
                   helperText={
-                    effectiveRules?.extraGuestAllowed
+                    isWizard ? "تعداد بزرگسالان را وارد کنید؛ ظرفیت و ترکیب مهمانان در مرحلهٔ انتخاب اتاق بررسی می‌شود." : effectiveRules?.extraGuestAllowed
                       ? `ظرفیت پایه: ${new Intl.NumberFormat("fa-IR").format(selectedRoomBaseAdults)}؛ حداکثر با نفر اضافه: ${new Intl.NumberFormat("fa-IR").format(selectedRoomMaxAdults)}`
                       : effectiveRules
                         ? "این اتاق نفر اضافه نمی‌پذیرد."
@@ -1793,15 +1976,16 @@ export function ManualReservationDialog({
                   label="بزرگسالان"
                 >
                   <KoochInput
-                    disabled={
+                    disabled={!isWizard && (
                       isLockedEdit ||
                       rulesLoading ||
                       Boolean(rulesError) ||
                       !effectiveRules
-                    }
-                    max={maximumSelectableAdults}
+                    )}
+                    max={isWizard ? 100 : maximumSelectableAdults}
                     min={1}
                     onChange={(event) => {
+                      if (isWizard) { updateDraft("adults", event.target.value); return; }
                       const nextAdults = Math.max(
                         1,
                         Math.min(
@@ -1814,11 +1998,11 @@ export function ManualReservationDialog({
                     type="number"
                     value={draft.adults}
                   />
-                </KoochField>
+                </KoochField>}
 
-                <KoochField
+                {showStay && <KoochField
                   helperText={
-                    effectiveRules
+                    isWizard ? "سن واقعی هر کودک از صفر تا ۱۷ سال لازم است؛ هزینه بر اساس قوانین اتاق محاسبه می‌شود." : effectiveRules
                       ? `حداکثر ${formatAge(maxDeclaredChildren)} کودک؛ کودک رایگان و نیم‌بها از ظرفیت بزرگسال کم نمی‌کند.`
                       : "پس از بارگذاری قوانین اتاق، شرایط کودک نمایش داده می‌شود."
                   }
@@ -1826,14 +2010,15 @@ export function ManualReservationDialog({
                 >
                   <div className="grid gap-3">
                     <KoochInput
-                      max={maxDeclaredChildren}
+                      aria-label={isWizard ? "تعداد کودکان" : undefined}
+                      max={isWizard ? 100 : maxDeclaredChildren}
                       min={0}
-                      disabled={
+                      disabled={!isWizard && (
                         isLockedEdit ||
                         rulesLoading ||
                         !effectiveRules ||
                         Boolean(rulesError)
-                      }
+                      )}
                       onChange={(event) => updateChildren(event.target.value)}
                       type="number"
                       value={draft.children}
@@ -1852,7 +2037,10 @@ export function ManualReservationDialog({
                               <p className="text-xs font-semibold text-foreground">
                                 {`کودک ${new Intl.NumberFormat("fa-IR").format(index + 1)}`}
                               </p>
-                              <div
+                              {isWizard ? <KoochField label={`سن کودک ${index + 1}`} required>
+                                <KoochInput type="number" min={0} max={17} value={age}
+                                  onChange={event => updateChildAge(index, event.target.value)} />
+                              </KoochField> : <div
                                 aria-label={`رده سنی کودک ${index + 1}`}
                                 className="flex flex-wrap gap-2"
                                 role="group"
@@ -1899,16 +2087,16 @@ export function ManualReservationDialog({
                                     </KoochButton>
                                   );
                                 })}
-                              </div>
+                              </div>}
                             </div>
                           ))}
                         </div>
                       </div>
                     )}
                   </div>
-                </KoochField>
+                </KoochField>}
 
-                <KoochField label="نوع مهمان">
+                {showStay && <KoochField label="نوع مهمان">
                   <KoochSelect
                     disabled={isLockedEdit}
                     onChange={(event) =>
@@ -1922,10 +2110,10 @@ export function ManualReservationDialog({
                     <option value="Iranian">ایرانی</option>
                     <option value="Foreign">خارجی</option>
                   </KoochSelect>
-                </KoochField>
+                </KoochField>}
               </div>
 
-              {hasOnRequest && (
+              {showRooms && hasOnRequest && (
                 <KoochAlert title="نیازمند تایید" variant="warning">
                   این رزرو نیازمند تایید است و فعلاً پرداخت یا کاهش موجودی انجام
                   نمی‌شود.
@@ -1941,7 +2129,7 @@ export function ManualReservationDialog({
                 </KoochAlert>
               )}
 
-              <KoochCard className="grid gap-3" padding="sm" variant="elevated">
+              {showRooms && <KoochCard className="grid gap-3" padding="sm" variant="elevated">
                 <h3 className="text-sm font-bold text-foreground">
                   خلاصه قیمت
                 </h3>
@@ -1999,18 +2187,36 @@ export function ManualReservationDialog({
                     برای محاسبه قیمت، تاریخ و اتاق را انتخاب کنید.
                   </p>
                 )}
-              </KoochCard>
+              </KoochCard>}
+              {isWizard && wizardStep === 2 && pricePreview && !pricePreviewLoading && roomPrices.length !== selectedRoomCount &&
+                <KoochAlert title="تفکیک قیمت آماده نیست" variant="warning">نسخهٔ فعلی سرور تفکیک قیمت اتاق‌ها را برنمی‌گرداند. پس از به‌روزرسانی سرور دوباره تلاش کنید.</KoochAlert>}
             </>
           )}
 
-          <KoochField label="یادداشت داخلی">
+          {isWizard && wizardStep === 3 && <section aria-label="خلاصه سفارش دستی" className="grid gap-4">
+            <dl className="grid gap-3 text-sm sm:grid-cols-2">
+              <div><dt className="text-muted-foreground">اقامتگاه</dt><dd className="font-semibold">{properties.find(property => property.id === selectedPropertyId)?.name}</dd></div>
+              <div><dt className="text-muted-foreground">مهمان</dt><dd>{selectedGuest ? guestName(selectedGuest) : draft.guestSearch}</dd></div>
+              <div><dt className="text-muted-foreground">بازه اقامت</dt><dd><bdi>{toPersianDigits(draft.checkInDate)} — {toPersianDigits(draft.checkOutDate)}</bdi></dd></div>
+              <div><dt className="text-muted-foreground">مهمانان</dt><dd>{toPersianDigits(draft.adults)} بزرگسال، {toPersianDigits(draft.children)} کودک</dd></div>
+            </dl>
+            <ul aria-label="قیمت اتاق‌های انتخاب‌شده" className="divide-y divide-border rounded-lg border border-border">
+              {draft.roomIds.map((id, index) => <li key={id} className="flex flex-wrap items-center justify-between gap-2 p-3 text-sm">
+                <span>{rooms.find(room => String(room.roomId) === id)?.roomName}</span>
+                <strong>{roomPrices[index] ? formatCurrency(roomPrices[index].finalAmount, { currencyLabel: roomPrices[index].currency === "IRR" ? "ریال" : roomPrices[index].currency }) : "قیمت آماده نیست"}</strong>
+              </li>)}
+            </ul>
+            <p className="flex flex-wrap justify-between gap-2 border-t border-border pt-3 font-bold"><span>مبلغ کل سفارش</span><span>{pricePreview ? formatCurrency(pricePreview.finalAmount, { currencyLabel: pricePreview.currency === "IRR" ? "ریال" : pricePreview.currency }) : "قیمت آماده نیست"}</span></p>
+            <p className="text-xs leading-6 text-muted-foreground">با ثبت، یک سفارش و برای هر اتاق یک رزرو جدا ایجاد می‌شود. ظرفیت و قیمت هنگام ثبت دوباره در سرور بررسی می‌شوند.</p>
+          </section>}
+          {showReview && <KoochField label="یادداشت داخلی">
             <KoochTextarea
               disabled={isTerminalReadOnly}
               onChange={(event) => updateDraft("notes", event.target.value)}
               rows={3}
               value={draft.notes}
             />
-          </KoochField>
+          </KoochField>}
         </form>
       </KoochDialog>
 

@@ -108,7 +108,8 @@ describe("manual reservation traveler compatibility", () => {
     expect(await screen.findByRole("button", { name: "افزودن مهمان" })).toBeTruthy();
     expect(screen.queryByRole("region", { name: "اطلاعات مهمان ثبت‌شده" })).toBeNull();
     fireEvent.submit(document.getElementById("manual-reservation-form")!);
-    expect(mocks.error).toHaveBeenCalledWith("اقامتگاه و مهمان را انتخاب کنید.");
+    expect((screen.getByRole("button", { name: "انتخاب اتاق‌ها" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(mocks.error).not.toHaveBeenCalled();
     expect(mocks.api.mock.calls.some(([, options]) => options?.method === "POST")).toBe(false);
   });
 });

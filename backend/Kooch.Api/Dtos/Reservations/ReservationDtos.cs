@@ -433,6 +433,9 @@ public class ReservationPricePreviewRequest : IValidatableObject
 
 public class ReservationPricePreviewResponse
 {
+    // Only the Admin manual multi-room preview populates this, in allocation order.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<ManualRoomPricePreview>? RoomPrices { get; set; }
     public int PropertyId { get; set; }
     public int RoomTypeId { get; set; }
     public PricingGuestType GuestType { get; set; } = PricingGuestType.Iranian;
@@ -457,6 +460,8 @@ public class ReservationPricePreviewResponse
     public string Currency { get; set; } = "IRR";
     public IReadOnlyList<ReservationNightPriceSnapshot> Nights { get; set; } = [];
 }
+
+public sealed record ManualRoomPricePreview(int Adults, int Children, decimal FinalAmount, string Currency);
 
 public class ReservationNightPriceSnapshot
 {
